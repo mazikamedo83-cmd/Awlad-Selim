@@ -24,15 +24,23 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install dependencies
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Verify bun.lock exists
         shell: pwsh
         run: |
-          if (Test-Path "package-lock.json") {
-            npm ci
-          } else {
-            npm install
+          if (-not (Test-Path "bun.lock")) {
+            Write-Error "Missing required lockfile: bun.lock"
+            exit 1
           }
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-Item "bun.lock" | Select-Object Name, Length
+
+      - name: Install dependencies with Bun
+        shell: pwsh
+        run: bun install --frozen-lockfile
 
       - name: Verify Windows icon assets
         shell: pwsh
@@ -49,7 +57,7 @@ jobs:
 
       - name: Run TypeScript check
         shell: pwsh
-        run: npm run lint
+        run: bun run lint
 
       - name: Run backend and PostgreSQL test suite
         shell: pwsh
@@ -57,7 +65,7 @@ jobs:
 
       - name: Build frontend bundle
         shell: pwsh
-        run: npm run build
+        run: bun run build
 
       - name: Run Electron bootstrap and persistence tests
         shell: pwsh
@@ -65,7 +73,7 @@ jobs:
 
       - name: Build Windows Setup.exe
         shell: pwsh
-        run: npm run electron:dist
+        run: bun run electron:dist
 
       - name: Verify Setup.exe in dist-electron
         shell: pwsh
