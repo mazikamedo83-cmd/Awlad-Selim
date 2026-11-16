@@ -116,26 +116,25 @@ jobs:
       - name: Verify Setup.exe in dist-electron
         shell: pwsh
         run: |
-          $setupFiles = Get-ChildItem -Path "dist-electron" -Filter "*Setup*.exe" -File
-          if (-not $setupFiles -or $setupFiles.Count -eq 0) {
-            Write-Error "Setup.exe was not generated inside dist-electron."
+          $expectedInstaller = "dist-electron/AWLAD-SELIM-Setup-3.0.0.exe"
+          if (-not (Test-Path $expectedInstaller)) {
+            Write-Error "Expected installer not found: $expectedInstaller"
             if (Test-Path "dist-electron") {
               Get-ChildItem -Path "dist-electron"
             }
             exit 1
           }
-          foreach ($file in $setupFiles) {
-            if ($file.Length -le 0) {
-              Write-Error "Generated installer file is empty: $($file.FullName)"
-              exit 1
-            }
-            Write-Host "Found installer: $($file.Name) ($([Math]::Round($file.Length / 1MB, 2)) MB)"
+          $file = Get-Item $expectedInstaller
+          if ($file.Length -le 0) {
+            Write-Error "Generated installer file is empty: $($file.FullName)"
+            exit 1
           }
+          Write-Host "Found installer: $($file.Name) ($([Math]::Round($file.Length / 1MB, 2)) MB)"
 
       - name: Upload Windows Setup.exe Artifact
         uses: actions/upload-artifact@v4
         with:
           name: AWLAD-SELIM-Windows-Setup
-          path: dist-electron/*Setup*.exe
+          path: dist-electron/AWLAD-SELIM-Setup-*.exe
           if-no-files-found: error
           retention-days: 30

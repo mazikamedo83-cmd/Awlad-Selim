@@ -15,8 +15,8 @@
     "lint": "tsc --noEmit",
     "electron:start": "npm run build && electron .",
     "electron:pack": "npm run build && electron-builder --win --x64 --dir",
-    "electron:dist": "npm run build && electron-builder --win nsis --x64",
-    "electron:portable": "npm run build && electron-builder --win portable --x64"
+    "electron:dist": "npm run build && electron-builder --win nsis --x64 --publish never",
+    "electron:portable": "npm run build && electron-builder --win portable --x64 --publish never"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
