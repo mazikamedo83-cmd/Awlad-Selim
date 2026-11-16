@@ -1,0 +1,95 @@
+name: Build AWLAD SELIM Windows Installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Build Windows x64 Setup.exe
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          if (Test-Path "package-lock.json") {
+            npm ci
+          } else {
+            npm install
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify Windows icon assets
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "build/icon.ico")) {
+            Write-Error "Missing required icon file: build/icon.ico"
+            exit 1
+          }
+          if (-not (Test-Path "build/icon.png")) {
+            Write-Error "Missing required icon file: build/icon.png"
+            exit 1
+          }
+          Get-Item "build/icon.ico", "build/icon.png" | Select-Object Name, Length
+
+      - name: Run TypeScript check
+        shell: pwsh
+        run: npm run lint
+
+      - name: Run backend and PostgreSQL test suite
+        shell: pwsh
+        run: node server/tests/runAllTests.mjs
+
+      - name: Build frontend bundle
+        shell: pwsh
+        run: npm run build
+
+      - name: Run Electron bootstrap and persistence tests
+        shell: pwsh
+        run: node server/tests/verifyElectronBootstrap.mjs
+
+      - name: Build Windows Setup.exe
+        shell: pwsh
+        run: npm run electron:dist
+
+      - name: Verify Setup.exe in dist-electron
+        shell: pwsh
+        run: |
+          $setupFiles = Get-ChildItem -Path "dist-electron" -Filter "*Setup*.exe" -File
+          if (-not $setupFiles -or $setupFiles.Count -eq 0) {
+            Write-Error "Setup.exe was not generated inside dist-electron."
+            if (Test-Path "dist-electron") {
+              Get-ChildItem -Path "dist-electron"
+            }
+            exit 1
+          }
+          foreach ($file in $setupFiles) {
+            if ($file.Length -le 0) {
+              Write-Error "Generated installer file is empty: $($file.FullName)"
+              exit 1
+            }
+            Write-Host "Found installer: $($file.Name) ($([Math]::Round($file.Length / 1MB, 2)) MB)"
+          }
+
+      - name: Upload Windows Setup.exe Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AWLAD-SELIM-Windows-Setup
+          path: dist-electron/*Setup*.exe
+          if-no-files-found: error
+          retention-days: 30
