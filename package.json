@@ -1,0 +1,111 @@
+{
+  "name": "awlad-selim",
+  "private": true,
+  "version": "3.0.0",
+  "description": "AWLAD SELIM - نظام أولاد سليم للمحاسبة وإدارة الأعمال",
+  "main": "electron/main.cjs",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "start": "tsx server.ts",
+    "server:start": "node server/index.js",
+    "build": "vite build",
+    "preview": "vite preview",
+    "clean": "rm -rf dist dist-electron server.js",
+    "lint": "tsc --noEmit",
+    "electron:start": "npm run build && electron .",
+    "electron:pack": "npm run build && electron-builder --win --x64 --dir",
+    "electron:dist": "npm run build && electron-builder --win nsis --x64",
+    "electron:portable": "npm run build && electron-builder --win portable --x64"
+  },
+  "dependencies": {
+    "@google/genai": "^2.4.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.19",
+    "@types/pg": "^8.23.1",
+    "@vitejs/plugin-react": "^6.1.1",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "pg": "^8.23.1",
+    "pg-mem": "^3.0.14",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "vite": "^8.3.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "autoprefixer": "^10.4.21",
+    "electron": "^45.3.2",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.25.0",
+    "png-to-ico": "^3.0.2",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.21.0",
+    "typescript": "^7.0.2"
+  },
+  "author": "AWLAD SELIM",
+  "build": {
+    "appId": "com.awladselim.erp",
+    "productName": "AWLAD SELIM",
+    "copyright": "Copyright © 2026 AWLAD SELIM",
+    "npmRebuild": false,
+    "directories": {
+      "output": "dist-electron",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "server/**/*",
+      "!server/tests/**/*",
+      "!server/data/**/*",
+      "build/icon.*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "server/data",
+        "to": "server/data",
+        "filter": [
+          "**/*",
+          "!*.tmp",
+          "!sessions.json"
+        ]
+      }
+    ],
+    "asar": false,
+    "compression": "store",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "AWLAD-SELIM-Setup-${version}.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "AWLAD SELIM",
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
+    }
+  }
+}
