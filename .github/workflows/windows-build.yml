@@ -63,17 +63,13 @@ jobs:
         shell: pwsh
         run: node server/tests/runAllTests.mjs
 
-      - name: Build frontend bundle
+      - name: Build frontend and Windows Setup.exe
         shell: pwsh
-        run: bun run build
+        run: bun run electron:dist
 
       - name: Run Electron bootstrap and persistence tests
         shell: pwsh
         run: node server/tests/verifyElectronBootstrap.mjs
-
-      - name: Build Windows Setup.exe
-        shell: pwsh
-        run: bun run electron:dist
 
       - name: Verify Setup.exe in dist-electron
         shell: pwsh
