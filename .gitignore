@@ -1,7 +1,4 @@
 node_modules/
-build/*
-!build/icon.ico
-!build/icon.png
 dist/
 dist-electron/
 coverage/
