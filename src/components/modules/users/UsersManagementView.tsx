@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Plus, KeyRound, AlertCircle, CheckCircle2, Trash2
 } from 'lucide-react';
@@ -6,15 +6,26 @@ import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { User, UserRole, UserPermissions } from '../../../types';
 import { Modal } from '../../common/Modal';
+import { ConfirmDialog } from '../../common/ConfirmDialog';
 
-export const UsersManagementView: React.FC = () => {
+interface UsersManagementViewProps {
+  initialTab?: 'users' | 'audit';
+}
+
+export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initialTab }) => {
   const { users, customers, auditLogs, addUser, updateUser, deleteUser } = useData();
   const { currentUser } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'users' | 'audit'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'audit'>(initialTab || 'users');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
+
+  useEffect(() => {
+    if (initialTab) setActiveTab(initialTab);
+  }, [initialTab]);
 
   // Form states
   const [fullName, setFullName] = useState('');
@@ -184,13 +195,23 @@ export const UsersManagementView: React.FC = () => {
     setResetNewPassword('');
   };
 
-  const handleDeleteUser = async (u: User) => {
-    if (!window.confirm(`هل أنت متأكد من حذف حساب المستخدم (${u.fullName}) نهائياً؟`)) return;
-    const res = await deleteUser(u.id);
-    if (!res.success) {
-      setStatusMessage({ type: 'error', text: res.error || 'تعذر حذف المستخدم' });
-    } else {
-      setStatusMessage({ type: 'success', text: `تم حذف الحساب (${u.username}).` });
+  const handleDeleteUser = (u: User) => {
+    setUserToDelete(u);
+  };
+
+  const handleConfirmDeleteUser = async () => {
+    if (!userToDelete) return;
+    setIsDeletingUser(true);
+    try {
+      const res = await deleteUser(userToDelete.id);
+      if (!res.success) {
+        setStatusMessage({ type: 'error', text: res.error || 'تعذر حذف المستخدم' });
+      } else {
+        setStatusMessage({ type: 'success', text: `تم حذف الحساب (${userToDelete.username}).` });
+      }
+      setUserToDelete(null);
+    } finally {
+      setIsDeletingUser(false);
     }
   };
 
@@ -619,6 +640,17 @@ export const UsersManagementView: React.FC = () => {
           </form>
         </Modal>
       )}
+
+      <ConfirmDialog
+        isOpen={!!userToDelete}
+        onClose={() => !isDeletingUser && setUserToDelete(null)}
+        onConfirm={handleConfirmDeleteUser}
+        variant="danger"
+        isLoading={isDeletingUser}
+        title="تأكيد حذف حساب المستخدم"
+        message={userToDelete ? `هل أنت متأكد من حذف حساب المستخدم (${userToDelete.fullName} - ${userToDelete.username}) نهائياً؟` : ''}
+        confirmLabel="حذف الحساب"
+      />
     </div>
   );
 };

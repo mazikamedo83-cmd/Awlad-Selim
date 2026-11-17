@@ -1,16 +1,22 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { 
-  Settings, Save, Download, Upload, Database, RefreshCw, 
+import {
+  Settings, Save, Download, Upload, Database, RefreshCw,
   Printer, Building2, ShieldCheck, Check, AlertCircle, Trash2, RotateCcw,
   Server, Wifi, WifiOff, Activity, Monitor, Smartphone, FileSpreadsheet,
   Eye, ArrowLeftRight, CheckCircle2, ShoppingCart, User, Layers,
-  Barcode, FileText, Keyboard, Wrench, GitBranch
+  Barcode, FileText, Keyboard, Wrench, GitBranch, Plus, Search, Power
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
+import { useAuth } from '../../../context/AuthContext';
+import {
+  useShortcuts, SHORTCUT_CATALOG, eventToKeyCombo, isReservedSystemCombo, normalizeComboString
+} from '../../../context/ShortcutsContext';
 import { apiRequest } from '../../../services/api';
+import { ConfirmDialog } from '../../common/ConfirmDialog';
+import { Modal } from '../../common/Modal';
 import {
   ServerConnectionSettings, ProductImportCandidate,
-  BranchSettingItem, PrinterSettingItem, ExtraSettingsConfig
+  BranchSettingItem, PrinterSettingItem, ExtraSettingsConfig, UserShortcutItem, ShortcutCategory
 } from '../../../types';
 
 export type SettingsTabKey =
@@ -44,8 +50,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
   const {
     settings, updateSettings, exportBackup, importBackup,
     serverSettings, updateServerSettings, testServerConnection,
-    products, addProduct, warehouses, cashboxes, migrationLogs, runMigration, rollbackMigration,
+    products, addProduct, deleteImportedProducts, warehouses, cashboxes, migrationLogs, runMigration, rollbackMigration,
   } = useData();
+  const { hasPermission, currentUser } = useAuth();
+  const {
+    shortcuts: userShortcuts,
+    catalog: userShortcutCatalog,
+    isSaving: isSavingUserShortcuts,
+    findConflict,
+    saveShortcuts,
+    resetToDefaults,
+  } = useShortcuts();
 
   const [activeTab, setActiveTab] = useState<SettingsTabKey>(initialTab);
 
@@ -185,11 +200,37 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
   const [serverTestResult, setServerTestResult] = useState<{ success: boolean; latencyMs: number; message: string } | null>(null);
   const [isSavingServer, setIsSavingServer] = useState(false);
 
-  // Abu Selim Products Import State
+  // Abu Selim Products Import & Batch Delete State
   const [importCandidates, setImportCandidates] = useState<ProductImportCandidate[]>([]);
   const [importFileName, setImportFileName] = useState<string>('');
   const [isImportingToDb, setIsImportingToDb] = useState(false);
   const [importSuccessCount, setImportSuccessCount] = useState<number | null>(null);
+  const [showImportConfirm, setShowImportConfirm] = useState(false);
+  const [showDeleteImportedConfirm, setShowDeleteImportedConfirm] = useState(false);
+  const [isDeletingImported, setIsDeletingImported] = useState(false);
+  const [deleteImportedReport, setDeleteImportedReport] = useState<{
+    deletedCount: number;
+    skippedCount: number;
+    skippedItems?: Array<{ id: string; code: string; name: string }>;
+  } | null>(null);
+
+  // Per-User Keyboard Shortcuts Management State
+  const [shortcutSearch, setShortcutSearch] = useState('');
+  const [shortcutFeedback, setShortcutFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [recordingTarget, setRecordingTarget] = useState<{
+    mode: 'edit' | 'add';
+    actionId: string;
+    label: string;
+    category: ShortcutCategory | string;
+    keyCombo: string;
+  } | null>(null);
+  const [recorderConflict, setRecorderConflict] = useState<string | null>(null);
+  const [showResetShortcutsConfirm, setShowResetShortcutsConfirm] = useState(false);
+
+  const importedProductsList = useMemo(
+    () => products.filter((p) => p.importedFromFile || Boolean(p.importBatchId)),
+    [products]
+  );
 
   // 1. General Settings Handlers
   const handleSaveGeneral = async (e: React.FormEvent) => {
@@ -362,48 +403,83 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
     setImportSuccessCount(null);
   };
 
-  const handleExecuteImport = async () => {
-    // Prevent importing existing products or duplicates
+  const handleRequestImportConfirm = () => {
     const existingCodes = new Set(products.map(p => p.code.toLowerCase().trim()));
     const validOnes = importCandidates.filter(c => c.isValid && !existingCodes.has(c.code.toLowerCase().trim()));
-    
     if (validOnes.length === 0) {
       setImportError('لا توجد أصناف جديدة صالحة للاستيراد (قد تكون مسجلة مسبقاً)');
       return;
     }
+    setImportError(null);
+    setShowImportConfirm(true);
+  };
 
-    if (!window.confirm(`هل أنت متأكد من اعتماد استيراد (${validOnes.length}) صنف جديد إلى قاعدة بيانات أولاد سليم؟`)) {
+  const handleExecuteImport = async () => {
+    const existingCodes = new Set(products.map(p => p.code.toLowerCase().trim()));
+    const validOnes = importCandidates.filter(c => c.isValid && !existingCodes.has(c.code.toLowerCase().trim()));
+    if (validOnes.length === 0) {
+      setShowImportConfirm(false);
       return;
     }
 
+    setShowImportConfirm(false);
     setIsImportingToDb(true);
+    setImportError(null);
     let count = 0;
+    let skippedDup = 0;
     const defaultWarehouseId = warehouses[0]?.id || 'WH-01';
+    const importBatchId = `IMP-${Date.now()}`;
 
     for (const item of validOnes) {
-      // STRICT REQUIREMENT 8: Leave purchasePrice, sellingPrice, stock empty (0)
-      // "أنا المسؤول عن إدخال الأسعار والصور والكميات"
-      await addProduct({
-        code: item.code,
-        barcode: item.code,
-        name: item.name,
-        category: item.category,
-        baseUnit: item.baseUnit,
-        units: [],
-        purchasePrice: 0, // سعر الشراء يُدخله المسؤول لاحقاً
-        sellingPrice: 0, // يحدد المسؤول سعر البيع بنفسه بعد الاستيراد
-        minStockLevel: 20,
-        stockPerWarehouse: { [defaultWarehouseId]: 0 }, // كمية فارغة
-        status: 'active',
-        image: item.image,
-        notes: [item.description, item.oldPrice != null ? `السعر السابق بالكتالوج: ${item.oldPrice}` : '', `تم الاستيراد من (${item.sourceFile}).`].filter(Boolean).join(' | '),
-      });
-      count++;
+      try {
+        await addProduct({
+          code: item.code,
+          barcode: item.code,
+          name: item.name,
+          category: item.category,
+          baseUnit: item.baseUnit,
+          units: [],
+          purchasePrice: 0,
+          sellingPrice: 0,
+          minStockLevel: 20,
+          stockPerWarehouse: { [defaultWarehouseId]: 0 },
+          status: 'active',
+          image: item.image,
+          importBatchId,
+          importedFromFile: true,
+          sourceFileName: item.sourceFile || importFileName,
+          notes: [item.description, item.oldPrice != null ? `السعر السابق بالكتالوج: ${item.oldPrice}` : '', `تم الاستيراد من (${item.sourceFile}).`].filter(Boolean).join(' | '),
+        });
+        count++;
+      } catch {
+        skippedDup++;
+      }
     }
 
     setIsImportingToDb(false);
     setImportSuccessCount(count);
+    if (skippedDup > 0) {
+      setImportError(`تم تخطي (${skippedDup}) صنف لوجود تعارض في الكود أو الباركود.`);
+    }
     setImportCandidates([]);
+  };
+
+  const handleExecuteDeleteImported = async () => {
+    setIsDeletingImported(true);
+    setImportError(null);
+    setDeleteImportedReport(null);
+    const res = await deleteImportedProducts({ deleteAllImported: true });
+    setIsDeletingImported(false);
+    setShowDeleteImportedConfirm(false);
+    if (!res.success) {
+      setImportError(res.error || 'تعذر مسح الأصناف المستوردة');
+    } else {
+      setDeleteImportedReport({
+        deletedCount: res.deletedCount || 0,
+        skippedCount: res.skippedCount || 0,
+        skippedItems: res.skippedItems || [],
+      });
+    }
   };
 
   const handleCheckPostgres = async () => {
@@ -470,34 +546,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
       {/* Tabs Navigation */}
       <div className="flex items-center gap-1.5 p-1.5 bg-slate-200/80 rounded-2xl overflow-x-auto text-xs font-bold no-print">
         {[
-          { key: 'general', label: 'المنشأة والطباعة', icon: Building2, color: 'text-blue-700' },
-          { key: 'branches', label: 'الفروع', icon: GitBranch, color: 'text-indigo-700' },
-          { key: 'barcode', label: 'إعدادات الباركود', icon: Barcode, color: 'text-slate-700' },
-          { key: 'printers', label: 'الطابعات المتعددة', icon: Printer, color: 'text-blue-800' },
-          { key: 'invoice-design', label: 'إعدادات الفاتورة', icon: FileText, color: 'text-cyan-700' },
-          { key: 'mobile-config', label: 'إعدادات الموبايل', icon: Smartphone, color: 'text-emerald-700' },
-          { key: 'online-sync', label: 'مزامنة أونلاين', icon: Wifi, color: 'text-teal-700' },
-          { key: 'shortcuts', label: 'اختصارات البرنامج', icon: Keyboard, color: 'text-purple-700' },
-          { key: 'services', label: 'الخدمات', icon: Wrench, color: 'text-amber-700' },
-          { key: 'server', label: 'السيرفر (IP)', icon: Server, color: 'text-emerald-600' },
-          { key: 'abu-selim', label: 'استيراد الملفات', icon: FileSpreadsheet, color: 'text-amber-600' },
-          { key: 'backup', label: 'النسخ الاحتياطي', icon: Database, color: 'text-purple-600' },
-          { key: 'migration', label: 'الترحيل و PostgreSQL', icon: Layers, color: 'text-indigo-600' },
-        ].map((tab) => {
-          const TabIcon = tab.icon;
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key as SettingsTabKey)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
-                activeTab === tab.key ? 'bg-white text-blue-950 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <TabIcon className={`w-4 h-4 ${tab.color}`} />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
+          { key: 'general', label: 'المنشأة والطباعة', icon: Building2, color: 'text-blue-700', perm: 'canManageSettings' },
+          { key: 'branches', label: 'الفروع', icon: GitBranch, color: 'text-indigo-700', perm: 'canManageSettings' },
+          { key: 'barcode', label: 'إعدادات الباركود', icon: Barcode, color: 'text-slate-700', perm: 'canManageSettings' },
+          { key: 'printers', label: 'الطابعات المتعددة', icon: Printer, color: 'text-blue-800', perm: 'canManageSettings' },
+          { key: 'invoice-design', label: 'إعدادات الفاتورة', icon: FileText, color: 'text-cyan-700', perm: 'canManageSettings' },
+          { key: 'mobile-config', label: 'إعدادات الموبايل', icon: Smartphone, color: 'text-emerald-700', perm: 'canManageSettings' },
+          { key: 'online-sync', label: 'مزامنة أونلاين', icon: Wifi, color: 'text-teal-700', perm: 'canManageSettings' },
+          { key: 'shortcuts', label: 'اختصارات لوحة المفاتيح', icon: Keyboard, color: 'text-purple-700' },
+          { key: 'services', label: 'الخدمات', icon: Wrench, color: 'text-amber-700', perm: 'canManageSettings' },
+          { key: 'server', label: 'السيرفر (IP)', icon: Server, color: 'text-emerald-600', perm: 'canManageSettings' },
+          { key: 'abu-selim', label: 'استيراد الملفات', icon: FileSpreadsheet, color: 'text-amber-600', perm: 'canManageInventory' },
+          { key: 'backup', label: 'النسخ الاحتياطي', icon: Database, color: 'text-purple-600', perm: 'canManageSettings' },
+          { key: 'migration', label: 'الترحيل و PostgreSQL', icon: Layers, color: 'text-indigo-600', perm: 'canManageSettings' },
+        ]
+          .filter((t) => !t.perm || currentUser?.role === 'admin' || hasPermission(t.perm as any))
+          .map((tab) => {
+            const TabIcon = tab.icon;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key as SettingsTabKey)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+                  activeTab === tab.key ? 'bg-white text-blue-950 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <TabIcon className={`w-4 h-4 ${tab.color}`} />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
       </div>
 
       {isSaved && (
@@ -895,6 +973,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             </div>
           )}
 
+          {importError && (
+            <div className="p-3.5 bg-red-50 border border-red-200 text-red-800 rounded-xl font-bold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{importError}</span>
+            </div>
+          )}
+
+          {deleteImportedReport && (
+            <div className="p-4 bg-blue-50 border border-blue-200 text-blue-950 rounded-xl space-y-1.5">
+              <div className="font-black flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-blue-700" />
+                <span>تم حذف ({deleteImportedReport.deletedCount}) صنف مستورد من الملفات بأمان.</span>
+              </div>
+              {deleteImportedReport.skippedCount > 0 && (
+                <p className="text-[11px] text-amber-800 font-bold">
+                  تم الحفاظ على ({deleteImportedReport.skippedCount}) صنف مستورد لارتباطها بفواتير أو حركات سابقة:{' '}
+                  {(deleteImportedReport.skippedItems || []).slice(0, 5).map((s) => `${s.name} (${s.code})`).join('، ')}
+                  {deleteImportedReport.skippedCount > 5 ? '...' : ''}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Upload Box */}
           <div className="p-6 border-2 border-dashed border-slate-300 rounded-2xl text-center bg-slate-50/50 hover:bg-slate-50 transition-colors">
             <FileSpreadsheet className="w-10 h-10 text-slate-400 mx-auto mb-2" />
@@ -946,7 +1047,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   </button>
                   <button
                     type="button"
-                    onClick={handleExecuteImport}
+                    onClick={handleRequestImportConfirm}
                     disabled={isImportingToDb || importCandidates.filter(c => c.isValid).length === 0}
                     className="flex items-center gap-1.5 px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-black rounded-xl shadow-xs cursor-pointer disabled:opacity-50"
                   >
@@ -1010,6 +1111,50 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               )}
             </div>
           )}
+
+          {/* Safe Delete All Imported Products Section */}
+          <div className="p-4 rounded-2xl bg-red-50/70 border border-red-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h4 className="font-black text-red-900 flex items-center gap-1.5 text-xs">
+                <Trash2 className="w-4 h-4 text-red-600" />
+                <span>إدارة وحذف الأصناف المستوردة من الملفات ({importedProductsList.length} صنف مستورد)</span>
+              </h4>
+              <p className="text-[11px] text-red-800/80 mt-0.5">
+                يحذف فقط الأصناف التي تم استيرادها من الملفات ولم تُستخدم في فواتير أو جرد أو تحويلات، مع الحفاظ التام على الأصناف المضافة يدوياً.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={importedProductsList.length === 0 || isDeletingImported}
+              onClick={() => setShowDeleteImportedConfirm(true)}
+              className="shrink-0 flex items-center gap-1.5 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs shadow-xs disabled:opacity-40 cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>مسح جميع الأصناف المستوردة من الملفات</span>
+            </button>
+          </div>
+
+          <ConfirmDialog
+            isOpen={showImportConfirm}
+            onClose={() => setShowImportConfirm(false)}
+            onConfirm={handleExecuteImport}
+            title="اعتماد استيراد الأصناف من الملف"
+            message={`هل أنت متأكد من استيراد (${importCandidates.filter(c => c.isValid).length}) صنف جديد من ملف (${importFileName})؟`}
+            confirmLabel="استيراد وحفظ الأصناف"
+            variant="info"
+            isLoading={isImportingToDb}
+          />
+
+          <ConfirmDialog
+            isOpen={showDeleteImportedConfirm}
+            onClose={() => setShowDeleteImportedConfirm(false)}
+            onConfirm={handleExecuteDeleteImported}
+            title="مسح جميع الأصناف المستوردة من الملفات"
+            message={`سيتم حذف الأصناف المستوردة من الملفات (${importedProductsList.length} صنف) بشرط عدم ارتباطها بأي فواتير أو حركات مخزنية. الأصناف المضافة يدوياً أو المرتبطة بفواتير لن تُحذف. هل تريد المتابعة؟`}
+            confirmLabel="نعم، مسح الأصناف المستوردة"
+            variant="danger"
+            isLoading={isDeletingImported}
+          />
         </div>
       )}
 
@@ -1654,42 +1799,344 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
         </div>
       )}
 
-      {/* TAB: Shortcuts */}
+      {/* TAB: Per-User Keyboard Shortcuts Management */}
       {activeTab === 'shortcuts' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4 text-xs">
-          <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
-            <Keyboard className="w-4 h-4 text-purple-700" />
-            <span>اختصارات البرنامج السريعة</span>
-          </h3>
-          <div className="space-y-2">
-            {shortcuts.map((sc, idx) => (
-              <div key={idx} className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-center p-2.5 bg-slate-50 rounded-xl border">
-                <input
-                  type="text"
-                  value={sc.keyCombo}
-                  onChange={(e) => setShortcuts(shortcuts.map((s, i) => (i === idx ? { ...s, keyCombo: e.target.value } : s)))}
-                  className="bg-white border rounded-lg p-1.5 font-mono font-bold text-center text-blue-900"
-                />
-                <input
-                  type="text"
-                  value={sc.actionLabel}
-                  onChange={(e) => setShortcuts(shortcuts.map((s, i) => (i === idx ? { ...s, actionLabel: e.target.value } : s)))}
-                  className="bg-white border rounded-lg p-1.5 font-bold"
-                />
-                <span className="text-slate-500 font-mono text-[11px]">الشاشة: {sc.targetPage}</span>
-              </div>
-            ))}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-5 text-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
+            <div>
+              <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                <Keyboard className="w-4 h-4 text-purple-700" />
+                <span>إعدادات اختصارات لوحة المفاتيح ({currentUser?.fullName})</span>
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-1">
+                تخصيص اختصاراتك الشخصية لكل قسم ووظيفة (تعمل مباشرة دون إعادة تشغيل البرنامج وتدعم لوحة المفاتيح العربية والإنجليزية).
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const firstDef = userShortcutCatalog[0] || SHORTCUT_CATALOG[0];
+                  setRecorderConflict(null);
+                  setRecordingTarget({
+                    mode: 'add',
+                    actionId: firstDef?.actionId || 'nav:dashboard',
+                    label: firstDef?.label || 'اختصار مخصص',
+                    category: firstDef?.category || 'عام',
+                    keyCombo: '',
+                  });
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-bold cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>إضافة / تخصيص اختصار</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowResetShortcutsConfirm(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl font-bold cursor-pointer"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>استعادة الافتراضي</span>
+              </button>
+            </div>
           </div>
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => persistExtraSettings({ shortcuts }, 'تم حفظ اختصارات البرنامج بنجاح.')}
-              className="px-6 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-black cursor-pointer flex items-center gap-2"
+
+          {shortcutFeedback && (
+            <div
+              className={`p-3 rounded-xl border font-bold flex items-center justify-between ${
+                shortcutFeedback.type === 'success'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : 'bg-red-50 border-red-200 text-red-900'
+              }`}
             >
-              <Save className="w-4 h-4" />
-              <span>حفظ الاختصارات</span>
-            </button>
+              <span>{shortcutFeedback.text}</span>
+              <button type="button" onClick={() => setShortcutFeedback(null)} className="underline text-[11px] cursor-pointer">
+                إغلاق
+              </button>
+            </div>
+          )}
+
+          <div className="relative max-w-md">
+            <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+            <input
+              type="text"
+              placeholder="ابحث عن وظيفة أو مفتاح اختصار (مثال: الطباعة، Ctrl+S)..."
+              value={shortcutSearch}
+              onChange={(e) => setShortcutSearch(e.target.value)}
+              className="w-full pr-9 pl-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold outline-hidden focus:bg-white focus:border-blue-700"
+            />
           </div>
+
+          {(['التنقل', 'المبيعات والمشتريات', 'المخزون', 'العملاء والمالية', 'عام'] as ShortcutCategory[]).map((cat) => {
+            const catItems = userShortcuts.filter(
+              (sc) =>
+                sc.category === cat &&
+                (!shortcutSearch.trim() ||
+                  sc.label.toLowerCase().includes(shortcutSearch.toLowerCase()) ||
+                  (sc.keyCombo || '').toLowerCase().includes(shortcutSearch.toLowerCase()))
+            );
+            if (catItems.length === 0) return null;
+            return (
+              <div key={cat} className="space-y-2">
+                <h4 className="font-black text-blue-950 text-xs bg-slate-100 px-3 py-1.5 rounded-lg inline-block">
+                  {cat} ({catItems.length})
+                </h4>
+                <div className="border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100">
+                  {catItems.map((sc) => (
+                    <div
+                      key={sc.actionId}
+                      className={`p-3 flex flex-wrap items-center justify-between gap-3 ${
+                        sc.enabled === false ? 'bg-slate-50/70 opacity-70' : 'bg-white hover:bg-slate-50/70'
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-slate-900">{sc.label}</div>
+                        <div className="text-[10px] font-mono text-slate-400">{sc.actionId}</div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        {sc.keyCombo ? (
+                          <kbd
+                            dir="ltr"
+                            className={`px-3 py-1.5 rounded-xl font-mono font-black text-xs border min-w-20 text-center ${
+                              sc.enabled !== false
+                                ? 'bg-blue-50 text-blue-950 border-blue-300'
+                                : 'bg-slate-100 text-slate-400 border-slate-200 line-through'
+                            }`}
+                          >
+                            {sc.keyCombo}
+                          </kbd>
+                        ) : (
+                          <span className="px-3 py-1.5 rounded-xl text-[11px] bg-slate-100 text-slate-500 border border-slate-200">
+                            غير معيّن
+                          </span>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRecorderConflict(null);
+                            setRecordingTarget({
+                              mode: 'edit',
+                              actionId: sc.actionId,
+                              label: sc.label,
+                              category: sc.category,
+                              keyCombo: sc.keyCombo,
+                            });
+                          }}
+                          className="px-3 py-1.5 bg-slate-100 hover:bg-blue-100 text-slate-800 hover:text-blue-900 rounded-xl font-bold cursor-pointer"
+                        >
+                          تعديل المفتاح
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={isSavingUserShortcuts}
+                          onClick={async () => {
+                            const next = userShortcuts.map((item) =>
+                              item.actionId === sc.actionId ? { ...item, enabled: item.enabled === false } : item
+                            );
+                            const res = await saveShortcuts(next);
+                            if (!res.success) {
+                              setShortcutFeedback({ type: 'error', text: res.error || 'تعذر تحديث الحالة' });
+                            } else {
+                              setShortcutFeedback({
+                                type: 'success',
+                                text: `تم ${sc.enabled === false ? 'تفعيل' : 'تعطيل'} اختصار (${sc.label}).`,
+                              });
+                            }
+                          }}
+                          title={sc.enabled === false ? 'تفعيل الاختصار' : 'تعطيل الاختصار'}
+                          className={`p-1.5 rounded-xl border cursor-pointer ${
+                            sc.enabled !== false
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                              : 'bg-slate-100 text-slate-500 border-slate-300 hover:bg-slate-200'
+                          }`}
+                        >
+                          <Power className="w-4 h-4" />
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={isSavingUserShortcuts}
+                          onClick={async () => {
+                            const next = userShortcuts.map((item) =>
+                              item.actionId === sc.actionId ? { ...item, keyCombo: '', enabled: false } : item
+                            );
+                            const res = await saveShortcuts(next);
+                            if (res.success) {
+                              setShortcutFeedback({ type: 'success', text: `تم حذف مفتاح الاختصار لوظيفة (${sc.label}).` });
+                            }
+                          }}
+                          title="حذف المفتاح"
+                          className="p-1.5 rounded-xl text-red-500 hover:bg-red-50 border border-transparent hover:border-red-200 cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Key Recorder Modal */}
+          <Modal
+            isOpen={!!recordingTarget}
+            onClose={() => setRecordingTarget(null)}
+            title={recordingTarget?.mode === 'add' ? 'إضافة / تخصيص اختصار لوحة مفاتيح' : `تغيير اختصار: ${recordingTarget?.label || ''}`}
+            maxWidth="md"
+          >
+            {recordingTarget && (
+              <div
+                data-shortcut-recorder="true"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setRecordingTarget(null);
+                    return;
+                  }
+                  const combo = eventToKeyCombo(e.nativeEvent);
+                  if (!combo) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+
+                  if (isReservedSystemCombo(combo)) {
+                    setRecorderConflict(`الاختصار (${combo}) محجوز لعمليات النظام الأساسية (نسخ/لصق/تحديد). يرجى اختيار مفتاح آخر.`);
+                    setRecordingTarget({ ...recordingTarget, keyCombo: combo });
+                    return;
+                  }
+                  const conflict = findConflict(combo, recordingTarget.actionId, userShortcuts);
+                  if (conflict) {
+                    setRecorderConflict(`تحذير: الاختصار (${combo}) مستخدم بالفعل في الوظيفة: "${conflict.label}"`);
+                  } else {
+                    setRecorderConflict(null);
+                  }
+                  setRecordingTarget({ ...recordingTarget, keyCombo: combo });
+                }}
+                className="space-y-4 text-xs outline-hidden"
+              >
+                {recordingTarget.mode === 'add' && (
+                  <div>
+                    <label className="block font-bold mb-1">اختر الوظيفة المراد تخصيص اختصار لها:</label>
+                    <select
+                      value={recordingTarget.actionId}
+                      onChange={(e) => {
+                        const def = userShortcutCatalog.find((d) => d.actionId === e.target.value);
+                        const cur = userShortcuts.find((s) => s.actionId === e.target.value);
+                        setRecorderConflict(null);
+                        setRecordingTarget({
+                          ...recordingTarget,
+                          actionId: e.target.value,
+                          label: def?.label || cur?.label || e.target.value,
+                          category: def?.category || cur?.category || 'عام',
+                          keyCombo: cur?.keyCombo || '',
+                        });
+                      }}
+                      className="w-full border rounded-xl p-2.5 font-bold"
+                    >
+                      {userShortcutCatalog.map((def) => (
+                        <option key={def.actionId} value={def.actionId}>
+                          {def.label} ({def.category})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="p-5 rounded-2xl bg-blue-50/70 border-2 border-dashed border-blue-300 text-center space-y-2">
+                  <p className="font-bold text-slate-700">
+                    اضغط الآن على مجموعة المفاتيح المطلوبة (مثل Ctrl+P أو Alt+S أو F2 أو Ctrl+Shift+N)
+                  </p>
+                  <div className="py-2">
+                    <kbd
+                      dir="ltr"
+                      className="inline-block px-5 py-2.5 rounded-xl bg-white border border-blue-300 text-blue-950 font-mono font-black text-base shadow-xs min-w-36"
+                    >
+                      {recordingTarget.keyCombo || 'في انتظار الضغط...'}
+                    </kbd>
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    ملاحظة: يتم حفظ الاختصار اعتماداً على المفتاح الفيزيائي ليعمل مع لوحة المفاتيح العربية والإنجليزية على السواء.
+                  </p>
+                </div>
+
+                {recorderConflict && (
+                  <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{recorderConflict}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2 pt-2 border-t">
+                  <button
+                    type="button"
+                    onClick={() => setRecordingTarget(null)}
+                    className="px-4 py-2 border rounded-xl font-bold cursor-pointer"
+                  >
+                    إلغاء
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSavingUserShortcuts || !recordingTarget.keyCombo || Boolean(recorderConflict)}
+                    onClick={async () => {
+                      const norm = normalizeComboString(recordingTarget.keyCombo);
+                      const nextList: UserShortcutItem[] = userShortcuts.some((s) => s.actionId === recordingTarget.actionId)
+                        ? userShortcuts.map((s) =>
+                            s.actionId === recordingTarget.actionId ? { ...s, keyCombo: norm, enabled: true } : s
+                          )
+                        : [
+                            ...userShortcuts,
+                            {
+                              id: `SC-${recordingTarget.actionId}`,
+                              actionId: recordingTarget.actionId,
+                              label: recordingTarget.label,
+                              category: recordingTarget.category,
+                              keyCombo: norm,
+                              enabled: true,
+                            },
+                          ];
+                      const res = await saveShortcuts(nextList);
+                      if (!res.success) {
+                        setRecorderConflict(res.error || 'تعذر حفظ الاختصار');
+                      } else {
+                        setRecordingTarget(null);
+                        setShortcutFeedback({
+                          type: 'success',
+                          text: `تم حفظ وتفعيل الاختصار (${norm}) للوظيفة (${recordingTarget.label}) فوراً.`,
+                        });
+                      }
+                    }}
+                    className="px-5 py-2 bg-blue-900 text-white rounded-xl font-black disabled:opacity-50 cursor-pointer"
+                  >
+                    {isSavingUserShortcuts ? 'جاري الحفظ...' : 'حفظ الاختصار وتفعيله'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </Modal>
+
+          <ConfirmDialog
+            isOpen={showResetShortcutsConfirm}
+            onClose={() => setShowResetShortcutsConfirm(false)}
+            onConfirm={async () => {
+              const res = await resetToDefaults();
+              setShowResetShortcutsConfirm(false);
+              if (res.success) {
+                setShortcutFeedback({ type: 'success', text: 'تمت استعادة كافة الاختصارات الافتراضية بنجاح.' });
+              } else {
+                setShortcutFeedback({ type: 'error', text: res.error || 'تعذر استعادة الافتراضي' });
+              }
+            }}
+            title="استعادة الاختصارات الافتراضية"
+            message="هل تريد استعادة جميع اختصارات لوحة المفاتيح الخاصة بحسابك إلى الإعدادات الافتراضية للنظام؟"
+            confirmLabel="استعادة الافتراضي"
+            variant="warning"
+            isLoading={isSavingUserShortcuts}
+          />
         </div>
       )}
 

@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS users (
   must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
   last_login TIMESTAMPTZ,
   permissions JSONB NOT NULL DEFAULT '{}'::jsonb,
+  shortcuts JSONB NOT NULL DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -107,6 +108,9 @@ CREATE TABLE IF NOT EXISTS products (
   image TEXT,
   notes TEXT,
   status VARCHAR(16) NOT NULL DEFAULT 'active',
+  import_batch_id VARCHAR(64),
+  imported_from_file BOOLEAN NOT NULL DEFAULT FALSE,
+  source_file_name TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -127,6 +131,8 @@ CREATE TABLE IF NOT EXISTS customers (
   id VARCHAR(64) PRIMARY KEY,
   code VARCHAR(64) UNIQUE NOT NULL,
   user_id VARCHAR(64) UNIQUE REFERENCES users(id) ON DELETE SET NULL,
+  assigned_rep_id VARCHAR(64),
+  allowed_rep_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
   name TEXT NOT NULL,
   phone VARCHAR(32),
   secondary_phone VARCHAR(32),
@@ -340,7 +346,9 @@ CREATE TABLE IF NOT EXISTS rep_item_transfers (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   reviewed_by VARCHAR(64),
   reviewed_at TIMESTAMPTZ,
-  executed_at TIMESTAMPTZ
+  executed_at TIMESTAMPTZ,
+  received_by VARCHAR(64),
+  received_at TIMESTAMPTZ
 );
 
 -- 18. بنود طلب تحويل الأصناف (Rep Item Transfer Items)

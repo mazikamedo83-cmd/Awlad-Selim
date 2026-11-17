@@ -11,6 +11,7 @@ import adminRoutes from './routes/admin.js';
 import personalAccountsRoutes from './routes/personalAccounts.js';
 import stockCountsRoutes from './routes/stockCounts.js';
 import stockTransfersRoutes from './routes/stockTransfers.js';
+import mobileRoutes from './routes/mobile.js';
 import { checkPostgresHealth, initializeSchema } from './db/postgres.js';
 import { getAuthStatus, bootstrapAdmin } from './db/stores/authStore.js';
 import { exportFullBackup, restoreFullBackup } from './db/stores/inventoryAdminStore.js';
@@ -53,10 +54,20 @@ export async function initializeServerRuntime() {
 export function createApiApp() {
   const app = express();
 
+  app.set('trust proxy', process.env.TRUST_PROXY === 'false' ? false : 1);
+
   const allowedOriginsEnv = (process.env.ALLOWED_ORIGINS || '').trim();
   const allowedList = allowedOriginsEnv
     ? allowedOriginsEnv.split(',').map((s) => s.trim()).filter(Boolean)
     : null;
+  const allowMobileLanHttp = process.env.ALLOW_MOBILE_LAN_HTTP !== 'false';
+  const capacitorOrigins = new Set([
+    'capacitor://localhost',
+    'ionic://localhost',
+    'https://localhost',
+    'http://localhost',
+    'http://127.0.0.1',
+  ]);
 
   app.disable('x-powered-by');
   app.use((_req, res, next) => {
@@ -68,8 +79,21 @@ export function createApiApp() {
   app.use(
     cors({
       origin: (origin, cb) => {
-        if (!origin || !allowedList) return cb(null, true);
+        if (!origin) return cb(null, true);
+        if (
+          capacitorOrigins.has(origin) ||
+          /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)
+        ) {
+          return cb(null, true);
+        }
+        if (!allowedList) return cb(null, true);
         if (allowedList.includes(origin)) return cb(null, true);
+        if (
+          allowMobileLanHttp &&
+          /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)\d{1,3}(\.\d{1,3})?(:\d+)?$/i.test(origin)
+        ) {
+          return cb(null, true);
+        }
         return cb(new Error('Origin not allowed by CORS'));
       },
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -79,6 +103,17 @@ export function createApiApp() {
   );
 
   app.use(express.json({ limit: '50mb' }));
+
+  app.use('/api', (req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+      if (process.env.NODE_ENV === 'test' || process.env.AWLAD_QUIET_LOGS === 'true') return;
+      if (req.path === '/health') return;
+      const ms = Date.now() - start;
+      console.log(`[API] ${req.method} ${req.originalUrl.split('?')[0]} -> ${res.statusCode} (${ms}ms)`);
+    });
+    next();
+  });
 
   // Safe public health check (NEVER leaks credentials, users, or database contents)
   app.get(
@@ -132,6 +167,7 @@ export function createApiApp() {
   app.use('/api/personal-accounts', personalAccountsRoutes);
   app.use('/api/stock-counts', stockCountsRoutes);
   app.use('/api/stock-transfers', stockTransfersRoutes);
+  app.use('/api/mobile', mobileRoutes);
 
   // Legacy full-database endpoints strictly locked to Admin only (401 unauth, 403 non-admin)
   app.get(

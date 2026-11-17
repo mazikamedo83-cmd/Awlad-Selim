@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
+import { ShortcutsProvider, useShortcuts } from './context/ShortcutsContext';
 import { LoginView } from './components/modules/auth/LoginView';
 import { ChangePasswordModal } from './components/modules/auth/ChangePasswordModal';
 import { Header } from './components/layout/Header';
@@ -80,8 +81,20 @@ const PAGE_PERMISSIONS: Partial<Record<NavItemKey, keyof UserPermissions | Array
   'invoice-settings': 'canManageSettings',
   'mobile-settings': 'canManageSettings',
   'online-sync-settings': 'canManageSettings',
-  'shortcuts-settings': 'canManageSettings',
   'services-settings': 'canManageSettings',
+};
+
+const ShortcutGlobalActions: React.FC<{ onOpenCashOp: (mode: CashOperationType) => void }> = ({ onOpenCashOp }) => {
+  const { registerHandler } = useShortcuts();
+  useEffect(() => {
+    const u1 = registerHandler('action:cash_deposit', () => onOpenCashOp('cash_deposit'));
+    const u2 = registerHandler('action:cash_withdrawal', () => onOpenCashOp('cash_withdrawal'));
+    return () => {
+      u1();
+      u2();
+    };
+  }, [registerHandler, onOpenCashOp]);
+  return null;
 };
 
 const MainAppContent: React.FC = () => {
@@ -201,16 +214,19 @@ const MainAppContent: React.FC = () => {
         return <SettingsView initialTab="abu-selim" />;
 
       case 'cashboxes':
+        return <FinanceView initialTab="cashboxes" />;
       case 'cashbox-transfer':
+        return <FinanceView initialTab="transfer" />;
       case 'expenses':
-        return <FinanceView />;
+        return <FinanceView initialTab="expenses" />;
 
       case 'personal-accounts':
         return <PersonalAccountsView />;
 
       case 'cheques':
+        return <ChequesView initialTab="cheques" />;
       case 'installments':
-        return <ChequesView />;
+        return <ChequesView initialTab="installments" />;
 
       case 'reps':
         return <RepTransferView initialTab="reps-list" />;
@@ -222,17 +238,21 @@ const MainAppContent: React.FC = () => {
         return <RepTransferView initialTab="item-transfers" />;
 
       case 'employees':
+        return <EmployeesView initialTab="employees" />;
       case 'attendance':
+        return <EmployeesView initialTab="attendance" />;
       case 'advances':
+        return <EmployeesView initialTab="advances" />;
       case 'payroll':
-        return <EmployeesView />;
+        return <EmployeesView initialTab="payrolls" />;
 
       case 'reports':
         return <ReportsView />;
 
       case 'users':
+        return <UsersManagementView initialTab="users" />;
       case 'audit-log':
-        return <UsersManagementView />;
+        return <UsersManagementView initialTab="audit" />;
 
       case 'system-settings':
         return <SettingsView initialTab="general" />;
@@ -276,41 +296,44 @@ const MainAppContent: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col font-['Cairo'] antialiased">
-      <ChangePasswordModal />
+    <ShortcutsProvider onNavigate={(page) => setCurrentPage(page as NavItemKey)}>
+      <ShortcutGlobalActions onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })} />
+      <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col font-['Cairo'] antialiased">
+        <ChangePasswordModal />
 
-      <CashOperationModal
-        isOpen={cashOpModal.open}
-        initialMode={cashOpModal.mode}
-        onClose={() => setCashOpModal((prev) => ({ ...prev, open: false }))}
-      />
-
-      <Sidebar
-        currentPage={currentPage}
-        onNavigate={(page) => setCurrentPage(page)}
-        isOpenMobile={isSidebarOpenMobile}
-        onCloseMobile={() => setIsSidebarOpenMobile(false)}
-        isCollapsed={isSidebarCollapsed}
-        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-      />
-
-      <div
-        className={`flex-1 flex flex-col transition-all duration-300 ${
-          isSidebarCollapsed ? 'lg:mr-20' : 'lg:mr-72'
-        }`}
-      >
-        <Header
-          onToggleSidebar={() => setIsSidebarOpenMobile((prev) => !prev)}
-          onNavigate={(page) => setCurrentPage(page)}
-          onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })}
-          onNavigateToTransfers={() => setCurrentPage('rep-transfers')}
+        <CashOperationModal
+          isOpen={cashOpModal.open}
+          initialMode={cashOpModal.mode}
+          onClose={() => setCashOpModal((prev) => ({ ...prev, open: false }))}
         />
 
-        <main className="flex-1 p-4 sm:p-6 max-w-7xl w-full mx-auto">
-          {renderActivePage()}
-        </main>
+        <Sidebar
+          currentPage={currentPage}
+          onNavigate={(page) => setCurrentPage(page)}
+          isOpenMobile={isSidebarOpenMobile}
+          onCloseMobile={() => setIsSidebarOpenMobile(false)}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+        />
+
+        <div
+          className={`flex-1 flex flex-col transition-all duration-300 ${
+            isSidebarCollapsed ? 'lg:mr-20' : 'lg:mr-72'
+          }`}
+        >
+          <Header
+            onToggleSidebar={() => setIsSidebarOpenMobile((prev) => !prev)}
+            onNavigate={(page) => setCurrentPage(page)}
+            onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })}
+            onNavigateToTransfers={() => setCurrentPage('rep-transfers')}
+          />
+
+          <main className="flex-1 p-4 sm:p-6 max-w-7xl w-full mx-auto">
+            {renderActivePage()}
+          </main>
+        </div>
       </div>
-    </div>
+    </ShortcutsProvider>
   );
 };
 

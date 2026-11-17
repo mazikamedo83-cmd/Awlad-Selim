@@ -1,17 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  CreditCard, Plus, Search, CheckCircle, Clock, AlertCircle, 
+  CreditCard, Plus, Search, CheckCircle2, Clock, AlertCircle, 
   XCircle, RotateCcw, Calendar, Check 
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { Cheque, InstallmentSchedule } from '../../../types';
 import { Modal } from '../../common/Modal';
+import { ConfirmDialog } from '../../common/ConfirmDialog';
 
-export const ChequesView: React.FC = () => {
+interface ChequesViewProps {
+  initialTab?: 'cheques' | 'installments';
+}
+
+export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
   const { cheques, installments, cashboxes, settings, addCheque, updateChequeStatus, payInstallment } = useData();
 
-  const [activeTab, setActiveTab] = useState<'cheques' | 'installments'>('cheques');
+  const [activeTab, setActiveTab] = useState<'cheques' | 'installments'>(initialTab || 'cheques');
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusBanner, setStatusBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Add Cheque Modal
   const [isAddChequeOpen, setIsAddChequeOpen] = useState(false);
@@ -22,50 +28,115 @@ export const ChequesView: React.FC = () => {
   const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
   const [partyName, setPartyName] = useState('');
   const [notes, setNotes] = useState('');
+  const [chequeError, setChequeError] = useState<string | null>(null);
 
   // Collect Cheque Modal
   const [collectingCheque, setCollectingCheque] = useState<Cheque | null>(null);
   const [collectCashboxId, setCollectCashboxId] = useState(cashboxes[0]?.id || '');
+  const [collectError, setCollectError] = useState<string | null>(null);
+
+  // Reject Cheque Confirmation
+  const [rejectingCheque, setRejectingCheque] = useState<Cheque | null>(null);
+  const [isRejectingCheque, setIsRejectingCheque] = useState(false);
 
   // Pay Installment Modal
   const [payingSchedule, setPayingSchedule] = useState<{ schedule: InstallmentSchedule; itemId: string; amount: number } | null>(null);
   const [installmentCashboxId, setInstallmentCashboxId] = useState(cashboxes[0]?.id || '');
+  const [installmentError, setInstallmentError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialTab) setActiveTab(initialTab);
+  }, [initialTab]);
+
+  useEffect(() => {
+    if (cashboxes.length === 0) return;
+    if (!collectCashboxId || !cashboxes.some(c => c.id === collectCashboxId)) {
+      setCollectCashboxId(cashboxes[0].id);
+    }
+    if (!installmentCashboxId || !cashboxes.some(c => c.id === installmentCashboxId)) {
+      setInstallmentCashboxId(cashboxes[0].id);
+    }
+  }, [cashboxes, collectCashboxId, installmentCashboxId]);
 
   const handleAddChequeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chequeNum.trim() || amount <= 0) return;
+    setChequeError(null);
+    if (!chequeNum.trim() || amount <= 0) {
+      setChequeError('يرجى إدخال رقم الشيك ومبلغ أكبر من صفر.');
+      return;
+    }
 
-    await addCheque({
-      chequeNumber: chequeNum,
-      type: chequeType,
-      bankName,
-      amount,
-      issueDate: new Date().toISOString().split('T')[0],
-      dueDate,
-      partyName,
-      status: 'pending',
-      notes,
-    });
+    try {
+      await addCheque({
+        chequeNumber: chequeNum.trim(),
+        type: chequeType,
+        bankName: bankName.trim(),
+        amount,
+        issueDate: new Date().toISOString().split('T')[0],
+        dueDate,
+        partyName: partyName.trim(),
+        status: 'pending',
+        notes: notes.trim(),
+      });
 
-    setIsAddChequeOpen(false);
-    setChequeNum('');
-    setAmount(0);
-    setPartyName('');
-    setNotes('');
+      setStatusBanner({ type: 'success', text: `تم تسجيل الشيك رقم (${chequeNum.trim()}) بنجاح.` });
+      setIsAddChequeOpen(false);
+      setChequeNum('');
+      setAmount(0);
+      setPartyName('');
+      setNotes('');
+    } catch (err: any) {
+      setChequeError(err?.message || 'تعذر حفظ الشيك');
+    }
   };
 
   const handleConfirmCollect = async (e: React.FormEvent) => {
     e.preventDefault();
+    setCollectError(null);
     if (!collectingCheque) return;
-    await updateChequeStatus(collectingCheque.id, 'collected', collectCashboxId, 'تم تحصيل الشيك وإيداعه بنجاح');
-    setCollectingCheque(null);
+    if (!collectCashboxId) {
+      setCollectError('يرجى اختيار الخزينة أو الحساب البنكي.');
+      return;
+    }
+    try {
+      await updateChequeStatus(collectingCheque.id, 'collected', collectCashboxId, 'تم تحصيل الشيك وإيداعه بنجاح');
+      setStatusBanner({ type: 'success', text: `تم تحصيل الشيك رقم (${collectingCheque.chequeNumber}) بنجاح.` });
+      setCollectingCheque(null);
+    } catch (err: any) {
+      setCollectError(err?.message || 'تعذر تحصيل الشيك');
+    }
+  };
+
+  const handleConfirmRejectCheque = async (reason?: string) => {
+    if (!rejectingCheque) return;
+    setIsRejectingCheque(true);
+    try {
+      await updateChequeStatus(rejectingCheque.id, 'rejected', undefined, reason || 'شيك مرتد / مرفوض');
+      setStatusBanner({ type: 'success', text: `تم تسجيل رفض/ارتداد الشيك رقم (${rejectingCheque.chequeNumber}).` });
+      setRejectingCheque(null);
+    } catch (err: any) {
+      setStatusBanner({ type: 'error', text: err?.message || 'تعذر تحديث حالة الشيك' });
+      setRejectingCheque(null);
+    } finally {
+      setIsRejectingCheque(false);
+    }
   };
 
   const handlePayInstallmentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setInstallmentError(null);
     if (!payingSchedule) return;
-    await payInstallment(payingSchedule.schedule.id, payingSchedule.itemId, payingSchedule.amount, installmentCashboxId);
-    setPayingSchedule(null);
+    if (!installmentCashboxId) {
+      setInstallmentError('يرجى اختيار الخزينة المودع بها.');
+      return;
+    }
+    try {
+      await payInstallment(payingSchedule.schedule.id, payingSchedule.itemId, payingSchedule.amount, installmentCashboxId);
+      setStatusBanner({ type: 'success', text: `تم تسجيل سداد القسط بمبلغ ${payingSchedule.amount.toLocaleString()} ${settings.currency}.` });
+      setPayingSchedule(null);
+    } catch (err: any) {
+      setInstallmentError(err?.message || 'تعذر سداد القسط');
+    }
   };
 
   const filteredCheques = cheques.filter(c => 
@@ -87,14 +158,39 @@ export const ChequesView: React.FC = () => {
 
         {activeTab === 'cheques' && (
           <button
-            onClick={() => setIsAddChequeOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-md"
+            onClick={() => {
+              setChequeError(null);
+              setIsAddChequeOpen(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-md cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>إضافة شيك بنكي</span>
           </button>
         )}
       </div>
+
+      {statusBanner && (
+        <div
+          className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between gap-2 ${
+            statusBanner.type === 'success'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+              : 'bg-red-50 border-red-200 text-red-900'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {statusBanner.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+            )}
+            <span>{statusBanner.text}</span>
+          </div>
+          <button onClick={() => setStatusBanner(null)} className="underline text-[11px] cursor-pointer">
+            إغلاق
+          </button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex border-b border-slate-200 text-xs font-bold gap-4">
@@ -171,13 +267,24 @@ export const ChequesView: React.FC = () => {
                     )}
                   </td>
                   <td className="p-3 text-center">
-                    {chq.status !== 'collected' && (
-                      <button
-                        onClick={() => setCollectingCheque(chq)}
-                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px]"
-                      >
-                        تحصيل
-                      </button>
+                    {chq.status !== 'collected' && chq.status !== 'rejected' && (
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={() => {
+                            setCollectError(null);
+                            setCollectingCheque(chq);
+                          }}
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] cursor-pointer"
+                        >
+                          تحصيل
+                        </button>
+                        <button
+                          onClick={() => setRejectingCheque(chq)}
+                          className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg font-bold text-[11px] cursor-pointer"
+                        >
+                          رفض / ارتداد
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -237,8 +344,11 @@ export const ChequesView: React.FC = () => {
                         <td className="p-2 text-center">
                           {it.status !== 'paid' && (
                             <button
-                              onClick={() => setPayingSchedule({ schedule: sch, itemId: it.id, amount: it.amount - it.paidAmount })}
-                              className="px-2 py-1 bg-emerald-600 text-white rounded-lg font-bold"
+                              onClick={() => {
+                                setInstallmentError(null);
+                                setPayingSchedule({ schedule: sch, itemId: it.id, amount: it.amount - it.paidAmount });
+                              }}
+                              className="px-2 py-1 bg-emerald-600 text-white rounded-lg font-bold cursor-pointer"
                             >
                               تسجيل سداد
                             </button>
@@ -262,6 +372,12 @@ export const ChequesView: React.FC = () => {
         maxWidth="md"
       >
         <form onSubmit={handleAddChequeSubmit} className="space-y-4 text-xs">
+          {chequeError && (
+            <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{chequeError}</span>
+            </div>
+          )}
           <div>
             <label className="block font-bold mb-1">نوع الشيك:</label>
             <div className="grid grid-cols-2 gap-2">
@@ -355,9 +471,15 @@ export const ChequesView: React.FC = () => {
           maxWidth="md"
         >
           <form onSubmit={handleConfirmCollect} className="space-y-4 text-xs">
+            {collectError && (
+              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{collectError}</span>
+              </div>
+            )}
             <div className="p-3 bg-slate-50 rounded-xl space-y-1">
               <p>البنك: <strong>{collectingCheque.bankName}</strong></p>
-              <p>المبلغ: <strong className="font-mono text-emerald-800">{collectingCheque.amount} {settings.currency}</strong></p>
+              <p>المبلغ: <strong className="font-mono text-emerald-800">{collectingCheque.amount.toLocaleString()} {settings.currency}</strong></p>
             </div>
 
             <div>
@@ -374,8 +496,8 @@ export const ChequesView: React.FC = () => {
             </div>
 
             <div className="flex justify-end gap-2 pt-2 border-t">
-              <button type="button" onClick={() => setCollectingCheque(null)} className="px-4 py-2 border rounded-xl font-bold">إلغاء</button>
-              <button type="submit" className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-bold">تأكيد التحصيل</button>
+              <button type="button" onClick={() => setCollectingCheque(null)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">إلغاء</button>
+              <button type="submit" className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-bold cursor-pointer">تأكيد التحصيل</button>
             </div>
           </form>
         </Modal>
@@ -390,6 +512,12 @@ export const ChequesView: React.FC = () => {
           maxWidth="md"
         >
           <form onSubmit={handlePayInstallmentSubmit} className="space-y-4 text-xs">
+            {installmentError && (
+              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{installmentError}</span>
+              </div>
+            )}
             <div>
               <label className="block font-bold mb-1">المبلغ المسدد ({settings.currency}):</label>
               <input
@@ -416,12 +544,26 @@ export const ChequesView: React.FC = () => {
             </div>
 
             <div className="flex justify-end gap-2 pt-2 border-t">
-              <button type="button" onClick={() => setPayingSchedule(null)} className="px-4 py-2 border rounded-xl font-bold">إلغاء</button>
-              <button type="submit" className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-bold">تأكيد سداد القسط</button>
+              <button type="button" onClick={() => setPayingSchedule(null)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">إلغاء</button>
+              <button type="submit" className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-bold cursor-pointer">تأكيد سداد القسط</button>
             </div>
           </form>
         </Modal>
       )}
+
+      <ConfirmDialog
+        isOpen={!!rejectingCheque}
+        onClose={() => !isRejectingCheque && setRejectingCheque(null)}
+        onConfirm={handleConfirmRejectCheque}
+        variant="danger"
+        requireInput
+        inputLabel="سبب رفض / ارتداد الشيك:"
+        inputPlaceholder="مثال: عدم كفاية الرصيد أو خطأ في التوقيع..."
+        isLoading={isRejectingCheque}
+        title="تأكيد رفض الشيك البنكي"
+        message={rejectingCheque ? `تسجيل ارتداد الشيك رقم (${rejectingCheque.chequeNumber}) الخاص بـ (${rejectingCheque.partyName}).` : ''}
+        confirmLabel="تأكيد الرفض"
+      />
     </div>
   );
 };

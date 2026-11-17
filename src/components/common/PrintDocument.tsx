@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Printer, X, FileDown } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { exportHtmlToPdf } from './PdfExporter';
+import { isNativeCapacitor } from '../../services/native';
 
 export interface PrintData {
   title: string;
@@ -46,6 +47,10 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
   if (!isOpen || !data) return null;
 
   const handlePrint = () => {
+    if (isNativeCapacitor()) {
+      handleExportPdf();
+      return;
+    }
     window.print();
   };
 
@@ -146,7 +151,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                 className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-4 py-2 rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
               >
                 <Printer className="w-4 h-4" />
-                <span>طباعة المستند الآن</span>
+                <span>{isNativeCapacitor() ? 'مشاركة / حفظ المستند' : 'طباعة المستند الآن'}</span>
               </button>
               <button
                 type="button"

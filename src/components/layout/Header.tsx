@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
+import { useShortcuts } from '../../context/ShortcutsContext';
 import { OfflineIndicator } from './OfflineIndicator';
 import { NavItemKey } from './Sidebar';
 import { CashOperationType, UserPermissions } from '../../types';
@@ -26,6 +27,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { currentUser, logout, hasPermission } = useAuth();
   const { repTransfers } = useData();
+  const { getShortcutLabelForAction } = useShortcuts();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [openMenu, setOpenMenu] = useState<'cash' | 'invoices' | 'control' | null>(null);
@@ -55,12 +57,12 @@ export const Header: React.FC<HeaderProps> = ({
     return hasPermission(perm);
   };
 
-  type CashMenuItem = { label: string; icon: React.ElementType; action: () => void; perm?: keyof UserPermissions; cls?: string };
-  type NavMenuItem = { label: string; icon: React.ElementType; page: NavItemKey; perm?: keyof UserPermissions | Array<keyof UserPermissions>; cls?: string };
+  type CashMenuItem = { label: string; icon: React.ElementType; action: () => void; perm?: keyof UserPermissions; cls?: string; shortcutAction?: string };
+  type NavMenuItem = { label: string; icon: React.ElementType; page: NavItemKey; perm?: keyof UserPermissions | Array<keyof UserPermissions>; cls?: string; shortcutAction?: string };
 
   const cashMenuItemsRaw: CashMenuItem[] = [
-    { label: 'سحب نقدي', icon: ArrowUpCircle, action: () => onOpenCashOp?.('cash_withdrawal'), perm: 'canManageCashboxes', cls: 'text-rose-700' },
-    { label: 'إيداع نقدي', icon: ArrowDownCircle, action: () => onOpenCashOp?.('cash_deposit'), perm: 'canManageCashboxes', cls: 'text-emerald-700' },
+    { label: 'سحب نقدي', icon: ArrowUpCircle, action: () => onOpenCashOp?.('cash_withdrawal'), perm: 'canManageCashboxes', cls: 'text-rose-700', shortcutAction: 'action:cash_withdrawal' },
+    { label: 'إيداع نقدي', icon: ArrowDownCircle, action: () => onOpenCashOp?.('cash_deposit'), perm: 'canManageCashboxes', cls: 'text-emerald-700', shortcutAction: 'action:cash_deposit' },
     { label: 'ترحيل بين الخزائن', icon: ArrowLeftRight, action: () => onOpenCashOp?.('cashbox_transfer'), perm: 'canManageCashboxes', cls: 'text-blue-900' },
     { label: 'مصروفات', icon: TrendingDown, action: () => onOpenCashOp?.('expense'), perm: 'canManageCashboxes', cls: 'text-orange-700' },
     { label: 'إيداع ربحي', icon: TrendingUp, action: () => onOpenCashOp?.('profit_deposit'), perm: 'canManageCashboxes', cls: 'text-teal-700' },
@@ -69,12 +71,12 @@ export const Header: React.FC<HeaderProps> = ({
   const cashMenuItems = cashMenuItemsRaw.filter((it) => canPerm(it.perm));
 
   const invoiceMenuItemsRaw: NavMenuItem[] = [
-    { label: 'فواتير البيع', icon: FileText, page: 'sales-invoices', perm: 'canManageSales', cls: 'text-blue-900' },
-    { label: 'فواتير الشراء', icon: FileText, page: 'purchase-invoices', perm: 'canManagePurchases', cls: 'text-indigo-800' },
-    { label: 'فواتير مرتجع البيع', icon: FileText, page: 'sales-returns', perm: 'canManageSales', cls: 'text-amber-700' },
+    { label: 'فواتير البيع', icon: FileText, page: 'sales-invoices', perm: 'canManageSales', cls: 'text-blue-900', shortcutAction: 'nav:sales' },
+    { label: 'فواتير الشراء', icon: FileText, page: 'purchase-invoices', perm: 'canManagePurchases', cls: 'text-indigo-800', shortcutAction: 'nav:purchases' },
+    { label: 'فواتير مرتجع البيع', icon: FileText, page: 'sales-returns', perm: 'canManageSales', cls: 'text-amber-700', shortcutAction: 'nav:returns' },
     { label: 'فواتير مرتجع الشراء', icon: FileText, page: 'purchase-returns', perm: 'canManagePurchases', cls: 'text-purple-700' },
     { label: 'تالف', icon: Trash2, page: 'damaged-stock', perm: 'canManageInventory', cls: 'text-red-700' },
-    { label: 'تحويل', icon: Boxes, page: 'stock-transfers-orders', perm: ['canCreateStockTransfer', 'canApproveStockTransfer', 'canExecuteStockTransfer', 'canManageInventory'], cls: 'text-blue-700' },
+    { label: 'تحويل', icon: Boxes, page: 'stock-transfers-orders', perm: ['canCreateStockTransfer', 'canApproveStockTransfer', 'canExecuteStockTransfer', 'canManageInventory'], cls: 'text-blue-700', shortcutAction: 'nav:stock-transfers' },
     { label: 'الفواتير المحذوفة', icon: Trash2, page: 'deleted-invoices', perm: 'canViewDeletedInvoices', cls: 'text-rose-700' },
   ];
   const invoiceMenuItems = invoiceMenuItemsRaw.filter((it) => canPerm(it.perm));
@@ -89,7 +91,7 @@ export const Header: React.FC<HeaderProps> = ({
     { label: 'إعدادات الفاتورة', icon: FileText, page: 'invoice-settings', perm: 'canManageSettings' },
     { label: 'إعدادات الموبايل', icon: Smartphone, page: 'mobile-settings', perm: 'canManageSettings' },
     { label: 'مزامنة أونلاين', icon: Wifi, page: 'online-sync-settings', perm: 'canManageSettings' },
-    { label: 'اختصارات البرنامج', icon: Keyboard, page: 'shortcuts-settings', perm: 'canManageSettings' },
+    { label: 'اختصارات البرنامج', icon: Keyboard, page: 'shortcuts-settings', shortcutAction: 'nav:shortcuts-settings' },
     { label: 'الخدمات', icon: Wrench, page: 'services-settings', perm: 'canManageSettings' },
   ];
   const controlMenuItems = controlMenuItemsRaw.filter((it) => canPerm(it.perm));
@@ -174,9 +176,10 @@ export const Header: React.FC<HeaderProps> = ({
                   <ChevronDown className={`w-3.5 h-3.5 transition-transform ${openMenu === 'cash' ? 'rotate-180' : ''}`} />
                 </button>
                 {openMenu === 'cash' && (
-                  <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white border border-slate-200 shadow-2xl py-1.5 z-50">
+                  <div className="absolute right-0 mt-2 w-60 rounded-2xl bg-white border border-slate-200 shadow-2xl py-1.5 z-50">
                     {cashMenuItems.map((item) => {
                       const ItemIcon = item.icon;
+                      const scLabel = item.shortcutAction ? getShortcutLabelForAction(item.shortcutAction) : '';
                       return (
                         <button
                           key={item.label}
@@ -185,10 +188,17 @@ export const Header: React.FC<HeaderProps> = ({
                             setOpenMenu(null);
                             item.action();
                           }}
-                          className="w-full flex items-center gap-2.5 px-3.5 py-2 text-right text-xs font-bold text-slate-800 hover:bg-blue-50 transition-colors cursor-pointer"
+                          className="w-full flex items-center justify-between gap-2 px-3.5 py-2 text-right text-xs font-bold text-slate-800 hover:bg-blue-50 transition-colors cursor-pointer"
                         >
-                          <ItemIcon className={`w-4 h-4 shrink-0 ${item.cls || 'text-blue-900'}`} />
-                          <span>{item.label}</span>
+                          <div className="flex items-center gap-2.5">
+                            <ItemIcon className={`w-4 h-4 shrink-0 ${item.cls || 'text-blue-900'}`} />
+                            <span>{item.label}</span>
+                          </div>
+                          {scLabel && (
+                            <kbd dir="ltr" className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">
+                              {scLabel}
+                            </kbd>
+                          )}
                         </button>
                       );
                     })}
@@ -214,9 +224,10 @@ export const Header: React.FC<HeaderProps> = ({
                   <ChevronDown className={`w-3.5 h-3.5 transition-transform ${openMenu === 'invoices' ? 'rotate-180' : ''}`} />
                 </button>
                 {openMenu === 'invoices' && (
-                  <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white border border-slate-200 shadow-2xl py-1.5 z-50">
+                  <div className="absolute right-0 mt-2 w-60 rounded-2xl bg-white border border-slate-200 shadow-2xl py-1.5 z-50">
                     {invoiceMenuItems.map((item) => {
                       const ItemIcon = item.icon;
+                      const scLabel = item.shortcutAction ? getShortcutLabelForAction(item.shortcutAction) : '';
                       return (
                         <button
                           key={item.label}
@@ -225,10 +236,17 @@ export const Header: React.FC<HeaderProps> = ({
                             setOpenMenu(null);
                             onNavigate?.(item.page);
                           }}
-                          className="w-full flex items-center gap-2.5 px-3.5 py-2 text-right text-xs font-bold text-slate-800 hover:bg-blue-50 transition-colors cursor-pointer"
+                          className="w-full flex items-center justify-between gap-2 px-3.5 py-2 text-right text-xs font-bold text-slate-800 hover:bg-blue-50 transition-colors cursor-pointer"
                         >
-                          <ItemIcon className={`w-4 h-4 shrink-0 ${item.cls || 'text-blue-900'}`} />
-                          <span>{item.label}</span>
+                          <div className="flex items-center gap-2.5">
+                            <ItemIcon className={`w-4 h-4 shrink-0 ${item.cls || 'text-blue-900'}`} />
+                            <span>{item.label}</span>
+                          </div>
+                          {scLabel && (
+                            <kbd dir="ltr" className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">
+                              {scLabel}
+                            </kbd>
+                          )}
                         </button>
                       );
                     })}
@@ -254,9 +272,10 @@ export const Header: React.FC<HeaderProps> = ({
                   <ChevronDown className={`w-3.5 h-3.5 transition-transform ${openMenu === 'control' ? 'rotate-180' : ''}`} />
                 </button>
                 {openMenu === 'control' && (
-                  <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white border border-slate-200 shadow-2xl py-1.5 z-50 max-h-[75vh] overflow-y-auto">
+                  <div className="absolute right-0 mt-2 w-60 rounded-2xl bg-white border border-slate-200 shadow-2xl py-1.5 z-50 max-h-[75vh] overflow-y-auto">
                     {controlMenuItems.map((item) => {
                       const ItemIcon = item.icon;
+                      const scLabel = item.shortcutAction ? getShortcutLabelForAction(item.shortcutAction) : '';
                       return (
                         <button
                           key={item.label}
@@ -265,10 +284,17 @@ export const Header: React.FC<HeaderProps> = ({
                             setOpenMenu(null);
                             onNavigate?.(item.page);
                           }}
-                          className="w-full flex items-center gap-2.5 px-3.5 py-2 text-right text-xs font-bold text-slate-800 hover:bg-blue-50 transition-colors cursor-pointer"
+                          className="w-full flex items-center justify-between gap-2 px-3.5 py-2 text-right text-xs font-bold text-slate-800 hover:bg-blue-50 transition-colors cursor-pointer"
                         >
-                          <ItemIcon className="w-4 h-4 shrink-0 text-blue-900" />
-                          <span>{item.label}</span>
+                          <div className="flex items-center gap-2.5">
+                            <ItemIcon className="w-4 h-4 shrink-0 text-blue-900" />
+                            <span>{item.label}</span>
+                          </div>
+                          {scLabel && (
+                            <kbd dir="ltr" className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">
+                              {scLabel}
+                            </kbd>
+                          )}
                         </button>
                       );
                     })}

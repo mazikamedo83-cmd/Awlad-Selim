@@ -698,3 +698,123 @@ export async function changeOwnPassword({ userId, currentPassword, newPassword }
   });
   return { ok: true };
 }
+
+function normalizeUserShortcutsList(rawShortcuts) {
+  if (!Array.isArray(rawShortcuts)) {
+    throw new AppError(400, 'صيغة اختصارات لوحة المفاتيح غير صالحة', 'INVALID_SHORTCUTS');
+  }
+  const seenActions = new Set();
+  const seenCombos = new Map();
+  const normalized = [];
+
+  for (const item of rawShortcuts) {
+    if (!item || typeof item !== 'object') continue;
+    const actionId = String(item.actionId || '').trim();
+    const keyCombo = String(item.keyCombo || '').trim();
+    if (!actionId) continue;
+    if (seenActions.has(actionId)) {
+      throw new AppError(400, `الوظيفة (${actionId}) مكررة في قائمة الاختصارات`, 'DUPLICATE_SHORTCUT_ACTION');
+    }
+    seenActions.add(actionId);
+    const enabled = item.enabled !== false && Boolean(keyCombo);
+    const comboKey = keyCombo.toUpperCase();
+    if (enabled && comboKey) {
+      if (seenCombos.has(comboKey)) {
+        throw new AppError(
+          409,
+          `الاختصار (${keyCombo}) مستخدم بالفعل في وظيفة أخرى (${seenCombos.get(comboKey)})`,
+          'SHORTCUT_CONFLICT'
+        );
+      }
+      seenCombos.set(comboKey, String(item.label || actionId));
+    }
+    normalized.push({
+      id: String(item.id || `SC-${actionId}`).trim(),
+      actionId,
+      label: String(item.label || actionId).trim(),
+      category: String(item.category || 'عام').trim(),
+      keyCombo,
+      enabled: item.enabled !== false,
+    });
+  }
+  return normalized;
+}
+
+export async function getOwnShortcuts(userId) {
+  if (await isPgMode()) {
+    const res = await getPool().query('SELECT shortcuts FROM users WHERE id = $1 LIMIT 1', [userId]);
+    if (!res.rows[0]) throw new AppError(404, 'المستخدم غير موجود', 'USER_NOT_FOUND');
+    return Array.isArray(res.rows[0].shortcuts) ? res.rows[0].shortcuts : [];
+  }
+  const db = readJsonDatabase();
+  const u = db.users.find((x) => x.id === userId);
+  if (!u) throw new AppError(404, 'المستخدم غير موجود', 'USER_NOT_FOUND');
+  return Array.isArray(u.shortcuts) ? u.shortcuts : [];
+}
+
+export async function updateOwnShortcuts(userId, rawShortcuts, meta = {}) {
+  const shortcuts = normalizeUserShortcutsList(rawShortcuts);
+  const now = nowIso();
+
+  if (await isPgMode()) {
+    const user = await withTransaction(async (client) => {
+      const res = await client.query('SELECT * FROM users WHERE id = $1 LIMIT 1 FOR UPDATE', [userId]);
+      if (!res.rows[0]) throw new AppError(404, 'المستخدم غير موجود', 'USER_NOT_FOUND');
+      await client.query('UPDATE users SET shortcuts = $1, updated_at = $2 WHERE id = $3', [
+        JSON.stringify(shortcuts),
+        now,
+        userId,
+      ]);
+      const next = await client.query('SELECT * FROM users WHERE id = $1 LIMIT 1', [userId]);
+      return sanitizeUser(mapPgUserRow(next.rows[0]));
+    });
+    await recordAuditLog({
+      userId: user.id,
+      userName: user.fullName,
+      action: `تحديث اختصارات لوحة المفاتيح الشخصية (${shortcuts.length} اختصار)`,
+      module: 'الإعدادات والاختصارات',
+      recordId: user.id,
+      ipAddress: meta.ipAddress,
+      deviceInfo: meta.deviceInfo,
+    });
+    return { shortcuts, user };
+  }
+
+  const user = await withJsonTransaction(async (db) => {
+    const u = db.users.find((x) => x.id === userId);
+    if (!u) throw new AppError(404, 'المستخدم غير موجود', 'USER_NOT_FOUND');
+    u.shortcuts = shortcuts;
+    return sanitizeUser(u);
+  });
+  await recordAuditLog({
+    userId: user.id,
+    userName: user.fullName,
+    action: `تحديث اختصارات لوحة المفاتيح الشخصية (${shortcuts.length} اختصار)`,
+    module: 'الإعدادات والاختصارات',
+    recordId: user.id,
+    ipAddress: meta.ipAddress,
+    deviceInfo: meta.deviceInfo,
+  });
+  return { shortcuts, user };
+}
+
+export async function revokeAllUserSessions(userId) {
+  if (!userId) return;
+  const now = nowIso();
+  if (await isPgMode()) {
+    await getPool().query('UPDATE user_sessions SET revoked_at = $1 WHERE user_id = $2 AND revoked_at IS NULL', [now, userId]);
+    return;
+  }
+  await withJsonMutex(() => {
+    const sessions = readJsonSessions();
+    let changed = false;
+    for (const s of sessions) {
+      if (s.userId === userId && !s.revokedAt) {
+        s.revokedAt = now;
+        changed = true;
+      }
+    }
+    if (changed) writeJsonSessions(sessions);
+  });
+}
+

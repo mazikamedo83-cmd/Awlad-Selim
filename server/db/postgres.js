@@ -175,6 +175,7 @@ export async function initializeSchema(customPool = null) {
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT DEFAULT ''",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT ''",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMPTZ",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS shortcuts JSONB NOT NULL DEFAULT '[]'::jsonb",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
       "ALTER TABLE customers ADD COLUMN IF NOT EXISTS user_id VARCHAR(64)",
       "ALTER TABLE customers ADD COLUMN IF NOT EXISTS secondary_phone VARCHAR(32)",
@@ -186,6 +187,9 @@ export async function initializeSchema(customPool = null) {
       "ALTER TABLE product_categories ADD COLUMN IF NOT EXISTS description TEXT",
       "ALTER TABLE products ADD COLUMN IF NOT EXISTS category_id VARCHAR(64)",
       "ALTER TABLE products ADD COLUMN IF NOT EXISTS image TEXT",
+      "ALTER TABLE products ADD COLUMN IF NOT EXISTS import_batch_id VARCHAR(64)",
+      "ALTER TABLE products ADD COLUMN IF NOT EXISTS imported_from_file BOOLEAN NOT NULL DEFAULT FALSE",
+      "ALTER TABLE products ADD COLUMN IF NOT EXISTS source_file_name TEXT",
       "ALTER TABLE products ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
       "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS linked_customer_order_id VARCHAR(64)",
       "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS returned_quantity_by_item JSONB NOT NULL DEFAULT '{}'::jsonb",
@@ -197,6 +201,10 @@ export async function initializeSchema(customPool = null) {
       "ALTER TABLE representatives ADD COLUMN IF NOT EXISTS current_balance NUMERIC(14, 2) NOT NULL DEFAULT 0.00",
       "ALTER TABLE representatives ADD COLUMN IF NOT EXISTS commission_rate NUMERIC(5, 2) NOT NULL DEFAULT 0.00",
       "ALTER TABLE representatives ADD COLUMN IF NOT EXISTS notes TEXT",
+      "ALTER TABLE customers ADD COLUMN IF NOT EXISTS assigned_rep_id VARCHAR(64)",
+      "ALTER TABLE customers ADD COLUMN IF NOT EXISTS allowed_rep_ids JSONB NOT NULL DEFAULT '[]'::jsonb",
+      "ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS received_by VARCHAR(64)",
+      "ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ",
     ];
     for (const stmt of alterStatements) {
       try {

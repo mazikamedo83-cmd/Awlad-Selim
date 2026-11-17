@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Wallet, Plus, ArrowLeftRight, TrendingDown, TrendingUp, 
-  Printer, Download, Search, Check, AlertCircle, Building2, Landmark 
+  Printer, Download, Search, CheckCircle2, AlertCircle, Building2, Landmark 
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { Cashbox, ExpenseIncomeRecord } from '../../../types';
@@ -9,21 +9,30 @@ import { Modal } from '../../common/Modal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
 
-export const FinanceView: React.FC = () => {
+interface FinanceViewProps {
+  initialTab?: 'cashboxes' | 'transfer' | 'expenses';
+}
+
+export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
   const { 
     cashboxes, financialTransactions, expenseIncomes, settings, 
     addCashbox, transferBetweenCashboxes, addExpenseIncome 
   } = useData();
 
-  const [activeTab, setActiveTab] = useState<'cashboxes' | 'transactions' | 'expenses'>('cashboxes');
+  const [activeTab, setActiveTab] = useState<'cashboxes' | 'transactions' | 'expenses'>(
+    initialTab === 'expenses' ? 'expenses' : 'cashboxes'
+  );
   const [searchTerm, setSearchTerm] = useState('');
+  const [expenseTypeFilter, setExpenseTypeFilter] = useState<'all' | 'expense' | 'income'>('all');
+  const [statusBanner, setStatusBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Transfer modal
-  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(initialTab === 'transfer');
   const [fromCbId, setFromCbId] = useState(cashboxes[0]?.id || '');
-  const [toCbId, setToCbId] = useState(cashboxes[1]?.id || '');
+  const [toCbId, setToCbId] = useState(cashboxes[1]?.id || cashboxes[0]?.id || '');
   const [transferAmount, setTransferAmount] = useState(1000);
   const [transferNotes, setTransferNotes] = useState('');
+  const [transferError, setTransferError] = useState<string | null>(null);
 
   // Add Cashbox modal
   const [isAddCashboxOpen, setIsAddCashboxOpen] = useState(false);
@@ -31,6 +40,7 @@ export const FinanceView: React.FC = () => {
   const [newCbType, setNewCbType] = useState<'cashbox' | 'bank'>('cashbox');
   const [newCbAccount, setNewCbAccount] = useState('');
   const [newCbOpening, setNewCbOpening] = useState(0);
+  const [cashboxError, setCashboxError] = useState<string | null>(null);
 
   // Expense / Income modal
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -40,10 +50,36 @@ export const FinanceView: React.FC = () => {
   const [selectedCashboxId, setSelectedCashboxId] = useState(cashboxes[0]?.id || '');
   const [recipientOrPayer, setRecipientOrPayer] = useState('');
   const [notes, setNotes] = useState('');
+  const [expenseError, setExpenseError] = useState<string | null>(null);
 
   // Print modal
   const [printData, setPrintData] = useState<PrintData | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (initialTab === 'expenses') {
+      setActiveTab('expenses');
+    } else if (initialTab === 'transfer') {
+      setActiveTab('cashboxes');
+      setTransferError(null);
+      setIsTransferModalOpen(true);
+    } else if (initialTab === 'cashboxes') {
+      setActiveTab('cashboxes');
+    }
+  }, [initialTab]);
+
+  useEffect(() => {
+    if (cashboxes.length === 0) return;
+    if (!fromCbId || !cashboxes.some(c => c.id === fromCbId)) {
+      setFromCbId(cashboxes[0].id);
+    }
+    if (!toCbId || !cashboxes.some(c => c.id === toCbId)) {
+      setToCbId(cashboxes[1]?.id || cashboxes[0].id);
+    }
+    if (!selectedCashboxId || !cashboxes.some(c => c.id === selectedCashboxId)) {
+      setSelectedCashboxId(cashboxes[0].id);
+    }
+  }, [cashboxes, fromCbId, toCbId, selectedCashboxId]);
 
   const totalLiquidity = useMemo(() => {
     return cashboxes.reduce((acc, c) => acc + c.currentBalance, 0);
@@ -51,61 +87,99 @@ export const FinanceView: React.FC = () => {
 
   const handleExecuteTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
+    setTransferError(null);
+    if (!fromCbId || !toCbId) {
+      setTransferError('يرجى تحديد الخزينة المحول منها والمحول إليها.');
+      return;
+    }
+    if (fromCbId === toCbId) {
+      setTransferError('لا يمكن التحويل من نفس الخزينة إلى نفسها.');
+      return;
+    }
     const res = await transferBetweenCashboxes(fromCbId, toCbId, transferAmount, transferNotes || 'تحويل مالي بين الخزائن');
     if (!res.success) {
-      alert(res.error || 'فشل التحويل');
+      setTransferError(res.error || 'فشل التحويل');
     } else {
       setIsTransferModalOpen(false);
+      setTransferNotes('');
+      setStatusBanner({ type: 'success', text: `تم تنفيذ التحويل المالي بمبلغ ${transferAmount.toLocaleString()} ${settings.currency} بنجاح.` });
     }
   };
 
   const handleAddCashboxSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCbName.trim()) return;
-    await addCashbox({
-      name: newCbName,
-      type: newCbType,
-      accountNumber: newCbType === 'bank' ? newCbAccount : undefined,
-      openingBalance: newCbOpening,
-      isDefault: false,
-    });
-    setIsAddCashboxOpen(false);
-    setNewCbName('');
-    setNewCbAccount('');
-    setNewCbOpening(0);
+    setCashboxError(null);
+    if (!newCbName.trim()) {
+      setCashboxError('يرجى إدخال اسم الخزينة أو الحساب البنكي.');
+      return;
+    }
+    try {
+      await addCashbox({
+        name: newCbName.trim(),
+        type: newCbType,
+        accountNumber: newCbType === 'bank' ? newCbAccount.trim() : undefined,
+        openingBalance: Number(newCbOpening) || 0,
+        isDefault: false,
+      });
+      setIsAddCashboxOpen(false);
+      setStatusBanner({ type: 'success', text: `تمت إضافة (${newCbName.trim()}) بنجاح.` });
+      setNewCbName('');
+      setNewCbAccount('');
+      setNewCbOpening(0);
+    } catch (err: any) {
+      setCashboxError(err?.message || 'تعذر إنشاء الخزينة أو الحساب البنكي');
+    }
   };
 
   const handleAddExpenseIncome = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (amount <= 0) return;
+    setExpenseError(null);
+    if (amount <= 0) {
+      setExpenseError('يرجى إدخال مبلغ أكبر من صفر.');
+      return;
+    }
+    if (!selectedCashboxId) {
+      setExpenseError('يرجى اختيار الخزينة المتأثرة.');
+      return;
+    }
     const cb = cashboxes.find(c => c.id === selectedCashboxId);
 
-    await addExpenseIncome({
-      type: recordType,
-      category,
-      amount,
-      date: new Date().toISOString().split('T')[0],
-      cashboxId: selectedCashboxId,
-      cashboxName: cb?.name || '',
-      paymentMethod: 'نقدي',
-      recipientOrPayer: recipientOrPayer || (recordType === 'expense' ? 'جهة صرف' : 'جهة تحصيل'),
-      notes,
-    });
+    try {
+      await addExpenseIncome({
+        type: recordType,
+        category: category.trim(),
+        amount,
+        date: new Date().toISOString().split('T')[0],
+        cashboxId: selectedCashboxId,
+        cashboxName: cb?.name || '',
+        paymentMethod: 'نقدي',
+        recipientOrPayer: recipientOrPayer.trim() || (recordType === 'expense' ? 'جهة صرف' : 'جهة تحصيل'),
+        notes: notes.trim(),
+      });
 
-    setIsExpenseModalOpen(false);
+      setIsExpenseModalOpen(false);
+      setStatusBanner({
+        type: 'success',
+        text: recordType === 'expense'
+          ? `تم تسجيل سند صرف (${category}) بمبلغ ${amount.toLocaleString()} ${settings.currency}.`
+          : `تم تسجيل سند قبض إيراد (${category}) بمبلغ ${amount.toLocaleString()} ${settings.currency}.`,
+      });
 
-    // Print voucher
-    setPrintData({
-      title: recordType === 'expense' ? 'سند صرف مصروفات' : 'سند قبض إيرادات',
-      docNumber: `${recordType === 'expense' ? 'EXP' : 'INC'}-${Date.now().toString().slice(-6)}`,
-      docType: recordType === 'expense' ? 'سند صرف' : 'سند قبض',
-      date: new Date().toISOString().split('T')[0],
-      partyName: recipientOrPayer,
-      grandTotal: amount,
-      paidAmount: amount,
-      notes: `${category} - ${notes}`,
-    });
-    setIsPrintModalOpen(true);
+      // Print voucher
+      setPrintData({
+        title: recordType === 'expense' ? 'سند صرف مصروفات' : 'سند قبض إيرادات',
+        docNumber: `${recordType === 'expense' ? 'EXP' : 'INC'}-${Date.now().toString().slice(-6)}`,
+        docType: recordType === 'expense' ? 'سند صرف' : 'سند قبض',
+        date: new Date().toISOString().split('T')[0],
+        partyName: recipientOrPayer,
+        grandTotal: amount,
+        paidAmount: amount,
+        notes: `${category} - ${notes}`,
+      });
+      setIsPrintModalOpen(true);
+    } catch (err: any) {
+      setExpenseError(err?.message || 'تعذر تسجيل السند المالي');
+    }
   };
 
   const filteredTransactions = useMemo(() => {
@@ -116,6 +190,21 @@ export const FinanceView: React.FC = () => {
       tx.description.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [financialTransactions, searchTerm]);
+
+  const filteredExpenses = useMemo(() => {
+    return expenseIncomes.filter(rec => {
+      const matchType = expenseTypeFilter === 'all' || rec.type === expenseTypeFilter;
+      const q = searchTerm.toLowerCase();
+      const matchSearch =
+        !q ||
+        (rec.recordNumber || '').toLowerCase().includes(q) ||
+        rec.category.toLowerCase().includes(q) ||
+        rec.cashboxName.toLowerCase().includes(q) ||
+        (rec.recipientOrPayer || '').toLowerCase().includes(q) ||
+        (rec.notes || '').toLowerCase().includes(q);
+      return matchType && matchSearch;
+    });
+  }, [expenseIncomes, expenseTypeFilter, searchTerm]);
 
   return (
     <div className="space-y-5">
@@ -131,10 +220,11 @@ export const FinanceView: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => {
+              setExpenseError(null);
               setRecordType('expense');
               setIsExpenseModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition-all"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
           >
             <TrendingDown className="w-4 h-4" />
             <span>سند صرف مصروف</span>
@@ -142,18 +232,22 @@ export const FinanceView: React.FC = () => {
 
           <button
             onClick={() => {
+              setExpenseError(null);
               setRecordType('income');
               setIsExpenseModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-all"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
           >
             <TrendingUp className="w-4 h-4" />
             <span>سند قبض إيراد</span>
           </button>
 
           <button
-            onClick={() => setIsTransferModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl text-xs font-bold transition-all shadow-md"
+            onClick={() => {
+              setTransferError(null);
+              setIsTransferModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer"
           >
             <ArrowLeftRight className="w-4 h-4" />
             <span>تحويل بين الخزائن</span>
@@ -161,11 +255,33 @@ export const FinanceView: React.FC = () => {
         </div>
       </div>
 
+      {statusBanner && (
+        <div
+          className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between gap-2 ${
+            statusBanner.type === 'success'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+              : 'bg-red-50 border-red-200 text-red-900'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {statusBanner.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+            )}
+            <span>{statusBanner.text}</span>
+          </div>
+          <button onClick={() => setStatusBanner(null)} className="underline text-[11px] cursor-pointer">
+            إغلاق
+          </button>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex border-b border-slate-200 text-xs font-bold gap-4">
         <button
           onClick={() => setActiveTab('cashboxes')}
-          className={`pb-2.5 transition-colors border-b-2 ${
+          className={`pb-2.5 transition-colors border-b-2 cursor-pointer ${
             activeTab === 'cashboxes' ? 'border-blue-900 text-blue-950' : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
@@ -173,11 +289,19 @@ export const FinanceView: React.FC = () => {
         </button>
         <button
           onClick={() => setActiveTab('transactions')}
-          className={`pb-2.5 transition-colors border-b-2 ${
+          className={`pb-2.5 transition-colors border-b-2 cursor-pointer ${
             activeTab === 'transactions' ? 'border-blue-900 text-blue-950' : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
           سجل الحركات المالية اليومية ({financialTransactions.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('expenses')}
+          className={`pb-2.5 transition-colors border-b-2 cursor-pointer ${
+            activeTab === 'expenses' ? 'border-blue-900 text-blue-950' : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          المصروفات والإيرادات ({expenseIncomes.length})
         </button>
       </div>
 
@@ -268,6 +392,110 @@ export const FinanceView: React.FC = () => {
         </div>
       )}
 
+      {/* Tab 3: Expenses & Income */}
+      {activeTab === 'expenses' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden space-y-3">
+          <div className="p-3 border-b flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2 flex-1">
+              <div className="relative flex-1 min-w-[200px] max-w-sm">
+                <input
+                  type="text"
+                  placeholder="بحث برقم السند، البند، الخزينة، أو الجهة..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full bg-slate-50 border rounded-xl pr-9 pl-3 py-2 text-xs outline-hidden focus:bg-white focus:border-blue-600"
+                />
+                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+              </div>
+
+              <select
+                value={expenseTypeFilter}
+                onChange={(e) => setExpenseTypeFilter(e.target.value as any)}
+                className="bg-slate-50 border rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-hidden"
+              >
+                <option value="all">الكل (مصروفات وإيرادات)</option>
+                <option value="expense">المصروفات فقط</option>
+                <option value="income">الإيرادات فقط</option>
+              </select>
+            </div>
+
+            <button
+              onClick={() => {
+                const headers = ['رقم السند', 'التاريخ', 'النوع', 'البند', 'الخزينة', 'الجهة', 'المبلغ', 'ملاحظات'];
+                const rows = filteredExpenses.map(r => [
+                  r.recordNumber,
+                  r.date,
+                  r.type === 'expense' ? 'مصروف' : 'إيراد',
+                  r.category,
+                  r.cashboxName,
+                  r.recipientOrPayer,
+                  r.amount,
+                  r.notes || '',
+                ]);
+                exportToExcel(`المصروفات_والإيرادات_${new Date().toISOString().split('T')[0]}`, headers, rows);
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-emerald-800 rounded-xl text-xs font-bold cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5 text-emerald-600" />
+              <span>تصدير Excel</span>
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-right text-xs">
+              <thead>
+                <tr className="bg-slate-50 font-bold border-b text-slate-700">
+                  <th className="p-3">رقم السند</th>
+                  <th className="p-3">التاريخ</th>
+                  <th className="p-3">النوع</th>
+                  <th className="p-3">البند / التصنيف</th>
+                  <th className="p-3">الخزينة</th>
+                  <th className="p-3">الجهة المستلمة / الدافعة</th>
+                  <th className="p-3 text-center">المبلغ</th>
+                  <th className="p-3">ملاحظات</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredExpenses.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="p-8 text-center text-slate-400">
+                      لا توجد مصروفات أو إيرادات مسجلة مطابقة للبحث.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredExpenses.map(rec => (
+                    <tr key={rec.id} className="hover:bg-slate-50">
+                      <td className="p-3 font-mono font-bold text-blue-900">{rec.recordNumber}</td>
+                      <td className="p-3 font-mono text-slate-600">{rec.date}</td>
+                      <td className="p-3">
+                        {rec.type === 'expense' ? (
+                          <span className="px-2 py-0.5 rounded-full bg-orange-50 text-orange-800 border border-orange-200 font-bold text-[10px]">
+                            سند صرف (مصروف)
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full bg-teal-50 text-teal-800 border border-teal-200 font-bold text-[10px]">
+                            سند قبض (إيراد)
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3 font-bold text-slate-800">{rec.category}</td>
+                      <td className="p-3 font-semibold text-slate-700">{rec.cashboxName}</td>
+                      <td className="p-3 text-slate-700">{rec.recipientOrPayer}</td>
+                      <td className={`p-3 text-center font-mono font-black text-sm ${
+                        rec.type === 'expense' ? 'text-orange-700' : 'text-teal-700'
+                      }`}>
+                        {rec.amount.toLocaleString()} {settings.currency}
+                      </td>
+                      <td className="p-3 text-slate-500">{rec.notes || '-'}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Transfer Modal */}
       <Modal
         isOpen={isTransferModalOpen}
@@ -276,6 +504,12 @@ export const FinanceView: React.FC = () => {
         maxWidth="md"
       >
         <form onSubmit={handleExecuteTransfer} className="space-y-4 text-xs">
+          {transferError && (
+            <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{transferError}</span>
+            </div>
+          )}
           <div>
             <label className="block font-bold mb-1">من الخزينة / الحساب:</label>
             <select
@@ -340,6 +574,12 @@ export const FinanceView: React.FC = () => {
         maxWidth="md"
       >
         <form onSubmit={handleAddCashboxSubmit} className="space-y-4 text-xs">
+          {cashboxError && (
+            <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{cashboxError}</span>
+            </div>
+          )}
           <div>
             <label className="block font-bold mb-1">نوع الحساب:</label>
             <div className="grid grid-cols-2 gap-2">
@@ -410,6 +650,12 @@ export const FinanceView: React.FC = () => {
         maxWidth="md"
       >
         <form onSubmit={handleAddExpenseIncome} className="space-y-4 text-xs">
+          {expenseError && (
+            <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{expenseError}</span>
+            </div>
+          )}
           <div>
             <label className="block font-bold mb-1">بند {recordType === 'expense' ? 'المصروف' : 'الإيراد'}:</label>
             <input

@@ -17,16 +17,103 @@ import {
   mapPgUserRow,
   isoTimestamp,
 } from './mode.js';
-import { recordAuditLog } from './authStore.js';
+import { recordAuditLog, revokeAllUserSessions } from './authStore.js';
 
-export async function listCustomers() {
+export const DEFAULT_MOBILE_CONFIG = {
+  enableCustomerApp: true,
+  enableRepApp: true,
+  allowCustomerPriceView: true,
+  requireOrderApproval: true,
+};
+
+export function normalizeAllowedRepIds(assignedRepId, allowedRepIds) {
+  const arr = [
+    ...(assignedRepId ? [String(assignedRepId).trim()] : []),
+    ...(Array.isArray(allowedRepIds) ? allowedRepIds.map((id) => String(id || '').trim()) : []),
+  ].filter(Boolean);
+  const unique = Array.from(new Set(arr));
+  return {
+    assignedRepId: unique[0] || undefined,
+    allowedRepIds: unique,
+  };
+}
+
+export function isCustomerAllowedForRep(customer, repId) {
+  if (!customer || !repId) return false;
+  if (customer.assignedRepId === repId) return true;
+  if (Array.isArray(customer.allowedRepIds) && customer.allowedRepIds.includes(repId)) return true;
+  return false;
+}
+
+export async function getRepresentativeByUserId(userId) {
+  if (!userId) return null;
+  if (await isPgMode()) {
+    const pool = getPool();
+    const res = await pool.query('SELECT * FROM representatives WHERE user_id = $1 LIMIT 1', [userId]);
+    const r = res.rows[0];
+    if (!r) return null;
+    return {
+      id: r.id,
+      userId: r.user_id || undefined,
+      name: r.name,
+      phone: r.phone || '',
+      vehicleNumber: r.vehicle_number || '',
+      warehouseId: r.warehouse_id || undefined,
+      openingBalance: Number(r.opening_balance || 0),
+      currentBalance: Number(r.current_balance || 0),
+      commissionRate: Number(r.commission_rate || 0),
+      notes: r.notes || '',
+      status: r.status || 'active',
+    };
+  }
+  const db = readJsonDatabase();
+  return (db.representatives || []).find((r) => r.userId === userId) || null;
+}
+
+export async function getSystemSettingsSafe() {
+  if (await isPgMode()) {
+    const pool = getPool();
+    const res = await pool.query('SELECT * FROM system_settings LIMIT 1');
+    const s = res.rows[0];
+    const extra = s?.extra_settings || {};
+    const mobileConfig = { ...DEFAULT_MOBILE_CONFIG, ...(extra.mobileConfig || {}) };
+    return {
+      companyName: s?.company_name || 'مؤسسة أولاد سليم للتجارة والتوزيع',
+      companySubtitle: s?.company_subtitle || '',
+      phone1: s?.phone1 || '',
+      phone2: s?.phone2 || '',
+      address: s?.address || '',
+      currency: s?.currency || 'ج.م',
+      allowNegativeStock: Boolean(s?.allow_negative_stock),
+      extraSettings: { ...extra, mobileConfig },
+      mobileConfig,
+    };
+  }
+  const db = readJsonDatabase();
+  const s = db.settings || {};
+  const extra = s.extraSettings || {};
+  const mobileConfig = { ...DEFAULT_MOBILE_CONFIG, ...(extra.mobileConfig || {}) };
+  return {
+    ...s,
+    extraSettings: { ...extra, mobileConfig },
+    mobileConfig,
+  };
+}
+
+export async function listCustomers({ forRepId = null } = {}) {
+  let rows;
   if (await isPgMode()) {
     const pool = getPool();
     const res = await pool.query('SELECT * FROM customers ORDER BY created_at DESC');
-    return res.rows.map(mapPgCustomerRow);
+    rows = res.rows.map(mapPgCustomerRow);
+  } else {
+    const db = readJsonDatabase();
+    rows = [...db.customers].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   }
-  const db = readJsonDatabase();
-  return [...db.customers].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  if (forRepId) {
+    return rows.filter((c) => isCustomerAllowedForRep(c, forRepId));
+  }
+  return rows;
 }
 
 export async function getCustomerById(customerId) {
@@ -59,6 +146,7 @@ export async function createCustomer(payload, actor) {
   const currentBalance = round2(payload.currentBalance ?? openingBalance);
   const now = nowIso();
   const userId = payload.userId || null;
+  const repAlloc = normalizeAllowedRepIds(payload.assignedRepId, payload.allowedRepIds);
 
   if (await isPgMode()) {
     const created = await withTransaction(async (client) => {
@@ -69,12 +157,14 @@ export async function createCustomer(payload, actor) {
         }
       }
       await client.query(
-        `INSERT INTO customers (id, code, user_id, name, phone, secondary_phone, shop_name, shop_photo, photo, address, area, geo_coordinates, opening_balance, current_balance, price_history, notes, status, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+        `INSERT INTO customers (id, code, user_id, assigned_rep_id, allowed_rep_ids, name, phone, secondary_phone, shop_name, shop_photo, photo, address, area, geo_coordinates, opening_balance, current_balance, price_history, notes, status, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
         [
           id,
           code,
           userId,
+          repAlloc.assignedRepId || null,
+          JSON.stringify(repAlloc.allowedRepIds),
           name,
           payload.phone || '',
           payload.secondaryPhone || null,
@@ -117,6 +207,8 @@ export async function createCustomer(payload, actor) {
       id,
       code,
       userId: userId || undefined,
+      assignedRepId: repAlloc.assignedRepId,
+      allowedRepIds: repAlloc.allowedRepIds,
       name,
       phone: payload.phone || '',
       secondaryPhone: payload.secondaryPhone || undefined,
@@ -166,11 +258,20 @@ export async function updateCustomer(customerId, updates, actor) {
         }
       }
 
+      const repAlloc =
+        updates.allowedRepIds !== undefined || updates.assignedRepId !== undefined
+          ? normalizeAllowedRepIds(
+              updates.assignedRepId !== undefined ? updates.assignedRepId : undefined,
+              updates.allowedRepIds !== undefined ? updates.allowedRepIds : cur.allowedRepIds
+            )
+          : normalizeAllowedRepIds(cur.assignedRepId, cur.allowedRepIds);
+
       await client.query(
         `UPDATE customers SET
           name = $1, phone = $2, secondary_phone = $3, shop_name = $4, shop_photo = $5, photo = $6,
-          address = $7, area = $8, geo_coordinates = $9, notes = $10, status = $11, user_id = $12, updated_at = $13
-         WHERE id = $14`,
+          address = $7, area = $8, geo_coordinates = $9, notes = $10, status = $11, user_id = $12,
+          assigned_rep_id = $13, allowed_rep_ids = $14, updated_at = $15
+         WHERE id = $16`,
         [
           updates.name ?? cur.name,
           updates.phone ?? cur.phone,
@@ -184,6 +285,8 @@ export async function updateCustomer(customerId, updates, actor) {
           updates.notes ?? cur.notes ?? '',
           updates.status ?? cur.status,
           nextUserId,
+          repAlloc.assignedRepId || null,
+          JSON.stringify(repAlloc.allowedRepIds),
           now,
           customerId,
         ]
@@ -209,10 +312,19 @@ export async function updateCustomer(customerId, updates, actor) {
     if (updates.userId && updates.userId !== cur.userId && db.customers.some((c) => c.userId === updates.userId && c.id !== customerId)) {
       throw new AppError(409, 'حساب المستخدم المختار مرتبط بعميل آخر', 'USER_ALREADY_LINKED');
     }
+    const repAlloc =
+      updates.allowedRepIds !== undefined || updates.assignedRepId !== undefined
+        ? normalizeAllowedRepIds(
+            updates.assignedRepId !== undefined ? updates.assignedRepId : undefined,
+            updates.allowedRepIds !== undefined ? updates.allowedRepIds : cur.allowedRepIds
+          )
+        : normalizeAllowedRepIds(cur.assignedRepId, cur.allowedRepIds);
     const merged = {
       ...cur,
       ...updates,
       id: cur.id,
+      assignedRepId: repAlloc.assignedRepId,
+      allowedRepIds: repAlloc.allowedRepIds,
       currentBalance: cur.currentBalance, // Prevent direct balance override via profile edit
     };
     db.customers[idx] = merged;
@@ -418,9 +530,13 @@ export async function linkCustomerToUser({ customerId, existingUserId, createUse
   return result;
 }
 
-export async function recordCustomerPayment({ customerId, amount, cashboxId, notes = '', date }, actor) {
+export async function recordCustomerPayment({ customerId, amount, cashboxId, paymentMethod = 'cash', notes = '', date }, actor) {
   const payAmount = round2(amount);
-  if (payAmount <= 0) throw new AppError(400, 'مبلغ التحصيل يجب أن يكون أكبر من الصفر', 'INVALID_AMOUNT');
+  if (!Number.isFinite(payAmount) || payAmount <= 0) {
+    throw new AppError(400, 'مبلغ التحصيل يجب أن يكون أكبر من الصفر', 'INVALID_AMOUNT');
+  }
+  const cleanMethod = ['cash', 'bank', 'cheque'].includes(paymentMethod) ? paymentMethod : 'cash';
+  const methodLabel = cleanMethod === 'bank' ? 'تحويل بنكي' : cleanMethod === 'cheque' ? 'شيك' : 'نقداً';
   const txDate = date || todayIso();
   const now = nowIso();
   const txId = generateServerId('FIN');
@@ -436,8 +552,10 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, not
       if (!cbRes.rows[0]) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
       const cb = cbRes.rows[0];
 
+      const isAdvanceCredit = Number(cust.currentBalance || 0) <= 0 || payAmount > Number(cust.currentBalance || 0);
       const nextCustBalance = round2(cust.currentBalance - payAmount);
       const nextCbBalance = round2(Number(cb.current_balance || 0) + payAmount);
+      const desc = `تحصيل (${methodLabel}) من العميل: ${cust.name}${isAdvanceCredit ? ' (رصيد دائن / مقدم)' : ''}`;
 
       await client.query('UPDATE customers SET current_balance = $1, updated_at = $2 WHERE id = $3', [
         nextCustBalance,
@@ -448,7 +566,7 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, not
 
       await client.query(
         `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, description, notes, created_by, created_at)
-         VALUES ($1, $2, $3, 'customer_payment', $4, $5, $6, $7, 'تحصيل من عميل', 'customer', $8, $9, 'manual', $10, $11, $12, $13)`,
+         VALUES ($1, $2, $3, 'customer_payment', $4, $5, $6, $7, $8, 'customer', $9, $10, 'manual', $11, $12, $13, $14)`,
         [
           txId,
           txNumber,
@@ -457,9 +575,10 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, not
           cb.id,
           cb.name,
           nextCbBalance,
+          `تحصيل من عميل (${methodLabel})`,
           cust.id,
           cust.name,
-          `تحصيل دفعة من العميل: ${cust.name}`,
+          desc,
           notes || '',
           actor.fullName,
           now,
@@ -470,6 +589,7 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, not
       return {
         customer: mapPgCustomerRow(updatedCust.rows[0]),
         cashboxBalance: nextCbBalance,
+        paymentMethod: cleanMethod,
         transactionId: txId,
         transactionNumber: txNumber,
       };
@@ -478,7 +598,7 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, not
     await recordAuditLog({
       userId: actor.id,
       userName: actor.fullName,
-      action: `تحصيل مبلغ ${payAmount} من العميل ${res.customer.name}`,
+      action: `تحصيل مبلغ ${payAmount} (${methodLabel}) من العميل ${res.customer.name}`,
       module: 'العملاء',
       recordId: customerId,
     });
@@ -491,8 +611,10 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, not
     const cb = db.cashboxes.find((c) => c.id === cashboxId);
     if (!cb) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
 
+    const isAdvanceCredit = Number(cust.currentBalance || 0) <= 0 || payAmount > Number(cust.currentBalance || 0);
     cust.currentBalance = round2(Number(cust.currentBalance || 0) - payAmount);
     cb.currentBalance = round2(Number(cb.currentBalance || 0) + payAmount);
+    const desc = `تحصيل (${methodLabel}) من العميل: ${cust.name}${isAdvanceCredit ? ' (رصيد دائن / مقدم)' : ''}`;
 
     db.financialTransactions.unshift({
       id: txId,
@@ -501,12 +623,15 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, not
       type: 'customer_payment',
       cashboxId: cb.id,
       cashboxName: cb.name,
+      balanceAfter: cb.currentBalance,
       amount: payAmount,
-      category: 'تحصيل من عميل',
+      paymentMethod: cleanMethod,
+      category: `تحصيل من عميل (${methodLabel})`,
       relatedDocType: 'manual',
+      relatedEntityId: cust.id,
       partyId: cust.id,
       partyName: cust.name,
-      description: `تحصيل دفعة من العميل: ${cust.name}`,
+      description: desc,
       notes: notes || '',
       createdBy: actor.fullName,
       createdAt: now,
@@ -515,6 +640,7 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, not
     return {
       customer: cust,
       cashboxBalance: cb.currentBalance,
+      paymentMethod: cleanMethod,
       transactionId: txId,
       transactionNumber: txNumber,
     };
@@ -523,11 +649,69 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, not
   await recordAuditLog({
     userId: actor.id,
     userName: actor.fullName,
-    action: `تحصيل مبلغ ${payAmount} من العميل ${res.customer.name}`,
+    action: `تحصيل مبلغ ${payAmount} (${methodLabel}) من العميل ${res.customer.name}`,
     module: 'العملاء',
     recordId: customerId,
   });
   return res;
+}
+
+export async function toggleCustomerLinkedUserStatus(customerId, isActive, actor) {
+  const nextActive = Boolean(isActive);
+  const now = nowIso();
+  let targetUserId = null;
+  let customerName = '';
+
+  if (await isPgMode()) {
+    const cust = await withTransaction(async (client) => {
+      const custRes = await client.query('SELECT * FROM customers WHERE id = $1 FOR UPDATE', [customerId]);
+      if (!custRes.rows[0]) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
+      const cur = mapPgCustomerRow(custRes.rows[0]);
+      if (!cur.userId) {
+        throw new AppError(400, 'هذا العميل غير مربوط بحساب دخول لتطبيق العملاء', 'CUSTOMER_NO_LINKED_USER');
+      }
+      targetUserId = cur.userId;
+      customerName = cur.name;
+      await client.query('UPDATE users SET is_active = $1, updated_at = $2 WHERE id = $3', [nextActive, now, cur.userId]);
+      return cur;
+    });
+    if (!nextActive && targetUserId) {
+      await revokeAllUserSessions(targetUserId);
+    }
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `${nextActive ? 'تفعيل' : 'إيقاف'} حساب تطبيق العميل (${customerName})`,
+      module: 'العملاء',
+      recordId: customerId,
+    });
+    return { customer: cust, userId: targetUserId, isActive: nextActive };
+  }
+
+  const cust = await withJsonTransaction(async (db) => {
+    const cur = db.customers.find((c) => c.id === customerId);
+    if (!cur) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
+    if (!cur.userId) {
+      throw new AppError(400, 'هذا العميل غير مربوط بحساب دخول لتطبيق العملاء', 'CUSTOMER_NO_LINKED_USER');
+    }
+    const u = db.users.find((x) => x.id === cur.userId);
+    if (!u) throw new AppError(404, 'حساب المستخدم المرتبط غير موجود', 'USER_NOT_FOUND');
+    u.isActive = nextActive;
+    targetUserId = cur.userId;
+    customerName = cur.name;
+    return cur;
+  });
+  if (!nextActive && targetUserId) {
+    await revokeAllUserSessions(targetUserId);
+  }
+  await recordAuditLog({
+    userId: actor.id,
+    userName: actor.fullName,
+    action: `${nextActive ? 'تفعيل' : 'إيقاف'} حساب تطبيق العميل (${customerName})`,
+    module: 'العملاء',
+    recordId: customerId,
+  });
+  return { customer: cust, userId: targetUserId, isActive: nextActive };
 }
 
 export async function detectCustomerUserConflicts() {
@@ -668,7 +852,7 @@ export async function deleteCategory(categoryId, actor) {
   return { ok: true };
 }
 
-export async function listProducts({ forCustomer = false } = {}) {
+export async function listProducts({ forCustomer = false, allowCustomerPriceView = true } = {}) {
   let products = [];
   if (await isPgMode()) {
     const pool = getPool();
@@ -686,7 +870,7 @@ export async function listProducts({ forCustomer = false } = {}) {
   }
 
   if (forCustomer) {
-    return products.filter((p) => p.status === 'active').map(sanitizeProductForCustomer);
+    return products.filter((p) => p.status === 'active').map((p) => sanitizeProductForCustomer(p, allowCustomerPriceView));
   }
   return products;
 }
@@ -694,10 +878,15 @@ export async function listProducts({ forCustomer = false } = {}) {
 export async function createProduct(payload, actor) {
   const name = String(payload.name || '').trim();
   const code = String(payload.code || `P-${Date.now().toString().slice(-6)}`).trim();
+  const barcode = String(payload.barcode || '').trim();
   if (!name) throw new AppError(400, 'اسم الصنف مطلوب', 'INVALID_PRODUCT_NAME');
 
   const id = payload.id || generateServerId('PRD');
   const now = nowIso();
+  const importBatchId = payload.importBatchId ? String(payload.importBatchId).trim() : null;
+  const importedFromFile = Boolean(payload.importedFromFile || importBatchId);
+  const sourceFileName = payload.sourceFileName ? String(payload.sourceFileName).trim() : null;
+
   const units = Array.isArray(payload.units)
     ? payload.units.map((u, idx) => ({
         id: u.id || `${id}-U-${idx + 1}`,
@@ -711,16 +900,23 @@ export async function createProduct(payload, actor) {
 
   if (await isPgMode()) {
     const created = await withTransaction(async (client) => {
-      const dup = await client.query('SELECT id FROM products WHERE code = $1 LIMIT 1', [code]);
+      const dup = await client.query('SELECT id FROM products WHERE LOWER(code) = LOWER($1) LIMIT 1', [code]);
       if (dup.rows[0]) throw new AppError(409, 'كود الصنف مستخدم مسبقًا', 'DUPLICATE_PRODUCT_CODE');
 
+      if (barcode) {
+        const dupBc = await client.query('SELECT id, name FROM products WHERE LOWER(barcode) = LOWER($1) LIMIT 1', [barcode]);
+        if (dupBc.rows[0]) {
+          throw new AppError(409, `الباركود (${barcode}) مستخدم مسبقًا في الصنف (${dupBc.rows[0].name})`, 'DUPLICATE_PRODUCT_BARCODE');
+        }
+      }
+
       await client.query(
-        `INSERT INTO products (id, code, barcode, name, category, category_id, base_unit, size, color, purchase_price, selling_price, min_stock_level, stock_per_warehouse, image, notes, status, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+        `INSERT INTO products (id, code, barcode, name, category, category_id, base_unit, size, color, purchase_price, selling_price, min_stock_level, stock_per_warehouse, image, notes, status, import_batch_id, imported_from_file, source_file_name, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
         [
           id,
           code,
-          payload.barcode || '',
+          barcode,
           name,
           payload.category || 'عام',
           payload.categoryId || null,
@@ -734,6 +930,9 @@ export async function createProduct(payload, actor) {
           payload.image || null,
           payload.notes || '',
           payload.status || 'active',
+          importBatchId,
+          importedFromFile,
+          sourceFileName,
           now,
         ]
       );
@@ -784,13 +983,19 @@ export async function createProduct(payload, actor) {
   }
 
   const created = await withJsonTransaction(async (db) => {
-    if (db.products.some((p) => p.code === code)) {
+    if (db.products.some((p) => String(p.code || '').trim().toLowerCase() === code.toLowerCase())) {
       throw new AppError(409, 'كود الصنف مستخدم مسبقًا', 'DUPLICATE_PRODUCT_CODE');
+    }
+    if (barcode) {
+      const dupBc = db.products.find((p) => String(p.barcode || '').trim().toLowerCase() === barcode.toLowerCase());
+      if (dupBc) {
+        throw new AppError(409, `الباركود (${barcode}) مستخدم مسبقًا في الصنف (${dupBc.name})`, 'DUPLICATE_PRODUCT_BARCODE');
+      }
     }
     const prod = {
       id,
       code,
-      barcode: payload.barcode || '',
+      barcode,
       name,
       category: payload.category || 'عام',
       categoryId: payload.categoryId || undefined,
@@ -805,6 +1010,9 @@ export async function createProduct(payload, actor) {
       image: payload.image || undefined,
       notes: payload.notes || '',
       status: payload.status || 'active',
+      importBatchId: importBatchId || undefined,
+      importedFromFile,
+      sourceFileName: sourceFileName || undefined,
       createdAt: now,
     };
     db.products.unshift(prod);
@@ -845,16 +1053,35 @@ export async function updateProduct(productId, updates, actor) {
       const uRes = await client.query('SELECT * FROM product_units WHERE product_id = $1', [productId]);
       const cur = mapPgProductRow(pRes.rows[0], uRes.rows);
 
+      const nextName = String(updates.name ?? cur.name).trim();
+      if (!nextName) throw new AppError(400, 'اسم الصنف مطلوب', 'INVALID_PRODUCT_NAME');
+      const nextCode = String(updates.code ?? cur.code).trim();
+      if (!nextCode) throw new AppError(400, 'كود الصنف مطلوب', 'INVALID_PRODUCT_CODE');
+      const nextBarcode = String(updates.barcode ?? cur.barcode ?? '').trim();
+
+      if (nextCode.toLowerCase() !== String(cur.code || '').toLowerCase()) {
+        const dupCode = await client.query('SELECT id FROM products WHERE LOWER(code) = LOWER($1) AND id <> $2 LIMIT 1', [nextCode, productId]);
+        if (dupCode.rows[0]) throw new AppError(409, 'كود الصنف مستخدم مسبقًا لصنف آخر', 'DUPLICATE_PRODUCT_CODE');
+      }
+      if (nextBarcode && nextBarcode.toLowerCase() !== String(cur.barcode || '').toLowerCase()) {
+        const dupBc = await client.query('SELECT id, name FROM products WHERE LOWER(barcode) = LOWER($1) AND id <> $2 LIMIT 1', [nextBarcode, productId]);
+        if (dupBc.rows[0]) {
+          throw new AppError(409, `الباركود (${nextBarcode}) مستخدم مسبقًا في الصنف (${dupBc.rows[0].name})`, 'DUPLICATE_PRODUCT_BARCODE');
+        }
+      }
+
+      const nextImage = updates.image !== undefined ? (updates.image || null) : (cur.image || null);
+
       await client.query(
         `UPDATE products SET
           code = $1, barcode = $2, name = $3, category = $4, category_id = $5, base_unit = $6,
           size = $7, color = $8, purchase_price = $9, selling_price = $10, min_stock_level = $11,
-          image = $12, notes = $13, status = $14, updated_at = $15
-         WHERE id = $16`,
+          image = $12, notes = $13, status = $14, import_batch_id = $15, imported_from_file = $16, source_file_name = $17, updated_at = $18
+         WHERE id = $19`,
         [
-          updates.code ?? cur.code,
-          updates.barcode ?? cur.barcode,
-          updates.name ?? cur.name,
+          nextCode,
+          nextBarcode,
+          nextName,
           updates.category ?? cur.category,
           updates.categoryId ?? cur.categoryId ?? null,
           updates.baseUnit ?? cur.baseUnit,
@@ -863,9 +1090,12 @@ export async function updateProduct(productId, updates, actor) {
           round2(updates.purchasePrice ?? cur.purchasePrice),
           round2(updates.sellingPrice ?? cur.sellingPrice),
           round2(updates.minStockLevel ?? cur.minStockLevel),
-          updates.image ?? cur.image ?? null,
+          nextImage,
           updates.notes ?? cur.notes ?? '',
           updates.status ?? cur.status,
+          updates.importBatchId !== undefined ? updates.importBatchId : (cur.importBatchId || null),
+          updates.importedFromFile !== undefined ? Boolean(updates.importedFromFile) : Boolean(cur.importedFromFile),
+          updates.sourceFileName !== undefined ? updates.sourceFileName : (cur.sourceFileName || null),
           now,
           productId,
         ]
@@ -903,10 +1133,30 @@ export async function updateProduct(productId, updates, actor) {
     const idx = db.products.findIndex((p) => p.id === productId);
     if (idx === -1) throw new AppError(404, 'الصنف غير موجود', 'PRODUCT_NOT_FOUND');
     const cur = db.products[idx];
+    const nextName = String(updates.name ?? cur.name).trim();
+    if (!nextName) throw new AppError(400, 'اسم الصنف مطلوب', 'INVALID_PRODUCT_NAME');
+    const nextCode = String(updates.code ?? cur.code).trim();
+    if (!nextCode) throw new AppError(400, 'كود الصنف مطلوب', 'INVALID_PRODUCT_CODE');
+    const nextBarcode = String(updates.barcode ?? cur.barcode ?? '').trim();
+
+    if (db.products.some((p) => p.id !== productId && String(p.code || '').trim().toLowerCase() === nextCode.toLowerCase())) {
+      throw new AppError(409, 'كود الصنف مستخدم مسبقًا لصنف آخر', 'DUPLICATE_PRODUCT_CODE');
+    }
+    if (nextBarcode) {
+      const dupBc = db.products.find((p) => p.id !== productId && String(p.barcode || '').trim().toLowerCase() === nextBarcode.toLowerCase());
+      if (dupBc) {
+        throw new AppError(409, `الباركود (${nextBarcode}) مستخدم مسبقًا في الصنف (${dupBc.name})`, 'DUPLICATE_PRODUCT_BARCODE');
+      }
+    }
+
     db.products[idx] = {
       ...cur,
       ...updates,
       id: cur.id,
+      name: nextName,
+      code: nextCode,
+      barcode: nextBarcode,
+      image: updates.image !== undefined ? (updates.image || undefined) : cur.image,
       stockPerWarehouse: cur.stockPerWarehouse, // Protect stock map from direct override via product edit
     };
     return db.products[idx];
@@ -920,10 +1170,16 @@ export async function deleteProduct(productId, actor) {
     const name = await withTransaction(async (client) => {
       const pRes = await client.query('SELECT * FROM products WHERE id = $1 FOR UPDATE', [productId]);
       if (!pRes.rows[0]) throw new AppError(404, 'الصنف غير موجود', 'PRODUCT_NOT_FOUND');
-      const invUsed = await client.query('SELECT id FROM invoice_items WHERE product_id = $1 LIMIT 1', [productId]);
-      const ordUsed = await client.query('SELECT id FROM customer_item_order_items WHERE product_id = $1 LIMIT 1', [productId]);
-      if (invUsed.rows[0] || ordUsed.rows[0]) {
-        throw new AppError(409, 'لا يمكن حذف صنف مرتبط بفواتير أو طلبات. يمكنك أرشفته بدلاً من الحذف.', 'PRODUCT_REFERENCED');
+      const [invUsed, retUsed, ordUsed, scUsed, trUsed, ritUsed] = await Promise.all([
+        client.query('SELECT id FROM invoice_items WHERE product_id = $1 LIMIT 1', [productId]),
+        client.query('SELECT id FROM invoice_return_items WHERE product_id = $1 LIMIT 1', [productId]),
+        client.query('SELECT id FROM customer_item_order_items WHERE product_id = $1 LIMIT 1', [productId]),
+        client.query('SELECT id FROM stock_count_items WHERE product_id = $1 LIMIT 1', [productId]),
+        client.query('SELECT id FROM stock_transfer_request_items WHERE product_id = $1 LIMIT 1', [productId]),
+        client.query('SELECT id FROM rep_item_transfer_items WHERE product_id = $1 LIMIT 1', [productId]),
+      ]);
+      if (invUsed.rows[0] || retUsed.rows[0] || ordUsed.rows[0] || scUsed.rows[0] || trUsed.rows[0] || ritUsed.rows[0]) {
+        throw new AppError(409, 'لا يمكن حذف صنف مرتبط بفواتير أو طلبات أو حركات موثقة. يمكنك أرشفته بدلاً من الحذف.', 'PRODUCT_REFERENCED');
       }
       await client.query('DELETE FROM stock_movements WHERE product_id = $1', [productId]);
       await client.query('DELETE FROM products WHERE id = $1', [productId]);
@@ -936,14 +1192,421 @@ export async function deleteProduct(productId, actor) {
   const name = await withJsonTransaction(async (db) => {
     const prod = db.products.find((p) => p.id === productId);
     if (!prod) throw new AppError(404, 'الصنف غير موجود', 'PRODUCT_NOT_FOUND');
-    const invUsed = db.invoices.some((inv) => Array.isArray(inv.items) && inv.items.some((it) => it.productId === productId));
-    const ordUsed = db.customerItemOrders.some((o) => Array.isArray(o.items) && o.items.some((it) => it.productId === productId));
-    if (invUsed || ordUsed) {
-      throw new AppError(409, 'لا يمكن حذف صنف مرتبط بفواتير أو طلبات. يمكنك أرشفته بدلاً من الحذف.', 'PRODUCT_REFERENCED');
+    const invUsed = (db.invoices || []).some((inv) => Array.isArray(inv.items) && inv.items.some((it) => it.productId === productId));
+    const retUsed = (db.invoiceReturns || []).some((ret) => Array.isArray(ret.items) && ret.items.some((it) => it.productId === productId));
+    const ordUsed = (db.customerItemOrders || []).some((o) => Array.isArray(o.items) && o.items.some((it) => it.productId === productId));
+    const scUsed = (db.stockCounts || []).some((c) => Array.isArray(c.items) && c.items.some((it) => it.productId === productId));
+    const trUsed = (db.stockTransferRequests || []).some((t) => Array.isArray(t.items) && t.items.some((it) => it.productId === productId));
+    const ritUsed = (db.repItemTransfers || []).some((t) => Array.isArray(t.items) && t.items.some((it) => it.productId === productId));
+    if (invUsed || retUsed || ordUsed || scUsed || trUsed || ritUsed) {
+      throw new AppError(409, 'لا يمكن حذف صنف مرتبط بفواتير أو طلبات أو حركات موثقة. يمكنك أرشفته بدلاً من الحذف.', 'PRODUCT_REFERENCED');
     }
     db.products = db.products.filter((p) => p.id !== productId);
+    db.stockMovements = (db.stockMovements || []).filter((m) => m.productId !== productId);
     return prod.name;
   });
   await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `حذف صنف (${name})`, module: 'المخزون', recordId: productId });
   return { ok: true };
+}
+
+export async function deleteImportedProductsBatch({ batchId = null, deleteAllImported = true } = {}, actor) {
+  const cleanBatchId = batchId ? String(batchId).trim() : null;
+
+  if (await isPgMode()) {
+    const result = await withTransaction(async (client) => {
+      const targetsRes = cleanBatchId
+        ? await client.query(`SELECT id, name, code FROM products WHERE import_batch_id = $1`, [cleanBatchId])
+        : await client.query(`SELECT id, name, code FROM products WHERE imported_from_file = TRUE`);
+
+      const targets = targetsRes.rows || [];
+      if (targets.length === 0) {
+        return { deletedCount: 0, skippedCount: 0, skippedItems: [] };
+      }
+
+      const targetIds = targets.map((t) => t.id);
+      const [invRes, retRes, ordRes, scRes, trRes, ritRes] = await Promise.all([
+        client.query(`SELECT DISTINCT product_id FROM invoice_items WHERE product_id = ANY($1::varchar[])`, [targetIds]),
+        client.query(`SELECT DISTINCT product_id FROM invoice_return_items WHERE product_id = ANY($1::varchar[])`, [targetIds]),
+        client.query(`SELECT DISTINCT product_id FROM customer_item_order_items WHERE product_id = ANY($1::varchar[])`, [targetIds]),
+        client.query(`SELECT DISTINCT product_id FROM stock_count_items WHERE product_id = ANY($1::varchar[])`, [targetIds]),
+        client.query(`SELECT DISTINCT product_id FROM stock_transfer_request_items WHERE product_id = ANY($1::varchar[])`, [targetIds]),
+        client.query(`SELECT DISTINCT product_id FROM rep_item_transfer_items WHERE product_id = ANY($1::varchar[])`, [targetIds]),
+      ]);
+
+      const referencedIds = new Set([
+        ...invRes.rows.map((r) => r.product_id),
+        ...retRes.rows.map((r) => r.product_id),
+        ...ordRes.rows.map((r) => r.product_id),
+        ...scRes.rows.map((r) => r.product_id),
+        ...trRes.rows.map((r) => r.product_id),
+        ...ritRes.rows.map((r) => r.product_id),
+      ]);
+
+      const deletableIds = [];
+      const skippedItems = [];
+      for (const t of targets) {
+        if (referencedIds.has(t.id)) {
+          skippedItems.push({ id: t.id, name: t.name, code: t.code });
+        } else {
+          deletableIds.push(t.id);
+        }
+      }
+
+      if (deletableIds.length > 0) {
+        await client.query(`DELETE FROM stock_movements WHERE product_id = ANY($1::varchar[])`, [deletableIds]);
+        await client.query(`DELETE FROM products WHERE id = ANY($1::varchar[])`, [deletableIds]);
+      }
+
+      return {
+        deletedCount: deletableIds.length,
+        skippedCount: skippedItems.length,
+        skippedItems,
+      };
+    });
+
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `مسح الأصناف المستوردة من الملفات (تم حذف ${result.deletedCount} وتجاوز ${result.skippedCount} مستخدم في فواتير/طلبات)`,
+      module: 'المخزون',
+      recordId: cleanBatchId || 'all_imported',
+    });
+    return result;
+  }
+
+  const result = await withJsonTransaction(async (db) => {
+    const targets = (db.products || []).filter((p) =>
+      cleanBatchId ? p.importBatchId === cleanBatchId : Boolean(p.importedFromFile)
+    );
+    if (targets.length === 0) {
+      return { deletedCount: 0, skippedCount: 0, skippedItems: [] };
+    }
+
+    const referencedIds = new Set();
+    for (const inv of db.invoices || []) {
+      for (const it of inv.items || []) referencedIds.add(it.productId);
+    }
+    for (const ret of db.invoiceReturns || []) {
+      for (const it of ret.items || []) referencedIds.add(it.productId);
+    }
+    for (const ord of db.customerItemOrders || []) {
+      for (const it of ord.items || []) referencedIds.add(it.productId);
+    }
+    for (const sc of db.stockCounts || []) {
+      for (const it of sc.items || []) referencedIds.add(it.productId);
+    }
+    for (const tr of db.stockTransferRequests || []) {
+      for (const it of tr.items || []) referencedIds.add(it.productId);
+    }
+    for (const rit of db.repItemTransfers || []) {
+      for (const it of rit.items || []) referencedIds.add(it.productId);
+    }
+
+    const deletableSet = new Set();
+    const skippedItems = [];
+    for (const t of targets) {
+      if (referencedIds.has(t.id)) {
+        skippedItems.push({ id: t.id, name: t.name, code: t.code });
+      } else {
+        deletableSet.add(t.id);
+      }
+    }
+
+    if (deletableSet.size > 0) {
+      db.products = (db.products || []).filter((p) => !deletableSet.has(p.id));
+      db.stockMovements = (db.stockMovements || []).filter((m) => !deletableSet.has(m.productId));
+    }
+
+    return {
+      deletedCount: deletableSet.size,
+      skippedCount: skippedItems.length,
+      skippedItems,
+    };
+  });
+
+  await recordAuditLog({
+    userId: actor.id,
+    userName: actor.fullName,
+    action: `مسح الأصناف المستوردة من الملفات (تم حذف ${result.deletedCount} وتجاوز ${result.skippedCount} مستخدم في فواتير/طلبات)`,
+    module: 'المخزون',
+    recordId: cleanBatchId || 'all_imported',
+  });
+  return result;
+}
+
+export async function getCustomerProductPriceHistory(customerId) {
+  const customer = await getCustomerById(customerId);
+  if (!customer) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
+
+  const historyMap = {};
+
+  if (await isPgMode()) {
+    const pool = getPool();
+    const res = await pool.query(
+      `SELECT i.id, i.invoice_number, i.date, i.created_at, it.product_id, it.unit, it.unit_price
+       FROM invoices i
+       JOIN invoice_items it ON it.invoice_id = i.id
+       WHERE i.customer_id = $1 AND i.type = 'sales' AND i.status = 'confirmed'
+       ORDER BY i.date ASC, i.created_at ASC`,
+      [customerId]
+    );
+    for (const row of res.rows) {
+      const list = historyMap[row.product_id] || [];
+      list.push({
+        price: Number(row.unit_price || 0),
+        date: row.date instanceof Date ? row.date.toISOString().split('T')[0] : String(row.date || '').split('T')[0],
+        invoiceNumber: row.invoice_number,
+        unit: row.unit || '',
+      });
+      if (list.length > 3) list.shift();
+      historyMap[row.product_id] = list;
+    }
+  } else {
+    const db = readJsonDatabase();
+    const custInvoices = (db.invoices || [])
+      .filter((i) => i.customerId === customerId && i.type === 'sales' && i.status === 'confirmed')
+      .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+    for (const inv of custInvoices) {
+      for (const it of inv.items || []) {
+        const list = historyMap[it.productId] || [];
+        list.push({
+          price: Number(it.unitPrice || 0),
+          date: inv.date || '',
+          invoiceNumber: inv.invoiceNumber || '',
+          unit: it.unit || '',
+        });
+        if (list.length > 3) list.shift();
+        historyMap[it.productId] = list;
+      }
+    }
+  }
+
+  // Fallback for legacy numeric entries stored directly on customer.priceHistory with no matching invoice item yet
+  const rawLegacy = customer.priceHistory || {};
+  for (const [prodId, entries] of Object.entries(rawLegacy)) {
+    if (!historyMap[prodId] && Array.isArray(entries) && entries.length > 0) {
+      historyMap[prodId] = entries.slice(-3).map((entry) =>
+        typeof entry === 'object' && entry !== null
+          ? {
+              price: Number(entry.price || 0),
+              date: String(entry.date || ''),
+              invoiceNumber: String(entry.invoiceNumber || 'مسجل مسبقاً'),
+              unit: String(entry.unit || ''),
+            }
+          : {
+              price: Number(entry || 0),
+              date: String(customer.createdAt || '').split('T')[0],
+              invoiceNumber: 'سجل تاريخي',
+              unit: '',
+            }
+      );
+    }
+  }
+
+  return historyMap;
+}
+
+export async function getCustomerStatementData(customerId, { allowPriceView = true } = {}) {
+  const customer = await getCustomerById(customerId);
+  if (!customer) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
+
+  let invoices = [];
+  let returns = [];
+  let paymentTxs = [];
+
+  if (await isPgMode()) {
+    const pool = getPool();
+    const invRes = await pool.query(
+      `SELECT * FROM invoices WHERE customer_id = $1 AND type = 'sales' AND status <> 'draft' ORDER BY date DESC, created_at DESC`,
+      [customerId]
+    );
+    const invIds = invRes.rows.map((r) => r.id);
+    let itemsMap = new Map();
+    let payMap = new Map();
+    if (invIds.length > 0) {
+      const itRes = await pool.query(`SELECT * FROM invoice_items WHERE invoice_id = ANY($1::varchar[])`, [invIds]);
+      for (const it of itRes.rows) {
+        const arr = itemsMap.get(it.invoice_id) || [];
+        arr.push(it);
+        itemsMap.set(it.invoice_id, arr);
+      }
+      const pyRes = await pool.query(`SELECT * FROM invoice_payments WHERE invoice_id = ANY($1::varchar[]) ORDER BY created_at ASC`, [invIds]);
+      for (const py of pyRes.rows) {
+        const arr = payMap.get(py.invoice_id) || [];
+        arr.push(py);
+        payMap.set(py.invoice_id, arr);
+      }
+    }
+    const { mapPgInvoiceRow } = await import('./mode.js');
+    invoices = invRes.rows.map((r) => mapPgInvoiceRow(r, itemsMap.get(r.id) || [], payMap.get(r.id) || []));
+
+    const retRes = await pool.query(
+      `SELECT * FROM invoice_returns WHERE party_id = $1 AND type = 'sales_return' ORDER BY date DESC, created_at DESC`,
+      [customerId]
+    );
+    returns = retRes.rows.map((r) => ({
+      id: r.id,
+      returnNumber: r.return_number,
+      type: r.type,
+      originalInvoiceId: r.original_invoice_id,
+      originalInvoiceNumber: r.original_invoice_number,
+      date: r.date instanceof Date ? r.date.toISOString().split('T')[0] : String(r.date || '').split('T')[0],
+      partyId: r.party_id,
+      partyName: r.party_name,
+      grandTotal: Number(r.grand_total || 0),
+      refundType: r.refund_type,
+      reason: r.reason || '',
+      createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at || '',
+    }));
+
+    const txRes = await pool.query(
+      `SELECT * FROM financial_transactions WHERE related_entity_id = $1 AND type = 'customer_payment' ORDER BY date ASC, created_at ASC`,
+      [customerId]
+    );
+    paymentTxs = txRes.rows.map((r) => ({
+      id: r.id,
+      transactionNumber: r.transaction_number,
+      date: r.date instanceof Date ? r.date.toISOString().split('T')[0] : String(r.date || '').split('T')[0],
+      amount: Number(r.amount || 0),
+      relatedDocType: r.related_doc_type,
+      relatedDocId: r.related_doc_id,
+      description: r.description || '',
+      createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at || '',
+    }));
+  } else {
+    const db = readJsonDatabase();
+    invoices = (db.invoices || [])
+      .filter((i) => i.customerId === customerId && i.type === 'sales' && i.status !== 'draft')
+      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    returns = (db.invoiceReturns || [])
+      .filter((r) => r.partyId === customerId && r.type === 'sales_return')
+      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    paymentTxs = (db.financialTransactions || [])
+      .filter((tx) => tx.relatedEntityId === customerId && tx.type === 'customer_payment')
+      .sort((a, b) => String(a.createdAt || a.date || '').localeCompare(String(b.createdAt || b.date || '')));
+  }
+
+  const sanitizedInvoices = invoices.map((inv) => ({
+    ...inv,
+    items: (inv.items || []).map((it) => ({
+      productId: it.productId,
+      productName: it.productName,
+      unit: it.unit,
+      unitFactor: it.unitFactor,
+      quantity: it.quantity,
+      unitPrice: allowPriceView ? it.unitPrice : 0,
+      discount: allowPriceView ? it.discount : 0,
+      total: allowPriceView ? it.total : 0,
+    })),
+    subtotal: allowPriceView ? inv.subtotal : 0,
+    discountTotal: allowPriceView ? inv.discountTotal : 0,
+    grandTotal: allowPriceView ? inv.grandTotal : 0,
+    paidAmount: allowPriceView ? inv.paidAmount : 0,
+    remainingAmount: allowPriceView ? inv.remainingAmount : 0,
+  }));
+
+  const confirmedRaw = invoices.filter((i) => i.status === 'confirmed');
+  const rawEntries = [];
+  const openingBal = round2(customer.openingBalance || 0);
+  if (openingBal !== 0) {
+    rawEntries.push({
+      id: `OPEN-${customer.id}`,
+      date: (customer.createdAt || '').split('T')[0] || '-',
+      sortKey: `0000-${customer.createdAt || ''}`,
+      docNumber: customer.code || '-',
+      type: 'opening_balance',
+      label: 'رصيد افتتاحي',
+      description: 'الرصيد الافتتاحي للحساب',
+      debit: openingBal > 0 ? openingBal : 0,
+      credit: openingBal < 0 ? Math.abs(openingBal) : 0,
+    });
+  }
+
+  for (const inv of confirmedRaw) {
+    rawEntries.push({
+      id: `INV-${inv.id}`,
+      date: inv.date || '',
+      sortKey: `${inv.date || ''}-${inv.createdAt || inv.id}`,
+      docNumber: inv.invoiceNumber,
+      type: 'sales_invoice',
+      label: `فاتورة مبيعات (${inv.items?.length || 0} صنف)`,
+      description:
+        inv.paidAmount > 0
+          ? `إجمالي الفاتورة ${round2(inv.grandTotal)} · مسدد منها ${round2(inv.paidAmount)}`
+          : `فاتورة مبيعات آجلة — رقم ${inv.invoiceNumber}`,
+      debit: round2(inv.grandTotal || 0),
+      credit: round2(inv.paidAmount || 0),
+    });
+  }
+
+  const confirmedInvoiceIds = new Set(confirmedRaw.map((i) => i.id));
+  for (const tx of paymentTxs) {
+    // Skip payments already tied directly to a confirmed invoice line so we don't double-count paidAmount
+    if (tx.relatedDocType === 'sales' && tx.relatedDocId && confirmedInvoiceIds.has(tx.relatedDocId)) {
+      continue;
+    }
+    rawEntries.push({
+      id: `PAY-${tx.id}`,
+      date: tx.date || '',
+      sortKey: `${tx.date || ''}-${tx.createdAt || tx.id}`,
+      docNumber: tx.transactionNumber || tx.id,
+      type: 'customer_payment',
+      label: 'سند تحصيل / دفعة حساب',
+      description: tx.description || 'سداد نقدي من العميل',
+      debit: 0,
+      credit: round2(tx.amount || 0),
+    });
+  }
+
+  for (const ret of returns) {
+    rawEntries.push({
+      id: `RET-${ret.id}`,
+      date: ret.date || '',
+      sortKey: `${ret.date || ''}-${ret.createdAt || ret.id}`,
+      docNumber: ret.returnNumber,
+      type: 'sales_return',
+      label: 'مرتجع مبيعات',
+      description: ret.reason || `مرتجع على فاتورة ${ret.originalInvoiceNumber || '-'}`,
+      debit: 0,
+      credit: ret.refundType === 'balance' ? round2(ret.grandTotal || 0) : 0,
+    });
+  }
+
+  rawEntries.sort((a, b) => String(a.sortKey).localeCompare(String(b.sortKey)));
+
+  let running = 0;
+  let totalDebit = 0;
+  let totalCredit = 0;
+  const entries = rawEntries.map(({ sortKey: _s, ...entry }) => {
+    totalDebit = round2(totalDebit + entry.debit);
+    totalCredit = round2(totalCredit + entry.credit);
+    running = round2(running + entry.debit - entry.credit);
+    return {
+      ...entry,
+      debit: allowPriceView ? entry.debit : null,
+      credit: allowPriceView ? entry.credit : null,
+      runningBalance: allowPriceView ? running : null,
+    };
+  });
+
+  return {
+    allowPriceView: Boolean(allowPriceView),
+    customer: {
+      ...customer,
+      openingBalance: allowPriceView ? customer.openingBalance : 0,
+      currentBalance: allowPriceView ? customer.currentBalance : 0,
+      priceHistory: allowPriceView ? customer.priceHistory : {},
+    },
+    invoices: sanitizedInvoices,
+    returns: returns.map((r) => ({ ...r, grandTotal: allowPriceView ? r.grandTotal : 0 })),
+    summary: {
+      openingBalance: allowPriceView ? openingBal : null,
+      totalDebit: allowPriceView ? totalDebit : null,
+      totalCredit: allowPriceView ? totalCredit : null,
+      currentBalance: allowPriceView ? round2(customer.currentBalance || 0) : null,
+      invoicesCount: confirmedRaw.length,
+      returnsCount: returns.length,
+    },
+    entries,
+  };
 }

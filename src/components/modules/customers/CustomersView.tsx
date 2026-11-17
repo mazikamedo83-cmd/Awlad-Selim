@@ -8,64 +8,24 @@ import {
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
+import { useShortcuts } from '../../../context/ShortcutsContext';
 import { apiRequest } from '../../../services/api';
 import { Customer, Invoice, CustomerItemOrderRequest } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
 import { NewSaleInvoiceModal } from '../sales/NewSaleInvoiceModal';
-
-// Utility to compress uploaded image to lightweight base64 JPEG (works 100% offline in LocalStorage)
-const compressImageToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 640;
-        const MAX_HEIGHT = 640;
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-        }
-
-        canvas.width = Math.round(width);
-        canvas.height = Math.round(height);
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', 0.8));
-        } else {
-          resolve(e.target?.result as string);
-        }
-      };
-      img.onerror = () => reject(new Error('تعذر معالجة الصورة'));
-      img.src = e.target?.result as string;
-    };
-    reader.onerror = () => reject(new Error('فشل قراءة الملف'));
-    reader.readAsDataURL(file);
-  });
-};
+import { compressImageFileToDataUrl } from '../../../utils/image';
 
 export const CustomersView: React.FC = () => {
   const {
-    customers, users, invoices, invoiceReturns, financialTransactions,
+    customers, users, representatives, invoices, invoiceReturns, financialTransactions,
     cashboxes, settings, networkStatus, customerItemOrders = [],
     approveCustomerItemOrder, rejectCustomerItemOrder, linkCustomerUser,
     addCustomer, updateCustomer, deleteCustomer, recordCustomerPayment,
   } = useData();
   const { hasPermission } = useAuth();
+  const { registerHandler, consumePendingAction } = useShortcuts();
 
   // Navigation: main list vs dedicated customer page
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
@@ -120,6 +80,12 @@ export const CustomersView: React.FC = () => {
   });
 
   useEffect(() => {
+    if (cashboxes.length > 0 && (!paymentCashboxId || !cashboxes.some(c => c.id === paymentCashboxId))) {
+      setPaymentCashboxId(cashboxes[0].id);
+    }
+  }, [cashboxes, paymentCashboxId]);
+
+  useEffect(() => {
     if (!hasPermission('canManageUsers')) return;
     apiRequest<{ ok: boolean; duplicatePhones: any[]; unlinkedCustomerUsers: any[] }>('/api/customers/conflicts/check')
       .then((res) => {
@@ -145,6 +111,7 @@ export const CustomersView: React.FC = () => {
     notes: string;
     openingBalance: number;
     status: 'active' | 'blocked';
+    allowedRepIds: string[];
   }>({
     code: '',
     name: '',
@@ -158,6 +125,7 @@ export const CustomersView: React.FC = () => {
     notes: '',
     openingBalance: 0,
     status: 'active',
+    allowedRepIds: [],
   });
 
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
@@ -343,6 +311,7 @@ export const CustomersView: React.FC = () => {
       notes: '',
       openingBalance: 0,
       status: 'active',
+      allowedRepIds: [],
     });
     setPhoneActionNotice(null);
     setMapActionWarning(null);
@@ -357,6 +326,12 @@ export const CustomersView: React.FC = () => {
     setPhoneActionNotice(null);
     setMapActionWarning(null);
     setCustomerFormError(null);
+    const existingAllowed =
+      Array.isArray(c.allowedRepIds) && c.allowedRepIds.length > 0
+        ? c.allowedRepIds
+        : c.assignedRepId
+        ? [c.assignedRepId]
+        : [];
     setFormData({
       code: c.code,
       name: c.name,
@@ -370,10 +345,45 @@ export const CustomersView: React.FC = () => {
       notes: c.notes || '',
       openingBalance: c.openingBalance,
       status: c.status,
+      allowedRepIds: existingAllowed,
     });
     setEditingCustomer(c);
     setIsAddModalOpen(true);
   };
+
+  // Keyboard shortcuts registration for CustomersView
+  const shortcutHandlersRef = useRef({
+    openAdd: () => {},
+    openCollection: () => {},
+  });
+
+  shortcutHandlersRef.current.openAdd = () => {
+    handleOpenAdd();
+  };
+
+  shortcutHandlersRef.current.openCollection = () => {
+    const target = selectedCustomer || filteredCustomers[0] || customers[0] || null;
+    if (!target) return;
+    setPaymentError(null);
+    setPaymentCustomer(target);
+    setPaymentAmount(target.currentBalance > 0 ? target.currentBalance : 0);
+    setPaymentNotes('');
+  };
+
+  useEffect(() => {
+    if (consumePendingAction('action:new_customer')) {
+      shortcutHandlersRef.current.openAdd();
+    }
+    if (consumePendingAction('action:customer_collection')) {
+      shortcutHandlersRef.current.openCollection();
+    }
+    const unregAdd = registerHandler('action:new_customer', () => shortcutHandlersRef.current.openAdd());
+    const unregCol = registerHandler('action:customer_collection', () => shortcutHandlersRef.current.openCollection());
+    return () => {
+      unregAdd();
+      unregCol();
+    };
+  }, [consumePendingAction, registerHandler]);
 
   // Handle Photo selection & compression
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -383,7 +393,7 @@ export const CustomersView: React.FC = () => {
     try {
       setCustomerFormError(null);
       setIsUploadingPhoto(true);
-      const base64 = await compressImageToBase64(file);
+      const base64 = await compressImageFileToDataUrl(file);
       setFormData(prev => ({ ...prev, photo: base64 }));
     } catch (err: any) {
       setCustomerFormError(err.message || 'حدث خطأ أثناء تحميل ومعالجة صورة المحل');
@@ -428,6 +438,8 @@ export const CustomersView: React.FC = () => {
         photo: formData.photo,
         notes: formData.notes.trim(),
         status: formData.status,
+        allowedRepIds: formData.allowedRepIds,
+        assignedRepId: formData.allowedRepIds[0] || undefined,
       });
     } else {
       const created = await addCustomer({
@@ -443,6 +455,8 @@ export const CustomersView: React.FC = () => {
         notes: formData.notes.trim(),
         openingBalance: Number(formData.openingBalance) || 0,
         status: formData.status,
+        allowedRepIds: formData.allowedRepIds,
+        assignedRepId: formData.allowedRepIds[0] || undefined,
       });
       // Optionally open the newly created customer
       setSelectedCustomerId(created.id);
@@ -1233,11 +1247,16 @@ export const CustomersView: React.FC = () => {
                       <span className="text-slate-500">الأسعار السابقة (من الأقدم للأحدث):</span>
                     </div>
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      {prices.map((p, idx) => (
-                        <span key={idx} className="font-mono font-bold px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-800 text-xs shadow-2xs">
-                          {p} {settings.currency}
-                        </span>
-                      ))}
+                      {prices.map((entry, idx) => {
+                        const val = typeof entry === 'number' ? entry : entry.price;
+                        const dt = typeof entry === 'number' ? '' : entry.date;
+                        return (
+                          <span key={idx} className="font-mono font-bold px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-800 text-xs shadow-2xs">
+                            {val} {settings.currency}
+                            {dt ? <span className="text-[10px] text-slate-400 mr-1">({dt})</span> : null}
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
@@ -1729,7 +1748,11 @@ export const CustomersView: React.FC = () => {
                   {/* Google Maps Location Button */}
                   <div className="flex items-center justify-between">
                     <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cust.address)}`}
+                      href={cust.geoCoordinates?.trim()
+                        ? (cust.geoCoordinates.startsWith('http')
+                            ? cust.geoCoordinates
+                            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cust.geoCoordinates)}`)
+                        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cust.address)}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
@@ -1737,7 +1760,7 @@ export const CustomersView: React.FC = () => {
                       title="فتح موقع المحل على خرائط Google Maps"
                     >
                       <MapPin className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                      <span className="truncate">{cust.address}</span>
+                      <span className="truncate">{cust.address || cust.geoCoordinates || 'موقع الخريطة'}</span>
                       <ExternalLink className="w-3 h-3 text-blue-700 shrink-0" />
                     </a>
                     <span className="text-[10px] text-slate-400 font-medium">خرائط</span>
@@ -1864,7 +1887,11 @@ export const CustomersView: React.FC = () => {
                     </td>
                     <td className="p-3">
                       <a
-                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cust.address)}`}
+                        href={cust.geoCoordinates?.trim()
+                          ? (cust.geoCoordinates.startsWith('http')
+                              ? cust.geoCoordinates
+                              : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cust.geoCoordinates)}`)
+                          : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cust.address)}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
@@ -1872,7 +1899,7 @@ export const CustomersView: React.FC = () => {
                         title="فتح خرائط Google"
                       >
                         <MapPin className="w-3 h-3 text-red-600 shrink-0" />
-                        <span className="truncate">{cust.address}</span>
+                        <span className="truncate">{cust.address || cust.geoCoordinates || 'موقع الخريطة'}</span>
                       </a>
                     </td>
                     <td className="p-3 text-center font-mono font-black">
@@ -2223,6 +2250,65 @@ export const CustomersView: React.FC = () => {
             </div>
           </div>
 
+          {/* Allowed Representatives Assignment */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <label className="font-black text-slate-800">
+                المناديب المسموح لهم بالتعامل مع العميل:
+              </label>
+              {formData.allowedRepIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setFormData((prev) => ({ ...prev, allowedRepIds: [] }))}
+                  className="text-[11px] font-bold text-slate-500 hover:text-red-600 cursor-pointer"
+                >
+                  إلغاء التحديد
+                </button>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-500">
+              يظهر هذا العميل وتاريخ أسعاره وفواتيره في تطبيق الموبايل للمناديب المحددين فقط. عدم تحديد أي مندوب يقتصر التعامل على الإدارة.
+            </p>
+            {representatives.length === 0 ? (
+              <p className="text-[11px] text-amber-700 font-bold">لا يوجد مناديب مبيعات مسجلون حالياً.</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 max-h-36 overflow-y-auto">
+                {representatives.map((rep) => {
+                  const isChecked = formData.allowedRepIds.includes(rep.id);
+                  return (
+                    <label
+                      key={rep.id}
+                      className={`flex items-center gap-2 p-2 rounded-xl border cursor-pointer transition-colors ${
+                        isChecked
+                          ? 'bg-blue-50 border-blue-400 text-blue-950 font-bold'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setFormData((prev) => ({
+                            ...prev,
+                            allowedRepIds: checked
+                              ? Array.from(new Set([...prev.allowedRepIds, rep.id]))
+                              : prev.allowedRepIds.filter((id) => id !== rep.id),
+                          }));
+                        }}
+                        className="w-4 h-4 accent-blue-900"
+                      />
+                      <span className="truncate">{rep.name}</span>
+                      {rep.vehicleNumber && (
+                        <span className="text-[10px] text-slate-400 mr-auto font-mono">{rep.vehicleNumber}</span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {/* Opening balance and status */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {!editingCustomer ? (
@@ -2300,6 +2386,28 @@ export const CustomersView: React.FC = () => {
             {paymentError && (
               <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">
                 {paymentError}
+              </div>
+            )}
+            {customers.length > 1 && (
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">العميل / المحل:</label>
+                <select
+                  value={paymentCustomer.id}
+                  onChange={(e) => {
+                    const found = customers.find(c => c.id === e.target.value);
+                    if (found) {
+                      setPaymentCustomer(found);
+                      setPaymentAmount(found.currentBalance > 0 ? found.currentBalance : 0);
+                    }
+                  }}
+                  className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold outline-hidden focus:border-blue-600"
+                >
+                  {customers.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.code}) — رصيد: {c.currentBalance.toLocaleString()} {settings.currency}
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
             <div>

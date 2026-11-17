@@ -40,6 +40,48 @@ export interface UserPermissions {
   canViewDeletedInvoices?: boolean;
 }
 
+export type ShortcutCategory = 'التنقل' | 'المبيعات والمشتريات' | 'المخزون' | 'العملاء والمالية' | 'عام';
+
+export type ShortcutActionId =
+  | 'nav:dashboard'
+  | 'nav:new-sale'
+  | 'nav:sales'
+  | 'nav:new-purchase'
+  | 'nav:purchases'
+  | 'nav:returns'
+  | 'nav:products'
+  | 'nav:warehouses'
+  | 'nav:stock-transfers'
+  | 'nav:stock-count'
+  | 'nav:customers'
+  | 'nav:suppliers'
+  | 'nav:cashboxes'
+  | 'nav:expenses'
+  | 'nav:cheques'
+  | 'nav:installments'
+  | 'nav:reps'
+  | 'nav:employees'
+  | 'nav:reports'
+  | 'nav:settings'
+  | 'nav:shortcuts-settings'
+  | 'action:save_invoice'
+  | 'action:print_document'
+  | 'action:focus_product_search'
+  | 'action:new_customer'
+  | 'action:customer_collection'
+  | 'action:cash_deposit'
+  | 'action:cash_withdrawal'
+  | 'action:new_stock_transfer';
+
+export interface UserShortcutItem {
+  id: string;
+  actionId: ShortcutActionId | string;
+  label: string;
+  category: ShortcutCategory | string;
+  keyCombo: string;
+  enabled: boolean;
+}
+
 export interface User {
   id: string;
   fullName: string;
@@ -55,6 +97,7 @@ export interface User {
   mustChangePassword?: boolean;
   lastLogin?: string;
   permissions: UserPermissions;
+  shortcuts?: UserShortcutItem[];
   createdAt: string;
 }
 
@@ -93,6 +136,9 @@ export interface Product {
   image?: string;
   status: 'active' | 'archived'; // active = نشط، archived = موقوف منطقياً
   notes?: string;
+  importBatchId?: string;
+  importedFromFile?: boolean;
+  sourceFileName?: string;
   createdAt: string;
 }
 
@@ -113,6 +159,8 @@ export interface Customer {
   name: string;
   phone: string;
   userId?: string; // حساب الدخول المرتبط بالعميل
+  assignedRepId?: string;
+  allowedRepIds?: string[];
   secondaryPhone?: string; // رقم هاتف إضافي
   shopName?: string;       // اسم المحل
   shopPhoto?: string;      // صورة المحل
@@ -125,7 +173,7 @@ export interface Customer {
   currentBalance: number;
   status: 'active' | 'blocked';
   // التاريخ الفعلي لأسعار الشراء السابقة لكل منتج: productId -> prices array [oldest to newest]
-  priceHistory: Record<string, number[]>;
+  priceHistory: Record<string, Array<number | CustomerPriceHistoryEntry>>;
   createdAt: string;
 }
 
@@ -597,6 +645,8 @@ export interface RepItemTransferRequest {
   reviewedBy?: string;
   reviewedAt?: string;
   executedAt?: string;
+  receivedBy?: string;
+  receivedAt?: string;
 }
 
 
@@ -856,5 +906,65 @@ export interface StockTransferRequest {
   updatedAt?: string;
   items: StockTransferRequestItem[];
 }
+
+export interface CustomerPriceHistoryEntry {
+  price: number;
+  date: string;
+  invoiceNumber?: string;
+  unit?: string;
+}
+
+export interface MobileConfig {
+  enableCustomerApp: boolean;
+  enableRepApp: boolean;
+  allowCustomerPriceView: boolean;
+  requireOrderApproval: boolean;
+}
+
+export interface MobileNotificationItem {
+  id: string;
+  type:
+    | 'order_approved'
+    | 'order_rejected'
+    | 'order_invoiced'
+    | 'invoice_confirmed'
+    | 'rep_item_transfer_executed'
+    | 'rep_item_transfer_rejected'
+    | 'rep_cash_awaiting_receipt'
+    | 'draft_invoice_ready';
+  title: string;
+  body: string;
+  createdAt: string;
+  targetTab?: string;
+  referenceId?: string;
+  referenceNumber?: string;
+}
+
+export interface CustomerStatementEntry {
+  id: string;
+  date: string;
+  docNumber: string;
+  type: 'opening_balance' | 'sales_invoice' | 'customer_payment' | 'sales_return';
+  label: string;
+  description: string;
+  debit: number | null;
+  credit: number | null;
+  runningBalance: number | null;
+}
+
+export interface CustomerStatementResponse {
+  customer: Customer | null;
+  allowPriceView: boolean;
+  summary: {
+    openingBalance: number | null;
+    totalDebit: number | null;
+    totalCredit: number | null;
+    currentBalance: number | null;
+    invoicesCount: number;
+    returnsCount: number;
+  };
+  entries: CustomerStatementEntry[];
+}
+
 
 

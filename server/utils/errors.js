@@ -41,11 +41,12 @@ export function sanitizeUser(user) {
     mustChangePassword: safe.mustChangePassword ?? safe.must_change_password ?? false,
     lastLogin: safe.lastLogin ?? safe.last_login ?? undefined,
     permissions: safe.permissions || {},
+    shortcuts: Array.isArray(safe.shortcuts) ? safe.shortcuts : [],
     createdAt: safe.createdAt ?? safe.created_at ?? nowIso(),
   };
 }
 
-export function sanitizeProductForCustomer(product) {
+export function sanitizeProductForCustomer(product, allowPriceView = true) {
   const stockMap = product.stockPerWarehouse || {};
   const totalStock = Object.values(stockMap).reduce((sum, val) => sum + Number(val || 0), 0);
   return {
@@ -61,13 +62,14 @@ export function sanitizeProductForCustomer(product) {
           id: u.id,
           name: u.name,
           conversionFactor: Number(u.conversionFactor || 1),
-          sellingPrice: Number(u.sellingPrice || 0),
+          sellingPrice: allowPriceView ? Number(u.sellingPrice || 0) : 0,
           barcode: u.barcode || '',
         }))
       : [],
     size: product.size,
     color: product.color,
-    sellingPrice: Number(product.sellingPrice || 0),
+    sellingPrice: allowPriceView ? Number(product.sellingPrice || 0) : 0,
+    hidePrices: !allowPriceView,
     inStock: totalStock > 0,
     availableQty: Math.max(0, round3(totalStock)),
     image: product.image,

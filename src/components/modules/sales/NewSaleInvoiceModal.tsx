@@ -1,16 +1,18 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
-  Plus, Trash2, Barcode, Check, AlertCircle, History, AlertTriangle, Save
+  Plus, Trash2, Barcode, Check, AlertCircle, History, AlertTriangle, Save, Printer
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
+import { useShortcuts } from '../../../context/ShortcutsContext';
 import { CustomerItemOrderRequest } from '../../../types';
 import { Modal } from '../../common/Modal';
+import { ProductSearchSelect } from '../../common/ProductSearchSelect';
 
 interface NewSaleInvoiceModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onInvoiceCreated?: (invoice: any) => void;
+  onInvoiceCreated?: (invoice: any, shouldPrint?: boolean) => void;
   sourceOrder?: CustomerItemOrderRequest | null;
 }
 
@@ -25,6 +27,9 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     settings, createSalesInvoice, convertOrderToInvoice, createRepItemTransfer,
   } = useData();
   const { currentUser } = useAuth();
+  const { registerHandler, getShortcutLabelForAction } = useShortcuts();
+  const productSearchRef = useRef<HTMLInputElement | null>(null);
+  const qtyInputRef = useRef<HTMLInputElement | null>(null);
 
   // Form states
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
@@ -66,8 +71,12 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     if (!isOpen) return;
     setError(null);
     setInvoiceStatusMode('confirmed');
-    setSelectedWarehouseId((prev) => prev || warehouses[0]?.id || 'WH-01');
-    setSelectedCashboxId((prev) => prev || cashboxes[0]?.id || 'CASH-01');
+    setSelectedWarehouseId((prev) =>
+      warehouses.some((w) => w.id === prev) ? prev : warehouses[0]?.id || 'WH-01'
+    );
+    setSelectedCashboxId((prev) =>
+      cashboxes.some((c) => c.id === prev) ? prev : cashboxes[0]?.id || 'CASH-01'
+    );
 
     if (sourceOrder) {
       setSelectedCustomerId(sourceOrder.customerId || '');
@@ -229,6 +238,9 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     setInputQuantity(1);
     setInputUnitPrice(0);
     setError(null);
+    window.setTimeout(() => {
+      productSearchRef.current?.focus();
+    }, 30);
   };
 
   const handleUpdateRowPrice = (idx: number, newPrice: number) => {
@@ -308,7 +320,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     }
   }, [paymentType, grandTotal]);
 
-  const handleSubmitInvoice = async () => {
+  const handleSubmitInvoice = useCallback(async (shouldPrint = false) => {
     if (items.length === 0) {
       setError('يرجى إضافة صنف واحد على الأقل للفاتورة');
       return;
@@ -381,13 +393,36 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
 
     if (res.success) {
       if (onInvoiceCreated) {
-        onInvoiceCreated(res.invoice);
+        onInvoiceCreated(res.invoice, shouldPrint);
       }
       onClose();
     } else {
       setError(res.error || 'حدث خطأ أثناء حفظ الفاتورة');
     }
-  };
+  }, [
+    items, warehouses, selectedWarehouseId, representatives, selectedRepId, currentUser,
+    invoiceStatusMode, shortageItems, createRepItemTransfer, invoiceDate, selectedCustomerId,
+    selectedCustomer, sourceOrder, subtotal, discountTotal, grandTotal, paymentType, paidAmount,
+    remainingAmount, selectedCashboxId, notes, convertOrderToInvoice, createSalesInvoice,
+    onInvoiceCreated, onClose
+  ]);
+
+  const submitRef = useRef(handleSubmitInvoice);
+  submitRef.current = handleSubmitInvoice;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const u1 = registerHandler('action:save_invoice', () => {
+      submitRef.current(false);
+    });
+    const u2 = registerHandler('action:focus_product_search', () => {
+      productSearchRef.current?.focus();
+    });
+    return () => {
+      u1();
+      u2();
+    };
+  }, [isOpen, registerHandler]);
 
   return (
     <Modal
@@ -483,21 +518,21 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
             </form>
 
             <div className="flex-1 w-full">
-              <select
-                value={selectedProductId}
-                onChange={(e) => handleProductSelect(e.target.value)}
-                className="w-full bg-white border border-blue-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:border-blue-700 outline-hidden"
-              >
-                <option value="">-- اختر السلعة الغذائية من القائمة --</option>
-                {products.map((p) => {
-                  const stockInWh = p.stockPerWarehouse[selectedWarehouseId] || 0;
-                  return (
-                    <option key={p.id} value={p.id}>
-                      {p.name} [{p.category}] - الرصيد: {stockInWh} {p.baseUnit} - السعر الافتراضي: {p.sellingPrice} {settings.currency}
-                    </option>
-                  );
-                })}
-              </select>
+              <ProductSearchSelect
+                products={products}
+                selectedProductId={selectedProductId}
+                warehouseId={selectedWarehouseId}
+                warehouses={warehouses}
+                priceMode="selling"
+                currency={settings.currency}
+                inputRef={productSearchRef}
+                placeholder={`ابحث باسم السلعة أو الكود أو الباركود (${getShortcutLabelForAction('action:focus_product_search') || 'F3'})...`}
+                onSelect={(prod) => handleProductSelect(prod.id)}
+                onAfterSelect={() => {
+                  qtyInputRef.current?.focus();
+                  qtyInputRef.current?.select();
+                }}
+              />
             </div>
           </div>
 
@@ -512,20 +547,24 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
 
               <div className="flex items-center gap-2">
                 {lastThreePrices.length > 0 ? (
-                  lastThreePrices.map((price, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => setInputUnitPrice(price)}
-                      title="انقر لنسخ هذا السعر السابق للاسترشاد"
-                      className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-300 font-mono font-bold text-xs transition-colors"
-                    >
-                      {price} {settings.currency}{' '}
-                      <span className="text-[10px] text-slate-500 font-sans">
-                        ({idx === 0 ? 'أقدم' : idx === lastThreePrices.length - 1 ? 'أحدث' : 'سابق'})
-                      </span>
-                    </button>
-                  ))
+                  lastThreePrices.map((entry, idx) => {
+                    const priceVal = typeof entry === 'number' ? entry : entry.price;
+                    const priceDate = typeof entry === 'number' ? '' : entry.date;
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setInputUnitPrice(priceVal)}
+                        title="انقر لنسخ هذا السعر السابق للاسترشاد"
+                        className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-300 font-mono font-bold text-xs transition-colors"
+                      >
+                        {priceVal} {settings.currency}{' '}
+                        <span className="text-[10px] text-slate-500 font-sans">
+                          ({priceDate ? priceDate : idx === 0 ? 'أقدم' : idx === lastThreePrices.length - 1 ? 'أحدث' : 'سابق'})
+                        </span>
+                      </button>
+                    );
+                  })
                 ) : (
                   <span className="text-slate-500 italic text-[11px]">
                     لا توجد عمليات شراء سابقة لهذا العميل بهذا الصنف (السعر الافتراضي هو المطبق)
@@ -558,11 +597,18 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
               <div>
                 <label className="block font-bold text-slate-700 mb-1">الكمية:</label>
                 <input
+                  ref={qtyInputRef}
                   type="number"
                   min="1"
                   value={inputQuantity}
                   onChange={(e) => setInputQuantity(Number(e.target.value))}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-center font-mono outline-hidden"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddItem();
+                    }
+                  }}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-center font-mono outline-hidden focus:border-blue-700"
                 />
               </div>
 
@@ -573,7 +619,13 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                   step="0.5"
                   value={inputUnitPrice}
                   onChange={(e) => setInputUnitPrice(Number(e.target.value))}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-black text-center text-blue-900 font-mono outline-hidden"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddItem();
+                    }
+                  }}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-black text-center text-blue-900 font-mono outline-hidden focus:border-blue-700"
                 />
               </div>
 
@@ -815,35 +867,51 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-200">
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-100 transition-colors"
+            className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-100 transition-colors cursor-pointer"
           >
             إلغاء
           </button>
-          <button
-            type="button"
-            disabled={isSubmitting || items.length === 0}
-            onClick={handleSubmitInvoice}
-            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-white text-xs font-black shadow-lg transition-all active:scale-95 disabled:opacity-50 cursor-pointer ${
-              invoiceStatusMode === 'draft'
-                ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/20'
-                : 'bg-blue-900 hover:bg-blue-950 shadow-blue-900/20'
-            }`}
-          >
-            {invoiceStatusMode === 'draft' ? <Save className="w-4 h-4" /> : <Check className="w-4 h-4" />}
-            <span>
-              {isSubmitting
-                ? 'جاري التنفيذ...'
-                : invoiceStatusMode === 'draft'
-                ? 'حفظ الفاتورة كمسودة'
-                : sourceOrder
-                ? 'اعتماد الفاتورة وإتمام طلب العميل'
-                : 'اعتماد وحفظ فاتورة المبيعات'}
-            </span>
-          </button>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              disabled={isSubmitting || items.length === 0}
+              onClick={() => handleSubmitInvoice(false)}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-xs font-black shadow-md transition-all active:scale-95 disabled:opacity-50 cursor-pointer ${
+                invoiceStatusMode === 'draft'
+                  ? 'bg-amber-600 hover:bg-amber-700'
+                  : 'bg-emerald-700 hover:bg-emerald-800'
+              }`}
+            >
+              <Save className="w-4 h-4" />
+              <span>
+                {isSubmitting
+                  ? 'جاري التنفيذ...'
+                  : invoiceStatusMode === 'draft'
+                  ? 'حفظ الفاتورة كمسودة'
+                  : 'حفظ الفاتورة فقط'}
+              </span>
+              {getShortcutLabelForAction('action:save_invoice') && (
+                <kbd dir="ltr" className="text-[10px] font-mono bg-black/20 px-1.5 py-0.5 rounded">
+                  {getShortcutLabelForAction('action:save_invoice')}
+                </kbd>
+              )}
+            </button>
+
+            <button
+              type="button"
+              disabled={isSubmitting || items.length === 0}
+              onClick={() => handleSubmitInvoice(true)}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-lg shadow-blue-900/20 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+            >
+              <Printer className="w-4 h-4" />
+              <span>{invoiceStatusMode === 'draft' ? 'حفظ كمسودة وطباعة' : 'حفظ وطباعة الفاتورة'}</span>
+            </button>
+          </div>
         </div>
       </div>
     </Modal>

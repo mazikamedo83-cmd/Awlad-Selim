@@ -1,9 +1,34 @@
+import {
+  hydrateNativePreferences,
+  isNativeCapacitor,
+  removePref,
+  setPref,
+} from './native';
+
 const TOKENS_KEY = 'awlad_selim_auth_tokens_v3';
 const SERVER_URL_KEY = 'awlad_selim_server_base_url';
 
 export interface StoredTokens {
   accessToken: string;
   refreshToken: string;
+}
+
+type AuthExpiredCallback = (message?: string) => void;
+let onAuthExpiredHandler: AuthExpiredCallback | null = null;
+
+export function setAuthExpiredHandler(cb: AuthExpiredCallback | null): void {
+  onAuthExpiredHandler = cb;
+}
+
+export async function hydrateServerUrlFromNative(): Promise<void> {
+  await hydrateNativePreferences([SERVER_URL_KEY, TOKENS_KEY]);
+}
+
+export function normalizeServerUrl(raw: string): string {
+  const trimmed = (raw || '').trim().replace(/\/+$/, '');
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `http://${trimmed}`;
 }
 
 export function getStoredTokens(): StoredTokens | null {
@@ -21,9 +46,9 @@ export function getStoredTokens(): StoredTokens | null {
 export function saveStoredTokens(tokens: StoredTokens | null): void {
   try {
     if (!tokens) {
-      localStorage.removeItem(TOKENS_KEY);
+      removePref(TOKENS_KEY).catch(() => {});
     } else {
-      localStorage.setItem(TOKENS_KEY, JSON.stringify(tokens));
+      setPref(TOKENS_KEY, JSON.stringify(tokens)).catch(() => {});
     }
   } catch {
     // ignore storage quota errors
@@ -34,25 +59,87 @@ export function getConfiguredApiBaseUrl(): string {
   try {
     const custom = localStorage.getItem(SERVER_URL_KEY)?.trim() || '';
     if (custom) {
-      return custom.replace(/\/+$/, '');
+      return normalizeServerUrl(custom);
     }
   } catch {
     // ignore
   }
   const envBase = (import.meta as any).env?.VITE_API_BASE_URL;
   if (typeof envBase === 'string' && envBase.trim()) {
-    return envBase.trim().replace(/\/+$/, '');
+    return normalizeServerUrl(envBase);
   }
-  // Same-origin by default (works automatically with unified server.ts on port 3000 & reverse proxies)
+  // Inside native Capacitor shell there is no same-origin Express backend on capacitor://localhost
+  if (isNativeCapacitor()) {
+    return '';
+  }
+  // Same-origin by default on web / Electron
   return '';
 }
 
+export function hasConfiguredServerUrl(): boolean {
+  if (!isNativeCapacitor()) return true;
+  return Boolean(getConfiguredApiBaseUrl());
+}
+
 export function setConfiguredApiBaseUrl(url: string): void {
-  const clean = url.trim().replace(/\/+$/, '');
+  const clean = normalizeServerUrl(url);
   if (!clean) {
-    localStorage.removeItem(SERVER_URL_KEY);
+    removePref(SERVER_URL_KEY).catch(() => {});
   } else {
-    localStorage.setItem(SERVER_URL_KEY, clean);
+    setPref(SERVER_URL_KEY, clean).catch(() => {});
+  }
+}
+
+export async function testServerHealth(baseUrl: string): Promise<{
+  ok: boolean;
+  latencyMs: number;
+  mode?: string;
+  version?: string;
+  lanUrls?: string[];
+  error?: string;
+}> {
+  const clean = normalizeServerUrl(baseUrl);
+  const effectiveBase = clean || (!isNativeCapacitor() ? '' : '');
+  if (isNativeCapacitor() && !clean) {
+    return {
+      ok: false,
+      latencyMs: 0,
+      error: 'يرجى إدخال عنوان السيرفر المركزي أولاً (مثل http://192.168.1.100:3000 أو رابط HTTPS).',
+    };
+  }
+
+  const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
+  try {
+    const res = await fetch(`${effectiveBase}/api/health`, {
+      method: 'GET',
+      signal: controller.signal,
+    });
+    const latencyMs = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt);
+    if (!res.ok) {
+      return { ok: false, latencyMs, error: `السيرفر استجاب برمز خطأ (${res.status})` };
+    }
+    const data = await res.json().catch(() => ({}));
+    return {
+      ok: true,
+      latencyMs,
+      mode: data?.mode || 'central-server',
+      version: data?.version,
+      lanUrls: Array.isArray(data?.lanUrls) ? data.lanUrls : [],
+    };
+  } catch (err: any) {
+    const latencyMs = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt);
+    return {
+      ok: false,
+      latencyMs,
+      error:
+        err?.name === 'AbortError'
+          ? 'انتهت مهلة الاتصال بالسيرفر (6 ثوانٍ) — تأكد من عنوان السيرفر وشبكة الواي فاي.'
+          : 'تعذر الوصول إلى السيرفر المركزي. تأكد من تشغيل البرنامج على اللابتوب ومن فتح المنفذ 3000.',
+    };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -77,6 +164,7 @@ async function refreshAccessToken(): Promise<StoredTokens | null> {
     if (!current?.refreshToken) return null;
     try {
       const base = getConfiguredApiBaseUrl();
+      if (isNativeCapacitor() && !base) return null;
       const res = await fetch(`${base}/api/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -115,6 +203,15 @@ export async function apiRequest<T = any>(
 ): Promise<T> {
   const method = options.method || 'GET';
   const base = getConfiguredApiBaseUrl();
+
+  if (isNativeCapacitor() && !base) {
+    throw new ApiError(
+      0,
+      'لم يتم تحديد عنوان السيرفر المركزي (لابتوب المحل) بعد. يرجى ضبط عنوان السيرفر أولاً.',
+      'SERVER_URL_NOT_CONFIGURED'
+    );
+  }
+
   const url = `${base}${path.startsWith('/') ? path : `/${path}`}`;
 
   const buildHeaders = (accessToken?: string): Record<string, string> => {
@@ -153,10 +250,18 @@ export async function apiRequest<T = any>(
   const tokens = getStoredTokens();
   let res = await executeFetch(tokens?.accessToken);
 
-  if (res.status === 401 && !options.skipAuth && tokens?.refreshToken) {
-    const refreshed = await refreshAccessToken();
-    if (refreshed?.accessToken) {
-      res = await executeFetch(refreshed.accessToken);
+  if (res.status === 401 && !options.skipAuth) {
+    if (tokens?.refreshToken) {
+      const refreshed = await refreshAccessToken();
+      if (refreshed?.accessToken) {
+        res = await executeFetch(refreshed.accessToken);
+      }
+    }
+    if (res.status === 401) {
+      saveStoredTokens(null);
+      if (onAuthExpiredHandler) {
+        onAuthExpiredHandler('انتهت صلاحية جلسة الدخول، يرجى تسجيل الدخول مجدداً.');
+      }
     }
   }
 

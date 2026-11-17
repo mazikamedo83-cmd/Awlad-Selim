@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">AWLAD SELIM</string>
+    <string name="title_activity_main">AWLAD SELIM</string>
+    <string name="package_name">com.awladselim.erp</string>
+    <string name="custom_url_scheme">com.awladselim.erp</string>
+</resources>

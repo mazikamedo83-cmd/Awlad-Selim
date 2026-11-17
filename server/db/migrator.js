@@ -274,8 +274,8 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
         for (const u of users) {
           const algo = String(u.passwordHash || '').startsWith('$2') ? 'bcrypt' : 'legacy_sha256';
           await client.query(`
-            INSERT INTO users (id, full_name, username, password_hash, password_algo, phone, address, notes, role, job_title, department, is_active, must_change_password, last_login, permissions, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            INSERT INTO users (id, full_name, username, password_hash, password_algo, phone, address, notes, role, job_title, department, is_active, must_change_password, last_login, permissions, shortcuts, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
             ON CONFLICT (id) DO UPDATE SET
               full_name = EXCLUDED.full_name,
               username = EXCLUDED.username,
@@ -287,7 +287,8 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
               job_title = EXCLUDED.job_title,
               department = EXCLUDED.department,
               is_active = EXCLUDED.is_active,
-              permissions = EXCLUDED.permissions;
+              permissions = EXCLUDED.permissions,
+              shortcuts = EXCLUDED.shortcuts;
           `, [
             u.id,
             u.fullName || u.username,
@@ -304,6 +305,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             Boolean(u.mustChangePassword),
             u.lastLogin || null,
             JSON.stringify(u.permissions || {}),
+            JSON.stringify(Array.isArray(u.shortcuts) ? u.shortcuts : []),
             u.createdAt || new Date().toISOString(),
           ]);
           details.users++;
@@ -383,15 +385,18 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
           const status = p.status || (p.isActive === false ? 'archived' : 'active');
           const baseUnit = p.baseUnit || p.packageType || 'قطعة';
           await client.query(`
-            INSERT INTO products (id, code, barcode, name, category, category_id, base_unit, size, color, purchase_price, selling_price, min_stock_level, stock_per_warehouse, image, notes, status, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            INSERT INTO products (id, code, barcode, name, category, category_id, base_unit, size, color, purchase_price, selling_price, min_stock_level, stock_per_warehouse, image, notes, status, import_batch_id, imported_from_file, source_file_name, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
             ON CONFLICT (id) DO UPDATE SET
               name = EXCLUDED.name,
               purchase_price = EXCLUDED.purchase_price,
               selling_price = EXCLUDED.selling_price,
               stock_per_warehouse = EXCLUDED.stock_per_warehouse,
               image = EXCLUDED.image,
-              status = EXCLUDED.status;
+              status = EXCLUDED.status,
+              import_batch_id = EXCLUDED.import_batch_id,
+              imported_from_file = EXCLUDED.imported_from_file,
+              source_file_name = EXCLUDED.source_file_name;
           `, [
             p.id,
             p.code || `PRD-${p.id}`,
@@ -409,6 +414,9 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             p.image || null,
             p.notes || '',
             status,
+            p.importBatchId || null,
+            Boolean(p.importedFromFile),
+            p.sourceFileName || null,
             p.createdAt || new Date().toISOString(),
           ]);
           details.products++;
@@ -442,11 +450,20 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
           const secondaryPhone = c.secondaryPhone ?? c.phone2 ?? '';
           const address = c.address ?? c.shopAddress ?? '';
           const geo = c.geoCoordinates ?? c.mapLocation ?? '';
+          const allowedRepIds = Array.from(
+            new Set([
+              ...(c.assignedRepId ? [String(c.assignedRepId)] : []),
+              ...(Array.isArray(c.allowedRepIds) ? c.allowedRepIds.map(String) : []),
+            ].filter(Boolean))
+          );
+          const assignedRepId = c.assignedRepId || allowedRepIds[0] || null;
           await client.query(`
-            INSERT INTO customers (id, code, user_id, name, phone, secondary_phone, phone2, shop_name, shop_photo, photo, address, shop_address, area, geo_coordinates, map_location, opening_balance, current_balance, price_history, notes, status, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+            INSERT INTO customers (id, code, user_id, assigned_rep_id, allowed_rep_ids, name, phone, secondary_phone, phone2, shop_name, shop_photo, photo, address, shop_address, area, geo_coordinates, map_location, opening_balance, current_balance, price_history, notes, status, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
             ON CONFLICT (id) DO UPDATE SET
               user_id = COALESCE(EXCLUDED.user_id, customers.user_id),
+              assigned_rep_id = COALESCE(EXCLUDED.assigned_rep_id, customers.assigned_rep_id),
+              allowed_rep_ids = EXCLUDED.allowed_rep_ids,
               name = EXCLUDED.name,
               phone = EXCLUDED.phone,
               secondary_phone = EXCLUDED.secondary_phone,
@@ -459,6 +476,8 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             c.id,
             c.code || `CUST-${c.id}`,
             linkedUserId,
+            assignedRepId,
+            JSON.stringify(allowedRepIds),
             c.name,
             c.phone || '',
             secondaryPhone,

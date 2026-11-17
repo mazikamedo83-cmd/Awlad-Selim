@@ -953,6 +953,280 @@ async function runSuiteA_JsonLedgerHttp() {
         assert.equal(r.status, 403, `Restricted staff should get 403 on ${m} ${p}, got ${r.status}`);
       }
     });
+
+    let repProfileId, repUserId, tokenRep, repVanWhId;
+
+    await test('23. Capacitor CORS preflight headers allow Android/iOS origins cleanly', async () => {
+      for (const origin of ['capacitor://localhost', 'https://localhost', 'http://localhost']) {
+        const optRes = await fetch(`${baseUrl}/api/health`, {
+          method: 'OPTIONS',
+          headers: {
+            Origin: origin,
+            'Access-Control-Request-Method': 'GET',
+            'Access-Control-Request-Headers': 'Authorization, Content-Type',
+          },
+        });
+        assert.ok(optRes.status >= 200 && optRes.status < 300, `CORS preflight failed for ${origin}`);
+        assert.equal(optRes.headers.get('access-control-allow-origin'), origin);
+      }
+    });
+
+    await test('24. Representative customer allowlist enforces 403 on unassigned customers across bootstrap, GET, price-history & invoices', async () => {
+      // Create representative user account
+      const repUserRes = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          username: 'rep_karim',
+          fullName: 'كريم المندوب',
+          password: 'RepPassword!123',
+          phone: '01099998888',
+          role: 'representative',
+          jobTitle: 'مندوب مبيعات',
+          department: 'المناديب',
+          permissions: {
+            canView: true,
+            canAdd: true,
+            canManageSales: true,
+            canManageReps: false,
+            canManageTransfers: false,
+          },
+        },
+      });
+      assert.equal(repUserRes.status, 201);
+      repUserId = repUserRes.json.user.id;
+
+      // Create representative profile linked 1:1 to userId
+      const repProfRes = await req(baseUrl, 'POST', '/api/admin/representatives', {
+        token: adminToken,
+        body: {
+          name: 'كريم المندوب',
+          phone: '01099998888',
+          userId: repUserId,
+          openingBalance: 0,
+        },
+      });
+      assert.equal(repProfRes.status, 201);
+      repProfileId = repProfRes.json.representative.id;
+
+      // Assign ONLY custA to repProfileId (custB remains unassigned!)
+      const updCustARes = await req(baseUrl, 'PUT', `/api/customers/${custA.id}`, {
+        token: adminToken,
+        body: { allowedRepIds: [repProfileId], assignedRepId: repProfileId },
+      });
+      assert.equal(updCustARes.status, 200);
+
+      const repLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: 'rep_karim', password: 'RepPassword!123' },
+      });
+      assert.equal(repLogin.status, 200);
+      tokenRep = repLogin.json.accessToken;
+
+      // /api/customers & /api/admin/bootstrap return ONLY custA for this rep
+      const repCustList = await req(baseUrl, 'GET', '/api/customers', { token: tokenRep });
+      assert.equal(repCustList.status, 200);
+      assert.deepEqual(repCustList.json.customers.map((c) => c.id), [custA.id]);
+
+      const repBoot = await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: tokenRep });
+      assert.equal(repBoot.status, 200);
+      assert.deepEqual(repBoot.json.data.customers.map((c) => c.id), [custA.id]);
+
+      // Unassigned custB must return 403 everywhere for rep
+      assert.equal((await req(baseUrl, 'GET', `/api/customers/${custB.id}`, { token: tokenRep })).status, 403);
+      assert.equal((await req(baseUrl, 'GET', `/api/customers/${custB.id}/price-history`, { token: tokenRep })).status, 403);
+      const blockedSale = await req(baseUrl, 'POST', '/api/invoices/sales', {
+        token: tokenRep,
+        body: {
+          customerId: custB.id,
+          warehouseId: whMainId,
+          cashboxId: cashboxMainId,
+          status: 'draft',
+          paymentType: 'credit',
+          paidAmount: 0,
+          items: [{ productId: prod1.id, productName: prod1.name, unit: 'قطعة', unitFactor: 1, quantity: 1, unitPrice: 11 }],
+        },
+      });
+      assert.equal(blockedSale.status, 403);
+
+      // Allowed custA price history returns structured dates & prices isolated to custA
+      const phRes = await req(baseUrl, 'GET', `/api/customers/${custA.id}/price-history`, { token: tokenRep });
+      assert.equal(phRes.status, 200);
+      const prod1History = phRes.json.priceHistory[prod1.id] || [];
+      assert.ok(prod1History.length >= 1, 'Expected last selling prices for custA');
+      assert.equal(Number(prod1History[0].price), 125);
+      assert.ok(Boolean(prod1History[0].date), 'Price history entry should include invoice date');
+    });
+
+    await test('25. Rep shortage draft + linked transfer: blocks rep approve/execute (403), confirms draft once after admin executes', async () => {
+      // Create or fetch rep van warehouse (initially 0 stock of prod1)
+      const vanRes = await req(baseUrl, 'POST', '/api/inventory/rep-van-warehouse', {
+        token: tokenRep,
+        body: { repName: 'كريم المندوب' },
+      });
+      assert.equal(vanRes.status, 200);
+      repVanWhId = vanRes.json.warehouse.id;
+
+      // Save shortage invoice as draft against repVanWhId (0 in van, requested 4 pieces)
+      const bootBefore = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const mainBefore = bootBefore.products.find((p) => p.id === prod1.id).stockPerWarehouse[whMainId];
+      const custABefore = bootBefore.customers.find((c) => c.id === custA.id).currentBalance;
+
+      const repDraftRes = await req(baseUrl, 'POST', '/api/invoices/sales', {
+        token: tokenRep,
+        body: {
+          customerId: custA.id,
+          warehouseId: repVanWhId,
+          cashboxId: cashboxMainId,
+          status: 'draft',
+          paymentType: 'credit',
+          paidAmount: 0,
+          items: [{ productId: prod1.id, productName: prod1.name, unit: 'قطعة', unitFactor: 1, quantity: 4, unitPrice: 12 }],
+        },
+      });
+      assert.equal(repDraftRes.status, 201);
+      const repDraftInv = repDraftRes.json.invoice;
+      assert.equal(repDraftInv.status, 'draft');
+
+      // Rep creates linked item transfer request from whMainId -> repVanWhId
+      const trCreate = await req(baseUrl, 'POST', '/api/inventory/rep-item-transfers', {
+        token: tokenRep,
+        body: {
+          invoiceId: repDraftInv.id,
+          invoiceNumber: repDraftInv.invoiceNumber,
+          sourceWarehouseId: whMainId,
+          sourceWarehouseName: 'المستودع الرئيسي',
+          targetWarehouseId: repVanWhId,
+          targetWarehouseName: vanRes.json.warehouse.name,
+          items: [
+            {
+              productId: prod1.id,
+              productName: prod1.name,
+              unit: 'قطعة',
+              requestedQty: 4,
+              availableInVanQty: 0,
+              shortageQty: 4,
+            },
+          ],
+        },
+      });
+      assert.equal(trCreate.status, 201);
+      const trId = trCreate.json.request.id;
+
+      // Cannot confirm draft invoice while linked transfer is pending
+      const blockedConfirmPending = await req(baseUrl, 'POST', `/api/invoices/${repDraftInv.id}/confirm`, {
+        token: tokenRep,
+      });
+      assert.equal(blockedConfirmPending.status, 409);
+
+      // Rep CANNOT approve or execute transfer themselves -> 403!
+      for (const badStatus of ['approved', 'executed', 'rejected']) {
+        const repBadStatus = await req(baseUrl, 'POST', `/api/inventory/rep-item-transfers/${trId}/status`, {
+          token: tokenRep,
+          body: { status: badStatus },
+        });
+        assert.equal(repBadStatus.status, 403, `Rep MUST get 403 attempting ${badStatus}`);
+      }
+
+      // Admin approves then executes transfer (moves 4 pieces whMainId -> repVanWhId)
+      assert.equal(
+        (await req(baseUrl, 'POST', `/api/inventory/rep-item-transfers/${trId}/status`, {
+          token: adminToken,
+          body: { status: 'approved' },
+        })).status,
+        200
+      );
+      assert.equal(
+        (await req(baseUrl, 'POST', `/api/inventory/rep-item-transfers/${trId}/status`, {
+          token: adminToken,
+          body: { status: 'executed' },
+        })).status,
+        200
+      );
+
+      // Rep confirms actual receipt ('received')
+      const repReceipt = await req(baseUrl, 'POST', `/api/inventory/rep-item-transfers/${trId}/status`, {
+        token: tokenRep,
+        body: { status: 'received', notes: 'تم استلام البضاعة في السيارة' },
+      });
+      assert.equal(repReceipt.status, 200);
+
+      // Now rep confirms draft invoice ONCE
+      const repConfirmInv = await req(baseUrl, 'POST', `/api/invoices/${repDraftInv.id}/confirm`, {
+        token: tokenRep,
+      });
+      assert.equal(repConfirmInv.status, 200);
+      assert.equal(repConfirmInv.json.invoice.status, 'confirmed');
+
+      const bootAfter = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const pAfter = bootAfter.products.find((p) => p.id === prod1.id);
+      assert.equal(pAfter.stockPerWarehouse[whMainId], mainBefore - 4);
+      assert.equal(pAfter.stockPerWarehouse[repVanWhId], 0); // +4 transferred then -4 sold cleanly!
+      assert.equal(bootAfter.customers.find((c) => c.id === custA.id).currentBalance, custABefore + 48);
+    });
+
+    await test('26. Customer /api/invoices/my, /api/customers/me/statement & mobileConfig price/app flags', async () => {
+      // Customer A gets own invoices & statement
+      const myInvRes = await req(baseUrl, 'GET', '/api/invoices/my', { token: tokenCustA });
+      assert.equal(myInvRes.status, 200);
+      assert.ok(myInvRes.json.invoices.length >= 2);
+      assert.ok(myInvRes.json.invoices.every((inv) => inv.customerId === custA.id));
+
+      const stmtRes = await req(baseUrl, 'GET', '/api/customers/me/statement', { token: tokenCustA });
+      assert.equal(stmtRes.status, 200);
+      assert.equal(stmtRes.json.customer.id, custA.id);
+      assert.ok(stmtRes.json.entries.length >= 2);
+
+      // Customer B must NEVER see any invoices belonging to Customer A
+      const bStmtRes = await req(baseUrl, 'GET', '/api/customers/me/statement', { token: tokenCustB });
+      assert.equal(bStmtRes.status, 200);
+      assert.equal(bStmtRes.json.customer.id, custB.id);
+      assert.ok(bStmtRes.json.invoices.every((inv) => inv.customerId === custB.id));
+      assert.equal(bStmtRes.json.invoices.some((inv) => inv.customerId === custA.id), false);
+
+      // Disable allowCustomerPriceView -> prices hidden on /api/products & statements
+      await req(baseUrl, 'PUT', '/api/admin/settings', {
+        token: adminToken,
+        body: { mobileConfig: { allowCustomerPriceView: false, enableCustomerApp: true } },
+      });
+      const hiddenPriceProd = await req(baseUrl, 'GET', '/api/products', { token: tokenCustA });
+      assert.equal(hiddenPriceProd.status, 200);
+      assert.equal(hiddenPriceProd.json.products[0].sellingPrice, 0);
+      assert.equal(hiddenPriceProd.json.products[0].hidePrices, true);
+
+      const hiddenStmt = await req(baseUrl, 'GET', '/api/customers/me/statement', { token: tokenCustA });
+      assert.equal(hiddenStmt.status, 200);
+      assert.equal(hiddenStmt.json.allowPriceView, false);
+
+      // Disable enableCustomerApp -> blocks customer endpoints cleanly (403)
+      await req(baseUrl, 'PUT', '/api/admin/settings', {
+        token: adminToken,
+        body: { mobileConfig: { allowCustomerPriceView: true, enableCustomerApp: false } },
+      });
+      assert.equal((await req(baseUrl, 'GET', '/api/products', { token: tokenCustA })).status, 403);
+      assert.equal((await req(baseUrl, 'GET', '/api/customers/me/statement', { token: tokenCustA })).status, 403);
+
+      // Restore defaults
+      await req(baseUrl, 'PUT', '/api/admin/settings', {
+        token: adminToken,
+        body: { mobileConfig: { allowCustomerPriceView: true, enableCustomerApp: true, enableRepApp: true } },
+      });
+    });
+
+    await test('27. Mobile role-scoped notifications endpoint returns real alerts without leaking cross-user events', async () => {
+      const custNotifs = await req(baseUrl, 'GET', '/api/mobile/notifications', { token: tokenCustA });
+      assert.equal(custNotifs.status, 200);
+      assert.ok(Array.isArray(custNotifs.json.notifications));
+      assert.ok(custNotifs.json.notifications.length >= 1, 'Expected customer notifications from invoiced/rejected orders');
+
+      const custBNotifs = await req(baseUrl, 'GET', '/api/mobile/notifications', { token: tokenCustB });
+      assert.equal(custBNotifs.status, 200);
+      const custARelatedIds = new Set(custNotifs.json.notifications.map((n) => n.relatedId).filter(Boolean));
+      const leakedToB = custBNotifs.json.notifications.filter((n) => custARelatedIds.has(n.relatedId));
+      assert.equal(leakedToB.length, 0, 'Customer B must never receive any Customer A notifications');
+
+      const repNotifs = await req(baseUrl, 'GET', '/api/mobile/notifications', { token: tokenRep });
+      assert.equal(repNotifs.status, 200);
+      assert.ok(Array.isArray(repNotifs.json.notifications));
+    });
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

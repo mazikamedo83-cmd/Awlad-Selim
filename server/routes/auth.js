@@ -6,7 +6,10 @@ import {
   refreshUserSession,
   logoutSession,
   changeOwnPassword,
+  getOwnShortcuts,
+  updateOwnShortcuts,
 } from '../db/stores/authStore.js';
+import { getSystemSettingsSafe } from '../db/stores/catalogStore.js';
 import {
   asyncHandler,
   checkLoginRateLimit,
@@ -49,7 +52,8 @@ router.post(
         deviceInfo: req.get('user-agent') || '',
       });
       clearLoginFailure(req);
-      res.json({ ok: true, ...result });
+      const sysSettings = await getSystemSettingsSafe();
+      res.json({ ok: true, ...result, mobileConfig: sysSettings.mobileConfig });
     } catch (err) {
       if (err?.status === 401) {
         await recordLoginFailure(req, req.body?.username);
@@ -85,12 +89,14 @@ router.get(
   '/me',
   requireAuth,
   asyncHandler(async (req, res) => {
+    const sysSettings = await getSystemSettingsSafe();
     res.json({
       ok: true,
       user: req.auth.user,
       customerProfile: req.auth.customerProfile,
       representativeProfile: req.auth.representativeProfile,
       linkWarning: req.auth.linkWarning,
+      mobileConfig: sysSettings.mobileConfig,
     });
   })
 );
@@ -108,6 +114,28 @@ router.put(
       { ipAddress: getClientIp(req), deviceInfo: req.get('user-agent') || '' }
     );
     res.json({ ok: true, message: 'تم تحديث كلمة المرور بنجاح' });
+  })
+);
+
+router.get(
+  '/shortcuts',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const shortcuts = await getOwnShortcuts(req.auth.user.id);
+    res.json({ ok: true, shortcuts });
+  })
+);
+
+router.put(
+  '/shortcuts',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const result = await updateOwnShortcuts(
+      req.auth.user.id,
+      req.body?.shortcuts ?? [],
+      { ipAddress: getClientIp(req), deviceInfo: req.get('user-agent') || '' }
+    );
+    res.json({ ok: true, ...result });
   })
 );
 

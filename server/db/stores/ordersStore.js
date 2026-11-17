@@ -16,13 +16,29 @@ import {
 import { isPgMode, mapPgOrderRow } from './mode.js';
 import { recordAuditLog } from './authStore.js';
 import { createInvoiceInsidePgTx, createInvoiceInsideJsonTx } from './invoicesStore.js';
+import {
+  getRepresentativeByUserId,
+  listCustomers,
+  isCustomerAllowedForRep,
+  getSystemSettingsSafe,
+} from './catalogStore.js';
 
 export async function listOrders(authContext, filters = {}) {
   const isCustomer = authContext.user.role === 'customer';
+  const isRep = authContext.user.role === 'representative';
   const targetCustomerId = isCustomer ? authContext.customerProfile?.id || null : filters.customerId || null;
 
   if (isCustomer && !targetCustomerId) {
     return [];
+  }
+
+  let allowedCustomerIds = null;
+  if (isRep) {
+    const rep = authContext.representativeProfile || (await getRepresentativeByUserId(authContext.user.id));
+    if (!rep) return [];
+    const allowedCusts = await listCustomers({ forRepId: rep.id });
+    allowedCustomerIds = new Set(allowedCusts.map((c) => c.id));
+    if (allowedCustomerIds.size === 0) return [];
   }
 
   if (await isPgMode()) {
@@ -61,13 +77,15 @@ export async function listOrders(authContext, filters = {}) {
       histMap.set(h.order_id, list);
     }
 
-    return ordRes.rows.map((r) => mapPgOrderRow(r, itemsMap.get(r.id) || [], histMap.get(r.id) || []));
+    const list = ordRes.rows.map((r) => mapPgOrderRow(r, itemsMap.get(r.id) || [], histMap.get(r.id) || []));
+    return allowedCustomerIds ? list.filter((o) => allowedCustomerIds.has(o.customerId)) : list;
   }
 
   const db = readJsonDatabase();
   return db.customerItemOrders
     .filter((o) => {
       if (targetCustomerId && o.customerId !== targetCustomerId) return false;
+      if (allowedCustomerIds && !allowedCustomerIds.has(o.customerId)) return false;
       if (filters.status && o.status !== filters.status) return false;
       return true;
     })
@@ -84,6 +102,13 @@ export async function getOrderById(orderId, authContext) {
     if (authContext.user.role === 'customer' && row.customer_id !== authContext.customerProfile?.id) {
       throw new AppError(403, 'غير مصرح لك بعرض طلبات عميل آخر', 'FORBIDDEN_ORDER_ACCESS');
     }
+    if (authContext.user.role === 'representative') {
+      const rep = authContext.representativeProfile || (await getRepresentativeByUserId(authContext.user.id));
+      const allowedCusts = rep ? await listCustomers({ forRepId: rep.id }) : [];
+      if (!allowedCusts.some((c) => c.id === row.customer_id)) {
+        throw new AppError(403, 'غير مصرح لك بعرض طلبات عميل غير معين لك', 'FORBIDDEN_ORDER_ACCESS');
+      }
+    }
 
     const itemsRes = await pool.query(`SELECT * FROM customer_item_order_items WHERE order_id = $1`, [orderId]);
     const histRes = await pool.query(`SELECT * FROM order_status_history WHERE order_id = $1 ORDER BY changed_at ASC`, [orderId]);
@@ -96,12 +121,23 @@ export async function getOrderById(orderId, authContext) {
   if (authContext.user.role === 'customer' && order.customerId !== authContext.customerProfile?.id) {
     throw new AppError(403, 'غير مصرح لك بعرض طلبات عميل آخر', 'FORBIDDEN_ORDER_ACCESS');
   }
+  if (authContext.user.role === 'representative') {
+    const rep = authContext.representativeProfile || (await getRepresentativeByUserId(authContext.user.id));
+    const cust = db.customers.find((c) => c.id === order.customerId);
+    if (!rep || !isCustomerAllowedForRep(cust, rep.id)) {
+      throw new AppError(403, 'غير مصرح لك بعرض طلبات عميل غير معين لك', 'FORBIDDEN_ORDER_ACCESS');
+    }
+  }
   return order;
 }
 
 export async function createCustomerOrder(payload, authContext) {
   const actor = authContext.user;
   const isCustomer = actor.role === 'customer';
+  const settings = await getSystemSettingsSafe();
+  if (isCustomer && settings.mobileConfig?.enableCustomerApp === false) {
+    throw new AppError(403, 'استقبال طلبات العملاء من تطبيق الموبايل متوقف حاليًا من إعدادات الإدارة', 'CUSTOMER_APP_DISABLED');
+  }
 
   // Strictly determine authoritative customerId — NEVER trust client customerId for customer accounts
   let targetCustomerId = isCustomer ? authContext.customerProfile?.id : payload.customerId;
@@ -139,6 +175,13 @@ export async function createCustomerOrder(payload, authContext) {
       const cust = custRes.rows[0];
       if (!cust) throw new AppError(404, 'ملف العميل غير موجود', 'CUSTOMER_NOT_FOUND');
       if (cust.status === 'blocked') throw new AppError(403, 'حساب العميل موقوف حاليًا ولا يمكنه إرسال طلبات', 'CUSTOMER_BLOCKED');
+      if (actor.role === 'representative') {
+        const rep = authContext.representativeProfile || (await getRepresentativeByUserId(actor.id));
+        const { mapPgCustomerRow } = await import('./mode.js');
+        if (!rep || !isCustomerAllowedForRep(mapPgCustomerRow(cust), rep.id)) {
+          throw new AppError(403, 'غير مصرح لك بإنشاء طلب لعميل غير معين في قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
+        }
+      }
 
       const resolvedItems = [];
       for (const item of rawItems) {
@@ -250,6 +293,12 @@ export async function createCustomerOrder(payload, authContext) {
     const cust = db.customers.find((c) => c.id === targetCustomerId);
     if (!cust) throw new AppError(404, 'ملف العميل غير موجود', 'CUSTOMER_NOT_FOUND');
     if (cust.status === 'blocked') throw new AppError(403, 'حساب العميل موقوف حاليًا ولا يمكنه إرسال طلبات', 'CUSTOMER_BLOCKED');
+    if (actor.role === 'representative') {
+      const rep = authContext.representativeProfile || (db.representatives || []).find((r) => r.userId === actor.id);
+      if (!rep || !isCustomerAllowedForRep(cust, rep.id)) {
+        throw new AppError(403, 'غير مصرح لك بإنشاء طلب لعميل غير معين في قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
+      }
+    }
 
     const resolvedItems = [];
     for (const item of rawItems) {

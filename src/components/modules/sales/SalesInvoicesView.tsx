@@ -6,9 +6,11 @@ import {
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
+import { useShortcuts } from '../../../context/ShortcutsContext';
 import { Invoice, InvoiceItem } from '../../../types';
 import { NewSaleInvoiceModal } from './NewSaleInvoiceModal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
+import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { exportToExcel } from '../../common/ExcelExporter';
 
 export interface SalesInvoicesViewProps {
@@ -22,6 +24,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
 }) => {
   const { invoices, customers, cashboxes, settings, cancelInvoice, confirmDraftInvoice, addInvoicePayment, editSalesInvoice } = useData();
   const { hasPermission } = useAuth();
+  const { registerHandler } = useShortcuts();
 
   const [isNewModalOpen, setIsNewModalOpen] = useState(initialOpenNew);
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -48,6 +51,11 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
   // Detail View modal state
   const [activeInvoice, setActiveInvoice] = useState<Invoice | null>(null);
 
+  // Confirm Dialogs state (Cancel invoice / Confirm Draft)
+  const [cancelTarget, setCancelTarget] = useState<Invoice | null>(null);
+  const [confirmDraftTarget, setConfirmDraftTarget] = useState<Invoice | null>(null);
+  const [isConfirmLoading, setIsConfirmLoading] = useState(false);
+
   // Subsequent Payment on Invoice Modal state
   const [paymentModalInvoice, setPaymentModalInvoice] = useState<Invoice | null>(null);
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
@@ -57,6 +65,12 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
   const [paymentNotes, setPaymentNotes] = useState<string>('');
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!cashboxes.some((c) => c.id === paymentCashboxId) && cashboxes[0]?.id) {
+      setPaymentCashboxId(cashboxes[0].id);
+    }
+  }, [cashboxes, paymentCashboxId]);
 
   // Edit Invoice Modal state
   const [editModalInvoice, setEditModalInvoice] = useState<Invoice | null>(null);
@@ -150,28 +164,42 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
     exportToExcel(`فواتير_مبيعات_أولاد_سليم_${new Date().toISOString().split('T')[0]}`, headers, rows);
   };
 
-  const handleCancelInvoice = async (inv: Invoice) => {
-    const reason = prompt('يرجى كتابة سبب إلغاء الفاتورة:');
-    if (!reason) return;
-    const res = await cancelInvoice(inv.id, reason);
+  const handleExecuteCancelInvoice = async (reason?: string) => {
+    if (!cancelTarget || !reason) return;
+    setIsConfirmLoading(true);
+    const res = await cancelInvoice(cancelTarget.id, reason);
+    setIsConfirmLoading(false);
     if (!res.success) {
       setActionMessage({ type: 'error', text: res.error || 'تعذر إلغاء الفاتورة' });
     } else {
-      setActionMessage({ type: 'success', text: `تم إلغاء الفاتورة (${inv.invoiceNumber}) بنجاح.` });
+      setActionMessage({ type: 'success', text: `تم إلغاء الفاتورة (${cancelTarget.invoiceNumber}) بنجاح.` });
+      setCancelTarget(null);
     }
   };
 
-  const handleConfirmDraft = async (inv: Invoice) => {
-    if (!window.confirm(`هل تريد اعتماد الفاتورة المسودة (${inv.invoiceNumber}) الآن؟ سيتم خصم المخزون وتحديث الأرصدة المالية.`)) {
-      return;
-    }
-    const res = await confirmDraftInvoice(inv.id);
+  const handleExecuteConfirmDraft = async () => {
+    if (!confirmDraftTarget) return;
+    setIsConfirmLoading(true);
+    const res = await confirmDraftInvoice(confirmDraftTarget.id);
+    setIsConfirmLoading(false);
     if (!res.success) {
       setActionMessage({ type: 'error', text: res.error || 'تعذر اعتماد الفاتورة المسودة' });
     } else {
-      setActionMessage({ type: 'success', text: `تم اعتماد الفاتورة (${inv.invoiceNumber}) وتحديث المخزون والحسابات بنجاح.` });
+      setActionMessage({ type: 'success', text: `تم اعتماد الفاتورة (${confirmDraftTarget.invoiceNumber}) وتحديث المخزون والحسابات بنجاح.` });
+      setConfirmDraftTarget(null);
     }
   };
+
+  useEffect(() => {
+    const unregPrint = registerHandler('action:print_document', () => {
+      if (activeInvoice) {
+        handlePrint(activeInvoice);
+      } else if (filteredInvoices.length > 0 && !isNewModalOpen) {
+        handlePrint(filteredInvoices[0]);
+      }
+    });
+    return () => unregPrint();
+  }, [registerHandler, activeInvoice, filteredInvoices, isNewModalOpen]);
 
   // Handle Opening Payment Modal
   const handleOpenPaymentModal = (inv: Invoice) => {
@@ -421,7 +449,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                       <div className="flex items-center justify-center gap-1.5">
                         {inv.status === 'draft' && (
                           <button
-                            onClick={() => handleConfirmDraft(inv)}
+                            onClick={() => setConfirmDraftTarget(inv)}
                             className="p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50 border border-emerald-200 transition-colors cursor-pointer"
                             title="اعتماد الفاتورة المسودة وخصم المخزون"
                           >
@@ -462,7 +490,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                         </button>
                         {inv.status !== 'cancelled' && (
                           <button
-                            onClick={() => handleCancelInvoice(inv)}
+                            onClick={() => setCancelTarget(inv)}
                             className="p-1.5 rounded-lg text-red-400 hover:text-red-700 hover:bg-red-50 transition-colors"
                             title="إلغاء الفاتورة"
                           >
@@ -483,9 +511,42 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
       <NewSaleInvoiceModal
         isOpen={isNewModalOpen}
         onClose={() => setIsNewModalOpen(false)}
-        onInvoiceCreated={(newInv) => {
-          handlePrint(newInv);
+        onInvoiceCreated={(newInv, shouldPrint) => {
+          setActionMessage({
+            type: 'success',
+            text: `تم حفظ الفاتورة رقم (${newInv.invoiceNumber}) بنجاح${newInv.status === 'draft' ? ' (كمسودة)' : ''}.`,
+          });
+          if (shouldPrint) {
+            handlePrint(newInv);
+          }
         }}
+      />
+
+      {/* Cancel Invoice Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={!!cancelTarget}
+        onClose={() => setCancelTarget(null)}
+        onConfirm={handleExecuteCancelInvoice}
+        title={`إلغاء الفاتورة ${cancelTarget?.invoiceNumber || ''}`}
+        message="سيتم إلغاء الفاتورة ورد الكميات إلى المخزن وتسوية رصيد العميل والخزينة. يرجى كتابة سبب الإلغاء:"
+        confirmLabel="تأكيد إلغاء الفاتورة"
+        variant="danger"
+        requireInput
+        inputLabel="سبب الإلغاء:"
+        inputPlaceholder="اكتب سبب إلغاء الفاتورة..."
+        isLoading={isConfirmLoading}
+      />
+
+      {/* Confirm Draft Invoice Dialog */}
+      <ConfirmDialog
+        isOpen={!!confirmDraftTarget}
+        onClose={() => setConfirmDraftTarget(null)}
+        onConfirm={handleExecuteConfirmDraft}
+        title={`اعتماد المسودة ${confirmDraftTarget?.invoiceNumber || ''}`}
+        message={`هل تريد اعتماد الفاتورة المسودة (${confirmDraftTarget?.invoiceNumber || ''}) الآن؟ سيتم خصم المخزون وتحديث الأرصدة المالية.`}
+        confirmLabel="اعتماد الفاتورة الآن"
+        variant="success"
+        isLoading={isConfirmLoading}
       />
 
       {/* Print Document Modal */}

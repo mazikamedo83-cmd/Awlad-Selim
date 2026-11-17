@@ -180,17 +180,17 @@ router.post('/representatives', requirePermission('canManageReps'), asyncHandler
   res.status(201).json({ ok: true, representative });
 }));
 router.put('/representatives/:id', requirePermission('canManageReps'), asyncHandler(async (req, res) => {
-  await updateRepresentative(req.params.id, req.body || {});
+  await updateRepresentative(req.params.id, req.body || {}, req.auth.user);
   res.json({ ok: true });
 }));
 
 // Employees & Payroll
 router.post('/employees', requirePermission('canManageEmployees'), asyncHandler(async (req, res) => {
-  const employee = await addEmployee(req.body || {});
+  const employee = await addEmployee(req.body || {}, req.auth.user);
   res.status(201).json({ ok: true, employee });
 }));
 router.put('/employees/:id', requirePermission('canManageEmployees'), asyncHandler(async (req, res) => {
-  await updateEmployee(req.params.id, req.body || {});
+  await updateEmployee(req.params.id, req.body || {}, req.auth.user);
   res.json({ ok: true });
 }));
 router.post('/advances', requirePermission('canManageSalaries'), asyncHandler(async (req, res) => {

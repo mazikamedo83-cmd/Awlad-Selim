@@ -1,3 +1,5 @@
+import { isNativeCapacitor, saveAndShareDocument } from '../../services/native';
+
 /**
  * Helper to export tabular data to CSV with UTF-8 BOM for perfect Excel compatibility with Arabic text
  */
@@ -19,11 +21,22 @@ export function exportToExcel(filename: string, headers: string[], rows: (string
 
   // Prepend UTF-8 BOM so Excel opens Arabic correctly
   const csvContent = '\uFEFF' + csvRows.join('\r\n');
+  const cleanFilename = filename.endsWith('.csv') ? filename : `${filename}.csv`;
+
+  if (isNativeCapacitor()) {
+    saveAndShareDocument({
+      filename: cleanFilename,
+      content: csvContent,
+      mimeType: 'text/csv;charset=utf-8;',
+      title: cleanFilename,
+    }).catch(() => {});
+    return;
+  }
+
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.setAttribute('href', url);
-  const cleanFilename = filename.endsWith('.csv') ? filename : `${filename}.csv`;
   link.setAttribute('download', cleanFilename);
   link.style.visibility = 'hidden';
   document.body.appendChild(link);

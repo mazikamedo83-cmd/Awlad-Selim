@@ -118,16 +118,23 @@ export function mapPgUserRow(r) {
     mustChangePassword: Boolean(r.must_change_password),
     lastLogin: r.last_login ? isoTimestamp(r.last_login) : undefined,
     permissions: r.permissions || {},
+    shortcuts: Array.isArray(r.shortcuts) ? r.shortcuts : [],
     createdAt: isoTimestamp(r.created_at),
   };
 }
 
 export function mapPgCustomerRow(r) {
   if (!r) return null;
+  const rawAllowed = Array.isArray(r.allowed_rep_ids) ? r.allowed_rep_ids.filter(Boolean) : [];
+  const mergedAllowed = Array.from(
+    new Set([...(r.assigned_rep_id ? [String(r.assigned_rep_id)] : []), ...rawAllowed.map(String)])
+  );
   return {
     id: r.id,
     code: r.code,
     userId: r.user_id || undefined,
+    assignedRepId: r.assigned_rep_id || mergedAllowed[0] || undefined,
+    allowedRepIds: mergedAllowed,
     name: r.name,
     phone: r.phone || '',
     secondaryPhone: r.secondary_phone || r.phone2 || undefined,
@@ -173,6 +180,9 @@ export function mapPgProductRow(r, units = []) {
     image: r.image || undefined,
     notes: r.notes || '',
     status: r.status || 'active',
+    importBatchId: r.import_batch_id || undefined,
+    importedFromFile: Boolean(r.imported_from_file),
+    sourceFileName: r.source_file_name || undefined,
     createdAt: isoTimestamp(r.created_at),
   };
 }

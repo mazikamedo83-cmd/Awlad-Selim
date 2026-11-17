@@ -163,6 +163,56 @@ export function saveOfflineOrdersQueue(queue: QueuedCustomerOrder[]): void {
   }
 }
 
+const READ_CACHE_KEY = 'awlad_selim_read_cache_v1';
+
+export interface MobileReadCacheSnapshot<T = any> {
+  userId: string;
+  role: string;
+  cachedAt: string;
+  data: T;
+}
+
+export function saveReadCache<T = any>(userId: string, role: string, data: T): void {
+  if (!userId || !role) return;
+  try {
+    const payload: MobileReadCacheSnapshot<T> = {
+      userId,
+      role,
+      cachedAt: new Date().toISOString(),
+      data,
+    };
+    localStorage.setItem(READ_CACHE_KEY, JSON.stringify(payload));
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
+export function loadReadCache<T = any>(
+  userId: string,
+  role: string
+): MobileReadCacheSnapshot<T> | null {
+  if (!userId || !role) return null;
+  try {
+    const raw = localStorage.getItem(READ_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as MobileReadCacheSnapshot<T>;
+    if (parsed?.userId !== userId || parsed?.role !== role || !parsed?.data) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function clearReadCache(): void {
+  try {
+    localStorage.removeItem(READ_CACHE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 // Non-destructive guard: preserve any legacy browser-side database snapshots untouched
 export function purgeLegacyLocalDatabaseCache(): void {
   // Intentionally left non-destructive so legacy browser data is never wiped automatically.

@@ -1,13 +1,14 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   ArrowLeftRight, CheckCircle2, XCircle, Clock, AlertCircle, Plus, 
-  Search, Filter, ShieldCheck, Printer, History, User, Building2, 
-  HelpCircle, Check, Boxes, Package, Truck, Edit, Eye, FileText
+  Search, Printer, History, User, Boxes, Truck, Edit, Eye, Check
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
-import { RepTransfer, RepItemTransferRequest, RepTransferItem, Representative } from '../../../types';
+import { RepTransfer, RepItemTransferRequest, Representative } from '../../../types';
 import { Modal } from '../../common/Modal';
+import { ConfirmDialog } from '../../common/ConfirmDialog';
+import { ProductSearchSelect } from '../../common/ProductSearchSelect';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 
 interface RepTransferViewProps {
@@ -23,6 +24,25 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
   const { currentUser, hasPermission } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'cash-transfers' | 'item-transfers' | 'reps-list'>(initialTab);
+  const [statusBanner, setStatusBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    variant: 'danger' | 'warning' | 'info' | 'success';
+    requireInput?: boolean;
+    inputLabel?: string;
+    inputPlaceholder?: string;
+    onConfirm: (inputValue?: string) => Promise<void> | void;
+  } | null>(null);
+
+  const repProdSearchRef = useRef<HTMLInputElement | null>(null);
+  const repProdQtyRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   // Cash Transfers state
   const [isNewCashModalOpen, setIsNewCashModalOpen] = useState(false);
@@ -71,6 +91,21 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
   const [repPhone, setRepPhone] = useState('');
   const [repVehicle, setRepVehicle] = useState('');
   const [repOpening, setRepOpening] = useState(0);
+
+  // Sync defaults when async data arrives
+  useEffect(() => {
+    if (representatives.length > 0) {
+      if (!selectedRepId) setSelectedRepId(representatives[0].id);
+      if (!itemReqRepId) setItemReqRepId(representatives[0].id);
+    }
+    if (cashboxes.length > 0 && !selectedCashboxId) {
+      setSelectedCashboxId(cashboxes[0].id);
+    }
+    if (warehouses.length > 0) {
+      if (!itemReqSourceWhId) setItemReqSourceWhId(warehouses[0].id);
+      if (!itemReqTargetWhId) setItemReqTargetWhId((warehouses[1] || warehouses[0]).id);
+    }
+  }, [representatives, cashboxes, warehouses, selectedRepId, itemReqRepId, selectedCashboxId, itemReqSourceWhId, itemReqTargetWhId]);
 
   // Role constraint: If current user is a representative, default to rep_to_owner and filter to their own transfers
   const isRepUser = currentUser?.role === 'representative';
@@ -171,25 +206,46 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
     }
   };
 
-  const handleConfirmReceipt = async (t: RepTransfer) => {
-    if (!window.confirm(`هل أنت متأكد من تأكيد استلام مبلغ (${t.amount.toLocaleString()} ${settings.currency}) الخاص بالتحويل ${t.transferNumber}؟ سيتم تحديث أرصدة الخزينة وحساب المندوب فوراً.`)) {
-      return;
-    }
-
-    const res = await confirmRepTransferReceipt(t.id, 'تم التأكيد والاستلام الفعلي');
-    if (!res.success) {
-      setError(res.error || 'فشل تأكيد الاستلام');
-    }
+  const handleConfirmReceipt = (t: RepTransfer) => {
+    setConfirmState({
+      isOpen: true,
+      title: 'تأكيد استلام التحويل النقدي',
+      message: `هل أنت متأكد من تأكيد استلام مبلغ (${t.amount.toLocaleString()} ${settings.currency}) الخاص بالتحويل ${t.transferNumber}؟ سيتم تحديث أرصدة الخزينة وحساب المندوب فوراً.`,
+      confirmLabel: 'تأكيد الاستلام',
+      variant: 'success',
+      onConfirm: async () => {
+        setConfirmState(null);
+        const res = await confirmRepTransferReceipt(t.id, 'تم التأكيد والاستلام الفعلي');
+        if (!res.success) {
+          setStatusBanner({ type: 'error', text: res.error || 'فشل تأكيد الاستلام' });
+        } else {
+          setStatusBanner({ type: 'success', text: `تم تأكيد استلام التحويل (${t.transferNumber}) وتحديث الأرصدة.` });
+        }
+      },
+    });
   };
 
-  const handleRejectTransfer = async (t: RepTransfer) => {
-    const reason = prompt('يرجى إدخال سبب رفض استلام هذا التحويل:');
-    if (!reason) return;
-
-    const res = await rejectRepTransfer(t.id, reason);
-    if (!res.success) {
-      setError(res.error || 'فشل رفض التحويل');
-    }
+  const handleRejectTransfer = (t: RepTransfer) => {
+    setConfirmState({
+      isOpen: true,
+      title: 'رفض التحويل النقدي',
+      message: `رفض التحويل رقم (${t.transferNumber}) بمبلغ (${t.amount.toLocaleString()} ${settings.currency}).`,
+      confirmLabel: 'تأكيد الرفض',
+      variant: 'danger',
+      requireInput: true,
+      inputLabel: 'سبب رفض التحويل:',
+      inputPlaceholder: 'اكتب سبب رفض التحويل...',
+      onConfirm: async (reason) => {
+        setConfirmState(null);
+        if (!reason) return;
+        const res = await rejectRepTransfer(t.id, reason);
+        if (!res.success) {
+          setStatusBanner({ type: 'error', text: res.error || 'فشل رفض التحويل' });
+        } else {
+          setStatusBanner({ type: 'success', text: `تم رفض التحويل (${t.transferNumber}).` });
+        }
+      },
+    });
   };
 
   const handlePrintTransfer = (t: RepTransfer) => {
@@ -214,7 +270,6 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
     const prod = products.find(p => p.id === tempProdId);
     if (!prod) return;
 
-    const sourceStock = prod.stockPerWarehouse[itemReqSourceWhId] || 0;
     const vanStock = prod.stockPerWarehouse[itemReqTargetWhId] || 0;
     const shortage = Math.max(0, tempQty - vanStock);
 
@@ -231,6 +286,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
     ]);
     setTempProdId('');
     setTempQty(10);
+    window.setTimeout(() => repProdSearchRef.current?.focus(), 25);
   };
 
   const handleRemoveItemFromReq = (idx: number) => {
@@ -284,28 +340,48 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
     }
   };
 
-  const handleExecuteItemTransfer = async (req: RepItemTransferRequest) => {
-    if (!window.confirm(`هل أنت متأكد من اعتماد ونقل بضاعة هذا الطلب (${req.requestNumber}) من ${req.sourceWarehouseName} إلى عهدة سيارة المندوب ${req.representativeName}؟ سيتم خصم المستودع الرئيسي فوراً.`)) {
-      return;
-    }
-    const res = await updateRepItemTransferStatus(req.id, 'executed');
-    if (!res.success) {
-      alert(res.error || 'فشل تنفيذ تحويل الأصناف');
-    } else {
-      alert('تم تنفيذ التحويل المخزني بنجاح وتحديث عهدة سيارة المندوب!');
-      setActiveItemReqDetail(null);
-    }
+  const handleExecuteItemTransfer = (req: RepItemTransferRequest) => {
+    setConfirmState({
+      isOpen: true,
+      title: 'اعتماد وتنفيذ تحويل العهدة',
+      message: `هل أنت متأكد من اعتماد ونقل بضاعة الطلب (${req.requestNumber}) من ${req.sourceWarehouseName} إلى عهدة سيارة المندوب ${req.representativeName}؟ سيتم خصم المستودع الرئيسي فوراً.`,
+      confirmLabel: 'اعتماد وتنفيذ النقل',
+      variant: 'success',
+      onConfirm: async () => {
+        setConfirmState(null);
+        const res = await updateRepItemTransferStatus(req.id, 'executed');
+        if (!res.success) {
+          setStatusBanner({ type: 'error', text: res.error || 'فشل تنفيذ تحويل الأصناف' });
+        } else {
+          setStatusBanner({ type: 'success', text: 'تم تنفيذ التحويل المخزني بنجاح وتحديث عهدة سيارة المندوب.' });
+          setActiveItemReqDetail(null);
+        }
+      },
+    });
   };
 
-  const handleRejectItemTransfer = async (req: RepItemTransferRequest) => {
-    const reason = prompt('يرجى ذكر سبب رفض طلب تحويل الأصناف:');
-    if (!reason) return;
-    const res = await updateRepItemTransferStatus(req.id, 'rejected', undefined, reason);
-    if (!res.success) {
-      alert(res.error || 'فشل رفض الطلب');
-    } else {
-      setActiveItemReqDetail(null);
-    }
+  const handleRejectItemTransfer = (req: RepItemTransferRequest) => {
+    setConfirmState({
+      isOpen: true,
+      title: 'رفض طلب تحويل الأصناف',
+      message: `رفض طلب تحويل العهدة رقم (${req.requestNumber}) للمندوب ${req.representativeName}.`,
+      confirmLabel: 'تأكيد الرفض',
+      variant: 'danger',
+      requireInput: true,
+      inputLabel: 'سبب رفض طلب تحويل الأصناف:',
+      inputPlaceholder: 'اكتب سبب الرفض...',
+      onConfirm: async (reason) => {
+        setConfirmState(null);
+        if (!reason) return;
+        const res = await updateRepItemTransferStatus(req.id, 'rejected', undefined, reason);
+        if (!res.success) {
+          setStatusBanner({ type: 'error', text: res.error || 'فشل رفض الطلب' });
+        } else {
+          setStatusBanner({ type: 'success', text: `تم رفض الطلب (${req.requestNumber}).` });
+          setActiveItemReqDetail(null);
+        }
+      },
+    });
   };
 
   // Add / Edit Representative
@@ -371,11 +447,18 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
 
   const getItemReqStatusBadge = (status: RepItemTransferRequest['status']) => {
     switch (status) {
+      case 'received':
+        return (
+          <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold">
+            <CheckCircle2 className="w-3 h-3" />
+            <span>تم الاستلام الفعلي بواسطة المندوب</span>
+          </span>
+        );
       case 'executed':
         return (
-          <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+          <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-teal-50 text-teal-800 border border-teal-200 text-[10px] font-bold">
             <Check className="w-3 h-3" />
-            <span>تم التحويل والخصم المخزني</span>
+            <span>تم التنفيذ من المخزن — بانتظار استلام المندوب</span>
           </span>
         );
       case 'approved':
@@ -458,6 +541,21 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           )}
         </div>
       </div>
+
+      {statusBanner && (
+        <div
+          className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between gap-2 ${
+            statusBanner.type === 'success'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+              : 'bg-red-50 border-red-200 text-red-900'
+          }`}
+        >
+          <span>{statusBanner.text}</span>
+          <button type="button" onClick={() => setStatusBanner(null)} className="underline text-[11px] cursor-pointer">
+            إغلاق
+          </button>
+        </div>
+      )}
 
       {/* Tabs Switcher */}
       <div className="flex items-center gap-1.5 p-1.5 bg-slate-200/80 rounded-2xl overflow-x-auto text-xs font-bold no-print">
@@ -679,7 +777,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                               <Eye className="w-3.5 h-3.5" />
                               <span>فحص الأصناف</span>
                             </button>
-                            {req.status === 'pending' && currentUser?.role === 'admin' && (
+                            {req.status === 'pending' && (currentUser?.role === 'admin' || hasPermission('canManageTransfers')) && (
                               <button
                                 onClick={() => handleExecuteItemTransfer(req)}
                                 className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] cursor-pointer"
@@ -947,32 +1045,40 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
 
             {/* Item Selector Box */}
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-              <span className="font-bold text-slate-800 block">إضافة أصناف للطلب:</span>
-              <div className="flex items-center gap-2">
-                <select
-                  value={tempProdId}
-                  onChange={(e) => setTempProdId(e.target.value)}
-                  className="flex-1 p-2 rounded-xl border border-slate-300 bg-white text-xs"
-                >
-                  <option value="">-- اختر الصنف المطلوب --</option>
-                  {products.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} [{p.category}] - المتاح بالرئيسي: {p.stockPerWarehouse[itemReqSourceWhId] || 0} {p.baseUnit}
-                    </option>
-                  ))}
-                </select>
+              <span className="font-bold text-slate-800 block">إضافة أصناف للطلب (بحث فوري):</span>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <div className="flex-1">
+                  <ProductSearchSelect
+                    products={products}
+                    selectedProductId={tempProdId}
+                    onSelect={(prod) => setTempProdId(prod.id)}
+                    onAfterSelect={() => repProdQtyRef.current?.focus()}
+                    warehouseId={itemReqSourceWhId}
+                    warehouses={warehouses}
+                    currency={settings.currency}
+                    inputRef={repProdSearchRef}
+                    placeholder="ابحث باسم الصنف أو الكود أو الباركود..."
+                  />
+                </div>
                 <input
+                  ref={repProdQtyRef}
                   type="number"
                   min={1}
                   value={tempQty}
                   onChange={(e) => setTempQty(parseFloat(e.target.value) || 1)}
-                  className="w-20 p-2 rounded-xl border border-slate-300 text-center font-bold"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddItemToReq();
+                    }
+                  }}
+                  className="w-24 p-2.5 rounded-xl border border-slate-300 text-center font-bold bg-white"
                   placeholder="الكمية"
                 />
                 <button
                   type="button"
                   onClick={handleAddItemToReq}
-                  className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold cursor-pointer"
+                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold cursor-pointer"
                 >
                   إضافة +
                 </button>
@@ -1100,7 +1206,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               <div>{getItemReqStatusBadge(activeItemReqDetail.status)}</div>
 
               <div className="flex items-center gap-2">
-                {activeItemReqDetail.status === 'pending' && currentUser?.role === 'admin' && (
+                {activeItemReqDetail.status === 'pending' && (currentUser?.role === 'admin' || hasPermission('canManageTransfers')) && (
                   <>
                     <button
                       type="button"
@@ -1267,6 +1373,21 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
         onClose={() => setIsPrintModalOpen(false)}
         data={printData}
       />
+
+      {confirmState && (
+        <ConfirmDialog
+          isOpen={confirmState.isOpen}
+          onClose={() => setConfirmState(null)}
+          onConfirm={confirmState.onConfirm}
+          title={confirmState.title}
+          message={confirmState.message}
+          confirmLabel={confirmState.confirmLabel}
+          variant={confirmState.variant}
+          requireInput={confirmState.requireInput}
+          inputLabel={confirmState.inputLabel}
+          inputPlaceholder={confirmState.inputPlaceholder}
+        />
+      )}
     </div>
   );
 };

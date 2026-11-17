@@ -127,6 +127,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onView
     }
   };
 
+  const formatYMD = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
   // Filter calculations based on date filter
   const dateRange = useMemo(() => {
     const now = new Date();
@@ -139,7 +142,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onView
       startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
       endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
     } else if (dateFilter === '7days') {
-      startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
     } else if (dateFilter === 'thisMonth') {
       startDate = new Date(now.getFullYear(), now.getMonth(), 1);
     } else if (dateFilter === 'prevMonth') {
@@ -149,24 +152,61 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onView
       startDate = new Date(now.getFullYear(), 0, 1);
     }
 
-    return { startDate, endDate };
+    return {
+      startStr: formatYMD(startDate),
+      endStr: formatYMD(endDate),
+    };
   }, [dateFilter]);
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = formatYMD(new Date());
+
+  const isWithinPeriod = (dateStr?: string) => {
+    if (!dateStr) return false;
+    const day = dateStr.slice(0, 10);
+    return day >= dateRange.startStr && day <= dateRange.endStr;
+  };
 
   // Sales totals
   const confirmedSales = invoices.filter(i => i.type === 'sales' && i.status === 'confirmed');
-  const totalSales = confirmedSales.reduce((acc, i) => acc + i.grandTotal, 0);
-  const todaySales = confirmedSales.filter(i => i.date === todayStr).reduce((acc, i) => acc + i.grandTotal, 0);
+  const periodSales = confirmedSales.filter(i => isWithinPeriod(i.date));
+  const totalSales = periodSales.reduce((acc, i) => acc + i.grandTotal, 0);
+  const todaySales = confirmedSales.filter(i => (i.date || '').slice(0, 10) === todayStr).reduce((acc, i) => acc + i.grandTotal, 0);
 
   // Purchases totals
   const confirmedPurchases = invoices.filter(i => i.type === 'purchase' && i.status === 'confirmed');
-  const totalPurchases = confirmedPurchases.reduce((acc, i) => acc + i.grandTotal, 0);
-  const todayPurchases = confirmedPurchases.filter(i => i.date === todayStr).reduce((acc, i) => acc + i.grandTotal, 0);
+  const periodPurchases = confirmedPurchases.filter(i => isWithinPeriod(i.date));
+  const totalPurchases = periodPurchases.reduce((acc, i) => acc + i.grandTotal, 0);
+  const todayPurchases = confirmedPurchases.filter(i => (i.date || '').slice(0, 10) === todayStr).reduce((acc, i) => acc + i.grandTotal, 0);
 
-  // Expenses & Income
-  const totalExpenses = expenseIncomes.filter(e => e.type === 'expense').reduce((acc, e) => acc + e.amount, 0);
-  const totalIncome = expenseIncomes.filter(e => e.type === 'income').reduce((acc, e) => acc + e.amount, 0);
+  // Expenses & Income (within selected period)
+  const periodExpensesIncome = expenseIncomes.filter(e => isWithinPeriod(e.date));
+  const totalExpenses = periodExpensesIncome.filter(e => e.type === 'expense').reduce((acc, e) => acc + e.amount, 0);
+  const totalIncome = periodExpensesIncome.filter(e => e.type === 'income').reduce((acc, e) => acc + e.amount, 0);
+
+  // Real last-7-days chart aggregation from confirmed invoices
+  const last7DaysChart = useMemo(() => {
+    const arabicDays = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+    const buckets: Array<{ day: string; dateStr: string; sales: number; purchases: number }> = [];
+    const now = new Date();
+    for (let offset = 6; offset >= 0; offset--) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - offset);
+      const dStr = formatYMD(d);
+      const daySales = confirmedSales
+        .filter(i => (i.date || '').slice(0, 10) === dStr)
+        .reduce((sum, i) => sum + i.grandTotal, 0);
+      const dayPurchases = confirmedPurchases
+        .filter(i => (i.date || '').slice(0, 10) === dStr)
+        .reduce((sum, i) => sum + i.grandTotal, 0);
+      buckets.push({
+        day: offset === 0 ? 'اليوم' : arabicDays[d.getDay()],
+        dateStr: dStr,
+        sales: daySales,
+        purchases: dayPurchases,
+      });
+    }
+    const maxVal = Math.max(1000, ...buckets.map(b => Math.max(b.sales, b.purchases)));
+    return { buckets, maxVal };
+  }, [confirmedSales, confirmedPurchases]);
 
   // Cashbox total
   const totalCashAndBanks = cashboxes.reduce((acc, c) => acc + c.currentBalance, 0);
@@ -177,12 +217,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onView
 
   // Inventory value & low stock alerts
   const inventoryValue = products.reduce((acc, prod) => {
-    const totalQty = Object.values(prod.stockPerWarehouse).reduce((q, v) => q + v, 0);
+    const totalQty = Object.values(prod.stockPerWarehouse || {}).reduce((q, v) => q + v, 0);
     return acc + (totalQty * prod.purchasePrice);
   }, 0);
 
   const lowStockProducts = products.filter(prod => {
-    const totalQty = Object.values(prod.stockPerWarehouse).reduce((q, v) => q + v, 0);
+    if (prod.status === 'archived') return false;
+    const totalQty = Object.values(prod.stockPerWarehouse || {}).reduce((q, v) => q + v, 0);
     return totalQty <= prod.minStockLevel;
   });
 
@@ -190,7 +231,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onView
   const pendingTransfers = repTransfers.filter(t => t.status === 'awaiting_receipt');
 
   // Outstanding installments
-  const overdueInstallmentsCount = installments.flatMap(s => s.items).filter(item => {
+  const overdueInstallmentsCount = installments.flatMap(s => s.items || []).filter(item => {
     return item.status === 'pending' && new Date(item.dueDate) < new Date();
   }).length;
 
@@ -508,33 +549,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onView
             </div>
           </div>
 
-          {/* Responsive CSS Bar Chart */}
+          {/* Responsive CSS Bar Chart (Real 7-day data) */}
           <div className="h-48 pt-6 flex items-end justify-between gap-3 border-b border-slate-200">
-            {[
-              { day: 'السبت', sales: 42000, purchases: 30000 },
-              { day: 'الأحد', sales: 58000, purchases: 20000 },
-              { day: 'الإثنين', sales: 35000, purchases: 45000 },
-              { day: 'الثلاثاء', sales: 65000, purchases: 15000 },
-              { day: 'الأربعاء', sales: 78000, purchases: 50000 },
-              { day: 'الخميس', sales: 92000, purchases: 38000 },
-              { day: 'اليوم', sales: 43500, purchases: 28000 },
-            ].map((d, idx) => {
-              const maxVal = 100000;
-              const salesH = Math.min(100, (d.sales / maxVal) * 100);
-              const purH = Math.min(100, (d.purchases / maxVal) * 100);
+            {last7DaysChart.buckets.map((d, idx) => {
+              const salesH = d.sales > 0 ? Math.max(4, Math.min(100, (d.sales / last7DaysChart.maxVal) * 100)) : 0;
+              const purH = d.purchases > 0 ? Math.max(4, Math.min(100, (d.purchases / last7DaysChart.maxVal) * 100)) : 0;
 
               return (
-                <div key={idx} className="flex-1 flex flex-col items-center gap-1 h-full justify-end group">
+                <div key={d.dateStr || idx} className="flex-1 flex flex-col items-center gap-1 h-full justify-end group">
                   <div className="flex items-end gap-1.5 w-full justify-center h-full">
-                    <div 
-                      style={{ height: `${salesH}%` }} 
+                    <div
+                      style={{ height: `${salesH}%` }}
                       className="w-4 sm:w-6 bg-blue-600 rounded-t-md hover:bg-blue-700 transition-all cursor-pointer relative"
-                      title={`مبيعات: ${d.sales} ج.م`}
+                      title={`${d.dateStr} — مبيعات: ${d.sales.toLocaleString()} ${settings.currency}`}
                     />
-                    <div 
-                      style={{ height: `${purH}%` }} 
+                    <div
+                      style={{ height: `${purH}%` }}
                       className="w-4 sm:w-6 bg-slate-300 rounded-t-md hover:bg-slate-400 transition-all cursor-pointer relative"
-                      title={`مشتريات: ${d.purchases} ج.م`}
+                      title={`${d.dateStr} — مشتريات: ${d.purchases.toLocaleString()} ${settings.currency}`}
                     />
                   </div>
                   <span className="text-[10px] font-bold text-slate-500 mt-1">{d.day}</span>
@@ -651,9 +683,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onView
                   <td className="p-3.5 font-bold text-emerald-700">{inv.paidAmount.toLocaleString()}</td>
                   <td className="p-3.5 font-bold text-red-600">{inv.remainingAmount.toLocaleString()}</td>
                   <td className="p-3.5">
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
-                      مؤكدة
-                    </span>
+                    {inv.status === 'confirmed' ? (
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                        مؤكدة
+                      </span>
+                    ) : inv.status === 'draft' ? (
+                      <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold">
+                        مسودة
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold">
+                        ملغاة
+                      </span>
+                    )}
                   </td>
                   <td className="p-3.5 text-center">
                     <button

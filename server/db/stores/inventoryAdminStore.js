@@ -14,6 +14,13 @@ import {
 import { hashPasswordBcrypt, generateServerId } from '../../utils/crypto.js';
 import { AppError, nowIso, todayIso, round2, round3, sanitizeUser } from '../../utils/errors.js';
 import {
+  buildScopedIdemKey,
+  findPgIdempotency,
+  savePgIdempotency,
+  findJsonIdempotency,
+  saveJsonIdempotency,
+} from '../../utils/idempotency.js';
+import {
   isPgMode,
   mapPgUserRow,
   mapPgCustomerRow,
@@ -24,7 +31,14 @@ import {
   isoTimestamp,
 } from './mode.js';
 import { recordAuditLog, listAuditLogs } from './authStore.js';
-import { listCustomers, listCategories, listProducts } from './catalogStore.js';
+import {
+  listCustomers,
+  listCategories,
+  listProducts,
+  getRepresentativeByUserId,
+  isCustomerAllowedForRep,
+  getSystemSettingsSafe,
+} from './catalogStore.js';
 import { listInvoices } from './invoicesStore.js';
 import { listOrders } from './ordersStore.js';
 import { listPersonalAccountsData } from './personalAccountsStore.js';
@@ -39,6 +53,7 @@ export async function getStaffBootstrapData(actor) {
   const isAdminOrUserMgr = actor.role === 'admin' || Boolean(actor.permissions?.canManageUsers);
   const canViewPersonal = actor.role === 'admin' || Boolean(actor.permissions?.canViewPersonalAccounts);
   const isRep = actor.role === 'representative';
+  const repProfile = isRep ? await getRepresentativeByUserId(actor.id) : null;
 
   if (await isPgMode()) {
     const pool = getPool();
@@ -74,9 +89,9 @@ export async function getStaffBootstrapData(actor) {
       pool.query('SELECT * FROM warehouses ORDER BY created_at ASC'),
       listCategories(),
       listProducts({ forCustomer: false }),
-      listCustomers(),
+      isRep ? (repProfile ? listCustomers({ forRepId: repProfile.id }) : Promise.resolve([])) : listCustomers(),
       pool.query('SELECT * FROM suppliers ORDER BY created_at DESC'),
-      listInvoices(),
+      listInvoices(actor),
       pool.query('SELECT * FROM invoice_returns ORDER BY created_at DESC'),
       pool.query('SELECT * FROM invoice_return_items'),
       pool.query('SELECT * FROM cashboxes ORDER BY created_at ASC'),
@@ -154,6 +169,9 @@ export async function getStaffBootstrapData(actor) {
       isRep ? Promise.resolve([]) : listStockTransferRequests(),
     ]);
 
+    const allowedCustIdSet = isRep ? new Set(custs.map((c) => c.id)) : null;
+    const visibleInvIdSet = isRep ? new Set(invs.map((i) => i.id)) : null;
+
     return {
       mode: 'postgresql-enterprise',
       users: usersRes.rows.map((r) => sanitizeUser(mapPgUserRow(r))),
@@ -185,26 +203,28 @@ export async function getStaffBootstrapData(actor) {
             createdAt: isoTimestamp(s.created_at),
           })),
       invoices: invs,
-      invoiceReturns: retRes.rows.map((r) => ({
-        id: r.id,
-        returnNumber: r.return_number,
-        type: r.type,
-        originalInvoiceId: r.original_invoice_id,
-        originalInvoiceNumber: r.original_invoice_number,
-        date: isoDateOnly(r.date),
-        partyId: r.party_id,
-        partyName: r.party_name,
-        warehouseId: r.warehouse_id,
-        warehouseName: r.warehouse_name,
-        items: retItemsMap.get(r.id) || [],
-        grandTotal: Number(r.grand_total || 0),
-        refundType: r.refund_type,
-        cashboxId: r.cashbox_id || undefined,
-        reason: r.reason,
-        notes: r.notes || '',
-        createdBy: r.created_by,
-        createdAt: isoTimestamp(r.created_at),
-      })),
+      invoiceReturns: retRes.rows
+        .filter((r) => !isRep || (allowedCustIdSet?.has(r.party_id) || visibleInvIdSet?.has(r.original_invoice_id)))
+        .map((r) => ({
+          id: r.id,
+          returnNumber: r.return_number,
+          type: r.type,
+          originalInvoiceId: r.original_invoice_id,
+          originalInvoiceNumber: r.original_invoice_number,
+          date: isoDateOnly(r.date),
+          partyId: r.party_id,
+          partyName: r.party_name,
+          warehouseId: r.warehouse_id,
+          warehouseName: r.warehouse_name,
+          items: retItemsMap.get(r.id) || [],
+          grandTotal: Number(r.grand_total || 0),
+          refundType: r.refund_type,
+          cashboxId: r.cashbox_id || undefined,
+          reason: r.reason,
+          notes: r.notes || '',
+          createdBy: r.created_by,
+          createdAt: isoTimestamp(r.created_at),
+        })),
       cashboxes: cbRes.rows.map((c) => ({
         id: c.id,
         name: c.name,
@@ -280,50 +300,56 @@ export async function getStaffBootstrapData(actor) {
         notes: r.notes || '',
         status: r.status || 'active',
       })),
-      repTransfers: rtRes.rows.map((rt) => ({
-        id: rt.id,
-        transferNumber: rt.transfer_number,
-        date: isoDateOnly(rt.date),
-        timestamp: isoTimestamp(rt.created_at),
-        direction: rt.direction,
-        senderId: rt.sender_id,
-        senderName: rt.sender_name,
-        receiverId: rt.receiver_id,
-        receiverName: rt.receiver_name,
-        amount: Number(rt.amount || 0),
-        cashboxId: rt.cashbox_id,
-        cashboxName: rt.cashbox_name,
-        notes: rt.notes || '',
-        status: rt.status,
-        sentAt: rt.sent_at ? isoTimestamp(rt.sent_at) : isoTimestamp(rt.created_at),
-        confirmedAt: rt.confirmed_at ? isoTimestamp(rt.confirmed_at) : undefined,
-        rejectedAt: rt.rejected_at ? isoTimestamp(rt.rejected_at) : undefined,
-        rejectionReason: rt.rejection_reason || undefined,
-        confirmedBy: rt.confirmed_by || undefined,
-        auditTrail: rt.audit_trail || [],
-      })),
-      repItemTransfers: ritRes.rows.map((rit) => ({
-        id: rit.id,
-        requestNumber: rit.request_number,
-        date: isoDateOnly(rit.date),
-        representativeId: rit.representative_id,
-        representativeName: rit.representative_name,
-        invoiceId: rit.invoice_id || undefined,
-        invoiceNumber: rit.invoice_number || undefined,
-        sourceWarehouseId: rit.source_warehouse_id,
-        sourceWarehouseName: rit.source_warehouse_name,
-        targetWarehouseId: rit.target_warehouse_id,
-        targetWarehouseName: rit.target_warehouse_name,
-        items: ritItemsMap.get(rit.id) || [],
-        status: rit.status,
-        rejectionReason: rit.rejection_reason || undefined,
-        notes: rit.notes || '',
-        createdBy: rit.created_by,
-        createdAt: isoTimestamp(rit.created_at),
-        reviewedBy: rit.reviewed_by || undefined,
-        reviewedAt: rit.reviewed_at ? isoTimestamp(rit.reviewed_at) : undefined,
-        executedAt: rit.executed_at ? isoTimestamp(rit.executed_at) : undefined,
-      })),
+      repTransfers: rtRes.rows
+        .filter((rt) => !isRep || (repProfile && (rt.representative_id === repProfile.id || rt.sender_id === repProfile.id || rt.receiver_id === repProfile.id)))
+        .map((rt) => ({
+          id: rt.id,
+          transferNumber: rt.transfer_number,
+          date: isoDateOnly(rt.date),
+          timestamp: isoTimestamp(rt.created_at),
+          direction: rt.direction,
+          senderId: rt.sender_id,
+          senderName: rt.sender_name,
+          receiverId: rt.receiver_id,
+          receiverName: rt.receiver_name,
+          amount: Number(rt.amount || 0),
+          cashboxId: rt.cashbox_id,
+          cashboxName: rt.cashbox_name,
+          notes: rt.notes || '',
+          status: rt.status,
+          sentAt: rt.sent_at ? isoTimestamp(rt.sent_at) : isoTimestamp(rt.created_at),
+          confirmedAt: rt.confirmed_at ? isoTimestamp(rt.confirmed_at) : undefined,
+          rejectedAt: rt.rejected_at ? isoTimestamp(rt.rejected_at) : undefined,
+          rejectionReason: rt.rejection_reason || undefined,
+          confirmedBy: rt.confirmed_by || undefined,
+          auditTrail: rt.audit_trail || [],
+        })),
+      repItemTransfers: ritRes.rows
+        .filter((rit) => !isRep || (repProfile && rit.representative_id === repProfile.id))
+        .map((rit) => ({
+          id: rit.id,
+          requestNumber: rit.request_number,
+          date: isoDateOnly(rit.date),
+          representativeId: rit.representative_id,
+          representativeName: rit.representative_name,
+          invoiceId: rit.invoice_id || undefined,
+          invoiceNumber: rit.invoice_number || undefined,
+          sourceWarehouseId: rit.source_warehouse_id,
+          sourceWarehouseName: rit.source_warehouse_name,
+          targetWarehouseId: rit.target_warehouse_id,
+          targetWarehouseName: rit.target_warehouse_name,
+          items: ritItemsMap.get(rit.id) || [],
+          status: rit.status,
+          rejectionReason: rit.rejection_reason || undefined,
+          notes: rit.notes || '',
+          createdBy: rit.created_by,
+          createdAt: isoTimestamp(rit.created_at),
+          reviewedBy: rit.reviewed_by || undefined,
+          reviewedAt: rit.reviewed_at ? isoTimestamp(rit.reviewed_at) : undefined,
+          executedAt: rit.executed_at ? isoTimestamp(rit.executed_at) : undefined,
+          receivedBy: rit.received_by || undefined,
+          receivedAt: rit.received_at ? isoTimestamp(rit.received_at) : undefined,
+        })),
       customerItemOrders: orders,
       employees: isRep
         ? []
@@ -403,24 +429,26 @@ export async function getStaffBootstrapData(actor) {
             createdBy: ex.created_by,
             createdAt: isoTimestamp(ex.created_at),
           })),
-      stockMovements: smRes.rows.map((sm) => ({
-        id: sm.id,
-        date: isoDateOnly(sm.date),
-        type: sm.movement_type,
-        productId: sm.product_id,
-        productName: sm.product_name,
-        warehouseId: sm.warehouse_id,
-        warehouseName: sm.warehouse_name,
-        targetWarehouseId: sm.target_warehouse_id || undefined,
-        targetWarehouseName: sm.target_warehouse_name || undefined,
-        quantity: Number(sm.quantity || 0),
-        unitCost: Number(sm.unit_cost || 0),
-        referenceId: sm.related_doc_id || undefined,
-        referenceNumber: sm.related_doc_number || undefined,
-        notes: sm.notes || '',
-        createdBy: sm.created_by,
-        createdAt: isoTimestamp(sm.created_at),
-      })),
+      stockMovements: smRes.rows
+        .filter((sm) => !isRep || (repProfile?.warehouseId && (sm.warehouse_id === repProfile.warehouseId || sm.target_warehouse_id === repProfile.warehouseId)))
+        .map((sm) => ({
+          id: sm.id,
+          date: isoDateOnly(sm.date),
+          type: sm.movement_type,
+          productId: sm.product_id,
+          productName: sm.product_name,
+          warehouseId: sm.warehouse_id,
+          warehouseName: sm.warehouse_name,
+          targetWarehouseId: sm.target_warehouse_id || undefined,
+          targetWarehouseName: sm.target_warehouse_name || undefined,
+          quantity: Number(sm.quantity || 0),
+          unitCost: Number(sm.unit_cost || 0),
+          referenceId: sm.related_doc_id || undefined,
+          referenceNumber: sm.related_doc_number || undefined,
+          notes: sm.notes || '',
+          createdBy: sm.created_by,
+          createdAt: isoTimestamp(sm.created_at),
+        })),
       ownerAccounts: personalData.accounts,
       ownerTransactions: personalData.transactions,
       stockCounts: stockCountsList,
@@ -433,30 +461,51 @@ export async function getStaffBootstrapData(actor) {
   // JSON Ledger fallback
   const db = readJsonDatabase();
   const audits = isAdminOrUserMgr ? await listAuditLogs(300) : [];
+  const scopedCustomers = isRep
+    ? (repProfile ? (db.customers || []).filter((c) => isCustomerAllowedForRep(c, repProfile.id)) : [])
+    : db.customers;
+  const scopedCustomerIdSet = new Set(scopedCustomers.map((c) => c.id));
+  const scopedInvoices = isRep
+    ? (repProfile
+        ? (db.invoices || []).filter((inv) => inv.representativeId === repProfile.id || (inv.customerId && scopedCustomerIdSet.has(inv.customerId)))
+        : [])
+    : db.invoices;
+  const scopedInvIdSet = new Set(scopedInvoices.map((i) => i.id));
+
   return {
     mode: 'local-json-ledger',
     users: isAdminOrUserMgr ? db.users.map(sanitizeUser) : [],
     warehouses: db.warehouses,
     categories: db.categories,
     products: db.products,
-    customers: db.customers,
+    customers: scopedCustomers,
     suppliers: isRep ? [] : db.suppliers,
-    invoices: db.invoices,
-    invoiceReturns: db.invoiceReturns,
+    invoices: scopedInvoices,
+    invoiceReturns: isRep
+      ? (db.invoiceReturns || []).filter((r) => scopedCustomerIdSet.has(r.partyId) || scopedInvIdSet.has(r.originalInvoiceId))
+      : db.invoiceReturns,
     cashboxes: db.cashboxes,
     financialTransactions: isRep ? [] : db.financialTransactions,
     cheques: isRep ? [] : db.cheques,
     installments: isRep ? [] : db.installments,
     representatives: db.representatives,
-    repTransfers: db.repTransfers,
-    repItemTransfers: db.repItemTransfers,
-    customerItemOrders: db.customerItemOrders,
+    repTransfers: isRep
+      ? (repProfile ? (db.repTransfers || []).filter((rt) => rt.senderId === repProfile.id || rt.receiverId === repProfile.id) : [])
+      : db.repTransfers,
+    repItemTransfers: isRep
+      ? (repProfile ? (db.repItemTransfers || []).filter((rit) => rit.representativeId === repProfile.id) : [])
+      : db.repItemTransfers,
+    customerItemOrders: isRep
+      ? (db.customerItemOrders || []).filter((o) => scopedCustomerIdSet.has(o.customerId))
+      : db.customerItemOrders,
     employees: isRep ? [] : db.employees,
     advancesDeductions: isRep ? [] : db.advancesDeductions,
     attendance: isRep ? [] : db.attendance,
     payrolls: isRep ? [] : db.payrolls,
     expenseIncomes: isRep ? [] : db.expenseIncomes,
-    stockMovements: db.stockMovements,
+    stockMovements: isRep
+      ? (db.stockMovements || []).filter((sm) => repProfile?.warehouseId && (sm.warehouseId === repProfile.warehouseId || sm.targetWarehouseId === repProfile.warehouseId))
+      : db.stockMovements,
     ownerAccounts: canViewPersonal ? (db.ownerAccounts || []) : [],
     ownerTransactions: canViewPersonal ? (db.ownerTransactions || []) : [],
     stockCounts: isRep ? [] : (db.stockCounts || []),
@@ -984,20 +1033,35 @@ export async function rejectRepTransfer(transferId, { reason = '' } = {}, actor)
   return { ok: true };
 }
 
-export async function ensureRepVanWarehouse(repName, actor) {
-  const name = `سيارة المندوب - ${repName}`;
+export async function ensureRepVanWarehouse(repName, actor, repId = null) {
+  const cleanName = String(repName || '').trim();
+  const name = `سيارة المندوب - ${cleanName}`;
   if (await isPgMode()) {
     const existing = await getPool().query('SELECT * FROM warehouses WHERE name = $1 LIMIT 1', [name]);
+    let wh;
     if (existing.rows[0]) {
       const w = existing.rows[0];
-      return { id: w.id, name: w.name, code: w.code, location: w.location || '', isDefault: false, status: w.status };
+      wh = { id: w.id, name: w.name, code: w.code, location: w.location || '', isDefault: false, status: w.status };
+    } else {
+      wh = await createWarehouse({ name, code: `VAN-${Date.now().toString().slice(-4)}`, location: 'مخزون سيارة مندوب', managerName: cleanName, isDefault: false }, actor);
     }
-    return createWarehouse({ name, code: `VAN-${Date.now().toString().slice(-4)}`, location: 'مخزون سيارة مندوب', managerName: repName, isDefault: false }, actor);
+    if (repId) {
+      await getPool().query('UPDATE representatives SET warehouse_id = $1 WHERE id = $2 AND (warehouse_id IS NULL OR warehouse_id = \'\')', [wh.id, repId]);
+    } else if (cleanName) {
+      await getPool().query('UPDATE representatives SET warehouse_id = $1 WHERE name = $2 AND (warehouse_id IS NULL OR warehouse_id = \'\')', [wh.id, cleanName]);
+    }
+    return wh;
   }
   const db = readJsonDatabase();
-  const found = db.warehouses.find((w) => w.name === name);
-  if (found) return found;
-  return createWarehouse({ name, code: `VAN-${Date.now().toString().slice(-4)}`, location: 'مخزون سيارة مندوب', managerName: repName, isDefault: false }, actor);
+  let wh = db.warehouses.find((w) => w.name === name);
+  if (!wh) {
+    wh = await createWarehouse({ name, code: `VAN-${Date.now().toString().slice(-4)}`, location: 'مخزون سيارة مندوب', managerName: cleanName, isDefault: false }, actor);
+  }
+  await withJsonTransaction((ledger) => {
+    const rep = ledger.representatives.find((r) => (repId ? r.id === repId : r.name === cleanName));
+    if (rep && !rep.warehouseId) rep.warehouseId = wh.id;
+  });
+  return wh;
 }
 
 export async function createRepItemTransfer(payload, actor) {
@@ -1008,6 +1072,15 @@ export async function createRepItemTransfer(payload, actor) {
   const items = Array.isArray(payload.items) ? payload.items : [];
   if (!items.length) throw new AppError(400, 'يجب تحديد صنف واحد على الأقل للتحويل', 'EMPTY_ITEMS');
 
+  let representativeId = payload.representativeId;
+  let representativeName = payload.representativeName;
+  if (actor.role === 'representative') {
+    const repProfile = await getRepresentativeByUserId(actor.id);
+    if (!repProfile) throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
+    representativeId = repProfile.id;
+    representativeName = repProfile.name;
+  }
+
   if (await isPgMode()) {
     await withTransaction(async (client) => {
       await client.query(
@@ -1017,8 +1090,8 @@ export async function createRepItemTransfer(payload, actor) {
           id,
           requestNumber,
           dateStr,
-          payload.representativeId,
-          payload.representativeName,
+          representativeId,
+          representativeName,
           payload.invoiceId || null,
           payload.invoiceNumber || null,
           payload.sourceWarehouseId,
@@ -1050,18 +1123,92 @@ export async function createRepItemTransfer(payload, actor) {
           ]
         );
       }
+      if (payload.invoiceId) {
+        await client.query(
+          `UPDATE invoices SET linked_rep_transfer_id = $1, linked_rep_transfer_number = $2, updated_at = $3 WHERE id = $4`,
+          [id, requestNumber, now, payload.invoiceId]
+        );
+      }
     });
-    return { ...payload, id, requestNumber, date: dateStr, status: 'pending', createdBy: actor.fullName, createdAt: now };
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `إنشاء طلب تحويل أصناف للمندوب (${requestNumber})`,
+      module: 'المندوبون',
+      recordId: id,
+    });
+    return {
+      ...payload,
+      representativeId,
+      representativeName,
+      id,
+      requestNumber,
+      date: dateStr,
+      status: 'pending',
+      createdBy: actor.fullName,
+      createdAt: now,
+    };
   }
 
-  return withJsonTransaction(async (db) => {
-    const reqObj = { ...payload, id, requestNumber, date: dateStr, status: 'pending', createdBy: actor.fullName, createdAt: now };
+  const created = await withJsonTransaction(async (db) => {
+    const reqObj = {
+      ...payload,
+      representativeId,
+      representativeName,
+      id,
+      requestNumber,
+      date: dateStr,
+      status: 'pending',
+      createdBy: actor.fullName,
+      createdAt: now,
+    };
     db.repItemTransfers.unshift(reqObj);
+    if (payload.invoiceId) {
+      const inv = db.invoices.find((i) => i.id === payload.invoiceId);
+      if (inv) {
+        inv.linkedRepTransferId = id;
+        inv.linkedRepTransferNumber = requestNumber;
+      }
+    }
     return reqObj;
   });
+  await recordAuditLog({
+    userId: actor.id,
+    userName: actor.fullName,
+    action: `إنشاء طلب تحويل أصناف للمندوب (${requestNumber})`,
+    module: 'المندوبون',
+    recordId: id,
+  });
+  return created;
 }
 
 export async function updateRepItemTransferStatus(requestId, { status, approvedItems, notes }, actor) {
+  const allowedStatuses = new Set(['approved', 'rejected', 'executed', 'received']);
+  if (!allowedStatuses.has(status)) {
+    throw new AppError(400, 'حالة طلب التحويل غير صالحة', 'INVALID_TRANSFER_STATUS');
+  }
+
+  const isRepActor = actor.role === 'representative';
+  let repActorProfile = null;
+  if (isRepActor) {
+    if (status !== 'received') {
+      throw new AppError(
+        403,
+        'غير مصرح للمندوب باعتماد أو تنفيذ أو رفض طلب تحويل الأصناف — يقتصر دوره على تأكيد الاستلام الفعلي فقط.',
+        'FORBIDDEN_REP_TRANSFER_APPROVAL'
+      );
+    }
+    repActorProfile = await getRepresentativeByUserId(actor.id);
+    if (!repActorProfile) {
+      throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
+    }
+  } else {
+    const canManage = actor.role === 'admin' || Boolean(actor.permissions?.canManageTransfers);
+    if (!canManage) {
+      throw new AppError(403, 'ليس لديك صلاحية اعتماد أو تنفيذ تحويلات المندوبين', 'FORBIDDEN_TRANSFER_PERMISSION');
+    }
+  }
+
   const now = nowIso();
   const dateStr = todayIso();
 
@@ -1070,12 +1217,33 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
       const rRes = await client.query('SELECT * FROM rep_item_transfers WHERE id = $1 FOR UPDATE', [requestId]);
       const req = rRes.rows[0];
       if (!req) throw new AppError(404, 'طلب التحويل غير موجود', 'NOT_FOUND');
+
+      if (isRepActor) {
+        if (req.representative_id !== repActorProfile.id) {
+          throw new AppError(403, 'غير مصرح لك بتأكيد استلام تحويل يخص مندوباً آخر', 'FORBIDDEN_REP_TRANSFER_OWNER');
+        }
+        if (req.status !== 'executed') {
+          throw new AppError(409, 'لا يمكن تأكيد الاستلام قبل تنفيذ التحويل من الإدارة أولاً', 'TRANSFER_NOT_EXECUTED_YET');
+        }
+      } else {
+        if (req.status === 'received') {
+          throw new AppError(409, 'تم استلام هذا التحويل بالفعل ولا يمكن تعديله', 'TRANSFER_ALREADY_RECEIVED');
+        }
+      }
+
       const itemsRes = await client.query('SELECT * FROM rep_item_transfer_items WHERE transfer_id = $1', [requestId]);
 
-      if (status === 'executed' && req.status !== 'executed') {
+      if (status === 'executed' && req.status !== 'executed' && req.status !== 'received') {
         const stRes = await client.query('SELECT allow_negative_stock FROM system_settings LIMIT 1');
         const allowNeg = Boolean(stRes.rows[0]?.allow_negative_stock);
-        const itemsToMove = approvedItems || itemsRes.rows.map((r) => ({ productId: r.product_id, productName: r.product_name, approvedQty: r.approved_qty, requestedQty: r.requested_qty }));
+        const itemsToMove =
+          approvedItems ||
+          itemsRes.rows.map((r) => ({
+            productId: r.product_id,
+            productName: r.product_name,
+            approvedQty: r.approved_qty,
+            requestedQty: r.requested_qty,
+          }));
 
         for (const it of itemsToMove) {
           const pRes = await client.query('SELECT * FROM products WHERE id = $1 FOR UPDATE', [it.productId]);
@@ -1096,15 +1264,46 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
           await client.query(
             `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, target_warehouse_id, target_warehouse_name, movement_type, quantity, unit_cost, related_doc_id, related_doc_number, notes, created_by, created_at)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'transfer_out',$10,$11,$12,$13,$14,$15,$16)`,
-            [mvId, mvId, dateStr, prod.id, prod.name, req.source_warehouse_id, req.source_warehouse_name, req.target_warehouse_id, req.target_warehouse_name, qty, prod.purchase_price, req.id, req.request_number, `تحويل عهدة بضاعة للمندوب ${req.representative_name}`, actor.fullName, now]
+            [
+              mvId,
+              mvId,
+              dateStr,
+              prod.id,
+              prod.name,
+              req.source_warehouse_id,
+              req.source_warehouse_name,
+              req.target_warehouse_id,
+              req.target_warehouse_name,
+              qty,
+              prod.purchase_price,
+              req.id,
+              req.request_number,
+              `تحويل عهدة بضاعة للمندوب ${req.representative_name}`,
+              actor.fullName,
+              now,
+            ]
           );
         }
       }
 
-      await client.query(
-        `UPDATE rep_item_transfers SET status = $1, notes = COALESCE(NULLIF($2, ''), notes), reviewed_by = $3, reviewed_at = $4, executed_at = CASE WHEN $1 = 'executed' THEN $4 ELSE executed_at END WHERE id = $5`,
-        [status, notes || '', actor.fullName, now, requestId]
-      );
+      if (status === 'received') {
+        await client.query(
+          `UPDATE rep_item_transfers SET status = 'received', notes = COALESCE(NULLIF($1, ''), notes), received_by = $2, received_at = $3 WHERE id = $4`,
+          [notes || '', actor.fullName, now, requestId]
+        );
+      } else {
+        await client.query(
+          `UPDATE rep_item_transfers SET status = $1, notes = COALESCE(NULLIF($2, ''), notes), reviewed_by = $3, reviewed_at = $4, executed_at = CASE WHEN $1 = 'executed' THEN $4 ELSE executed_at END WHERE id = $5`,
+          [status, notes || '', actor.fullName, now, requestId]
+        );
+      }
+    });
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `تحديث حالة طلب تحويل أصناف إلى (${status})`,
+      module: 'المندوبون',
+      recordId: requestId,
     });
     return { ok: true };
   }
@@ -1112,7 +1311,19 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
   await withJsonTransaction(async (db) => {
     const req = db.repItemTransfers.find((r) => r.id === requestId);
     if (!req) throw new AppError(404, 'طلب التحويل غير موجود', 'NOT_FOUND');
-    if (status === 'executed' && req.status !== 'executed') {
+
+    if (isRepActor) {
+      if (req.representativeId !== repActorProfile.id) {
+        throw new AppError(403, 'غير مصرح لك بتأكيد استلام تحويل يخص مندوباً آخر', 'FORBIDDEN_REP_TRANSFER_OWNER');
+      }
+      if (req.status !== 'executed') {
+        throw new AppError(409, 'لا يمكن تأكيد الاستلام قبل تنفيذ التحويل من الإدارة أولاً', 'TRANSFER_NOT_EXECUTED_YET');
+      }
+    } else if (req.status === 'received') {
+      throw new AppError(409, 'تم استلام هذا التحويل بالفعل ولا يمكن تعديله', 'TRANSFER_ALREADY_RECEIVED');
+    }
+
+    if (status === 'executed' && req.status !== 'executed' && req.status !== 'received') {
       const itemsToMove = approvedItems || req.items;
       for (const it of itemsToMove) {
         const prod = db.products.find((p) => p.id === it.productId);
@@ -1147,22 +1358,313 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
     }
     req.status = status;
     if (notes) req.notes = notes;
-    req.reviewedBy = actor.fullName;
-    req.reviewedAt = now;
-    if (status === 'executed') req.executedAt = now;
-    if (approvedItems) req.items = approvedItems;
+    if (status === 'received') {
+      req.receivedBy = actor.fullName;
+      req.receivedAt = now;
+    } else {
+      req.reviewedBy = actor.fullName;
+      req.reviewedAt = now;
+      if (status === 'executed') req.executedAt = now;
+      if (approvedItems) req.items = approvedItems;
+    }
+  });
+  await recordAuditLog({
+    userId: actor.id,
+    userName: actor.fullName,
+    action: `تحديث حالة طلب تحويل أصناف إلى (${status})`,
+    module: 'المندوبون',
+    recordId: requestId,
   });
   return { ok: true };
 }
 
+export async function getMobileNotifications(authContext) {
+  const actor = authContext.user;
+  const settings = await getSystemSettingsSafe();
+  const mobileConfig = settings.mobileConfig;
+  const notifications = [];
+
+  if (actor.role === 'customer') {
+    const cust = authContext.customerProfile;
+    if (!cust) {
+      return { notifications: [], mobileConfig };
+    }
+    const orders = await listOrders(authContext);
+    for (const o of orders.slice(0, 15)) {
+      if (o.status === 'approved') {
+        notifications.push({
+          id: `notif-ord-app-${o.id}-${o.updatedAt || o.createdAt}`,
+          type: 'order_status',
+          severity: 'info',
+          title: `تم اعتماد طلبك (${o.requestNumber})`,
+          body: 'وافقت الإدارة على طلبك وجارٍ تجهيز الفاتورة.',
+          relatedId: o.id,
+          createdAt: o.reviewedAt || o.updatedAt || o.createdAt,
+        });
+      } else if (o.status === 'invoiced') {
+        notifications.push({
+          id: `notif-ord-inv-${o.id}`,
+          type: 'order_status',
+          severity: 'success',
+          title: `تم تحويل طلبك لفاتورة (${o.invoiceNumber || o.requestNumber})`,
+          body: `يمكنك مراجعة تفاصيل الفاتورة في تبويب فواتيري وحسابي.`,
+          relatedId: o.invoiceId || o.id,
+          createdAt: o.updatedAt || o.createdAt,
+        });
+      } else if (o.status === 'rejected') {
+        notifications.push({
+          id: `notif-ord-rej-${o.id}`,
+          type: 'order_status',
+          severity: 'warning',
+          title: `تم رفض الطلب (${o.requestNumber})`,
+          body: o.rejectionReason ? `السبب: ${o.rejectionReason}` : 'يرجى التواصل مع الإدارة.',
+          relatedId: o.id,
+          createdAt: o.reviewedAt || o.updatedAt || o.createdAt,
+        });
+      }
+    }
+
+    const invs = await listInvoices(actor, { customerId: cust.id });
+    for (const inv of invs.slice(0, 10)) {
+      if (inv.status === 'confirmed') {
+        notifications.push({
+          id: `notif-cust-inv-${inv.id}`,
+          type: 'invoice',
+          severity: 'success',
+          title: `فاتورة جديدة (${inv.invoiceNumber})`,
+          body: mobileConfig.allowCustomerPriceView
+            ? `الإجمالي: ${round2(inv.grandTotal).toLocaleString()} ${settings.currency || 'ج.م'} — المتبقي: ${round2(inv.remainingAmount).toLocaleString()}`
+            : 'صدرت فاتورة جديدة بحسابك.',
+          relatedId: inv.id,
+          createdAt: inv.createdAt || inv.date,
+        });
+      }
+    }
+
+    if (mobileConfig.allowCustomerPriceView && Number(cust.currentBalance || 0) > 0) {
+      notifications.push({
+        id: `notif-cust-bal-${cust.id}-${Math.round(Number(cust.currentBalance || 0))}`,
+        type: 'balance',
+        severity: 'warning',
+        title: 'تذكير بالرصيد المستحق',
+        body: `الرصيد القائم على الحساب: ${round2(cust.currentBalance).toLocaleString()} ${settings.currency || 'ج.م'}`,
+        relatedId: cust.id,
+        createdAt: new Date().toISOString().split('T')[0],
+      });
+    }
+  } else if (actor.role === 'representative') {
+    const rep = authContext.representativeProfile || (await getRepresentativeByUserId(actor.id));
+    if (!rep) {
+      return { notifications: [], mobileConfig };
+    }
+    const boot = await getStaffBootstrapData(actor);
+
+    for (const rit of boot.repItemTransfers || []) {
+      if (rit.status === 'executed') {
+        notifications.push({
+          id: `notif-rit-exec-${rit.id}`,
+          type: 'item_transfer',
+          severity: 'success',
+          title: `تحويل أصناف منفّذ (${rit.requestNumber})`,
+          body: 'يرجى تأكيد استلام الأصناف في سيارتك ثم اعتماد الفاتورة المرتبطة إن وجدت.',
+          relatedId: rit.id,
+          createdAt: rit.executedAt || rit.reviewedAt || rit.createdAt,
+        });
+      } else if (rit.status === 'approved') {
+        notifications.push({
+          id: `notif-rit-app-${rit.id}`,
+          type: 'item_transfer',
+          severity: 'info',
+          title: `تمت الموافقة على تحويل (${rit.requestNumber})`,
+          body: 'بانتظار تنفيذ التحويل المخزني من أمين المخزن.',
+          relatedId: rit.id,
+          createdAt: rit.reviewedAt || rit.createdAt,
+        });
+      } else if (rit.status === 'rejected') {
+        notifications.push({
+          id: `notif-rit-rej-${rit.id}`,
+          type: 'item_transfer',
+          severity: 'warning',
+          title: `تم رفض طلب التحويل (${rit.requestNumber})`,
+          body: rit.notes || 'راجع الإدارة للتفاصيل.',
+          relatedId: rit.id,
+          createdAt: rit.reviewedAt || rit.createdAt,
+        });
+      }
+    }
+
+    for (const inv of boot.invoices || []) {
+      if (inv.status === 'draft' && inv.linkedRepTransferId) {
+        const rit = (boot.repItemTransfers || []).find((r) => r.id === inv.linkedRepTransferId);
+        if (rit && ['executed', 'received'].includes(rit.status)) {
+          notifications.push({
+            id: `notif-draft-ready-${inv.id}`,
+            type: 'draft_ready',
+            severity: 'success',
+            title: `مسودة فاتورة جاهزة للاعتماد (${inv.invoiceNumber})`,
+            body: `تم توفير أصناف التحويل ${rit.requestNumber} — اضغط لاعتماد الفاتورة النهائية.`,
+            relatedId: inv.id,
+            createdAt: rit.executedAt || inv.createdAt,
+          });
+        }
+      }
+    }
+
+    for (const tr of boot.repTransfers || []) {
+      if (tr.status === 'awaiting_receipt' && tr.receiverId === rep.id) {
+        notifications.push({
+          id: `notif-cash-wait-${tr.id}`,
+          type: 'cash_transfer',
+          severity: 'warning',
+          title: `عهدة مالية مرسلة بانتظار استلامك (${tr.transferNumber})`,
+          body: `المبلغ: ${round2(tr.amount).toLocaleString()} ${settings.currency || 'ج.م'}`,
+          relatedId: tr.id,
+          createdAt: tr.sentAt || tr.timestamp,
+        });
+      }
+    }
+  } else {
+    // Admin & staff mobile/desktop notifications scoped to actual permissions
+    const boot = await getStaffBootstrapData(actor);
+    const isAdmin = actor.role === 'admin';
+    const perms = actor.permissions || {};
+
+    if (isAdmin || perms.canManageSales) {
+      for (const ord of boot.customerItemOrders || []) {
+        if (ord.status === 'pending') {
+          notifications.push({
+            id: `notif-staff-ord-${ord.id}`,
+            type: 'customer_order',
+            severity: 'warning',
+            title: `طلب عميل جديد بانتظار المراجعة (${ord.requestNumber})`,
+            body: `${ord.customerName || 'عميل'} — ${(ord.items || []).length} صنف`,
+            relatedId: ord.id,
+            targetTab: 'customers',
+            createdAt: ord.createdAt,
+          });
+        }
+      }
+    }
+
+    if (isAdmin || perms.canManageTransfers || perms.canManageInventory) {
+      for (const rit of boot.repItemTransfers || []) {
+        if (rit.status === 'pending' || rit.status === 'approved') {
+          notifications.push({
+            id: `notif-staff-rit-${rit.id}-${rit.status}`,
+            type: 'item_transfer',
+            severity: rit.status === 'pending' ? 'warning' : 'info',
+            title:
+              rit.status === 'pending'
+                ? `طلب تحويل بضاعة للمندوب (${rit.requestNumber})`
+                : `تحويل بضاعة معتمد بانتظار التنفيذ (${rit.requestNumber})`,
+            body: `${rit.representativeName || 'مندوب'} — ${(rit.items || []).length} صنف`,
+            relatedId: rit.id,
+            targetTab: 'rep-item-transfers',
+            createdAt: rit.reviewedAt || rit.createdAt,
+          });
+        }
+      }
+    }
+
+    if (isAdmin || perms.canManageTransfers || perms.canManageCashboxes) {
+      for (const tr of boot.repTransfers || []) {
+        if (tr.status === 'awaiting_receipt' && tr.direction === 'rep_to_owner') {
+          notifications.push({
+            id: `notif-staff-repcash-${tr.id}`,
+            type: 'cash_transfer',
+            severity: 'warning',
+            title: `توريد نقدي من المندوب بانتظار الاستلام (${tr.transferNumber})`,
+            body: `${tr.senderName || 'مندوب'} — ${round2(tr.amount).toLocaleString()} ${settings.currency || 'ج.م'}`,
+            relatedId: tr.id,
+            targetTab: 'rep-transfers',
+            createdAt: tr.sentAt || tr.timestamp,
+          });
+        }
+      }
+    }
+
+    if (isAdmin || perms.canApproveStockCount || perms.canManageInventory) {
+      for (const sc of boot.stockCounts || []) {
+        if (sc.status === 'submitted') {
+          notifications.push({
+            id: `notif-staff-sc-${sc.id}`,
+            type: 'stock_count',
+            severity: 'warning',
+            title: `جلسة جرد مرسلة للاعتماد (${sc.countNumber})`,
+            body: `${sc.warehouseName} — بواسطة ${sc.counterName}`,
+            relatedId: sc.id,
+            targetTab: 'stock-counts',
+            createdAt: sc.submittedAt || sc.createdAt,
+          });
+        }
+      }
+    }
+
+    if (isAdmin || perms.canApproveStockTransfer || perms.canExecuteStockTransfer || perms.canManageWarehouses) {
+      for (const st of boot.stockTransferRequests || []) {
+        if (st.status === 'submitted' || st.status === 'approved') {
+          notifications.push({
+            id: `notif-staff-st-${st.id}-${st.status}`,
+            type: 'stock_transfer',
+            severity: st.status === 'submitted' ? 'warning' : 'info',
+            title:
+              st.status === 'submitted'
+                ? `طلب تحويل مخزني بانتظار الموافقة (${st.transferNumber})`
+                : `تحويل مخزني معتمد بانتظار التنفيذ (${st.transferNumber})`,
+            body: `من ${st.sourceWarehouseName} إلى ${st.targetWarehouseName}`,
+            relatedId: st.id,
+            targetTab: 'stock-transfers-orders',
+            createdAt: st.approvedAt || st.submittedAt || st.createdAt,
+          });
+        }
+      }
+    }
+
+    if (isAdmin || perms.canManageInventory) {
+      let lowStockCount = 0;
+      for (const p of boot.products || []) {
+        if (p.status !== 'active' || Number(p.minStockLevel || 0) <= 0) continue;
+        const totalQty = Object.values(p.stockPerWarehouse || {}).reduce((s, q) => s + Number(q || 0), 0);
+        if (totalQty <= Number(p.minStockLevel || 0)) {
+          lowStockCount += 1;
+          if (lowStockCount <= 5) {
+            notifications.push({
+              id: `notif-staff-low-${p.id}`,
+              type: 'low_stock',
+              severity: 'warning',
+              title: `نقص رصيد صنف (${p.name})`,
+              body: `الرصيد المتاح: ${round3(totalQty)} (الحد الأدنى: ${p.minStockLevel})`,
+              relatedId: p.id,
+              targetTab: 'products',
+              createdAt: p.createdAt,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  notifications.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  return { notifications: notifications.slice(0, 40), mobileConfig };
+}
+
 // ==============================================================================
-// Users CRUD (bcrypt enforced, passwordHash NEVER returned)
+// Users CRUD (bcrypt enforced, role hierarchy guarded, passwordHash NEVER returned)
 // ==============================================================================
+
+const ALLOWED_USER_ROLES = new Set(['admin', 'manager', 'accountant', 'sales', 'warehouse', 'representative', 'customer']);
 
 export async function createAdminUser(payload, actor) {
   const username = String(payload.username || '').trim();
   const fullName = String(payload.fullName || '').trim();
   const password = String(payload.password || '');
+  const targetRole = String(payload.role || 'sales').trim();
+  if (!ALLOWED_USER_ROLES.has(targetRole)) {
+    throw new AppError(400, 'الدور الوظيفي المحدد غير صالح', 'INVALID_ROLE');
+  }
+  if (actor?.role !== 'admin' && targetRole === 'admin') {
+    throw new AppError(403, 'غير مصرح لغير المدير العام بإنشاء حساب مدير عام', 'FORBIDDEN_ADMIN_ESCALATION');
+  }
   if (!username || username.length < 3) throw new AppError(400, 'اسم المستخدم يجب أن لا يقل عن 3 أحرف', 'INVALID_USERNAME');
   if (!fullName) throw new AppError(400, 'الاسم الكامل مطلوب', 'INVALID_NAME');
   if (!password || password.length < 6) throw new AppError(400, 'كلمة المرور يجب أن لا تقل عن 6 أحرف', 'WEAK_PASSWORD');
@@ -1242,6 +1744,15 @@ export async function createAdminUser(payload, actor) {
 
 export async function updateAdminUser(userId, updates, actor) {
   const now = nowIso();
+  if (updates.role !== undefined) {
+    const cleanRole = String(updates.role || '').trim();
+    if (!ALLOWED_USER_ROLES.has(cleanRole)) {
+      throw new AppError(400, 'الدور الوظيفي المحدد غير صالح', 'INVALID_ROLE');
+    }
+    if (actor?.role !== 'admin' && cleanRole === 'admin') {
+      throw new AppError(403, 'غير مصرح لغير المدير العام بترقية أي حساب إلى مدير عام', 'FORBIDDEN_ADMIN_ESCALATION');
+    }
+  }
   const nextPasswordHash = updates.newPassword && String(updates.newPassword).length >= 6 ? await hashPasswordBcrypt(updates.newPassword) : null;
 
   if (await isPgMode()) {
@@ -1249,6 +1760,9 @@ export async function updateAdminUser(userId, updates, actor) {
       const r = await client.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [userId]);
       if (!r.rows[0]) throw new AppError(404, 'المستخدم غير موجود', 'USER_NOT_FOUND');
       const cur = r.rows[0];
+      if (actor?.role !== 'admin' && cur.role === 'admin') {
+        throw new AppError(403, 'غير مصرح لغير المدير العام بتعديل بيانات أو صلاحيات حساب المدير العام', 'FORBIDDEN_ADMIN_ESCALATION');
+      }
       await client.query(
         `UPDATE users SET full_name = $1, phone = $2, address = $3, notes = $4, role = $5, job_title = $6, department = $7, is_active = $8, must_change_password = $9, permissions = $10, updated_at = $11 WHERE id = $12`,
         [
@@ -1283,6 +1797,9 @@ export async function updateAdminUser(userId, updates, actor) {
     const idx = db.users.findIndex((u) => u.id === userId);
     if (idx === -1) throw new AppError(404, 'المستخدم غير موجود', 'USER_NOT_FOUND');
     const cur = db.users[idx];
+    if (actor?.role !== 'admin' && cur.role === 'admin') {
+      throw new AppError(403, 'غير مصرح لغير المدير العام بتعديل بيانات أو صلاحيات حساب المدير العام', 'FORBIDDEN_ADMIN_ESCALATION');
+    }
     const { newPassword, passwordHash: _ignoredHash, ...rest } = updates;
     db.users[idx] = {
       ...cur,
@@ -1304,6 +1821,9 @@ export async function deleteAdminUser(userId, actor) {
     const uname = await withTransaction(async (client) => {
       const r = await client.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [userId]);
       if (!r.rows[0]) throw new AppError(404, 'المستخدم غير موجود', 'USER_NOT_FOUND');
+      if (actor?.role !== 'admin' && r.rows[0].role === 'admin') {
+        throw new AppError(403, 'غير مصرح لغير المدير العام بحذف حساب المدير العام', 'FORBIDDEN_ADMIN_ESCALATION');
+      }
       if (r.rows[0].role === 'admin') {
         const cntRes = await client.query(`SELECT COUNT(*)::int AS cnt FROM users WHERE role = 'admin' AND is_active = TRUE`);
         if (Number(cntRes.rows[0]?.cnt || 0) <= 1) {
@@ -1320,6 +1840,9 @@ export async function deleteAdminUser(userId, actor) {
   const uname = await withJsonTransaction(async (db) => {
     const target = db.users.find((u) => u.id === userId);
     if (!target) throw new AppError(404, 'المستخدم غير موجود', 'USER_NOT_FOUND');
+    if (actor?.role !== 'admin' && target.role === 'admin') {
+      throw new AppError(403, 'غير مصرح لغير المدير العام بحذف حساب المدير العام', 'FORBIDDEN_ADMIN_ESCALATION');
+    }
     if (target.role === 'admin' && db.users.filter((u) => u.role === 'admin' && u.isActive).length <= 1) {
       throw new AppError(409, 'لا يمكن حذف آخر حساب مدير عام نشط في النظام', 'LAST_ADMIN');
     }
@@ -1384,39 +1907,59 @@ export async function deleteSupplier(id, actor) {
   return { ok: true };
 }
 
-export async function recordSupplierPayment({ supplierId, amount, cashboxId, notes = '', date }, actor) {
+export async function recordSupplierPayment({ supplierId, amount, cashboxId, notes = '', date }, actor, idempotencyKey = '') {
   const payAmount = round2(amount);
-  if (payAmount <= 0) throw new AppError(400, 'المبلغ يجب أن يكون أكبر من صفر', 'INVALID_AMOUNT');
+  if (!Number.isFinite(payAmount) || payAmount <= 0) throw new AppError(400, 'المبلغ يجب أن يكون أكبر من صفر', 'INVALID_AMOUNT');
   const now = nowIso();
   const txDate = date || todayIso();
   const txId = generateServerId('FT');
   const txNo = `TRX-${Date.now().toString().slice(-6)}`;
+  const endpoint = 'POST /api/admin/suppliers/payment';
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
 
   if (await isPgMode()) {
-    await withTransaction(async (client) => {
+    const result = await withTransaction(async (client) => {
+      const dup = await findPgIdempotency(client, scopedIdem);
+      if (dup) return { deduplicated: true, ...dup };
+
       const sRes = await client.query('SELECT * FROM suppliers WHERE id = $1 FOR UPDATE', [supplierId]);
       if (!sRes.rows[0]) throw new AppError(404, 'المورد غير موجود', 'SUPPLIER_NOT_FOUND');
       const cbRes = await client.query('SELECT * FROM cashboxes WHERE id = $1 FOR UPDATE', [cashboxId]);
       if (!cbRes.rows[0]) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
-      const nextSupp = round2(Number(sRes.rows[0].current_balance || 0) - payAmount);
+      const curSuppBal = Number(sRes.rows[0].current_balance || 0);
+      const isAdvance = curSuppBal <= 0 || payAmount > curSuppBal;
+      const nextSupp = round2(curSuppBal - payAmount);
       const nextCb = round2(Number(cbRes.rows[0].current_balance || 0) - payAmount);
+      const desc = `سداد للمورد ${sRes.rows[0].name}${isAdvance ? ' (دفعة مقدمة / رصيد لنا)' : ''}`;
       await client.query('UPDATE suppliers SET current_balance = $1 WHERE id = $2', [nextSupp, supplierId]);
       await client.query('UPDATE cashboxes SET current_balance = $1 WHERE id = $2', [nextCb, cashboxId]);
       await client.query(
         `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, description, notes, created_by, created_at)
          VALUES ($1,$2,$3,'supplier_payment',$4,$5,$6,$7,'سداد لمورد',$8,$9,$10,$11,$12,$13)`,
-        [txId, txNo, txDate, payAmount, cbRes.rows[0].id, cbRes.rows[0].name, nextCb, supplierId, sRes.rows[0].name, `سداد للمورد ${sRes.rows[0].name}`, notes, actor.fullName, now]
+        [txId, txNo, txDate, payAmount, cbRes.rows[0].id, cbRes.rows[0].name, nextCb, supplierId, sRes.rows[0].name, desc, notes, actor.fullName, now]
       );
+      const payloadOut = { ok: true, transactionId: txId, transactionNumber: txNo, supplierBalance: nextSupp, cashboxBalance: nextCb, supplierName: sRes.rows[0].name };
+      await savePgIdempotency(client, scopedIdem, actor, endpoint, payloadOut);
+      return { deduplicated: false, ...payloadOut };
     });
-    return { ok: true };
+    if (!result.deduplicated) {
+      await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `سداد مبلغ (${payAmount}) للمورد ${result.supplierName}`, module: 'الموردون', recordId: supplierId });
+    }
+    return result;
   }
 
-  await withJsonTransaction((db) => {
+  const result = await withJsonTransaction((db) => {
+    const dup = findJsonIdempotency(scopedIdem);
+    if (dup) return { deduplicated: true, ...dup };
+
     const supp = db.suppliers.find((s) => s.id === supplierId);
     const cb = db.cashboxes.find((c) => c.id === cashboxId);
     if (!supp || !cb) throw new AppError(404, 'المورد أو الخزينة غير موجودة', 'NOT_FOUND');
-    supp.currentBalance = round2(supp.currentBalance - payAmount);
-    cb.currentBalance = round2(cb.currentBalance - payAmount);
+    const curSuppBal = Number(supp.currentBalance || 0);
+    const isAdvance = curSuppBal <= 0 || payAmount > curSuppBal;
+    supp.currentBalance = round2(curSuppBal - payAmount);
+    cb.currentBalance = round2(Number(cb.currentBalance || 0) - payAmount);
+    const desc = `سداد للمورد ${supp.name}${isAdvance ? ' (دفعة مقدمة / رصيد لنا)' : ''}`;
     db.financialTransactions.unshift({
       id: txId,
       transactionNumber: txNo,
@@ -1424,17 +1967,214 @@ export async function recordSupplierPayment({ supplierId, amount, cashboxId, not
       type: 'supplier_payment',
       cashboxId: cb.id,
       cashboxName: cb.name,
+      balanceAfter: cb.currentBalance,
       amount: payAmount,
       category: 'سداد لمورد',
+      relatedEntityId: supp.id,
       partyId: supp.id,
       partyName: supp.name,
-      description: `سداد للمورد ${supp.name}`,
+      description: desc,
       notes,
       createdBy: actor.fullName,
       createdAt: now,
     });
+    const payloadOut = { ok: true, transactionId: txId, transactionNumber: txNo, supplierBalance: supp.currentBalance, cashboxBalance: cb.currentBalance, supplierName: supp.name };
+    saveJsonIdempotency(scopedIdem, payloadOut);
+    return { deduplicated: false, ...payloadOut };
   });
-  return { ok: true };
+  if (!result.deduplicated) {
+    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `سداد مبلغ (${payAmount}) للمورد ${result.supplierName}`, module: 'الموردون', recordId: supplierId });
+  }
+  return result;
+}
+
+export async function settleSupplierAdvance({ supplierId, invoiceId, amount, notes = '', date }, actor, idempotencyKey = '') {
+  const settleAmount = round2(amount);
+  if (!Number.isFinite(settleAmount) || settleAmount <= 0) {
+    throw new AppError(400, 'مبلغ التسوية يجب أن يكون أكبر من الصفر', 'INVALID_AMOUNT');
+  }
+  if (!supplierId || !invoiceId) {
+    throw new AppError(400, 'المورد وفاتورة المشتريات مطلوبان لتنفيذ التسوية', 'MISSING_FIELDS');
+  }
+
+  const now = nowIso();
+  const settleDate = date || todayIso();
+  const payId = generateServerId('PAY');
+  const endpoint = `POST /api/admin/suppliers/${supplierId}/settle-advance`;
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
+
+  if (await isPgMode()) {
+    const out = await withTransaction(async (client) => {
+      const dup = await findPgIdempotency(client, scopedIdem);
+      if (dup) return { deduplicated: true, ...dup };
+
+      const sRes = await client.query('SELECT * FROM suppliers WHERE id = $1 FOR UPDATE', [supplierId]);
+      const supp = sRes.rows[0];
+      if (!supp) throw new AppError(404, 'المورد غير موجود', 'SUPPLIER_NOT_FOUND');
+
+      const invRes = await client.query('SELECT * FROM invoices WHERE id = $1 FOR UPDATE', [invoiceId]);
+      const inv = invRes.rows[0];
+      if (!inv) throw new AppError(404, 'فاتورة المشتريات غير موجودة', 'INVOICE_NOT_FOUND');
+      if (inv.type !== 'purchase' || inv.supplier_id !== supplierId) {
+        throw new AppError(400, 'الفاتورة المختارة لا تتبع هذا المورد كفاتورة مشتريات', 'INVOICE_SUPPLIER_MISMATCH');
+      }
+      if (inv.status !== 'confirmed') {
+        throw new AppError(409, 'لا يمكن تسوية الدفعة المقدمة إلا على فاتورة مشتريات معتمدة', 'INVOICE_NOT_CONFIRMED');
+      }
+
+      const invRemaining = round2(inv.remaining_amount);
+      if (settleAmount > invRemaining + 0.01) {
+        throw new AppError(400, `مبلغ التسوية (${settleAmount}) يتجاوز المتبقي على الفاتورة (${invRemaining})`, 'EXCEEDS_REMAINING');
+      }
+
+      const openRes = await client.query(
+        `SELECT COALESCE(SUM(remaining_amount), 0) AS open_rem FROM invoices WHERE supplier_id = $1 AND type = 'purchase' AND status = 'confirmed' AND remaining_amount > 0`,
+        [supplierId]
+      );
+      const openInvoicesRemaining = round2(openRes.rows[0]?.open_rem || 0);
+      const availableAdvance = round2(Math.max(0, openInvoicesRemaining - Number(supp.current_balance || 0)));
+
+      if (availableAdvance <= 0.009) {
+        throw new AppError(409, 'لا يوجد رصيد دفعة مقدمة متاح لدى هذا المورد للتسوية', 'NO_ADVANCE_AVAILABLE');
+      }
+      if (settleAmount > availableAdvance + 0.01) {
+        throw new AppError(400, `مبلغ التسوية (${settleAmount}) يتجاوز الرصيد المقدم المتاح (${availableAdvance})`, 'EXCEEDS_AVAILABLE_ADVANCE');
+      }
+
+      let validCashboxId = inv.cashbox_id;
+      if (!validCashboxId) {
+        const defCb = await client.query('SELECT id FROM cashboxes ORDER BY is_default DESC LIMIT 1');
+        validCashboxId = defCb.rows[0]?.id;
+      }
+      if (!validCashboxId) throw new AppError(400, 'لا توجد خزينة مرجعية متاحة', 'CASHBOX_REQUIRED');
+
+      const newPaid = round2(Number(inv.paid_amount || 0) + settleAmount);
+      const newRem = round2(Math.max(0, Number(inv.grand_total || 0) - newPaid));
+      const newPayType = newRem <= 0 ? 'cash' : 'partial';
+
+      await client.query(
+        `UPDATE invoices SET paid_amount = $1, remaining_amount = $2, payment_type = $3, updated_at = $4 WHERE id = $5`,
+        [newPaid, newRem, newPayType, now, invoiceId]
+      );
+      await client.query(
+        `INSERT INTO invoice_payments (id, invoice_id, invoice_number, amount, date, payment_method, cashbox_id, cashbox_name, notes, created_by, created_at)
+         VALUES ($1,$2,$3,$4,$5,'advance_settlement',$6,$7,$8,$9,$10)`,
+        [
+          payId,
+          invoiceId,
+          inv.invoice_number,
+          settleAmount,
+          settleDate,
+          validCashboxId,
+          'تسوية داخلية من دفعة مقدمة (بدون حركة خزينة)',
+          notes || 'تسوية رصيد دفعة مقدمة على فاتورة المشتريات',
+          actor.fullName,
+          now,
+        ]
+      );
+
+      const itemsRes = await client.query('SELECT * FROM invoice_items WHERE invoice_id = $1', [invoiceId]);
+      const paysRes = await client.query('SELECT * FROM invoice_payments WHERE invoice_id = $1 ORDER BY created_at ASC', [invoiceId]);
+      const nextInvRes = await client.query('SELECT * FROM invoices WHERE id = $1', [invoiceId]);
+      const updatedInvoice = mapPgInvoiceRow(nextInvRes.rows[0], itemsRes.rows, paysRes.rows);
+
+      const payloadOut = {
+        invoice: updatedInvoice,
+        supplierBalance: round2(supp.current_balance || 0),
+        availableAdvanceAfter: round2(Math.max(0, availableAdvance - settleAmount)),
+        settledAmount: settleAmount,
+      };
+      await savePgIdempotency(client, scopedIdem, actor, endpoint, payloadOut);
+      return { deduplicated: false, ...payloadOut };
+    });
+
+    if (!out.deduplicated) {
+      await recordAuditLog({
+        userId: actor.id,
+        userName: actor.fullName,
+        action: `تسوية دفعة مقدمة بمبلغ (${settleAmount}) على فاتورة مشتريات ${out.invoice.invoiceNumber}`,
+        module: 'الموردون',
+        recordId: invoiceId,
+      });
+    }
+    return out;
+  }
+
+  const out = await withJsonTransaction((db) => {
+    const dup = findJsonIdempotency(scopedIdem);
+    if (dup) return { deduplicated: true, ...dup };
+
+    const supp = (db.suppliers || []).find((s) => s.id === supplierId);
+    if (!supp) throw new AppError(404, 'المورد غير موجود', 'SUPPLIER_NOT_FOUND');
+
+    const inv = (db.invoices || []).find((i) => i.id === invoiceId);
+    if (!inv) throw new AppError(404, 'فاتورة المشتريات غير موجودة', 'INVOICE_NOT_FOUND');
+    if (inv.type !== 'purchase' || inv.supplierId !== supplierId) {
+      throw new AppError(400, 'الفاتورة المختارة لا تتبع هذا المورد كفاتورة مشتريات', 'INVOICE_SUPPLIER_MISMATCH');
+    }
+    if (inv.status !== 'confirmed') {
+      throw new AppError(409, 'لا يمكن تسوية الدفعة المقدمة إلا على فاتورة مشتريات معتمدة', 'INVOICE_NOT_CONFIRMED');
+    }
+
+    const invRemaining = round2(inv.remainingAmount || 0);
+    if (settleAmount > invRemaining + 0.01) {
+      throw new AppError(400, `مبلغ التسوية (${settleAmount}) يتجاوز المتبقي على الفاتورة (${invRemaining})`, 'EXCEEDS_REMAINING');
+    }
+
+    const openInvoicesRemaining = round2(
+      (db.invoices || [])
+        .filter((i) => i.supplierId === supplierId && i.type === 'purchase' && i.status === 'confirmed' && Number(i.remainingAmount || 0) > 0)
+        .reduce((s, i) => s + Number(i.remainingAmount || 0), 0)
+    );
+    const availableAdvance = round2(Math.max(0, openInvoicesRemaining - Number(supp.currentBalance || 0)));
+
+    if (availableAdvance <= 0.009) {
+      throw new AppError(409, 'لا يوجد رصيد دفعة مقدمة متاح لدى هذا المورد للتسوية', 'NO_ADVANCE_AVAILABLE');
+    }
+    if (settleAmount > availableAdvance + 0.01) {
+      throw new AppError(400, `مبلغ التسوية (${settleAmount}) يتجاوز الرصيد المقدم المتاح (${availableAdvance})`, 'EXCEEDS_AVAILABLE_ADVANCE');
+    }
+
+    const validCashboxId = inv.cashboxId || (db.cashboxes || []).find((c) => c.isDefault)?.id || db.cashboxes?.[0]?.id || 'cb-main';
+    const paymentRow = {
+      id: payId,
+      invoiceId: inv.id,
+      invoiceNumber: inv.invoiceNumber,
+      amount: settleAmount,
+      date: settleDate,
+      paymentMethod: 'advance_settlement',
+      cashboxId: validCashboxId,
+      cashboxName: 'تسوية داخلية من دفعة مقدمة (بدون حركة خزينة)',
+      notes: notes || 'تسوية رصيد دفعة مقدمة على فاتورة المشتريات',
+      createdBy: actor.fullName,
+      createdAt: now,
+    };
+
+    inv.paidAmount = round2(Number(inv.paidAmount || 0) + settleAmount);
+    inv.remainingAmount = round2(Math.max(0, Number(inv.grandTotal || 0) - inv.paidAmount));
+    inv.paymentType = inv.remainingAmount <= 0 ? 'cash' : 'partial';
+    inv.payments = [...(inv.payments || []), paymentRow];
+
+    const payloadOut = {
+      invoice: inv,
+      supplierBalance: round2(supp.currentBalance || 0),
+      availableAdvanceAfter: round2(Math.max(0, availableAdvance - settleAmount)),
+      settledAmount: settleAmount,
+    };
+    saveJsonIdempotency(scopedIdem, payloadOut);
+    return { deduplicated: false, ...payloadOut };
+  });
+
+  if (!out.deduplicated) {
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `تسوية دفعة مقدمة بمبلغ (${settleAmount}) على فاتورة مشتريات ${out.invoice.invoiceNumber}`,
+      module: 'الموردون',
+      recordId: invoiceId,
+    });
+  }
+  return out;
 }
 
 export async function createCashbox(payload, actor) {
@@ -1757,47 +2497,153 @@ export async function addRepresentative(payload, actor) {
   return { ...payload, id, openingBalance: opening, currentBalance: opening };
 }
 
-export async function updateRepresentative(id, updates) {
+export async function updateRepresentative(id, updates, actor = null) {
   if (await isPgMode()) {
     await getPool().query(
-      `UPDATE representatives SET name = COALESCE($1, name), phone = COALESCE($2, phone), vehicle_number = COALESCE($3, vehicle_number), commission_rate = COALESCE($4, commission_rate), status = COALESCE($5, status), user_id = COALESCE($6, user_id) WHERE id = $7`,
-      [updates.name ?? null, updates.phone ?? null, updates.vehicleNumber ?? null, updates.commissionRate ?? null, updates.status ?? null, updates.userId ?? null, id]
+      `UPDATE representatives SET name = COALESCE($1, name), phone = COALESCE($2, phone), vehicle_number = COALESCE($3, vehicle_number), commission_rate = COALESCE($4, commission_rate), status = COALESCE($5, status), user_id = COALESCE($6, user_id), notes = COALESCE($7, notes), warehouse_id = COALESCE($8, warehouse_id) WHERE id = $9`,
+      [updates.name ?? null, updates.phone ?? null, updates.vehicleNumber ?? null, updates.commissionRate ?? null, updates.status ?? null, updates.userId ?? null, updates.notes ?? null, updates.warehouseId ?? null, id]
     );
   } else {
     await withJsonTransaction((db) => {
       db.representatives = db.representatives.map((r) => (r.id === id ? { ...r, ...updates, id } : r));
     });
   }
+  if (actor) {
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `تحديث بيانات المندوب (${updates.name || id})`,
+      module: 'المندوبون',
+      recordId: id,
+    });
+  }
   return { ok: true };
 }
 
 // HR: Employees, Advances, Attendance, Payrolls
-export async function addEmployee(payload) {
+export async function addEmployee(payload, actor = null) {
+  const name = String(payload.name || '').trim();
+  if (!name) throw new AppError(400, 'اسم الموظف مطلوب', 'INVALID_EMPLOYEE_NAME');
+  const jobTitle = String(payload.jobTitle || '').trim();
+  if (!jobTitle) throw new AppError(400, 'المسمى الوظيفي مطلوب', 'INVALID_JOB_TITLE');
+  const basicSalary = round2(payload.basicSalary ?? 0);
+  if (!Number.isFinite(basicSalary) || basicSalary < 0) {
+    throw new AppError(400, 'الراتب الأساسي غير صالح', 'INVALID_SALARY');
+  }
+
   const id = generateServerId('EMP');
   const code = String(payload.code || `E-${Date.now().toString().slice(-4)}`).trim();
+  const hireDate = payload.hireDate || todayIso();
+  const status = payload.status || 'active';
+
   if (await isPgMode()) {
-    await getPool().query(
-      `INSERT INTO employees (id, code, full_name, job_title, department, phone, national_id, hire_date, basic_salary, status, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-      [id, code, payload.name, payload.jobTitle, payload.department || '', payload.phone || '', payload.nationalId || '', payload.hireDate || todayIso(), round2(payload.basicSalary), payload.status || 'active', payload.notes || '']
-    );
+    await withTransaction(async (client) => {
+      const dup = await client.query('SELECT id FROM employees WHERE LOWER(code) = LOWER($1) LIMIT 1', [code]);
+      if (dup.rows[0]) throw new AppError(409, 'كود الموظف مستخدم مسبقًا', 'DUPLICATE_EMPLOYEE_CODE');
+      await client.query(
+        `INSERT INTO employees (id, code, full_name, job_title, department, phone, national_id, hire_date, basic_salary, status, notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [id, code, name, jobTitle, payload.department || '', payload.phone || '', payload.nationalId || '', hireDate, basicSalary, status, payload.notes || '']
+      );
+    });
   } else {
     await withJsonTransaction((db) => {
-      db.employees.unshift({ ...payload, id, code });
+      if ((db.employees || []).some((e) => String(e.code || '').toLowerCase() === code.toLowerCase())) {
+        throw new AppError(409, 'كود الموظف مستخدم مسبقًا', 'DUPLICATE_EMPLOYEE_CODE');
+      }
+      db.employees.unshift({
+        ...payload,
+        id,
+        code,
+        name,
+        jobTitle,
+        department: payload.department || '',
+        phone: payload.phone || '',
+        nationalId: payload.nationalId || '',
+        hireDate,
+        basicSalary,
+        status,
+        notes: payload.notes || '',
+      });
     });
   }
-  return { ...payload, id, code };
+
+  if (actor) {
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `إضافة موظف جديد (${name})`,
+      module: 'الموظفون والرواتب',
+      recordId: id,
+    });
+  }
+  return {
+    ...payload,
+    id,
+    code,
+    name,
+    jobTitle,
+    hireDate,
+    basicSalary,
+    status,
+  };
 }
 
-export async function updateEmployee(id, updates) {
+export async function updateEmployee(id, updates, actor = null) {
+  if (updates.basicSalary !== undefined && (!Number.isFinite(Number(updates.basicSalary)) || Number(updates.basicSalary) < 0)) {
+    throw new AppError(400, 'الراتب الأساسي غير صالح', 'INVALID_SALARY');
+  }
+  let empName = updates.name || '';
   if (await isPgMode()) {
-    await getPool().query(
-      `UPDATE employees SET full_name = COALESCE($1, full_name), job_title = COALESCE($2, job_title), department = COALESCE($3, department), phone = COALESCE($4, phone), basic_salary = COALESCE($5, basic_salary), status = COALESCE($6, status) WHERE id = $7`,
-      [updates.name ?? null, updates.jobTitle ?? null, updates.department ?? null, updates.phone ?? null, updates.basicSalary ?? null, updates.status ?? null, id]
-    );
+    await withTransaction(async (client) => {
+      const existing = await client.query('SELECT * FROM employees WHERE id = $1 FOR UPDATE', [id]);
+      if (!existing.rows[0]) throw new AppError(404, 'الموظف غير موجود', 'EMPLOYEE_NOT_FOUND');
+      const cur = existing.rows[0];
+      empName = String(updates.name ?? cur.full_name).trim();
+      if (!empName) throw new AppError(400, 'اسم الموظف مطلوب', 'INVALID_EMPLOYEE_NAME');
+      const nextCode = String(updates.code ?? cur.code).trim();
+      if (nextCode.toLowerCase() !== String(cur.code || '').toLowerCase()) {
+        const dup = await client.query('SELECT id FROM employees WHERE LOWER(code) = LOWER($1) AND id <> $2 LIMIT 1', [nextCode, id]);
+        if (dup.rows[0]) throw new AppError(409, 'كود الموظف مستخدم مسبقًا', 'DUPLICATE_EMPLOYEE_CODE');
+      }
+      await client.query(
+        `UPDATE employees SET
+          code = $1, full_name = $2, job_title = $3, department = $4, phone = $5,
+          national_id = $6, hire_date = $7, basic_salary = $8, status = $9, notes = $10
+         WHERE id = $11`,
+        [
+          nextCode,
+          empName,
+          updates.jobTitle ?? cur.job_title,
+          updates.department ?? cur.department ?? '',
+          updates.phone ?? cur.phone ?? '',
+          updates.nationalId ?? cur.national_id ?? '',
+          updates.hireDate ?? isoDateOnly(cur.hire_date),
+          round2(updates.basicSalary ?? cur.basic_salary),
+          updates.status ?? cur.status,
+          updates.notes ?? cur.notes ?? '',
+          id,
+        ]
+      );
+    });
   } else {
     await withJsonTransaction((db) => {
-      db.employees = db.employees.map((e) => (e.id === id ? { ...e, ...updates, id } : e));
+      const idx = (db.employees || []).findIndex((e) => e.id === id);
+      if (idx === -1) throw new AppError(404, 'الموظف غير موجود', 'EMPLOYEE_NOT_FOUND');
+      const cur = db.employees[idx];
+      empName = String(updates.name ?? cur.name).trim();
+      if (!empName) throw new AppError(400, 'اسم الموظف مطلوب', 'INVALID_EMPLOYEE_NAME');
+      db.employees[idx] = { ...cur, ...updates, id, name: empName };
+    });
+  }
+
+  if (actor) {
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `تحديث بيانات الموظف (${empName})`,
+      module: 'الموظفون والرواتب',
+      recordId: id,
     });
   }
   return { ok: true };
@@ -1806,107 +2652,291 @@ export async function updateEmployee(id, updates) {
 export async function addAdvanceDeduction(payload, actor) {
   const id = generateServerId('ADV');
   const amt = round2(payload.amount);
+  if (!Number.isFinite(amt) || amt <= 0) {
+    throw new AppError(400, 'المبلغ يجب أن يكون أكبر من الصفر', 'INVALID_AMOUNT');
+  }
+  if (!['advance', 'deduction', 'bonus'].includes(payload.type)) {
+    throw new AppError(400, 'نوع الحركة الوظيفية غير صالح', 'INVALID_ADVANCE_TYPE');
+  }
+  if (payload.type === 'advance' && !payload.cashboxId) {
+    throw new AppError(400, 'يرجى تحديد الخزينة لصرف السلفة النقدية', 'CASHBOX_REQUIRED');
+  }
+
   const now = nowIso();
+  const dateStr = payload.date || todayIso();
+
   if (await isPgMode()) {
-    await withTransaction(async (client) => {
+    const saved = await withTransaction(async (client) => {
+      const empRes = await client.query('SELECT * FROM employees WHERE id = $1 FOR UPDATE', [payload.employeeId]);
+      const emp = empRes.rows[0];
+      if (!emp) throw new AppError(404, 'الموظف غير موجود', 'EMPLOYEE_NOT_FOUND');
+      if (emp.status !== 'active') throw new AppError(409, 'لا يمكن تسجيل حركة لموظف موقوف عن العمل', 'EMPLOYEE_SUSPENDED');
+
+      const empName = payload.employeeName || emp.full_name;
       await client.query(
         `INSERT INTO advances_deductions (id, employee_id, employee_name, type, amount, date, reason, cashbox_id, is_settled, status, created_by, created_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'active',$10,$11)`,
-        [id, payload.employeeId, payload.employeeName, payload.type, amt, payload.date || todayIso(), payload.reason || '', payload.cashboxId || null, Boolean(payload.isSettled), actor.fullName, now]
+        [id, emp.id, empName, payload.type, amt, dateStr, payload.reason || '', payload.cashboxId || null, Boolean(payload.isSettled), actor.fullName, now]
       );
+
       if (payload.type === 'advance' && payload.cashboxId) {
-        await client.query('UPDATE cashboxes SET current_balance = current_balance - $1 WHERE id = $2', [amt, payload.cashboxId]);
+        const cbRes = await client.query('SELECT * FROM cashboxes WHERE id = $1 FOR UPDATE', [payload.cashboxId]);
+        const cb = cbRes.rows[0];
+        if (!cb) throw new AppError(404, 'الخزينة المختارة غير موجودة', 'CASHBOX_NOT_FOUND');
+        const curCb = round2(Number(cb.current_balance || 0));
+        if (curCb < amt) {
+          throw new AppError(409, `رصيد الخزينة (${cb.name}) الحالي ${curCb} لا يكفي لصرف سلفة بمبلغ ${amt}`, 'INSUFFICIENT_CASHBOX');
+        }
+        const nextCb = round2(curCb - amt);
+        await client.query('UPDATE cashboxes SET current_balance = $1 WHERE id = $2', [nextCb, cb.id]);
+        await client.query(
+          `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, related_doc_id, description, notes, created_by, created_at)
+           VALUES ($1,$2,$3,'advance_payout',$4,$5,$6,$7,'سلف موظفين','employee',$8,$9,'manual',$10,$11,$12,$13,$14)`,
+          [
+            generateServerId('FT'),
+            `ADV-${Date.now().toString().slice(-6)}`,
+            dateStr,
+            amt,
+            cb.id,
+            cb.name,
+            nextCb,
+            emp.id,
+            empName,
+            id,
+            `صرف سلفة للموظف: ${empName}`,
+            payload.reason || '',
+            actor.fullName,
+            now,
+          ]
+        );
       }
+
+      return { ...payload, id, employeeId: emp.id, employeeName: empName, amount: amt, date: dateStr, isSettled: Boolean(payload.isSettled), createdAt: now };
     });
-  } else {
-    await withJsonTransaction((db) => {
-      db.advancesDeductions.unshift({ ...payload, id, amount: amt, createdAt: now });
-      if (payload.type === 'advance' && payload.cashboxId) {
-        const cb = db.cashboxes.find((c) => c.id === payload.cashboxId);
-        if (cb) cb.currentBalance = round2(cb.currentBalance - amt);
-      }
+
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `تسجيل ${payload.type === 'advance' ? 'سلفة' : payload.type === 'deduction' ? 'خصم' : 'مكافأة'} للموظف (${saved.employeeName}) بمبلغ ${amt}`,
+      module: 'الموظفون والرواتب',
+      recordId: id,
     });
+    return saved;
   }
-  return { ...payload, id, amount: amt, createdAt: now };
+
+  const saved = await withJsonTransaction((db) => {
+    const emp = (db.employees || []).find((e) => e.id === payload.employeeId);
+    if (!emp) throw new AppError(404, 'الموظف غير موجود', 'EMPLOYEE_NOT_FOUND');
+    if (emp.status !== 'active') throw new AppError(409, 'لا يمكن تسجيل حركة لموظف موقوف عن العمل', 'EMPLOYEE_SUSPENDED');
+    const empName = payload.employeeName || emp.name;
+
+    if (payload.type === 'advance' && payload.cashboxId) {
+      const cb = (db.cashboxes || []).find((c) => c.id === payload.cashboxId);
+      if (!cb) throw new AppError(404, 'الخزينة المختارة غير موجودة', 'CASHBOX_NOT_FOUND');
+      const curCb = round2(Number(cb.currentBalance || 0));
+      if (curCb < amt) {
+        throw new AppError(409, `رصيد الخزينة (${cb.name}) الحالي ${curCb} لا يكفي لصرف سلفة بمبلغ ${amt}`, 'INSUFFICIENT_CASHBOX');
+      }
+      cb.currentBalance = round2(curCb - amt);
+      db.financialTransactions.unshift({
+        id: generateServerId('FT'),
+        transactionNumber: `ADV-${Date.now().toString().slice(-6)}`,
+        date: dateStr,
+        type: 'advance_payout',
+        cashboxId: cb.id,
+        cashboxName: cb.name,
+        balanceAfter: cb.currentBalance,
+        amount: amt,
+        category: 'سلف موظفين',
+        relatedDocType: 'manual',
+        relatedDocId: id,
+        relatedEntityId: emp.id,
+        partyId: emp.id,
+        partyName: empName,
+        description: `صرف سلفة للموظف: ${empName}`,
+        notes: payload.reason || '',
+        createdBy: actor.fullName,
+        createdAt: now,
+      });
+    }
+
+    const rec = { ...payload, id, employeeId: emp.id, employeeName: empName, amount: amt, date: dateStr, isSettled: Boolean(payload.isSettled), createdAt: now };
+    db.advancesDeductions.unshift(rec);
+    return rec;
+  });
+
+  await recordAuditLog({
+    userId: actor.id,
+    userName: actor.fullName,
+    action: `تسجيل ${payload.type === 'advance' ? 'سلفة' : payload.type === 'deduction' ? 'خصم' : 'مكافأة'} للموظف (${saved.employeeName}) بمبلغ ${amt}`,
+    module: 'الموظفون والرواتب',
+    recordId: id,
+  });
+  return saved;
 }
 
 export async function recordAttendance(payload, actor) {
   const id = generateServerId('ATT');
   const dateStr = payload.date || todayIso();
   if (await isPgMode()) {
+    const empRes = await getPool().query('SELECT id, full_name FROM employees WHERE id = $1 LIMIT 1', [payload.employeeId]);
+    if (!empRes.rows[0]) throw new AppError(404, 'الموظف غير موجود', 'EMPLOYEE_NOT_FOUND');
+    const empName = payload.employeeName || empRes.rows[0].full_name;
     await getPool().query(
       `INSERT INTO attendance (id, employee_id, employee_name, date, status, check_in_time, check_out_time, notes, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [id, payload.employeeId, payload.employeeName, dateStr, payload.status, payload.checkIn || null, payload.checkOut || null, payload.notes || '', actor.fullName]
+      [id, payload.employeeId, empName, dateStr, payload.status, payload.checkIn || null, payload.checkOut || null, payload.notes || '', actor.fullName]
     );
   } else {
     await withJsonTransaction((db) => {
-      db.attendance.unshift({ ...payload, id, date: dateStr });
+      const emp = (db.employees || []).find((e) => e.id === payload.employeeId);
+      if (!emp) throw new AppError(404, 'الموظف غير موجود', 'EMPLOYEE_NOT_FOUND');
+      db.attendance.unshift({ ...payload, id, employeeName: payload.employeeName || emp.name, date: dateStr });
     });
   }
+  await recordAuditLog({
+    userId: actor.id,
+    userName: actor.fullName,
+    action: `تسجيل حضور/غياب للموظف (${payload.employeeName || payload.employeeId}) ليوم ${dateStr}`,
+    module: 'الموظفون والرواتب',
+    recordId: id,
+  });
   return { ...payload, id, date: dateStr };
 }
 
 export async function issuePayroll(payload, actor) {
   const id = generateServerId('PAYR');
-  const payrollNumber = `SAL-${payload.year}-${String(payload.month).padStart(2, '0')}-${Date.now().toString().slice(-4)}`;
+  const monthNum = Number(payload.month);
+  const yearNum = Number(payload.year || new Date().getFullYear());
+  if (!Number.isFinite(monthNum) || monthNum < 1 || monthNum > 12) {
+    throw new AppError(400, 'رقم الشهر غير صالح', 'INVALID_MONTH');
+  }
+  const payrollNumber = `SAL-${yearNum}-${String(monthNum).padStart(2, '0')}-${Date.now().toString().slice(-4)}`;
   const net = round2(payload.netSalary);
+  if (!Number.isFinite(net) || net < 0) {
+    throw new AppError(400, 'صافي الراتب غير صالح', 'INVALID_NET_SALARY');
+  }
+  if (net > 0 && !payload.cashboxId) {
+    throw new AppError(400, 'يرجى تحديد الخزينة لصرف الراتب', 'CASHBOX_REQUIRED');
+  }
   const now = nowIso();
   const dateStr = payload.paidDate || todayIso();
 
   if (await isPgMode()) {
-    await withTransaction(async (client) => {
+    const saved = await withTransaction(async (client) => {
+      const empRes = await client.query('SELECT * FROM employees WHERE id = $1 FOR UPDATE', [payload.employeeId]);
+      const emp = empRes.rows[0];
+      if (!emp) throw new AppError(404, 'الموظف غير موجود', 'EMPLOYEE_NOT_FOUND');
+
+      const dupPay = await client.query(
+        `SELECT id, payroll_number FROM payrolls WHERE employee_id = $1 AND month = $2 AND year = $3 LIMIT 1`,
+        [emp.id, String(monthNum), yearNum]
+      );
+      if (dupPay.rows[0]) {
+        throw new AppError(
+          409,
+          `تم صرف راتب الموظف (${emp.full_name}) لشهر ${monthNum}/${yearNum} مسبقًا (سند ${dupPay.rows[0].payroll_number})`,
+          'DUPLICATE_PAYROLL'
+        );
+      }
+
+      const empName = payload.employeeName || emp.full_name;
       await client.query(
         `INSERT INTO payrolls (id, payroll_number, month, year, employee_id, employee_name, basic_salary, allowances, deductions, advances, net_salary, payment_status, payment_date, cashbox_id, notes, created_by, created_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'paid',$12,$13,$14,$15,$16)`,
-        [id, payrollNumber, String(payload.month), Number(payload.year), payload.employeeId, payload.employeeName, round2(payload.basicSalary), round2(payload.bonusesTotal || 0), round2(payload.deductionsTotal || 0), round2(payload.advancesTotal || 0), net, dateStr, payload.cashboxId || null, payload.notes || '', actor.fullName, now]
+        [id, payrollNumber, String(monthNum), yearNum, emp.id, empName, round2(payload.basicSalary ?? emp.basic_salary), round2(payload.bonusesTotal || 0), round2(payload.deductionsTotal || 0), round2(payload.advancesTotal || 0), net, dateStr, payload.cashboxId || null, payload.notes || '', actor.fullName, now]
       );
-      if (payload.cashboxId) {
+      if (payload.cashboxId && net > 0) {
         const cbRes = await client.query('SELECT * FROM cashboxes WHERE id = $1 FOR UPDATE', [payload.cashboxId]);
-        if (cbRes.rows[0]) {
-          const nextCb = round2(Number(cbRes.rows[0].current_balance || 0) - net);
-          await client.query('UPDATE cashboxes SET current_balance = $1 WHERE id = $2', [nextCb, payload.cashboxId]);
-          await client.query(
-            `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, created_by, created_at)
-             VALUES ($1,$2,$3,'salary_payout',$4,$5,$6,$7,'صرف رواتب',$8,'salary',$9,$10,$11,$12,$13)`,
-            [generateServerId('FT'), `PAY-${Date.now().toString().slice(-6)}`, dateStr, net, cbRes.rows[0].id, cbRes.rows[0].name, nextCb, payload.employeeName, id, payrollNumber, `صرف راتب الموظف ${payload.employeeName}`, actor.fullName, now]
-          );
+        const cb = cbRes.rows[0];
+        if (!cb) throw new AppError(404, 'الخزينة المختارة غير موجودة', 'CASHBOX_NOT_FOUND');
+        const curCb = round2(Number(cb.current_balance || 0));
+        if (curCb < net) {
+          throw new AppError(409, `رصيد الخزينة (${cb.name}) الحالي ${curCb} لا يكفي لصرف راتب ${net}`, 'INSUFFICIENT_CASHBOX');
         }
+        const nextCb = round2(curCb - net);
+        await client.query('UPDATE cashboxes SET current_balance = $1 WHERE id = $2', [nextCb, cb.id]);
+        await client.query(
+          `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, created_by, created_at)
+           VALUES ($1,$2,$3,'salary_payout',$4,$5,$6,$7,'صرف رواتب','employee',$8,$9,'salary',$10,$11,$12,$13,$14)`,
+          [generateServerId('FT'), `PAY-${Date.now().toString().slice(-6)}`, dateStr, net, cb.id, cb.name, nextCb, emp.id, empName, id, payrollNumber, `صرف راتب الموظف ${empName} (${monthNum}/${yearNum})`, actor.fullName, now]
+        );
       }
-      await client.query(`UPDATE advances_deductions SET is_settled = TRUE WHERE employee_id = $1 AND is_settled = FALSE`, [payload.employeeId]);
+      await client.query(`UPDATE advances_deductions SET is_settled = TRUE WHERE employee_id = $1 AND is_settled = FALSE`, [emp.id]);
+      return { ...payload, id, payrollNumber, month: monthNum, year: yearNum, employeeId: emp.id, employeeName: empName, status: 'paid', paidDate: dateStr };
     });
-  } else {
-    await withJsonTransaction((db) => {
-      db.payrolls.unshift({ ...payload, id, payrollNumber, status: 'paid', paidDate: dateStr });
-      if (payload.cashboxId) {
-        const cb = db.cashboxes.find((c) => c.id === payload.cashboxId);
-        if (cb) {
-          cb.currentBalance = round2(cb.currentBalance - net);
-          db.financialTransactions.unshift({
-            id: generateServerId('FT'),
-            transactionNumber: `PAY-${Date.now().toString().slice(-6)}`,
-            date: dateStr,
-            type: 'salary_payout',
-            cashboxId: cb.id,
-            cashboxName: cb.name,
-            amount: net,
-            category: 'صرف رواتب',
-            relatedDocType: 'salary',
-            relatedDocId: id,
-            relatedDocNumber: payrollNumber,
-            partyName: payload.employeeName,
-            description: `صرف راتب الموظف ${payload.employeeName}`,
-            createdBy: actor.fullName,
-            createdAt: now,
-          });
-        }
-      }
-      db.advancesDeductions.forEach((a) => {
-        if (a.employeeId === payload.employeeId && !a.isSettled) a.isSettled = true;
-      });
+
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `صرف راتب الموظف (${saved.employeeName}) لشهر ${monthNum}/${yearNum} بمبلغ ${net}`,
+      module: 'الموظفون والرواتب',
+      recordId: id,
     });
+    return saved;
   }
-  return { ...payload, id, payrollNumber, status: 'paid', paidDate: dateStr };
+
+  const saved = await withJsonTransaction((db) => {
+    const emp = (db.employees || []).find((e) => e.id === payload.employeeId);
+    if (!emp) throw new AppError(404, 'الموظف غير موجود', 'EMPLOYEE_NOT_FOUND');
+    const dupPay = (db.payrolls || []).find(
+      (p) => p.employeeId === emp.id && Number(p.month) === monthNum && Number(p.year) === yearNum
+    );
+    if (dupPay) {
+      throw new AppError(
+        409,
+        `تم صرف راتب الموظف (${emp.name}) لشهر ${monthNum}/${yearNum} مسبقًا (سند ${dupPay.payrollNumber})`,
+        'DUPLICATE_PAYROLL'
+      );
+    }
+
+    const empName = payload.employeeName || emp.name;
+    if (payload.cashboxId && net > 0) {
+      const cb = db.cashboxes.find((c) => c.id === payload.cashboxId);
+      if (!cb) throw new AppError(404, 'الخزينة المختارة غير موجودة', 'CASHBOX_NOT_FOUND');
+      const curCb = round2(Number(cb.currentBalance || 0));
+      if (curCb < net) {
+        throw new AppError(409, `رصيد الخزينة (${cb.name}) الحالي ${curCb} لا يكفي لصرف راتب ${net}`, 'INSUFFICIENT_CASHBOX');
+      }
+      cb.currentBalance = round2(curCb - net);
+      db.financialTransactions.unshift({
+        id: generateServerId('FT'),
+        transactionNumber: `PAY-${Date.now().toString().slice(-6)}`,
+        date: dateStr,
+        type: 'salary_payout',
+        cashboxId: cb.id,
+        cashboxName: cb.name,
+        balanceAfter: cb.currentBalance,
+        amount: net,
+        category: 'صرف رواتب',
+        relatedDocType: 'salary',
+        relatedDocId: id,
+        relatedDocNumber: payrollNumber,
+        relatedEntityId: emp.id,
+        partyId: emp.id,
+        partyName: empName,
+        description: `صرف راتب الموظف ${empName} (${monthNum}/${yearNum})`,
+        createdBy: actor.fullName,
+        createdAt: now,
+      });
+    }
+
+    const rec = { ...payload, id, payrollNumber, month: monthNum, year: yearNum, employeeId: emp.id, employeeName: empName, netSalary: net, status: 'paid', paidDate: dateStr };
+    db.payrolls.unshift(rec);
+    db.advancesDeductions.forEach((a) => {
+      if (a.employeeId === emp.id && !a.isSettled) a.isSettled = true;
+    });
+    return rec;
+  });
+
+  await recordAuditLog({
+    userId: actor.id,
+    userName: actor.fullName,
+    action: `صرف راتب الموظف (${saved.employeeName}) لشهر ${monthNum}/${yearNum} بمبلغ ${net}`,
+    module: 'الموظفون والرواتب',
+    recordId: id,
+  });
+  return saved;
 }
 
 export async function executeCashOperation(payload, actor, idempotencyKey = '') {
@@ -2225,9 +3255,18 @@ export async function updateSystemSettings(updates, actor) {
       const existing = await client.query('SELECT * FROM system_settings LIMIT 1');
       if (existing.rows[0]) {
         const cur = existing.rows[0];
-        const mergedExtra = updates.extraSettings !== undefined
-          ? { ...(cur.extra_settings || {}), ...(updates.extraSettings || {}) }
-          : (cur.extra_settings || {});
+        const prevExtra = cur.extra_settings || {};
+        const mergedExtra = {
+          ...prevExtra,
+          ...(updates.extraSettings || {}),
+        };
+        if (updates.mobileConfig !== undefined || updates.extraSettings?.mobileConfig !== undefined) {
+          mergedExtra.mobileConfig = {
+            ...(prevExtra.mobileConfig || {}),
+            ...(updates.extraSettings?.mobileConfig || {}),
+            ...(updates.mobileConfig || {}),
+          };
+        }
         await client.query(
           `UPDATE system_settings SET company_name=$1, company_subtitle=$2, phone1=$3, phone2=$4, address=$5, commercial_registration=$6, tax_number=$7, currency=$8, default_print_mode=$9, invoice_notes=$10, allow_negative_stock=$11, extra_settings=$12, updated_at=$13 WHERE id=$14`,
           [
@@ -2247,9 +3286,12 @@ export async function updateSystemSettings(updates, actor) {
             cur.id,
           ]
         );
-        return { ...updates, extraSettings: mergedExtra };
+        return { ...updates, extraSettings: mergedExtra, mobileConfig: mergedExtra.mobileConfig };
       } else {
-        const extraSettings = updates.extraSettings || {};
+        const extraSettings = { ...(updates.extraSettings || {}) };
+        if (updates.mobileConfig) {
+          extraSettings.mobileConfig = { ...(extraSettings.mobileConfig || {}), ...(updates.mobileConfig || {}) };
+        }
         await client.query(
           `INSERT INTO system_settings (id, company_name, company_subtitle, phone1, phone2, address, commercial_registration, tax_number, currency, default_print_mode, invoice_notes, allow_negative_stock, extra_settings, updated_at)
            VALUES ('default',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
@@ -2269,7 +3311,7 @@ export async function updateSystemSettings(updates, actor) {
             now,
           ]
         );
-        return { ...updates, extraSettings };
+        return { ...updates, extraSettings, mobileConfig: extraSettings.mobileConfig };
       }
     });
     await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: 'تحديث إعدادات المؤسسة', module: 'الإعدادات' });
@@ -2277,11 +3319,20 @@ export async function updateSystemSettings(updates, actor) {
   }
 
   const updated = await withJsonTransaction((db) => {
-    const mergedExtra = updates.extraSettings !== undefined
-      ? { ...(db.settings.extraSettings || {}), ...(updates.extraSettings || {}) }
-      : (db.settings.extraSettings || {});
+    const prevExtra = db.settings.extraSettings || {};
+    const mergedExtra = {
+      ...prevExtra,
+      ...(updates.extraSettings || {}),
+    };
+    if (updates.mobileConfig !== undefined || updates.extraSettings?.mobileConfig !== undefined) {
+      mergedExtra.mobileConfig = {
+        ...(prevExtra.mobileConfig || {}),
+        ...(updates.extraSettings?.mobileConfig || {}),
+        ...(updates.mobileConfig || {}),
+      };
+    }
     db.settings = { ...db.settings, ...updates, extraSettings: mergedExtra };
-    return db.settings;
+    return { ...db.settings, mobileConfig: mergedExtra.mobileConfig };
   });
   await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: 'تحديث إعدادات المؤسسة', module: 'الإعدادات' });
   return updated;

@@ -1,4 +1,7 @@
-// Arabic RTL Print-to-PDF Engine using a hidden iframe (no window.open / popup blocked issues)
+import { isNativeCapacitor, saveAndShareDocument } from '../../services/native';
+
+// Arabic RTL Print-to-PDF Engine using a hidden iframe on Desktop/Web
+// and native Filesystem + Share on Android/iOS Capacitor apps.
 
 export interface PdfExportOptions {
   title: string;
@@ -23,9 +26,7 @@ function escapeHtml(raw: unknown): string {
     .replace(/"/g, '&quot;');
 }
 
-export function exportHtmlToPdf(options: PdfExportOptions): void {
-  if (typeof document === 'undefined') return;
-
+export function buildPrintableHtml(options: PdfExportOptions): string {
   const {
     title,
     subtitle,
@@ -41,21 +42,10 @@ export function exportHtmlToPdf(options: PdfExportOptions): void {
     footerText = 'تم إصدار هذا المستند آلياً من نظام أولاد سليم للمحاسبة وإدارة الأعمال',
   } = options;
 
-  const existing = document.getElementById('awlad-selim-pdf-iframe');
-  if (existing) existing.remove();
-
-  const iframe = document.createElement('iframe');
-  iframe.id = 'awlad-selim-pdf-iframe';
-  iframe.style.position = 'fixed';
-  iframe.style.right = '0';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
-  iframe.style.border = '0';
-  iframe.style.opacity = '0';
-  document.body.appendChild(iframe);
-
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const origin =
+    typeof window !== 'undefined' && !window.location.origin.startsWith('capacitor://')
+      ? window.location.origin
+      : '';
   const generatedAt = new Date().toLocaleString('ar-EG');
 
   const metaHtml = meta.length
@@ -97,15 +87,16 @@ export function exportHtmlToPdf(options: PdfExportOptions): void {
         .join('')}</div>`
     : '';
 
-  const html = `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(title)}</title>
   <style>
     @page { size: A4; margin: 14mm; }
     * { box-sizing: border-box; font-family: 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif; }
-    body { margin: 0; color: #0f172a; font-size: 12px; line-height: 1.5; direction: rtl; background: #fff; }
+    body { margin: 0; padding: 12px; color: #0f172a; font-size: 12px; line-height: 1.5; direction: rtl; background: #fff; }
     .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 14px; }
     .header img { max-height: 58px; width: auto; }
     .company-info { text-align: center; flex: 1; padding: 0 12px; }
@@ -130,7 +121,7 @@ export function exportHtmlToPdf(options: PdfExportOptions): void {
 </head>
 <body>
   <div class="header">
-    <img src="${origin}/awlad-selim-logo.png" alt="AWLAD SELIM" onerror="this.style.display='none'" />
+    ${origin ? `<img src="${origin}/awlad-selim-logo.png" alt="AWLAD SELIM" onerror="this.style.display='none'" />` : ''}
     <div class="company-info">
       <h1>${escapeHtml(companyName)}</h1>
       <p>${escapeHtml(subtitle || companySubtitle)}</p>
@@ -151,6 +142,36 @@ export function exportHtmlToPdf(options: PdfExportOptions): void {
   </div>
 </body>
 </html>`;
+}
+
+export function exportHtmlToPdf(options: PdfExportOptions): void {
+  if (typeof document === 'undefined') return;
+  const html = buildPrintableHtml(options);
+
+  if (isNativeCapacitor()) {
+    const fileLabel = options.docNumber || options.title || 'document';
+    saveAndShareDocument({
+      filename: `AWLAD_SELIM_${fileLabel}_${Date.now()}.html`,
+      content: html,
+      mimeType: 'text/html;charset=utf-8',
+      title: `${options.title}${options.docNumber ? ` - ${options.docNumber}` : ''}`,
+    }).catch(() => {});
+    return;
+  }
+
+  const existing = document.getElementById('awlad-selim-pdf-iframe');
+  if (existing) existing.remove();
+
+  const iframe = document.createElement('iframe');
+  iframe.id = 'awlad-selim-pdf-iframe';
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  iframe.style.opacity = '0';
+  document.body.appendChild(iframe);
 
   const doc = iframe.contentWindow?.document;
   if (!doc) return;

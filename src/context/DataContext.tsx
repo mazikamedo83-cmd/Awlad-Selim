@@ -6,8 +6,11 @@ import {
   loadOfflineOrdersQueue,
   saveOfflineOrdersQueue,
   QueuedCustomerOrder,
+  saveReadCache,
+  loadReadCache,
 } from '../services/storage';
 import { apiRequest, getConfiguredApiBaseUrl, setConfiguredApiBaseUrl } from '../services/api';
+import { notifyLocal, subscribeNetworkStatus } from '../services/native';
 import {
   Product,
   Customer,
@@ -42,6 +45,9 @@ import {
   OwnerPersonalTransaction,
   StockCountSession,
   StockTransferRequest,
+  CustomerPriceHistoryEntry,
+  CustomerStatementResponse,
+  MobileNotificationItem,
 } from '../types';
 import { useAuth } from './AuthContext';
 
@@ -51,6 +57,15 @@ export interface DataContextType extends DatabaseState {
   pendingChangesCount: number;
   offlineOrdersCount: number;
   lastError: string | null;
+  isUsingOfflineCache: boolean;
+  lastCacheTimestamp: string | null;
+  customerStatement: CustomerStatementResponse | null;
+  mobileNotifications: MobileNotificationItem[];
+  unreadNotificationCount: number;
+  markNotificationsRead: () => void;
+  refreshMobileNotifications: () => Promise<void>;
+  refreshCustomerStatement: () => Promise<void>;
+  getCustomerPriceHistory: (customerId: string) => Promise<Record<string, CustomerPriceHistoryEntry[]>>;
   triggerManualSync: () => Promise<void>;
   exportBackup: () => Promise<void>;
   importBackup: (fileContent: string) => Promise<{ success: boolean; error?: string }>;
@@ -61,6 +76,7 @@ export interface DataContextType extends DatabaseState {
   addProduct: (product: Omit<Product, 'id' | 'createdAt'>) => Promise<Product>;
   updateProduct: (id: string, updates: Partial<Product>) => Promise<void>;
   deleteProduct: (id: string) => Promise<{ success: boolean; error?: string }>;
+  deleteImportedProducts: (payload?: { batchId?: string; deleteAllImported?: boolean }) => Promise<{ success: boolean; deletedCount?: number; skippedCount?: number; skippedItems?: Array<{ id: string; name: string; code: string }>; error?: string }>;
   toggleProductStatus: (id: string) => Promise<{ success: boolean; error?: string }>;
   transferStock: (productId: string, fromWarehouseId: string, toWarehouseId: string, quantity: number, notes: string) => Promise<{ success: boolean; error?: string }>;
   adjustStock: (productId: string, warehouseId: string, newQuantity: number, reason: string) => Promise<void>;
@@ -83,7 +99,8 @@ export interface DataContextType extends DatabaseState {
   updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
   deleteCustomer: (id: string) => Promise<{ success: boolean; error?: string }>;
   linkCustomerUser: (customerId: string, payload: { existingUserId?: string; createUser?: { fullName?: string; username: string; password: string; phone?: string; mustChangePassword?: boolean } }) => Promise<{ success: boolean; customer?: Customer; user?: User; error?: string }>;
-  recordCustomerPayment: (customerId: string, amount: number, cashboxId: string, notes: string) => Promise<{ success: boolean; error?: string }>;
+  toggleCustomerUserStatus: (customerId: string, isActive: boolean) => Promise<{ success: boolean; isActive?: boolean; error?: string }>;
+  recordCustomerPayment: (customerId: string, amount: number, cashboxId: string, notes: string, paymentMethod?: 'cash' | 'bank' | 'cheque') => Promise<{ success: boolean; error?: string }>;
 
   addSupplier: (supplier: Omit<Supplier, 'id' | 'createdAt' | 'currentBalance'>) => Promise<Supplier>;
   updateSupplier: (id: string, updates: Partial<Supplier>) => Promise<void>;
@@ -139,11 +156,11 @@ export interface DataContextType extends DatabaseState {
   updateCustomerItemOrder: (id: string, status: CustomerItemOrderRequest['status'], reason?: string) => Promise<{ success: boolean; error?: string }>;
 
   // Employees & Payroll
-  addEmployee: (employee: Omit<Employee, 'id'>) => Promise<void>;
-  updateEmployee: (id: string, updates: Partial<Employee>) => Promise<void>;
-  recordAttendance: (attendance: Omit<AttendanceRecord, 'id'>) => Promise<void>;
-  addAdvanceDeduction: (item: Omit<EmployeeAdvanceDeduction, 'id' | 'createdAt' | 'isSettled'>) => Promise<void>;
-  paySalary: (payroll: Omit<SalaryPayroll, 'id' | 'payrollNumber'>) => Promise<void>;
+  addEmployee: (employee: Omit<Employee, 'id'>) => Promise<{ success: boolean; error?: string }>;
+  updateEmployee: (id: string, updates: Partial<Employee>) => Promise<{ success: boolean; error?: string }>;
+  recordAttendance: (attendance: Omit<AttendanceRecord, 'id'>) => Promise<{ success: boolean; error?: string }>;
+  addAdvanceDeduction: (item: Omit<EmployeeAdvanceDeduction, 'id' | 'createdAt' | 'isSettled'>) => Promise<{ success: boolean; error?: string }>;
+  paySalary: (payroll: Omit<SalaryPayroll, 'id' | 'payrollNumber'>) => Promise<{ success: boolean; error?: string }>;
 
   // Users & Settings
   auditLogs: AuditLogItem[];
@@ -183,7 +200,7 @@ export interface DataContextType extends DatabaseState {
 
   // Multi-Item Stock Transfer Requests
   stockTransferRequests: StockTransferRequest[];
-  createStockTransferRequest: (payload: { sourceWarehouseId: string; targetWarehouseId: string; date?: string; reason?: string; notes?: string; transferType?: string; items: Array<{ productId: string; unit?: string; unitFactor?: number; requestedQty: number; notes?: string }> }) => Promise<{ success: boolean; transfer?: StockTransferRequest; error?: string }>;
+  createStockTransferRequest: (payload: { sourceWarehouseId?: string; targetWarehouseId?: string; sourceRepId?: string; sourceRepName?: string; targetRepId?: string; targetRepName?: string; date?: string; reason?: string; notes?: string; transferType?: string; items: Array<{ productId: string; unit?: string; unitFactor?: number; requestedQty: number; notes?: string }> }) => Promise<{ success: boolean; transfer?: StockTransferRequest; error?: string }>;
   submitStockTransferRequest: (id: string) => Promise<{ success: boolean; transfer?: StockTransferRequest; error?: string }>;
   approveStockTransferRequest: (id: string, notes?: string) => Promise<{ success: boolean; transfer?: StockTransferRequest; error?: string }>;
   rejectStockTransferRequest: (id: string, reason: string) => Promise<{ success: boolean; transfer?: StockTransferRequest; error?: string }>;
@@ -200,30 +217,66 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [offlineQueue, setOfflineQueue] = useState<QueuedCustomerOrder[]>(() => loadOfflineOrdersQueue());
   const [lastError, setLastError] = useState<string | null>(null);
   const [isInitialLoaded, setIsInitialLoaded] = useState<boolean>(false);
+  const [isUsingOfflineCache, setIsUsingOfflineCache] = useState<boolean>(false);
+  const [lastCacheTimestamp, setLastCacheTimestamp] = useState<string | null>(null);
+  const [customerStatement, setCustomerStatement] = useState<CustomerStatementResponse | null>(null);
+  const [mobileNotifications, setMobileNotifications] = useState<MobileNotificationItem[]>([]);
+  const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
 
   const loadRoleScopedData = useCallback(async () => {
     if (!isAuthenticated || !currentUser) {
       setData(getEmptyClientDatabaseState());
+      setCustomerStatement(null);
+      setMobileNotifications([]);
+      setIsUsingOfflineCache(false);
+      setLastCacheTimestamp(null);
       setIsInitialLoaded(true);
       return;
     }
 
     try {
       if (currentUser.role === 'customer') {
-        const [meRes, prodRes, catRes, ordRes] = await Promise.all([
+        const [meRes, prodRes, catRes, ordRes, myInvRes, stmtRes] = await Promise.all([
           apiRequest<{ ok: boolean; customer: Customer | null }>('/api/customers/me'),
           apiRequest<{ ok: boolean; products: Product[] }>('/api/products'),
           apiRequest<{ ok: boolean; categories: ProductCategory[] }>('/api/products/categories'),
           apiRequest<{ ok: boolean; orders: CustomerItemOrderRequest[] }>('/api/orders'),
+          apiRequest<{ ok: boolean; invoices: Invoice[]; returns: InvoiceReturn[] }>('/api/invoices/my').catch(() => ({
+            invoices: [] as Invoice[],
+            returns: [] as InvoiceReturn[],
+          })),
+          apiRequest<{ ok: boolean } & CustomerStatementResponse>('/api/customers/me/statement').catch(() => null),
         ]);
-        setData((prev) => ({
+
+        const nextStateBase: DatabaseState = {
           ...getEmptyClientDatabaseState(),
-          serverSettings: prev.serverSettings,
           customers: meRes.customer ? [meRes.customer] : [],
           products: prodRes.products || [],
           categories: catRes.categories || [],
           customerItemOrders: ordRes.orders || [],
+          invoices: myInvRes.invoices || [],
+          invoiceReturns: myInvRes.returns || [],
+        };
+        const nextStmt = stmtRes
+          ? {
+              customer: stmtRes.customer || null,
+              allowPriceView: stmtRes.allowPriceView,
+              summary: stmtRes.summary,
+              entries: stmtRes.entries || [],
+            }
+          : null;
+
+        setData((prev) => ({
+          ...nextStateBase,
+          serverSettings: prev.serverSettings,
         }));
+        setCustomerStatement(nextStmt);
+        saveReadCache(currentUser.id, currentUser.role, {
+          dbState: nextStateBase,
+          customerStatement: nextStmt,
+        });
+        setIsUsingOfflineCache(false);
+        setLastCacheTimestamp(null);
       } else {
         const [bootRes, migRes] = await Promise.all([
           apiRequest<{ ok: boolean; data: any }>('/api/admin/bootstrap'),
@@ -232,17 +285,47 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             : Promise.resolve({ logs: [] }),
         ]);
         const d = bootRes.data || {};
-        setData((prev) => ({
+        const nextStateBase: DatabaseState = {
           ...getEmptyClientDatabaseState(),
           ...d,
-          serverSettings: prev.serverSettings,
           migrationLogs: migRes.logs || [],
+        };
+        setData((prev) => ({
+          ...nextStateBase,
+          serverSettings: prev.serverSettings,
         }));
+        setCustomerStatement(null);
+        if (currentUser.role === 'representative') {
+          saveReadCache(currentUser.id, currentUser.role, { dbState: nextStateBase });
+        }
+        setIsUsingOfflineCache(false);
+        setLastCacheTimestamp(null);
       }
       setNetworkStatus(offlineQueue.length > 0 ? 'pending' : 'connected');
       setLastSyncTime(new Date().toLocaleTimeString('ar-EG'));
       setLastError(null);
     } catch (err: any) {
+      const canUseCache =
+        (currentUser.role === 'customer' || currentUser.role === 'representative') &&
+        err?.status === 0;
+      if (canUseCache) {
+        const cached = loadReadCache<{ dbState: DatabaseState; customerStatement?: CustomerStatementResponse | null }>(
+          currentUser.id,
+          currentUser.role
+        );
+        if (cached?.data?.dbState) {
+          setData((prev) => ({
+            ...getEmptyClientDatabaseState(),
+            ...cached.data.dbState,
+            serverSettings: prev.serverSettings,
+          }));
+          if (cached.data.customerStatement) {
+            setCustomerStatement(cached.data.customerStatement);
+          }
+          setIsUsingOfflineCache(true);
+          setLastCacheTimestamp(cached.cachedAt);
+        }
+      }
       setLastError(err?.message || 'تعذر مزامنة البيانات مع السيرفر');
       setNetworkStatus(err?.status === 0 ? 'disconnected' : 'error');
     } finally {
@@ -253,6 +336,151 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     loadRoleScopedData();
   }, [loadRoleScopedData]);
+
+  // Mobile Notifications Polling + Native Local Notifications
+  useEffect(() => {
+    if (!currentUser) {
+      setReadNotificationIds([]);
+      return;
+    }
+    try {
+      const savedRead = localStorage.getItem(`awlad_selim_read_notifs_${currentUser.id}`);
+      setReadNotificationIds(savedRead ? JSON.parse(savedRead) : []);
+    } catch {
+      setReadNotificationIds([]);
+    }
+  }, [currentUser?.id]);
+
+  const refreshMobileNotifications = useCallback(async () => {
+    if (
+      !isAuthenticated ||
+      !currentUser ||
+      (currentUser.role !== 'customer' && currentUser.role !== 'representative')
+    ) {
+      return;
+    }
+    try {
+      const res = await apiRequest<{ ok: boolean; notifications: MobileNotificationItem[] }>(
+        '/api/mobile/notifications'
+      );
+      const list = Array.isArray(res.notifications) ? res.notifications : [];
+      setMobileNotifications(list);
+
+      const seenKey = `awlad_selim_seen_notifs_${currentUser.id}`;
+      let seen: string[] = [];
+      try {
+        const raw = localStorage.getItem(seenKey);
+        seen = raw ? JSON.parse(raw) : [];
+      } catch {
+        seen = [];
+      }
+
+      if (seen.length === 0) {
+        // Seed initial state cleanly without blasting notifications on first launch
+        try {
+          localStorage.setItem(seenKey, JSON.stringify(list.map((n) => n.id)));
+        } catch {
+          // ignore
+        }
+      } else {
+        const unseen = list.filter((n) => !seen.includes(n.id));
+        if (unseen.length > 0) {
+          for (const item of unseen.slice(0, 3)) {
+            let hash = 0;
+            for (let i = 0; i < item.id.length; i += 1) {
+              hash = (hash * 31 + item.id.charCodeAt(i)) | 0;
+            }
+            notifyLocal({
+              id: Math.abs(hash) + 1,
+              title: item.title,
+              body: item.body,
+              extra: { targetTab: item.targetTab, referenceId: item.referenceId },
+            }).catch(() => {});
+          }
+          try {
+            localStorage.setItem(
+              seenKey,
+              JSON.stringify(Array.from(new Set([...seen, ...list.map((n) => n.id)])))
+            );
+          } catch {
+            // ignore
+          }
+        }
+      }
+    } catch {
+      // keep existing notifications silently if offline
+    }
+  }, [isAuthenticated, currentUser]);
+
+  const markNotificationsRead = useCallback(() => {
+    if (!currentUser) return;
+    const ids = mobileNotifications.map((n) => n.id);
+    setReadNotificationIds(ids);
+    try {
+      localStorage.setItem(`awlad_selim_read_notifs_${currentUser.id}`, JSON.stringify(ids));
+    } catch {
+      // ignore
+    }
+  }, [currentUser, mobileNotifications]);
+
+  const unreadNotificationCount = mobileNotifications.filter(
+    (n) => !readNotificationIds.includes(n.id)
+  ).length;
+
+  useEffect(() => {
+    if (
+      !isAuthenticated ||
+      (currentUser?.role !== 'customer' && currentUser?.role !== 'representative')
+    ) {
+      return;
+    }
+    refreshMobileNotifications();
+    const timer = window.setInterval(() => {
+      if (navigator.onLine) {
+        refreshMobileNotifications();
+      }
+    }, 45000);
+    return () => window.clearInterval(timer);
+  }, [isAuthenticated, currentUser?.role, refreshMobileNotifications]);
+
+  const refreshCustomerStatement = useCallback(async () => {
+    if (!isAuthenticated || currentUser?.role !== 'customer') return;
+    try {
+      const res = await apiRequest<{ ok: boolean } & CustomerStatementResponse>('/api/customers/me/statement');
+      setCustomerStatement({
+        customer: res.customer || null,
+        allowPriceView: res.allowPriceView,
+        summary: res.summary,
+        entries: res.entries || [],
+      });
+    } catch {
+      // ignore if offline
+    }
+  }, [isAuthenticated, currentUser?.role]);
+
+  const getCustomerPriceHistory = useCallback(
+    async (customerId: string): Promise<Record<string, CustomerPriceHistoryEntry[]>> => {
+      if (!customerId) return {};
+      try {
+        const res = await apiRequest<{ ok: boolean; priceHistory: Record<string, CustomerPriceHistoryEntry[]> }>(
+          `/api/customers/${customerId}/price-history`
+        );
+        return res.priceHistory || {};
+      } catch {
+        // fallback to cached customer record if offline
+        const cust = data.customers.find((c) => c.id === customerId);
+        if (!cust?.priceHistory) return {};
+        const fallback: Record<string, CustomerPriceHistoryEntry[]> = {};
+        for (const [pid, arr] of Object.entries(cust.priceHistory)) {
+          fallback[pid] = (Array.isArray(arr) ? arr : []).map((entry) =>
+            typeof entry === 'number' ? { price: entry, date: '' } : entry
+          );
+        }
+        return fallback;
+      }
+    },
+    [data.customers]
+  );
 
   // Flush queued customer orders when connection recovers
   const flushOfflineOrders = useCallback(async () => {
@@ -283,25 +511,33 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [isAuthenticated, currentUser, loadRoleScopedData]);
 
   useEffect(() => {
-    const onOnline = () => {
-      flushOfflineOrders();
-    };
-    window.addEventListener('online', onOnline);
+    const unsubscribe = subscribeNetworkStatus((connected) => {
+      if (connected && isAuthenticated) {
+        flushOfflineOrders();
+        if (currentUser?.role === 'customer' || currentUser?.role === 'representative') {
+          loadRoleScopedData();
+          refreshMobileNotifications();
+        }
+      } else if (!connected) {
+        setNetworkStatus('disconnected');
+      }
+    });
     const interval = window.setInterval(() => {
       if (isAuthenticated && navigator.onLine) {
         flushOfflineOrders();
       }
     }, 15000);
     return () => {
-      window.removeEventListener('online', onOnline);
+      unsubscribe();
       window.clearInterval(interval);
     };
-  }, [isAuthenticated, flushOfflineOrders]);
+  }, [isAuthenticated, currentUser?.role, flushOfflineOrders, loadRoleScopedData, refreshMobileNotifications]);
 
   const triggerManualSync = async () => {
     setNetworkStatus('synchronizing');
     await flushOfflineOrders();
     await loadRoleScopedData();
+    await refreshMobileNotifications();
   };
 
   // Backup Export & Restore
@@ -357,6 +593,29 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err?.message || 'تعذر حذف الصنف' };
+    }
+  };
+
+  const deleteImportedProducts = async (payload: { batchId?: string; deleteAllImported?: boolean } = {}) => {
+    try {
+      const res = await apiRequest<{
+        ok: boolean;
+        deletedCount: number;
+        skippedCount: number;
+        skippedItems: Array<{ id: string; name: string; code: string }>;
+      }>('/api/products/delete-imported', {
+        method: 'POST',
+        body: payload,
+      });
+      await loadRoleScopedData();
+      return {
+        success: true,
+        deletedCount: res.deletedCount,
+        skippedCount: res.skippedCount,
+        skippedItems: res.skippedItems || [],
+      };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر حذف الأصناف المستوردة' };
     }
   };
 
@@ -508,11 +767,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const recordCustomerPayment = async (customerId: string, amount: number, cashboxId: string, notes: string) => {
+  const toggleCustomerUserStatus = async (customerId: string, isActive: boolean) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; isActive: boolean }>(`/api/customers/${customerId}/toggle-user-status`, {
+        method: 'POST',
+        body: { isActive },
+      });
+      await loadRoleScopedData();
+      return { success: true, isActive: res.isActive };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تحديث حالة حساب العميل' };
+    }
+  };
+
+  const recordCustomerPayment = async (
+    customerId: string,
+    amount: number,
+    cashboxId: string,
+    notes: string,
+    paymentMethod: 'cash' | 'bank' | 'cheque' = 'cash'
+  ) => {
     try {
       await apiRequest(`/api/customers/${customerId}/payment`, {
         method: 'POST',
-        body: { amount, cashboxId, notes },
+        body: { amount, cashboxId, notes, paymentMethod },
       });
       await loadRoleScopedData();
       return { success: true };
@@ -555,6 +833,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Invoices
   const createSalesInvoice = async (invoiceData: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'>) => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return { success: false, error: 'إصدار فواتير المبيعات يتطلب اتصالاً مباشراً بالسيرفر المركزي (لابتوب المحل).' };
+    }
     try {
       const res = await apiRequest<{ ok: boolean; invoice: Invoice }>('/api/invoices/sales', {
         method: 'POST',
@@ -581,6 +862,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const confirmDraftInvoice = async (invoiceId: string) => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return { success: false, error: 'اعتماد الفواتير يتطلب اتصالاً مباشراً بالسيرفر المركزي (لابتوب المحل).' };
+    }
     try {
       const res = await apiRequest<{ ok: boolean; invoice: Invoice }>(`/api/invoices/${invoiceId}/confirm`, {
         method: 'POST',
@@ -718,6 +1002,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     cashboxId: string;
     notes?: string;
   }) => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return { success: false, error: 'التحويلات النقدية تتطلب اتصالاً مباشراً بالسيرفر المركزي.' };
+    }
     try {
       const res = await apiRequest<{ ok: boolean; transfer: RepTransfer }>('/api/inventory/rep-transfers', {
         method: 'POST',
@@ -731,6 +1018,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const confirmRepTransferReceipt = async (transferId: string, note?: string) => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return { success: false, error: 'تأكيد الاستلام النقدي يتطلب اتصالاً مباشراً بالسيرفر المركزي.' };
+    }
     try {
       await apiRequest(`/api/inventory/rep-transfers/${transferId}/confirm`, { method: 'POST', body: { note } });
       await loadRoleScopedData();
@@ -751,6 +1041,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const createRepItemTransfer = async (transferData: Omit<RepItemTransferRequest, 'id' | 'requestNumber' | 'createdAt' | 'status' | 'createdBy'>) => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return { success: false, error: 'إرسال طلبات تحويل الأصناف يتطلب اتصالاً مباشراً بالسيرفر المركزي.' };
+    }
     try {
       const res = await apiRequest<{ ok: boolean; request: RepItemTransferRequest }>('/api/inventory/rep-item-transfers', {
         method: 'POST',
@@ -764,6 +1057,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateRepItemTransferStatus = async (requestId: string, newStatus: RepItemTransferStatus, approvedItems?: RepTransferItem[], notes?: string) => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return { success: false, error: 'تحديث حالة تحويل الأصناف يتطلب اتصالاً مباشراً بالسيرفر المركزي.' };
+    }
     try {
       await apiRequest(`/api/inventory/rep-item-transfers/${requestId}/status`, {
         method: 'POST',
@@ -872,28 +1168,53 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Employees & HR
   const addEmployee = async (emp: Omit<Employee, 'id'>) => {
-    await apiRequest('/api/admin/employees', { method: 'POST', body: emp });
-    await loadRoleScopedData();
+    try {
+      await apiRequest('/api/admin/employees', { method: 'POST', body: emp });
+      await loadRoleScopedData();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر إضافة الموظف' };
+    }
   };
 
   const updateEmployee = async (id: string, updates: Partial<Employee>) => {
-    await apiRequest(`/api/admin/employees/${id}`, { method: 'PUT', body: updates });
-    await loadRoleScopedData();
+    try {
+      await apiRequest(`/api/admin/employees/${id}`, { method: 'PUT', body: updates });
+      await loadRoleScopedData();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تحديث بيانات الموظف' };
+    }
   };
 
   const recordAttendance = async (attendance: Omit<AttendanceRecord, 'id'>) => {
-    await apiRequest('/api/admin/attendance', { method: 'POST', body: attendance });
-    await loadRoleScopedData();
+    try {
+      await apiRequest('/api/admin/attendance', { method: 'POST', body: attendance });
+      await loadRoleScopedData();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تسجيل الحضور' };
+    }
   };
 
   const addAdvanceDeduction = async (item: Omit<EmployeeAdvanceDeduction, 'id' | 'createdAt' | 'isSettled'>) => {
-    await apiRequest('/api/admin/advances', { method: 'POST', body: item });
-    await loadRoleScopedData();
+    try {
+      await apiRequest('/api/admin/advances', { method: 'POST', body: item });
+      await loadRoleScopedData();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تسجيل السلفة أو الخصم' };
+    }
   };
 
   const paySalary = async (payroll: Omit<SalaryPayroll, 'id' | 'payrollNumber'>) => {
-    await apiRequest('/api/admin/payrolls', { method: 'POST', body: payroll });
-    await loadRoleScopedData();
+    try {
+      await apiRequest('/api/admin/payrolls', { method: 'POST', body: payroll });
+      await loadRoleScopedData();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر صرف الراتب' };
+    }
   };
 
   // Users & Settings
@@ -1155,8 +1476,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // v4 Multi-Item Stock Transfers
   const createStockTransferRequest = async (payload: {
-    sourceWarehouseId: string;
-    targetWarehouseId: string;
+    sourceWarehouseId?: string;
+    targetWarehouseId?: string;
+    sourceRepId?: string;
+    sourceRepName?: string;
+    targetRepId?: string;
+    targetRepName?: string;
     date?: string;
     reason?: string;
     notes?: string;
@@ -1246,6 +1571,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         pendingChangesCount: offlineQueue.length,
         offlineOrdersCount: offlineQueue.length,
         lastError,
+        isUsingOfflineCache,
+        lastCacheTimestamp,
+        customerStatement,
+        mobileNotifications,
+        unreadNotificationCount,
+        markNotificationsRead,
+        refreshMobileNotifications,
+        refreshCustomerStatement,
+        getCustomerPriceHistory,
         triggerManualSync,
         exportBackup,
         importBackup,
@@ -1254,6 +1588,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addProduct,
         updateProduct,
         deleteProduct,
+        deleteImportedProducts,
         toggleProductStatus,
         transferStock,
         adjustStock,
@@ -1270,6 +1605,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateCustomer,
         deleteCustomer,
         linkCustomerUser,
+        toggleCustomerUserStatus,
         recordCustomerPayment,
         addSupplier,
         updateSupplier,

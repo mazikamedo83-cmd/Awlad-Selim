@@ -2,8 +2,15 @@ import { getPool, withTransaction } from '../postgres.js';
 import { withJsonTransaction, nextJsonSequence, readJsonDatabase } from '../jsonLedger.js';
 import { generateServerId } from '../../utils/crypto.js';
 import { AppError, nowIso, todayIso, round2, round3 } from '../../utils/errors.js';
-import { isPgMode, mapPgInvoiceRow } from './mode.js';
+import { isPgMode, mapPgInvoiceRow, mapPgCustomerRow } from './mode.js';
 import { recordAuditLog } from './authStore.js';
+import {
+  getRepresentativeByUserId,
+  getCustomerById,
+  isCustomerAllowedForRep,
+  listCustomers,
+  getSystemSettingsSafe,
+} from './catalogStore.js';
 
 function recomputeInvoiceTotals(payload, existingItems = []) {
   const items = Array.isArray(payload.items) ? payload.items : existingItems;
@@ -652,9 +659,34 @@ export function createInvoiceInsideJsonTx(db, type, payload, actor) {
 }
 
 export async function createSalesInvoice(payload, actor) {
+  let enrichedPayload = { ...(payload || {}) };
+  if (actor?.role === 'representative') {
+    const settings = await getSystemSettingsSafe();
+    if (settings.mobileConfig?.enableRepApp === false) {
+      throw new AppError(403, 'بوابة المناديب متوقفة حاليًا من إعدادات الإدارة', 'REP_APP_DISABLED');
+    }
+    const rep = await getRepresentativeByUserId(actor.id);
+    if (!rep) {
+      throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
+    }
+    if (!enrichedPayload.customerId) {
+      throw new AppError(400, 'يجب تحديد عميل معين لإصدار الفاتورة', 'CUSTOMER_REQUIRED');
+    }
+    const customer = await getCustomerById(enrichedPayload.customerId);
+    if (!customer) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
+    if (!isCustomerAllowedForRep(customer, rep.id)) {
+      throw new AppError(403, 'غير مصرح لك بإصدار فاتورة لهذا العميل لأنه غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
+    }
+    enrichedPayload.representativeId = rep.id;
+    enrichedPayload.representativeName = rep.name;
+    if (!enrichedPayload.warehouseId && rep.warehouseId) {
+      enrichedPayload.warehouseId = rep.warehouseId;
+    }
+  }
+
   const invoice = (await isPgMode())
-    ? await withTransaction((client) => createInvoiceInsidePgTx(client, 'sales', payload, actor))
-    : await withJsonTransaction((db) => createInvoiceInsideJsonTx(db, 'sales', payload, actor));
+    ? await withTransaction((client) => createInvoiceInsidePgTx(client, 'sales', enrichedPayload, actor))
+    : await withJsonTransaction((db) => createInvoiceInsideJsonTx(db, 'sales', enrichedPayload, actor));
 
   await recordAuditLog({
     userId: actor.id,
@@ -691,6 +723,11 @@ async function fetchFullInvoicePg(client, invoiceId) {
 
 export async function confirmDraftInvoice(invoiceId, actor) {
   const now = nowIso();
+  const repActor = actor?.role === 'representative' ? await getRepresentativeByUserId(actor.id) : null;
+  if (actor?.role === 'representative' && !repActor) {
+    throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
+  }
+
   let confirmedInvoice;
   if (await isPgMode()) {
     confirmedInvoice = await withTransaction(async (client) => {
@@ -698,6 +735,31 @@ export async function confirmDraftInvoice(invoiceId, actor) {
       if (!inv) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
       if (inv.status === 'confirmed') throw new AppError(409, 'تم اعتماد هذه الفاتورة مسبقًا (ممنوع تكرار خصم المخزون)', 'ALREADY_CONFIRMED');
       if (inv.status !== 'draft') throw new AppError(409, 'لا يمكن اعتماد فاتورة ملغاة', 'INVALID_INVOICE_STATUS');
+
+      if (repActor) {
+        if (inv.representativeId && inv.representativeId !== repActor.id) {
+          throw new AppError(403, 'غير مصرح لك باعتماد فاتورة مندوب آخر', 'FORBIDDEN_INVOICE_ACCESS');
+        }
+        if (inv.customerId) {
+          const cRes = await client.query('SELECT * FROM customers WHERE id = $1 LIMIT 1', [inv.customerId]);
+          const cust = mapPgCustomerRow(cRes.rows[0]);
+          if (cust && !isCustomerAllowedForRep(cust, repActor.id)) {
+            throw new AppError(403, 'غير مصرح لك باعتماد فاتورة لعميل غير معين في قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
+          }
+        }
+      }
+
+      if (inv.linkedRepTransferId) {
+        const ritRes = await client.query('SELECT status FROM rep_item_transfers WHERE id = $1 LIMIT 1', [inv.linkedRepTransferId]);
+        const rit = ritRes.rows[0];
+        if (rit && !['executed', 'received'].includes(rit.status)) {
+          throw new AppError(
+            409,
+            'لا يمكن اعتماد المسودة قبل تنفيذ طلب تحويل الأصناف المرتبط بها من الإدارة أولاً.',
+            'LINKED_TRANSFER_NOT_EXECUTED'
+          );
+        }
+      }
 
       await applyConfirmedEffectsPgTx(client, inv, actor);
       await client.query(`UPDATE invoices SET status = 'confirmed', updated_at = $1 WHERE id = $2`, [now, invoiceId]);
@@ -709,6 +771,29 @@ export async function confirmDraftInvoice(invoiceId, actor) {
       if (!inv) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
       if (inv.status === 'confirmed') throw new AppError(409, 'تم اعتماد هذه الفاتورة مسبقًا (ممنوع تكرار خصم المخزون)', 'ALREADY_CONFIRMED');
       if (inv.status !== 'draft') throw new AppError(409, 'لا يمكن اعتماد فاتورة ملغاة', 'INVALID_INVOICE_STATUS');
+
+      if (repActor) {
+        if (inv.representativeId && inv.representativeId !== repActor.id) {
+          throw new AppError(403, 'غير مصرح لك باعتماد فاتورة مندوب آخر', 'FORBIDDEN_INVOICE_ACCESS');
+        }
+        if (inv.customerId) {
+          const cust = db.customers.find((c) => c.id === inv.customerId);
+          if (cust && !isCustomerAllowedForRep(cust, repActor.id)) {
+            throw new AppError(403, 'غير مصرح لك باعتماد فاتورة لعميل غير معين في قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
+          }
+        }
+      }
+
+      if (inv.linkedRepTransferId) {
+        const rit = (db.repItemTransfers || []).find((x) => x.id === inv.linkedRepTransferId);
+        if (rit && !['executed', 'received'].includes(rit.status)) {
+          throw new AppError(
+            409,
+            'لا يمكن اعتماد المسودة قبل تنفيذ طلب تحويل الأصناف المرتبط بها من الإدارة أولاً.',
+            'LINKED_TRANSFER_NOT_EXECUTED'
+          );
+        }
+      }
 
       applyConfirmedEffectsJsonTx(db, inv, actor);
       inv.status = 'confirmed';
@@ -1476,7 +1561,8 @@ export async function createInvoiceReturn(returnData, actor) {
   return createdReturn;
 }
 
-export async function listInvoices() {
+export async function listInvoices(actor = null, filters = {}) {
+  let allInvoices = [];
   if (await isPgMode()) {
     const pool = getPool();
     const invRes = await pool.query(`SELECT * FROM invoices ORDER BY created_at DESC`);
@@ -1494,7 +1580,27 @@ export async function listInvoices() {
       list.push(p);
       paysMap.set(p.invoice_id, list);
     }
-    return invRes.rows.map((r) => mapPgInvoiceRow(r, itemsMap.get(r.id) || [], paysMap.get(r.id) || []));
+    allInvoices = invRes.rows.map((r) => mapPgInvoiceRow(r, itemsMap.get(r.id) || [], paysMap.get(r.id) || []));
+  } else {
+    allInvoices = readJsonDatabase().invoices;
   }
-  return readJsonDatabase().invoices;
+
+  if (actor?.role === 'customer') {
+    if (!filters.customerId) return [];
+    return allInvoices.filter(
+      (inv) => inv.customerId === filters.customerId && inv.type === 'sales' && inv.status !== 'draft'
+    );
+  }
+
+  if (actor?.role === 'representative') {
+    const rep = await getRepresentativeByUserId(actor.id);
+    if (!rep) return [];
+    const allowedCusts = await listCustomers({ forRepId: rep.id });
+    const allowedCustIds = new Set(allowedCusts.map((c) => c.id));
+    return allInvoices.filter(
+      (inv) => inv.representativeId === rep.id || (inv.customerId && allowedCustIds.has(inv.customerId))
+    );
+  }
+
+  return allInvoices;
 }

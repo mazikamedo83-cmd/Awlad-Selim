@@ -1,13 +1,28 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Customer, Representative, User, UserRole } from '../types';
-import { apiRequest, getStoredTokens, saveStoredTokens } from '../services/api';
-import { purgeLegacyLocalDatabaseCache } from '../services/storage';
+import { Customer, MobileConfig, Representative, User, UserRole, UserShortcutItem } from '../types';
+import {
+  apiRequest,
+  getStoredTokens,
+  hydrateServerUrlFromNative,
+  saveStoredTokens,
+  setAuthExpiredHandler,
+} from '../services/api';
+import { clearReadCache, purgeLegacyLocalDatabaseCache } from '../services/storage';
+
+const DEFAULT_MOBILE_CONFIG: MobileConfig = {
+  enableCustomerApp: true,
+  enableRepApp: true,
+  allowCustomerPriceView: true,
+  requireOrderApproval: true,
+};
 
 interface AuthContextType {
   currentUser: User | null;
   customerProfile: Customer | null;
   representativeProfile: Representative | null;
+  mobileConfig: MobileConfig;
   linkWarning: string | null;
+  sessionExpiredMessage: string | null;
   needsAdminSetup: boolean;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -15,9 +30,11 @@ interface AuthContextType {
   bootstrapAdmin: (payload: { fullName: string; username: string; password: string; phone?: string; companyName?: string }) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   updatePassword: (newPassword: string, currentPassword?: string) => Promise<{ success: boolean; error?: string }>;
+  updateUserShortcuts: (shortcuts: UserShortcutItem[]) => Promise<{ success: boolean; shortcuts?: UserShortcutItem[]; error?: string }>;
   refreshAuthContext: () => Promise<void>;
   hasPermission: (permissionKey: keyof User['permissions']) => boolean;
   hasRole: (roles: UserRole[]) => boolean;
+  clearSessionExpiredMessage: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -26,19 +43,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [customerProfile, setCustomerProfile] = useState<Customer | null>(null);
   const [representativeProfile, setRepresentativeProfile] = useState<Representative | null>(null);
+  const [mobileConfig, setMobileConfig] = useState<MobileConfig>(DEFAULT_MOBILE_CONFIG);
   const [linkWarning, setLinkWarning] = useState<string | null>(null);
+  const [sessionExpiredMessage, setSessionExpiredMessage] = useState<string | null>(null);
   const [needsAdminSetup, setNeedsAdminSetup] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState(true);
 
   const checkStatusAndSession = useCallback(async () => {
     purgeLegacyLocalDatabaseCache();
+    await hydrateServerUrlFromNative();
     try {
       const statusRes = await apiRequest<{ ok: boolean; needsAdminSetup: boolean }>('/api/auth/status', {
         skipAuth: true,
       });
       setNeedsAdminSetup(Boolean(statusRes.needsAdminSetup));
     } catch {
-      // ignore if offline while restoring
+      // ignore if offline or server URL not configured yet
     }
 
     const tokens = getStoredTokens();
@@ -57,26 +77,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user: User;
         customerProfile: Customer | null;
         representativeProfile: Representative | null;
+        mobileConfig?: MobileConfig;
         linkWarning: string | null;
       }>('/api/auth/me');
       setCurrentUser(me.user);
       setCustomerProfile(me.customerProfile || null);
       setRepresentativeProfile(me.representativeProfile || null);
+      setMobileConfig(me.mobileConfig || DEFAULT_MOBILE_CONFIG);
       setLinkWarning(me.linkWarning || null);
+      setSessionExpiredMessage(null);
       setNeedsAdminSetup(false);
-    } catch {
-      saveStoredTokens(null);
-      setCurrentUser(null);
-      setCustomerProfile(null);
-      setRepresentativeProfile(null);
-      setLinkWarning(null);
+    } catch (err: any) {
+      // If genuinely offline (status === 0), do not wipe tokens unless server rejected them (401)
+      if (err?.status === 401) {
+        saveStoredTokens(null);
+        setCurrentUser(null);
+        setCustomerProfile(null);
+        setRepresentativeProfile(null);
+        setLinkWarning(null);
+      }
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    setAuthExpiredHandler((message) => {
+      setCurrentUser(null);
+      setCustomerProfile(null);
+      setRepresentativeProfile(null);
+      setLinkWarning(null);
+      setSessionExpiredMessage(message || 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً.');
+    });
     checkStatusAndSession();
+    return () => {
+      setAuthExpiredHandler(null);
+    };
   }, [checkStatusAndSession]);
 
   const login = async (
@@ -91,6 +127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user: User;
         customerProfile: Customer | null;
         representativeProfile: Representative | null;
+        mobileConfig?: MobileConfig;
         linkWarning: string | null;
       }>('/api/auth/login', {
         method: 'POST',
@@ -102,7 +139,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCurrentUser(res.user);
       setCustomerProfile(res.customerProfile || null);
       setRepresentativeProfile(res.representativeProfile || null);
+      setMobileConfig(res.mobileConfig || DEFAULT_MOBILE_CONFIG);
       setLinkWarning(res.linkWarning || null);
+      setSessionExpiredMessage(null);
       setNeedsAdminSetup(false);
 
       return {
@@ -128,7 +167,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         skipAuth: true,
       });
       setNeedsAdminSetup(false);
-      // Automatically sign in with the newly created owner credentials
       const loginRes = await login(payload.username, payload.password);
       if (!loginRes.success) {
         return { success: false, error: loginRes.error };
@@ -150,10 +188,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // always clear local session even if server unreachable
     }
     saveStoredTokens(null);
+    clearReadCache();
     setCurrentUser(null);
     setCustomerProfile(null);
     setRepresentativeProfile(null);
+    setMobileConfig(DEFAULT_MOBILE_CONFIG);
     setLinkWarning(null);
+    setSessionExpiredMessage(null);
   };
 
   const updatePassword = async (
@@ -170,6 +211,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err?.message || 'فشل تحديث كلمة المرور' };
+    }
+  };
+
+  const updateUserShortcuts = async (
+    shortcuts: UserShortcutItem[]
+  ): Promise<{ success: boolean; shortcuts?: UserShortcutItem[]; error?: string }> => {
+    if (!currentUser) return { success: false, error: 'المستخدم غير مسجل' };
+    try {
+      const res = await apiRequest<{ ok: boolean; shortcuts: UserShortcutItem[]; user?: User }>('/api/auth/shortcuts', {
+        method: 'PUT',
+        body: { shortcuts },
+      });
+      const nextShortcuts = Array.isArray(res.shortcuts) ? res.shortcuts : shortcuts;
+      setCurrentUser((prev) => (prev ? { ...prev, shortcuts: nextShortcuts } : null));
+      return { success: true, shortcuts: nextShortcuts };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر حفظ اختصارات لوحة المفاتيح' };
     }
   };
 
@@ -190,7 +248,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentUser,
         customerProfile,
         representativeProfile,
+        mobileConfig,
         linkWarning,
+        sessionExpiredMessage,
         needsAdminSetup,
         isAuthenticated: Boolean(currentUser),
         isLoading,
@@ -198,9 +258,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         bootstrapAdmin,
         logout,
         updatePassword,
+        updateUserShortcuts,
         refreshAuthContext: checkStatusAndSession,
         hasPermission,
         hasRole,
+        clearSessionExpiredMessage: () => setSessionExpiredMessage(null),
       }}
     >
       {children}

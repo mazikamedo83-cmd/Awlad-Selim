@@ -6,6 +6,7 @@ import {
   Smartphone, Database, X, HelpCircle
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useShortcuts } from '../../context/ShortcutsContext';
 
 export type NavItemKey =
   | 'dashboard'
@@ -77,9 +78,34 @@ interface NavSection {
     label: string;
     icon?: React.ElementType;
     permission?: string | string[];
+    allowAllStaff?: boolean;
     badge?: string;
+    shortcutAction?: string;
   }>;
 }
+
+const NAV_TO_SHORTCUT_ACTION: Partial<Record<NavItemKey, string>> = {
+  dashboard: 'nav:dashboard',
+  'new-sale': 'nav:new-sale',
+  'sales-invoices': 'nav:sales',
+  'new-purchase': 'nav:new-purchase',
+  'purchase-invoices': 'nav:purchases',
+  'sales-returns': 'nav:returns',
+  products: 'nav:products',
+  warehouses: 'nav:warehouses',
+  'stock-transfers-orders': 'nav:stock-transfers',
+  'stock-counts': 'nav:stock-count',
+  customers: 'nav:customers',
+  suppliers: 'nav:suppliers',
+  cashboxes: 'nav:cashboxes',
+  expenses: 'nav:expenses',
+  cheques: 'nav:cheques',
+  reps: 'nav:reps',
+  employees: 'nav:employees',
+  reports: 'nav:reports',
+  'system-settings': 'nav:settings',
+  'shortcuts-settings': 'nav:shortcuts-settings',
+};
 
 export const Sidebar: React.FC<SidebarProps> = ({
   currentPage,
@@ -90,6 +116,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleCollapse,
 }) => {
   const { hasPermission, currentUser } = useAuth();
+  const { getShortcutLabelForAction } = useShortcuts();
 
   // Accordion state: only one section open at a time; clicking open section closes it.
   const [openSectionId, setOpenSectionId] = useState<string | null>('sales');
@@ -193,6 +220,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       permission: 'canManageEmployees',
       items: [
         { key: 'employees', label: 'شؤون الموظفين' },
+        { key: 'attendance', label: 'الحضور والغياب' },
         { key: 'advances', label: 'السلف والخصومات والمكافآت', permission: 'canManageSalaries' },
         { key: 'payroll', label: 'مسير صرف الرواتب', permission: 'canManageSalaries' },
       ],
@@ -223,6 +251,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       permission: 'canManageSettings',
       items: [
         { key: 'system-settings', label: 'إعدادات النظام والطباعة' },
+        { key: 'shortcuts-settings', label: 'اختصارات لوحة المفاتيح', allowAllStaff: true },
         { key: 'server-settings', label: 'إعدادات السيرفر والاتصال' },
         { key: 'backup', label: 'النسخ الاحتياطي والاستعادة' },
         { key: 'migration', label: 'سجل الترحيل و PostgreSQL', badge: 'جديد' },
@@ -237,11 +266,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return hasPermission(perm as any);
   };
 
-  // Filter sections and items based on permissions (allow section if user has section perm OR any child item perm)
+  // Filter sections and items based on permissions (allow section if user has section perm OR any child item perm/allowAllStaff)
   const filteredSections = navSections
     .map(section => {
       const sectionAllowed = checkPerm(section.permission);
       const allowedItems = section.items.filter(item => {
+        if (item.allowAllStaff) return true;
         if (item.permission) return checkPerm(item.permission);
         return sectionAllowed;
       });
@@ -359,29 +389,45 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <div className="mt-1 mr-4 pr-3 border-r-2 border-slate-800 space-y-1 py-1">
                     {section.items.map(item => {
                       const isActive = currentPage === item.key;
+                      const actionKey = item.shortcutAction || NAV_TO_SHORTCUT_ACTION[item.key];
+                      const scLabel = actionKey ? getShortcutLabelForAction(actionKey) : '';
                       return (
                         <button
                           key={item.key}
                           type="button"
                           onClick={() => handleItemClick(item.key)}
-                          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+                          className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                             isActive
                               ? 'bg-blue-600 text-white shadow-xs font-bold'
                               : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
                           }`}
                         >
-                          <div className="flex items-center gap-2">
-                            <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-white' : 'bg-slate-600'}`}></span>
-                            <span>{item.label}</span>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActive ? 'bg-white' : 'bg-slate-600'}`}></span>
+                            <span className="truncate">{item.label}</span>
                           </div>
 
-                          {item.badge && (
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
-                              isActive ? 'bg-blue-700 text-white' : 'bg-blue-900/40 text-blue-300 border border-blue-800'
-                            }`}>
-                              {item.badge}
-                            </span>
-                          )}
+                          <div className="flex items-center gap-1 shrink-0">
+                            {scLabel && (
+                              <kbd
+                                dir="ltr"
+                                className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
+                                  isActive
+                                    ? 'bg-blue-700/80 text-blue-100 border-blue-500'
+                                    : 'bg-slate-800 text-slate-400 border-slate-700'
+                                }`}
+                              >
+                                {scLabel}
+                              </kbd>
+                            )}
+                            {item.badge && (
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
+                                isActive ? 'bg-blue-700 text-white' : 'bg-blue-900/40 text-blue-300 border border-blue-800'
+                              }`}>
+                                {item.badge}
+                              </span>
+                            )}
+                          </div>
                         </button>
                       );
                     })}

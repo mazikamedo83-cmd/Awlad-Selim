@@ -141,7 +141,6 @@ router.post(
 
 router.post(
   '/rep-item-transfers/:id/status',
-  requirePermission('canManageTransfers'),
   asyncHandler(async (req, res) => {
     await updateRepItemTransferStatus(req.params.id, req.body || {}, req.auth.user);
     res.json({ ok: true });

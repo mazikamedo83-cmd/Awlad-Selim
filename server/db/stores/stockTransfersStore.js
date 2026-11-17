@@ -70,12 +70,53 @@ export async function listStockTransferRequests() {
 }
 
 export async function createStockTransferRequest(payload, actor) {
-  const sourceWarehouseId = String(payload.sourceWarehouseId || '').trim();
-  const targetWarehouseId = String(payload.targetWarehouseId || '').trim();
+  let sourceWarehouseId = String(payload.sourceWarehouseId || '').trim();
+  let targetWarehouseId = String(payload.targetWarehouseId || '').trim();
+
+  if (!sourceWarehouseId && payload.sourceRepId) {
+    const { ensureRepVanWarehouse } = await import('./inventoryAdminStore.js');
+    let repName = payload.sourceRepName || '';
+    if (!repName) {
+      if (await isPgMode()) {
+        const r = await getPool().query('SELECT name, warehouse_id FROM representatives WHERE id = $1 LIMIT 1', [payload.sourceRepId]);
+        if (r.rows[0]?.warehouse_id) sourceWarehouseId = r.rows[0].warehouse_id;
+        repName = r.rows[0]?.name || '';
+      } else {
+        const rep = (readJsonDatabase().representatives || []).find((x) => x.id === payload.sourceRepId);
+        if (rep?.warehouseId) sourceWarehouseId = rep.warehouseId;
+        repName = rep?.name || '';
+      }
+    }
+    if (!sourceWarehouseId && repName) {
+      const wh = await ensureRepVanWarehouse(repName, actor, payload.sourceRepId);
+      sourceWarehouseId = wh.id;
+    }
+  }
+
+  if (!targetWarehouseId && payload.targetRepId) {
+    const { ensureRepVanWarehouse } = await import('./inventoryAdminStore.js');
+    let repName = payload.targetRepName || '';
+    if (!repName) {
+      if (await isPgMode()) {
+        const r = await getPool().query('SELECT name, warehouse_id FROM representatives WHERE id = $1 LIMIT 1', [payload.targetRepId]);
+        if (r.rows[0]?.warehouse_id) targetWarehouseId = r.rows[0].warehouse_id;
+        repName = r.rows[0]?.name || '';
+      } else {
+        const rep = (readJsonDatabase().representatives || []).find((x) => x.id === payload.targetRepId);
+        if (rep?.warehouseId) targetWarehouseId = rep.warehouseId;
+        repName = rep?.name || '';
+      }
+    }
+    if (!targetWarehouseId && repName) {
+      const wh = await ensureRepVanWarehouse(repName, actor, payload.targetRepId);
+      targetWarehouseId = wh.id;
+    }
+  }
+
   const rawItems = Array.isArray(payload.items) ? payload.items : [];
 
   if (!sourceWarehouseId || !targetWarehouseId || sourceWarehouseId === targetWarehouseId) {
-    throw new AppError(400, 'يجب اختيار مستودع مصدر ومستودع وجهة مختلفين للتحويل', 'INVALID_WAREHOUSES');
+    throw new AppError(400, 'يجب اختيار مصدر ووجهة مختلفين للتحويل', 'INVALID_WAREHOUSES');
   }
   if (!rawItems.length) {
     throw new AppError(400, 'يجب إضافة صنف واحد على الأقل لطلب التحويل', 'EMPTY_ITEMS');
@@ -84,7 +125,9 @@ export async function createStockTransferRequest(payload, actor) {
   const dateStr = payload.date || todayIso();
   const reason = String(payload.reason || '').trim();
   const notes = String(payload.notes || '').trim();
-  const transferType = String(payload.transferType || 'warehouse_transfer');
+  const transferType = String(
+    payload.transferType || (payload.sourceRepId || payload.targetRepId ? 'rep_van_transfer' : 'warehouse_transfer')
+  );
   const id = generateServerId('STR');
   const now = nowIso();
 

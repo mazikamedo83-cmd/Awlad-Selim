@@ -8,6 +8,8 @@ import {
   createCategory,
   updateCategory,
   deleteCategory,
+  getSystemSettingsSafe,
+  deleteImportedProductsBatch,
 } from '../db/stores/catalogStore.js';
 import {
   requireAuth,
@@ -24,8 +26,17 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const isCustomer = req.auth.user.role === 'customer';
-    const products = await listProducts({ forCustomer: isCustomer });
-    res.json({ ok: true, products });
+    const settings = await getSystemSettingsSafe();
+    const allowCustomerPriceView = Boolean(settings.mobileConfig?.allowCustomerPriceView);
+    if (isCustomer && settings.mobileConfig?.enableCustomerApp === false) {
+      return res.status(403).json({
+        ok: false,
+        code: 'CUSTOMER_APP_DISABLED',
+        error: 'تطبيق العملاء متوقف حاليًا من إعدادات الإدارة.',
+      });
+    }
+    const products = await listProducts({ forCustomer: isCustomer, allowCustomerPriceView });
+    res.json({ ok: true, products, mobileConfig: settings.mobileConfig });
   })
 );
 
@@ -64,6 +75,22 @@ router.delete(
   asyncHandler(async (req, res) => {
     await deleteCategory(req.params.id, req.auth.user);
     res.json({ ok: true });
+  })
+);
+
+router.post(
+  '/delete-imported',
+  requireStaff,
+  requirePermission('canManageInventory'),
+  asyncHandler(async (req, res) => {
+    const result = await deleteImportedProductsBatch(
+      {
+        batchId: req.body?.batchId,
+        deleteAllImported: req.body?.deleteAllImported !== false,
+      },
+      req.auth.user
+    );
+    res.json({ ok: true, ...result });
   })
 );
 
