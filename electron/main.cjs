@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell, clipboard } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, clipboard, session } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -11,6 +11,8 @@ let desktopState = {
   platform: process.platform,
   dataDir: '',
   backupsDir: '',
+  distDir: '',
+  uiEntry: '',
   envFilePath: null,
   port: 3000,
   lanUrls: [],
@@ -127,6 +129,7 @@ function buildApplicationMenu() {
       label: 'عرض',
       submenu: [
         { label: 'إعادة تحميل', role: 'reload' },
+        { label: 'إعادة تحميل قسري (مسح الكاش)', role: 'forceReload' },
         { label: 'تكبير', role: 'zoomIn' },
         { label: 'تصغير', role: 'zoomOut' },
         { label: 'الحجم الافتراضي', role: 'resetZoom' },
@@ -228,7 +231,19 @@ async function createMainWindow(startUrl, appRoot) {
     mainWindow = null;
   });
 
-  await mainWindow.loadURL(startUrl);
+  try {
+    await session.defaultSession.clearCache();
+    await session.defaultSession.clearStorageData({
+      origin: startUrl,
+      storages: ['serviceworkers', 'cachestorage'],
+    });
+  } catch (err) {
+    console.warn('[Electron Cache Clear Warning]:', err?.message || err);
+  }
+
+  await mainWindow.loadURL(startUrl, {
+    extraHeaders: 'pragma: no-cache\nCache-Control: no-cache, no-store, must-revalidate\n',
+  });
 }
 
 async function shutdownGracefully() {
@@ -276,10 +291,24 @@ async function bootstrapApplication() {
   desktopState.envFilePath = prepResult.envFilePath;
   desktopState.databaseState = prepResult.databaseState;
 
-  const devStartUrl = (process.env.ELECTRON_START_URL || '').trim();
+  const devStartUrl = !app.isPackaged ? (process.env.ELECTRON_START_URL || '').trim() : '';
   let startUrl = devStartUrl;
 
   if (!devStartUrl) {
+    const distDir = path.join(appRoot, 'dist');
+    const distIndexPath = path.join(distDir, 'index.html');
+    if (!fs.existsSync(distIndexPath)) {
+      dialog.showErrorBox(
+        'ملفات الواجهة مفقودة - AWLAD SELIM',
+        `تعذر العثور على ملف الواجهة المحدث:\n${distIndexPath}\n\nيرجى إعادة تثبيت أو إعادة بناء نسخة Windows.`
+      );
+      app.exit(1);
+      return;
+    }
+
+    desktopState.distDir = distDir;
+    desktopState.uiEntry = distIndexPath;
+
     const serverEntryUrl = pathToFileURL(path.join(appRoot, 'server', 'index.js')).href;
     const { startStandaloneServer } = await import(serverEntryUrl);
 
@@ -287,14 +316,14 @@ async function bootstrapApplication() {
       serverInstance = await startStandaloneServer({
         host: '0.0.0.0',
         port: Number(process.env.PORT || process.env.API_PORT || 3000),
-        distDir: path.join(appRoot, 'dist'),
+        distDir,
         envFiles: prepResult.envFilePath ? [prepResult.envFilePath] : [],
         allowPortFallback: process.env.AWLAD_ALLOW_PORT_FALLBACK === 'true',
       });
     } catch (err) {
       dialog.showErrorBox(
         'تعذر تشغيل خادم AWLAD SELIM المحلي',
-        `حدث خطأ أثناء تشغيل الخادم الداخلي على المنفذ ${process.env.PORT || 3000}.\n\n${err.message}\n\nإذا كان هناك خادم آخر يعمل على نفس المنفذ، أغلقه ثم أعد فتح البرنامج.`
+        `حدث خطأ أثناء تشغيل الخادم الداخلي على المنفذ ${process.env.PORT || 3000}.\n\n${err.message}\n\nإذا كان هناك خادم قديم أو آخر يعمل على نفس المنفذ، أغلقه ثم أعد فتح البرنامج.`
       );
       app.exit(1);
       return;

@@ -408,7 +408,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="p-3 border-t border-slate-800 bg-slate-950/60 text-center">
           {!isCollapsed ? (
             <div className="text-[11px] text-slate-400 font-medium">
-              <span>أولاد سليم v2.4</span>
+              <span>أولاد سليم v3.0.0</span>
               <span className="mx-2">•</span>
               <span className="text-emerald-400">نظام محمي وآمن</span>
             </div>

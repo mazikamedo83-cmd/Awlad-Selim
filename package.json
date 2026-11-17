@@ -11,12 +11,13 @@
     "server:start": "node server/index.js",
     "build": "vite build",
     "preview": "vite preview",
-    "clean": "rm -rf dist dist-electron server.js",
+    "clean": "node -e \"const fs=require('fs');for(const d of ['dist','dist-electron','server.js'])fs.rmSync(d,{recursive:true,force:true})\"",
     "lint": "tsc --noEmit",
+    "electron:icons": "node scripts/generate-win-icon.mjs",
     "electron:start": "npm run build && electron .",
-    "electron:pack": "npm run build && electron-builder --win --x64 --dir",
-    "electron:dist": "npm run build && electron-builder --win nsis --x64 --publish never",
-    "electron:portable": "npm run build && electron-builder --win portable --x64 --publish never",
+    "electron:pack": "npm run clean && npm run build && npm run electron:icons && electron-builder --win --x64 --dir",
+    "electron:dist": "npm run clean && npm run build && npm run electron:icons && electron-builder --win nsis --x64 --publish never",
+    "electron:portable": "npm run clean && npm run build && npm run electron:icons && electron-builder --win portable --x64 --publish never",
     "cap:sync": "npm run build && npx cap sync",
     "cap:android": "npx cap sync android",
     "cap:ios": "npx cap sync ios"
@@ -78,10 +79,14 @@
     },
     "files": [
       "dist/**/*",
+      "!dist/assets/aistudio/**/*",
       "electron/**/*",
       "server/**/*",
       "!server/tests/**/*",
       "!server/data/**/*",
+      "!AWLAD_SELIM_BACKUP/**/*",
+      "!android/**/*",
+      "!ios/**/*",
       "build/icon.*",
       "package.json"
     ],
@@ -92,7 +97,9 @@
         "filter": [
           "**/*",
           "!*.tmp",
-          "!sessions.json"
+          "!sessions.json",
+          "!.jwt_secret",
+          "!.env*"
         ]
       }
     ],

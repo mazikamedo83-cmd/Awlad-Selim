@@ -32,8 +32,21 @@ async function startUnifiedServer() {
   } else {
     const distDir = path.join(__dirname, 'dist');
     if (fs.existsSync(distDir)) {
-      app.use(express.static(distDir));
+      const setNoCacheHeaders = (res: express.Response) => {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      };
+      app.use(express.static(distDir, {
+        index: false,
+        setHeaders: (res, filePath) => {
+          if (path.basename(filePath).toLowerCase() === 'index.html') {
+            setNoCacheHeaders(res);
+          }
+        },
+      }));
       app.get('*', (_req, res) => {
+        setNoCacheHeaders(res);
         res.sendFile(path.join(distDir, 'index.html'));
       });
     }

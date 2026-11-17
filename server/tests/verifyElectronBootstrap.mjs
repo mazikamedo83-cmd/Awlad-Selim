@@ -81,6 +81,19 @@ const childScript1 = `
     const srv = await startStandaloneServer({ port: 0, host: '0.0.0.0' });
     const htmlRes = await fetch(srv.localUrl + '/');
     if (htmlRes.status !== 200) throw new Error('Offline dist/index.html failed: ' + htmlRes.status);
+    const cacheCtrl = htmlRes.headers.get('cache-control') || '';
+    if (!cacheCtrl.includes('no-store')) {
+      throw new Error('Expected Cache-Control no-store on index.html, got: ' + cacheCtrl);
+    }
+    const htmlText = await htmlRes.text();
+    const scriptMatch = htmlText.match(new RegExp('src="(/assets/index-[^"]+\\\\.js)"'));
+    if (!scriptMatch) throw new Error('Missing compiled JS entry in dist/index.html');
+    const jsRes = await fetch(srv.localUrl + scriptMatch[1]);
+    if (jsRes.status !== 200) throw new Error('Compiled JS bundle failed: ' + jsRes.status);
+    const jsText = await jsRes.text();
+    if (!jsText.includes('v3.0.0')) {
+      throw new Error('Served JS bundle does not contain current version v3.0.0');
+    }
     const bootRes = await fetch(srv.localUrl + '/api/auth/bootstrap-admin', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
