@@ -1,0 +1,104 @@
+name: Build AWLAD SELIM Windows Desktop
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-desktop:
+    name: Build Windows Desktop Installer (EXE)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies with Bun
+        shell: pwsh
+        run: bun install --frozen-lockfile
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Generate Windows icons if missing
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "build/icon.ico") -or -not (Test-Path "build/icon.png")) {
+            python -m pip install --disable-pip-version-check pillow
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $script = '
+          import os
+          from PIL import Image
+
+          src_path = os.path.join("public", "awlad-selim-logo.png")
+          if not os.path.isfile(src_path):
+              raise FileNotFoundError(f"Missing official logo: {src_path}")
+
+          os.makedirs("build", exist_ok=True)
+          img = Image.open(src_path).convert("RGBA")
+          bbox = img.getbbox()
+          if bbox:
+              img = img.crop(bbox)
+
+          max_dim = 472
+          ratio = min(max_dim / img.width, max_dim / img.height)
+          new_size = (max(1, round(img.width * ratio)), max(1, round(img.height * ratio)))
+          resized = img.resize(new_size, Image.Resampling.LANCZOS)
+
+          canvas = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
+          offset = ((512 - new_size[0]) // 2, (512 - new_size[1]) // 2)
+          canvas.paste(resized, offset, resized)
+
+          canvas.save(os.path.join("build", "icon.png"), format="PNG")
+          canvas.save(os.path.join("build", "icon.ico"), format="ICO", sizes=[(16, 16), (32, 32), (48, 48), (256, 256)])
+          '
+            python -c $script
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Build Windows Desktop Installer (EXE)
+        shell: pwsh
+        run: npm run electron:dist
+
+      - name: Verify EXE output in dist-electron
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist-electron")) {
+            Write-Error "Missing dist-electron output directory"
+            exit 1
+          }
+          $exes = Get-ChildItem -Path "dist-electron" -Filter "*.exe" -File
+          if (-not $exes -or $exes.Count -eq 0) {
+            Write-Error "No .exe installer found inside dist-electron"
+            Get-ChildItem -Path "dist-electron"
+            exit 1
+          }
+          foreach ($f in $exes) {
+            if ($f.Length -le 0) {
+              Write-Error "Generated EXE is empty: $($f.FullName)"
+              exit 1
+            }
+            Write-Host "Found EXE: $($f.Name) ($([Math]::Round($f.Length / 1MB, 2)) MB)"
+          }
+
+      - name: Upload Windows Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AWLAD-SELIM-Windows-Installer
+          path: dist-electron/*.exe
+          if-no-files-found: error
