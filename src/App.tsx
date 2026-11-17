@@ -357,7 +357,13 @@ const MainAppContent: React.FC = () => {
             }`}
           >
             <Header
-              onToggleSidebar={() => setIsSidebarOpenMobile((prev) => !prev)}
+              onToggleSidebar={() => {
+                if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
+                  setIsSidebarCollapsed((prev) => !prev);
+                } else {
+                  setIsSidebarOpenMobile((prev) => !prev);
+                }
+              }}
               onNavigate={(page) => setCurrentPage(page)}
               onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })}
               onNavigateToTransfers={() => setCurrentPage('rep-transfers')}
