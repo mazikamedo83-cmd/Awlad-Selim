@@ -77,7 +77,18 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
       setNotes('');
       setError(null);
     }
-  }, [isOpen, initialMode, cashboxes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, initialMode]);
+
+  useEffect(() => {
+    if (!isOpen || cashboxes.length === 0) return;
+    if (!cashboxId || !cashboxes.some((c) => c.id === cashboxId)) {
+      setCashboxId(cashboxes[0].id);
+    }
+    if (!targetCashboxId || !cashboxes.some((c) => c.id === targetCashboxId)) {
+      setTargetCashboxId(cashboxes[1]?.id || cashboxes[0].id);
+    }
+  }, [isOpen, cashboxes, cashboxId, targetCashboxId]);
 
   const handleModeChange = (nextMode: CashOperationType) => {
     setOpType(nextMode);
@@ -93,6 +104,7 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setError(null);
 
     if (!cashboxId) {
@@ -113,17 +125,21 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
     }
 
     setIsSubmitting(true);
-    const res = await executeCashOperation({
-      type: opType,
-      cashboxId,
-      targetCashboxId: opType === 'cashbox_transfer' ? targetCashboxId : undefined,
-      amount,
-      date,
-      category: category.trim() || OP_LABELS[opType].defaultCategory,
-      recipientOrPayer: recipientOrPayer.trim(),
-      notes: notes.trim(),
-    });
-    setIsSubmitting(false);
+    let res: { success: boolean; transaction?: any; error?: string };
+    try {
+      res = await executeCashOperation({
+        type: opType,
+        cashboxId,
+        targetCashboxId: opType === 'cashbox_transfer' ? targetCashboxId : undefined,
+        amount,
+        date,
+        category: category.trim() || OP_LABELS[opType].defaultCategory,
+        recipientOrPayer: recipientOrPayer.trim(),
+        notes: notes.trim(),
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
 
     if (!res.success) {
       setError(res.error || 'تعذر تنفيذ العملية النقدية');

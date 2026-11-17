@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, ShoppingCart, Truck, Boxes, Wallet, CreditCard, 
   Users2, Users, FileBarChart, Shield, Settings, ChevronDown, ChevronLeft, 
@@ -91,19 +91,41 @@ const NAV_TO_SHORTCUT_ACTION: Partial<Record<NavItemKey, string>> = {
   'new-purchase': 'nav:new-purchase',
   'purchase-invoices': 'nav:purchases',
   'sales-returns': 'nav:returns',
+  'purchase-returns': 'nav:purchase-returns',
+  'deleted-invoices': 'nav:deleted-invoices',
   products: 'nav:products',
+  'product-categories': 'nav:product-categories',
+  'units-settings': 'nav:units-settings',
+  'abu-selim-import': 'nav:abu-selim-import',
   warehouses: 'nav:warehouses',
   'stock-transfers-orders': 'nav:stock-transfers',
+  'stock-transfers': 'nav:stock-transfers-fast',
   'stock-counts': 'nav:stock-count',
+  'stock-adjustments': 'nav:stock-adjustments',
+  'damaged-stock': 'nav:damaged-stock',
+  'stock-movements': 'nav:stock-movements',
   customers: 'nav:customers',
   suppliers: 'nav:suppliers',
   cashboxes: 'nav:cashboxes',
+  'cashbox-transfer': 'nav:cashbox-transfer',
   expenses: 'nav:expenses',
+  'personal-accounts': 'nav:personal-accounts',
   cheques: 'nav:cheques',
+  installments: 'nav:installments',
   reps: 'nav:reps',
+  'rep-transfers': 'nav:rep-transfers',
+  'rep-item-transfers': 'nav:rep-item-transfers',
   employees: 'nav:employees',
+  attendance: 'nav:attendance',
+  advances: 'nav:advances',
+  payroll: 'nav:payroll',
   reports: 'nav:reports',
+  users: 'nav:users',
+  'audit-log': 'nav:audit-log',
   'system-settings': 'nav:settings',
+  'server-settings': 'nav:server-settings',
+  backup: 'nav:backup',
+  migration: 'nav:migration',
   'shortcuts-settings': 'nav:shortcuts-settings',
 };
 
@@ -124,6 +146,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const toggleSection = (id: string) => {
     setOpenSectionId(prev => (prev === id ? null : id));
   };
+
+  useEffect(() => {
+    if (currentPage === 'dashboard') return;
+    const ownerSection = navSections.find((sec) => sec.items.some((it) => it.key === currentPage));
+    if (ownerSection) {
+      setOpenSectionId(ownerSection.id);
+    }
+  }, [currentPage]);
 
   const navSections: NavSection[] = [
     {

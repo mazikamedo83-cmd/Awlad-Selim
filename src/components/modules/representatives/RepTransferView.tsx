@@ -91,6 +91,9 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
   const [repPhone, setRepPhone] = useState('');
   const [repVehicle, setRepVehicle] = useState('');
   const [repOpening, setRepOpening] = useState(0);
+  const [isSavingRep, setIsSavingRep] = useState(false);
+  const [repFormError, setRepFormError] = useState<string | null>(null);
+  const [isConfirmBusy, setIsConfirmBusy] = useState(false);
 
   // Sync defaults when async data arrives
   useEffect(() => {
@@ -387,28 +390,42 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
   // Add / Edit Representative
   const handleSaveRep = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!repName.trim()) return;
-    if (editingRep) {
-      await updateRepresentative(editingRep.id, {
-        name: repName,
-        phone: repPhone,
-        vehicleNumber: repVehicle,
-      });
-    } else {
-      await addRepresentative({
-        name: repName,
-        phone: repPhone,
-        vehicleNumber: repVehicle,
-        openingBalance: repOpening,
-        status: 'active',
-      });
+    if (isSavingRep) return;
+    setRepFormError(null);
+    if (!repName.trim()) {
+      setRepFormError('يرجى إدخال اسم المندوب.');
+      return;
     }
-    setIsAddRepModalOpen(false);
-    setEditingRep(null);
-    setRepName('');
-    setRepPhone('');
-    setRepVehicle('');
-    setRepOpening(0);
+    setIsSavingRep(true);
+    try {
+      if (editingRep) {
+        await updateRepresentative(editingRep.id, {
+          name: repName.trim(),
+          phone: repPhone.trim(),
+          vehicleNumber: repVehicle.trim(),
+        });
+        setStatusBanner({ type: 'success', text: `تم تحديث بيانات المندوب (${repName.trim()}) بنجاح.` });
+      } else {
+        await addRepresentative({
+          name: repName.trim(),
+          phone: repPhone.trim(),
+          vehicleNumber: repVehicle.trim(),
+          openingBalance: Number(repOpening) || 0,
+          status: 'active',
+        });
+        setStatusBanner({ type: 'success', text: `تمت إضافة المندوب (${repName.trim()}) بنجاح.` });
+      }
+      setIsAddRepModalOpen(false);
+      setEditingRep(null);
+      setRepName('');
+      setRepPhone('');
+      setRepVehicle('');
+      setRepOpening(0);
+    } catch (err: any) {
+      setRepFormError(err?.message || 'تعذر حفظ بيانات المندوب');
+    } finally {
+      setIsSavingRep(false);
+    }
   };
 
   const getStatusBadge = (status: RepTransfer['status']) => {
@@ -1241,10 +1258,16 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       {isAddRepModalOpen && (
         <Modal
           isOpen={isAddRepModalOpen}
-          onClose={() => setIsAddRepModalOpen(false)}
+          onClose={() => !isSavingRep && setIsAddRepModalOpen(false)}
           title={editingRep ? 'تعديل بيانات المندوب' : 'إضافة مندوب مبيعات جديد'}
         >
           <form onSubmit={handleSaveRep} className="space-y-4 text-xs">
+            {repFormError && (
+              <div className="p-3 bg-red-50 text-red-700 rounded-xl flex items-center gap-2 border border-red-200 font-bold">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{repFormError}</span>
+              </div>
+            )}
             <div>
               <label className="block font-bold mb-1">اسم المندوب:</label>
               <input
@@ -1297,16 +1320,18 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
             <div className="flex justify-end gap-2 pt-3 border-t">
               <button
                 type="button"
+                disabled={isSavingRep}
                 onClick={() => setIsAddRepModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 font-bold cursor-pointer"
+                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 font-bold cursor-pointer disabled:opacity-50"
               >
                 إلغاء
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer"
+                disabled={isSavingRep}
+                className="px-5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
               >
-                {editingRep ? 'تحديث المندوب' : 'حفظ المندوب الجديد'}
+                {isSavingRep ? 'جاري الحفظ...' : editingRep ? 'تحديث المندوب' : 'حفظ المندوب الجديد'}
               </button>
             </div>
           </form>
@@ -1377,8 +1402,17 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       {confirmState && (
         <ConfirmDialog
           isOpen={confirmState.isOpen}
-          onClose={() => setConfirmState(null)}
-          onConfirm={confirmState.onConfirm}
+          onClose={() => !isConfirmBusy && setConfirmState(null)}
+          onConfirm={async (val) => {
+            if (isConfirmBusy) return;
+            setIsConfirmBusy(true);
+            try {
+              await confirmState.onConfirm(val);
+            } finally {
+              setIsConfirmBusy(false);
+            }
+          }}
+          isLoading={isConfirmBusy}
           title={confirmState.title}
           message={confirmState.message}
           confirmLabel={confirmState.confirmLabel}

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Boxes, Plus, Search, ArrowLeftRight,
   Trash2, Edit, Download, RefreshCw,
@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
+import { useShortcuts } from '../../../context/ShortcutsContext';
 import { Product, ProductUnit, UnitCatalogItem, Warehouse } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
@@ -26,6 +27,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     addCategory, renameCategoryGlobal, toggleCategoryStatus, addWarehouse, updateWarehouse, toggleWarehouseStatus, updateSettings,
   } = useData();
   const { hasPermission } = useAuth();
+  const { registerHandler, consumePendingAction } = useShortcuts();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -36,6 +38,10 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
   const [adjustModalError, setAdjustModalError] = useState<string | null>(null);
   const [damageModalError, setDamageModalError] = useState<string | null>(null);
   const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [isSubmittingTransfer, setIsSubmittingTransfer] = useState(false);
+  const [isSubmittingAdjust, setIsSubmittingAdjust] = useState(false);
+  const [isSubmittingDamage, setIsSubmittingDamage] = useState(false);
+  const [isSavingWh, setIsSavingWh] = useState(false);
 
   // Warehouses Management & Confirm Dialog State
   const [isWarehouseModalOpen, setIsWarehouseModalOpen] = useState(false);
@@ -171,16 +177,23 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
 
   React.useEffect(() => {
     if (initialTab === 'transfers') {
-      setTransferProdId(products[0]?.id || '');
+      setTransferProdId((prev) => prev || products[0]?.id || '');
       setIsTransferModalOpen(true);
     } else if (initialTab === 'adjustments') {
-      setAdjustProdId(products[0]?.id || '');
+      setAdjustProdId((prev) => prev || products[0]?.id || '');
       setIsAdjustModalOpen(true);
     } else if (initialTab === 'damaged') {
-      setDamageProdId(products[0]?.id || '');
+      setDamageProdId((prev) => prev || products[0]?.id || '');
       setIsDamageModalOpen(true);
     }
-  }, [initialTab, products]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTab]);
+
+  useEffect(() => {
+    if (isTransferModalOpen && !transferProdId && products[0]?.id) setTransferProdId(products[0].id);
+    if (isAdjustModalOpen && !adjustProdId && products[0]?.id) setAdjustProdId(products[0].id);
+    if (isDamageModalOpen && !damageProdId && products[0]?.id) setDamageProdId(products[0].id);
+  }, [isTransferModalOpen, isAdjustModalOpen, isDamageModalOpen, transferProdId, adjustProdId, damageProdId, products]);
 
   const handleProductImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -245,10 +258,28 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     setIsAddModalOpen(true);
   };
 
+  const openAddRef = useRef(handleOpenAdd);
+  openAddRef.current = handleOpenAdd;
+
+  useEffect(() => {
+    if (consumePendingAction('action:add_product')) {
+      openAddRef.current();
+    }
+    return registerHandler('action:add_product', () => openAddRef.current());
+  }, [consumePendingAction, registerHandler]);
+
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim()) return;
+    if (isSavingProduct) return;
     setProductModalError(null);
+    if (!formData.name.trim()) {
+      setProductModalError('يرجى إدخال اسم الصنف الغذائي');
+      return;
+    }
+    if (formData.purchasePrice < 0 || formData.sellingPrice < 0) {
+      setProductModalError('لا يمكن أن تكون أسعار الشراء أو البيع سالبة');
+      return;
+    }
     setIsSavingProduct(true);
 
     try {
@@ -298,37 +329,51 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
 
   const handleExecuteTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingTransfer) return;
     setTransferModalError(null);
-    const res = await transferStock(transferProdId, fromWhId, toWhId, transferQty, transferNotes || 'تحويل داخلي');
-    if (!res.success) {
-      setTransferModalError(res.error || 'فشل التحويل المخزني');
-    } else {
-      setIsTransferModalOpen(false);
-      setStatusBanner({ type: 'success', text: 'تم تنفيذ التحويل المخزني بنجاح.' });
+    setIsSubmittingTransfer(true);
+    try {
+      const res = await transferStock(transferProdId, fromWhId, toWhId, transferQty, transferNotes || 'تحويل داخلي');
+      if (!res.success) {
+        setTransferModalError(res.error || 'فشل التحويل المخزني');
+      } else {
+        setIsTransferModalOpen(false);
+        setStatusBanner({ type: 'success', text: 'تم تنفيذ التحويل المخزني بنجاح.' });
+      }
+    } finally {
+      setIsSubmittingTransfer(false);
     }
   };
 
   const handleExecuteAdjust = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingAdjust) return;
     setAdjustModalError(null);
+    setIsSubmittingAdjust(true);
     try {
       await adjustStock(adjustProdId, adjustWhId, adjustNewQty, adjustReason);
       setIsAdjustModalOpen(false);
       setStatusBanner({ type: 'success', text: 'تم اعتماد التسوية الجردية للمخزون بنجاح.' });
     } catch (err: any) {
       setAdjustModalError(err?.message || 'تعذر اعتماد التسوية الجردية');
+    } finally {
+      setIsSubmittingAdjust(false);
     }
   };
 
   const handleExecuteDamage = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingDamage) return;
     setDamageModalError(null);
+    setIsSubmittingDamage(true);
     try {
       await recordDamagedStock(damageProdId, damageWhId, damageQty, damageReason);
       setIsDamageModalOpen(false);
       setStatusBanner({ type: 'success', text: 'تم تسجيل وخصم التالف من المخزون بنجاح.' });
     } catch (err: any) {
       setDamageModalError(err?.message || 'تعذر تسجيل البضاعة التالفة');
+    } finally {
+      setIsSubmittingDamage(false);
     }
   };
 
@@ -362,11 +407,13 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
   if (initialTab === 'warehouses') {
     const handleSaveWh = async (e: React.FormEvent) => {
       e.preventDefault();
+      if (isSavingWh) return;
       setWhModalError(null);
       if (!whForm.name.trim()) {
         setWhModalError('يرجى إدخال اسم المستودع');
         return;
       }
+      setIsSavingWh(true);
       try {
         if (editingWarehouse) {
           await updateWarehouse(editingWarehouse.id, {
@@ -398,6 +445,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
         }
       } catch (err: any) {
         setWhModalError(err?.message || 'تعذر حفظ بيانات المستودع');
+      } finally {
+        setIsSavingWh(false);
       }
     };
 
@@ -611,7 +660,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
             </div>
             <div className="flex justify-end gap-2 pt-3 border-t">
               <button type="button" onClick={() => setIsWarehouseModalOpen(false)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">إلغاء</button>
-              <button type="submit" className="px-6 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-black cursor-pointer">حفظ المستودع</button>
+              <button type="submit" disabled={isSavingWh} className="px-6 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-black cursor-pointer disabled:opacity-50">
+                {isSavingWh ? 'جاري الحفظ...' : 'حفظ المستودع'}
+              </button>
             </div>
           </form>
         </Modal>
@@ -1824,9 +1875,10 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
             </button>
             <button
               type="submit"
-              className="px-6 py-2 bg-indigo-900 text-white rounded-xl font-bold shadow-md hover:bg-indigo-950 cursor-pointer"
+              disabled={isSubmittingTransfer}
+              className="px-6 py-2 bg-indigo-900 text-white rounded-xl font-bold shadow-md hover:bg-indigo-950 cursor-pointer disabled:opacity-50"
             >
-              تنفيذ التحويل المخزني
+              {isSubmittingTransfer ? 'جاري التحويل...' : 'تنفيذ التحويل المخزني'}
             </button>
           </div>
         </form>
@@ -1912,9 +1964,10 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
             </button>
             <button
               type="submit"
-              className="px-6 py-2 bg-blue-900 text-white rounded-xl font-bold cursor-pointer"
+              disabled={isSubmittingAdjust}
+              className="px-6 py-2 bg-blue-900 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50"
             >
-              اعتماد التسوية الجردية
+              {isSubmittingAdjust ? 'جاري الاعتماد...' : 'اعتماد التسوية الجردية'}
             </button>
           </div>
         </form>
@@ -1992,9 +2045,10 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
             </button>
             <button
               type="submit"
-              className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold shadow-md cursor-pointer"
+              disabled={isSubmittingDamage}
+              className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold shadow-md cursor-pointer disabled:opacity-50"
             >
-              إثبات وخصم التوالف
+              {isSubmittingDamage ? 'جاري التسجيل...' : 'إثبات وخصم التوالف'}
             </button>
           </div>
         </form>

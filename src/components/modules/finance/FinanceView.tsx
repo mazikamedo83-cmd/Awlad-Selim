@@ -4,6 +4,7 @@ import {
   Printer, Download, Search, CheckCircle2, AlertCircle, Building2, Landmark 
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
+import { useShortcuts } from '../../../context/ShortcutsContext';
 import { Cashbox, ExpenseIncomeRecord } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
@@ -19,6 +20,8 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
     addCashbox, transferBetweenCashboxes, addExpenseIncome 
   } = useData();
 
+  const { registerHandler, consumePendingAction } = useShortcuts();
+
   const [activeTab, setActiveTab] = useState<'cashboxes' | 'transactions' | 'expenses'>(
     initialTab === 'expenses' ? 'expenses' : 'cashboxes'
   );
@@ -33,6 +36,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
   const [transferAmount, setTransferAmount] = useState(1000);
   const [transferNotes, setTransferNotes] = useState('');
   const [transferError, setTransferError] = useState<string | null>(null);
+  const [isSubmittingTransfer, setIsSubmittingTransfer] = useState(false);
 
   // Add Cashbox modal
   const [isAddCashboxOpen, setIsAddCashboxOpen] = useState(false);
@@ -41,6 +45,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
   const [newCbAccount, setNewCbAccount] = useState('');
   const [newCbOpening, setNewCbOpening] = useState(0);
   const [cashboxError, setCashboxError] = useState<string | null>(null);
+  const [isSubmittingCashbox, setIsSubmittingCashbox] = useState(false);
 
   // Expense / Income modal
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -51,10 +56,23 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
   const [recipientOrPayer, setRecipientOrPayer] = useState('');
   const [notes, setNotes] = useState('');
   const [expenseError, setExpenseError] = useState<string | null>(null);
+  const [isSubmittingExpense, setIsSubmittingExpense] = useState(false);
 
   // Print modal
   const [printData, setPrintData] = useState<PrintData | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+
+  useEffect(() => {
+    const openExpenseShortcut = () => {
+      setExpenseError(null);
+      setRecordType('expense');
+      setIsExpenseModalOpen(true);
+    };
+    if (consumePendingAction('action:add_expense')) {
+      openExpenseShortcut();
+    }
+    return registerHandler('action:add_expense', openExpenseShortcut);
+  }, [registerHandler, consumePendingAction]);
 
   useEffect(() => {
     if (initialTab === 'expenses') {
@@ -87,6 +105,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
 
   const handleExecuteTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingTransfer) return;
     setTransferError(null);
     if (!fromCbId || !toCbId) {
       setTransferError('يرجى تحديد الخزينة المحول منها والمحول إليها.');
@@ -96,23 +115,30 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
       setTransferError('لا يمكن التحويل من نفس الخزينة إلى نفسها.');
       return;
     }
-    const res = await transferBetweenCashboxes(fromCbId, toCbId, transferAmount, transferNotes || 'تحويل مالي بين الخزائن');
-    if (!res.success) {
-      setTransferError(res.error || 'فشل التحويل');
-    } else {
-      setIsTransferModalOpen(false);
-      setTransferNotes('');
-      setStatusBanner({ type: 'success', text: `تم تنفيذ التحويل المالي بمبلغ ${transferAmount.toLocaleString()} ${settings.currency} بنجاح.` });
+    setIsSubmittingTransfer(true);
+    try {
+      const res = await transferBetweenCashboxes(fromCbId, toCbId, transferAmount, transferNotes || 'تحويل مالي بين الخزائن');
+      if (!res.success) {
+        setTransferError(res.error || 'فشل التحويل');
+      } else {
+        setIsTransferModalOpen(false);
+        setTransferNotes('');
+        setStatusBanner({ type: 'success', text: `تم تنفيذ التحويل المالي بمبلغ ${transferAmount.toLocaleString()} ${settings.currency} بنجاح.` });
+      }
+    } finally {
+      setIsSubmittingTransfer(false);
     }
   };
 
   const handleAddCashboxSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingCashbox) return;
     setCashboxError(null);
     if (!newCbName.trim()) {
       setCashboxError('يرجى إدخال اسم الخزينة أو الحساب البنكي.');
       return;
     }
+    setIsSubmittingCashbox(true);
     try {
       await addCashbox({
         name: newCbName.trim(),
@@ -128,11 +154,14 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
       setNewCbOpening(0);
     } catch (err: any) {
       setCashboxError(err?.message || 'تعذر إنشاء الخزينة أو الحساب البنكي');
+    } finally {
+      setIsSubmittingCashbox(false);
     }
   };
 
   const handleAddExpenseIncome = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingExpense) return;
     setExpenseError(null);
     if (amount <= 0) {
       setExpenseError('يرجى إدخال مبلغ أكبر من صفر.');
@@ -144,6 +173,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
     }
     const cb = cashboxes.find(c => c.id === selectedCashboxId);
 
+    setIsSubmittingExpense(true);
     try {
       await addExpenseIncome({
         type: recordType,
@@ -179,6 +209,8 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
       setIsPrintModalOpen(true);
     } catch (err: any) {
       setExpenseError(err?.message || 'تعذر تسجيل السند المالي');
+    } finally {
+      setIsSubmittingExpense(false);
     }
   };
 
@@ -560,8 +592,10 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t">
-            <button type="button" onClick={() => setIsTransferModalOpen(false)} className="px-4 py-2 border rounded-xl font-bold">إلغاء</button>
-            <button type="submit" className="px-6 py-2 bg-blue-900 text-white rounded-xl font-bold">تنفيذ التحويل المالي</button>
+            <button type="button" onClick={() => setIsTransferModalOpen(false)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">إلغاء</button>
+            <button type="submit" disabled={isSubmittingTransfer} className="px-6 py-2 bg-blue-900 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50">
+              {isSubmittingTransfer ? 'جاري التنفيذ...' : 'تنفيذ التحويل المالي'}
+            </button>
           </div>
         </form>
       </Modal>
@@ -636,8 +670,10 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t">
-            <button type="button" onClick={() => setIsAddCashboxOpen(false)} className="px-4 py-2 border rounded-xl font-bold">إلغاء</button>
-            <button type="submit" className="px-6 py-2 bg-blue-900 text-white rounded-xl font-bold">حفظ الحساب</button>
+            <button type="button" onClick={() => setIsAddCashboxOpen(false)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">إلغاء</button>
+            <button type="submit" disabled={isSubmittingCashbox} className="px-6 py-2 bg-blue-900 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50">
+              {isSubmittingCashbox ? 'جاري الحفظ...' : 'حفظ الحساب'}
+            </button>
           </div>
         </form>
       </Modal>
@@ -715,14 +751,15 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t">
-            <button type="button" onClick={() => setIsExpenseModalOpen(false)} className="px-4 py-2 border rounded-xl font-bold">إلغاء</button>
+            <button type="button" onClick={() => setIsExpenseModalOpen(false)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">إلغاء</button>
             <button
               type="submit"
-              className={`px-6 py-2 text-white rounded-xl font-bold shadow-md ${
+              disabled={isSubmittingExpense}
+              className={`px-6 py-2 text-white rounded-xl font-bold shadow-md cursor-pointer disabled:opacity-50 ${
                 recordType === 'expense' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-teal-600 hover:bg-teal-700'
               }`}
             >
-              اعتماد السند وطباعته
+              {isSubmittingExpense ? 'جاري الاعتماد...' : 'اعتماد السند وطباعته'}
             </button>
           </div>
         </form>

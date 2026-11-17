@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
+import { useShortcuts } from '../../../context/ShortcutsContext';
 import { Supplier } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
@@ -18,10 +19,13 @@ export const SuppliersView: React.FC = () => {
   } = useData();
   const { currentUser, hasPermission } = useAuth();
 
+  const { registerHandler, consumePendingAction } = useShortcuts();
+
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [supplierFormError, setSupplierFormError] = useState<string | null>(null);
+  const [isSavingSupplier, setIsSavingSupplier] = useState(false);
   const [statusBanner, setStatusBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
   const [isDeletingSupplier, setIsDeletingSupplier] = useState(false);
@@ -35,6 +39,7 @@ export const SuppliersView: React.FC = () => {
   const [paymentCashboxId, setPaymentCashboxId] = useState<string>(cashboxes[0]?.id || '');
   const [paymentNotes, setPaymentNotes] = useState<string>('');
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
 
   // Print state
   const [printData, setPrintData] = useState<PrintData | null>(null);
@@ -80,6 +85,13 @@ export const SuppliersView: React.FC = () => {
     setIsAddModalOpen(true);
   };
 
+  useEffect(() => {
+    if (consumePendingAction('action:add_supplier')) {
+      handleOpenAdd();
+    }
+    return registerHandler('action:add_supplier', () => handleOpenAdd());
+  }, [registerHandler, consumePendingAction, suppliers.length]);
+
   const handleOpenEdit = (s: Supplier) => {
     setFormData({
       code: s.code,
@@ -96,12 +108,14 @@ export const SuppliersView: React.FC = () => {
 
   const handleSaveSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSavingSupplier) return;
     setSupplierFormError(null);
     if (!formData.name.trim()) {
       setSupplierFormError('يرجى إدخال اسم المورد أو الشركة.');
       return;
     }
 
+    setIsSavingSupplier(true);
     try {
       if (editingSupplier) {
         await updateSupplier(editingSupplier.id, {
@@ -125,11 +139,14 @@ export const SuppliersView: React.FC = () => {
       setIsAddModalOpen(false);
     } catch (err: any) {
       setSupplierFormError(err?.message || 'تعذر حفظ بيانات المورد');
+    } finally {
+      setIsSavingSupplier(false);
     }
   };
 
   const handleRecordPayment = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingPayment) return;
     setPaymentError(null);
     if (!paymentSupplier || paymentAmount <= 0) {
       setPaymentError('يرجى إدخال مبلغ صحيح أكبر من صفر.');
@@ -140,34 +157,39 @@ export const SuppliersView: React.FC = () => {
       return;
     }
 
-    const res = await recordSupplierPayment(
-      paymentSupplier.id,
-      paymentAmount,
-      paymentCashboxId,
-      paymentNotes || 'سداد دفعة للمورد'
-    );
+    setIsSubmittingPayment(true);
+    try {
+      const res = await recordSupplierPayment(
+        paymentSupplier.id,
+        paymentAmount,
+        paymentCashboxId,
+        paymentNotes || 'سداد دفعة للمورد'
+      );
 
-    if (res.success) {
-      setPrintData({
-        title: 'سند صرف وسداد نقدية لمورد',
-        docNumber: `PAY-${Date.now().toString().slice(-6)}`,
-        docType: 'سند صرف',
-        date: new Date().toISOString().split('T')[0],
-        partyName: paymentSupplier.name,
-        partyPhone: paymentSupplier.phone,
-        partyAddress: paymentSupplier.address,
-        grandTotal: paymentAmount,
-        paidAmount: paymentAmount,
-        notes: paymentNotes || 'تم صرف المبلغ نقداً من الخزينة لحساب المورد',
-      });
-      setIsPrintModalOpen(true);
-      setStatusBanner({ type: 'success', text: `تم سداد مبلغ ${paymentAmount.toLocaleString()} ${settings.currency} للمورد (${paymentSupplier.name}).` });
-      setPaymentSupplier(null);
-      setPaymentAmount(0);
-      setPaymentNotes('');
-      setPaymentError(null);
-    } else {
-      setPaymentError(res.error || 'تعذر سداد الدفعة');
+      if (res.success) {
+        setPrintData({
+          title: 'سند صرف وسداد نقدية لمورد',
+          docNumber: `PAY-${Date.now().toString().slice(-6)}`,
+          docType: 'سند صرف',
+          date: new Date().toISOString().split('T')[0],
+          partyName: paymentSupplier.name,
+          partyPhone: paymentSupplier.phone,
+          partyAddress: paymentSupplier.address,
+          grandTotal: paymentAmount,
+          paidAmount: paymentAmount,
+          notes: paymentNotes || 'تم صرف المبلغ نقداً من الخزينة لحساب المورد',
+        });
+        setIsPrintModalOpen(true);
+        setStatusBanner({ type: 'success', text: `تم سداد مبلغ ${paymentAmount.toLocaleString()} ${settings.currency} للمورد (${paymentSupplier.name}).` });
+        setPaymentSupplier(null);
+        setPaymentAmount(0);
+        setPaymentNotes('');
+        setPaymentError(null);
+      } else {
+        setPaymentError(res.error || 'تعذر سداد الدفعة');
+      }
+    } finally {
+      setIsSubmittingPayment(false);
     }
   };
 
@@ -559,8 +581,10 @@ export const SuppliersView: React.FC = () => {
             </div>
           )}
           <div className="flex justify-end gap-2 pt-2 border-t">
-            <button type="button" onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 border rounded-xl font-bold">إلغاء</button>
-            <button type="submit" className="px-6 py-2 bg-blue-900 text-white rounded-xl font-bold">حفظ المورد</button>
+            <button type="button" onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">إلغاء</button>
+            <button type="submit" disabled={isSavingSupplier} className="px-6 py-2 bg-blue-900 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50">
+              {isSavingSupplier ? 'جاري الحفظ...' : 'حفظ المورد'}
+            </button>
           </div>
         </form>
       </Modal>
@@ -615,7 +639,9 @@ export const SuppliersView: React.FC = () => {
             </div>
             <div className="flex justify-end gap-2 pt-2 border-t">
               <button type="button" onClick={() => setPaymentSupplier(null)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">إلغاء</button>
-              <button type="submit" className="px-6 py-2 bg-purple-600 text-white rounded-xl font-bold cursor-pointer">تأكيد الصرف</button>
+              <button type="submit" disabled={isSubmittingPayment} className="px-6 py-2 bg-purple-600 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50">
+                {isSubmittingPayment ? 'جاري الصرف...' : 'تأكيد الصرف'}
+              </button>
             </div>
           </form>
         </Modal>

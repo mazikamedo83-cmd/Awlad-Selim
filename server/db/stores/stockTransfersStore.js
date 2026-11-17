@@ -379,32 +379,38 @@ export async function executeStockTransferRequest(id, actor) {
             'INSUFFICIENT_STOCK'
           );
         }
-        stockMap[row.source_warehouse_id] = round3(liveSourceQty - baseQty);
-        stockMap[row.target_warehouse_id] = round3(Number(stockMap[row.target_warehouse_id] || 0) + baseQty);
+        const nextSourceQty = round3(liveSourceQty - baseQty);
+        const nextTargetQty = round3(Number(stockMap[row.target_warehouse_id] || 0) + baseQty);
+        stockMap[row.source_warehouse_id] = nextSourceQty;
+        stockMap[row.target_warehouse_id] = nextTargetQty;
 
         await client.query(`UPDATE products SET stock_per_warehouse = $1, updated_at = $2 WHERE id = $3`, [JSON.stringify(stockMap), now, prod.id]);
         await client.query(`UPDATE stock_transfer_request_items SET executed_qty = $1 WHERE id = $2`, [Number(it.requested_qty), it.id]);
 
+        const mvOutId = generateServerId('SM');
+        const mvInId = generateServerId('SM');
         await client.query(
-          `INSERT INTO stock_movements (id, date, movement_type, product_id, product_name, warehouse_id, warehouse_name, target_warehouse_id, target_warehouse_name, quantity, unit_cost, related_doc_id, related_doc_number, notes, created_by, created_at)
-           VALUES ($1,$2,'transfer_out',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+          `INSERT INTO stock_movements (id, movement_number, date, movement_type, product_id, product_name, warehouse_id, warehouse_name, target_warehouse_id, target_warehouse_name, quantity, unit, unit_factor, unit_cost, balance_after, related_doc_id, related_doc_number, notes, created_by, created_at)
+           VALUES ($1,$2,$3,'transfer_out',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
           [
-            generateServerId('SM'), dateStr, prod.id, prod.name,
+            mvOutId, mvOutId, dateStr, prod.id, prod.name,
             row.source_warehouse_id, row.source_warehouse_name,
             row.target_warehouse_id, row.target_warehouse_name,
-            baseQty, Number(prod.purchase_price || 0), row.id, row.transfer_number,
+            baseQty, it.unit || prod.base_unit || 'قطعة', Number(it.unit_factor || 1),
+            Number(prod.purchase_price || 0), nextSourceQty, row.id, row.transfer_number,
             `صرف تحويل مخزني (${row.transfer_number}) إلى ${row.target_warehouse_name}`,
             actor.fullName, now,
           ]
         );
         await client.query(
-          `INSERT INTO stock_movements (id, date, movement_type, product_id, product_name, warehouse_id, warehouse_name, target_warehouse_id, target_warehouse_name, quantity, unit_cost, related_doc_id, related_doc_number, notes, created_by, created_at)
-           VALUES ($1,$2,'transfer_in',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+          `INSERT INTO stock_movements (id, movement_number, date, movement_type, product_id, product_name, warehouse_id, warehouse_name, target_warehouse_id, target_warehouse_name, quantity, unit, unit_factor, unit_cost, balance_after, related_doc_id, related_doc_number, notes, created_by, created_at)
+           VALUES ($1,$2,$3,'transfer_in',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
           [
-            generateServerId('SM'), dateStr, prod.id, prod.name,
+            mvInId, mvInId, dateStr, prod.id, prod.name,
             row.target_warehouse_id, row.target_warehouse_name,
             row.source_warehouse_id, row.source_warehouse_name,
-            baseQty, Number(prod.purchase_price || 0), row.id, row.transfer_number,
+            baseQty, it.unit || prod.base_unit || 'قطعة', Number(it.unit_factor || 1),
+            Number(prod.purchase_price || 0), nextTargetQty, row.id, row.transfer_number,
             `استلام تحويل مخزني (${row.transfer_number}) من ${row.source_warehouse_name}`,
             actor.fullName, now,
           ]
@@ -460,10 +466,12 @@ export async function executeStockTransferRequest(id, actor) {
     for (const { it, prod, baseQty } of planned) {
       const srcBal = round3(Number(prod.stockPerWarehouse?.[cur.sourceWarehouseId] || 0));
       const dstBal = round3(Number(prod.stockPerWarehouse?.[cur.targetWarehouseId] || 0));
+      const nextSrcBal = round3(srcBal - baseQty);
+      const nextDstBal = round3(dstBal + baseQty);
       prod.stockPerWarehouse = {
         ...(prod.stockPerWarehouse || {}),
-        [cur.sourceWarehouseId]: round3(srcBal - baseQty),
-        [cur.targetWarehouseId]: round3(dstBal + baseQty),
+        [cur.sourceWarehouseId]: nextSrcBal,
+        [cur.targetWarehouseId]: nextDstBal,
       };
       it.executedQty = Number(it.requestedQty);
       db.stockMovements.unshift(
@@ -478,6 +486,9 @@ export async function executeStockTransferRequest(id, actor) {
           targetWarehouseId: cur.targetWarehouseId,
           targetWarehouseName: cur.targetWarehouseName,
           quantity: baseQty,
+          unit: it.unit || prod.baseUnit || 'قطعة',
+          unitFactor: Number(it.unitFactor || 1),
+          balanceAfter: nextSrcBal,
           unitCost: Number(prod.purchasePrice || 0),
           referenceId: cur.id,
           referenceNumber: cur.transferNumber,
@@ -496,6 +507,9 @@ export async function executeStockTransferRequest(id, actor) {
           targetWarehouseId: cur.sourceWarehouseId,
           targetWarehouseName: cur.sourceWarehouseName,
           quantity: baseQty,
+          unit: it.unit || prod.baseUnit || 'قطعة',
+          unitFactor: Number(it.unitFactor || 1),
+          balanceAfter: nextDstBal,
           unitCost: Number(prod.purchasePrice || 0),
           referenceId: cur.id,
           referenceNumber: cur.transferNumber,

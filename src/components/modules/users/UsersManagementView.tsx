@@ -22,6 +22,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [togglingUserId, setTogglingUserId] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialTab) setActiveTab(initialTab);
@@ -176,23 +178,29 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isResettingPassword) return;
     setResetError(null);
     if (!resetModalUser) return;
     if (resetNewPassword.trim().length < 6) {
       setResetError('كلمة المرور يجب أن تكون 6 أحرف على الأقل.');
       return;
     }
-    const res = await updateUser(resetModalUser.id, { newPassword: resetNewPassword.trim() });
-    if (!res.success) {
-      setResetError(res.error || 'فشل تغيير كلمة المرور');
-      return;
+    setIsResettingPassword(true);
+    try {
+      const res = await updateUser(resetModalUser.id, { newPassword: resetNewPassword.trim() });
+      if (!res.success) {
+        setResetError(res.error || 'فشل تغيير كلمة المرور');
+        return;
+      }
+      setStatusMessage({
+        type: 'success',
+        text: `تمت إعادة تعيين كلمة المرور للمستخدم (${resetModalUser.fullName}) بنجاح.`,
+      });
+      setResetModalUser(null);
+      setResetNewPassword('');
+    } finally {
+      setIsResettingPassword(false);
     }
-    setStatusMessage({
-      type: 'success',
-      text: `تمت إعادة تعيين كلمة المرور للمستخدم (${resetModalUser.fullName}) بنجاح.`,
-    });
-    setResetModalUser(null);
-    setResetNewPassword('');
   };
 
   const handleDeleteUser = (u: User) => {
@@ -331,17 +339,29 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                     <td className="p-3 font-mono">{u.phone}</td>
                     <td className="p-3">
                       <button
+                        disabled={togglingUserId === u.id}
                         onClick={async () => {
-                          const res = await updateUser(u.id, { isActive: !u.isActive });
-                          if (!res.success) {
-                            setStatusMessage({ type: 'error', text: res.error || 'تعذر تغيير حالة الحساب' });
+                          if (togglingUserId) return;
+                          setTogglingUserId(u.id);
+                          try {
+                            const res = await updateUser(u.id, { isActive: !u.isActive });
+                            if (!res.success) {
+                              setStatusMessage({ type: 'error', text: res.error || 'تعذر تغيير حالة الحساب' });
+                            } else {
+                              setStatusMessage({
+                                type: 'success',
+                                text: !u.isActive ? `تم تفعيل حساب (${u.fullName}).` : `تم إيقاف حساب (${u.fullName}).`,
+                              });
+                            }
+                          } finally {
+                            setTogglingUserId(null);
                           }
                         }}
-                        className={`px-2 py-0.5 rounded-full font-bold text-[10px] cursor-pointer ${
+                        className={`px-2 py-0.5 rounded-full font-bold text-[10px] cursor-pointer disabled:opacity-50 ${
                           u.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
                         }`}
                       >
-                        {u.isActive ? 'نشط' : 'معطل'}
+                        {togglingUserId === u.id ? '...' : u.isActive ? 'نشط' : 'معطل'}
                       </button>
                     </td>
                     <td className="p-3 text-slate-500 text-[11px]">
@@ -633,8 +653,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
               <button type="button" onClick={() => setResetModalUser(null)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">
                 إلغاء
               </button>
-              <button type="submit" className="px-6 py-2 bg-blue-900 text-white rounded-xl font-bold cursor-pointer">
-                حفظ كلمة المرور
+              <button type="submit" disabled={isResettingPassword} className="px-6 py-2 bg-blue-900 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50">
+                {isResettingPassword ? 'جاري الحفظ...' : 'حفظ كلمة المرور'}
               </button>
             </div>
           </form>

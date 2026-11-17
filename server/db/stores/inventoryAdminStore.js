@@ -2210,39 +2210,74 @@ export async function updateCashbox(id, updates, actor) {
 
 export async function transferCashbox({ fromId, toId, amount, notes = '' }, actor) {
   const amt = round2(amount);
-  if (amt <= 0 || fromId === toId) throw new AppError(400, 'بيانات التحويل غير صالحة', 'INVALID_TRANSFER');
+  if (!Number.isFinite(amt) || amt <= 0 || fromId === toId) {
+    throw new AppError(400, 'بيانات التحويل غير صالحة', 'INVALID_TRANSFER');
+  }
   const now = nowIso();
   const dateStr = todayIso();
+  let summary = null;
 
   if (await isPgMode()) {
-    await withTransaction(async (client) => {
+    summary = await withTransaction(async (client) => {
       const fRes = await client.query('SELECT * FROM cashboxes WHERE id = $1 FOR UPDATE', [fromId]);
       const tRes = await client.query('SELECT * FROM cashboxes WHERE id = $1 FOR UPDATE', [toId]);
       if (!fRes.rows[0] || !tRes.rows[0]) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
-      const nextF = round2(Number(fRes.rows[0].current_balance || 0) - amt);
+      const curF = round2(Number(fRes.rows[0].current_balance || 0));
+      if (curF < amt) {
+        throw new AppError(
+          409,
+          `رصيد الخزينة (${fRes.rows[0].name}) الحالي ${curF} لا يكفي لتحويل مبلغ ${amt}`,
+          'INSUFFICIENT_CASHBOX'
+        );
+      }
+      const nextF = round2(curF - amt);
       const nextT = round2(Number(tRes.rows[0].current_balance || 0) + amt);
       await client.query('UPDATE cashboxes SET current_balance = $1 WHERE id = $2', [nextF, fromId]);
       await client.query('UPDATE cashboxes SET current_balance = $1 WHERE id = $2', [nextT, toId]);
+      const txId = generateServerId('FT');
       await client.query(
         `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, description, notes, created_by, created_at)
          VALUES ($1,$2,$3,'transfer',$4,$5,$6,$7,'تحويل داخلي',$8,$9,$10,$11)`,
-        [generateServerId('FT'), `TRN-${Date.now().toString().slice(-6)}`, dateStr, amt, fromId, fRes.rows[0].name, nextF, `تحويل من ${fRes.rows[0].name} إلى ${tRes.rows[0].name}`, notes, actor.fullName, now]
+        [
+          txId,
+          `TRN-${Date.now().toString().slice(-6)}`,
+          dateStr,
+          amt,
+          fromId,
+          fRes.rows[0].name,
+          nextF,
+          `تحويل من ${fRes.rows[0].name} إلى ${tRes.rows[0].name}`,
+          notes,
+          actor.fullName,
+          now,
+        ]
       );
+      return { txId, fromName: fRes.rows[0].name, toName: tRes.rows[0].name };
     });
   } else {
-    await withJsonTransaction((db) => {
+    summary = await withJsonTransaction((db) => {
       const f = db.cashboxes.find((c) => c.id === fromId);
       const t = db.cashboxes.find((c) => c.id === toId);
       if (!f || !t) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
-      f.currentBalance = round2(f.currentBalance - amt);
-      t.currentBalance = round2(t.currentBalance + amt);
+      const curF = round2(Number(f.currentBalance || 0));
+      if (curF < amt) {
+        throw new AppError(
+          409,
+          `رصيد الخزينة (${f.name}) الحالي ${curF} لا يكفي لتحويل مبلغ ${amt}`,
+          'INSUFFICIENT_CASHBOX'
+        );
+      }
+      f.currentBalance = round2(curF - amt);
+      t.currentBalance = round2(Number(t.currentBalance || 0) + amt);
+      const txId = generateServerId('FT');
       db.financialTransactions.unshift({
-        id: generateServerId('FT'),
+        id: txId,
         transactionNumber: `TRN-${Date.now().toString().slice(-6)}`,
         date: dateStr,
         type: 'transfer',
         cashboxId: f.id,
         cashboxName: f.name,
+        balanceAfter: f.currentBalance,
         targetCashboxId: t.id,
         targetCashboxName: t.name,
         amount: amt,
@@ -2252,8 +2287,17 @@ export async function transferCashbox({ fromId, toId, amount, notes = '' }, acto
         createdBy: actor.fullName,
         createdAt: now,
       });
+      return { txId, fromName: f.name, toName: t.name };
     });
   }
+
+  await recordAuditLog({
+    userId: actor.id,
+    userName: actor.fullName,
+    action: `تحويل مالي بين الخزائن (${amt}) من ${summary?.fromName || fromId} إلى ${summary?.toName || toId}`,
+    module: 'المالية',
+    recordId: summary?.txId || fromId,
+  });
   return { ok: true };
 }
 

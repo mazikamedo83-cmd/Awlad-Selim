@@ -14,6 +14,7 @@ import { Customer, Invoice, CustomerItemOrderRequest } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
+import { exportTableToPdf } from '../../common/PdfExporter';
 import { NewSaleInvoiceModal } from '../sales/NewSaleInvoiceModal';
 import { compressImageFileToDataUrl } from '../../../utils/image';
 
@@ -21,7 +22,7 @@ export const CustomersView: React.FC = () => {
   const {
     customers, users, representatives, invoices, invoiceReturns, financialTransactions,
     cashboxes, settings, networkStatus, customerItemOrders = [],
-    approveCustomerItemOrder, rejectCustomerItemOrder, linkCustomerUser,
+    approveCustomerItemOrder, rejectCustomerItemOrder, linkCustomerUser, toggleCustomerUserStatus,
     addCustomer, updateCustomer, deleteCustomer, recordCustomerPayment,
   } = useData();
   const { hasPermission } = useAuth();
@@ -45,8 +46,13 @@ export const CustomersView: React.FC = () => {
   const [paymentCustomer, setPaymentCustomer] = useState<Customer | null>(null);
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
   const [paymentCashboxId, setPaymentCashboxId] = useState<string>(cashboxes[0]?.id || '');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank' | 'cheque'>('cash');
   const [paymentNotes, setPaymentNotes] = useState<string>('');
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+  const [isSavingCustomer, setIsSavingCustomer] = useState(false);
+  const [isTogglingUserStatus, setIsTogglingUserStatus] = useState(false);
+  const [customerBanner, setCustomerBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [phoneActionNotice, setPhoneActionNotice] = useState<{ type: 'info' | 'error'; text: string } | null>(null);
   const [mapActionWarning, setMapActionWarning] = useState<string | null>(null);
   const [customerFormError, setCustomerFormError] = useState<string | null>(null);
@@ -355,6 +361,7 @@ export const CustomersView: React.FC = () => {
   const shortcutHandlersRef = useRef({
     openAdd: () => {},
     openCollection: () => {},
+    printStatement: () => {},
   });
 
   shortcutHandlersRef.current.openAdd = () => {
@@ -365,6 +372,7 @@ export const CustomersView: React.FC = () => {
     const target = selectedCustomer || filteredCustomers[0] || customers[0] || null;
     if (!target) return;
     setPaymentError(null);
+    setPaymentMethod('cash');
     setPaymentCustomer(target);
     setPaymentAmount(target.currentBalance > 0 ? target.currentBalance : 0);
     setPaymentNotes('');
@@ -379,11 +387,17 @@ export const CustomersView: React.FC = () => {
     }
     const unregAdd = registerHandler('action:new_customer', () => shortcutHandlersRef.current.openAdd());
     const unregCol = registerHandler('action:customer_collection', () => shortcutHandlersRef.current.openCollection());
+    const unregPrint = registerHandler('action:print_document', () => {
+      if (selectedCustomer && !isPrintModalOpen) {
+        shortcutHandlersRef.current.printStatement();
+      }
+    });
     return () => {
       unregAdd();
       unregCol();
+      unregPrint();
     };
-  }, [consumePendingAction, registerHandler]);
+  }, [consumePendingAction, registerHandler, selectedCustomer, isPrintModalOpen]);
 
   // Handle Photo selection & compression
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -412,6 +426,7 @@ export const CustomersView: React.FC = () => {
   // Save Customer (Add or Edit)
   const handleSaveCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSavingCustomer) return;
     setCustomerFormError(null);
     if (!formData.name.trim()) {
       setCustomerFormError('يرجى إدخال اسم المحل أو العميل');
@@ -426,42 +441,50 @@ export const CustomersView: React.FC = () => {
       return;
     }
 
-    if (editingCustomer) {
-      await updateCustomer(editingCustomer.id, {
-        name: formData.name.trim(),
-        shopName: formData.shopName.trim() || undefined,
-        phone: formData.phone.trim(),
-        secondaryPhone: formData.secondaryPhone.trim() || undefined,
-        area: formData.area.trim() || undefined,
-        geoCoordinates: formData.geoCoordinates.trim() || undefined,
-        address: formData.address.trim(),
-        photo: formData.photo,
-        notes: formData.notes.trim(),
-        status: formData.status,
-        allowedRepIds: formData.allowedRepIds,
-        assignedRepId: formData.allowedRepIds[0] || undefined,
-      });
-    } else {
-      const created = await addCustomer({
-        code: formData.code.trim(),
-        name: formData.name.trim(),
-        shopName: formData.shopName.trim() || undefined,
-        phone: formData.phone.trim(),
-        secondaryPhone: formData.secondaryPhone.trim() || undefined,
-        area: formData.area.trim() || undefined,
-        geoCoordinates: formData.geoCoordinates.trim() || undefined,
-        address: formData.address.trim(),
-        photo: formData.photo,
-        notes: formData.notes.trim(),
-        openingBalance: Number(formData.openingBalance) || 0,
-        status: formData.status,
-        allowedRepIds: formData.allowedRepIds,
-        assignedRepId: formData.allowedRepIds[0] || undefined,
-      });
-      // Optionally open the newly created customer
-      setSelectedCustomerId(created.id);
+    setIsSavingCustomer(true);
+    try {
+      if (editingCustomer) {
+        await updateCustomer(editingCustomer.id, {
+          name: formData.name.trim(),
+          shopName: formData.shopName.trim() || undefined,
+          phone: formData.phone.trim(),
+          secondaryPhone: formData.secondaryPhone.trim() || undefined,
+          area: formData.area.trim() || undefined,
+          geoCoordinates: formData.geoCoordinates.trim() || undefined,
+          address: formData.address.trim(),
+          photo: formData.photo,
+          notes: formData.notes.trim(),
+          status: formData.status,
+          allowedRepIds: formData.allowedRepIds,
+          assignedRepId: formData.allowedRepIds[0] || undefined,
+        });
+        setCustomerBanner({ type: 'success', text: `تم تحديث بيانات العميل (${formData.name.trim()}) بنجاح.` });
+      } else {
+        const created = await addCustomer({
+          code: formData.code.trim(),
+          name: formData.name.trim(),
+          shopName: formData.shopName.trim() || undefined,
+          phone: formData.phone.trim(),
+          secondaryPhone: formData.secondaryPhone.trim() || undefined,
+          area: formData.area.trim() || undefined,
+          geoCoordinates: formData.geoCoordinates.trim() || undefined,
+          address: formData.address.trim(),
+          photo: formData.photo,
+          notes: formData.notes.trim(),
+          openingBalance: Number(formData.openingBalance) || 0,
+          status: formData.status,
+          allowedRepIds: formData.allowedRepIds,
+          assignedRepId: formData.allowedRepIds[0] || undefined,
+        });
+        setSelectedCustomerId(created.id);
+        setCustomerBanner({ type: 'success', text: `تم تسجيل العميل (${created.name}) في المنظومة بنجاح.` });
+      }
+      setIsAddModalOpen(false);
+    } catch (err: any) {
+      setCustomerFormError(err?.message || 'حدث خطأ أثناء حفظ بيانات العميل');
+    } finally {
+      setIsSavingCustomer(false);
     }
-    setIsAddModalOpen(false);
   };
 
   // Delete Customer
@@ -488,37 +511,60 @@ export const CustomersView: React.FC = () => {
   // Quick Payment collection
   const handleRecordPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!paymentCustomer || paymentAmount <= 0) return;
+    if (!paymentCustomer || isSubmittingPayment) return;
+    setPaymentError(null);
+    if (!paymentAmount || paymentAmount <= 0) {
+      setPaymentError('يرجى إدخال مبلغ تحصيل صحيح أكبر من صفر');
+      return;
+    }
+    if (!paymentCashboxId) {
+      setPaymentError('يرجى اختيار الخزينة المودع بها المبلغ');
+      return;
+    }
 
-    const res = await recordCustomerPayment(
-      paymentCustomer.id,
-      paymentAmount,
-      paymentCashboxId,
-      paymentNotes || 'تحصيل نقدي من الحساب'
-    );
+    setIsSubmittingPayment(true);
+    try {
+      const methodLabel = paymentMethod === 'bank' ? 'تحويل بنكي' : paymentMethod === 'cheque' ? 'شيك' : 'نقدي';
+      const defaultNote = `تحصيل (${methodLabel}) من الحساب`;
+      const res = await recordCustomerPayment(
+        paymentCustomer.id,
+        paymentAmount,
+        paymentCashboxId,
+        paymentNotes.trim() || defaultNote,
+        paymentMethod
+      );
 
-    if (res.success) {
-      setPrintData({
-        title: 'سند قبض نقدية من عميل',
-        docNumber: `REC-${Date.now().toString().slice(-6)}`,
-        docType: 'سند قبض',
-        date: new Date().toISOString().split('T')[0],
-        partyName: paymentCustomer.name,
-        partyPhone: paymentCustomer.phone,
-        partyAddress: paymentCustomer.address,
-        grandTotal: paymentAmount,
-        paidAmount: paymentAmount,
-        previousBalance: paymentCustomer.currentBalance,
-        currentBalance: paymentCustomer.currentBalance - paymentAmount,
-        notes: paymentNotes || 'تم تحصيل النقدية وإيداعها في الخزينة المعتمدة بنجاح.',
-      });
-      setIsPrintModalOpen(true);
-      setPaymentError(null);
-      setPaymentCustomer(null);
-      setPaymentAmount(0);
-      setPaymentNotes('');
-    } else {
-      setPaymentError(res.error || 'تعذر تسجيل الدفعة');
+      if (res.success) {
+        const nextBalance = paymentCustomer.currentBalance - paymentAmount;
+        setPrintData({
+          title: `سند قبض (${methodLabel}) من عميل`,
+          docNumber: `REC-${Date.now().toString().slice(-6)}`,
+          docType: 'سند قبض',
+          date: new Date().toISOString().split('T')[0],
+          partyName: paymentCustomer.name,
+          partyPhone: paymentCustomer.phone,
+          partyAddress: paymentCustomer.address,
+          grandTotal: paymentAmount,
+          paidAmount: paymentAmount,
+          previousBalance: paymentCustomer.currentBalance,
+          currentBalance: nextBalance,
+          notes:
+            nextBalance < 0
+              ? `${paymentNotes.trim() || defaultNote} | رصيد دائن للعميل (دفعة مقدمة): ${Math.abs(nextBalance).toLocaleString()} ${settings.currency}`
+              : paymentNotes.trim() || 'تم تحصيل المبلغ وإيداعه في الخزينة المعتمدة بنجاح.',
+        });
+        setIsPrintModalOpen(true);
+        setPaymentError(null);
+        setPaymentCustomer(null);
+        setPaymentAmount(0);
+        setPaymentNotes('');
+        setPaymentMethod('cash');
+        setCustomerBanner({ type: 'success', text: `تم تحصيل مبلغ ${paymentAmount.toLocaleString()} ${settings.currency} من العميل (${paymentCustomer.name}) بنجاح.` });
+      } else {
+        setPaymentError(res.error || 'تعذر تسجيل الدفعة');
+      }
+    } finally {
+      setIsSubmittingPayment(false);
     }
   };
 
@@ -535,15 +581,41 @@ export const CustomersView: React.FC = () => {
       partyAddress: selectedCustomer.address,
       grandTotal: selectedCustomer.currentBalance,
       currentBalance: selectedCustomer.currentBalance,
+      tableHeaders: ['م', 'نوع الحركة والبيان', 'التاريخ', 'العدد', 'مدين (+)', 'دائن (-)', 'الرصيد التراكمي'],
       notes: `رصيد أول المدة: ${selectedCustomer.openingBalance.toLocaleString()} ${settings.currency} | إجمالي عدد الحركات: ${chronologicalStatement.length}`,
       items: chronologicalStatement.map(row => ({
         name: `${row.type} (${row.docNumber}) - ${row.description}`,
-        unit: 'حركة',
+        unit: row.date,
         quantity: 1,
         price: row.debit > 0 ? row.debit : 0,
         discount: row.credit > 0 ? row.credit : 0,
         total: row.runningBalance,
       })),
+    });
+    setIsPrintModalOpen(true);
+  };
+  shortcutHandlersRef.current.printStatement = handlePrintStatement;
+
+  const handlePrintCustomerCard = () => {
+    if (!selectedCustomer) return;
+    setPrintData({
+      title: 'بطاقة بيانات عميل / محل غذائي',
+      docNumber: selectedCustomer.code,
+      docType: 'كشف حساب',
+      date: new Date().toISOString().split('T')[0],
+      partyName: selectedCustomer.shopName ? `${selectedCustomer.name} — ${selectedCustomer.shopName}` : selectedCustomer.name,
+      partyPhone: [selectedCustomer.phone, selectedCustomer.secondaryPhone].filter(Boolean).join(' / '),
+      partyAddress: [selectedCustomer.area, selectedCustomer.address].filter(Boolean).join(' - '),
+      previousBalance: selectedCustomer.openingBalance,
+      currentBalance: selectedCustomer.currentBalance,
+      grandTotal: Math.abs(selectedCustomer.currentBalance),
+      tableHeaders: ['م', 'بند البيانات', 'القيمة', 'العدد', 'القيمة الإجمالية', 'الخصم', 'الرصيد'],
+      items: [
+        { name: 'إجمالي فواتير المبيعات', unit: `${selectedCustomerInvoices.length} فاتورة`, quantity: selectedCustomerInvoices.length, price: 0, discount: 0, total: selectedCustomerInvoices.reduce((a, b) => a + b.grandTotal, 0) },
+        { name: 'إجمالي التحصيلات المستلمة', unit: `${selectedCustomerPayments.length} سند`, quantity: selectedCustomerPayments.length, price: 0, discount: 0, total: selectedCustomerPayments.reduce((a, b) => a + b.amount, 0) },
+        { name: 'إجمالي المرتجعات', unit: `${selectedCustomerReturns.length} مرتجع`, quantity: selectedCustomerReturns.length, price: 0, discount: 0, total: selectedCustomerReturns.reduce((a, b) => a + b.grandTotal, 0) },
+      ],
+      notes: selectedCustomer.notes || `حالة العميل: ${selectedCustomer.status === 'active' ? 'نشط' : 'محظور'}`,
     });
     setIsPrintModalOpen(true);
   };
@@ -562,6 +634,34 @@ export const CustomersView: React.FC = () => {
       r.runningBalance,
     ]);
     exportToExcel(`كشف_حساب_${selectedCustomer.name}_${new Date().toISOString().split('T')[0]}`, headers, rows);
+  };
+
+  const handleExportStatementPdf = () => {
+    if (!selectedCustomer) return;
+    exportTableToPdf(
+      `كشف حساب العميل (${selectedCustomer.name})`,
+      ['التاريخ', 'رقم المستند', 'نوع الحركة', 'البيان والتفاصيل', 'مدين (+)', 'دائن (-)', 'الرصيد التراكمي'],
+      chronologicalStatement.map(r => [
+        r.date,
+        r.docNumber,
+        r.type,
+        r.description,
+        r.debit,
+        r.credit,
+        r.runningBalance,
+      ]),
+      {
+        companyName: settings.companyName,
+        docNumber: selectedCustomer.code,
+        dateRangeText: new Date().toISOString().split('T')[0],
+        meta: [
+          { label: 'اسم العميل', value: selectedCustomer.name },
+          { label: 'الموبايل', value: selectedCustomer.phone },
+          { label: 'الرصيد الحالي', value: `${selectedCustomer.currentBalance.toLocaleString()} ${settings.currency}` },
+        ],
+        notes: `رصيد أول المدة: ${selectedCustomer.openingBalance.toLocaleString()} ${settings.currency} | إجمالي عدد الحركات: ${chronologicalStatement.length}`,
+      }
+    );
   };
 
   // Print Invoice from Customer Profile
@@ -596,15 +696,30 @@ export const CustomersView: React.FC = () => {
     setIsPrintModalOpen(true);
   };
 
-  // ==========================================
-  // RENDER DEDICATED CUSTOMER PAGE
-  // ==========================================
-  if (selectedCustomer) {
-    const isDebtor = selectedCustomer.currentBalance > 0;
-    const isCreditor = selectedCustomer.currentBalance < 0;
+  return (
+    <div className="space-y-6">
+      {customerBanner && (
+        <div
+          className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between gap-2 ${
+            customerBanner.type === 'success'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+              : 'bg-red-50 border-red-200 text-red-900'
+          }`}
+        >
+          <span>{customerBanner.text}</span>
+          <button type="button" onClick={() => setCustomerBanner(null)} className="underline text-[11px] cursor-pointer">
+            إغلاق
+          </button>
+        </div>
+      )}
 
-    return (
-      <div className="space-y-6 animate-in fade-in duration-200">
+      {selectedCustomer ? (() => {
+        const isDebtor = selectedCustomer.currentBalance > 0;
+        const isCreditor = selectedCustomer.currentBalance < 0;
+        const linkedUser = selectedCustomer.userId ? users.find((u) => u.id === selectedCustomer.userId) : undefined;
+
+        return (
+          <div className="space-y-6 animate-in fade-in duration-200">
         {/* Navigation Breadcrumb Bar */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex items-center gap-3">
@@ -722,6 +837,9 @@ export const CustomersView: React.FC = () => {
             <div className="flex flex-wrap items-center gap-2 self-stretch md:self-auto justify-end">
               <button
                 onClick={() => {
+                  setPaymentError(null);
+                  setPaymentMethod('cash');
+                  setPaymentNotes('');
                   setPaymentCustomer(selectedCustomer);
                   setPaymentAmount(selectedCustomer.currentBalance > 0 ? selectedCustomer.currentBalance : 0);
                 }}
@@ -760,7 +878,51 @@ export const CustomersView: React.FC = () => {
                 </button>
               )}
 
+              {selectedCustomer.userId && linkedUser && hasPermission('canManageUsers') && (
+                <button
+                  type="button"
+                  disabled={isTogglingUserStatus}
+                  onClick={async () => {
+                    setIsTogglingUserStatus(true);
+                    try {
+                      const nextActive = linkedUser.isActive === false;
+                      const res = await toggleCustomerUserStatus(selectedCustomer.id, nextActive);
+                      if (res.success) {
+                        setCustomerBanner({
+                          type: 'success',
+                          text: `تم ${nextActive ? 'تفعيل' : 'إيقاف'} حساب دخول العميل (${linkedUser.username}) بنجاح.`,
+                        });
+                      } else {
+                        setCustomerBanner({ type: 'error', text: res.error || 'تعذر تغيير حالة حساب الدخول' });
+                      }
+                    } finally {
+                      setIsTogglingUserStatus(false);
+                    }
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold border cursor-pointer disabled:opacity-50 ${
+                    linkedUser.isActive === false
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                      : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                  }`}
+                  title={`حساب الدخول: ${linkedUser.username}`}
+                >
+                  <ShieldAlert className="w-4 h-4" />
+                  <span>{linkedUser.isActive === false ? 'تفعيل حساب الدخول' : 'إيقاف حساب الدخول'}</span>
+                </button>
+              )}
+
               <button
+                type="button"
+                onClick={handlePrintCustomerCard}
+                className="flex items-center gap-2 px-3.5 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 rounded-xl text-xs font-bold active:scale-95 transition-all cursor-pointer"
+                title="طباعة بطاقة العميل"
+              >
+                <Printer className="w-4 h-4 text-indigo-700" />
+                <span>بطاقة العميل</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={handlePrintStatement}
                 className="flex items-center gap-2 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold active:scale-95 transition-all cursor-pointer"
                 title="طباعة كشف الحساب"
@@ -770,12 +932,23 @@ export const CustomersView: React.FC = () => {
               </button>
 
               <button
+                type="button"
                 onClick={handleExportStatementExcel}
                 className="flex items-center gap-2 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-emerald-800 rounded-xl text-xs font-bold active:scale-95 transition-all cursor-pointer"
                 title="تصدير كشف الحساب Excel"
               >
                 <Download className="w-4 h-4 text-emerald-600" />
                 <span>Excel</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExportStatementPdf}
+                className="flex items-center gap-2 px-3.5 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 rounded-xl text-xs font-bold active:scale-95 transition-all cursor-pointer"
+                title="تصدير كشف الحساب PDF"
+              >
+                <FileText className="w-4 h-4 text-blue-700" />
+                <span>PDF</span>
               </button>
 
               <button
@@ -916,17 +1089,27 @@ export const CustomersView: React.FC = () => {
                   كافة قيود الفواتير والتحصيلات والمرتجعات مرتبة زمنياً لحساب الرصيد المستحق بدقة
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
+                  type="button"
                   onClick={handleExportStatementExcel}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-300 font-bold hover:bg-slate-50 text-emerald-800"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-300 font-bold hover:bg-slate-50 text-emerald-800 cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>تصدير كشف الحساب Excel</span>
+                  <span>تصدير Excel</span>
                 </button>
                 <button
+                  type="button"
+                  onClick={handleExportStatementPdf}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-blue-200 font-bold hover:bg-blue-50 text-blue-900 cursor-pointer"
+                >
+                  <FileText className="w-3.5 h-3.5 text-blue-700" />
+                  <span>تصدير PDF</span>
+                </button>
+                <button
+                  type="button"
                   onClick={handlePrintStatement}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-900 text-white font-bold hover:bg-blue-950 shadow-xs"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-900 text-white font-bold hover:bg-blue-950 shadow-xs cursor-pointer"
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span>طباعة كشف الحساب</span>
@@ -1264,15 +1447,10 @@ export const CustomersView: React.FC = () => {
             )}
           </div>
         )}
-      </div>
-    );
-  }
-
-  // ==========================================
-  // RENDER MAIN CUSTOMERS DIRECTORY LIST VIEW
-  // ==========================================
-  return (
-    <div className="space-y-6">
+          </div>
+        );
+      })() : (
+        <div className="space-y-6">
       {/* Conflicts warning for admins */}
       {hasPermission('canManageUsers') &&
         (conflicts.duplicatePhones.length > 0 || conflicts.unlinkedCustomerUsers.length > 0) && (
@@ -1789,6 +1967,9 @@ export const CustomersView: React.FC = () => {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
+                      setPaymentError(null);
+                      setPaymentMethod('cash');
+                      setPaymentNotes('');
                       setPaymentCustomer(cust);
                       setPaymentAmount(cust.currentBalance > 0 ? cust.currentBalance : 0);
                     }}
@@ -1918,6 +2099,9 @@ export const CustomersView: React.FC = () => {
                       <div className="flex items-center justify-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => {
+                            setPaymentError(null);
+                            setPaymentMethod('cash');
+                            setPaymentNotes('');
                             setPaymentCustomer(cust);
                             setPaymentAmount(cust.currentBalance > 0 ? cust.currentBalance : 0);
                           }}
@@ -1954,6 +2138,8 @@ export const CustomersView: React.FC = () => {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
         </div>
       )}
 
@@ -2363,9 +2549,10 @@ export const CustomersView: React.FC = () => {
             </button>
             <button
               type="submit"
-              className="px-6 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-black shadow-md cursor-pointer"
+              disabled={isSavingCustomer || isUploadingPhoto}
+              className="px-6 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-black shadow-md cursor-pointer disabled:opacity-50"
             >
-              {editingCustomer ? 'حفظ التعديلات' : 'تسجيل العميل في المنظومة'}
+              {isSavingCustomer ? 'جاري الحفظ...' : editingCustomer ? 'حفظ التعديلات' : 'تسجيل العميل في المنظومة'}
             </button>
           </div>
         </form>
@@ -2412,16 +2599,47 @@ export const CustomersView: React.FC = () => {
             )}
             <div>
               <label className="block font-bold text-slate-700 mb-1">
-                المبلغ المحصل نقداً ({settings.currency}): <span className="text-red-500">*</span>
+                المبلغ المحصل ({settings.currency}): <span className="text-red-500">*</span>
               </label>
               <input
                 type="number"
                 min="1"
+                step="0.01"
                 required
                 value={paymentAmount || ''}
                 onChange={(e) => setPaymentAmount(Number(e.target.value))}
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-lg font-black text-center text-emerald-800 font-mono outline-hidden focus:border-emerald-600"
               />
+            </div>
+
+            {paymentAmount > 0 && (paymentCustomer.currentBalance <= 0 || paymentAmount > paymentCustomer.currentBalance) && (
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-bold leading-relaxed">
+                تنبيه محاسبي: المبلغ المدخل يتجاوز المديونية القائمة للعميل — سيتم قيد الزيادة كـ "رصيد دائن للعميل (دفعة مقدمة)" ({(paymentCustomer.currentBalance - paymentAmount).toLocaleString()} {settings.currency}) ولن يُحتسب كإيراد مبيعات.
+              </div>
+            )}
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">وسيلة التحصيل:</label>
+              <div className="grid grid-cols-3 gap-2 font-bold">
+                {[
+                  { id: 'cash' as const, label: 'نقدي' },
+                  { id: 'bank' as const, label: 'تحويل بنكي' },
+                  { id: 'cheque' as const, label: 'شيك' },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setPaymentMethod(m.id)}
+                    className={`p-2 rounded-xl border cursor-pointer ${
+                      paymentMethod === m.id
+                        ? 'bg-blue-900 text-white border-blue-900'
+                        : 'bg-white text-slate-700 border-slate-300'
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div>
@@ -2445,7 +2663,7 @@ export const CustomersView: React.FC = () => {
                 type="text"
                 value={paymentNotes}
                 onChange={(e) => setPaymentNotes(e.target.value)}
-                placeholder="سداد دفعة نقدية من الحساب / تحصيل مبيعات..."
+                placeholder="سداد دفعة من الحساب / تحصيل مبيعات..."
                 className="w-full bg-white border border-slate-300 rounded-xl p-2.5 outline-hidden focus:border-blue-600"
               />
             </div>
@@ -2460,9 +2678,10 @@ export const CustomersView: React.FC = () => {
               </button>
               <button
                 type="submit"
-                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black shadow-md cursor-pointer"
+                disabled={isSubmittingPayment}
+                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black shadow-md cursor-pointer disabled:opacity-50"
               >
-                تأكيد التحصيل وطباعة الإيصال
+                {isSubmittingPayment ? 'جاري التسجيل...' : 'تأكيد التحصيل وطباعة الإيصال'}
               </button>
             </div>
           </form>

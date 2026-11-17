@@ -87,7 +87,24 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
       setError(null);
       window.setTimeout(() => searchInputRef.current?.focus(), 60);
     }
-  }, [isOpen, activeWarehouses, activeReps, warehouses, representatives]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!sourceWarehouseId && (activeWarehouses[0]?.id || warehouses[0]?.id)) {
+      setSourceWarehouseId(activeWarehouses[0]?.id || warehouses[0]?.id || '');
+    }
+    if (!targetWarehouseId && ((activeWarehouses[1] || activeWarehouses[0] || warehouses[0])?.id)) {
+      setTargetWarehouseId((activeWarehouses[1] || activeWarehouses[0] || warehouses[0])?.id || '');
+    }
+    if (!sourceRepId && (activeReps[0]?.id || representatives[0]?.id)) {
+      setSourceRepId(activeReps[0]?.id || representatives[0]?.id || '');
+    }
+    if (!targetRepId && (activeReps[0]?.id || representatives[0]?.id)) {
+      setTargetRepId(activeReps[0]?.id || representatives[0]?.id || '');
+    }
+  }, [isOpen, sourceWarehouseId, targetWarehouseId, sourceRepId, targetRepId, activeWarehouses, activeReps, warehouses, representatives]);
 
   // Resolve source warehouse id when in rep mode (if a van warehouse already exists)
   const effectiveSourceWarehouseId = useMemo(() => {
@@ -582,6 +599,7 @@ export const StockTransfersView: React.FC = () => {
   const [rejectReason, setRejectReason] = useState('');
   const [showRejectBox, setShowRejectBox] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [isActionSubmitting, setIsActionSubmitting] = useState(false);
   const [banner, setBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null);
   const [printData, setPrintData] = useState<PrintData | null>(null);
@@ -670,14 +688,20 @@ export const StockTransfersView: React.FC = () => {
     action: () => Promise<{ success: boolean; transfer?: StockTransferRequest; error?: string }>,
     successMsg: string
   ) => {
+    if (isActionSubmitting) return;
     setActionError(null);
-    const res = await action();
-    if (!res.success) {
-      setActionError(res.error || 'تعذر تنفيذ الإجراء');
-      return;
+    setIsActionSubmitting(true);
+    try {
+      const res = await action();
+      if (!res.success) {
+        setActionError(res.error || 'تعذر تنفيذ الإجراء');
+        return;
+      }
+      setActiveTransfer(res.transfer || null);
+      setBanner({ type: 'success', text: successMsg });
+    } finally {
+      setIsActionSubmitting(false);
     }
-    setActiveTransfer(res.transfer || null);
-    setBanner({ type: 'success', text: successMsg });
   };
 
   return (
@@ -1011,13 +1035,14 @@ export const StockTransfersView: React.FC = () => {
                   </button>
                   <button
                     type="button"
+                    disabled={isActionSubmitting}
                     onClick={() =>
                       runWorkflowAction(
                         () => rejectStockTransferRequest(activeTransfer.id, rejectReason.trim()),
                         'تم رفض طلب التحويل دون تعديل المخزون.'
                       )
                     }
-                    className="px-4 py-1.5 bg-red-700 text-white rounded-lg font-bold cursor-pointer"
+                    className="px-4 py-1.5 bg-red-700 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50"
                   >
                     تأكيد الرفض
                   </button>
@@ -1029,13 +1054,14 @@ export const StockTransfersView: React.FC = () => {
               {activeTransfer.status === 'draft' && canCreate && (
                 <button
                   type="button"
+                  disabled={isActionSubmitting}
                   onClick={() =>
                     runWorkflowAction(
                       () => submitStockTransferRequest(activeTransfer.id),
                       `تم إرسال طلب التحويل (${activeTransfer.transferNumber}) للاعتماد.`
                     )
                   }
-                  className="flex items-center gap-1 px-4 py-2 bg-blue-900 text-white rounded-xl font-bold cursor-pointer"
+                  className="flex items-center gap-1 px-4 py-2 bg-blue-900 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50"
                 >
                   <Send className="w-3.5 h-3.5" />
                   <span>إرسال للاعتماد</span>
@@ -1046,21 +1072,23 @@ export const StockTransfersView: React.FC = () => {
                 <>
                   <button
                     type="button"
+                    disabled={isActionSubmitting}
                     onClick={() => setShowRejectBox(true)}
-                    className="flex items-center gap-1 px-4 py-2 bg-red-50 border border-red-200 text-red-700 rounded-xl font-bold cursor-pointer"
+                    className="flex items-center gap-1 px-4 py-2 bg-red-50 border border-red-200 text-red-700 rounded-xl font-bold cursor-pointer disabled:opacity-50"
                   >
                     <XCircle className="w-4 h-4" />
                     <span>رفض</span>
                   </button>
                   <button
                     type="button"
+                    disabled={isActionSubmitting}
                     onClick={() =>
                       runWorkflowAction(
                         () => approveStockTransferRequest(activeTransfer.id),
                         `تم اعتماد أمر التحويل (${activeTransfer.transferNumber}).`
                       )
                     }
-                    className="flex items-center gap-1 px-4 py-2 bg-blue-700 text-white rounded-xl font-bold cursor-pointer"
+                    className="flex items-center gap-1 px-4 py-2 bg-blue-700 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50"
                   >
                     <CheckCircle2 className="w-4 h-4" />
                     <span>اعتماد الطلب</span>
@@ -1071,16 +1099,17 @@ export const StockTransfersView: React.FC = () => {
               {activeTransfer.status === 'approved' && canExecute && (
                 <button
                   type="button"
+                  disabled={isActionSubmitting}
                   onClick={() =>
                     runWorkflowAction(
                       () => executeStockTransferRequest(activeTransfer.id),
                       `تم تنفيذ التحويل المخزني (${activeTransfer.transferNumber}) وتحديث أرصدة المستودعين.`
                     )
                   }
-                  className="flex items-center gap-1.5 px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-black shadow-md cursor-pointer"
+                  className="flex items-center gap-1.5 px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-black shadow-md cursor-pointer disabled:opacity-50"
                 >
                   <Play className="w-4 h-4" />
-                  <span>تنفيذ التحويل وتعديل الأرصدة</span>
+                  <span>{isActionSubmitting ? 'جاري التنفيذ...' : 'تنفيذ التحويل وتعديل الأرصدة'}</span>
                 </button>
               )}
 

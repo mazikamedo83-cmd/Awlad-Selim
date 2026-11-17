@@ -887,12 +887,12 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
           if (!productMap.has(sm.productId)) continue;
           const whId = warehouseIds.has(sm.warehouseId) ? sm.warehouseId : fallbackWarehouseId;
           await client.query(`
-            INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, target_warehouse_id, target_warehouse_name, movement_type, quantity, unit_cost, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+            INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, target_warehouse_id, target_warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
             ON CONFLICT (id) DO NOTHING;
           `, [
             sm.id,
-            sm.id,
+            sm.movementNumber || sm.id,
             sm.date,
             sm.productId,
             sm.productName,
@@ -902,7 +902,10 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             sm.targetWarehouseName || null,
             sm.type || sm.movementType || 'adjustment',
             Number(sm.quantity || 0),
+            sm.unit || 'قطعة',
+            Number(sm.unitFactor || 1),
             Number(sm.unitCost || 0),
+            Number(sm.balanceAfter ?? 0),
             sm.type || '',
             sm.referenceId || null,
             sm.referenceNumber || null,

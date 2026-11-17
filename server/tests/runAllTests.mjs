@@ -1227,6 +1227,364 @@ async function runSuiteA_JsonLedgerHttp() {
       assert.equal(repNotifs.status, 200);
       assert.ok(Array.isArray(repNotifs.json.notifications));
     });
+
+    await test('28. Per-user keyboard shortcuts CRUD, 409 conflict detection, isolation & persistence across login', async () => {
+      const adminScPayload = [
+        { id: 'SC-1', actionId: 'nav:sales', label: 'المبيعات', category: 'التنقل', keyCombo: 'Alt+Shift+S', enabled: true },
+        { id: 'SC-2', actionId: 'action:print_document', label: 'طباعة', category: 'عام', keyCombo: 'Ctrl+P', enabled: true },
+      ];
+      const saveAdminSc = await req(baseUrl, 'PUT', '/api/auth/shortcuts', {
+        token: adminToken,
+        body: { shortcuts: adminScPayload },
+      });
+      assert.equal(saveAdminSc.status, 200);
+      assert.equal(saveAdminSc.json.shortcuts.length, 2);
+
+      // Duplicate active keyCombo must return 409 SHORTCUT_CONFLICT
+      const dupCombo = await req(baseUrl, 'PUT', '/api/auth/shortcuts', {
+        token: adminToken,
+        body: {
+          shortcuts: [
+            { actionId: 'nav:sales', label: 'المبيعات', category: 'التنقل', keyCombo: 'Ctrl+P', enabled: true },
+            { actionId: 'action:print_document', label: 'طباعة', category: 'عام', keyCombo: 'ctrl+p', enabled: true },
+          ],
+        },
+      });
+      assert.equal(dupCombo.status, 409);
+
+      // Rep sets completely separate personal shortcuts (does NOT overwrite admin)
+      const saveRepSc = await req(baseUrl, 'PUT', '/api/auth/shortcuts', {
+        token: tokenRep,
+        body: {
+          shortcuts: [
+            { actionId: 'nav:sales', label: 'المبيعات', category: 'التنقل', keyCombo: 'F8', enabled: true },
+          ],
+        },
+      });
+      assert.equal(saveRepSc.status, 200);
+
+      // Re-login as admin and verify persistence & isolation
+      const reloginAdmin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: 'owner_tarek', password: 'OwnerStrongPassword!99' },
+      });
+      assert.equal(reloginAdmin.status, 200);
+      const fetchedAdminSc = await req(baseUrl, 'GET', '/api/auth/shortcuts', { token: reloginAdmin.json.accessToken });
+      assert.equal(fetchedAdminSc.status, 200);
+      assert.equal(fetchedAdminSc.json.shortcuts.find((s) => s.actionId === 'nav:sales').keyCombo, 'Alt+Shift+S');
+
+      const fetchedRepSc = await req(baseUrl, 'GET', '/api/auth/shortcuts', { token: tokenRep });
+      assert.equal(fetchedRepSc.status, 200);
+      assert.equal(fetchedRepSc.json.shortcuts[0].keyCombo, 'F8');
+    });
+
+    await test('29. Customer collection methods (cash/bank/cheque), advance credit balance & linked-user suspend/reactivate toggle', async () => {
+      const custABefore = (await req(baseUrl, 'GET', `/api/customers/${custA.id}`, { token: adminToken })).json.customer;
+      const startBal = Number(custABefore.currentBalance);
+      const overPay = startBal + 75;
+
+      // Bank transfer overpayment creates negative (advance credit) balance
+      const payRes = await req(baseUrl, 'POST', `/api/customers/${custA.id}/payment`, {
+        token: adminToken,
+        body: { amount: overPay, cashboxId: cashboxMainId, paymentMethod: 'bank', notes: 'دفعة مقدمة بنك' },
+      });
+      assert.equal(payRes.status, 200);
+      assert.equal(payRes.json.paymentMethod, 'bank');
+      assert.equal(Number(payRes.json.customer.currentBalance), -75);
+      assertNoSensitiveFields(payRes.json, 'customer payment');
+
+      // Suspend CustA's portal login -> 403 on next login and tokenCustA revoked immediately
+      const suspRes = await req(baseUrl, 'POST', `/api/customers/${custA.id}/toggle-user-status`, {
+        token: adminToken,
+        body: { isActive: false },
+      });
+      assert.equal(suspRes.status, 200);
+      assert.equal(suspRes.json.isActive, false);
+
+      const suspendedLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: 'cust_baraka', password: 'CustomerPassword!1' },
+      });
+      assert.equal(suspendedLogin.status, 403);
+
+      // Reactivate CustA portal login -> 200
+      const reactRes = await req(baseUrl, 'POST', `/api/customers/${custA.id}/toggle-user-status`, {
+        token: adminToken,
+        body: { isActive: true },
+      });
+      assert.equal(reactRes.status, 200);
+      assert.equal(reactRes.json.isActive, true);
+
+      const okLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: 'cust_baraka', password: 'CustomerPassword!1' },
+      });
+      assert.equal(okLogin.status, 200);
+      tokenCustA = okLogin.json.accessToken;
+    });
+
+    await test('30. Employees CRUD, suspended advance guard, cashbox overdraft block, salary payout & duplicate payroll block', async () => {
+      // Restricted staff gets 403 on HR endpoints
+      const hrForbidden = await req(baseUrl, 'POST', '/api/admin/employees', {
+        token: tokenStaffRestricted,
+        body: { name: 'موظف', jobTitle: 'عامل', basicSalary: 3000 },
+      });
+      assert.equal(hrForbidden.status, 403);
+
+      // Create employee
+      const empRes = await req(baseUrl, 'POST', '/api/admin/employees', {
+        token: adminToken,
+        body: { code: 'EMP-900', name: 'مصطفى محمود', jobTitle: 'أمين مخزن', department: 'المخازن', basicSalary: 4000 },
+      });
+      assert.equal(empRes.status, 201);
+      const empId = empRes.json.employee.id;
+
+      // Suspend employee -> blocks advances (409)
+      const suspEmp = await req(baseUrl, 'PUT', `/api/admin/employees/${empId}`, {
+        token: adminToken,
+        body: { status: 'inactive' },
+      });
+      assert.equal(suspEmp.status, 200);
+      const advSuspended = await req(baseUrl, 'POST', '/api/admin/advances', {
+        token: adminToken,
+        body: { employeeId: empId, type: 'advance', amount: 100, cashboxId: cashboxMainId, reason: 'سلفة' },
+      });
+      assert.equal(advSuspended.status, 409);
+
+      // Reactivate + edit basicSalary to 5000
+      assert.equal(
+        (await req(baseUrl, 'PUT', `/api/admin/employees/${empId}`, {
+          token: adminToken,
+          body: { status: 'active', basicSalary: 5000 },
+        })).status,
+        200
+      );
+
+      // Overdraft cashbox guard on advance -> 409
+      const hugeAdv = await req(baseUrl, 'POST', '/api/admin/advances', {
+        token: adminToken,
+        body: { employeeId: empId, type: 'advance', amount: 9999999, cashboxId: cashboxMainId, reason: 'سلفة كبيرة' },
+      });
+      assert.equal(hugeAdv.status, 409);
+
+      // Fund cashbox generously and issue 500 advance
+      await req(baseUrl, 'POST', '/api/admin/cash-operations', {
+        token: adminToken,
+        body: { type: 'cash_deposit', cashboxId: cashboxMainId, amount: 10000, category: 'تمويل رواتب' },
+      });
+      const okAdv = await req(baseUrl, 'POST', '/api/admin/advances', {
+        token: adminToken,
+        body: { employeeId: empId, type: 'advance', amount: 500, cashboxId: cashboxMainId, reason: 'سلفة شهر 11' },
+      });
+      assert.equal(okAdv.status, 201);
+
+      // Pay salary 4500 (5000 - 500 advance) -> settles advance cleanly
+      const paySal = await req(baseUrl, 'POST', '/api/admin/payrolls', {
+        token: adminToken,
+        body: {
+          employeeId: empId,
+          employeeName: 'مصطفى محمود',
+          month: 11,
+          year: 2026,
+          basicSalary: 5000,
+          advancesTotal: 500,
+          deductionsTotal: 0,
+          bonusesTotal: 0,
+          netSalary: 4500,
+          cashboxId: cashboxMainId,
+        },
+      });
+      assert.equal(paySal.status, 201);
+
+      // Duplicate month/year payroll blocked (409 DUPLICATE_PAYROLL)
+      const dupPay = await req(baseUrl, 'POST', '/api/admin/payrolls', {
+        token: adminToken,
+        body: {
+          employeeId: empId,
+          month: 11,
+          year: 2026,
+          basicSalary: 5000,
+          netSalary: 4500,
+          cashboxId: cashboxMainId,
+        },
+      });
+      assert.equal(dupPay.status, 409);
+
+      const bootHr = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      assert.equal(bootHr.advancesDeductions.find((a) => a.employeeId === empId).isSettled, true);
+    });
+
+    await test('31. Confirmed Purchase Invoice updates stock (+qty), purchase price, supplier balance & cashbox accurately', async () => {
+      const suppRes = await req(baseUrl, 'POST', '/api/admin/suppliers', {
+        token: adminToken,
+        body: { code: 'SUP-88', name: 'شركة النور للتوريدات', phone: '01111112222', openingBalance: 0 },
+      });
+      assert.equal(suppRes.status, 201);
+      const suppId = suppRes.json.supplier.id;
+
+      const bootBefore = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const stockBefore = Number(bootBefore.products.find((p) => p.id === prod1.id).stockPerWarehouse[whMainId] || 0);
+      const cbBefore = Number(bootBefore.cashboxes.find((c) => c.id === cashboxMainId).currentBalance || 0);
+
+      // Purchase 10 pieces @ 8 = 80 total, paid 30 cashbox, remaining 50 credit on supplier
+      const purRes = await req(baseUrl, 'POST', '/api/invoices/purchase', {
+        token: adminToken,
+        body: {
+          supplierId: suppId,
+          supplierName: 'شركة النور للتوريدات',
+          warehouseId: whMainId,
+          warehouseName: bootBefore.warehouses[0].name,
+          cashboxId: cashboxMainId,
+          paymentType: 'partial',
+          paidAmount: 30,
+          remainingAmount: 50,
+          subtotal: 80,
+          grandTotal: 80,
+          status: 'confirmed',
+          items: [{ productId: prod1.id, productName: prod1.name, unit: 'قطعة', unitFactor: 1, quantity: 10, unitPrice: 8, total: 80 }],
+        },
+      });
+      assert.equal(purRes.status, 201);
+      assert.equal(purRes.json.invoice.status, 'confirmed');
+
+      const bootAfter = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      assert.equal(bootAfter.products.find((p) => p.id === prod1.id).stockPerWarehouse[whMainId], stockBefore + 10);
+      assert.equal(bootAfter.cashboxes.find((c) => c.id === cashboxMainId).currentBalance, cbBefore - 30);
+      assert.equal(bootAfter.suppliers.find((s) => s.id === suppId).currentBalance, 50);
+    });
+
+    await test('32. File-import safe batch deletion protects manual items, invoiced items & non-opening stock_movements', async () => {
+      const impUsedRes = await req(baseUrl, 'POST', '/api/products', {
+        token: adminToken,
+        body: {
+          code: 'IMP-USED-1',
+          barcode: '622999001',
+          name: 'صنف مستورد مستخدم بحركة',
+          category: 'عام',
+          baseUnit: 'قطعة',
+          purchasePrice: 5,
+          sellingPrice: 9,
+          stockPerWarehouse: { [whMainId]: 20 },
+          importedFromFile: true,
+          importBatchId: 'BATCH-DEL-1',
+          sourceFileName: 'chipcy.txt',
+        },
+      });
+      assert.equal(impUsedRes.status, 201);
+      const impUsedId = impUsedRes.json.product.id;
+
+      // Record non-opening stock movement (damagedStock) on impUsedId
+      const dmgRes = await req(baseUrl, 'POST', '/api/inventory/damaged', {
+        token: adminToken,
+        body: { productId: impUsedId, warehouseId: whMainId, quantity: 2, reason: 'تالف اختبار حماية الحذف' },
+      });
+      assert.equal(dmgRes.status, 200);
+
+      const impFreeRes = await req(baseUrl, 'POST', '/api/products', {
+        token: adminToken,
+        body: {
+          code: 'IMP-FREE-1',
+          barcode: '622999002',
+          name: 'صنف مستورد قابل للحذف',
+          category: 'عام',
+          baseUnit: 'قطعة',
+          purchasePrice: 0,
+          sellingPrice: 0,
+          stockPerWarehouse: { [whMainId]: 0 },
+          importedFromFile: true,
+          importBatchId: 'BATCH-DEL-1',
+          sourceFileName: 'chipcy.txt',
+        },
+      });
+      assert.equal(impFreeRes.status, 201);
+      const impFreeId = impFreeRes.json.product.id;
+
+      // Add another batch item to prove targeted batchId deletion does NOT touch other batches
+      const otherBatchRes = await req(baseUrl, 'POST', '/api/products', {
+        token: adminToken,
+        body: {
+          code: 'IMP-OTHER-2',
+          barcode: '622999003',
+          name: 'صنف دفعة أخرى',
+          category: 'عام',
+          baseUnit: 'قطعة',
+          purchasePrice: 0,
+          sellingPrice: 0,
+          stockPerWarehouse: { [whMainId]: 0 },
+          importedFromFile: true,
+          importBatchId: 'BATCH-KEEP-2',
+          sourceFileName: 'drinks.txt',
+        },
+      });
+      assert.equal(otherBatchRes.status, 201);
+      const otherBatchId = otherBatchRes.json.product.id;
+
+      const delBatchRes = await req(baseUrl, 'POST', '/api/products/delete-imported', {
+        token: adminToken,
+        body: { batchId: 'BATCH-DEL-1', deleteAllImported: false },
+      });
+      assert.equal(delBatchRes.status, 200);
+      assert.equal(delBatchRes.json.deletedCount, 1);
+      assert.equal(delBatchRes.json.skippedCount, 1);
+      assert.equal(delBatchRes.json.skippedItems[0].id, impUsedId);
+
+      const allProds = (await req(baseUrl, 'GET', '/api/products', { token: adminToken })).json.products;
+      assert.ok(allProds.some((p) => p.id === prod1.id), 'Manual prod1 MUST be preserved');
+      assert.ok(allProds.some((p) => p.id === impUsedId), 'Imported item with stock movement MUST be preserved');
+      assert.ok(allProds.some((p) => p.id === otherBatchId), 'Other batch item MUST be preserved');
+      assert.equal(allProds.some((p) => p.id === impFreeId), false, 'Unused item in target batch MUST be deleted');
+    });
+
+    await test('33. Flexible Stock Transfers (wh <-> rep & reject) + Cashbox Transfer overdraft 409 block', async () => {
+      // Cashbox transfer overdraft -> 409 INSUFFICIENT_CASHBOX
+      const cbOverdraft = await req(baseUrl, 'POST', '/api/admin/cashboxes/transfer', {
+        token: adminToken,
+        body: { fromId: cashboxSecondId, toId: cashboxMainId, amount: 999999, notes: 'اختبار تجاوز رصيد' },
+      });
+      assert.equal(cbOverdraft.status, 409);
+
+      // Stock transfer using targetRepId (warehouse -> rep van)
+      const whToRep = await req(baseUrl, 'POST', '/api/stock-transfers', {
+        token: adminToken,
+        body: {
+          sourceWarehouseId: whMainId,
+          targetRepId: repProfileId,
+          reason: 'تحويل عهدة مرن لمندوب',
+          items: [{ productId: prod1.id, unit: 'قطعة', unitFactor: 1, requestedQty: 5 }],
+        },
+      });
+      assert.equal(whToRep.status, 201);
+      assert.equal(whToRep.json.transfer.targetWarehouseId, repVanWhId);
+
+      assert.equal((await req(baseUrl, 'POST', `/api/stock-transfers/${whToRep.json.transfer.id}/submit`, { token: adminToken })).status, 200);
+      assert.equal((await req(baseUrl, 'POST', `/api/stock-transfers/${whToRep.json.transfer.id}/approve`, { token: adminToken, body: {} })).status, 200);
+      assert.equal((await req(baseUrl, 'POST', `/api/stock-transfers/${whToRep.json.transfer.id}/execute`, { token: adminToken })).status, 200);
+
+      // Verify rep van now has 5 pieces, then test rejection leaves stock untouched
+      let boot = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      assert.equal(boot.products.find((p) => p.id === prod1.id).stockPerWarehouse[repVanWhId], 5);
+
+      const repToWh = await req(baseUrl, 'POST', '/api/stock-transfers', {
+        token: adminToken,
+        body: {
+          sourceRepId: repProfileId,
+          targetWarehouseId: whMainId,
+          reason: 'مرتجع عهدة للمستودع',
+          items: [{ productId: prod1.id, unit: 'قطعة', unitFactor: 1, requestedQty: 3 }],
+        },
+      });
+      assert.equal(repToWh.status, 201);
+      const rejRes = await req(baseUrl, 'POST', `/api/stock-transfers/${repToWh.json.transfer.id}/reject`, {
+        token: adminToken,
+        body: { reason: 'رفض لأغراض اختبار الحالة' },
+      });
+      assert.equal(rejRes.status, 200);
+      assert.equal(rejRes.json.transfer.status, 'rejected');
+
+      // Executing a rejected transfer -> 409
+      const execRej = await req(baseUrl, 'POST', `/api/stock-transfers/${repToWh.json.transfer.id}/execute`, { token: adminToken });
+      assert.equal(execRej.status, 409);
+
+      boot = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      assert.equal(boot.products.find((p) => p.id === prod1.id).stockPerWarehouse[repVanWhId], 5);
+    });
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -1366,7 +1724,7 @@ async function runSuiteB_PostgresPgMem() {
       const pgProdRes = await req(baseUrlPg, 'GET', '/api/products', { token: pgCustAToken });
       assert.equal(pgProdRes.status, 200);
       assert.equal(pgProdRes.json.products[0].purchasePrice, undefined);
-      const prodId = pgProdRes.json.products[0].id;
+      const prodId = (pgProdRes.json.products.find((p) => p.code === 'P-100') || pgProdRes.json.products[0]).id;
 
       // Create Order on PG + Idempotency + Isolation + Approve + Convert + Confirm
       const pgOrderRes = await req(baseUrlPg, 'POST', '/api/orders', {
@@ -1426,7 +1784,7 @@ async function runSuiteB_PostgresPgMem() {
       const wh1 = boot.warehouses[0].id;
       const wh2 = boot.warehouses[1].id;
       const cb1 = boot.cashboxes[0].id;
-      const prod = boot.products[0];
+      const prod = boot.products.find((p) => p.code === 'P-100') || boot.products[0];
       const stockWh1Before = Number(prod.stockPerWarehouse[wh1] || 0);
       const stockWh2Before = Number(prod.stockPerWarehouse[wh2] || 0);
       const cbBefore = Number(boot.cashboxes[0].currentBalance || 0);
@@ -1479,6 +1837,122 @@ async function runSuiteB_PostgresPgMem() {
       assert.equal(bootFinal.cashboxes.find((c) => c.id === cb1).currentBalance, cbBefore + 200 - 50);
       assert.equal(bootFinal.products.find((p) => p.id === prod.id).stockPerWarehouse[wh1], stockWh1Before - 1 - 2);
       assert.equal(bootFinal.products.find((p) => p.id === prod.id).stockPerWarehouse[wh2], stockWh2Before + 2);
+    });
+
+    await test('34. Live PostgreSQL HTTP API validates shortcuts persistence, customer toggle, payroll guards, safe delete & overdraft blocks', async () => {
+      const adminLogin = await req(baseUrlPg, 'POST', '/api/auth/login', {
+        body: { username: 'owner_tarek', password: 'OwnerStrongPassword!99' },
+      });
+      const pgAdminToken = adminLogin.json.accessToken;
+      const boot = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      const cb1 = boot.cashboxes[0].id;
+      const cb2 = boot.cashboxes[1]?.id || cb1;
+      const wh1 = boot.warehouses[0].id;
+      const prod = boot.products.find((p) => p.code === 'P-100') || boot.products[0];
+
+      // 1. PG Shortcuts roundtrip + 409 conflict
+      const pgScSave = await req(baseUrlPg, 'PUT', '/api/auth/shortcuts', {
+        token: pgAdminToken,
+        body: {
+          shortcuts: [{ actionId: 'action:save_invoice', label: 'حفظ الفاتورة', category: 'الفواتير', keyCombo: 'Ctrl+Shift+S', enabled: true }],
+        },
+      });
+      assert.equal(pgScSave.status, 200);
+      const pgScGet = await req(baseUrlPg, 'GET', '/api/auth/shortcuts', { token: pgAdminToken });
+      assert.equal(pgScGet.status, 200);
+      assert.equal(pgScGet.json.shortcuts[0].keyCombo, 'Ctrl+Shift+S');
+
+      const pgScDup = await req(baseUrlPg, 'PUT', '/api/auth/shortcuts', {
+        token: pgAdminToken,
+        body: {
+          shortcuts: [
+            { actionId: 'action:save_invoice', label: 'A', category: 'عام', keyCombo: 'Alt+X', enabled: true },
+            { actionId: 'action:print_document', label: 'B', category: 'عام', keyCombo: 'alt+x', enabled: true },
+          ],
+        },
+      });
+      assert.equal(pgScDup.status, 409);
+
+      // 2. PG Customer toggle status blocks/restores login
+      const barakaUser = boot.users.find((u) => u.username === 'cust_baraka');
+      const custTarget = boot.customers.find((c) => c.userId === barakaUser?.id);
+      assert.ok(custTarget);
+      assert.equal((await req(baseUrlPg, 'POST', `/api/customers/${custTarget.id}/toggle-user-status`, {
+        token: pgAdminToken,
+        body: { isActive: false },
+      })).status, 200);
+      assert.equal((await req(baseUrlPg, 'POST', '/api/auth/login', {
+        body: { username: 'cust_baraka', password: 'CustomerPassword!1' },
+      })).status, 403);
+      assert.equal((await req(baseUrlPg, 'POST', `/api/customers/${custTarget.id}/toggle-user-status`, {
+        token: pgAdminToken,
+        body: { isActive: true },
+      })).status, 200);
+
+      // 3. PG Safe import delete respects non-opening stock_movements
+      const pgImpRes = await req(baseUrlPg, 'POST', '/api/products', {
+        token: pgAdminToken,
+        body: {
+          code: 'PG-IMP-FREE',
+          barcode: '622777001',
+          name: 'صنف مستورد PG',
+          category: 'عام',
+          baseUnit: 'قطعة',
+          purchasePrice: 0,
+          sellingPrice: 0,
+          stockPerWarehouse: { [wh1]: 0 },
+          importedFromFile: true,
+          importBatchId: 'PG-BATCH-1',
+          sourceFileName: 'pg_import.csv',
+        },
+      });
+      assert.equal(pgImpRes.status, 201);
+      const pgDelRes = await req(baseUrlPg, 'POST', '/api/products/delete-imported', {
+        token: pgAdminToken,
+        body: { batchId: 'PG-BATCH-1', deleteAllImported: false },
+      });
+      assert.equal(pgDelRes.status, 200);
+      assert.equal(pgDelRes.json.deletedCount, 1);
+
+      // Verify IMP-USED-1 from Suite A (has stock movement) is STILL protected on PG even on deleteAllImported
+      const pgDelAllRes = await req(baseUrlPg, 'POST', '/api/products/delete-imported', {
+        token: pgAdminToken,
+        body: { deleteAllImported: true },
+      });
+      assert.equal(pgDelAllRes.status, 200);
+      assert.ok(pgDelAllRes.json.skippedItems.some((x) => x.code === 'IMP-USED-1'), 'PG MUST protect imported item with stock_movements');
+
+      // 4. PG Cashbox transfer overdraft block -> 409
+      if (cb1 !== cb2) {
+        const pgCbOver = await req(baseUrlPg, 'POST', '/api/admin/cashboxes/transfer', {
+          token: pgAdminToken,
+          body: { fromId: cb2, toId: cb1, amount: 9999999, notes: 'تجاوز PG' },
+        });
+        assert.equal(pgCbOver.status, 409);
+      }
+
+      // 5. PG Duplicate payroll block -> 409 & Emp overdraft -> 409
+      const empPg = boot.employees.find((e) => e.code === 'EMP-900');
+      assert.ok(empPg);
+      const pgDupPayroll = await req(baseUrlPg, 'POST', '/api/admin/payrolls', {
+        token: pgAdminToken,
+        body: { employeeId: empPg.id, month: 11, year: 2026, basicSalary: 5000, netSalary: 4500, cashboxId: cb1 },
+      });
+      assert.equal(pgDupPayroll.status, 409);
+
+      const pgEmpOver = await req(baseUrlPg, 'POST', '/api/admin/advances', {
+        token: pgAdminToken,
+        body: { employeeId: empPg.id, type: 'advance', amount: 9999999, cashboxId: cb1, reason: 'تجاوز PG' },
+      });
+      assert.equal(pgEmpOver.status, 409);
+
+      // Verify PG stock_movements recorded unit/movement_number properly on stock transfers
+      const mvRows = await pgPool.query(
+        `SELECT movement_number, movement_type, unit, unit_factor, balance_after FROM stock_movements WHERE movement_type IN ('transfer_out', 'transfer_in') AND product_id = $1`,
+        [prod.id]
+      );
+      assert.ok(mvRows.rows.some((r) => r.movement_type === 'transfer_out') && mvRows.rows.some((r) => r.movement_type === 'transfer_in'), 'Expected PG transfer stock_movements with out/in rows');
+      assert.ok(mvRows.rows.every((r) => r.movement_number && r.unit && r.balance_after !== null));
     });
   } finally {
     setInjectedPool(null);

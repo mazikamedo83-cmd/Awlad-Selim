@@ -38,14 +38,6 @@ interface SettingsViewProps {
   initialTab?: SettingsTabKey;
 }
 
-const DEFAULT_SHORTCUTS = [
-  { keyCombo: 'Alt + N', actionLabel: 'فاتورة بيع جديدة', targetPage: 'new-sale' },
-  { keyCombo: 'Alt + P', actionLabel: 'فاتورة شراء جديدة', targetPage: 'new-purchase' },
-  { keyCombo: 'Alt + C', actionLabel: 'دليل العملاء والأرصدة', targetPage: 'customers' },
-  { keyCombo: 'Alt + I', actionLabel: 'المنتجات والمخزون', targetPage: 'products' },
-  { keyCombo: 'Alt + R', actionLabel: 'التقارير المالية', targetPage: 'reports' },
-];
-
 export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'general' }) => {
   const {
     settings, updateSettings, exportBackup, importBackup,
@@ -144,8 +136,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
     cloudEndpointUrl: serverSettings?.apiBaseUrl || '',
   });
 
-  const [shortcuts, setShortcuts] = useState(extra.shortcuts || DEFAULT_SHORTCUTS);
-
   const [servicesConfig, setServicesConfig] = useState(extra.servicesConfig || {
     enableBarcodeScanner: true,
     enableAutoBackup: true,
@@ -162,7 +152,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
       if (settings.extraSettings.invoiceTemplate) setInvoiceTemplate(settings.extraSettings.invoiceTemplate);
       if (settings.extraSettings.mobileConfig) setMobileConfig(settings.extraSettings.mobileConfig);
       if (settings.extraSettings.onlineSyncConfig) setOnlineSyncConfig(settings.extraSettings.onlineSyncConfig);
-      if (settings.extraSettings.shortcuts) setShortcuts(settings.extraSettings.shortcuts);
       if (settings.extraSettings.servicesConfig) setServicesConfig(settings.extraSettings.servicesConfig);
     }
   }, [settings]);
@@ -226,11 +215,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
   } | null>(null);
   const [recorderConflict, setRecorderConflict] = useState<string | null>(null);
   const [showResetShortcutsConfirm, setShowResetShortcutsConfirm] = useState(false);
+  const [selectedDeleteBatchId, setSelectedDeleteBatchId] = useState<string>('all');
 
   const importedProductsList = useMemo(
     () => products.filter((p) => p.importedFromFile || Boolean(p.importBatchId)),
     [products]
   );
+
+  const importBatches = useMemo(() => {
+    const map = new Map<string, { batchId: string; fileName: string; count: number }>();
+    importedProductsList.forEach((p) => {
+      const batchId = p.importBatchId || 'UNBATCHED';
+      const existing = map.get(batchId);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        map.set(batchId, {
+          batchId,
+          fileName: p.sourceFileName || (batchId === 'UNBATCHED' ? 'دفعة استيراد سابقة' : batchId),
+          count: 1,
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [importedProductsList]);
 
   // 1. General Settings Handlers
   const handleSaveGeneral = async (e: React.FormEvent) => {
@@ -468,7 +476,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
     setIsDeletingImported(true);
     setImportError(null);
     setDeleteImportedReport(null);
-    const res = await deleteImportedProducts({ deleteAllImported: true });
+    const payload =
+      selectedDeleteBatchId === 'all' || selectedDeleteBatchId === 'UNBATCHED'
+        ? { deleteAllImported: true }
+        : { batchId: selectedDeleteBatchId };
+    const res = await deleteImportedProducts(payload);
     setIsDeletingImported(false);
     setShowDeleteImportedConfirm(false);
     if (!res.success) {
@@ -479,6 +491,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
         skippedCount: res.skippedCount || 0,
         skippedItems: res.skippedItems || [],
       });
+      if (selectedDeleteBatchId !== 'all' && (res.skippedCount || 0) === 0) {
+        setSelectedDeleteBatchId('all');
+      }
     }
   };
 
@@ -1112,26 +1127,52 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             </div>
           )}
 
-          {/* Safe Delete All Imported Products Section */}
-          <div className="p-4 rounded-2xl bg-red-50/70 border border-red-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h4 className="font-black text-red-900 flex items-center gap-1.5 text-xs">
-                <Trash2 className="w-4 h-4 text-red-600" />
-                <span>إدارة وحذف الأصناف المستوردة من الملفات ({importedProductsList.length} صنف مستورد)</span>
-              </h4>
-              <p className="text-[11px] text-red-800/80 mt-0.5">
-                يحذف فقط الأصناف التي تم استيرادها من الملفات ولم تُستخدم في فواتير أو جرد أو تحويلات، مع الحفاظ التام على الأصناف المضافة يدوياً.
-              </p>
+          {/* Safe Delete Imported Products Section */}
+          <div className="p-4 rounded-2xl bg-red-50/70 border border-red-200 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h4 className="font-black text-red-900 flex items-center gap-1.5 text-xs">
+                  <Trash2 className="w-4 h-4 text-red-600" />
+                  <span>إدارة وحذف الأصناف المستوردة من الملفات ({importedProductsList.length} صنف مستورد)</span>
+                </h4>
+                <p className="text-[11px] text-red-800/80 mt-0.5">
+                  يحذف فقط الأصناف التي تم استيرادها من الملفات ولم تُستخدم في فواتير أو جرد أو تحويلات أو حركات مخزنية غير افتتاحية، مع الحفاظ التام على الأصناف المضافة يدوياً.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={importedProductsList.length === 0 || isDeletingImported}
+                onClick={() => setShowDeleteImportedConfirm(true)}
+                className="shrink-0 flex items-center gap-1.5 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs shadow-xs disabled:opacity-40 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>
+                  {selectedDeleteBatchId === 'all'
+                    ? 'مسح جميع الأصناف المستوردة من الملفات'
+                    : 'مسح أصناف الدفعة المحددة فقط'}
+                </span>
+              </button>
             </div>
-            <button
-              type="button"
-              disabled={importedProductsList.length === 0 || isDeletingImported}
-              onClick={() => setShowDeleteImportedConfirm(true)}
-              className="shrink-0 flex items-center gap-1.5 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs shadow-xs disabled:opacity-40 cursor-pointer"
-            >
-              <Trash2 className="w-4 h-4" />
-              <span>مسح جميع الأصناف المستوردة من الملفات</span>
-            </button>
+
+            {importBatches.length > 0 && (
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-2 border-t border-red-200/60">
+                <label className="text-[11px] font-bold text-red-950 shrink-0">نطاق الحذف:</label>
+                <select
+                  value={selectedDeleteBatchId}
+                  onChange={(e) => setSelectedDeleteBatchId(e.target.value)}
+                  className="bg-white border border-red-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800"
+                >
+                  <option value="all">جميع الأصناف المستوردة من الملفات ({importedProductsList.length} صنف)</option>
+                  {importBatches
+                    .filter((b) => b.batchId !== 'UNBATCHED')
+                    .map((b) => (
+                      <option key={b.batchId} value={b.batchId}>
+                        دفعة: {b.fileName} — {b.batchId} ({b.count} صنف)
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <ConfirmDialog
@@ -1149,9 +1190,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             isOpen={showDeleteImportedConfirm}
             onClose={() => setShowDeleteImportedConfirm(false)}
             onConfirm={handleExecuteDeleteImported}
-            title="مسح جميع الأصناف المستوردة من الملفات"
-            message={`سيتم حذف الأصناف المستوردة من الملفات (${importedProductsList.length} صنف) بشرط عدم ارتباطها بأي فواتير أو حركات مخزنية. الأصناف المضافة يدوياً أو المرتبطة بفواتير لن تُحذف. هل تريد المتابعة؟`}
-            confirmLabel="نعم، مسح الأصناف المستوردة"
+            title={selectedDeleteBatchId === 'all' ? 'مسح جميع الأصناف المستوردة من الملفات' : 'مسح أصناف دفعة الاستيراد المحددة'}
+            message={(() => {
+              const targetCount =
+                selectedDeleteBatchId === 'all'
+                  ? importedProductsList.length
+                  : importBatches.find((b) => b.batchId === selectedDeleteBatchId)?.count || importedProductsList.length;
+              return `سيتم حذف الأصناف المستوردة (${targetCount} صنف في النطاق المحدد) بشرط عدم ارتباطها بأي فواتير أو مرتجعات أو طلبات أو جرد أو تحويلات أو حركات مخزنية. الأصناف المضافة يدوياً أو المرتبطة بحركات لن تُحذف. هل تريد المتابعة؟`;
+            })()}
+            confirmLabel="نعم، مسح الأصناف غير المستخدمة"
             variant="danger"
             isLoading={isDeletingImported}
           />
@@ -2009,6 +2056,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     setRecordingTarget({ ...recordingTarget, keyCombo: combo });
                     return;
                   }
+                  if (/^Shift\+[A-Z0-9]$/.test(combo)) {
+                    setRecorderConflict(`الاختصار (${combo}) يتعارض مع الكتابة بالحروف الكبيرة داخل الحقول؛ أضف Ctrl أو Alt.`);
+                    setRecordingTarget({ ...recordingTarget, keyCombo: combo });
+                    return;
+                  }
                   const conflict = findConflict(combo, recordingTarget.actionId, userShortcuts);
                   if (conflict) {
                     setRecorderConflict(`تحذير: الاختصار (${combo}) مستخدم بالفعل في الوظيفة: "${conflict.label}"`);
@@ -2063,6 +2115,94 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     ملاحظة: يتم حفظ الاختصار اعتماداً على المفتاح الفيزيائي ليعمل مع لوحة المفاتيح العربية والإنجليزية على السواء.
                   </p>
                 </div>
+
+                {/* Manual Modifier + Key Builder */}
+                {(() => {
+                  const parts = normalizeComboString(recordingTarget.keyCombo).split('+').filter(Boolean);
+                  const hasCtrl = parts.includes('Ctrl');
+                  const hasAlt = parts.includes('Alt');
+                  const hasShift = parts.includes('Shift');
+                  const baseKey = parts.find((p) => !['Ctrl', 'Alt', 'Shift'].includes(p)) || '';
+                  const updateManualCombo = (nextCtrl: boolean, nextAlt: boolean, nextShift: boolean, nextKey: string) => {
+                    if (!nextKey) {
+                      setRecorderConflict(null);
+                      setRecordingTarget({ ...recordingTarget, keyCombo: '' });
+                      return;
+                    }
+                    const nextParts: string[] = [];
+                    if (nextCtrl) nextParts.push('Ctrl');
+                    if (nextAlt) nextParts.push('Alt');
+                    if (nextShift) nextParts.push('Shift');
+                    nextParts.push(nextKey);
+                    const combo = normalizeComboString(nextParts.join('+'));
+                    if (isReservedSystemCombo(combo)) {
+                      setRecorderConflict(`الاختصار (${combo}) محجوز لعمليات النظام الأساسية (نسخ/لصق/تحديد). يرجى اختيار مفتاح آخر.`);
+                    } else if (/^Shift\+[A-Z0-9]$/.test(combo)) {
+                      setRecorderConflict(`الاختصار (${combo}) يتعارض مع الكتابة بالحروف الكبيرة داخل الحقول؛ أضف Ctrl أو Alt.`);
+                    } else if (/^[A-Z0-9]$/.test(combo)) {
+                      setRecorderConflict(`الاختصار (${combo}) بدون مفتاح تحكم يتعارض مع الكتابة؛ اختر Ctrl أو Alt أو مفتاح وظيفة F1-F12.`);
+                    } else {
+                      const conflict = findConflict(combo, recordingTarget.actionId, userShortcuts);
+                      setRecorderConflict(
+                        conflict ? `تحذير: الاختصار (${combo}) مستخدم بالفعل في الوظيفة: "${conflict.label}"` : null
+                      );
+                    }
+                    setRecordingTarget({ ...recordingTarget, keyCombo: combo });
+                  };
+                  const keyOptions = [
+                    'F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12',
+                    'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z',
+                    '0','1','2','3','4','5','6','7','8','9',
+                    'Enter','Space','Insert','Delete','ArrowUp','ArrowDown','ArrowLeft','ArrowRight',
+                  ];
+                  return (
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                      <span className="block font-bold text-slate-700 text-[11px]">
+                        أو اختر مفاتيح التحكم والمفتاح يدوياً:
+                      </span>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <label className="flex items-center gap-1.5 font-mono font-bold text-slate-800 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={hasCtrl}
+                            onChange={(e) => updateManualCombo(e.target.checked, hasAlt, hasShift, baseKey)}
+                            className="w-4 h-4 rounded text-blue-900"
+                          />
+                          <span>Ctrl</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 font-mono font-bold text-slate-800 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={hasAlt}
+                            onChange={(e) => updateManualCombo(hasCtrl, e.target.checked, hasShift, baseKey)}
+                            className="w-4 h-4 rounded text-blue-900"
+                          />
+                          <span>Alt</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 font-mono font-bold text-slate-800 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={hasShift}
+                            onChange={(e) => updateManualCombo(hasCtrl, hasAlt, e.target.checked, baseKey)}
+                            className="w-4 h-4 rounded text-blue-900"
+                          />
+                          <span>Shift</span>
+                        </label>
+                        <select
+                          dir="ltr"
+                          value={baseKey}
+                          onChange={(e) => updateManualCombo(hasCtrl, hasAlt, hasShift, e.target.value)}
+                          className="flex-1 min-w-28 bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 font-mono font-bold"
+                        >
+                          <option value="">-- اختر المفتاح --</option>
+                          {keyOptions.map((k) => (
+                            <option key={k} value={k}>{k}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {recorderConflict && (
                   <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">

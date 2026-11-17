@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Printer, X, FileDown } from 'lucide-react';
 import { useData } from '../../context/DataContext';
+import { useShortcuts } from '../../context/ShortcutsContext';
 import { exportHtmlToPdf } from './PdfExporter';
 import { isNativeCapacitor } from '../../services/native';
 
@@ -32,6 +33,7 @@ export interface PrintData {
   previousBalance?: number;
   currentBalance?: number;
   notes?: string;
+  tableHeaders?: [string, string, string, string, string, string, string];
 }
 
 interface PrintDocumentProps {
@@ -42,9 +44,14 @@ interface PrintDocumentProps {
 
 export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClose, data }) => {
   const { settings } = useData();
+  const { registerHandler } = useShortcuts();
   const [printFormat, setPrintFormat] = useState<'a4' | 'thermal80' | 'thermal58'>(settings.defaultPrintMode || 'a4');
 
-  if (!isOpen || !data) return null;
+  useEffect(() => {
+    if (isOpen) {
+      setPrintFormat(settings.defaultPrintMode || 'a4');
+    }
+  }, [isOpen, settings.defaultPrintMode]);
 
   const handlePrint = () => {
     if (isNativeCapacitor()) {
@@ -53,6 +60,55 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
     }
     window.print();
   };
+
+  useEffect(() => {
+    if (!isOpen || !data) return;
+    return registerHandler('action:print_document', () => {
+      if (isNativeCapacitor()) {
+        exportHtmlToPdf({
+          title: data.docType,
+          subtitle: settings.companySubtitle,
+          companyName: settings.companyName,
+          docNumber: data.docNumber,
+          dateRangeText: data.date,
+          meta: [
+            ...(data.partyName ? [{ label: 'العميل / الطرف', value: data.partyName }] : []),
+            ...(data.partyPhone ? [{ label: 'الهاتف', value: data.partyPhone }] : []),
+            ...(data.partyAddress ? [{ label: 'العنوان', value: data.partyAddress }] : []),
+            ...(data.warehouseName ? [{ label: 'المستودع', value: data.warehouseName }] : []),
+            ...(data.representativeName ? [{ label: 'المندوب', value: data.representativeName }] : []),
+            ...(data.paymentType ? [{ label: 'طريقة السداد', value: data.paymentType }] : []),
+          ],
+          tableHeaders: data.items && data.items.length > 0
+            ? (data.tableHeaders || ['م', 'البيان / الصنف', 'الوحدة', 'الكمية', 'السعر', 'الخصم', 'الإجمالي'])
+            : undefined,
+          tableRows: data.items && data.items.length > 0
+            ? data.items.map((it, idx) => [
+                idx + 1,
+                it.name,
+                it.unit,
+                it.quantity,
+                it.price.toFixed(2),
+                it.discount ? it.discount.toFixed(2) : '-',
+                it.total.toFixed(2),
+              ])
+            : undefined,
+          summaryPairs: [
+            ...(data.subtotal !== undefined ? [{ label: 'المجموع الفرعي', value: `${data.subtotal.toFixed(2)} ${settings.currency}` }] : []),
+            ...(data.discountTotal ? [{ label: 'الخصم', value: `-${data.discountTotal.toFixed(2)} ${settings.currency}` }] : []),
+            { label: 'الصافي الإجمالي', value: `${data.grandTotal.toFixed(2)} ${settings.currency}`, highlight: true },
+            ...(data.paidAmount !== undefined ? [{ label: 'المدفوع', value: `${data.paidAmount.toFixed(2)} ${settings.currency}` }] : []),
+            ...(data.remainingAmount !== undefined ? [{ label: 'المتبقي', value: `${data.remainingAmount.toFixed(2)} ${settings.currency}` }] : []),
+          ],
+          notes: data.notes || settings.invoiceNotes,
+        });
+      } else {
+        window.print();
+      }
+    });
+  }, [isOpen, data, registerHandler, settings]);
+
+  if (!isOpen || !data) return null;
 
   const handleExportPdf = () => {
     exportHtmlToPdf({
@@ -70,7 +126,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
         ...(data.paymentType ? [{ label: 'طريقة السداد', value: data.paymentType }] : []),
       ],
       tableHeaders: data.items && data.items.length > 0
-        ? ['م', 'البيان / الصنف', 'الوحدة', 'الكمية', 'السعر', 'الخصم', 'الإجمالي']
+        ? (data.tableHeaders || ['م', 'البيان / الصنف', 'الوحدة', 'الكمية', 'السعر', 'الخصم', 'الإجمالي'])
         : undefined,
       tableRows: data.items && data.items.length > 0
         ? data.items.map((it, idx) => [
@@ -214,13 +270,13 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                   <table className="w-full text-right border-collapse text-xs my-4">
                     <thead>
                       <tr className="bg-blue-950 text-white font-bold">
-                        <th className="p-2 border border-blue-900 text-center w-10">م</th>
-                        <th className="p-2 border border-blue-900">بيان الصنف والسلعة الغذائية</th>
-                        <th className="p-2 border border-blue-900 text-center w-24">الوحدة</th>
-                        <th className="p-2 border border-blue-900 text-center w-20">الكمية</th>
-                        <th className="p-2 border border-blue-900 text-center w-24">سعر الوحدة</th>
-                        <th className="p-2 border border-blue-900 text-center w-20">الخصم</th>
-                        <th className="p-2 border border-blue-900 text-center w-28">الإجمالي</th>
+                        <th className="p-2 border border-blue-900 text-center w-10">{data.tableHeaders?.[0] || 'م'}</th>
+                        <th className="p-2 border border-blue-900">{data.tableHeaders?.[1] || 'بيان الصنف والسلعة الغذائية'}</th>
+                        <th className="p-2 border border-blue-900 text-center w-24">{data.tableHeaders?.[2] || 'الوحدة'}</th>
+                        <th className="p-2 border border-blue-900 text-center w-20">{data.tableHeaders?.[3] || 'الكمية'}</th>
+                        <th className="p-2 border border-blue-900 text-center w-24">{data.tableHeaders?.[4] || 'سعر الوحدة'}</th>
+                        <th className="p-2 border border-blue-900 text-center w-20">{data.tableHeaders?.[5] || 'الخصم'}</th>
+                        <th className="p-2 border border-blue-900 text-center w-28">{data.tableHeaders?.[6] || 'الإجمالي'}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200">

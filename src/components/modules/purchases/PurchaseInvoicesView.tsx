@@ -44,6 +44,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   useEffect(() => {
     if (initialOpenNew) {
       setItems([]);
+      setError(null);
       setIsNewModalOpen(true);
     }
   }, [initialOpenNew]);
@@ -197,6 +198,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   }, []);
 
   const handleSubmitPurchase = useCallback(async (shouldPrint: boolean) => {
+    if (isSubmitting) return;
     if (items.length === 0) {
       setError('يرجى إضافة أصناف لفاتورة الشراء');
       return;
@@ -204,50 +206,57 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     setError(null);
     setIsSubmitting(true);
 
-    const supp = suppliers.find(s => s.id === selectedSupplierId);
-    const wh = warehouses.find(w => w.id === selectedWarehouseId);
-
-    const effectivePaid = paymentType === 'cash' ? grandTotal : paymentType === 'credit' ? 0 : paidAmount;
-
-    const res = await createPurchaseInvoice({
-      date: invoiceDate,
-      supplierId: selectedSupplierId,
-      supplierName: supp?.name || 'مورد عام',
-      warehouseId: selectedWarehouseId,
-      warehouseName: wh?.name || 'المستودع الرئيسي',
-      items,
-      subtotal,
-      discountTotal,
-      taxTotal: 0,
-      grandTotal,
-      paidAmount: effectivePaid,
-      remainingAmount: Math.max(0, grandTotal - effectivePaid),
-      paymentType,
-      paymentMethod: 'bank',
-      cashboxId: selectedCashboxId,
-      status: 'confirmed',
-      notes,
-    });
-
-    setIsSubmitting(false);
-
-    if (res.success) {
-      setIsNewModalOpen(false);
-      setItems([]);
-      setDiscountTotal(0);
-      setNotes('');
-      setActionMessage({
-        type: 'success',
-        text: `تم حفظ فاتورة المشتريات رقم (${res.invoice?.invoiceNumber || ''}) وتحديث المخزون بنجاح.`,
-      });
-      if (shouldPrint && res.invoice) {
-        handlePrint(res.invoice);
+    try {
+      const supp = suppliers.find(s => s.id === selectedSupplierId);
+      const wh = warehouses.find(w => w.id === selectedWarehouseId);
+      const rawPaid = Number(paidAmount) || 0;
+      if (paymentType === 'partial' && rawPaid < 0) {
+        setError('المبلغ المدفوع لا يمكن أن يكون سالباً');
+        return;
       }
-    } else {
-      setError(res.error || 'فشل حفظ فاتورة الشراء');
+
+      const effectivePaid = paymentType === 'cash' ? grandTotal : paymentType === 'credit' ? 0 : Math.min(grandTotal, rawPaid);
+
+      const res = await createPurchaseInvoice({
+        date: invoiceDate,
+        supplierId: selectedSupplierId,
+        supplierName: supp?.name || 'مورد عام',
+        warehouseId: selectedWarehouseId,
+        warehouseName: wh?.name || 'المستودع الرئيسي',
+        items,
+        subtotal,
+        discountTotal,
+        taxTotal: 0,
+        grandTotal,
+        paidAmount: effectivePaid,
+        remainingAmount: Math.max(0, grandTotal - effectivePaid),
+        paymentType,
+        paymentMethod: 'bank',
+        cashboxId: selectedCashboxId,
+        status: 'confirmed',
+        notes,
+      });
+
+      if (res.success) {
+        setIsNewModalOpen(false);
+        setItems([]);
+        setDiscountTotal(0);
+        setNotes('');
+        setActionMessage({
+          type: 'success',
+          text: `تم حفظ فاتورة المشتريات رقم (${res.invoice?.invoiceNumber || ''}) وتحديث المخزون بنجاح.`,
+        });
+        if (shouldPrint && res.invoice) {
+          handlePrint(res.invoice);
+        }
+      } else {
+        setError(res.error || 'فشل حفظ فاتورة الشراء');
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   }, [
-    items, suppliers, selectedSupplierId, warehouses, selectedWarehouseId, paymentType, grandTotal,
+    isSubmitting, items, suppliers, selectedSupplierId, warehouses, selectedWarehouseId, paymentType, grandTotal,
     paidAmount, createPurchaseInvoice, invoiceDate, subtotal, discountTotal, selectedCashboxId,
     notes, handlePrint
   ]);

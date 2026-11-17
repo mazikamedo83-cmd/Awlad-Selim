@@ -66,9 +66,13 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
   const [inputQuantity, setInputQuantity] = useState<number>(1);
   const [inputUnitPrice, setInputUnitPrice] = useState<number>(0);
 
-  // Hydrate when opening or when sourceOrder changes
+  const hydratedSourceOrderRef = useRef<CustomerItemOrderRequest | null>(sourceOrder);
+  hydratedSourceOrderRef.current = sourceOrder;
+
+  // Hydrate when opening or when sourceOrder identity changes
   useEffect(() => {
     if (!isOpen) return;
+    const order = hydratedSourceOrderRef.current;
     setError(null);
     setInvoiceStatusMode('confirmed');
     setSelectedWarehouseId((prev) =>
@@ -78,15 +82,15 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
       cashboxes.some((c) => c.id === prev) ? prev : cashboxes[0]?.id || 'CASH-01'
     );
 
-    if (sourceOrder) {
-      setSelectedCustomerId(sourceOrder.customerId || '');
+    if (order) {
+      setSelectedCustomerId(order.customerId || '');
       setPaymentType('credit');
       setPaidAmount(0);
       setDiscountTotal(0);
       setNotes(
-        `تحويل طلب عميل رقم ${sourceOrder.requestNumber}${sourceOrder.notes ? ` — ${sourceOrder.notes}` : ''}`
+        `تحويل طلب عميل رقم ${order.requestNumber}${order.notes ? ` — ${order.notes}` : ''}`
       );
-      const hydrated = (sourceOrder.items || []).map((oi) => {
+      const hydrated = (order.items || []).map((oi) => {
         const prod = products.find((p) => p.id === oi.productId);
         const unitName = oi.unit || prod?.baseUnit || 'قطعة';
         const matchedUnit = prod?.units?.find((u) => u.name === unitName);
@@ -118,7 +122,19 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
       setNotes('');
       setItems([]);
     }
-  }, [isOpen, sourceOrder, products, warehouses, cashboxes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, sourceOrder?.id]);
+
+  // Fallback defaults when warehouses/cashboxes load after modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+    if (warehouses.length > 0 && !warehouses.some((w) => w.id === selectedWarehouseId)) {
+      setSelectedWarehouseId(warehouses[0].id);
+    }
+    if (cashboxes.length > 0 && !cashboxes.some((c) => c.id === selectedCashboxId)) {
+      setSelectedCashboxId(cashboxes[0].id);
+    }
+  }, [isOpen, warehouses, cashboxes, selectedWarehouseId, selectedCashboxId]);
 
   const selectedCustomer = useMemo(() => {
     return customers.find((c) => c.id === selectedCustomerId);
@@ -321,90 +337,105 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
   }, [paymentType, grandTotal]);
 
   const handleSubmitInvoice = useCallback(async (shouldPrint = false) => {
+    if (isSubmitting) return;
     if (items.length === 0) {
       setError('يرجى إضافة صنف واحد على الأقل للفاتورة');
       return;
     }
+    const wh = warehouses.find((w) => w.id === selectedWarehouseId);
+    const canNegative =
+      Boolean(settings.allowNegativeStock) &&
+      (currentUser?.role === 'admin' || Boolean(currentUser?.permissions?.canAllowNegativeInventory));
+
+    if (invoiceStatusMode === 'confirmed' && shortageItems.length > 0 && !canNegative) {
+      const names = shortageItems.map((s) => `${s.productName} (متاح ${s.availableInVanQty})`).join('، ');
+      setError(`لا يمكن اعتماد الفاتورة لعدم كفاية الرصيد في (${wh?.name || 'المستودع المحدد'}): ${names}. يمكنك الحفظ كمسودة أو تنفيذ تحويل مخزني أولاً.`);
+      return;
+    }
+
     setError(null);
     setIsSubmitting(true);
 
-    const wh = warehouses.find((w) => w.id === selectedWarehouseId);
-    const rep =
-      representatives.find((r) => r.id === selectedRepId) ||
-      representatives.find(
-        (r) =>
-          (r.userId && r.userId === currentUser?.id) ||
-          r.name.toLowerCase() === currentUser?.fullName?.toLowerCase()
-      );
+    try {
+      const rep =
+        representatives.find((r) => r.id === selectedRepId) ||
+        representatives.find(
+          (r) =>
+            (r.userId && r.userId === currentUser?.id) ||
+            r.name.toLowerCase() === currentUser?.fullName?.toLowerCase()
+        );
 
-    let linkedTransferId: string | undefined;
-    let linkedTransferNumber: string | undefined;
+      let linkedTransferId: string | undefined;
+      let linkedTransferNumber: string | undefined;
 
-    if (invoiceStatusMode === 'confirmed' && shortageItems.length > 0 && rep) {
-      const mainWh = warehouses.find((w) => w.isDefault) || warehouses[0];
-      if (mainWh) {
-        const transferRes = await createRepItemTransfer({
-          date: invoiceDate,
-          representativeId: rep.id,
-          representativeName: rep.name,
-          sourceWarehouseId: mainWh.id,
-          sourceWarehouseName: mainWh.name,
-          targetWarehouseId: selectedWarehouseId,
-          targetWarehouseName: wh?.name || `سيارة المندوب (${rep.name})`,
-          items: shortageItems,
-          notes: 'طلب تحويل عهدة آلي مرتبط بالفاتورة',
-        });
-        if (transferRes.success && transferRes.request) {
-          linkedTransferId = transferRes.request.id;
-          linkedTransferNumber = transferRes.request.requestNumber;
+      if (invoiceStatusMode === 'confirmed' && shortageItems.length > 0 && rep && canNegative) {
+        const mainWh = warehouses.find((w) => w.isDefault) || warehouses[0];
+        if (mainWh) {
+          const transferRes = await createRepItemTransfer({
+            date: invoiceDate,
+            representativeId: rep.id,
+            representativeName: rep.name,
+            sourceWarehouseId: mainWh.id,
+            sourceWarehouseName: mainWh.name,
+            targetWarehouseId: selectedWarehouseId,
+            targetWarehouseName: wh?.name || `سيارة المندوب (${rep.name})`,
+            items: shortageItems,
+            notes: 'طلب تحويل عهدة آلي مرتبط بالفاتورة',
+          });
+          if (transferRes.success && transferRes.request) {
+            linkedTransferId = transferRes.request.id;
+            linkedTransferNumber = transferRes.request.requestNumber;
+          }
         }
       }
-    }
 
-    const payload = {
-      date: invoiceDate,
-      customerId: selectedCustomerId || undefined,
-      customerName: selectedCustomer?.name || sourceOrder?.customerName || 'عميل نقدي / عام',
-      representativeId: selectedRepId || rep?.id,
-      representativeName: rep?.name,
-      warehouseId: selectedWarehouseId,
-      warehouseName: wh?.name || 'المستودع الرئيسي',
-      items,
-      subtotal,
-      discountTotal,
-      taxTotal: 0,
-      grandTotal,
-      paidAmount: paymentType === 'cash' ? grandTotal : paidAmount,
-      remainingAmount,
-      paymentType,
-      paymentMethod: 'cash' as const,
-      cashboxId: selectedCashboxId,
-      status: invoiceStatusMode,
-      notes,
-      linkedRepTransferId: linkedTransferId,
-      linkedRepTransferNumber: linkedTransferNumber,
-    };
+      const rawPaid = Number(paidAmount) || 0;
+      const effectivePaid = paymentType === 'cash' ? grandTotal : paymentType === 'credit' ? 0 : Math.min(grandTotal, Math.max(0, rawPaid));
 
-    const res = sourceOrder
-      ? await convertOrderToInvoice(sourceOrder.id, payload)
-      : await createSalesInvoice(payload);
+      const payload = {
+        date: invoiceDate,
+        customerId: selectedCustomerId || undefined,
+        customerName: selectedCustomer?.name || sourceOrder?.customerName || 'عميل نقدي / عام',
+        representativeId: selectedRepId || rep?.id,
+        representativeName: rep?.name,
+        warehouseId: selectedWarehouseId,
+        warehouseName: wh?.name || 'المستودع الرئيسي',
+        items,
+        subtotal,
+        discountTotal,
+        taxTotal: 0,
+        grandTotal,
+        paidAmount: effectivePaid,
+        remainingAmount: paymentType === 'cash' ? 0 : Math.max(0, grandTotal - effectivePaid),
+        paymentType,
+        paymentMethod: 'cash' as const,
+        cashboxId: selectedCashboxId,
+        status: invoiceStatusMode,
+        notes,
+        linkedRepTransferId: linkedTransferId,
+        linkedRepTransferNumber: linkedTransferNumber,
+      };
 
-    setIsSubmitting(false);
+      const res = sourceOrder
+        ? await convertOrderToInvoice(sourceOrder.id, payload)
+        : await createSalesInvoice(payload);
 
-    if (res.success) {
-      if (onInvoiceCreated) {
-        onInvoiceCreated(res.invoice, shouldPrint);
+      if (res.success) {
+        if (onInvoiceCreated) {
+          onInvoiceCreated(res.invoice, shouldPrint);
+        }
+        onClose();
+      } else {
+        setError(res.error || 'حدث خطأ أثناء حفظ الفاتورة');
       }
-      onClose();
-    } else {
-      setError(res.error || 'حدث خطأ أثناء حفظ الفاتورة');
+    } finally {
+      setIsSubmitting(false);
     }
   }, [
-    items, warehouses, selectedWarehouseId, representatives, selectedRepId, currentUser,
-    invoiceStatusMode, shortageItems, createRepItemTransfer, invoiceDate, selectedCustomerId,
-    selectedCustomer, sourceOrder, subtotal, discountTotal, grandTotal, paymentType, paidAmount,
-    remainingAmount, selectedCashboxId, notes, convertOrderToInvoice, createSalesInvoice,
-    onInvoiceCreated, onClose
+    isSubmitting, items, warehouses, selectedWarehouseId, representatives, selectedRepId, currentUser,
+    settings.allowNegativeStock, invoiceStatusMode, shortageItems, createRepItemTransfer, invoiceDate,
+    selectedCustomerId, selectedCustomer, sourceOrder, subtotal, discountTotal, grandTotal, paymentType,
+    paidAmount, selectedCashboxId, notes, convertOrderToInvoice, createSalesInvoice, onInvoiceCreated, onClose
   ]);
 
   const submitRef = useRef(handleSubmitInvoice);

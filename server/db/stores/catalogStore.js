@@ -1215,7 +1215,7 @@ export async function deleteImportedProductsBatch({ batchId = null, deleteAllImp
   if (await isPgMode()) {
     const result = await withTransaction(async (client) => {
       const targetsRes = cleanBatchId
-        ? await client.query(`SELECT id, name, code FROM products WHERE import_batch_id = $1`, [cleanBatchId])
+        ? await client.query(`SELECT id, name, code FROM products WHERE import_batch_id = $1 AND imported_from_file = TRUE`, [cleanBatchId])
         : await client.query(`SELECT id, name, code FROM products WHERE imported_from_file = TRUE`);
 
       const targets = targetsRes.rows || [];
@@ -1224,23 +1224,27 @@ export async function deleteImportedProductsBatch({ batchId = null, deleteAllImp
       }
 
       const targetIds = targets.map((t) => t.id);
-      const [invRes, retRes, ordRes, scRes, trRes, ritRes] = await Promise.all([
-        client.query(`SELECT DISTINCT product_id FROM invoice_items WHERE product_id = ANY($1::varchar[])`, [targetIds]),
-        client.query(`SELECT DISTINCT product_id FROM invoice_return_items WHERE product_id = ANY($1::varchar[])`, [targetIds]),
-        client.query(`SELECT DISTINCT product_id FROM customer_item_order_items WHERE product_id = ANY($1::varchar[])`, [targetIds]),
-        client.query(`SELECT DISTINCT product_id FROM stock_count_items WHERE product_id = ANY($1::varchar[])`, [targetIds]),
-        client.query(`SELECT DISTINCT product_id FROM stock_transfer_request_items WHERE product_id = ANY($1::varchar[])`, [targetIds]),
-        client.query(`SELECT DISTINCT product_id FROM rep_item_transfer_items WHERE product_id = ANY($1::varchar[])`, [targetIds]),
-      ]);
+      const referencedIds = new Set();
+      const CHUNK_SIZE = 500;
 
-      const referencedIds = new Set([
-        ...invRes.rows.map((r) => r.product_id),
-        ...retRes.rows.map((r) => r.product_id),
-        ...ordRes.rows.map((r) => r.product_id),
-        ...scRes.rows.map((r) => r.product_id),
-        ...trRes.rows.map((r) => r.product_id),
-        ...ritRes.rows.map((r) => r.product_id),
-      ]);
+      const collectRefs = async (sqlPrefix, sqlSuffix = '') => {
+        for (let i = 0; i < targetIds.length; i += CHUNK_SIZE) {
+          const chunk = targetIds.slice(i, i + CHUNK_SIZE);
+          const placeholders = chunk.map((_, idx) => `$${idx + 1}`).join(', ');
+          const res = await client.query(`${sqlPrefix} (${placeholders}) ${sqlSuffix}`, chunk);
+          for (const row of res.rows || []) {
+            if (row.product_id) referencedIds.add(row.product_id);
+          }
+        }
+      };
+
+      await collectRefs(`SELECT DISTINCT product_id FROM invoice_items WHERE product_id IN`);
+      await collectRefs(`SELECT DISTINCT product_id FROM invoice_return_items WHERE product_id IN`);
+      await collectRefs(`SELECT DISTINCT product_id FROM customer_item_order_items WHERE product_id IN`);
+      await collectRefs(`SELECT DISTINCT product_id FROM stock_count_items WHERE product_id IN`);
+      await collectRefs(`SELECT DISTINCT product_id FROM stock_transfer_request_items WHERE product_id IN`);
+      await collectRefs(`SELECT DISTINCT product_id FROM rep_item_transfer_items WHERE product_id IN`);
+      await collectRefs(`SELECT DISTINCT product_id FROM stock_movements WHERE product_id IN`, `AND movement_type <> 'opening'`);
 
       const deletableIds = [];
       const skippedItems = [];
@@ -1253,8 +1257,13 @@ export async function deleteImportedProductsBatch({ batchId = null, deleteAllImp
       }
 
       if (deletableIds.length > 0) {
-        await client.query(`DELETE FROM stock_movements WHERE product_id = ANY($1::varchar[])`, [deletableIds]);
-        await client.query(`DELETE FROM products WHERE id = ANY($1::varchar[])`, [deletableIds]);
+        for (let i = 0; i < deletableIds.length; i += CHUNK_SIZE) {
+          const chunk = deletableIds.slice(i, i + CHUNK_SIZE);
+          const placeholders = chunk.map((_, idx) => `$${idx + 1}`).join(', ');
+          await client.query(`DELETE FROM stock_movements WHERE product_id IN (${placeholders})`, chunk);
+          await client.query(`DELETE FROM product_units WHERE product_id IN (${placeholders})`, chunk);
+          await client.query(`DELETE FROM products WHERE id IN (${placeholders})`, chunk);
+        }
       }
 
       return {
@@ -1267,7 +1276,7 @@ export async function deleteImportedProductsBatch({ batchId = null, deleteAllImp
     await recordAuditLog({
       userId: actor.id,
       userName: actor.fullName,
-      action: `مسح الأصناف المستوردة من الملفات (تم حذف ${result.deletedCount} وتجاوز ${result.skippedCount} مستخدم في فواتير/طلبات)`,
+      action: `مسح الأصناف المستوردة من الملفات (تم حذف ${result.deletedCount} وتجاوز ${result.skippedCount} مستخدم في فواتير/حركات)`,
       module: 'المخزون',
       recordId: cleanBatchId || 'all_imported',
     });
@@ -1276,7 +1285,7 @@ export async function deleteImportedProductsBatch({ batchId = null, deleteAllImp
 
   const result = await withJsonTransaction(async (db) => {
     const targets = (db.products || []).filter((p) =>
-      cleanBatchId ? p.importBatchId === cleanBatchId : Boolean(p.importedFromFile)
+      cleanBatchId ? Boolean(p.importedFromFile) && p.importBatchId === cleanBatchId : Boolean(p.importedFromFile)
     );
     if (targets.length === 0) {
       return { deletedCount: 0, skippedCount: 0, skippedItems: [] };
@@ -1300,6 +1309,12 @@ export async function deleteImportedProductsBatch({ batchId = null, deleteAllImp
     }
     for (const rit of db.repItemTransfers || []) {
       for (const it of rit.items || []) referencedIds.add(it.productId);
+    }
+    for (const mv of db.stockMovements || []) {
+      const mType = mv.type || mv.movementType;
+      if (mType && mType !== 'opening') {
+        referencedIds.add(mv.productId);
+      }
     }
 
     const deletableSet = new Set();
@@ -1327,7 +1342,7 @@ export async function deleteImportedProductsBatch({ batchId = null, deleteAllImp
   await recordAuditLog({
     userId: actor.id,
     userName: actor.fullName,
-    action: `مسح الأصناف المستوردة من الملفات (تم حذف ${result.deletedCount} وتجاوز ${result.skippedCount} مستخدم في فواتير/طلبات)`,
+    action: `مسح الأصناف المستوردة من الملفات (تم حذف ${result.deletedCount} وتجاوز ${result.skippedCount} مستخدم في فواتير/حركات)`,
     module: 'المخزون',
     recordId: cleanBatchId || 'all_imported',
   });

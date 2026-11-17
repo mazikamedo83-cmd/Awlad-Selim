@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Users, Calendar, DollarSign, CheckCircle2, AlertCircle, Edit, UserX, UserCheck, Plus
+  Users, Calendar, DollarSign, CheckCircle2, AlertCircle, Edit, UserX, UserCheck, Plus, Printer
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { Employee } from '../../../types';
 import { Modal } from '../../common/Modal';
+import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 
 export interface EmployeesViewProps {
   initialTab?: 'employees' | 'attendance' | 'advances' | 'payrolls';
@@ -65,6 +66,8 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
   const [payrollNotes, setPayrollNotes] = useState('');
   const [payrollError, setPayrollError] = useState<string | null>(null);
   const [isSavingPayroll, setIsSavingPayroll] = useState(false);
+  const [busyEmpActionId, setBusyEmpActionId] = useState<string | null>(null);
+  const [printData, setPrintData] = useState<PrintData | null>(null);
 
   const activeEmployees = useMemo(
     () => employees.filter((e) => e.status !== 'suspended'),
@@ -195,15 +198,21 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
   };
 
   const handleToggleEmployeeStatus = async (emp: Employee) => {
-    const nextStatus = emp.status === 'active' ? 'suspended' : 'active';
-    const res = await updateEmployee(emp.id, { status: nextStatus });
-    if (!res.success) {
-      setActionMessage({ type: 'error', text: res.error || 'تعذر تغيير حالة الموظف' });
-    } else {
-      setActionMessage({
-        type: 'success',
-        text: `تم ${nextStatus === 'active' ? 'تفعيل' : 'إيقاف'} الموظف (${emp.name}) بنجاح.`,
-      });
+    if (busyEmpActionId) return;
+    setBusyEmpActionId(emp.id);
+    try {
+      const nextStatus = emp.status === 'active' ? 'suspended' : 'active';
+      const res = await updateEmployee(emp.id, { status: nextStatus });
+      if (!res.success) {
+        setActionMessage({ type: 'error', text: res.error || 'تعذر تغيير حالة الموظف' });
+      } else {
+        setActionMessage({
+          type: 'success',
+          text: `تم ${nextStatus === 'active' ? 'تفعيل' : 'إيقاف'} الموظف (${emp.name}) بنجاح.`,
+        });
+      }
+    } finally {
+      setBusyEmpActionId(null);
     }
   };
 
@@ -293,21 +302,63 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
     });
   };
 
+  const handlePrintPayrollReceipt = (p: {
+    payrollNumber: string;
+    employeeName: string;
+    month: number;
+    year: number;
+    basicSalary: number;
+    advancesTotal: number;
+    deductionsTotal: number;
+    bonusesTotal: number;
+    netSalary: number;
+    paidDate?: string;
+    notes?: string;
+  }) => {
+    setPrintData({
+      title: 'سند صرف راتب موظف',
+      docNumber: p.payrollNumber,
+      docType: 'سند صرف',
+      date: p.paidDate || new Date().toISOString().split('T')[0],
+      partyName: p.employeeName,
+      grandTotal: p.netSalary,
+      paidAmount: p.netSalary,
+      tableHeaders: ['م', 'البند', 'الفترة', 'العدد', 'القيمة', 'الخصم', 'الصافي'],
+      items: [
+        {
+          name: 'الراتب الأساسي والمكافآت',
+          unit: `${p.month}/${p.year}`,
+          quantity: 1,
+          price: p.basicSalary + p.bonusesTotal,
+          discount: p.advancesTotal + p.deductionsTotal,
+          total: p.netSalary,
+        },
+      ],
+      notes: p.notes || `الأساسي: ${p.basicSalary} | السلف والخصومات: ${p.advancesTotal + p.deductionsTotal} | المكافآت: ${p.bonusesTotal}`,
+    });
+  };
+
   const handleQuickAttendance = async (empId: string, status: 'present' | 'absent' | 'late' | 'leave') => {
+    if (busyEmpActionId) return;
     const emp = employees.find((item) => item.id === empId);
     if (!emp) return;
-    const res = await recordAttendance({
-      employeeId: emp.id,
-      employeeName: emp.name,
-      date: new Date().toISOString().split('T')[0],
-      status,
-      checkIn: status === 'present' || status === 'late' ? '08:30 ص' : undefined,
-    });
-    if (!res.success) {
-      setActionMessage({ type: 'error', text: res.error || 'تعذر تسجيل الحضور' });
-    } else {
-      const label = status === 'present' ? 'حاضر' : status === 'absent' ? 'غائب' : status === 'late' ? 'متأخر' : 'إجازة';
-      setActionMessage({ type: 'success', text: `تم تسجيل الموظف (${emp.name}) كـ "${label}" لليوم بنجاح.` });
+    setBusyEmpActionId(empId);
+    try {
+      const res = await recordAttendance({
+        employeeId: emp.id,
+        employeeName: emp.name,
+        date: new Date().toISOString().split('T')[0],
+        status,
+        checkIn: status === 'present' || status === 'late' ? '08:30 ص' : undefined,
+      });
+      if (!res.success) {
+        setActionMessage({ type: 'error', text: res.error || 'تعذر تسجيل الحضور' });
+      } else {
+        const label = status === 'present' ? 'حاضر' : status === 'absent' ? 'غائب' : status === 'late' ? 'متأخر' : 'إجازة';
+        setActionMessage({ type: 'success', text: `تم تسجيل الموظف (${emp.name}) كـ "${label}" لليوم بنجاح.` });
+      }
+    } finally {
+      setBusyEmpActionId(null);
     }
   };
 
@@ -485,9 +536,10 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                       </button>
                       <button
                         type="button"
+                        disabled={busyEmpActionId === emp.id}
                         onClick={() => handleToggleEmployeeStatus(emp)}
                         title={emp.status === 'active' ? 'إيقاف الموظف' : 'تفعيل الموظف'}
-                        className={`p-1.5 rounded-lg cursor-pointer ${
+                        className={`p-1.5 rounded-lg cursor-pointer disabled:opacity-40 ${
                           emp.status === 'active'
                             ? 'text-red-500 hover:bg-red-50'
                             : 'text-emerald-600 hover:bg-emerald-50'
@@ -516,7 +568,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                   <div className="flex gap-2 pt-2 border-t text-[11px]">
                     <button
                       type="button"
-                      disabled={emp.status !== 'active'}
+                      disabled={emp.status !== 'active' || busyEmpActionId === emp.id}
                       onClick={() => handleQuickAttendance(emp.id, 'present')}
                       className="flex-1 py-1.5 bg-emerald-50 text-emerald-800 font-bold rounded-lg hover:bg-emerald-100 disabled:opacity-40 cursor-pointer"
                     >
@@ -524,7 +576,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                     </button>
                     <button
                       type="button"
-                      disabled={emp.status !== 'active'}
+                      disabled={emp.status !== 'active' || busyEmpActionId === emp.id}
                       onClick={() => handleQuickAttendance(emp.id, 'absent')}
                       className="flex-1 py-1.5 bg-red-50 text-red-800 font-bold rounded-lg hover:bg-red-100 disabled:opacity-40 cursor-pointer"
                     >
@@ -754,12 +806,13 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                 <th className="p-3 text-center">المكافآت</th>
                 <th className="p-3 text-center">الصافي المنصرف</th>
                 <th className="p-3">تاريخ الصرف</th>
+                <th className="p-3 text-center">طباعة</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {payrolls.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-6 text-center text-slate-400">
+                  <td colSpan={9} className="p-6 text-center text-slate-400">
                     لا توجد مسيرات رواتب مصدرة بعد
                   </td>
                 </tr>
@@ -774,6 +827,17 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                     <td className="p-3 text-center text-emerald-600 font-bold">+{p.bonusesTotal.toLocaleString()}</td>
                     <td className="p-3 text-center font-black text-blue-950 font-mono text-sm">{p.netSalary.toLocaleString()} {settings.currency}</td>
                     <td className="p-3 text-slate-500 font-mono">{p.paidDate}</td>
+                    <td className="p-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => handlePrintPayrollReceipt(p)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-blue-50 text-blue-900 rounded-lg font-bold cursor-pointer"
+                        title="طباعة إيصال صرف راتب"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>إيصال</span>
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -928,7 +992,20 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
             <label className="block font-bold mb-1">نوع العملية:</label>
             <select
               value={advanceType}
-              onChange={(e) => setAdvanceType(e.target.value as any)}
+              onChange={(e) => {
+                const nextType = e.target.value as 'advance' | 'deduction' | 'bonus';
+                setAdvanceType(nextType);
+                const defaults = ['سلفة نقدية على الراتب', 'خصم إداري', 'مكافأة تشجيعية', ''];
+                if (defaults.includes(advanceReason.trim())) {
+                  setAdvanceReason(
+                    nextType === 'advance'
+                      ? 'سلفة نقدية على الراتب'
+                      : nextType === 'deduction'
+                      ? 'خصم إداري'
+                      : 'مكافأة تشجيعية'
+                  );
+                }
+              }}
               className="w-full border rounded-xl p-2.5 font-bold"
             >
               <option value="advance">سلفة نقدية (تخصم من الراتب وتصرف من الخزينة)</option>
@@ -1112,6 +1189,12 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
           </div>
         </form>
       </Modal>
+
+      <PrintDocumentModal
+        isOpen={!!printData}
+        onClose={() => setPrintData(null)}
+        data={printData}
+      />
     </div>
   );
 };

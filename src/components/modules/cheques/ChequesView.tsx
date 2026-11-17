@@ -29,11 +29,13 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
   const [partyName, setPartyName] = useState('');
   const [notes, setNotes] = useState('');
   const [chequeError, setChequeError] = useState<string | null>(null);
+  const [isSavingCheque, setIsSavingCheque] = useState(false);
 
   // Collect Cheque Modal
   const [collectingCheque, setCollectingCheque] = useState<Cheque | null>(null);
   const [collectCashboxId, setCollectCashboxId] = useState(cashboxes[0]?.id || '');
   const [collectError, setCollectError] = useState<string | null>(null);
+  const [isCollectingCheque, setIsCollectingCheque] = useState(false);
 
   // Reject Cheque Confirmation
   const [rejectingCheque, setRejectingCheque] = useState<Cheque | null>(null);
@@ -43,6 +45,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
   const [payingSchedule, setPayingSchedule] = useState<{ schedule: InstallmentSchedule; itemId: string; amount: number } | null>(null);
   const [installmentCashboxId, setInstallmentCashboxId] = useState(cashboxes[0]?.id || '');
   const [installmentError, setInstallmentError] = useState<string | null>(null);
+  const [isPayingInstallment, setIsPayingInstallment] = useState(false);
 
   useEffect(() => {
     if (initialTab) setActiveTab(initialTab);
@@ -60,12 +63,14 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
 
   const handleAddChequeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSavingCheque) return;
     setChequeError(null);
     if (!chequeNum.trim() || amount <= 0) {
       setChequeError('يرجى إدخال رقم الشيك ومبلغ أكبر من صفر.');
       return;
     }
 
+    setIsSavingCheque(true);
     try {
       await addCheque({
         chequeNumber: chequeNum.trim(),
@@ -87,23 +92,29 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
       setNotes('');
     } catch (err: any) {
       setChequeError(err?.message || 'تعذر حفظ الشيك');
+    } finally {
+      setIsSavingCheque(false);
     }
   };
 
   const handleConfirmCollect = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isCollectingCheque) return;
     setCollectError(null);
     if (!collectingCheque) return;
     if (!collectCashboxId) {
       setCollectError('يرجى اختيار الخزينة أو الحساب البنكي.');
       return;
     }
+    setIsCollectingCheque(true);
     try {
       await updateChequeStatus(collectingCheque.id, 'collected', collectCashboxId, 'تم تحصيل الشيك وإيداعه بنجاح');
       setStatusBanner({ type: 'success', text: `تم تحصيل الشيك رقم (${collectingCheque.chequeNumber}) بنجاح.` });
       setCollectingCheque(null);
     } catch (err: any) {
       setCollectError(err?.message || 'تعذر تحصيل الشيك');
+    } finally {
+      setIsCollectingCheque(false);
     }
   };
 
@@ -124,18 +135,22 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
 
   const handlePayInstallmentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isPayingInstallment) return;
     setInstallmentError(null);
     if (!payingSchedule) return;
     if (!installmentCashboxId) {
       setInstallmentError('يرجى اختيار الخزينة المودع بها.');
       return;
     }
+    setIsPayingInstallment(true);
     try {
       await payInstallment(payingSchedule.schedule.id, payingSchedule.itemId, payingSchedule.amount, installmentCashboxId);
       setStatusBanner({ type: 'success', text: `تم تسجيل سداد القسط بمبلغ ${payingSchedule.amount.toLocaleString()} ${settings.currency}.` });
       setPayingSchedule(null);
     } catch (err: any) {
       setInstallmentError(err?.message || 'تعذر سداد القسط');
+    } finally {
+      setIsPayingInstallment(false);
     }
   };
 
@@ -456,8 +471,10 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t">
-            <button type="button" onClick={() => setIsAddChequeOpen(false)} className="px-4 py-2 border rounded-xl font-bold">إلغاء</button>
-            <button type="submit" className="px-6 py-2 bg-blue-900 text-white rounded-xl font-bold">حفظ الشيك</button>
+            <button type="button" onClick={() => setIsAddChequeOpen(false)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">إلغاء</button>
+            <button type="submit" disabled={isSavingCheque} className="px-6 py-2 bg-blue-900 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50">
+              {isSavingCheque ? 'جاري الحفظ...' : 'حفظ الشيك'}
+            </button>
           </div>
         </form>
       </Modal>
@@ -497,7 +514,9 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
 
             <div className="flex justify-end gap-2 pt-2 border-t">
               <button type="button" onClick={() => setCollectingCheque(null)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">إلغاء</button>
-              <button type="submit" className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-bold cursor-pointer">تأكيد التحصيل</button>
+              <button type="submit" disabled={isCollectingCheque} className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50">
+                {isCollectingCheque ? 'جاري التحصيل...' : 'تأكيد التحصيل'}
+              </button>
             </div>
           </form>
         </Modal>
@@ -545,7 +564,9 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
 
             <div className="flex justify-end gap-2 pt-2 border-t">
               <button type="button" onClick={() => setPayingSchedule(null)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">إلغاء</button>
-              <button type="submit" className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-bold cursor-pointer">تأكيد سداد القسط</button>
+              <button type="submit" disabled={isPayingInstallment} className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50">
+                {isPayingInstallment ? 'جاري التسديد...' : 'تأكيد سداد القسط'}
+              </button>
             </div>
           </form>
         </Modal>
