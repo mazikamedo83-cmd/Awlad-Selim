@@ -18,6 +18,13 @@ import {
   isoTimestamp,
 } from './mode.js';
 import { recordAuditLog, revokeAllUserSessions } from './authStore.js';
+import {
+  buildScopedIdemKey,
+  findPgIdempotency,
+  savePgIdempotency,
+  findJsonIdempotency,
+  saveJsonIdempotency,
+} from '../../utils/idempotency.js';
 
 export const DEFAULT_MOBILE_CONFIG = {
   enableCustomerApp: true,
@@ -530,7 +537,7 @@ export async function linkCustomerToUser({ customerId, existingUserId, createUse
   return result;
 }
 
-export async function recordCustomerPayment({ customerId, amount, cashboxId, paymentMethod = 'cash', notes = '', date }, actor) {
+export async function recordCustomerPayment({ customerId, amount, cashboxId, paymentMethod = 'cash', notes = '', date }, actor, idempotencyKey = '') {
   const payAmount = round2(amount);
   if (!Number.isFinite(payAmount) || payAmount <= 0) {
     throw new AppError(400, 'مبلغ التحصيل يجب أن يكون أكبر من الصفر', 'INVALID_AMOUNT');
@@ -541,9 +548,14 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
   const now = nowIso();
   const txId = generateServerId('FIN');
   const txNumber = `REC-${Date.now().toString().slice(-6)}`;
+  const endpoint = `POST /api/customers/${customerId}/payment`;
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
 
   if (await isPgMode()) {
     const res = await withTransaction(async (client) => {
+      const dup = await findPgIdempotency(client, scopedIdem);
+      if (dup) return { deduplicated: true, ...dup };
+
       const custRes = await client.query('SELECT * FROM customers WHERE id = $1 FOR UPDATE', [customerId]);
       if (!custRes.rows[0]) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
       const cust = mapPgCustomerRow(custRes.rows[0]);
@@ -586,26 +598,33 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
       );
 
       const updatedCust = await client.query('SELECT * FROM customers WHERE id = $1', [customerId]);
-      return {
+      const payloadOut = {
         customer: mapPgCustomerRow(updatedCust.rows[0]),
         cashboxBalance: nextCbBalance,
         paymentMethod: cleanMethod,
         transactionId: txId,
         transactionNumber: txNumber,
       };
+      await savePgIdempotency(client, scopedIdem, actor, endpoint, payloadOut);
+      return { deduplicated: false, ...payloadOut };
     });
 
-    await recordAuditLog({
-      userId: actor.id,
-      userName: actor.fullName,
-      action: `تحصيل مبلغ ${payAmount} (${methodLabel}) من العميل ${res.customer.name}`,
-      module: 'العملاء',
-      recordId: customerId,
-    });
+    if (!res.deduplicated) {
+      await recordAuditLog({
+        userId: actor.id,
+        userName: actor.fullName,
+        action: `تحصيل مبلغ ${payAmount} (${methodLabel}) من العميل ${res.customer.name}`,
+        module: 'العملاء',
+        recordId: customerId,
+      });
+    }
     return res;
   }
 
   const res = await withJsonTransaction(async (db) => {
+    const dup = findJsonIdempotency(scopedIdem);
+    if (dup) return { deduplicated: true, ...dup };
+
     const cust = db.customers.find((c) => c.id === customerId);
     if (!cust) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
     const cb = db.cashboxes.find((c) => c.id === cashboxId);
@@ -637,22 +656,26 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
       createdAt: now,
     });
 
-    return {
+    const payloadOut = {
       customer: cust,
       cashboxBalance: cb.currentBalance,
       paymentMethod: cleanMethod,
       transactionId: txId,
       transactionNumber: txNumber,
     };
+    saveJsonIdempotency(scopedIdem, payloadOut);
+    return { deduplicated: false, ...payloadOut };
   });
 
-  await recordAuditLog({
-    userId: actor.id,
-    userName: actor.fullName,
-    action: `تحصيل مبلغ ${payAmount} (${methodLabel}) من العميل ${res.customer.name}`,
-    module: 'العملاء',
-    recordId: customerId,
-  });
+  if (!res.deduplicated) {
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `تحصيل مبلغ ${payAmount} (${methodLabel}) من العميل ${res.customer.name}`,
+      module: 'العملاء',
+      recordId: customerId,
+    });
+  }
   return res;
 }
 

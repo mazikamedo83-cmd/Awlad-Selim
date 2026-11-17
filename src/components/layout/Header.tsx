@@ -3,11 +3,10 @@ import {
   LogOut, Menu, Maximize, Minimize, Bell, ArrowLeftRight, UserCheck, 
   ShieldCheck, AlertTriangle, ChevronDown, Wallet, FileText, Sliders,
   ArrowDownCircle, ArrowUpCircle, TrendingDown, TrendingUp, Users, GitBranch,
-  Tag, Ruler, Barcode, Printer, Smartphone, Wifi, Keyboard, Wrench, Trash2, Boxes
+  Tag, Ruler, Barcode, Printer, Smartphone, Wifi, Wrench, Trash2, Boxes
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
-import { useShortcuts } from '../../context/ShortcutsContext';
 import { OfflineIndicator } from './OfflineIndicator';
 import { NavItemKey } from './Sidebar';
 import { CashOperationType, UserPermissions } from '../../types';
@@ -27,7 +26,6 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { currentUser, logout, hasPermission } = useAuth();
   const { repTransfers } = useData();
-  const { getShortcutLabelForAction } = useShortcuts();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [openMenu, setOpenMenu] = useState<'cash' | 'invoices' | 'control' | null>(null);
@@ -91,7 +89,6 @@ export const Header: React.FC<HeaderProps> = ({
     { label: 'إعدادات الفاتورة', icon: FileText, page: 'invoice-settings', perm: 'canManageSettings' },
     { label: 'إعدادات الموبايل', icon: Smartphone, page: 'mobile-settings', perm: 'canManageSettings' },
     { label: 'مزامنة أونلاين', icon: Wifi, page: 'online-sync-settings', perm: 'canManageSettings' },
-    { label: 'اختصارات البرنامج', icon: Keyboard, page: 'shortcuts-settings', shortcutAction: 'nav:shortcuts-settings' },
     { label: 'الخدمات', icon: Wrench, page: 'services-settings', perm: 'canManageSettings' },
   ];
   const controlMenuItems = controlMenuItemsRaw.filter((it) => canPerm(it.perm));
@@ -179,7 +176,6 @@ export const Header: React.FC<HeaderProps> = ({
                   <div className="absolute right-0 mt-2 w-60 rounded-2xl bg-white border border-slate-200 shadow-2xl py-1.5 z-50">
                     {cashMenuItems.map((item) => {
                       const ItemIcon = item.icon;
-                      const scLabel = item.shortcutAction ? getShortcutLabelForAction(item.shortcutAction) : '';
                       return (
                         <button
                           key={item.label}
@@ -194,11 +190,6 @@ export const Header: React.FC<HeaderProps> = ({
                             <ItemIcon className={`w-4 h-4 shrink-0 ${item.cls || 'text-blue-900'}`} />
                             <span>{item.label}</span>
                           </div>
-                          {scLabel && (
-                            <kbd dir="ltr" className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">
-                              {scLabel}
-                            </kbd>
-                          )}
                         </button>
                       );
                     })}
@@ -227,7 +218,6 @@ export const Header: React.FC<HeaderProps> = ({
                   <div className="absolute right-0 mt-2 w-60 rounded-2xl bg-white border border-slate-200 shadow-2xl py-1.5 z-50">
                     {invoiceMenuItems.map((item) => {
                       const ItemIcon = item.icon;
-                      const scLabel = item.shortcutAction ? getShortcutLabelForAction(item.shortcutAction) : '';
                       return (
                         <button
                           key={item.label}
@@ -242,11 +232,6 @@ export const Header: React.FC<HeaderProps> = ({
                             <ItemIcon className={`w-4 h-4 shrink-0 ${item.cls || 'text-blue-900'}`} />
                             <span>{item.label}</span>
                           </div>
-                          {scLabel && (
-                            <kbd dir="ltr" className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">
-                              {scLabel}
-                            </kbd>
-                          )}
                         </button>
                       );
                     })}
@@ -275,7 +260,6 @@ export const Header: React.FC<HeaderProps> = ({
                   <div className="absolute right-0 mt-2 w-60 rounded-2xl bg-white border border-slate-200 shadow-2xl py-1.5 z-50 max-h-[75vh] overflow-y-auto">
                     {controlMenuItems.map((item) => {
                       const ItemIcon = item.icon;
-                      const scLabel = item.shortcutAction ? getShortcutLabelForAction(item.shortcutAction) : '';
                       return (
                         <button
                           key={item.label}
@@ -290,11 +274,6 @@ export const Header: React.FC<HeaderProps> = ({
                             <ItemIcon className="w-4 h-4 shrink-0 text-blue-900" />
                             <span>{item.label}</span>
                           </div>
-                          {scLabel && (
-                            <kbd dir="ltr" className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">
-                              {scLabel}
-                            </kbd>
-                          )}
                         </button>
                       );
                     })}

@@ -185,6 +185,7 @@ router.post(
   requireStaff,
   requirePermission('canManageAccounts'),
   asyncHandler(async (req, res) => {
+    const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
     const result = await recordCustomerPayment(
       {
         customerId: req.params.id,
@@ -194,7 +195,8 @@ router.post(
         notes: req.body?.notes,
         date: req.body?.date,
       },
-      req.auth.user
+      req.auth.user,
+      idempotencyKey
     );
     res.json({ ok: true, ...result });
   })

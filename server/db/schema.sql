@@ -200,7 +200,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   paid_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
   remaining_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
   payment_type VARCHAR(16) NOT NULL, -- 'cash' | 'credit' | 'partial'
-  payment_method VARCHAR(16) NOT NULL DEFAULT 'cash',
+  payment_method VARCHAR(32) NOT NULL DEFAULT 'cash',
   cashbox_id VARCHAR(64) NOT NULL REFERENCES cashboxes(id) ON DELETE RESTRICT,
   status VARCHAR(16) NOT NULL DEFAULT 'confirmed' CHECK (status IN ('draft', 'confirmed', 'cancelled')),
   notes TEXT,
@@ -236,7 +236,7 @@ CREATE TABLE IF NOT EXISTS invoice_payments (
   invoice_number VARCHAR(64) NOT NULL,
   amount NUMERIC(14, 2) NOT NULL,
   date DATE NOT NULL,
-  payment_method VARCHAR(16) NOT NULL DEFAULT 'cash',
+  payment_method VARCHAR(32) NOT NULL DEFAULT 'cash',
   cashbox_id VARCHAR(64) NOT NULL REFERENCES cashboxes(id) ON DELETE RESTRICT,
   cashbox_name TEXT NOT NULL,
   notes TEXT,

@@ -502,7 +502,9 @@ async function runSuiteA_JsonLedgerHttp() {
       const updatedCust = bootConfirmed.customers.find((c) => c.id === custA.id);
       assert.equal(updatedProd.stockPerWarehouse[whMainId], 76, 'Stock should decrease by 2*12=24 once');
       assert.equal(updatedCust.currentBalance, 250, 'Customer balance should increase by 250 once');
-      assert.ok(updatedCust.priceHistory[prod1.id].includes(125));
+      assert.ok(
+        (updatedCust.priceHistory[prod1.id] || []).some((entry) => (typeof entry === 'number' ? entry : entry.price) === 125)
+      );
     });
 
     await test('11. Insufficient stock rollback + Return respects unitFactor + Cancel reverses confirmed invoice', async () => {
@@ -1585,6 +1587,200 @@ async function runSuiteA_JsonLedgerHttp() {
       boot = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
       assert.equal(boot.products.find((p) => p.id === prod1.id).stockPerWarehouse[repVanWhId], 5);
     });
+
+    await test('35. Unified Mobile Login, Permission Escalation Guard, Idempotency, Supplier Advance Settlement, Dated Price History & Scoped Notifications', async () => {
+      // 1. Create a restricted manager (has canManageUsers + canView, lacks canManageSettings / canManageCashboxes)
+      const mgrCreate = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'مدير فرع اختبار',
+          username: 'mgr_scope_test',
+          password: 'MgrPassword!99',
+          phone: '01055551234',
+          role: 'manager',
+          permissions: { canView: true, canAdd: true, canManageUsers: true, canManageSales: true },
+        },
+      });
+      assert.equal(mgrCreate.status, 201);
+
+      // Login using PHONE number without specifying role
+      const phoneLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: '01055551234', password: 'MgrPassword!99' },
+      });
+      assert.equal(phoneLogin.status, 200);
+      assert.equal(phoneLogin.json.user.role, 'manager');
+      const mgrToken = phoneLogin.json.accessToken;
+
+      // Manager cannot escalate permissions they do not possess
+      const escRes = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: mgrToken,
+        body: {
+          fullName: 'حساب متجاوز',
+          username: 'esc_user_1',
+          password: 'EscPassword!99',
+          role: 'sales',
+          permissions: { canView: true, canManageCashboxes: true },
+        },
+      });
+      assert.equal(escRes.status, 403);
+      assert.equal(escRes.json.code, 'FORBIDDEN_PERMISSION_ESCALATION');
+
+      // Manager cannot create admin account
+      const admEsc = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: mgrToken,
+        body: {
+          fullName: 'ادمن مزيف',
+          username: 'fake_adm_1',
+          password: 'FakePassword!99',
+          role: 'admin',
+        },
+      });
+      assert.equal(admEsc.status, 403);
+
+      // Scoped notifications: Admin vs restricted Manager
+      const admNotifs = await req(baseUrl, 'GET', '/api/mobile/notifications', { token: adminToken });
+      assert.equal(admNotifs.status, 200);
+      assert.ok(Array.isArray(admNotifs.json.notifications));
+      const mgrNotifs = await req(baseUrl, 'GET', '/api/mobile/notifications', { token: mgrToken });
+      assert.equal(mgrNotifs.status, 200);
+      assert.ok(Array.isArray(mgrNotifs.json.notifications));
+
+      // 2. Idempotency on customer payment + supplier payment + sales invoice + invoice payment
+      const boot0 = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const cust0 = boot0.customers[0];
+      const supp0 = boot0.suppliers[0];
+      const cb0 = boot0.cashboxes[0];
+      const wh0 = boot0.warehouses[0];
+
+      const custBalBefore = Number(cust0.currentBalance || 0);
+      const cbBalBefore = Number(cb0.currentBalance || 0);
+      const cp1 = await req(baseUrl, 'POST', `/api/customers/${cust0.id}/payment`, {
+        token: adminToken,
+        headers: { 'Idempotency-Key': 'idem-cust-pay-35' },
+        body: { amount: 25, cashboxId: cb0.id, paymentMethod: 'cash', notes: 'تحصيل مع منع التكرار' },
+      });
+      assert.equal(cp1.status, 200);
+      const cp2 = await req(baseUrl, 'POST', `/api/customers/${cust0.id}/payment`, {
+        token: adminToken,
+        headers: { 'Idempotency-Key': 'idem-cust-pay-35' },
+        body: { amount: 25, cashboxId: cb0.id, paymentMethod: 'cash', notes: 'تحصيل مع منع التكرار' },
+      });
+      assert.equal(cp2.status, 200);
+      assert.equal(cp2.json.deduplicated, true);
+
+      let boot1 = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      assert.equal(boot1.customers.find((c) => c.id === cust0.id).currentBalance, custBalBefore - 25);
+      assert.equal(boot1.cashboxes.find((c) => c.id === cb0.id).currentBalance, cbBalBefore + 25);
+
+      // Sales invoice stores dated priceHistory object and respects Idempotency-Key
+      const invDate = '2026-11-17';
+      const si1 = await req(baseUrl, 'POST', '/api/invoices/sales', {
+        token: adminToken,
+        headers: { 'Idempotency-Key': 'idem-sale-35' },
+        body: {
+          date: invDate,
+          customerId: cust0.id,
+          warehouseId: wh0.id,
+          cashboxId: cb0.id,
+          paymentType: 'credit',
+          paidAmount: 0,
+          status: 'confirmed',
+          items: [{ productId: prod1.id, productName: prod1.name, unit: 'قطعة', unitFactor: 1, quantity: 1, unitPrice: 77 }],
+        },
+      });
+      assert.equal(si1.status, 201);
+      const si2 = await req(baseUrl, 'POST', '/api/invoices/sales', {
+        token: adminToken,
+        headers: { 'Idempotency-Key': 'idem-sale-35' },
+        body: {
+          date: invDate,
+          customerId: cust0.id,
+          warehouseId: wh0.id,
+          cashboxId: cb0.id,
+          paymentType: 'credit',
+          paidAmount: 0,
+          status: 'confirmed',
+          items: [{ productId: prod1.id, productName: prod1.name, unit: 'قطعة', unitFactor: 1, quantity: 1, unitPrice: 77 }],
+        },
+      });
+      assert.equal(si2.status, 201);
+      assert.equal(si2.json.invoice.id, si1.json.invoice.id);
+
+      const phRes = await req(baseUrl, 'GET', `/api/customers/${cust0.id}/price-history`, { token: adminToken });
+      assert.equal(phRes.status, 200);
+      const phEntries = phRes.json.priceHistory[prod1.id] || [];
+      const latestPh = phEntries[phEntries.length - 1];
+      assert.equal(latestPh.price, 77);
+      assert.equal(latestPh.date, invDate);
+      assert.equal(latestPh.invoiceNumber, si1.json.invoice.invoiceNumber);
+
+      // Invoice payment idempotency
+      const ip1 = await req(baseUrl, 'POST', `/api/invoices/${si1.json.invoice.id}/payments`, {
+        token: adminToken,
+        headers: { 'Idempotency-Key': 'idem-inv-pay-35' },
+        body: { amount: 20, cashboxId: cb0.id, paymentMethod: 'cash', notes: 'دفعة فاتورة' },
+      });
+      assert.equal(ip1.status, 200);
+      const ip2 = await req(baseUrl, 'POST', `/api/invoices/${si1.json.invoice.id}/payments`, {
+        token: adminToken,
+        headers: { 'Idempotency-Key': 'idem-inv-pay-35' },
+        body: { amount: 20, cashboxId: cb0.id, paymentMethod: 'cash', notes: 'دفعة فاتورة' },
+      });
+      assert.equal(ip2.status, 200);
+      assert.equal(ip2.json.invoice.paidAmount, 20);
+
+      // 3. Supplier advance payment + zero-cashbox advance settlement route
+      const spAdv = await req(baseUrl, 'POST', '/api/admin/suppliers/payment', {
+        token: adminToken,
+        headers: { 'Idempotency-Key': 'idem-supp-adv-35' },
+        body: { supplierId: supp0.id, amount: 500, cashboxId: cb0.id, notes: 'دفعة مقدمة للمورد' },
+      });
+      assert.equal(spAdv.status, 200);
+      const spAdvDup = await req(baseUrl, 'POST', '/api/admin/suppliers/payment', {
+        token: adminToken,
+        headers: { 'Idempotency-Key': 'idem-supp-adv-35' },
+        body: { supplierId: supp0.id, amount: 500, cashboxId: cb0.id, notes: 'دفعة مقدمة للمورد' },
+      });
+      assert.equal(spAdvDup.status, 200);
+      assert.equal(spAdvDup.json.deduplicated, true);
+
+      const purInvRes = await req(baseUrl, 'POST', '/api/invoices/purchase', {
+        token: adminToken,
+        body: {
+          supplierId: supp0.id,
+          warehouseId: wh0.id,
+          cashboxId: cb0.id,
+          paymentType: 'credit',
+          paidAmount: 0,
+          status: 'confirmed',
+          items: [{ productId: prod1.id, productName: prod1.name, unit: 'قطعة', unitFactor: 1, quantity: 2, unitPrice: 60 }],
+        },
+      });
+      assert.equal(purInvRes.status, 201);
+      const purInv = purInvRes.json.invoice;
+
+      const cbBeforeSettle = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data.cashboxes.find((c) => c.id === cb0.id).currentBalance;
+      const settle1 = await req(baseUrl, 'POST', `/api/admin/suppliers/${supp0.id}/settle-advance`, {
+        token: adminToken,
+        headers: { 'Idempotency-Key': 'idem-supp-settle-35' },
+        body: { invoiceId: purInv.id, amount: 120, notes: 'تسوية دفعة مقدمة' },
+      });
+      assert.equal(settle1.status, 200);
+      assert.equal(settle1.json.invoice.paidAmount, 120);
+      assert.equal(settle1.json.invoice.remainingAmount, 0);
+
+      // Retrying with same Idempotency-Key returns deduplicated without re-settling
+      const settle2 = await req(baseUrl, 'POST', `/api/admin/suppliers/${supp0.id}/settle-advance`, {
+        token: adminToken,
+        headers: { 'Idempotency-Key': 'idem-supp-settle-35' },
+        body: { invoiceId: purInv.id, amount: 120, notes: 'تسوية دفعة مقدمة' },
+      });
+      assert.equal(settle2.status, 200);
+      assert.equal(settle2.json.deduplicated, true);
+
+      const cbAfterSettle = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data.cashboxes.find((c) => c.id === cb0.id).currentBalance;
+      assert.equal(cbAfterSettle, cbBeforeSettle, 'Advance settlement must NEVER change cashbox balance');
+    });
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -1953,6 +2149,125 @@ async function runSuiteB_PostgresPgMem() {
       );
       assert.ok(mvRows.rows.some((r) => r.movement_type === 'transfer_out') && mvRows.rows.some((r) => r.movement_type === 'transfer_in'), 'Expected PG transfer stock_movements with out/in rows');
       assert.ok(mvRows.rows.every((r) => r.movement_number && r.unit && r.balance_after !== null));
+    });
+
+    await test('36. Live PostgreSQL HTTP API enforces permission escalation block, dated price history, payment idempotency & supplier advance settlement', async () => {
+      const adminLogin = await req(baseUrlPg, 'POST', '/api/auth/login', {
+        body: { username: 'owner_tarek', password: 'OwnerStrongPassword!99' },
+      });
+      const pgAdminToken = adminLogin.json.accessToken;
+      const boot = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      const cb1 = boot.cashboxes[0].id;
+      const wh1 = boot.warehouses[0].id;
+      const cust = boot.customers[0];
+      const supp = boot.suppliers[0];
+      const prod = boot.products.find((p) => p.code === 'P-100') || boot.products[0];
+
+      // Phone login for manager + escalation block in PG
+      const mgrUser = boot.users.find((u) => u.username === 'mgr_scope_test');
+      assert.ok(mgrUser);
+      const pgMgrLogin = await req(baseUrlPg, 'POST', '/api/auth/login', {
+        body: { username: '01055551234', password: 'MgrPassword!99' },
+      });
+      assert.equal(pgMgrLogin.status, 200);
+      assert.equal(pgMgrLogin.json.user.role, 'manager');
+      const pgEsc = await req(baseUrlPg, 'POST', '/api/admin/users', {
+        token: pgMgrLogin.json.accessToken,
+        body: {
+          fullName: 'تصعيد PG',
+          username: 'pg_esc_u',
+          password: 'Password!99',
+          role: 'sales',
+          permissions: { canManageSettings: true },
+        },
+      });
+      assert.equal(pgEsc.status, 403);
+      assert.equal(pgEsc.json.code, 'FORBIDDEN_PERMISSION_ESCALATION');
+
+      // Dated priceHistory + idempotent customer payment on PG
+      const cbBefore = Number(boot.cashboxes[0].currentBalance || 0);
+      const cpPg1 = await req(baseUrlPg, 'POST', `/api/customers/${cust.id}/payment`, {
+        token: pgAdminToken,
+        headers: { 'Idempotency-Key': 'pg-idem-cp-36' },
+        body: { amount: 15, cashboxId: cb1, paymentMethod: 'cash' },
+      });
+      assert.equal(cpPg1.status, 200);
+      const cpPg2 = await req(baseUrlPg, 'POST', `/api/customers/${cust.id}/payment`, {
+        token: pgAdminToken,
+        headers: { 'Idempotency-Key': 'pg-idem-cp-36' },
+        body: { amount: 15, cashboxId: cb1, paymentMethod: 'cash' },
+      });
+      assert.equal(cpPg2.status, 200);
+      assert.equal(cpPg2.json.deduplicated, true);
+
+      const salePg = await req(baseUrlPg, 'POST', '/api/invoices/sales', {
+        token: pgAdminToken,
+        headers: { 'Idempotency-Key': 'pg-idem-sale-36' },
+        body: {
+          date: '2026-11-18',
+          customerId: cust.id,
+          warehouseId: wh1,
+          cashboxId: cb1,
+          paymentType: 'credit',
+          paidAmount: 0,
+          status: 'confirmed',
+          items: [{ productId: prod.id, productName: prod.name, unit: 'قطعة', unitFactor: 1, quantity: 1, unitPrice: 88 }],
+        },
+      });
+      assert.equal(salePg.status, 201);
+      const salePgDup = await req(baseUrlPg, 'POST', '/api/invoices/sales', {
+        token: pgAdminToken,
+        headers: { 'Idempotency-Key': 'pg-idem-sale-36' },
+        body: {
+          date: '2026-11-18',
+          customerId: cust.id,
+          warehouseId: wh1,
+          cashboxId: cb1,
+          paymentType: 'credit',
+          paidAmount: 0,
+          status: 'confirmed',
+          items: [{ productId: prod.id, productName: prod.name, unit: 'قطعة', unitFactor: 1, quantity: 1, unitPrice: 88 }],
+        },
+      });
+      assert.equal(salePgDup.status, 201);
+      assert.equal(salePgDup.json.invoice.id, salePg.json.invoice.id);
+
+      const pgPh = await req(baseUrlPg, 'GET', `/api/customers/${cust.id}/price-history`, { token: pgAdminToken });
+      assert.equal(pgPh.status, 200);
+      const pgLast = (pgPh.json.priceHistory[prod.id] || []).slice(-1)[0];
+      assert.equal(pgLast.price, 88);
+      assert.equal(pgLast.date, '2026-11-18');
+
+      // Supplier advance payment + zero-cashbox settle-advance in PG
+      await req(baseUrlPg, 'POST', '/api/admin/suppliers/payment', {
+        token: pgAdminToken,
+        headers: { 'Idempotency-Key': 'pg-idem-sp-36' },
+        body: { supplierId: supp.id, amount: 400, cashboxId: cb1, notes: 'مقدم PG' },
+      });
+      const purPg = await req(baseUrlPg, 'POST', '/api/invoices/purchase', {
+        token: pgAdminToken,
+        body: {
+          supplierId: supp.id,
+          warehouseId: wh1,
+          cashboxId: cb1,
+          paymentType: 'credit',
+          paidAmount: 0,
+          status: 'confirmed',
+          items: [{ productId: prod.id, productName: prod.name, unit: 'قطعة', unitFactor: 1, quantity: 2, unitPrice: 55 }],
+        },
+      });
+      assert.equal(purPg.status, 201);
+      const settlePg = await req(baseUrlPg, 'POST', `/api/admin/suppliers/${supp.id}/settle-advance`, {
+        token: pgAdminToken,
+        headers: { 'Idempotency-Key': 'pg-idem-settle-36' },
+        body: { invoiceId: purPg.json.invoice.id, amount: 110, notes: 'تسوية PG' },
+      });
+      assert.equal(settlePg.status, 200);
+      assert.equal(settlePg.json.invoice.paidAmount, 110);
+      assert.equal(settlePg.json.invoice.remainingAmount, 0);
+
+      const bootEnd = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      assert.equal(bootEnd.cashboxes.find((c) => c.id === cb1).currentBalance, cbBefore + 15 - 400);
     });
   } finally {
     setInjectedPool(null);

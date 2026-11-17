@@ -106,6 +106,7 @@ export interface DataContextType extends DatabaseState {
   updateSupplier: (id: string, updates: Partial<Supplier>) => Promise<void>;
   deleteSupplier: (id: string) => Promise<void>;
   recordSupplierPayment: (supplierId: string, amount: number, cashboxId: string, notes: string) => Promise<{ success: boolean; error?: string }>;
+  settleSupplierAdvance: (supplierId: string, payload: { invoiceId: string; amount: number; notes?: string; date?: string }) => Promise<{ success: boolean; availableAdvanceAfter?: number; settledAmount?: number; error?: string }>;
 
   // Sales & Purchases
   createSalesInvoice: (invoice: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'>) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
@@ -352,11 +353,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [currentUser?.id]);
 
   const refreshMobileNotifications = useCallback(async () => {
-    if (
-      !isAuthenticated ||
-      !currentUser ||
-      (currentUser.role !== 'customer' && currentUser.role !== 'representative')
-    ) {
+    if (!isAuthenticated || !currentUser) {
       return;
     }
     try {
@@ -428,10 +425,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ).length;
 
   useEffect(() => {
-    if (
-      !isAuthenticated ||
-      (currentUser?.role !== 'customer' && currentUser?.role !== 'representative')
-    ) {
+    if (!isAuthenticated || !currentUser) {
       return;
     }
     refreshMobileNotifications();
@@ -441,7 +435,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }, 45000);
     return () => window.clearInterval(timer);
-  }, [isAuthenticated, currentUser?.role, refreshMobileNotifications]);
+  }, [isAuthenticated, currentUser?.id, refreshMobileNotifications]);
 
   const refreshCustomerStatement = useCallback(async () => {
     if (!isAuthenticated || currentUser?.role !== 'customer') return;
@@ -514,10 +508,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = subscribeNetworkStatus((connected) => {
       if (connected && isAuthenticated) {
         flushOfflineOrders();
-        if (currentUser?.role === 'customer' || currentUser?.role === 'representative') {
-          loadRoleScopedData();
-          refreshMobileNotifications();
-        }
+        loadRoleScopedData();
+        refreshMobileNotifications();
       } else if (!connected) {
         setNetworkStatus('disconnected');
       }
@@ -791,6 +783,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await apiRequest(`/api/customers/${customerId}/payment`, {
         method: 'POST',
         body: { amount, cashboxId, notes, paymentMethod },
+        idempotencyKey: generateId('IDEMP'),
       });
       await loadRoleScopedData();
       return { success: true };
@@ -823,11 +816,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await apiRequest('/api/admin/suppliers/payment', {
         method: 'POST',
         body: { supplierId, amount, cashboxId, notes },
+        idempotencyKey: generateId('IDEMP'),
       });
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err?.message || 'فشل سداد المورد' };
+    }
+  };
+
+  const settleSupplierAdvance = async (
+    supplierId: string,
+    payload: { invoiceId: string; amount: number; notes?: string; date?: string }
+  ) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; availableAdvanceAfter?: number; settledAmount?: number }>(
+        `/api/admin/suppliers/${supplierId}/settle-advance`,
+        {
+          method: 'POST',
+          body: payload,
+          idempotencyKey: generateId('IDEMP'),
+        }
+      );
+      await loadRoleScopedData();
+      return {
+        success: true,
+        availableAdvanceAfter: res.availableAdvanceAfter,
+        settledAmount: res.settledAmount,
+      };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تسوية الدفعة المقدمة للمورد' };
     }
   };
 
@@ -840,6 +858,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await apiRequest<{ ok: boolean; invoice: Invoice }>('/api/invoices/sales', {
         method: 'POST',
         body: invoiceData,
+        idempotencyKey: generateId('IDEMP'),
       });
       await loadRoleScopedData();
       return { success: true, invoice: res.invoice };
@@ -853,6 +872,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await apiRequest<{ ok: boolean; invoice: Invoice }>('/api/invoices/purchase', {
         method: 'POST',
         body: invoiceData,
+        idempotencyKey: generateId('IDEMP'),
       });
       await loadRoleScopedData();
       return { success: true, invoice: res.invoice };
@@ -897,6 +917,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await apiRequest(`/api/invoices/${invoiceId}/payments`, {
         method: 'POST',
         body: paymentData,
+        idempotencyKey: generateId('IDEMP'),
       });
       await loadRoleScopedData();
       return { success: true };
@@ -923,6 +944,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await apiRequest('/api/invoices/returns', {
         method: 'POST',
         body: returnData,
+        idempotencyKey: generateId('IDEMP'),
       });
       await loadRoleScopedData();
       return { success: true };
@@ -944,7 +966,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const transferBetweenCashboxes = async (fromId: string, toId: string, amount: number, notes: string) => {
     try {
-      await apiRequest('/api/admin/cashboxes/transfer', { method: 'POST', body: { fromId, toId, amount, notes } });
+      await apiRequest('/api/admin/cashboxes/transfer', {
+        method: 'POST',
+        body: { fromId, toId, amount, notes },
+        idempotencyKey: generateId('IDEMP'),
+      });
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
@@ -1611,6 +1637,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateSupplier,
         deleteSupplier,
         recordSupplierPayment,
+        settleSupplierAdvance,
         createSalesInvoice,
         createPurchaseInvoice,
         confirmDraftInvoice,

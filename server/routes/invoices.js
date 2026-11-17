@@ -65,7 +65,8 @@ router.post(
   requireStaff,
   requirePermission('canManageSales'),
   asyncHandler(async (req, res) => {
-    const invoice = await createSalesInvoice(req.body || {}, req.auth.user);
+    const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
+    const invoice = await createSalesInvoice(req.body || {}, req.auth.user, idempotencyKey);
     res.status(201).json({ ok: true, invoice });
   })
 );
@@ -75,7 +76,8 @@ router.post(
   requireStaff,
   requirePermission('canManagePurchases'),
   asyncHandler(async (req, res) => {
-    const invoice = await createPurchaseInvoice(req.body || {}, req.auth.user);
+    const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
+    const invoice = await createPurchaseInvoice(req.body || {}, req.auth.user, idempotencyKey);
     res.status(201).json({ ok: true, invoice });
   })
 );
@@ -115,7 +117,8 @@ router.post(
   requireStaff,
   requirePermission('canManageAccounts'),
   asyncHandler(async (req, res) => {
-    const invoice = await addInvoicePayment(req.params.id, req.body || {}, req.auth.user);
+    const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
+    const invoice = await addInvoicePayment(req.params.id, req.body || {}, req.auth.user, idempotencyKey);
     res.json({ ok: true, invoice });
   })
 );
@@ -125,7 +128,8 @@ router.post(
   requireStaff,
   requirePermission('canManageSales'),
   asyncHandler(async (req, res) => {
-    const ret = await createInvoiceReturn(req.body || {}, req.auth.user);
+    const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
+    const ret = await createInvoiceReturn(req.body || {}, req.auth.user, idempotencyKey);
     res.status(201).json({ ok: true, invoiceReturn: ret });
   })
 );

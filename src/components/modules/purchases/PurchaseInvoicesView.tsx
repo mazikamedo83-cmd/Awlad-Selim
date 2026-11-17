@@ -23,7 +23,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     invoices, suppliers, products, warehouses, cashboxes,
     settings, createPurchaseInvoice, cancelInvoice
   } = useData();
-  const { registerHandler, getShortcutLabelForAction } = useShortcuts();
+  const { registerHandler } = useShortcuts();
 
   const productSearchRef = useRef<HTMLInputElement | null>(null);
   const qtyInputRef = useRef<HTMLInputElement | null>(null);
@@ -486,7 +486,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 priceMode="purchase"
                 currency={settings.currency}
                 inputRef={productSearchRef}
-                placeholder={`ابحث بالاسم أو الكود أو الباركود (${getShortcutLabelForAction('action:focus_product_search') || 'F3'})...`}
+                placeholder="ابحث بالاسم أو الكود أو الباركود..."
                 onSelect={(prod) => handleProductPick(prod.id)}
                 onAfterSelect={() => {
                   qtyInputRef.current?.focus();
@@ -729,11 +729,6 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               >
                 <Save className="w-4 h-4" />
                 <span>{isSubmitting ? 'جاري الحفظ...' : 'حفظ الفاتورة فقط'}</span>
-                {getShortcutLabelForAction('action:save_invoice') && (
-                  <kbd dir="ltr" className="text-[10px] font-mono bg-black/20 px-1.5 py-0.5 rounded">
-                    {getShortcutLabelForAction('action:save_invoice')}
-                  </kbd>
-                )}
               </button>
               <button
                 type="button"

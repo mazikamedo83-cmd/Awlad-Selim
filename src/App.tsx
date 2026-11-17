@@ -33,6 +33,8 @@ import { ReportsView } from './components/modules/reports/ReportsView';
 import { UsersManagementView } from './components/modules/users/UsersManagementView';
 import { SettingsView } from './components/modules/settings/SettingsView';
 import { MobilePortal } from './components/modules/mobile/MobilePortal';
+import { StaffMobileShell } from './components/modules/mobile/StaffMobileShell';
+import { isNativeCapacitor } from './services/native';
 
 const PAGE_PERMISSIONS: Partial<Record<NavItemKey, keyof UserPermissions | Array<keyof UserPermissions>>> = {
   'sales-invoices': 'canManageSales',
@@ -71,7 +73,6 @@ const PAGE_PERMISSIONS: Partial<Record<NavItemKey, keyof UserPermissions | Array
   'reports': 'canViewReports',
   'users': 'canManageUsers',
   'audit-log': 'canManageUsers',
-  'system-settings': 'canManageSettings',
   'server-settings': 'canManageSettings',
   'backup': 'canManageSettings',
   'migration': 'canManageSettings',
@@ -106,6 +107,25 @@ const MainAppContent: React.FC = () => {
     open: false,
     mode: 'cash_deposit',
   });
+  const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth < 1024;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(max-width: 1023px)');
+    const sync = () => setIsMobileViewport(mq.matches);
+    sync();
+    if (mq.addEventListener) {
+      mq.addEventListener('change', sync);
+      return () => mq.removeEventListener('change', sync);
+    }
+    mq.addListener(sync);
+    return () => mq.removeListener(sync);
+  }, []);
+
+  const useMobileStaffShell = isNativeCapacitor() || isMobileViewport;
 
   if (isLoading) {
     return (
@@ -255,7 +275,13 @@ const MainAppContent: React.FC = () => {
         return <UsersManagementView initialTab="audit" />;
 
       case 'system-settings':
-        return <SettingsView initialTab="general" />;
+        return (
+          <SettingsView
+            initialTab={
+              currentUser?.role === 'admin' || hasPermission('canManageSettings') ? 'general' : 'shortcuts'
+            }
+          />
+        );
 
       case 'server-settings':
         return <SettingsView initialTab="server" />;
@@ -298,41 +324,51 @@ const MainAppContent: React.FC = () => {
   return (
     <ShortcutsProvider onNavigate={(page) => setCurrentPage(page as NavItemKey)}>
       <ShortcutGlobalActions onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })} />
-      <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col font-['Cairo'] antialiased">
-        <ChangePasswordModal />
+      <ChangePasswordModal />
 
-        <CashOperationModal
-          isOpen={cashOpModal.open}
-          initialMode={cashOpModal.mode}
-          onClose={() => setCashOpModal((prev) => ({ ...prev, open: false }))}
-        />
+      <CashOperationModal
+        isOpen={cashOpModal.open}
+        initialMode={cashOpModal.mode}
+        onClose={() => setCashOpModal((prev) => ({ ...prev, open: false }))}
+      />
 
-        <Sidebar
+      {useMobileStaffShell ? (
+        <StaffMobileShell
           currentPage={currentPage}
           onNavigate={(page) => setCurrentPage(page)}
-          isOpenMobile={isSidebarOpenMobile}
-          onCloseMobile={() => setIsSidebarOpenMobile(false)}
-          isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-        />
-
-        <div
-          className={`flex-1 flex flex-col transition-all duration-300 ${
-            isSidebarCollapsed ? 'lg:mr-20' : 'lg:mr-72'
-          }`}
+          onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })}
         >
-          <Header
-            onToggleSidebar={() => setIsSidebarOpenMobile((prev) => !prev)}
+          {renderActivePage()}
+        </StaffMobileShell>
+      ) : (
+        <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col font-['Cairo'] antialiased">
+          <Sidebar
+            currentPage={currentPage}
             onNavigate={(page) => setCurrentPage(page)}
-            onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })}
-            onNavigateToTransfers={() => setCurrentPage('rep-transfers')}
+            isOpenMobile={isSidebarOpenMobile}
+            onCloseMobile={() => setIsSidebarOpenMobile(false)}
+            isCollapsed={isSidebarCollapsed}
+            onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
           />
 
-          <main className="flex-1 p-4 sm:p-6 max-w-7xl w-full mx-auto">
-            {renderActivePage()}
-          </main>
+          <div
+            className={`flex-1 flex flex-col transition-all duration-300 ${
+              isSidebarCollapsed ? 'lg:mr-20' : 'lg:mr-72'
+            }`}
+          >
+            <Header
+              onToggleSidebar={() => setIsSidebarOpenMobile((prev) => !prev)}
+              onNavigate={(page) => setCurrentPage(page)}
+              onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })}
+              onNavigateToTransfers={() => setCurrentPage('rep-transfers')}
+            />
+
+            <main className="flex-1 p-4 sm:p-6 max-w-7xl w-full mx-auto">
+              {renderActivePage()}
+            </main>
+          </div>
         </div>
-      </div>
+      )}
     </ShortcutsProvider>
   );
 };

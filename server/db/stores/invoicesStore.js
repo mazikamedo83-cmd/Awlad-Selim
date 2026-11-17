@@ -5,6 +5,13 @@ import { AppError, nowIso, todayIso, round2, round3 } from '../../utils/errors.j
 import { isPgMode, mapPgInvoiceRow, mapPgCustomerRow } from './mode.js';
 import { recordAuditLog } from './authStore.js';
 import {
+  buildScopedIdemKey,
+  findPgIdempotency,
+  savePgIdempotency,
+  findJsonIdempotency,
+  saveJsonIdempotency,
+} from '../../utils/idempotency.js';
+import {
   getRepresentativeByUserId,
   getCustomerById,
   isCustomerAllowedForRep,
@@ -129,7 +136,12 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
         const priceHistory = { ...(cust.price_history || {}) };
         for (const item of invoice.items) {
           const hist = Array.isArray(priceHistory[item.productId]) ? [...priceHistory[item.productId]] : [];
-          hist.push(Number(item.unitPrice || 0));
+          hist.push({
+            price: Number(item.unitPrice || 0),
+            date: invoice.date || todayIso(),
+            invoiceNumber: invoice.invoiceNumber || '',
+            unit: item.unit || '',
+          });
           if (hist.length > 3) hist.shift();
           priceHistory[item.productId] = hist;
         }
@@ -325,7 +337,12 @@ export function applyConfirmedEffectsJsonTx(db, invoice, actor) {
         const priceHistory = { ...(cust.priceHistory || {}) };
         for (const item of invoice.items) {
           const prev = Array.isArray(priceHistory[item.productId]) ? [...priceHistory[item.productId]] : [];
-          prev.push(Number(item.unitPrice || 0));
+          prev.push({
+            price: Number(item.unitPrice || 0),
+            date: invoice.date || todayIso(),
+            invoiceNumber: invoice.invoiceNumber || '',
+            unit: item.unit || '',
+          });
           if (prev.length > 3) prev.shift();
           priceHistory[item.productId] = prev;
         }
@@ -658,7 +675,7 @@ export function createInvoiceInsideJsonTx(db, type, payload, actor) {
   return newInvoice;
 }
 
-export async function createSalesInvoice(payload, actor) {
+export async function createSalesInvoice(payload, actor, idempotencyKey = '') {
   let enrichedPayload = { ...(payload || {}) };
   if (actor?.role === 'representative') {
     const settings = await getSystemSettingsSafe();
@@ -684,33 +701,67 @@ export async function createSalesInvoice(payload, actor) {
     }
   }
 
-  const invoice = (await isPgMode())
-    ? await withTransaction((client) => createInvoiceInsidePgTx(client, 'sales', enrichedPayload, actor))
-    : await withJsonTransaction((db) => createInvoiceInsideJsonTx(db, 'sales', enrichedPayload, actor));
+  const endpoint = 'POST /api/invoices/sales';
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
 
-  await recordAuditLog({
-    userId: actor.id,
-    userName: actor.fullName,
-    action: invoice.status === 'draft' ? `إنشاء مسودة فاتورة مبيعات (${invoice.invoiceNumber})` : `إصدار فاتورة مبيعات (${invoice.invoiceNumber})`,
-    module: 'المبيعات',
-    recordId: invoice.id,
-  });
-  return invoice;
+  const out = (await isPgMode())
+    ? await withTransaction(async (client) => {
+        const dup = await findPgIdempotency(client, scopedIdem);
+        if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice };
+        const invoice = await createInvoiceInsidePgTx(client, 'sales', enrichedPayload, actor);
+        await savePgIdempotency(client, scopedIdem, actor, endpoint, { invoice });
+        return { deduplicated: false, invoice };
+      })
+    : await withJsonTransaction((db) => {
+        const dup = findJsonIdempotency(scopedIdem);
+        if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice };
+        const invoice = createInvoiceInsideJsonTx(db, 'sales', enrichedPayload, actor);
+        saveJsonIdempotency(scopedIdem, { invoice });
+        return { deduplicated: false, invoice };
+      });
+
+  if (!out.deduplicated) {
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: out.invoice.status === 'draft' ? `إنشاء مسودة فاتورة مبيعات (${out.invoice.invoiceNumber})` : `إصدار فاتورة مبيعات (${out.invoice.invoiceNumber})`,
+      module: 'المبيعات',
+      recordId: out.invoice.id,
+    });
+  }
+  return out.invoice;
 }
 
-export async function createPurchaseInvoice(payload, actor) {
-  const invoice = (await isPgMode())
-    ? await withTransaction((client) => createInvoiceInsidePgTx(client, 'purchase', payload, actor))
-    : await withJsonTransaction((db) => createInvoiceInsideJsonTx(db, 'purchase', payload, actor));
+export async function createPurchaseInvoice(payload, actor, idempotencyKey = '') {
+  const endpoint = 'POST /api/invoices/purchase';
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
 
-  await recordAuditLog({
-    userId: actor.id,
-    userName: actor.fullName,
-    action: invoice.status === 'draft' ? `إنشاء مسودة فاتورة مشتريات (${invoice.invoiceNumber})` : `إصدار فاتورة مشتريات (${invoice.invoiceNumber})`,
-    module: 'المشتريات',
-    recordId: invoice.id,
-  });
-  return invoice;
+  const out = (await isPgMode())
+    ? await withTransaction(async (client) => {
+        const dup = await findPgIdempotency(client, scopedIdem);
+        if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice };
+        const invoice = await createInvoiceInsidePgTx(client, 'purchase', payload, actor);
+        await savePgIdempotency(client, scopedIdem, actor, endpoint, { invoice });
+        return { deduplicated: false, invoice };
+      })
+    : await withJsonTransaction((db) => {
+        const dup = findJsonIdempotency(scopedIdem);
+        if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice };
+        const invoice = createInvoiceInsideJsonTx(db, 'purchase', payload, actor);
+        saveJsonIdempotency(scopedIdem, { invoice });
+        return { deduplicated: false, invoice };
+      });
+
+  if (!out.deduplicated) {
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: out.invoice.status === 'draft' ? `إنشاء مسودة فاتورة مشتريات (${out.invoice.invoiceNumber})` : `إصدار فاتورة مشتريات (${out.invoice.invoiceNumber})`,
+      module: 'المشتريات',
+      recordId: out.invoice.id,
+    });
+  }
+  return out.invoice;
 }
 
 async function fetchFullInvoicePg(client, invoiceId) {
@@ -1061,15 +1112,20 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
   return inv;
 }
 
-export async function addInvoicePayment(invoiceId, paymentData, actor) {
+export async function addInvoicePayment(invoiceId, paymentData, actor, idempotencyKey = '') {
   const amount = round2(paymentData.amount);
   if (amount <= 0) throw new AppError(400, 'مبلغ الدفعة يجب أن يكون أكبر من الصفر', 'INVALID_AMOUNT');
   const now = nowIso();
   const payDate = paymentData.date || todayIso();
   const payId = generateServerId('PAY');
+  const endpoint = `POST /api/invoices/${invoiceId}/payments`;
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
 
   if (await isPgMode()) {
-    const result = await withTransaction(async (client) => {
+    const out = await withTransaction(async (client) => {
+      const dup = await findPgIdempotency(client, scopedIdem);
+      if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice };
+
       const invRes = await client.query(`SELECT * FROM invoices WHERE id = $1 FOR UPDATE`, [invoiceId]);
       const inv = invRes.rows[0];
       if (!inv) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
@@ -1156,14 +1212,21 @@ export async function addInvoicePayment(invoiceId, paymentData, actor) {
         ]
       );
 
-      return fetchFullInvoicePg(client, invoiceId);
+      const updatedInv = await fetchFullInvoicePg(client, invoiceId);
+      await savePgIdempotency(client, scopedIdem, actor, endpoint, { invoice: updatedInv });
+      return { deduplicated: false, invoice: updatedInv };
     });
 
-    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تسجيل دفعة (${amount}) على فاتورة ${result.invoiceNumber}`, module: 'المالية', recordId: invoiceId });
-    return result;
+    if (!out.deduplicated) {
+      await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تسجيل دفعة (${amount}) على فاتورة ${out.invoice.invoiceNumber}`, module: 'المالية', recordId: invoiceId });
+    }
+    return out.invoice;
   }
 
-  const result = await withJsonTransaction(async (db) => {
+  const out = await withJsonTransaction(async (db) => {
+    const dup = findJsonIdempotency(scopedIdem);
+    if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice };
+
     const inv = db.invoices.find((i) => i.id === invoiceId);
     if (!inv) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
     if (inv.status !== 'confirmed') throw new AppError(409, 'لا يمكن تسجيل دفعة إلا على فاتورة معتمدة', 'INVOICE_NOT_CONFIRMED');
@@ -1222,14 +1285,17 @@ export async function addInvoicePayment(invoiceId, paymentData, actor) {
       createdBy: actor.fullName,
       createdAt: now,
     });
-    return inv;
+    saveJsonIdempotency(scopedIdem, { invoice: inv });
+    return { deduplicated: false, invoice: inv };
   });
 
-  await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تسجيل دفعة (${amount}) على فاتورة ${result.invoiceNumber}`, module: 'المالية', recordId: invoiceId });
-  return result;
+  if (!out.deduplicated) {
+    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تسجيل دفعة (${amount}) على فاتورة ${out.invoice.invoiceNumber}`, module: 'المالية', recordId: invoiceId });
+  }
+  return out.invoice;
 }
 
-export async function createInvoiceReturn(returnData, actor) {
+export async function createInvoiceReturn(returnData, actor, idempotencyKey = '') {
   if (!Array.isArray(returnData.items) || returnData.items.length === 0) {
     throw new AppError(400, 'يجب تحديد صنف واحد على الأقل للمرتجع', 'EMPTY_RETURN');
   }
@@ -1237,9 +1303,14 @@ export async function createInvoiceReturn(returnData, actor) {
   const retDate = returnData.date || todayIso();
   const isSalesReturn = returnData.type === 'sales_return';
   const retId = generateServerId('RET');
+  const endpoint = 'POST /api/invoices/returns';
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
 
   if (await isPgMode()) {
-    const createdReturn = await withTransaction(async (client) => {
+    const out = await withTransaction(async (client) => {
+      const dup = await findPgIdempotency(client, scopedIdem);
+      if (dup?.invoiceReturn) return { deduplicated: true, invoiceReturn: dup.invoiceReturn };
+
       const orig = await fetchFullInvoicePg(client, returnData.originalInvoiceId);
       if (!orig) throw new AppError(404, 'الفاتورة الأصلية غير موجودة', 'INVOICE_NOT_FOUND');
       if (orig.status !== 'confirmed') throw new AppError(409, 'لا يمكن عمل مرتجع لفاتورة مسودة أو ملغاة', 'INVALID_INVOICE_STATUS');
@@ -1407,7 +1478,7 @@ export async function createInvoiceReturn(returnData, actor) {
         orig.id,
       ]);
 
-      return {
+      const createdReturn = {
         id: retId,
         returnNumber,
         type: returnData.type,
@@ -1427,13 +1498,20 @@ export async function createInvoiceReturn(returnData, actor) {
         createdBy: actor.fullName,
         createdAt: now,
       };
+      await savePgIdempotency(client, scopedIdem, actor, endpoint, { invoiceReturn: createdReturn });
+      return { deduplicated: false, invoiceReturn: createdReturn };
     });
 
-    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إنشاء سند مرتجع (${createdReturn.returnNumber})`, module: 'المرتجعات', recordId: createdReturn.id });
-    return createdReturn;
+    if (!out.deduplicated) {
+      await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إنشاء سند مرتجع (${out.invoiceReturn.returnNumber})`, module: 'المرتجعات', recordId: out.invoiceReturn.id });
+    }
+    return out.invoiceReturn;
   }
 
-  const createdReturn = await withJsonTransaction(async (db) => {
+  const out = await withJsonTransaction(async (db) => {
+    const dup = findJsonIdempotency(scopedIdem);
+    if (dup?.invoiceReturn) return { deduplicated: true, invoiceReturn: dup.invoiceReturn };
+
     const orig = db.invoices.find((i) => i.id === returnData.originalInvoiceId);
     if (!orig) throw new AppError(404, 'الفاتورة الأصلية غير موجودة', 'INVOICE_NOT_FOUND');
     if (orig.status !== 'confirmed') throw new AppError(409, 'لا يمكن عمل مرتجع لفاتورة مسودة أو ملغاة', 'INVALID_INVOICE_STATUS');
@@ -1554,11 +1632,14 @@ export async function createInvoiceReturn(returnData, actor) {
       createdAt: now,
     };
     db.invoiceReturns.unshift(newRet);
-    return newRet;
+    saveJsonIdempotency(scopedIdem, { invoiceReturn: newRet });
+    return { deduplicated: false, invoiceReturn: newRet };
   });
 
-  await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إنشاء سند مرتجع (${createdReturn.returnNumber})`, module: 'المرتجعات', recordId: createdReturn.id });
-  return createdReturn;
+  if (!out.deduplicated) {
+    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إنشاء سند مرتجع (${out.invoiceReturn.returnNumber})`, module: 'المرتجعات', recordId: out.invoiceReturn.id });
+  }
+  return out.invoiceReturn;
 }
 
 export async function listInvoices(actor = null, filters = {}) {

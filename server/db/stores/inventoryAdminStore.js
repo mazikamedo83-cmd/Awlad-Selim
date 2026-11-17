@@ -1654,6 +1654,17 @@ export async function getMobileNotifications(authContext) {
 
 const ALLOWED_USER_ROLES = new Set(['admin', 'manager', 'accountant', 'sales', 'warehouse', 'representative', 'customer']);
 
+function assertNoPermissionEscalation(requestedPermissions, actor) {
+  if (!actor || actor.role === 'admin') return;
+  if (!requestedPermissions || typeof requestedPermissions !== 'object') return;
+  const actorPerms = actor.permissions || {};
+  for (const [key, val] of Object.entries(requestedPermissions)) {
+    if (val === true && actorPerms[key] !== true) {
+      throw new AppError(403, `غير مصرح لك بمنح صلاحية (${key}) لأنها غير متاحة لحسابك`, 'FORBIDDEN_PERMISSION_ESCALATION');
+    }
+  }
+}
+
 export async function createAdminUser(payload, actor) {
   const username = String(payload.username || '').trim();
   const fullName = String(payload.fullName || '').trim();
@@ -1665,6 +1676,7 @@ export async function createAdminUser(payload, actor) {
   if (actor?.role !== 'admin' && targetRole === 'admin') {
     throw new AppError(403, 'غير مصرح لغير المدير العام بإنشاء حساب مدير عام', 'FORBIDDEN_ADMIN_ESCALATION');
   }
+  assertNoPermissionEscalation(payload.permissions, actor);
   if (!username || username.length < 3) throw new AppError(400, 'اسم المستخدم يجب أن لا يقل عن 3 أحرف', 'INVALID_USERNAME');
   if (!fullName) throw new AppError(400, 'الاسم الكامل مطلوب', 'INVALID_NAME');
   if (!password || password.length < 6) throw new AppError(400, 'كلمة المرور يجب أن لا تقل عن 6 أحرف', 'WEAK_PASSWORD');
@@ -1753,6 +1765,7 @@ export async function updateAdminUser(userId, updates, actor) {
       throw new AppError(403, 'غير مصرح لغير المدير العام بترقية أي حساب إلى مدير عام', 'FORBIDDEN_ADMIN_ESCALATION');
     }
   }
+  assertNoPermissionEscalation(updates.permissions, actor);
   const nextPasswordHash = updates.newPassword && String(updates.newPassword).length >= 6 ? await hashPasswordBcrypt(updates.newPassword) : null;
 
   if (await isPgMode()) {

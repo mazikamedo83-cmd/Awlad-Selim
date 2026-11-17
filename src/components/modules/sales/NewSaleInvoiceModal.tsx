@@ -25,9 +25,10 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
   const {
     products, customers, warehouses, representatives, cashboxes,
     settings, createSalesInvoice, convertOrderToInvoice, createRepItemTransfer,
+    getCustomerPriceHistory,
   } = useData();
   const { currentUser } = useAuth();
-  const { registerHandler, getShortcutLabelForAction } = useShortcuts();
+  const { registerHandler } = useShortcuts();
   const productSearchRef = useRef<HTMLInputElement | null>(null);
   const qtyInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -144,12 +145,29 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     return products.find((p) => p.id === selectedProductId);
   }, [products, selectedProductId]);
 
+  const [fetchedPriceHistory, setFetchedPriceHistory] = useState<Record<string, Array<{ price: number; date: string; invoiceNumber?: string } | number>>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!isOpen || !selectedCustomerId) {
+      setFetchedPriceHistory({});
+      return;
+    }
+    getCustomerPriceHistory(selectedCustomerId).then((hist) => {
+      if (!cancelled) setFetchedPriceHistory(hist || {});
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, selectedCustomerId, getCustomerPriceHistory]);
+
   const lastThreePrices = useMemo(() => {
     if (!selectedCustomer || !selectedProductId) return [];
-    const history = selectedCustomer.priceHistory?.[selectedProductId];
+    const liveHist = fetchedPriceHistory[selectedProductId];
+    const history = Array.isArray(liveHist) && liveHist.length > 0 ? liveHist : selectedCustomer.priceHistory?.[selectedProductId];
     if (!history || !Array.isArray(history)) return [];
     return history.slice(-3);
-  }, [selectedCustomer, selectedProductId]);
+  }, [selectedCustomer, selectedProductId, fetchedPriceHistory]);
 
   const handleProductSelect = (prodId: string) => {
     setSelectedProductId(prodId);
@@ -557,7 +575,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                 priceMode="selling"
                 currency={settings.currency}
                 inputRef={productSearchRef}
-                placeholder={`ابحث باسم السلعة أو الكود أو الباركود (${getShortcutLabelForAction('action:focus_product_search') || 'F3'})...`}
+                placeholder="ابحث باسم السلعة أو الكود أو الباركود..."
                 onSelect={(prod) => handleProductSelect(prod.id)}
                 onAfterSelect={() => {
                   qtyInputRef.current?.focus();
@@ -926,11 +944,6 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                   ? 'حفظ الفاتورة كمسودة'
                   : 'حفظ الفاتورة فقط'}
               </span>
-              {getShortcutLabelForAction('action:save_invoice') && (
-                <kbd dir="ltr" className="text-[10px] font-mono bg-black/20 px-1.5 py-0.5 rounded">
-                  {getShortcutLabelForAction('action:save_invoice')}
-                </kbd>
-              )}
             </button>
 
             <button

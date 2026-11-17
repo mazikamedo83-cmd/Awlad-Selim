@@ -9,6 +9,7 @@ import {
   updateSupplier,
   deleteSupplier,
   recordSupplierPayment,
+  settleSupplierAdvance,
   createCashbox,
   updateCashbox,
   transferCashbox,
@@ -129,8 +130,18 @@ router.delete('/suppliers/:id', requirePermission('canDelete'), asyncHandler(asy
   res.json({ ok: true });
 }));
 router.post('/suppliers/payment', requirePermission('canManageAccounts'), asyncHandler(async (req, res) => {
-  await recordSupplierPayment(req.body || {}, req.auth.user);
-  res.json({ ok: true });
+  const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
+  const result = await recordSupplierPayment(req.body || {}, req.auth.user, idempotencyKey);
+  res.json({ ok: true, ...result });
+}));
+router.post('/suppliers/:id/settle-advance', requirePermission('canManageAccounts'), asyncHandler(async (req, res) => {
+  const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
+  const result = await settleSupplierAdvance(
+    { ...(req.body || {}), supplierId: req.params.id },
+    req.auth.user,
+    idempotencyKey
+  );
+  res.json({ ok: true, ...result });
 }));
 
 // Cashboxes & Expenses

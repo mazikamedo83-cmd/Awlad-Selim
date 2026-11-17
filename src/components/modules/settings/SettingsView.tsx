@@ -54,11 +54,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
     resetToDefaults,
   } = useShortcuts();
 
-  const [activeTab, setActiveTab] = useState<SettingsTabKey>(initialTab);
+  const canManageSettings = currentUser?.role === 'admin' || hasPermission('canManageSettings');
+  const canManageInventory = currentUser?.role === 'admin' || hasPermission('canManageInventory');
+  const resolvedInitialTab: SettingsTabKey =
+    initialTab === 'shortcuts'
+      ? 'shortcuts'
+      : initialTab === 'abu-selim' && canManageInventory
+      ? 'abu-selim'
+      : canManageSettings
+      ? initialTab
+      : canManageInventory && initialTab === 'abu-selim'
+      ? 'abu-selim'
+      : 'shortcuts';
+
+  const [activeTab, setActiveTab] = useState<SettingsTabKey>(resolvedInitialTab);
 
   useEffect(() => {
-    setActiveTab(initialTab);
-  }, [initialTab]);
+    setActiveTab(resolvedInitialTab);
+  }, [resolvedInitialTab]);
 
   useEffect(() => {
     if (activeTab === 'migration' && !pgHealthInfo && !isTestingPg) {

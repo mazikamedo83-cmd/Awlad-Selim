@@ -205,6 +205,8 @@ export async function initializeSchema(customPool = null) {
       "ALTER TABLE customers ADD COLUMN IF NOT EXISTS allowed_rep_ids JSONB NOT NULL DEFAULT '[]'::jsonb",
       "ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS received_by VARCHAR(64)",
       "ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ",
+      "ALTER TABLE invoices ALTER COLUMN payment_method TYPE VARCHAR(32)",
+      "ALTER TABLE invoice_payments ALTER COLUMN payment_method TYPE VARCHAR(32)",
     ];
     for (const stmt of alterStatements) {
       try {

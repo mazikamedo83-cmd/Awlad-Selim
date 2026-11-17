@@ -6,7 +6,6 @@ import {
   Smartphone, Database, X, HelpCircle
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { useShortcuts } from '../../context/ShortcutsContext';
 
 export type NavItemKey =
   | 'dashboard'
@@ -84,51 +83,6 @@ interface NavSection {
   }>;
 }
 
-const NAV_TO_SHORTCUT_ACTION: Partial<Record<NavItemKey, string>> = {
-  dashboard: 'nav:dashboard',
-  'new-sale': 'nav:new-sale',
-  'sales-invoices': 'nav:sales',
-  'new-purchase': 'nav:new-purchase',
-  'purchase-invoices': 'nav:purchases',
-  'sales-returns': 'nav:returns',
-  'purchase-returns': 'nav:purchase-returns',
-  'deleted-invoices': 'nav:deleted-invoices',
-  products: 'nav:products',
-  'product-categories': 'nav:product-categories',
-  'units-settings': 'nav:units-settings',
-  'abu-selim-import': 'nav:abu-selim-import',
-  warehouses: 'nav:warehouses',
-  'stock-transfers-orders': 'nav:stock-transfers',
-  'stock-transfers': 'nav:stock-transfers-fast',
-  'stock-counts': 'nav:stock-count',
-  'stock-adjustments': 'nav:stock-adjustments',
-  'damaged-stock': 'nav:damaged-stock',
-  'stock-movements': 'nav:stock-movements',
-  customers: 'nav:customers',
-  suppliers: 'nav:suppliers',
-  cashboxes: 'nav:cashboxes',
-  'cashbox-transfer': 'nav:cashbox-transfer',
-  expenses: 'nav:expenses',
-  'personal-accounts': 'nav:personal-accounts',
-  cheques: 'nav:cheques',
-  installments: 'nav:installments',
-  reps: 'nav:reps',
-  'rep-transfers': 'nav:rep-transfers',
-  'rep-item-transfers': 'nav:rep-item-transfers',
-  employees: 'nav:employees',
-  attendance: 'nav:attendance',
-  advances: 'nav:advances',
-  payroll: 'nav:payroll',
-  reports: 'nav:reports',
-  users: 'nav:users',
-  'audit-log': 'nav:audit-log',
-  'system-settings': 'nav:settings',
-  'server-settings': 'nav:server-settings',
-  backup: 'nav:backup',
-  migration: 'nav:migration',
-  'shortcuts-settings': 'nav:shortcuts-settings',
-};
-
 export const Sidebar: React.FC<SidebarProps> = ({
   currentPage,
   onNavigate,
@@ -138,7 +92,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleCollapse,
 }) => {
   const { hasPermission, currentUser } = useAuth();
-  const { getShortcutLabelForAction } = useShortcuts();
 
   // Accordion state: only one section open at a time; clicking open section closes it.
   const [openSectionId, setOpenSectionId] = useState<string | null>('sales');
@@ -280,8 +233,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Settings,
       permission: 'canManageSettings',
       items: [
-        { key: 'system-settings', label: 'إعدادات النظام والطباعة' },
-        { key: 'shortcuts-settings', label: 'اختصارات لوحة المفاتيح', allowAllStaff: true },
+        { key: 'system-settings', label: 'إعدادات النظام والحساب', allowAllStaff: true },
         { key: 'server-settings', label: 'إعدادات السيرفر والاتصال' },
         { key: 'backup', label: 'النسخ الاحتياطي والاستعادة' },
         { key: 'migration', label: 'سجل الترحيل و PostgreSQL', badge: 'جديد' },
@@ -419,8 +371,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <div className="mt-1 mr-4 pr-3 border-r-2 border-slate-800 space-y-1 py-1">
                     {section.items.map(item => {
                       const isActive = currentPage === item.key;
-                      const actionKey = item.shortcutAction || NAV_TO_SHORTCUT_ACTION[item.key];
-                      const scLabel = actionKey ? getShortcutLabelForAction(actionKey) : '';
                       return (
                         <button
                           key={item.key}
@@ -437,27 +387,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             <span className="truncate">{item.label}</span>
                           </div>
 
-                          <div className="flex items-center gap-1 shrink-0">
-                            {scLabel && (
-                              <kbd
-                                dir="ltr"
-                                className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
-                                  isActive
-                                    ? 'bg-blue-700/80 text-blue-100 border-blue-500'
-                                    : 'bg-slate-800 text-slate-400 border-slate-700'
-                                }`}
-                              >
-                                {scLabel}
-                              </kbd>
-                            )}
-                            {item.badge && (
-                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
-                                isActive ? 'bg-blue-700 text-white' : 'bg-blue-900/40 text-blue-300 border border-blue-800'
-                              }`}>
-                                {item.badge}
-                              </span>
-                            )}
-                          </div>
+                          {item.badge && (
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0 ${
+                              isActive ? 'bg-blue-700 text-white' : 'bg-blue-900/40 text-blue-300 border border-blue-800'
+                            }`}>
+                              {item.badge}
+                            </span>
+                          )}
                         </button>
                       );
                     })}
