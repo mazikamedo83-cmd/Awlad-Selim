@@ -44,13 +44,7 @@ export const MobilePortal: React.FC = () => {
 
   const handleSelectNotification = (item: MobileNotificationItem) => {
     if (isRep) {
-      if (
-        item.targetTab === 'custody' ||
-        item.targetTab === 'invoices' ||
-        item.targetTab === 'customers' ||
-        item.targetTab === 'new-invoice' ||
-        item.targetTab === 'orders'
-      ) {
+      if (item.targetTab === 'custody' || item.targetTab === 'invoices' || item.targetTab === 'customers' || item.targetTab === 'new-invoice') {
         setRepTab(item.targetTab);
       } else {
         setRepTab('home');

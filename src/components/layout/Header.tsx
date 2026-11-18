@@ -25,7 +25,7 @@ export const Header: React.FC<HeaderProps> = ({
   onNavigateToTransfers,
 }) => {
   const { currentUser, logout, hasPermission } = useAuth();
-  const { repTransfers, customerItemOrders = [] } = useData();
+  const { repTransfers } = useData();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [openMenu, setOpenMenu] = useState<'cash' | 'invoices' | 'control' | null>(null);
@@ -69,7 +69,6 @@ export const Header: React.FC<HeaderProps> = ({
   const cashMenuItems = cashMenuItemsRaw.filter((it) => canPerm(it.perm));
 
   const invoiceMenuItemsRaw: NavMenuItem[] = [
-    { label: 'طلبات العملاء والمندوبين', icon: Bell, page: 'customer-orders', perm: 'canManageSales', cls: 'text-amber-700' },
     { label: 'فواتير البيع', icon: FileText, page: 'sales-invoices', perm: 'canManageSales', cls: 'text-blue-900', shortcutAction: 'nav:sales' },
     { label: 'فواتير الشراء', icon: FileText, page: 'purchase-invoices', perm: 'canManagePurchases', cls: 'text-indigo-800', shortcutAction: 'nav:purchases' },
     { label: 'فواتير مرتجع البيع', icon: FileText, page: 'sales-returns', perm: 'canManageSales', cls: 'text-amber-700', shortcutAction: 'nav:returns' },
@@ -94,9 +93,8 @@ export const Header: React.FC<HeaderProps> = ({
   ];
   const controlMenuItems = controlMenuItemsRaw.filter((it) => canPerm(it.perm));
 
-  // Check pending transfers & new customer/rep orders
+  // Check pending transfers
   const pendingTransfersCount = repTransfers.filter(t => t.status === 'awaiting_receipt').length;
-  const pendingOrdersCount = customerItemOrders.filter(o => o.status === 'pending').length;
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -290,22 +288,6 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Offline/Online Status Indicator */}
           <OfflineIndicator />
-
-          {/* New Customer & Rep Orders Alert Button */}
-          {pendingOrdersCount > 0 && canPerm('canManageSales') && onNavigate && (
-            <button
-              type="button"
-              onClick={() => onNavigate('customer-orders')}
-              title={`يوجد ${pendingOrdersCount} طلب شراء جديد من تطبيق الموبايل بانتظار المراجعة`}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-blue-50 text-blue-950 border border-blue-300 text-xs font-black hover:bg-blue-100 transition-all animate-pulse cursor-pointer"
-            >
-              <Bell className="w-3.5 h-3.5 text-blue-700" />
-              <span className="hidden sm:inline">طلبات العملاء والمندوبين</span>
-              <span className="w-5 h-5 rounded-full bg-blue-900 text-white text-[10px] flex items-center justify-center font-mono">
-                {pendingOrdersCount}
-              </span>
-            </button>
-          )}
 
           {/* Pending Transfer Alert Button */}
           {pendingTransfersCount > 0 && onNavigateToTransfers && (

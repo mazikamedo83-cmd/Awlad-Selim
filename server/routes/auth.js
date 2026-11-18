@@ -48,13 +48,6 @@ router.post(
       const result = await loginUser({
         username: req.body?.username,
         password: req.body?.password,
-        deviceId: req.get('x-device-id') || req.body?.deviceId || '',
-        deviceName: req.body?.deviceName || '',
-        deviceType: req.body?.deviceType || '',
-        osVersion: req.body?.osVersion || '',
-        appVersion: req.body?.appVersion || '',
-        connectionMode: req.body?.connectionMode || '',
-        serverUrlUsed: req.body?.serverUrlUsed || '',
         ipAddress: getClientIp(req),
         deviceInfo: req.get('user-agent') || '',
       });
@@ -75,7 +68,6 @@ router.post(
   asyncHandler(async (req, res) => {
     const result = await refreshUserSession({
       refreshToken: req.body?.refreshToken,
-      deviceId: req.get('x-device-id') || req.body?.deviceId || '',
       ipAddress: getClientIp(req),
       deviceInfo: req.get('user-agent') || '',
     });

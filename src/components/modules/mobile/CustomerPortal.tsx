@@ -2,8 +2,7 @@ import React, { useMemo, useRef, useState, useEffect } from 'react';
 import {
   Home, Package, ShoppingCart, ClipboardList, Receipt, Search, Plus, Minus,
   Trash2, CheckCircle2, AlertCircle, Clock, MapPin, Phone, Building2,
-  RefreshCw, History, FileDown, Share2, ShieldAlert, ChevronDown, ChevronUp,
-  CloudOff, CloudCheck, Truck, Wallet
+  RefreshCw, History, FileDown, Share2, ShieldAlert, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
@@ -11,8 +10,6 @@ import { CustomerPriceHistoryEntry, Invoice, Product } from '../../../types';
 import { getCurrentLocationSafe, isNativeCapacitor } from '../../../services/native';
 import { exportHtmlToPdf } from '../../common/PdfExporter';
 import { exportToExcel } from '../../common/ExcelExporter';
-import { QuantityInput } from '../../common/QuantityInput';
-import { computeLineTotal, round3 } from '../../../utils/quantity';
 
 export type CustomerTabKey = 'home' | 'catalog' | 'cart' | 'orders' | 'account';
 
@@ -21,19 +18,6 @@ interface CustomerPortalProps {
   onTabChange: (tab: CustomerTabKey) => void;
   focusReferenceId?: string | null;
 }
-
-const CUSTOMER_ORDER_STATUS_LABELS: Record<string, string> = {
-  pending: 'جديد',
-  under_review: 'قيد المراجعة',
-  approved: 'مقبول',
-  rep_assigned: 'تم تعيين مندوب',
-  out_for_delivery: 'جاري التوصيل',
-  delivered: 'تم التسليم',
-  needs_review: 'يحتاج مراجعة',
-  invoiced: 'تم التحويل لفاتورة',
-  rejected: 'مرفوض',
-  cancelled: 'ملغى',
-};
 
 const createClientIdempotencyKey = () =>
   `ord-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -52,7 +36,6 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedUnitsByProd, setSelectedUnitsByProd] = useState<Record<string, string>>({});
-  const [catalogQtyByProd, setCatalogQtyByProd] = useState<Record<string, number>>({});
 
   // Cart state
   const [cartItems, setCartItems] = useState<Array<{
@@ -156,7 +139,6 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
 
   const handleAddToCart = (prod: Product) => {
     const unitName = selectedUnitsByProd[prod.id] || prod.baseUnit;
-    const addQty = Math.max(0.001, Number(catalogQtyByProd[prod.id]) || 1);
     const unitMeta = getProductUnits(prod).find((u) => u.name === unitName) || {
       name: prod.baseUnit,
       factor: 1,
@@ -171,39 +153,29 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       );
       if (idx >= 0) {
         return prev.map((it, i) =>
-          i === idx ? { ...it, quantity: round3(it.quantity + addQty) } : it
+          i === idx ? { ...it, quantity: it.quantity + 1 } : it
         );
       }
       return [
         ...prev,
         {
           product: prod,
-          quantity: addQty,
+          quantity: 1,
           unitName: unitMeta.name,
           unitFactor: unitMeta.factor,
           unitPrice: customPrice,
         },
       ];
     });
-    setCatalogQtyByProd((prev) => ({ ...prev, [prod.id]: 1 }));
-    setFeedback({ type: 'success', text: `تمت إضافة (${prod.name} — ${addQty} ${unitMeta.name}) إلى السلة` });
+    setFeedback({ type: 'success', text: `تمت إضافة (${prod.name} — ${unitMeta.name}) إلى السلة` });
     window.setTimeout(() => setFeedback(null), 2200);
-  };
-
-  const setCartQuantity = (idx: number, nextQty: number) => {
-    rotateIdempotencyKey();
-    setCartItems((prev) =>
-      prev
-        .map((it, i) => (i === idx ? { ...it, quantity: round3(nextQty) } : it))
-        .filter((it) => it.quantity > 0)
-    );
   };
 
   const updateCartQuantity = (idx: number, delta: number) => {
     rotateIdempotencyKey();
     setCartItems((prev) =>
       prev
-        .map((it, i) => (i === idx ? { ...it, quantity: round3(it.quantity + delta) } : it))
+        .map((it, i) => (i === idx ? { ...it, quantity: it.quantity + delta } : it))
         .filter((it) => it.quantity > 0)
     );
   };
@@ -255,10 +227,8 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         productId: it.product.id,
         productCode: it.product.code,
         productName: it.product.name,
-        productImage: it.product.image,
         unit: it.unitName,
         unitFactor: it.unitFactor,
-        unitPrice: it.unitPrice ?? undefined,
         quantity: it.quantity,
       })),
       notes: orderNotes.trim() || 'طلب أصناف من تطبيق الموبايل',
@@ -266,16 +236,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
     });
     setIsSubmitting(false);
 
-    if (res.queuedOffline) {
-      setCartItems([]);
-      setOrderNotes('');
-      rotateIdempotencyKey();
-      setFeedback({
-        type: 'warning',
-        text: `تم حفظ الطلب محلياً في طابور المزامنة (${res.order?.requestNumber || ''}) وسيتم إرساله تلقائياً فور عودة الاتصال.`,
-      });
-      onTabChange('orders');
-    } else if (res.success) {
+    if (res.success) {
       setCartItems([]);
       setOrderNotes('');
       rotateIdempotencyKey();
@@ -283,6 +244,12 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         type: 'success',
         text: `تم إرسال الطلب رقم ${res.order?.requestNumber || ''} بنجاح وسيتم مراجعته من الإدارة.`,
       });
+      onTabChange('orders');
+    } else if (res.queuedOffline) {
+      setCartItems([]);
+      setOrderNotes('');
+      rotateIdempotencyKey();
+      setFeedback({ type: 'warning', text: res.error || 'تم حفظ الطلب للإرسال التلقائي فور عودة الشبكة.' });
       onTabChange('orders');
     } else {
       setFeedback({ type: 'error', text: res.error || 'تعذر إرسال الطلب للسيرفر' });
@@ -331,9 +298,9 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
     );
   }, [data.customerItemOrders]);
 
-  const cartTotalQty = round3(cartItems.reduce((sum, it) => sum + it.quantity, 0));
+  const cartTotalQty = cartItems.reduce((sum, it) => sum + it.quantity, 0);
   const cartEstimatedTotal = cartItems.reduce(
-    (sum, it) => sum + (it.unitPrice ? computeLineTotal(it.quantity, it.unitPrice) : 0),
+    (sum, it) => sum + (it.unitPrice ? it.unitPrice * it.quantity : 0),
     0
   );
 
@@ -531,7 +498,13 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                       <span className="text-slate-600">{ord.items?.length || 0} أصناف</span>
                     </div>
                     <span className="font-bold text-slate-700">
-                      {CUSTOMER_ORDER_STATUS_LABELS[ord.status] || ord.status}
+                      {ord.status === 'pending'
+                        ? 'قيد المراجعة'
+                        : ord.status === 'approved'
+                        ? 'تمت الموافقة'
+                        : ord.status === 'invoiced'
+                        ? 'تم إصدار الفاتورة'
+                        : 'مرفوض'}
                     </span>
                   </div>
                 ))}
@@ -597,34 +570,20 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                 const unitMeta = units.find((u) => u.name === selectedUnit) || units[0];
                 const price = getCustomerCustomPrice(prod, unitMeta.name, unitMeta.factor);
                 const avail = getTotalAvailableStock(prod);
-                const productThumb = data.cachedMediaMap?.[prod.id] || prod.image;
 
                 return (
                   <div
                     key={prod.id}
                     className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col justify-between gap-3 text-xs"
                   >
-                    <div className="flex items-start gap-3">
-                      {productThumb ? (
-                        <img
-                          src={productThumb}
-                          alt={prod.name}
-                          className="w-14 h-14 rounded-xl object-cover border border-slate-200 bg-slate-50 shrink-0"
-                        />
-                      ) : (
-                        <div className="w-14 h-14 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
-                          <Package className="w-6 h-6" />
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <h3 className="font-black text-sm text-slate-900 truncate">{prod.name}</h3>
-                          <span className="font-mono text-[11px] text-slate-500 shrink-0">{prod.code}</span>
-                        </div>
-                        <p className="text-[11px] text-slate-500">
-                          {prod.category} · {avail > 0 ? 'متوفر بالمخزون' : 'غير متوفر حالياً'}
-                        </p>
+                    <div className="space-y-1.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="font-black text-sm text-slate-900">{prod.name}</h3>
+                        <span className="font-mono text-[11px] text-slate-500 shrink-0">{prod.code}</span>
                       </div>
+                      <p className="text-[11px] text-slate-500">
+                        {prod.category} · {avail > 0 ? 'متوفر بالمخزون' : 'غير متوفر حالياً'}
+                      </p>
                     </div>
 
                     <div className="space-y-2.5 pt-2 border-t border-slate-100">
@@ -655,23 +614,6 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                         ) : (
                           <span className="text-[11px] text-slate-400">السعر عند الاعتماد</span>
                         )}
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] font-bold text-slate-600">الكمية:</span>
-                        <QuantityInput
-                          showSteppers
-                          allowDecimals
-                          min={0.001}
-                          value={catalogQtyByProd[prod.id] ?? 1}
-                          onChange={(q) =>
-                            setCatalogQtyByProd((prev) => ({
-                              ...prev,
-                              [prod.id]: q,
-                            }))
-                          }
-                          ariaLabel={`كمية ${prod.name}`}
-                        />
                       </div>
 
                       <button
@@ -748,15 +690,25 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                         ))}
                       </select>
 
-                      <QuantityInput
-                        showSteppers
-                        allowDecimals
-                        min={0.001}
-                        value={it.quantity}
-                        onChange={(q) => setCartQuantity(idx, q)}
-                        onRemoveWhenZero={() => updateCartQuantity(idx, -it.quantity)}
-                        ariaLabel={`كمية ${it.product.name}`}
-                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => updateCartQuantity(idx, -1)}
+                          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl bg-slate-100 text-slate-800 font-black cursor-pointer"
+                        >
+                          <Minus className="w-4 h-4" />
+                        </button>
+                        <span className="font-mono font-black text-sm w-8 text-center tabular-nums">
+                          {it.quantity}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => updateCartQuantity(idx, 1)}
+                          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl bg-blue-900 text-white font-black cursor-pointer"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -867,44 +819,26 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                         {new Date(ord.createdAt).toLocaleDateString('ar-EG')} · {ord.items?.length || 0} أصناف
                       </p>
                     </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <span
-                        className={`font-bold text-xs ${
-                          ord.status === 'invoiced'
-                            ? 'text-blue-900'
-                            : ord.status === 'approved' || ord.status === 'delivered'
-                            ? 'text-emerald-700'
-                            : ord.status === 'under_review' || ord.status === 'rep_assigned' || ord.status === 'out_for_delivery'
-                            ? 'text-indigo-700'
-                            : ord.status === 'rejected' || ord.status === 'needs_review'
-                            ? 'text-red-700'
-                            : 'text-amber-700'
-                        }`}
-                      >
-                        {ord.status === 'invoiced'
-                          ? `تم التحويل لفاتورة (${ord.invoiceNumber || ''})`
-                          : CUSTOMER_ORDER_STATUS_LABELS[ord.status] || ord.status}
-                      </span>
-                      {ord.syncStatus && ord.syncStatus !== 'synced' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                          <CloudOff className="w-3 h-3" />
-                          <span>محلي بانتظار المزامنة</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                          <CloudCheck className="w-3 h-3" />
-                          <span>معتمد مركزيًا</span>
-                        </span>
-                      )}
-                    </div>
+                    <span
+                      className={`font-bold text-xs ${
+                        ord.status === 'invoiced'
+                          ? 'text-emerald-700'
+                          : ord.status === 'approved'
+                          ? 'text-blue-800'
+                          : ord.status === 'rejected'
+                          ? 'text-red-700'
+                          : 'text-amber-700'
+                      }`}
+                    >
+                      {ord.status === 'pending'
+                        ? 'قيد المراجعة'
+                        : ord.status === 'approved'
+                        ? 'تمت الموافقة'
+                        : ord.status === 'invoiced'
+                        ? `مفوتر (${ord.invoiceNumber || ''})`
+                        : 'مرفوض'}
+                    </span>
                   </div>
-
-                  {ord.deliveryRepName && (
-                    <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-950 font-bold flex items-center gap-2 text-[11px]">
-                      <Truck className="w-3.5 h-3.5 text-indigo-700 shrink-0" />
-                      <span>مندوب التوصيل: {ord.deliveryRepName}</span>
-                    </div>
-                  )}
 
                   {ord.rejectionReason && (
                     <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold">
@@ -912,41 +846,15 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                     </div>
                   )}
 
-                  <div className="space-y-1.5 bg-slate-50 rounded-xl p-2.5">
-                    {(ord.items || []).map((it, i) => {
-                      const itemImg = data.cachedMediaMap?.[it.productId] || it.productImage;
-                      return (
-                        <div key={i} className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            {itemImg && (
-                              <img src={itemImg} alt={it.productName} className="w-7 h-7 rounded-lg object-cover border border-slate-200 shrink-0" />
-                            )}
-                            <span className="font-bold text-slate-800 truncate">{it.productName}</span>
-                          </div>
-                          <span className="font-mono text-slate-600 shrink-0">
-                            {it.quantity} {it.unit}
-                          </span>
-                        </div>
-                      );
-                    })}
-                    {allowPriceView && (ord.totalAmount || 0) > 0 && (
-                      <div className="pt-1.5 border-t border-slate-200 space-y-1 font-black text-blue-950">
-                        <div className="flex items-center justify-between">
-                          <span>الإجمالي</span>
-                          <span className="font-mono">
-                            {Number(ord.totalAmount).toLocaleString()} {data.settings.currency}
-                          </span>
-                        </div>
-                        {Number(ord.advancePaidAmount || 0) > 0 && (
-                          <div className="flex items-center justify-between text-[11px] text-emerald-700">
-                            <span className="inline-flex items-center gap-1"><Wallet className="w-3 h-3" /> دفعة مقدمة مسددة:</span>
-                            <span className="font-mono">
-                              {Number(ord.advancePaidAmount).toLocaleString()} {data.settings.currency}
-                            </span>
-                          </div>
-                        )}
+                  <div className="space-y-1 bg-slate-50 rounded-xl p-2.5">
+                    {(ord.items || []).map((it, i) => (
+                      <div key={i} className="flex items-center justify-between">
+                        <span className="font-bold text-slate-800">{it.productName}</span>
+                        <span className="font-mono text-slate-600">
+                          {it.quantity} {it.unit}
+                        </span>
                       </div>
-                    )}
+                    ))}
                   </div>
 
                   <div className="flex items-center justify-between gap-2 pt-1">
@@ -974,7 +882,13 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                       {ord.statusHistory.map((h) => (
                         <div key={h.id} className="flex items-center justify-between">
                           <span>
-                            {CUSTOMER_ORDER_STATUS_LABELS[h.toStatus] || h.toStatus}
+                            {h.toStatus === 'pending'
+                              ? 'إرسال الطلب'
+                              : h.toStatus === 'approved'
+                              ? 'اعتماد الإدارة'
+                              : h.toStatus === 'invoiced'
+                              ? 'إصدار الفاتورة'
+                              : 'رفض الطلب'}
                             {h.reason ? ` — ${h.reason}` : ''}
                           </span>
                           <span className="font-mono text-slate-400">

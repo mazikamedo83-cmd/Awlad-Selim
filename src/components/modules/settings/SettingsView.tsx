@@ -4,32 +4,19 @@ import {
   Printer, Building2, ShieldCheck, Check, AlertCircle, Trash2, RotateCcw,
   Server, Wifi, WifiOff, Activity, Monitor, Smartphone, FileSpreadsheet,
   Eye, ArrowLeftRight, CheckCircle2, ShoppingCart, User, Layers,
-  Barcode, FileText, Keyboard, Wrench, GitBranch, Plus, Search, Power,
-  Globe, Cloud, Lock, Copy, Radio
+  Barcode, FileText, Keyboard, Wrench, GitBranch, Plus, Search, Power
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import {
   useShortcuts, SHORTCUT_CATALOG, eventToKeyCombo, isReservedSystemCombo, normalizeComboString
 } from '../../../context/ShortcutsContext';
-import {
-  apiRequest,
-  getConfiguredApiBaseUrl,
-  getDefaultConnectionProfiles,
-  getStoredConnectionProfiles,
-  getConnectionModeLabel,
-  resolveModeEndpointUrl,
-  validateConnectionUrl,
-  setConfiguredApiBaseUrl,
-} from '../../../services/api';
-import { isNativeCapacitor } from '../../../services/native';
+import { apiRequest } from '../../../services/api';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { Modal } from '../../common/Modal';
-import { PairingAndDevicesPanel } from './PairingAndDevicesPanel';
 import {
-  ServerConnectionSettings, ProductImportCandidate, ConnectionMode, ConnectionProfilesConfig,
-  BranchSettingItem, PrinterSettingItem, ExtraSettingsConfig, UserShortcutItem, ShortcutCategory,
-  TunnelRuntimeStatus, PairedDevicesSummary,
+  ServerConnectionSettings, ProductImportCandidate,
+  BranchSettingItem, PrinterSettingItem, ExtraSettingsConfig, UserShortcutItem, ShortcutCategory
 } from '../../../types';
 
 export type SettingsTabKey =
@@ -55,7 +42,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
   const {
     settings, updateSettings, exportBackup, importBackup,
     serverSettings, updateServerSettings, testServerConnection,
-    products, addProduct, deleteImportedProducts, warehouses, cashboxes, users, migrationLogs, runMigration, rollbackMigration,
+    products, addProduct, deleteImportedProducts, warehouses, cashboxes, migrationLogs, runMigration, rollbackMigration,
   } = useData();
   const { hasPermission, currentUser } = useAuth();
   const {
@@ -198,126 +185,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
     showSavedBanner(message);
   };
 
-  // Server & Connection Settings Form
-  const initialProfiles: ConnectionProfilesConfig =
-    serverSettings?.profiles ||
-    settings.extraSettings?.connectionConfig ||
-    getStoredConnectionProfiles();
-
+  // Server Connection Settings Form
   const [serverForm, setServerForm] = useState<ServerConnectionSettings>({
-    serverIp: initialProfiles.localNetwork?.ip || serverSettings?.serverIp || '192.168.1.100',
-    hostname: initialProfiles.localNetwork?.hostname || serverSettings?.hostname || 'awlad-selim-server',
-    port: initialProfiles.localNetwork?.port || serverSettings?.port || 3000,
+    serverIp: serverSettings?.serverIp || '192.168.1.100',
+    hostname: serverSettings?.hostname || 'awlad-selim-server',
+    port: serverSettings?.port || 3000,
     apiBaseUrl: serverSettings?.apiBaseUrl || 'http://192.168.1.100:3000',
-    connectionType: initialProfiles.activeMode || serverSettings?.connectionType || 'local_network',
-    activeMode: initialProfiles.activeMode || 'local_network',
-    profiles: initialProfiles,
+    connectionType: serverSettings?.connectionType || 'lan',
     serverStatus: serverSettings?.serverStatus || 'online',
     databaseStatus: serverSettings?.databaseStatus || 'connected',
     latencyMs: serverSettings?.latencyMs || 12,
     syncStatus: serverSettings?.syncStatus || 'connected',
     lastSuccessfulConnection: serverSettings?.lastSuccessfulConnection || new Date().toISOString(),
   });
-  const [connProfiles, setConnProfiles] = useState<ConnectionProfilesConfig>(initialProfiles);
-  const [applyActiveToThisDevice, setApplyActiveToThisDevice] = useState<boolean>(() => isNativeCapacitor());
-  const [serverInfo, setServerInfo] = useState<{
-    hostname?: string;
-    port?: number;
-    lanIps?: string[];
-    lanUrls?: Array<{ ip: string; url: string }>;
-    dataDir?: string;
-    isElectron?: boolean;
-    databaseMode?: string;
-    postgresStatus?: string;
-    protocol?: string;
-    httpsActive?: boolean;
-    tunnelStatus?: TunnelRuntimeStatus;
-    devicesSummary?: PairedDevicesSummary;
-    appLinksConfigured?: { android: boolean; ios: boolean };
-  } | null>(null);
-  const [isLoadingServerInfo, setIsLoadingServerInfo] = useState(false);
-  const [isPushingUpdate, setIsPushingUpdate] = useState(false);
   const [isTestingServer, setIsTestingServer] = useState(false);
-  const [testingModeKey, setTestingModeKey] = useState<ConnectionMode | 'active' | null>(null);
-  const [serverTestResult, setServerTestResult] = useState<{
-    success: boolean;
-    latencyMs: number;
-    message: string;
-    testedUrl?: string;
-    httpsActive?: boolean;
-    modeLabel?: string;
-  } | null>(null);
-  const [serverError, setServerError] = useState<string | null>(null);
+  const [serverTestResult, setServerTestResult] = useState<{ success: boolean; latencyMs: number; message: string } | null>(null);
   const [isSavingServer, setIsSavingServer] = useState(false);
-
-  const handlePushConfigUpdate = async () => {
-    setIsPushingUpdate(true);
-    setServerError(null);
-    try {
-      const res = await apiRequest<{ ok: boolean; connectionConfig: ConnectionProfilesConfig }>(
-        '/api/admin/connection/push-update',
-        { method: 'POST' }
-      );
-      if (res.connectionConfig) {
-        setConnProfiles(res.connectionConfig);
-      }
-      showSavedBanner(
-        `تم تعميم تحديث عنوان الاتصال (الإصدار v${res.connectionConfig?.configVersion || (connProfiles.configVersion || 1) + 1}) لتسحبه جميع الأجهزة تلقائياً عند الاتصال`
-      );
-    } catch (err: any) {
-      setServerError(err?.message || 'تعذر تعميم التحديث');
-    } finally {
-      setIsPushingUpdate(false);
-    }
-  };
-
-  const loadLiveServerInfo = async () => {
-    setIsLoadingServerInfo(true);
-    try {
-      const info = await apiRequest<any>('/api/admin/server-info');
-      if (info?.ok) {
-        setServerInfo(info);
-      }
-    } catch {
-      // ignore if offline
-    } finally {
-      setIsLoadingServerInfo(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'server') {
-      loadLiveServerInfo();
-    }
-  }, [activeTab]);
-
-  useEffect(() => {
-    const latestProfiles =
-      settings.extraSettings?.connectionConfig || serverSettings?.profiles;
-    if (latestProfiles) {
-      setConnProfiles((prev) => ({
-        ...getDefaultConnectionProfiles(),
-        ...prev,
-        ...latestProfiles,
-        localNetwork: {
-          ...getDefaultConnectionProfiles().localNetwork,
-          ...(latestProfiles.localNetwork || {}),
-        },
-        freeRemote: {
-          ...getDefaultConnectionProfiles().freeRemote,
-          ...(latestProfiles.freeRemote || {}),
-        },
-        proRemote: {
-          ...getDefaultConnectionProfiles().proRemote,
-          ...(latestProfiles.proRemote || {}),
-        },
-        cloudVps: {
-          ...getDefaultConnectionProfiles().cloudVps,
-          ...(latestProfiles.cloudVps || {}),
-        },
-      }));
-    }
-  }, [settings.extraSettings?.connectionConfig, serverSettings?.profiles]);
 
   // Abu Selim Products Import & Batch Delete State
   const [importCandidates, setImportCandidates] = useState<ProductImportCandidate[]>([]);
@@ -396,52 +279,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
     reader.readAsText(file);
   };
 
-  // 2. Server & Connection Settings Handlers
-  const handleTestConnection = async (targetMode?: ConnectionMode) => {
-    const modeToTest = targetMode || null;
-    setTestingModeKey(modeToTest || 'active');
+  // 2. Server Settings Handlers
+  const handleTestConnection = async () => {
     setIsTestingServer(true);
     setServerTestResult(null);
-    setServerError(null);
-
-    let urlToTest: string | undefined;
-    if (modeToTest) {
-      const candidate = resolveModeEndpointUrl(modeToTest, connProfiles);
-      const check = validateConnectionUrl(
-        modeToTest,
-        candidate,
-        connProfiles.enforceHttpsForRemote !== false
-      );
-      if (!check.valid) {
-        setIsTestingServer(false);
-        setTestingModeKey(null);
-        setServerTestResult({
-          success: false,
-          latencyMs: 0,
-          testedUrl: candidate,
-          modeLabel: getConnectionModeLabel(modeToTest),
-          message: check.error || 'عنوان السيرفر غير صالح للاختبار',
-        });
-        return;
-      }
-      urlToTest = check.normalizedUrl;
-    }
-
-    const res = await testServerConnection(urlToTest);
+    const res = await testServerConnection();
     setIsTestingServer(false);
-    setTestingModeKey(null);
-
     if (res.success) {
-      const displayTarget = urlToTest || getConfiguredApiBaseUrl() || 'Same-Origin (السيرفر الحالي)';
       setServerTestResult({
         success: true,
         latencyMs: res.latencyMs,
-        testedUrl: displayTarget,
-        httpsActive: res.httpsActive,
-        modeLabel: modeToTest ? getConnectionModeLabel(modeToTest) : getConnectionModeLabel(connProfiles.activeMode),
-        message: `تم الاتصال بنجاح (${displayTarget}) — زمن الاستجابة: ${res.latencyMs} مللي ثانية${res.httpsActive ? ' • اتصال HTTPS مشفر' : ''}`,
+        message: `تم الاتصال بالسيرفر المحلي بنجاح (زمن الاستجابة: ${res.latencyMs} مللي ثانية)`,
       });
-      setServerForm((prev) => ({
+      setServerForm(prev => ({
         ...prev,
         serverStatus: 'online',
         databaseStatus: 'connected',
@@ -453,8 +303,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
       setServerTestResult({
         success: false,
         latencyMs: res.latencyMs,
-        testedUrl: urlToTest || getConfiguredApiBaseUrl() || 'Same-Origin',
-        modeLabel: modeToTest ? getConnectionModeLabel(modeToTest) : getConnectionModeLabel(connProfiles.activeMode),
         message: res.error || 'تعذر الاتصال بعنوان السيرفر',
       });
     }
@@ -462,91 +310,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
   const handleSaveServer = async (e: React.FormEvent) => {
     e.preventDefault();
-    setServerError(null);
     setIsSavingServer(true);
-
-    const enforceHttps = connProfiles.enforceHttpsForRemote !== false;
-    // Validate any non-empty remote URLs + required active mode URL
-    const modesToValidate: ConnectionMode[] = ['local_network', 'free_remote', 'pro_remote', 'cloud_vps'];
-    const cleanedProfiles: ConnectionProfilesConfig = {
-      ...connProfiles,
-      localNetwork: {
-        ip: (connProfiles.localNetwork.ip || '').trim().replace(/^https?:\/\//i, '').split('/')[0].split(':')[0] || '192.168.1.100',
-        port: Number(connProfiles.localNetwork.port || 3000) || 3000,
-        hostname: (connProfiles.localNetwork.hostname || 'awlad-selim-server').trim(),
-      },
-      freeRemote: { tunnelUrl: (connProfiles.freeRemote.tunnelUrl || '').trim() },
-      proRemote: { domainUrl: (connProfiles.proRemote.domainUrl || '').trim() },
-      cloudVps: {
-        vpsUrl: (connProfiles.cloudVps.vpsUrl || '').trim(),
-        notes: (connProfiles.cloudVps.notes || '').trim(),
-      },
-    };
-
-    for (const m of modesToValidate) {
-      const rawVal =
-        m === 'local_network'
-          ? resolveModeEndpointUrl('local_network', cleanedProfiles)
-          : m === 'free_remote'
-          ? cleanedProfiles.freeRemote.tunnelUrl
-          : m === 'pro_remote'
-          ? cleanedProfiles.proRemote.domainUrl
-          : cleanedProfiles.cloudVps.vpsUrl;
-
-      if (rawVal || m === cleanedProfiles.activeMode) {
-        const check = validateConnectionUrl(m, rawVal, enforceHttps);
-        if (!check.valid) {
-          setIsSavingServer(false);
-          setServerError(`${getConnectionModeLabel(m)}: ${check.error}`);
-          return;
-        }
-        if (m === 'free_remote') cleanedProfiles.freeRemote.tunnelUrl = check.normalizedUrl;
-        if (m === 'pro_remote') cleanedProfiles.proRemote.domainUrl = check.normalizedUrl;
-        if (m === 'cloud_vps') cleanedProfiles.cloudVps.vpsUrl = check.normalizedUrl;
-      }
-    }
-
-    const activeEndpointUrl = resolveModeEndpointUrl(cleanedProfiles.activeMode, cleanedProfiles);
-    const localUrl = resolveModeEndpointUrl('local_network', cleanedProfiles);
-
-    const result = await updateServerSettings(
-      {
-        ...serverForm,
-        serverIp: cleanedProfiles.localNetwork.ip,
-        port: cleanedProfiles.localNetwork.port,
-        hostname: cleanedProfiles.localNetwork.hostname || 'awlad-selim-server',
-        connectionType: cleanedProfiles.activeMode,
-        activeMode: cleanedProfiles.activeMode,
-        profiles: cleanedProfiles,
-        apiBaseUrl: applyActiveToThisDevice ? activeEndpointUrl : getConfiguredApiBaseUrl() || activeEndpointUrl || localUrl,
-      },
-      {
-        persistToServer: true,
-        applyToCurrentDevice: applyActiveToThisDevice,
-        targetDeviceUrl: activeEndpointUrl,
-      }
-    );
-
+    // ensure apiBaseUrl matches IP and port
+    const updatedUrl = serverForm.serverIp.startsWith('http') 
+      ? serverForm.serverIp 
+      : `http://${serverForm.serverIp}:${serverForm.port}`;
+    
+    await updateServerSettings({
+      ...serverForm,
+      apiBaseUrl: updatedUrl,
+    });
     setIsSavingServer(false);
-    if (!result.success) {
-      setServerError(result.error || 'تعذر حفظ إعدادات الاتصال');
-      return;
-    }
-    setConnProfiles(cleanedProfiles);
-    showSavedBanner(
-      applyActiveToThisDevice
-        ? `تم حفظ إعدادات الاتصال وتفعيل وضع (${getConnectionModeLabel(cleanedProfiles.activeMode)}) على هذا الجهاز`
-        : 'تم حفظ ملفات الاتصال المركزية في السيرفر بنجاح (مع إبقاء هذا الجهاز على الاتصال المحلي السريع)'
-    );
-  };
-
-  const copyCommandOrUrl = (text: string, label: string) => {
-    if (window.awladDesktop?.copyText) {
-      window.awladDesktop.copyText(text);
-    } else if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).catch(() => {});
-    }
-    showSavedBanner(`تم نسخ ${label}`);
+    setIsSaved(true);
+    setTimeout(() => setIsSaved(false), 2500);
   };
 
   // 3. Abu Selim Files Importer Handler
@@ -807,7 +583,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           { key: 'online-sync', label: 'مزامنة أونلاين', icon: Wifi, color: 'text-teal-700', perm: 'canManageSettings' },
           { key: 'shortcuts', label: 'اختصارات لوحة المفاتيح', icon: Keyboard, color: 'text-purple-700' },
           { key: 'services', label: 'الخدمات', icon: Wrench, color: 'text-amber-700', perm: 'canManageSettings' },
-          { key: 'server', label: 'Server & Connection Settings', icon: Server, color: 'text-emerald-600', perm: 'canManageSettings' },
+          { key: 'server', label: 'السيرفر (IP)', icon: Server, color: 'text-emerald-600', perm: 'canManageSettings' },
           { key: 'abu-selim', label: 'استيراد الملفات', icon: FileSpreadsheet, color: 'text-amber-600', perm: 'canManageInventory' },
           { key: 'backup', label: 'النسخ الاحتياطي', icon: Database, color: 'text-purple-600', perm: 'canManageSettings' },
           { key: 'migration', label: 'الترحيل و PostgreSQL', icon: Layers, color: 'text-indigo-600', perm: 'canManageSettings' },
@@ -1004,242 +780,79 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
         </form>
       )}
 
-      {/* TAB 2: Server & Connection Settings (Dual / Multi-Connection System) */}
-      {activeTab === 'server' && (() => {
-        const currentDeviceUrl = getConfiguredApiBaseUrl();
-        const activeEndpoint = resolveModeEndpointUrl(connProfiles.activeMode, connProfiles);
-        const isCurrentDeviceSameOrigin = !currentDeviceUrl && !isNativeCapacitor();
-        const activePort = serverInfo?.port || connProfiles.localNetwork.port || 3000;
-        const dbLabel =
-          serverInfo?.databaseMode === 'postgresql-enterprise'
-            ? 'PostgreSQL (قاعدة بيانات واحدة مركزية)'
-            : 'Local JSON Ledger (قاعدة بيانات واحدة مركزية)';
-
-        const modeCards: Array<{
-          key: ConnectionMode;
-          title: string;
-          subtitle: string;
-          badge: string;
-          badgeClass: string;
-          icon: React.ElementType;
-          urlPreview: string;
-        }> = [
-          {
-            key: 'local_network',
-            title: 'Local Network',
-            subtitle: 'الشبكة المحلية داخل المحل عبر IP والمنفذ 3000',
-            badge: 'مجاني • LAN',
-            badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-            icon: Wifi,
-            urlPreview: resolveModeEndpointUrl('local_network', connProfiles) || 'http://192.168.1.100:3000',
-          },
-          {
-            key: 'free_remote',
-            title: 'Free Remote Connection',
-            subtitle: 'اتصال خارجي مجاني عبر Cloudflare Quick Tunnel',
-            badge: 'مجاني • trycloudflare',
-            badgeClass: 'bg-sky-100 text-sky-800 border-sky-200',
-            icon: Radio,
-            urlPreview: connProfiles.freeRemote.tunnelUrl || 'https://xxxx.trycloudflare.com',
-          },
-          {
-            key: 'pro_remote',
-            title: 'Professional Remote Connection',
-            subtitle: 'دومين ثابت وشهادة HTTPS (Named Tunnel / Proxy)',
-            badge: 'احترافي • HTTPS ثابت',
-            badgeClass: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-            icon: Globe,
-            urlPreview: connProfiles.proRemote.domainUrl || 'https://erp.yourdomain.com',
-          },
-          {
-            key: 'cloud_vps',
-            title: 'Cloud VPS Connection',
-            subtitle: 'الانتقال مستقبلاً إلى سيرفر سحابي دائم 24/7',
-            badge: 'مستقبلي • Cloud VPS',
-            badgeClass: 'bg-purple-100 text-purple-800 border-purple-200',
-            icon: Cloud,
-            urlPreview: connProfiles.cloudVps.vpsUrl || 'https://vps.yourdomain.com',
-          },
-        ];
-
-        return (
-          <div className="space-y-6 text-xs">
-            {/* Section Title & Live Status Banner */}
-            <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl border border-slate-800 space-y-5">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div>
-                  <span className="text-[10px] uppercase tracking-wider text-emerald-400 font-bold block mb-1">
-                    Server & Connection Settings — إدارة أوضاع الاتصال بالسيرفر المركزي
+      {/* TAB 2: Server & Connection Settings (Section 4) */}
+      {activeTab === 'server' && (
+        <div className="space-y-6 text-xs">
+          {/* Status summary banner */}
+          <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl border border-slate-800">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <span className="text-[10px] uppercase tracking-wider text-emerald-400 font-bold block mb-1">
+                  حالة السيرفر المركزي الداخلي داخل المحل
+                </span>
+                <h3 className="text-base font-black flex items-center gap-2">
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
                   </span>
-                  <h3 className="text-base font-black flex items-center gap-2.5">
-                    <span className="relative flex h-3 w-3 shrink-0">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-                    </span>
-                    <span>{getConnectionModeLabel(connProfiles.activeMode)}</span>
-                  </h3>
-                  <p className="text-[11px] text-slate-300 mt-1 font-mono" dir="ltr">
-                    {isCurrentDeviceSameOrigin
-                      ? `Current Device: Same-Origin (Port ${activePort}) | Target Profile: ${activeEndpoint || '-'}`
-                      : currentDeviceUrl || activeEndpoint || 'Not configured'}
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleTestConnection()}
-                    disabled={isTestingServer}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-xs cursor-pointer disabled:opacity-50"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${isTestingServer && testingModeKey === 'active' ? 'animate-spin' : ''}`} />
-                    <span>{isTestingServer && testingModeKey === 'active' ? 'جاري الفحص...' : 'اختبار الاتصال الحالي'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handlePushConfigUpdate}
-                    disabled={isPushingUpdate}
-                    className="flex items-center gap-1.5 px-3 py-2.5 bg-sky-700 hover:bg-sky-800 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${isPushingUpdate ? 'animate-spin' : ''}`} />
-                    <span>{isPushingUpdate ? 'جاري التعميم...' : 'تحديث/تعميم العنوان للأجهزة'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={loadLiveServerInfo}
-                    disabled={isLoadingServerInfo}
-                    className="flex items-center gap-1.5 px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold cursor-pointer"
-                  >
-                    <Activity className={`w-4 h-4 ${isLoadingServerInfo ? 'animate-pulse' : ''}`} />
-                    <span>تحديث حالة المنفذ</span>
-                  </button>
-                </div>
+                  <span>{serverForm.hostname} ({serverForm.apiBaseUrl})</span>
+                </h3>
               </div>
 
-              {serverInfo?.tunnelStatus && (
-                <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                  <div className="flex items-center gap-2">
-                    <Radio className={`w-4 h-4 ${serverInfo.tunnelStatus.status === 'online' ? 'text-emerald-400' : 'text-slate-400'}`} />
-                    <span className="font-bold text-slate-200">
-                      حالة النفق السريع/الخارجي:
-                      <strong className={`mr-1.5 ${serverInfo.tunnelStatus.status === 'online' ? 'text-emerald-400' : 'text-amber-300'}`}>
-                        {serverInfo.tunnelStatus.status === 'online'
-                          ? 'متصل (Online)'
-                          : serverInfo.tunnelStatus.status === 'starting'
-                          ? 'جاري البدء...'
-                          : serverInfo.tunnelStatus.status === 'error'
-                          ? 'خطأ في التشغيل'
-                          : 'غير مشغل محلياً'}
-                      </strong>
-                    </span>
-                  </div>
-                  {serverInfo.tunnelStatus.tunnelUrl && (
-                    <button
-                      type="button"
-                      onClick={() => copyCommandOrUrl(serverInfo.tunnelStatus!.tunnelUrl, 'رابط النفق التلقائي')}
-                      className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-600 text-sky-300 font-mono flex items-center gap-1.5 cursor-pointer"
-                      dir="ltr"
-                    >
-                      <span>{serverInfo.tunnelStatus.tunnelUrl}</span>
-                      <Copy className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 pt-4 border-t border-slate-800 text-[11px]">
-                <div className="p-3 rounded-xl bg-slate-800/70">
-                  <span className="text-slate-400 block text-[10px]">نوع الاتصال النشط:</span>
-                  <strong className="text-emerald-400 font-bold block mt-0.5">{getConnectionModeLabel(connProfiles.activeMode)}</strong>
-                </div>
-                <div className="p-3 rounded-xl bg-slate-800/70">
-                  <span className="text-slate-400 block text-[10px]">حالة السيرفر والمنفذ:</span>
-                  <strong className="text-white font-bold font-mono block mt-0.5" dir="ltr">
-                    {serverTestResult?.success === false ? 'Check Failed' : 'Online'} • :{activePort}
-                  </strong>
-                </div>
-                <div className="p-3 rounded-xl bg-slate-800/70">
-                  <span className="text-slate-400 block text-[10px]">بروتوكول الاتصال:</span>
-                  <strong className={`font-bold block mt-0.5 ${(serverInfo?.httpsActive || /^https:\/\//i.test(activeEndpoint)) ? 'text-sky-400' : 'text-amber-300'}`}>
-                    {serverInfo?.httpsActive ? 'HTTPS (مشفر نشط)' : 'HTTP محلي (LAN)'}
-                  </strong>
-                </div>
-                <div className="p-3 rounded-xl bg-slate-800/70">
-                  <span className="text-slate-400 block text-[10px]">قاعدة البيانات الموحدة:</span>
-                  <strong className="text-emerald-300 font-bold block mt-0.5">{dbLabel}</strong>
-                </div>
-                <div className="p-3 rounded-xl bg-slate-800/70">
-                  <span className="text-slate-400 block text-[10px]">زمن الاستجابة (Latency):</span>
-                  <strong className="font-mono text-white font-bold block mt-0.5">
-                    {serverTestResult ? `${serverTestResult.latencyMs} ms` : `${serverForm.latencyMs || 0} ms`}
-                  </strong>
-                </div>
-              </div>
-
-              {/* Detected LAN IPs from live /api/admin/server-info */}
-              {serverInfo?.lanUrls && serverInfo.lanUrls.length > 0 && (
-                <div className="p-3.5 rounded-xl bg-slate-800/60 border border-slate-700/80 flex flex-wrap items-center gap-2">
-                  <span className="text-slate-300 font-bold">عناوين الشبكة المحلية المكتشفة على السيرفر:</span>
-                  {serverInfo.lanUrls.map((entry) => (
-                    <button
-                      key={entry.url}
-                      type="button"
-                      onClick={() => {
-                        setConnProfiles((prev) => ({
-                          ...prev,
-                          localNetwork: { ...prev.localNetwork, ip: entry.ip, port: serverInfo.port || prev.localNetwork.port },
-                        }));
-                        copyCommandOrUrl(entry.url, 'عنوان LAN');
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-blue-950 border border-slate-600 text-sky-300 font-mono font-bold cursor-pointer flex items-center gap-1.5"
-                      dir="ltr"
-                      title="اضغط لاعتماد العنوان ونسخه"
-                    >
-                      <span>{entry.url}</span>
-                      <Copy className="w-3 h-3" />
-                    </button>
-                  ))}
-                  {serverInfo.hostname && (
-                    <span className="text-[10px] text-slate-400 font-mono mr-auto" dir="ltr">
-                      Host: {serverInfo.hostname}
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {serverTestResult && (
-                <div
-                  className={`p-3.5 rounded-xl border flex items-center gap-2.5 ${
-                    serverTestResult.success
-                      ? 'bg-emerald-950/70 border-emerald-500/50 text-emerald-200'
-                      : 'bg-red-950/70 border-red-500/50 text-red-200'
-                  }`}
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleTestConnection}
+                  disabled={isTestingServer}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-xs cursor-pointer disabled:opacity-50"
                 >
-                  {serverTestResult.success ? (
-                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-                  ) : (
-                    <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
-                  )}
-                  <div className="space-y-0.5">
-                    <span className="font-bold block">{serverTestResult.message}</span>
-                    {serverTestResult.modeLabel && (
-                      <span className="text-[10px] opacity-80 block">المسار المختبر: {serverTestResult.modeLabel}</span>
-                    )}
-                  </div>
-                </div>
-              )}
+                  <RefreshCw className={`w-4 h-4 ${isTestingServer ? 'animate-spin' : ''}`} />
+                  <span>{isTestingServer ? 'جاري الفحص...' : 'اختبار الاتصال بالسيرفر'}</span>
+                </button>
+              </div>
             </div>
 
-            {/* Electron desktop quick folder controls (unchanged, zero secrets) */}
-            {desktopInfo?.isElectron && (
-              <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-4 border-t border-slate-800 text-[11px]">
+              <div className="p-2.5 rounded-xl bg-slate-800/60">
+                <span className="text-slate-400 block text-[10px]">حالة السيرفر:</span>
+                <strong className="text-emerald-400 font-bold">{serverTestResult?.success ? 'متصل (Online)' : 'غير مؤكد - اضغط اختبار الاتصال'}</strong>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-800/60">
+                <span className="text-slate-400 block text-[10px]">قاعدة البيانات:</span>
+                <strong className="text-emerald-400 font-bold">{serverTestResult?.success ? 'استجابة API ناجحة' : 'لم يتم التحقق من قاعدة البيانات'}</strong>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-800/60">
+                <span className="text-slate-400 block text-[10px]">زمن الاستجابة (Latency):</span>
+                <strong className="font-mono text-white font-bold">{serverForm.latencyMs} ms</strong>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-800/60">
+                <span className="text-slate-400 block text-[10px]">مزامنة الشبكة:</span>
+                <strong className="text-sky-400 font-bold">{serverTestResult?.success ? 'الاتصال متاح' : 'بانتظار الاختبار'}</strong>
+              </div>
+            </div>
+
+            {serverTestResult && (
+              <div className={`mt-4 p-3 rounded-xl border flex items-center gap-2 ${
+                serverTestResult.success 
+                  ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-200' 
+                  : 'bg-red-950/60 border-red-500/40 text-red-200'
+              }`}>
+                {serverTestResult.success ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" /> : <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />}
+                <span>{serverTestResult.message}</span>
+              </div>
+            )}
+          </div>
+
+          {desktopInfo?.isElectron && (
+            <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-5 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h4 className="font-black text-slate-900 flex items-center gap-2 text-sm">
                     <Monitor className="w-4 h-4 text-emerald-700" />
-                    <span>بيئة تطبيق سطح المكتب (Windows Desktop + Embedded Server)</span>
+                    <span>بيئة تطبيق سطح المكتب (Windows Desktop + Embedded LAN Server)</span>
                   </h4>
                   <p className="text-slate-600 text-[11px] mt-1">
-                    مجلد قاعدة البيانات الموحدة: <span className="font-mono font-bold text-slate-900" dir="ltr">{desktopInfo.dataDir}</span>
+                    مجلد البيانات النشط: <span className="font-mono font-bold text-slate-900" dir="ltr">{desktopInfo.dataDir}</span>
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -1259,396 +872,114 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   </button>
                 </div>
               </div>
-            )}
-
-            {/* Main 4-Mode Configuration Form */}
-            <form onSubmit={handleSaveServer} className="space-y-5">
-              {/* 1. Connection Mode Selector */}
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3">
-                  <div>
-                    <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                      <Server className="w-4 h-4 text-emerald-700" />
-                      <span>اختيار وضع الاتصال بالسيرفر (Multi-Connection Mode)</span>
-                    </h3>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      جميع الأوضاع تتصل بنفس السيرفر المركزي ونفس قاعدة البيانات المالية — يمكن التبديل بينها في أي وقت دون ترحيل أو فقدان بيانات.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  {modeCards.map((card) => {
-                    const CardIcon = card.icon;
-                    const isSelected = connProfiles.activeMode === card.key;
-                    return (
-                      <button
-                        key={card.key}
-                        type="button"
-                        onClick={() => {
-                          setConnProfiles((prev) => ({ ...prev, activeMode: card.key }));
-                          setServerError(null);
-                        }}
-                        className={`text-right p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between gap-2 ${
-                          isSelected
-                            ? 'border-blue-900 bg-blue-50/70 shadow-sm'
-                            : 'border-slate-200 bg-slate-50/50 hover:border-slate-300'
-                        }`}
-                      >
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className={`p-2 rounded-xl ${isSelected ? 'bg-blue-900 text-white' : 'bg-white text-slate-700 border border-slate-200'}`}>
-                              <CardIcon className="w-4 h-4" />
-                            </span>
-                            <span className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold ${card.badgeClass}`}>
-                              {card.badge}
-                            </span>
-                          </div>
-                          <div>
-                            <div className="font-black text-slate-900 text-xs">{card.title}</div>
-                            <div className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">{card.subtitle}</div>
-                          </div>
-                        </div>
-                        <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between gap-1">
-                          <span className="font-mono text-[10px] text-slate-500 truncate" dir="ltr">
-                            {card.urlPreview}
-                          </span>
-                          {isSelected && <CheckCircle2 className="w-4 h-4 text-blue-900 shrink-0" />}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {serverError && (
-                <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{serverError}</span>
-                </div>
-              )}
-
-              {/* 2. Per-Mode Configuration Cards */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                {/* Mode 1: Local Network */}
-                <div className={`bg-white p-5 rounded-2xl border shadow-xs space-y-4 ${connProfiles.activeMode === 'local_network' ? 'border-emerald-500 ring-2 ring-emerald-500/15' : 'border-slate-200'}`}>
-                  <div className="flex items-center justify-between border-b pb-2.5">
-                    <div className="flex items-center gap-2">
-                      <Wifi className="w-4 h-4 text-emerald-700" />
-                      <h4 className="font-black text-slate-900 text-sm">1. الشبكة المحلية (Local Network)</h4>
-                    </div>
+              {Array.isArray(desktopInfo.lanUrls) && desktopInfo.lanUrls.length > 0 && (
+                <div className="pt-2 border-t border-emerald-200/70 flex flex-wrap items-center gap-2">
+                  <span className="font-bold text-slate-700">روابط الشبكة المحلية للمندوبين والعملاء:</span>
+                  {desktopInfo.lanUrls.map((entry: { ip: string; url: string }) => (
                     <button
-                      type="button"
-                      disabled={isTestingServer}
-                      onClick={() => handleTestConnection('local_network')}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[11px] cursor-pointer"
-                    >
-                      اختبار المحلي
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="sm:col-span-2">
-                      <label className="block font-bold mb-1">Server IP (عنوان اللابتوب):</label>
-                      <input
-                        type="text"
-                        dir="ltr"
-                        required
-                        placeholder="192.168.1.100"
-                        value={connProfiles.localNetwork.ip}
-                        onChange={(e) =>
-                          setConnProfiles((prev) => ({
-                            ...prev,
-                            localNetwork: { ...prev.localNetwork, ip: e.target.value },
-                          }))
-                        }
-                        className="w-full border rounded-xl p-2.5 font-mono text-blue-900 font-bold text-left"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-bold mb-1">Port (المنفذ):</label>
-                      <input
-                        type="number"
-                        required
-                        min={1}
-                        max={65535}
-                        value={connProfiles.localNetwork.port}
-                        onChange={(e) =>
-                          setConnProfiles((prev) => ({
-                            ...prev,
-                            localNetwork: { ...prev.localNetwork, port: parseInt(e.target.value, 10) || 3000 },
-                          }))
-                        }
-                        className="w-full border rounded-xl p-2.5 font-mono text-left"
-                        dir="ltr"
-                      />
-                    </div>
-                    <div className="sm:col-span-3">
-                      <label className="block font-bold mb-1">Hostname (اسم الجهاز):</label>
-                      <input
-                        type="text"
-                        dir="ltr"
-                        value={connProfiles.localNetwork.hostname || ''}
-                        onChange={(e) =>
-                          setConnProfiles((prev) => ({
-                            ...prev,
-                            localNetwork: { ...prev.localNetwork, hostname: e.target.value },
-                          }))
-                        }
-                        className="w-full border rounded-xl p-2.5 font-mono text-left"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] flex items-center justify-between gap-2">
-                    <span className="text-slate-600 font-bold">الرابط المحلي المعتمد:</span>
-                    <span className="font-mono font-bold text-slate-900" dir="ltr">
-                      {resolveModeEndpointUrl('local_network', connProfiles)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Mode 2: Free Remote Connection (Cloudflare Quick Tunnel) */}
-                <div className={`bg-white p-5 rounded-2xl border shadow-xs space-y-4 ${connProfiles.activeMode === 'free_remote' ? 'border-sky-500 ring-2 ring-sky-500/15' : 'border-slate-200'}`}>
-                  <div className="flex items-center justify-between border-b pb-2.5">
-                    <div className="flex items-center gap-2">
-                      <Radio className="w-4 h-4 text-sky-600" />
-                      <h4 className="font-black text-slate-900 text-sm">2. الرابط الخارجي المجاني (Cloudflare Quick Tunnel)</h4>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={isTestingServer || !connProfiles.freeRemote.tunnelUrl}
-                      onClick={() => handleTestConnection('free_remote')}
-                      className="px-3 py-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold text-[11px] cursor-pointer disabled:opacity-40"
-                    >
-                      اختبار الرابط
-                    </button>
-                  </div>
-
-                  <div>
-                    <label className="block font-bold mb-1">رابط Quick Tunnel (HTTPS):</label>
-                    <input
-                      type="url"
-                      dir="ltr"
-                      placeholder="https://example-shop.trycloudflare.com"
-                      value={connProfiles.freeRemote.tunnelUrl}
-                      onChange={(e) =>
-                        setConnProfiles((prev) => ({
-                          ...prev,
-                          freeRemote: { tunnelUrl: e.target.value },
-                        }))
-                      }
-                      className="w-full border rounded-xl p-2.5 font-mono text-sky-900 font-bold text-left"
-                    />
-                    <span className="text-[10px] text-slate-500 mt-1 block">
-                      يعمل فوراً بدون دومين أو اشتراك مدفوع؛ انسخ رابط <span className="font-mono" dir="ltr">trycloudflare.com</span> الناتج عن تشغيل النفق على اللابتوب.
-                    </span>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-sky-50/70 border border-sky-200 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-sky-900 text-[11px]">أمر تشغيل النفق المجاني على ويندوز:</span>
-                      <button
-                        type="button"
-                        onClick={() => copyCommandOrUrl(`cloudflared tunnel --url http://127.0.0.1:${activePort}`, 'أمر النفق المجاني')}
-                        className="px-2 py-1 rounded-lg bg-white border border-sky-300 text-sky-800 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
-                      >
-                        <Copy className="w-3 h-3" />
-                        <span>نسخ الأمر</span>
-                      </button>
-                    </div>
-                    <code className="block p-2 rounded-lg bg-slate-900 text-sky-300 font-mono text-[10px] overflow-x-auto" dir="ltr">
-                      cloudflared tunnel --url http://127.0.0.1:{activePort}
-                    </code>
-                    <p className="text-[10px] text-slate-600">
-                      أو شغّل الملف الجاهز <span className="font-mono font-bold" dir="ltr">scripts/start-free-tunnel.bat</span> من مجلد المشروع.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Mode 3: Professional Remote Connection */}
-                <div className={`bg-white p-5 rounded-2xl border shadow-xs space-y-4 ${connProfiles.activeMode === 'pro_remote' ? 'border-indigo-500 ring-2 ring-indigo-500/15' : 'border-slate-200'}`}>
-                  <div className="flex items-center justify-between border-b pb-2.5">
-                    <div className="flex items-center gap-2">
-                      <Globe className="w-4 h-4 text-indigo-700" />
-                      <h4 className="font-black text-slate-900 text-sm">3. الرابط الخارجي الاحترافي (Named Tunnel + Domain)</h4>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={isTestingServer || !connProfiles.proRemote.domainUrl}
-                      onClick={() => handleTestConnection('pro_remote')}
-                      className="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-bold text-[11px] cursor-pointer disabled:opacity-40"
-                    >
-                      اختبار الدومين
-                    </button>
-                  </div>
-
-                  <div>
-                    <label className="block font-bold mb-1">الدومين الثابت المشفر (HTTPS):</label>
-                    <input
-                      type="url"
-                      dir="ltr"
-                      placeholder="https://erp.yourdomain.com"
-                      value={connProfiles.proRemote.domainUrl}
-                      onChange={(e) =>
-                        setConnProfiles((prev) => ({
-                          ...prev,
-                          proRemote: { domainUrl: e.target.value },
-                        }))
-                      }
-                      className="w-full border rounded-xl p-2.5 font-mono text-indigo-900 font-bold text-left"
-                    />
-                    <span className="text-[10px] text-slate-500 mt-1 block">
-                      عنوان ثابت لا يتغير مع Cloudflare Named Tunnel أو Nginx Reverse Proxy مع شهادة SSL/TLS.
-                    </span>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-indigo-50/70 border border-indigo-200 text-[11px] text-slate-700 space-y-1">
-                    <div className="font-bold text-indigo-900 flex items-center gap-1.5">
-                      <Lock className="w-3.5 h-3.5" />
-                      <span>أمان الأسرار والتوكنات:</span>
-                    </div>
-                    <p>
-                      يتم حفظ التوكن الخاص بـ Cloudflare Tunnel أو شهادات SSL على السيرفر/نظام التشغيل فقط — ولا تُعرض أو تُحفظ أي مفاتيح سرية داخل قاعدة البيانات أو الواجهة.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Mode 4: Cloud VPS Connection */}
-                <div className={`bg-white p-5 rounded-2xl border shadow-xs space-y-4 ${connProfiles.activeMode === 'cloud_vps' ? 'border-purple-500 ring-2 ring-purple-500/15' : 'border-slate-200'}`}>
-                  <div className="flex items-center justify-between border-b pb-2.5">
-                    <div className="flex items-center gap-2">
-                      <Cloud className="w-4 h-4 text-purple-700" />
-                      <h4 className="font-black text-slate-900 text-sm">4. الاتصال عبر سيرفر سحابي (Cloud VPS)</h4>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={isTestingServer || !connProfiles.cloudVps.vpsUrl}
-                      onClick={() => handleTestConnection('cloud_vps')}
-                      className="px-3 py-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-800 font-bold text-[11px] cursor-pointer disabled:opacity-40"
-                    >
-                      اختبار الـ VPS
-                    </button>
-                  </div>
-
-                  <div>
-                    <label className="block font-bold mb-1">عنوان السيرفر السحابي المستقبلي (HTTPS):</label>
-                    <input
-                      type="url"
-                      dir="ltr"
-                      placeholder="https://cloud-erp.yourdomain.com"
-                      value={connProfiles.cloudVps.vpsUrl}
-                      onChange={(e) =>
-                        setConnProfiles((prev) => ({
-                          ...prev,
-                          cloudVps: { ...prev.cloudVps, vpsUrl: e.target.value },
-                        }))
-                      }
-                      className="w-full border rounded-xl p-2.5 font-mono text-purple-900 font-bold text-left"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-bold mb-1">ملاحظات الاستضافة (بدون كلمات مرور أو مفاتيح):</label>
-                    <input
-                      type="text"
-                      placeholder="مثال: VPS مستقبلي — ترحيل يدوي عند الحاجة"
-                      value={connProfiles.cloudVps.notes || ''}
-                      onChange={(e) =>
-                        setConnProfiles((prev) => ({
-                          ...prev,
-                          cloudVps: { ...prev.cloudVps, notes: e.target.value },
-                        }))
-                      }
-                      className="w-full border rounded-xl p-2.5"
-                    />
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-purple-50/70 border border-purple-200 text-[11px] text-slate-700">
-                    لا يتم تفعيل أي اشتراك أو نقل بيانات تلقائي. عند قرار الانتقال إلى VPS لاحقاً، تُنقل نفس قاعدة البيانات عبر النسخ الاحتياطي أو ترحيل PostgreSQL بموافقة الإدارة فقط.
-                  </div>
-                </div>
-              </div>
-
-              {/* Security & Device Application Controls */}
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={connProfiles.enforceHttpsForRemote !== false}
-                      onChange={(e) =>
-                        setConnProfiles((prev) => ({
-                          ...prev,
-                          enforceHttpsForRemote: e.target.checked,
-                        }))
-                      }
-                      className="w-4 h-4 mt-0.5 rounded text-blue-900"
-                    />
-                    <div>
-                      <span className="font-bold text-slate-900 block">إلزام بروتوكول HTTPS لجميع الاتصالات الخارجية</span>
-                      <span className="text-[10px] text-slate-500">يمنع إرسال التوكنات وبيانات العملاء عبر HTTP غير المشفر خارج الشبكة المحلية.</span>
-                    </div>
-                  </label>
-
-                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={applyActiveToThisDevice}
-                      onChange={(e) => setApplyActiveToThisDevice(e.target.checked)}
-                      className="w-4 h-4 mt-0.5 rounded text-blue-900"
-                    />
-                    <div>
-                      <span className="font-bold text-slate-900 block">تطبيق عنوان الوضع النشط على هذا الجهاز فوراً</span>
-                      <span className="text-[10px] text-slate-500">
-                        فعّلها على أجهزة الفروع أو الموبايل. اتركها غير مفعّلة على لابتوب السيرفر الرئيسي ليبقى على الاتصال السريع المباشر (Same-Origin).
-                      </span>
-                    </div>
-                  </label>
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
-                  {!isNativeCapacitor() && currentDeviceUrl ? (
-                    <button
+                      key={entry.url}
                       type="button"
                       onClick={() => {
-                        setConfiguredApiBaseUrl('');
-                        showSavedBanner('تمت إعادة هذا الجهاز للاتصال المحلي المباشر (Same-Origin)');
+                        window.awladDesktop?.copyText(entry.url);
+                        showSavedBanner(`تم نسخ رابط الشبكة المحلية: ${entry.url}`);
                       }}
-                      className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                      className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg font-mono font-bold text-blue-900 hover:bg-blue-50 cursor-pointer"
+                      dir="ltr"
+                      title="اضغط للنسخ"
                     >
-                      العودة للاتصال المباشر (Same-Origin) على هذا الجهاز
+                      {entry.url}
                     </button>
-                  ) : (
-                    <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
-                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                      <span>إعدادات الاتصال تُحفظ مركزياً في قاعدة البيانات الموحدة وتنطبق على Windows و Android بدون إعادة بناء.</span>
-                    </div>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={isSavingServer}
-                    className="flex items-center gap-2 px-6 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-black rounded-xl shadow-md cursor-pointer disabled:opacity-50"
-                  >
-                    <Save className="w-4 h-4" />
-                    <span>{isSavingServer ? 'جاري الحفظ...' : 'حفظ إعدادات السيرفر والاتصال'}</span>
-                  </button>
+                  ))}
                 </div>
-              </div>
-            </form>
+              )}
+            </div>
+          )}
 
-            {/* 3. Smart Device Pairing (Direct Link & QR Code) + Connected Device Management */}
-            <PairingAndDevicesPanel
-              users={users || []}
-              activeMode={connProfiles.activeMode}
-              activeEndpoint={activeEndpoint || (connProfiles.activeMode === 'local_network' ? currentDeviceUrl : '')}
-              profiles={connProfiles}
-              onShowToast={showSavedBanner}
-            />
-          </div>
-        );
-      })()}
+          {/* Server Config Form */}
+          <form onSubmit={handleSaveServer} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+            <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
+              <Server className="w-4 h-4 text-emerald-700" />
+              <span>إعدادات الاتصال بالسيرفر المحلي (تغيير IP دون إعادة بناء EXE)</span>
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block font-bold mb-1">Server IP (عنوان السيرفر المحلي):</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="مثال: 192.168.1.100"
+                  value={serverForm.serverIp}
+                  onChange={(e) => setServerForm({ ...serverForm, serverIp: e.target.value })}
+                  className="w-full border rounded-xl p-2.5 font-mono text-blue-900 font-bold"
+                />
+                <span className="text-[10px] text-slate-400 mt-1 block">عنوان IP الخاص بجهاز السيرفر داخل شبكة المحل</span>
+              </div>
+
+              <div>
+                <label className="block font-bold mb-1">Port (المنفذ البرمجي):</label>
+                <input
+                  type="number"
+                  required
+                  value={serverForm.port}
+                  onChange={(e) => setServerForm({ ...serverForm, port: parseInt(e.target.value) || 3000 })}
+                  className="w-full border rounded-xl p-2.5 font-mono"
+                />
+                <span className="text-[10px] text-slate-400 mt-1 block">المنفذ الافتراضي للـ API هو 3000</span>
+              </div>
+
+              <div>
+                <label className="block font-bold mb-1">Hostname (اسم المضيف):</label>
+                <input
+                  type="text"
+                  value={serverForm.hostname}
+                  onChange={(e) => setServerForm({ ...serverForm, hostname: e.target.value })}
+                  className="w-full border rounded-xl p-2.5 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold mb-1">نوع الاتصال:</label>
+                <select
+                  value={serverForm.connectionType}
+                  onChange={(e) => setServerForm({ ...serverForm, connectionType: e.target.value as any })}
+                  className="w-full border rounded-xl p-2.5 bg-white"
+                >
+                  <option value="lan">شبكة محلية داخلية (LAN / Wi-Fi المحل)</option>
+                  <option value="vpn">اتصال خارجي مشفر آمن (VPN)</option>
+                  <option value="reverse_proxy">Reverse Proxy مع HTTPS مشفر</option>
+                  <option value="offline_local">وضع العمل بدون اتصال (Offline Cache)</option>
+                </select>
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block font-bold mb-1">API Base URL المعتمد:</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={serverForm.serverIp.startsWith('http') ? serverForm.serverIp : `http://${serverForm.serverIp}:${serverForm.port}`}
+                  className="w-full border rounded-xl p-2.5 font-mono bg-slate-50 text-slate-600"
+                />
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-xl text-slate-700 leading-relaxed text-[11px]">
+              💡 <strong>ملاحظة للمهندس المسؤول:</strong> يتيح لك هذا القسم تغيير عنوان IP الخاص بالسيرفر في أي وقت عند الانتقال لراوتر جديد أو شبكة أخرى مباشرة من داخل الواجهة دون الحاجة لإعادة تجميع أو بناء ملف EXE أو APK.
+            </div>
+
+            <div className="flex justify-end pt-3">
+              <button
+                type="submit"
+                disabled={isSavingServer}
+                className="flex items-center gap-2 px-6 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-black rounded-xl shadow-md cursor-pointer disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                <span>{isSavingServer ? 'جاري الحفظ...' : 'حفظ إعدادات السيرفر والاتصال'}</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* TAB 3: Abu Selim Product Import (Section 8) */}
       {activeTab === 'abu-selim' && (
@@ -2511,7 +1842,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           <div className="flex justify-end gap-2">
             <button
               type="button"
-              onClick={() => handleTestConnection()}
+              onClick={handleTestConnection}
               className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl font-bold cursor-pointer"
             >
               فحص الاتصال الآن

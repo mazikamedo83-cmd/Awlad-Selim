@@ -24,7 +24,6 @@ import {
   WifiOff,
   ChevronLeft,
   ChevronDown,
-  Clock,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
@@ -34,7 +33,6 @@ import { NavItemKey } from '../../layout/Sidebar';
 import { MobileNotificationsSheet } from './MobileNotificationsSheet';
 import { MobileServerModal } from './MobileServerModal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
-import { SyncCenterModal } from '../../common/SyncCenterModal';
 
 interface StaffMobileShellProps {
   currentPage: NavItemKey;
@@ -73,7 +71,6 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<Record<string, boolean>>({});
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
-  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const toggleSectionCollapse = (sectionId: string) => {
@@ -126,8 +123,6 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [isLauncherOpen]);
 
-  const pendingOrdersCount = (data.customerItemOrders || []).filter((o) => o.status === 'pending').length;
-
   const sections: LauncherSection[] = useMemo(
     () => [
       {
@@ -137,14 +132,9 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         colorClass: 'bg-blue-50 text-blue-900 border-blue-200',
         permission: 'canManageSales',
         items: [
-          {
-            key: 'customer-orders',
-            label: 'طلبات العملاء والمندوبين',
-            badge: pendingOrdersCount > 0 ? `${pendingOrdersCount} جديد` : undefined,
-          },
           { key: 'new-sale', label: 'فاتورة مبيعات جديدة (+)', badge: 'سريع' },
           { key: 'sales-invoices', label: 'فواتير المبيعات' },
-          { key: 'customers', label: 'العملاء والأرصدة' },
+          { key: 'customers', label: 'دليل العملاء والأرصدة والتحصيل' },
           { key: 'sales-returns', label: 'مرتجع المبيعات' },
           { key: 'deleted-invoices', label: 'الفواتير المحذوفة والملغاة', permission: 'canViewDeletedInvoices' },
         ],
@@ -271,7 +261,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         ],
       },
     ],
-    [pendingOrdersCount]
+    []
   );
 
   const filteredSections = useMemo(
@@ -309,7 +299,6 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
 
   const handleSelectNotification = (item: MobileNotificationItem) => {
     const allowedTargets: NavItemKey[] = [
-      'customer-orders',
       'customers',
       'rep-item-transfers',
       'rep-transfers',
@@ -347,7 +336,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         key: 'sales',
         label: 'المبيعات',
         icon: ShoppingCart,
-        active: ['customer-orders', 'sales-invoices', 'new-sale', 'customers', 'sales-returns', 'deleted-invoices'].includes(currentPage),
+        active: ['sales-invoices', 'new-sale', 'customers', 'sales-returns', 'deleted-invoices'].includes(currentPage),
         onClick: () => {
           setIsLauncherOpen(false);
           onNavigate('sales-invoices');
@@ -517,22 +506,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
 
               <button
                 type="button"
-                onClick={() => setIsSyncModalOpen(true)}
-                className="relative min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer"
-                title="مركز المزامنة وطابور العمليات"
-                aria-label="مركز المزامنة"
-              >
-                <Clock className="w-4 h-4" />
-                {data.pendingSyncCount + data.conflictsCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black flex items-center justify-center">
-                    {data.pendingSyncCount + data.conflictsCount}
-                  </span>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => data.triggerSync(true)}
+                onClick={() => data.triggerManualSync()}
                 className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer"
                 title="تحديث ومزامنة"
                 aria-label="تحديث ومزامنة"
@@ -834,8 +808,6 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         message="سيتم إنهاء جلستك الحالية والعودة إلى شاشة الدخول الموحدة."
         confirmLabel="نعم، تسجيل الخروج"
       />
-
-      <SyncCenterModal isOpen={isSyncModalOpen} onClose={() => setIsSyncModalOpen(false)} />
     </div>
   );
 };

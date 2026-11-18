@@ -8,7 +8,6 @@ import {
   linkCustomerToUser,
   recordCustomerPayment,
   detectCustomerUserConflicts,
-  repairUnlinkedCustomerUsers,
   getRepresentativeByUserId,
   isCustomerAllowedForRep,
   getCustomerProductPriceHistory,
@@ -81,16 +80,6 @@ router.get(
   asyncHandler(async (_req, res) => {
     const conflicts = await detectCustomerUserConflicts();
     res.json({ ok: true, ...conflicts });
-  })
-);
-
-router.post(
-  '/conflicts/fix-unlinked',
-  requireStaff,
-  requirePermission('canManageUsers'),
-  asyncHandler(async (req, res) => {
-    const result = await repairUnlinkedCustomerUsers(req.auth.user);
-    res.json({ ok: true, ...result });
   })
 );
 

@@ -29,8 +29,6 @@ import {
   OwnerPersonalTransaction,
   StockCountSession,
   StockTransferRequest,
-  OrderAdvancePayment,
-  SyncConflictRecord,
 } from '../types';
 
 const OFFLINE_ORDERS_QUEUE_KEY = 'awlad_selim_offline_orders_queue_v3';
@@ -51,8 +49,6 @@ export interface DatabaseState {
   repTransfers: RepTransfer[];
   repItemTransfers?: RepItemTransferRequest[];
   customerItemOrders?: CustomerItemOrderRequest[];
-  orderAdvancePayments?: OrderAdvancePayment[];
-  syncConflicts?: SyncConflictRecord[];
   employees: Employee[];
   advancesDeductions: EmployeeAdvanceDeduction[];
   attendance: AttendanceRecord[];
@@ -91,8 +87,6 @@ export function getEmptyClientDatabaseState(): DatabaseState {
     repTransfers: [],
     repItemTransfers: [],
     customerItemOrders: [],
-    orderAdvancePayments: [],
-    syncConflicts: [],
     employees: [],
     advancesDeductions: [],
     attendance: [],
@@ -123,20 +117,7 @@ export function getEmptyClientDatabaseState(): DatabaseState {
       hostname: typeof window !== 'undefined' ? window.location.hostname : 'localhost',
       port: typeof window !== 'undefined' ? Number(window.location.port || (window.location.protocol === 'https:' ? 443 : 3000)) : 3000,
       apiBaseUrl: typeof window !== 'undefined' ? window.location.origin : '',
-      connectionType: 'local_network',
-      activeMode: 'local_network',
-      profiles: {
-        activeMode: 'local_network',
-        localNetwork: {
-          ip: typeof window !== 'undefined' ? window.location.hostname || '192.168.1.100' : '192.168.1.100',
-          port: 3000,
-          hostname: 'awlad-selim-server',
-        },
-        freeRemote: { tunnelUrl: '' },
-        proRemote: { domainUrl: '' },
-        cloudVps: { vpsUrl: '', notes: '' },
-        enforceHttpsForRemote: true,
-      },
+      connectionType: 'reverse_proxy',
       serverStatus: 'checking',
       databaseStatus: 'connected',
       latencyMs: 0,
@@ -149,17 +130,7 @@ export function getEmptyClientDatabaseState(): DatabaseState {
 export interface QueuedCustomerOrder {
   idempotencyKey: string;
   payload: {
-    customerId?: string;
-    customerName?: string;
-    requesterType?: 'customer' | 'representative' | 'staff';
-    items: Array<{
-      productId: string;
-      productName: string;
-      unit: string;
-      unitFactor?: number;
-      unitPrice?: number;
-      quantity: number;
-    }>;
+    items: Array<{ productId: string; productName: string; unit: string; quantity: number }>;
     notes?: string;
     deliveryAddress?: string;
     geoCoordinates?: string;

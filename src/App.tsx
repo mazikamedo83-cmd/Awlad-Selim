@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
 import { ShortcutsProvider, useShortcuts } from './context/ShortcutsContext';
@@ -11,12 +11,11 @@ import { LoginView } from './components/modules/auth/LoginView';
 import { ChangePasswordModal } from './components/modules/auth/ChangePasswordModal';
 import { Header } from './components/layout/Header';
 import { Sidebar, NavItemKey } from './components/layout/Sidebar';
-import { ShieldAlert, AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { ShieldAlert } from 'lucide-react';
 import { UserPermissions, CashOperationType } from './types';
 
 // Views
 import { DashboardView } from './components/modules/dashboard/DashboardView';
-import { CustomerRepOrdersView } from './components/modules/orders/CustomerRepOrdersView';
 import { SalesInvoicesView } from './components/modules/sales/SalesInvoicesView';
 import { DeletedInvoicesView } from './components/modules/sales/DeletedInvoicesView';
 import { CustomersView } from './components/modules/customers/CustomersView';
@@ -35,17 +34,9 @@ import { UsersManagementView } from './components/modules/users/UsersManagementV
 import { SettingsView } from './components/modules/settings/SettingsView';
 import { MobilePortal } from './components/modules/mobile/MobilePortal';
 import { StaffMobileShell } from './components/modules/mobile/StaffMobileShell';
-import { getLaunchDeepLinkUrl, isNativeCapacitor, subscribeDeepLinks } from './services/native';
-import {
-  hasConfiguredServerUrl,
-  hydrateServerUrlFromNative,
-  saveStoredConnectionProfiles,
-  setConfiguredApiBaseUrl,
-} from './services/api';
-import { claimPairingInvitation, discoverServerCandidates, parsePairingInput } from './services/discovery';
+import { isNativeCapacitor } from './services/native';
 
 const PAGE_PERMISSIONS: Partial<Record<NavItemKey, keyof UserPermissions | Array<keyof UserPermissions>>> = {
-  'customer-orders': 'canManageSales',
   'sales-invoices': 'canManageSales',
   'new-sale': 'canManageSales',
   'customers': 'canManageSales',
@@ -108,16 +99,7 @@ const ShortcutGlobalActions: React.FC<{ onOpenCashOp: (mode: CashOperationType) 
 };
 
 const MainAppContent: React.FC = () => {
-  const {
-    isAuthenticated,
-    isLoading,
-    currentUser,
-    hasPermission,
-    refreshAuthContext,
-    pairingBanner,
-    setPairingBanner,
-    clearPairingBanner,
-  } = useAuth();
+  const { isAuthenticated, isLoading, currentUser, hasPermission } = useAuth();
   const [currentPage, setCurrentPage] = useState<NavItemKey>('dashboard');
   const [isSidebarOpenMobile, setIsSidebarOpenMobile] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -129,122 +111,6 @@ const MainAppContent: React.FC = () => {
     if (typeof window === 'undefined') return false;
     return window.innerWidth < 1024;
   });
-
-  const inFlightPairingUrlsRef = useRef<Set<string>>(new Set());
-  const recentPairingUrlsRef = useRef<Map<string, number>>(new Map());
-
-  useEffect(() => {
-    let active = true;
-
-    const handlePairingUrl = async (rawUrl: string) => {
-      const cleanUrl = String(rawUrl || '').trim();
-      if (!cleanUrl) return;
-      const parsed = parsePairingInput(cleanUrl);
-      if (!parsed?.token) {
-        if (/^(?:awladselim:\/\/|https?:\/\/[^/]+\/(?:pair|invite)\/)/i.test(cleanUrl)) {
-          setPairingBanner({
-            type: 'error',
-            message: 'رابط الدعوة غير مكتمل أو لا يحتوي على رمز ربط صالح.',
-          });
-        }
-        return;
-      }
-
-      const dedupeKey = `${parsed.serverUrl || ''}|${parsed.token}`;
-      const lastHandledAt = recentPairingUrlsRef.current.get(dedupeKey) || 0;
-      if (inFlightPairingUrlsRef.current.has(dedupeKey) || Date.now() - lastHandledAt < 5000) {
-        return;
-      }
-
-      inFlightPairingUrlsRef.current.add(dedupeKey);
-      try {
-        const res = await claimPairingInvitation(cleanUrl, { clearExistingAuth: true });
-        if (!active) return;
-        if (res.ok) {
-          setPairingBanner({
-            type: res.requiresAdminApproval ? 'warning' : 'success',
-            message: res.requiresAdminApproval
-              ? `تم ربط الجهاز بسيرفر (${res.companyName || ''}). بانتظار اعتماد مدير النظام، ثم أدخل بيانات حسابك للدخول.`
-              : `تم إعداد الاتصال تلقائياً بسيرفر (${res.companyName || ''}). يرجى تسجيل الدخول باسم المستخدم وكلمة المرور المعتادة.`,
-          });
-          await refreshAuthContext();
-        } else {
-          setPairingBanner({
-            type: 'error',
-            message: res.error || 'تعذر تفعيل رابط الربط',
-          });
-        }
-        if (typeof window !== 'undefined' && window.history?.replaceState) {
-          const cleanPath = window.location.pathname;
-          if (cleanPath.startsWith('/pair/') || cleanPath.startsWith('/invite/') || window.location.search.includes('pair_token=')) {
-            window.history.replaceState({}, '', '/');
-          }
-        }
-      } finally {
-        recentPairingUrlsRef.current.set(dedupeKey, Date.now());
-        inFlightPairingUrlsRef.current.delete(dedupeKey);
-      }
-    };
-
-    const unsubscribeLinks = subscribeDeepLinks(
-      (url) => {
-        handlePairingUrl(url);
-      },
-      { skipInitialLaunchUrl: true }
-    );
-
-    const bootstrapLinksAndDiscovery = async () => {
-      await hydrateServerUrlFromNative();
-      if (!active) return;
-
-      const nativeLaunchUrl = isNativeCapacitor() ? await getLaunchDeepLinkUrl() : null;
-      if (!active) return;
-
-      if (nativeLaunchUrl) {
-        const parsedLaunch = parsePairingInput(nativeLaunchUrl);
-        if (parsedLaunch?.token || /^(?:awladselim:\/\/|https?:\/\/[^/]+\/(?:pair|invite)\/)/i.test(nativeLaunchUrl)) {
-          await handlePairingUrl(nativeLaunchUrl);
-          return;
-        }
-      }
-
-      if (typeof window !== 'undefined') {
-        const loc = window.location.href;
-        if (
-          loc.includes('pair_token=') ||
-          window.location.pathname.startsWith('/pair/') ||
-          window.location.pathname.startsWith('/invite/')
-        ) {
-          await handlePairingUrl(loc);
-          return;
-        }
-      }
-
-      if (isNativeCapacitor() && !hasConfiguredServerUrl()) {
-        try {
-          const found = await discoverServerCandidates();
-          if (!active || found.length === 0 || hasConfiguredServerUrl()) return;
-          const first = found[0];
-          if (first.profiles) saveStoredConnectionProfiles(first.profiles);
-          setConfiguredApiBaseUrl(first.url);
-          setPairingBanner({
-            type: 'success',
-            message: `تم اكتشاف السيرفر المركزي تلقائياً على الشبكة المحلية (${first.url}). يرجى تسجيل الدخول بحسابك.`,
-          });
-          await refreshAuthContext();
-        } catch {
-          // ignore discovery failures
-        }
-      }
-    };
-
-    bootstrapLinksAndDiscovery();
-
-    return () => {
-      active = false;
-      unsubscribeLinks();
-    };
-  }, [refreshAuthContext, setPairingBanner]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -307,9 +173,6 @@ const MainAppContent: React.FC = () => {
       case 'dashboard':
         return <DashboardView onNavigate={(page) => setCurrentPage(page)} />;
 
-      case 'customer-orders':
-        return <CustomerRepOrdersView />;
-
       case 'sales-invoices':
         return <SalesInvoicesView />;
 
@@ -320,7 +183,7 @@ const MainAppContent: React.FC = () => {
         return <DeletedInvoicesView />;
 
       case 'customers':
-        return <CustomersView onNavigate={(page) => setCurrentPage(page)} />;
+        return <CustomersView />;
 
       case 'purchase-invoices':
         return <PurchaseInvoicesView />;
@@ -468,37 +331,6 @@ const MainAppContent: React.FC = () => {
         initialMode={cashOpModal.mode}
         onClose={() => setCashOpModal((prev) => ({ ...prev, open: false }))}
       />
-
-      {pairingBanner && (
-        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[70] w-[calc(100%-1.5rem)] max-w-lg px-2 pointer-events-none">
-          <div
-            className={`pointer-events-auto p-3.5 rounded-2xl border shadow-xl text-xs font-bold flex items-start justify-between gap-2.5 ${
-              pairingBanner.type === 'success'
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
-                : pairingBanner.type === 'warning'
-                ? 'bg-amber-50 border-amber-300 text-amber-900'
-                : 'bg-red-50 border-red-200 text-red-700'
-            }`}
-          >
-            <div className="flex items-start gap-2">
-              {pairingBanner.type === 'success' ? (
-                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-700 mt-0.5" />
-              ) : (
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              )}
-              <span className="leading-relaxed">{pairingBanner.message}</span>
-            </div>
-            <button
-              type="button"
-              onClick={clearPairingBanner}
-              className="p-1 rounded-lg hover:bg-black/5 shrink-0 cursor-pointer"
-              aria-label="إغلاق"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
 
       {useMobileStaffShell ? (
         <StaffMobileShell

@@ -31,20 +31,6 @@ import {
   restoreFullBackup,
 } from '../db/stores/inventoryAdminStore.js';
 import { listAuditLogs } from '../db/stores/authStore.js';
-import { getSystemSettingsSafe } from '../db/stores/catalogStore.js';
-import {
-  listPairingTokens,
-  createPairingToken,
-  revokePairingToken,
-  listPairedDevices,
-  approvePairedDevice,
-  revokePairedDevice,
-  pushConnectionConfigUpdate,
-  updateTunnelRuntimeStatus,
-  getTunnelRuntimeStatus,
-  resolveSafeConnectionProfiles,
-  parseValidAndroidSha256Fingerprints,
-} from '../db/stores/connectionPairingStore.js';
 import { checkPostgresHealth, initializeSchema } from '../db/postgres.js';
 import { runDataMigration, rollbackMigration, readMigrationLogs } from '../db/migrator.js';
 import { readJsonDatabase, getDataPaths } from '../db/jsonLedger.js';
@@ -70,159 +56,26 @@ router.get(
 
 router.get(
   '/server-info',
-  requirePermission('canManageSettings'),
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (_req, res) => {
     const port = Number(process.env.AWLAD_ACTIVE_PORT || process.env.PORT || process.env.API_PORT || 3000);
     const nets = os.networkInterfaces();
-    const lanIps = [];
     const lanUrls = [];
     for (const list of Object.values(nets)) {
       if (!Array.isArray(list)) continue;
       for (const iface of list) {
         if (iface && iface.family === 'IPv4' && !iface.internal) {
-          lanIps.push(iface.address);
           lanUrls.push({ ip: iface.address, url: `http://${iface.address}:${port}` });
         }
       }
     }
     const { dataDir } = getDataPaths();
-    const pgHealth = await checkPostgresHealth();
-    const forwardedProto = String(req.get('x-forwarded-proto') || req.protocol || 'http')
-      .split(',')[0]
-      .trim()
-      .toLowerCase();
-    const sys = await getSystemSettingsSafe();
-    const connectionConfig = resolveSafeConnectionProfiles(sys, lanUrls, port);
-    const { summary: devicesSummary } = await listPairedDevices();
-    const androidFingerprints = parseValidAndroidSha256Fingerprints(
-      process.env.ANDROID_APP_SHA256_FINGERPRINTS || ''
-    );
-    const androidAppLinkHost = String(process.env.ANDROID_APP_LINK_HOST || '').trim().toLowerCase();
-    const androidAppLinksReady =
-      androidFingerprints.length > 0 && Boolean(androidAppLinkHost) && androidAppLinkHost !== 'awladselim.app';
     res.json({
       ok: true,
-      hostname: os.hostname(),
       port,
-      lanIps,
-      lanUrls,
       dataDir,
+      lanUrls,
       isElectron: process.env.AWLAD_ELECTRON === 'true',
-      electronDesktop: process.env.AWLAD_ELECTRON === 'true',
-      databaseMode: pgHealth.status === 'online' ? 'postgresql-enterprise' : 'local-json-ledger',
-      postgresStatus: pgHealth.status,
-      protocol: forwardedProto,
-      httpsActive: forwardedProto === 'https' || Boolean(req.secure),
-      trustProxy: process.env.TRUST_PROXY !== 'false',
-      tunnelStatus: getTunnelRuntimeStatus(),
-      connectionConfig,
-      devicesSummary,
-      appLinksConfigured: {
-        android: androidAppLinksReady,
-        ios: Boolean(String(process.env.APPLE_TEAM_ID || '').trim()),
-        androidDetails: {
-          packageName: (process.env.ANDROID_APP_ID || 'com.awladselim.erp').trim(),
-          appLinkHost: androidAppLinkHost && androidAppLinkHost !== 'awladselim.app' ? androidAppLinkHost : null,
-          hasValidFingerprints: androidFingerprints.length > 0,
-          fingerprintsCount: androidFingerprints.length,
-        },
-      },
     });
-  })
-);
-
-// Smart Device Pairing & Connection Management (Permitted Admin / Settings Manager only)
-router.get(
-  '/pairing/tokens',
-  requirePermission('canManageSettings'),
-  asyncHandler(async (_req, res) => {
-    const tokens = await listPairingTokens();
-    res.json({ ok: true, tokens });
-  })
-);
-
-router.post(
-  '/pairing/tokens',
-  requirePermission('canManageSettings'),
-  asyncHandler(async (req, res) => {
-    const created = await createPairingToken(req.body || {}, req.auth.user, req);
-    res.status(201).json({ ok: true, ...created });
-  })
-);
-
-router.post(
-  '/pairing/tokens/:id/revoke',
-  requirePermission('canManageSettings'),
-  asyncHandler(async (req, res) => {
-    const result = await revokePairingToken(req.params.id, req.auth.user);
-    res.json(result);
-  })
-);
-
-router.get(
-  '/devices',
-  requirePermission('canManageSettings'),
-  asyncHandler(async (_req, res) => {
-    const result = await listPairedDevices();
-    res.json({ ok: true, ...result });
-  })
-);
-
-router.post(
-  '/devices/:deviceId/approve',
-  requirePermission('canManageSettings'),
-  asyncHandler(async (req, res) => {
-    const device = await approvePairedDevice(req.params.deviceId, req.auth.user);
-    res.json({ ok: true, device });
-  })
-);
-
-router.post(
-  '/devices/:deviceId/revoke',
-  requirePermission('canManageSettings'),
-  asyncHandler(async (req, res) => {
-    const device = await revokePairedDevice(req.params.deviceId, req.auth.user);
-    res.json({ ok: true, device });
-  })
-);
-
-router.post(
-  '/devices/:deviceId/resend-link',
-  requirePermission('canManageSettings'),
-  asyncHandler(async (req, res) => {
-    const { devices } = await listPairedDevices();
-    const target = devices.find((d) => d.deviceId === req.params.deviceId);
-    const created = await createPairingToken(
-      {
-        ...(req.body || {}),
-        targetUserId: req.body?.targetUserId ?? target?.linkedUserId ?? '',
-        targetDeviceType:
-          req.body?.targetDeviceType ||
-          (target?.deviceType && target.deviceType !== 'web' ? target.deviceType : 'any'),
-        notes: req.body?.notes || (target ? `إعادة ربط الجهاز: ${target.deviceName}` : ''),
-      },
-      req.auth.user,
-      req
-    );
-    res.status(201).json({ ok: true, ...created });
-  })
-);
-
-router.post(
-  '/connection/push-update',
-  requirePermission('canManageSettings'),
-  asyncHandler(async (req, res) => {
-    const connectionConfig = await pushConnectionConfigUpdate(req.auth.user);
-    res.json({ ok: true, connectionConfig });
-  })
-);
-
-router.post(
-  '/tunnel-status',
-  requirePermission('canManageSettings'),
-  asyncHandler(async (req, res) => {
-    const result = await updateTunnelRuntimeStatus(req.body || {}, req.auth.user);
-    res.json({ ok: true, ...result });
   })
 );
 
@@ -411,6 +264,30 @@ router.post('/migration/rollback', requireAdmin, asyncHandler(async (req, res) =
   const result = await rollbackMigration(req.body?.migrationId || req.body?.backupFile, req.auth.user.fullName);
   if (!result.success) return res.status(400).json({ ok: false, error: result.error });
   res.json({ ok: true, ...result });
+}));
+
+router.get('/server-info', asyncHandler(async (_req, res) => {
+  const { networkInterfaces, hostname } = await import('node:os');
+  const { getDataPaths } = await import('../db/jsonLedger.js');
+  const nets = networkInterfaces();
+  const lanIps = [];
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name] || []) {
+      if (net && net.family === 'IPv4' && !net.internal) {
+        lanIps.push(net.address);
+      }
+    }
+  }
+  const activePort = Number(process.env.AWLAD_ACTIVE_PORT || process.env.PORT || process.env.API_PORT || 3000);
+  res.json({
+    ok: true,
+    hostname: hostname(),
+    port: activePort,
+    lanIps,
+    lanUrls: lanIps.map((ip) => `http://${ip}:${activePort}`),
+    dataDir: getDataPaths().dataDir,
+    electronDesktop: process.env.AWLAD_ELECTRON === 'true',
+  });
 }));
 
 export default router;

@@ -74,21 +74,8 @@ export async function startStandaloneServer(options = {}) {
   const app = createApiApp();
 
   if (fs.existsSync(distDir)) {
-    const setNoCacheHeaders = (res) => {
-      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
-    };
-    app.use(express.static(distDir, {
-      index: false,
-      setHeaders: (res, filePath) => {
-        if (path.basename(filePath).toLowerCase() === 'index.html') {
-          setNoCacheHeaders(res);
-        }
-      },
-    }));
+    app.use(express.static(distDir));
     app.get('*', (_req, res) => {
-      setNoCacheHeaders(res);
       res.sendFile(path.join(distDir, 'index.html'));
     });
   }

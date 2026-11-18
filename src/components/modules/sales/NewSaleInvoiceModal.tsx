@@ -8,8 +8,6 @@ import { useShortcuts } from '../../../context/ShortcutsContext';
 import { CustomerItemOrderRequest } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
-import { QuantityInput } from '../../common/QuantityInput';
-import { computeLineTotal } from '../../../utils/quantity';
 
 interface NewSaleInvoiceModalProps {
   isOpen: boolean;
@@ -86,12 +84,8 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     );
 
     if (order) {
-      const orderAdvance = Math.max(0, Number(order.advancePaidAmount || 0));
       setSelectedCustomerId(order.customerId || '');
-      if (order.deliveryRepId || order.representativeId) {
-        setSelectedRepId(order.deliveryRepId || order.representativeId || '');
-      }
-      setPaymentType(orderAdvance > 0 ? 'partial' : 'credit');
+      setPaymentType('credit');
       setPaidAmount(0);
       setDiscountTotal(0);
       setNotes(
@@ -256,7 +250,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
       return;
     }
 
-    const itemTotal = computeLineTotal(inputQuantity, inputUnitPrice);
+    const itemTotal = inputQuantity * inputUnitPrice;
 
     setItems((prev) => [
       ...prev,
@@ -287,11 +281,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     setItems((prev) =>
       prev.map((it, i) =>
         i === idx
-          ? {
-              ...it,
-              unitPrice: Math.max(0, newPrice),
-              total: computeLineTotal(it.quantity, Math.max(0, newPrice), it.discount || 0),
-            }
+          ? { ...it, unitPrice: Math.max(0, newPrice), total: it.quantity * Math.max(0, newPrice) - (it.discount || 0) }
           : it
       )
     );
@@ -302,7 +292,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     setItems((prev) =>
       prev.map((it, i) =>
         i === idx
-          ? { ...it, quantity: qty, total: computeLineTotal(qty, it.unitPrice, it.discount || 0) }
+          ? { ...it, quantity: qty, total: qty * it.unitPrice - (it.discount || 0) }
           : it
       )
     );
@@ -320,24 +310,10 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     return Math.max(0, subtotal - discountTotal);
   }, [subtotal, discountTotal]);
 
-  const appliedAdvance = useMemo(() => {
-    if (!sourceOrder) return 0;
-    return Math.min(grandTotal, Math.max(0, Number(sourceOrder.advancePaidAmount || 0)));
-  }, [sourceOrder, grandTotal]);
-
-  const maxCashAtInvoice = useMemo(() => {
-    return Math.max(0, grandTotal - appliedAdvance);
-  }, [grandTotal, appliedAdvance]);
-
-  const effectivePaidAtInvoice = useMemo(() => {
-    if (paymentType === 'cash') return maxCashAtInvoice;
-    if (paymentType === 'credit') return 0;
-    return Math.min(maxCashAtInvoice, Math.max(0, Number(paidAmount) || 0));
-  }, [paymentType, maxCashAtInvoice, paidAmount]);
-
   const remainingAmount = useMemo(() => {
-    return Math.max(0, grandTotal - appliedAdvance - effectivePaidAtInvoice);
-  }, [grandTotal, appliedAdvance, effectivePaidAtInvoice]);
+    if (paymentType === 'cash') return 0;
+    return Math.max(0, grandTotal - paidAmount);
+  }, [grandTotal, paidAmount, paymentType]);
 
   const shortageItems = useMemo(() => {
     const list: Array<{
@@ -372,11 +348,11 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
 
   useEffect(() => {
     if (paymentType === 'cash') {
-      setPaidAmount(maxCashAtInvoice);
+      setPaidAmount(grandTotal);
     } else if (paymentType === 'credit') {
       setPaidAmount(0);
     }
-  }, [paymentType, maxCashAtInvoice]);
+  }, [paymentType, grandTotal]);
 
   const handleSubmitInvoice = useCallback(async (shouldPrint = false) => {
     if (isSubmitting) return;
@@ -431,7 +407,8 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
         }
       }
 
-      const totalPaidOnInvoice = Math.min(grandTotal, appliedAdvance + effectivePaidAtInvoice);
+      const rawPaid = Number(paidAmount) || 0;
+      const effectivePaid = paymentType === 'cash' ? grandTotal : paymentType === 'credit' ? 0 : Math.min(grandTotal, Math.max(0, rawPaid));
 
       const payload = {
         date: invoiceDate,
@@ -446,10 +423,8 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
         discountTotal,
         taxTotal: 0,
         grandTotal,
-        paidAmount: totalPaidOnInvoice,
-        appliedAdvanceAmount: appliedAdvance,
-        paidAtInvoice: effectivePaidAtInvoice,
-        remainingAmount: Math.max(0, grandTotal - totalPaidOnInvoice),
+        paidAmount: effectivePaid,
+        remainingAmount: paymentType === 'cash' ? 0 : Math.max(0, grandTotal - effectivePaid),
         paymentType,
         paymentMethod: 'cash' as const,
         cashboxId: selectedCashboxId,
@@ -477,9 +452,8 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
   }, [
     isSubmitting, items, warehouses, selectedWarehouseId, representatives, selectedRepId, currentUser,
     settings.allowNegativeStock, invoiceStatusMode, shortageItems, createRepItemTransfer, invoiceDate,
-    selectedCustomerId, selectedCustomer, sourceOrder, subtotal, discountTotal, grandTotal, appliedAdvance,
-    effectivePaidAtInvoice, paymentType, selectedCashboxId, notes, convertOrderToInvoice, createSalesInvoice,
-    onInvoiceCreated, onClose
+    selectedCustomerId, selectedCustomer, sourceOrder, subtotal, discountTotal, grandTotal, paymentType,
+    paidAmount, selectedCashboxId, notes, convertOrderToInvoice, createSalesInvoice, onInvoiceCreated, onClose
   ]);
 
   const submitRef = useRef(handleSubmitInvoice);
@@ -671,20 +645,19 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
 
               <div>
                 <label className="block font-bold text-slate-700 mb-1">الكمية:</label>
-                <QuantityInput
-                  inputRef={qtyInputRef}
-                  allowDecimals
-                  min={0.001}
+                <input
+                  ref={qtyInputRef}
+                  type="number"
+                  min="1"
                   value={inputQuantity}
-                  onChange={setInputQuantity}
+                  onChange={(e) => setInputQuantity(Number(e.target.value))}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
                       handleAddItem();
                     }
                   }}
-                  ariaLabel="الكمية"
-                  inputClassName="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-center font-mono outline-hidden focus:border-blue-700"
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-center font-mono outline-hidden focus:border-blue-700"
                 />
               </div>
 
@@ -747,13 +720,12 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                     <td className="p-3 font-bold text-slate-800">{it.productName}</td>
                     <td className="p-3 text-center text-slate-600">{it.unit}</td>
                     <td className="p-3 text-center">
-                      <QuantityInput
-                        allowDecimals
-                        min={0.001}
+                      <input
+                        type="number"
+                        min="1"
                         value={it.quantity}
-                        onChange={(q) => handleUpdateRowQty(idx, q)}
-                        ariaLabel={`كمية ${it.productName}`}
-                        inputClassName="w-20 border border-slate-300 rounded-lg px-2 py-1 text-center font-bold font-mono outline-hidden focus:border-blue-700"
+                        onChange={(e) => handleUpdateRowQty(idx, Number(e.target.value))}
+                        className="w-20 border border-slate-300 rounded-lg px-2 py-1 text-center font-bold font-mono"
                       />
                     </td>
                     <td className="p-3 text-center">
@@ -920,40 +892,19 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
               <span className="font-mono">{grandTotal.toFixed(2)} {settings.currency}</span>
             </div>
 
-            {appliedAdvance > 0 && (
-              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 space-y-1 text-xs">
-                <div className="flex justify-between font-black text-emerald-900">
-                  <span>الدفعة المقدمة المدفوعة مسبقاً على الطلب:</span>
-                  <span className="font-mono">- {appliedAdvance.toFixed(2)} {settings.currency}</span>
-                </div>
-                <p className="text-[11px] text-emerald-800">
-                  لا تضاف للخزينة مرة أخرى عند التحويل — تودَع بالخزينة فقط أي قيمة محصلة نقداً الآن.
-                </p>
-              </div>
-            )}
-
             {paymentType === 'partial' && (
               <div className="flex items-center justify-between pt-1">
-                <span className="font-bold text-emerald-700">
-                  {appliedAdvance > 0 ? 'المحصل نقداً عند الفوترة:' : 'المدفوع نقداً:'}
-                </span>
+                <span className="font-bold text-emerald-700">المدفوع نقداً:</span>
                 <div className="w-32">
                   <input
                     type="number"
                     min="0"
-                    max={maxCashAtInvoice}
+                    max={grandTotal}
                     value={paidAmount}
-                    onChange={(e) => setPaidAmount(Math.min(maxCashAtInvoice, Math.max(0, Number(e.target.value))))}
+                    onChange={(e) => setPaidAmount(Number(e.target.value))}
                     className="w-full bg-emerald-50 border border-emerald-300 rounded-lg px-2 py-1 text-center font-mono font-bold text-emerald-800 text-xs"
                   />
                 </div>
-              </div>
-            )}
-
-            {paymentType === 'cash' && appliedAdvance > 0 && (
-              <div className="flex justify-between text-xs font-bold text-emerald-700 pt-1">
-                <span>المحصل نقداً بالخزينة عند الفوترة:</span>
-                <span className="font-mono">{effectivePaidAtInvoice.toFixed(2)} {settings.currency}</span>
               </div>
             )}
 

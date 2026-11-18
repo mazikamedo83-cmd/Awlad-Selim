@@ -11,13 +11,12 @@
     "server:start": "node server/index.js",
     "build": "vite build",
     "preview": "vite preview",
-    "clean": "node -e \"const fs=require('fs');for(const d of ['dist','dist-electron','server.js'])fs.rmSync(d,{recursive:true,force:true})\"",
+    "clean": "rm -rf dist dist-electron server.js",
     "lint": "tsc --noEmit",
-    "electron:icons": "node scripts/generate-win-icon.mjs",
     "electron:start": "npm run build && electron .",
-    "electron:pack": "npm run clean && npm run build && npm run electron:icons && electron-builder --win --x64 --dir",
-    "electron:dist": "npm run clean && npm run build && npm run electron:icons && electron-builder --win nsis --x64 --publish never",
-    "electron:portable": "npm run clean && npm run build && npm run electron:icons && electron-builder --win portable --x64 --publish never",
+    "electron:pack": "npm run build && electron-builder --win --x64 --dir",
+    "electron:dist": "npm run build && electron-builder --win nsis --x64 --publish never",
+    "electron:portable": "npm run build && electron-builder --win portable --x64 --publish never",
     "cap:sync": "npm run build && npx cap sync",
     "cap:android": "npx cap sync android",
     "cap:ios": "npx cap sync ios"
@@ -40,18 +39,15 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.19",
     "@types/pg": "^8.23.1",
-    "@types/qrcode": "^1.5.6",
     "@vitejs/plugin-react": "^6.1.1",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
-    "jsqr": "^1.4.0",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "pg": "^8.23.1",
     "pg-mem": "^3.0.14",
-    "qrcode": "^1.5.4",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "vite": "^8.3.0"
@@ -82,15 +78,23 @@
     },
     "files": [
       "dist/**/*",
-      "!dist/assets/aistudio/**/*",
       "electron/**/*",
       "server/**/*",
       "!server/tests/**/*",
       "!server/data/**/*",
-      "!android/**/*",
-      "!ios/**/*",
       "build/icon.*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "server/data",
+        "to": "server/data",
+        "filter": [
+          "**/*",
+          "!*.tmp",
+          "!sessions.json"
+        ]
+      }
     ],
     "asar": false,
     "compression": "store",

@@ -1,7 +1,6 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell, clipboard, session } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, clipboard } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
-const nodeCrypto = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { prepareElectronDataDirectory } = require('./dataBootstrap.cjs');
 
@@ -12,9 +11,6 @@ let desktopState = {
   platform: process.platform,
   dataDir: '',
   backupsDir: '',
-  offlineClientDir: '',
-  distDir: '',
-  uiEntry: '',
   envFilePath: null,
   port: 3000,
   lanUrls: [],
@@ -131,7 +127,6 @@ function buildApplicationMenu() {
       label: 'عرض',
       submenu: [
         { label: 'إعادة تحميل', role: 'reload' },
-        { label: 'إعادة تحميل قسري (مسح الكاش)', role: 'forceReload' },
         { label: 'تكبير', role: 'zoomIn' },
         { label: 'تصغير', role: 'zoomOut' },
         { label: 'الحجم الافتراضي', role: 'resetZoom' },
@@ -169,51 +164,6 @@ function buildApplicationMenu() {
   Menu.setApplicationMenu(menu);
 }
 
-function ensureOfflineClientKey() {
-  if (!desktopState.offlineClientDir) return null;
-  fs.mkdirSync(desktopState.offlineClientDir, { recursive: true });
-  const keyPath = path.join(desktopState.offlineClientDir, '.vault.key');
-  if (fs.existsSync(keyPath)) {
-    const raw = fs.readFileSync(keyPath);
-    if (raw.length === 32) return raw;
-  }
-  const key = nodeCrypto.randomBytes(32);
-  fs.writeFileSync(keyPath, key, { mode: 0o600 });
-  return key;
-}
-
-function sanitizeKeySegment(val) {
-  return String(val || 'default').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'default';
-}
-
-function writeEncryptedOfflineFile(filePath, plainBuffer) {
-  const key = ensureOfflineClientKey();
-  if (!key) throw new Error('Offline client directory not initialized');
-  const iv = nodeCrypto.randomBytes(12);
-  const cipher = nodeCrypto.createCipheriv('aes-256-gcm', key, iv);
-  const encrypted = Buffer.concat([cipher.update(plainBuffer), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  const payload = Buffer.concat([Buffer.from('AWL1', 'ascii'), iv, tag, encrypted]);
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const tmpPath = `${filePath}.${process.pid}.tmp`;
-  fs.writeFileSync(tmpPath, payload);
-  fs.renameSync(tmpPath, filePath);
-}
-
-function readEncryptedOfflineFile(filePath) {
-  if (!fs.existsSync(filePath)) return null;
-  const key = ensureOfflineClientKey();
-  if (!key) return null;
-  const raw = fs.readFileSync(filePath);
-  if (raw.length < 32 || raw.subarray(0, 4).toString('ascii') !== 'AWL1') return null;
-  const iv = raw.subarray(4, 16);
-  const tag = raw.subarray(16, 32);
-  const data = raw.subarray(32);
-  const decipher = nodeCrypto.createDecipheriv('aes-256-gcm', key, iv);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(data), decipher.final()]);
-}
-
 function registerIpcHandlers() {
   ipcMain.handle('awlad:get-desktop-info', () => ({
     ...desktopState,
@@ -235,82 +185,6 @@ function registerIpcHandlers() {
   ipcMain.handle('awlad:copy-text', (_event, text) => {
     clipboard.writeText(String(text || ''));
     return { ok: true };
-  });
-
-  ipcMain.handle('awlad:offline-kv-get', (_event, namespace, key) => {
-    try {
-      if (!desktopState.offlineClientDir) return { ok: false, value: null };
-      const filePath = path.join(
-        desktopState.offlineClientDir,
-        sanitizeKeySegment(namespace),
-        `${sanitizeKeySegment(key)}.enc`
-      );
-      const buf = readEncryptedOfflineFile(filePath);
-      if (!buf) return { ok: true, value: null };
-      return { ok: true, value: JSON.parse(buf.toString('utf8')) };
-    } catch (err) {
-      return { ok: false, value: null, error: err?.message || String(err) };
-    }
-  });
-
-  ipcMain.handle('awlad:offline-kv-set', (_event, namespace, key, value) => {
-    try {
-      if (!desktopState.offlineClientDir) return { ok: false };
-      const filePath = path.join(
-        desktopState.offlineClientDir,
-        sanitizeKeySegment(namespace),
-        `${sanitizeKeySegment(key)}.enc`
-      );
-      writeEncryptedOfflineFile(filePath, Buffer.from(JSON.stringify(value), 'utf8'));
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: err?.message || String(err) };
-    }
-  });
-
-  ipcMain.handle('awlad:offline-kv-delete', (_event, namespace, key) => {
-    try {
-      if (!desktopState.offlineClientDir) return { ok: false };
-      const filePath = path.join(
-        desktopState.offlineClientDir,
-        sanitizeKeySegment(namespace),
-        `${sanitizeKeySegment(key)}.enc`
-      );
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: err?.message || String(err) };
-    }
-  });
-
-  ipcMain.handle('awlad:offline-media-write', (_event, mediaKey, dataUrl) => {
-    try {
-      if (!desktopState.offlineClientDir) return { ok: false };
-      const filePath = path.join(
-        desktopState.offlineClientDir,
-        'media',
-        `${sanitizeKeySegment(mediaKey)}.enc`
-      );
-      writeEncryptedOfflineFile(filePath, Buffer.from(String(dataUrl || ''), 'utf8'));
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: err?.message || String(err) };
-    }
-  });
-
-  ipcMain.handle('awlad:offline-media-read', (_event, mediaKey) => {
-    try {
-      if (!desktopState.offlineClientDir) return { ok: false, dataUrl: null };
-      const filePath = path.join(
-        desktopState.offlineClientDir,
-        'media',
-        `${sanitizeKeySegment(mediaKey)}.enc`
-      );
-      const buf = readEncryptedOfflineFile(filePath);
-      return { ok: true, dataUrl: buf ? buf.toString('utf8') : null };
-    } catch (err) {
-      return { ok: false, dataUrl: null, error: err?.message || String(err) };
-    }
   });
 }
 
@@ -354,19 +228,7 @@ async function createMainWindow(startUrl, appRoot) {
     mainWindow = null;
   });
 
-  try {
-    await session.defaultSession.clearCache();
-    await session.defaultSession.clearStorageData({
-      origin: startUrl,
-      storages: ['serviceworkers', 'cachestorage'],
-    });
-  } catch (err) {
-    console.warn('[Electron Cache Clear Warning]:', err?.message || err);
-  }
-
-  await mainWindow.loadURL(startUrl, {
-    extraHeaders: 'pragma: no-cache\nCache-Control: no-cache, no-store, must-revalidate\n',
-  });
+  await mainWindow.loadURL(startUrl);
 }
 
 async function shutdownGracefully() {
@@ -411,28 +273,13 @@ async function bootstrapApplication() {
 
   desktopState.dataDir = prepResult.targetDataDir;
   desktopState.backupsDir = prepResult.backupsDir;
-  desktopState.offlineClientDir = path.join(path.dirname(prepResult.targetDataDir), 'offline_client');
   desktopState.envFilePath = prepResult.envFilePath;
   desktopState.databaseState = prepResult.databaseState;
 
-  const devStartUrl = !app.isPackaged ? (process.env.ELECTRON_START_URL || '').trim() : '';
+  const devStartUrl = (process.env.ELECTRON_START_URL || '').trim();
   let startUrl = devStartUrl;
 
   if (!devStartUrl) {
-    const distDir = path.join(appRoot, 'dist');
-    const distIndexPath = path.join(distDir, 'index.html');
-    if (!fs.existsSync(distIndexPath)) {
-      dialog.showErrorBox(
-        'ملفات الواجهة مفقودة - AWLAD SELIM',
-        `تعذر العثور على ملف الواجهة المحدث:\n${distIndexPath}\n\nيرجى إعادة تثبيت أو إعادة بناء نسخة Windows.`
-      );
-      app.exit(1);
-      return;
-    }
-
-    desktopState.distDir = distDir;
-    desktopState.uiEntry = distIndexPath;
-
     const serverEntryUrl = pathToFileURL(path.join(appRoot, 'server', 'index.js')).href;
     const { startStandaloneServer } = await import(serverEntryUrl);
 
@@ -440,14 +287,14 @@ async function bootstrapApplication() {
       serverInstance = await startStandaloneServer({
         host: '0.0.0.0',
         port: Number(process.env.PORT || process.env.API_PORT || 3000),
-        distDir,
+        distDir: path.join(appRoot, 'dist'),
         envFiles: prepResult.envFilePath ? [prepResult.envFilePath] : [],
         allowPortFallback: process.env.AWLAD_ALLOW_PORT_FALLBACK === 'true',
       });
     } catch (err) {
       dialog.showErrorBox(
         'تعذر تشغيل خادم AWLAD SELIM المحلي',
-        `حدث خطأ أثناء تشغيل الخادم الداخلي على المنفذ ${process.env.PORT || 3000}.\n\n${err.message}\n\nإذا كان هناك خادم قديم أو آخر يعمل على نفس المنفذ، أغلقه ثم أعد فتح البرنامج.`
+        `حدث خطأ أثناء تشغيل الخادم الداخلي على المنفذ ${process.env.PORT || 3000}.\n\n${err.message}\n\nإذا كان هناك خادم آخر يعمل على نفس المنفذ، أغلقه ثم أعد فتح البرنامج.`
       );
       app.exit(1);
       return;

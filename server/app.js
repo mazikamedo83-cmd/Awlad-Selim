@@ -12,15 +12,10 @@ import personalAccountsRoutes from './routes/personalAccounts.js';
 import stockCountsRoutes from './routes/stockCounts.js';
 import stockTransfersRoutes from './routes/stockTransfers.js';
 import mobileRoutes from './routes/mobile.js';
-import syncRoutes from './routes/sync.js';
-import { pairingApiRouter, pairingPublicPagesRouter } from './routes/pairing.js';
-import { getTunnelRuntimeStatus } from './db/stores/connectionPairingStore.js';
-import { getSystemSettingsSafe } from './db/stores/catalogStore.js';
 import { checkPostgresHealth, initializeSchema } from './db/postgres.js';
 import { getAuthStatus, bootstrapAdmin } from './db/stores/authStore.js';
 import { exportFullBackup, restoreFullBackup } from './db/stores/inventoryAdminStore.js';
 import { requireAuth, requireAdmin, asyncHandler, errorMiddleware } from './middleware/auth.js';
-import { AppError } from './utils/errors.js';
 import { resetPgModeCache, isPgMode } from './db/stores/mode.js';
 
 export async function initializeServerRuntime() {
@@ -61,6 +56,11 @@ export function createApiApp() {
 
   app.set('trust proxy', process.env.TRUST_PROXY === 'false' ? false : 1);
 
+  const allowedOriginsEnv = (process.env.ALLOWED_ORIGINS || '').trim();
+  const allowedList = allowedOriginsEnv
+    ? allowedOriginsEnv.split(',').map((s) => s.trim()).filter(Boolean)
+    : null;
+  const allowMobileLanHttp = process.env.ALLOW_MOBILE_LAN_HTTP !== 'false';
   const capacitorOrigins = new Set([
     'capacitor://localhost',
     'ionic://localhost',
@@ -68,20 +68,6 @@ export function createApiApp() {
     'http://localhost',
     'http://127.0.0.1',
   ]);
-
-  const matchesOriginPattern = (origin, pattern) => {
-    if (origin === pattern) return true;
-    if (pattern.startsWith('*.')) {
-      try {
-        const parsed = new URL(origin);
-        const suffix = pattern.slice(1).toLowerCase(); // ".example.com"
-        return parsed.hostname.toLowerCase().endsWith(suffix);
-      } catch {
-        return false;
-      }
-    }
-    return false;
-  };
 
   app.disable('x-powered-by');
   app.use((_req, res, next) => {
@@ -91,57 +77,28 @@ export function createApiApp() {
   });
 
   app.use(
-    cors((req, cb) => {
-      const allowedOriginsEnv = (process.env.ALLOWED_ORIGINS || '').trim();
-      const allowedList = allowedOriginsEnv
-        ? allowedOriginsEnv.split(',').map((s) => s.trim()).filter(Boolean)
-        : null;
-      const allowMobileLanHttp = process.env.ALLOW_MOBILE_LAN_HTTP !== 'false';
-      const allowCloudflareTunnel = process.env.ALLOW_CLOUDFLARE_QUICK_TUNNEL !== 'false';
-
-      const origin = req.get('origin');
-      const corsOptions = {
-        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Device-Info', 'X-Device-Id'],
-        credentials: true,
-      };
-      if (!origin) return cb(null, { ...corsOptions, origin: true });
-      if (
-        capacitorOrigins.has(origin) ||
-        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)
-      ) {
-        return cb(null, { ...corsOptions, origin: true });
-      }
-      // Allow same-host origin behind Cloudflare Tunnel / Nginx Reverse Proxy / Cloud VPS
-      try {
-        const originHost = new URL(origin).host.toLowerCase();
-        const forwardedHost = (req.get('x-forwarded-host') || req.get('host') || '')
-          .split(',')[0]
-          .trim()
-          .toLowerCase();
-        if (forwardedHost && originHost === forwardedHost) {
-          return cb(null, { ...corsOptions, origin: true });
+    cors({
+      origin: (origin, cb) => {
+        if (!origin) return cb(null, true);
+        if (
+          capacitorOrigins.has(origin) ||
+          /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)
+        ) {
+          return cb(null, true);
         }
-      } catch {
-        // ignore malformed origin URL
-      }
-      if (!allowedList) return cb(null, { ...corsOptions, origin: true });
-      if (allowedList.some((pat) => matchesOriginPattern(origin, pat))) {
-        return cb(null, { ...corsOptions, origin: true });
-      }
-      if (
-        allowCloudflareTunnel &&
-        /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/i.test(origin)
-      ) {
-        return cb(null, { ...corsOptions, origin: true });
-      }
-      if (
-        allowMobileLanHttp &&
-        /^https?:\/\/(192\.168|10|172\.(1[6-9]|2\d|3[01]))(\.\d{1,3}){2,3}(:\d+)?$/i.test(origin)
-      ) {
-        return cb(null, { ...corsOptions, origin: true });
-      }
-      return cb(new AppError(403, 'Origin not allowed by CORS', 'CORS_FORBIDDEN'));
+        if (!allowedList) return cb(null, true);
+        if (allowedList.includes(origin)) return cb(null, true);
+        if (
+          allowMobileLanHttp &&
+          /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)\d{1,3}(\.\d{1,3})?(:\d+)?$/i.test(origin)
+        ) {
+          return cb(null, true);
+        }
+        return cb(new Error('Origin not allowed by CORS'));
+      },
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Device-Info'],
+      credentials: true,
     })
   );
 
@@ -161,7 +118,7 @@ export function createApiApp() {
   // Safe public health check (NEVER leaks credentials, users, or database contents)
   app.get(
     '/api/health',
-    asyncHandler(async (req, res) => {
+    asyncHandler(async (_req, res) => {
       const pgStatus = await checkPostgresHealth();
       const authStatus = await getAuthStatus();
       const port = Number(process.env.AWLAD_ACTIVE_PORT || process.env.PORT || process.env.API_PORT || 3000);
@@ -175,28 +132,14 @@ export function createApiApp() {
           }
         }
       }
-      const forwardedProto = String(req.get('x-forwarded-proto') || req.protocol || 'http')
-        .split(',')[0]
-        .trim()
-        .toLowerCase();
-      const httpsActive = forwardedProto === 'https' || Boolean(req.secure);
-      const sysSettings = await getSystemSettingsSafe();
-      const activeMode = sysSettings?.extraSettings?.connectionConfig?.activeMode || 'local_network';
-      const tunnelState = getTunnelRuntimeStatus();
-
       res.json({
         ok: true,
         service: 'AWLAD SELIM Enterprise Server',
         version: '3.0.0',
         timestamp: new Date().toISOString(),
         mode: pgStatus.status === 'online' ? 'postgresql-enterprise' : 'local-json-ledger',
-        activeMode,
-        tunnelStatus: { status: tunnelState.status, provider: tunnelState.provider },
         needsAdminSetup: authStatus.needsAdminSetup,
         port,
-        protocol: forwardedProto,
-        httpsActive,
-        connectionModesSupported: ['local_network', 'free_remote', 'pro_remote', 'cloud_vps'],
         lanUrls: lanIps.map((ip) => `http://${ip}:${port}`),
         postgres: {
           configured: pgStatus.configured,
@@ -213,11 +156,7 @@ export function createApiApp() {
     })
   );
 
-  // App Links / Universal Links & Direct Device Pairing Landing Pages (must precede SPA fallback)
-  app.use('/', pairingPublicPagesRouter);
-
   // Scoped Modular REST APIs
-  app.use('/api', pairingApiRouter);
   app.use('/api/auth', authRoutes);
   app.use('/api/customers', customersRoutes);
   app.use('/api/products', productsRoutes);
@@ -229,7 +168,6 @@ export function createApiApp() {
   app.use('/api/stock-counts', stockCountsRoutes);
   app.use('/api/stock-transfers', stockTransfersRoutes);
   app.use('/api/mobile', mobileRoutes);
-  app.use('/api/sync', syncRoutes);
 
   // Legacy full-database endpoints strictly locked to Admin only (401 unauth, 403 non-admin)
   app.get(

@@ -8,7 +8,6 @@ import { InvoiceReturn, Invoice } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
-import { QuantityInput } from '../../common/QuantityInput';
 
 export interface ReturnsViewProps {
   initialTypeFilter?: 'all' | 'sales_return' | 'purchase_return';
@@ -390,19 +389,16 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                         </td>
                         <td className="p-2 text-center">{it.unitPrice}</td>
                         <td className="p-2 text-center">
-                          <QuantityInput
-                            allowDecimals
-                            min={0}
+                          <input
+                            type="number"
+                            min="0"
                             max={maxAllowed}
                             value={returnQuantities[it.productId] || 0}
-                            onChange={(q) =>
-                              setReturnQuantities((prev) => ({
-                                ...prev,
-                                [it.productId]: Math.min(maxAllowed, Math.max(0, q)),
-                              }))
-                            }
-                            ariaLabel={`كمية المرتجع ${it.productName}`}
-                            inputClassName="w-20 border rounded-lg p-1 text-center font-mono font-bold outline-hidden focus:border-blue-700"
+                            onChange={(e) => setReturnQuantities({
+                              ...returnQuantities,
+                              [it.productId]: Math.min(maxAllowed, Number(e.target.value))
+                            })}
+                            className="w-20 border rounded-lg p-1 text-center font-mono font-bold"
                           />
                         </td>
                       </tr>
