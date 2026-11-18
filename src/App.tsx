@@ -34,7 +34,13 @@ import { UsersManagementView } from './components/modules/users/UsersManagementV
 import { SettingsView } from './components/modules/settings/SettingsView';
 import { MobilePortal } from './components/modules/mobile/MobilePortal';
 import { StaffMobileShell } from './components/modules/mobile/StaffMobileShell';
-import { isNativeCapacitor } from './services/native';
+import { isNativeCapacitor, subscribeDeepLinks } from './services/native';
+import {
+  hasConfiguredServerUrl,
+  saveStoredConnectionProfiles,
+  setConfiguredApiBaseUrl,
+} from './services/api';
+import { claimPairingInvitation, discoverServerCandidates, parsePairingInput } from './services/discovery';
 
 const PAGE_PERMISSIONS: Partial<Record<NavItemKey, keyof UserPermissions | Array<keyof UserPermissions>>> = {
   'sales-invoices': 'canManageSales',
@@ -99,7 +105,7 @@ const ShortcutGlobalActions: React.FC<{ onOpenCashOp: (mode: CashOperationType) 
 };
 
 const MainAppContent: React.FC = () => {
-  const { isAuthenticated, isLoading, currentUser, hasPermission } = useAuth();
+  const { isAuthenticated, isLoading, currentUser, hasPermission, refreshAuthContext, setPairingBanner } = useAuth();
   const [currentPage, setCurrentPage] = useState<NavItemKey>('dashboard');
   const [isSidebarOpenMobile, setIsSidebarOpenMobile] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -111,6 +117,71 @@ const MainAppContent: React.FC = () => {
     if (typeof window === 'undefined') return false;
     return window.innerWidth < 1024;
   });
+
+  useEffect(() => {
+    let active = true;
+
+    const handlePairingUrl = async (rawUrl: string) => {
+      const parsed = parsePairingInput(rawUrl);
+      if (!parsed?.token) return;
+      const res = await claimPairingInvitation(rawUrl);
+      if (!active) return;
+      if (res.ok) {
+        setPairingBanner({
+          type: res.requiresAdminApproval ? 'warning' : 'success',
+          message: res.requiresAdminApproval
+            ? `تم ربط الجهاز بسيرفر (${res.companyName || ''}). بانتظار اعتماد مدير النظام، ثم أدخل بيانات حسابك للدخول.`
+            : `تم إعداد الاتصال تلقائياً بسيرفر (${res.companyName || ''}). يرجى تسجيل الدخول باسم المستخدم وكلمة المرور المعتادة.`,
+        });
+        await refreshAuthContext();
+      } else {
+        setPairingBanner({
+          type: 'error',
+          message: res.error || 'تعذر تفعيل رابط الربط',
+        });
+      }
+      if (typeof window !== 'undefined' && window.history?.replaceState) {
+        const cleanPath = window.location.pathname;
+        if (cleanPath.startsWith('/pair/') || cleanPath.startsWith('/invite/') || window.location.search.includes('pair_token=')) {
+          window.history.replaceState({}, '', '/');
+        }
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      const loc = window.location.href;
+      if (
+        loc.includes('pair_token=') ||
+        window.location.pathname.startsWith('/pair/') ||
+        window.location.pathname.startsWith('/invite/')
+      ) {
+        handlePairingUrl(loc);
+      } else if (isNativeCapacitor() && !hasConfiguredServerUrl()) {
+        discoverServerCandidates()
+          .then(async (found) => {
+            if (!active || found.length === 0 || hasConfiguredServerUrl()) return;
+            const first = found[0];
+            if (first.profiles) saveStoredConnectionProfiles(first.profiles);
+            setConfiguredApiBaseUrl(first.url);
+            setPairingBanner({
+              type: 'success',
+              message: `تم اكتشاف السيرفر المركزي تلقائياً على الشبكة المحلية (${first.url}). يرجى تسجيل الدخول بحسابك.`,
+            });
+            await refreshAuthContext();
+          })
+          .catch(() => {});
+      }
+    }
+
+    const unsubscribeLinks = subscribeDeepLinks((url) => {
+      handlePairingUrl(url);
+    });
+
+    return () => {
+      active = false;
+      unsubscribeLinks();
+    };
+  }, [refreshAuthContext, setPairingBanner]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;

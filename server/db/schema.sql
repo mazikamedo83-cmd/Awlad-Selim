@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS user_sessions (
   id VARCHAR(64) PRIMARY KEY,
   user_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   refresh_token_hash TEXT UNIQUE NOT NULL,
+  device_id VARCHAR(64),
   device_info TEXT,
   ip_address VARCHAR(64),
   expires_at TIMESTAMPTZ NOT NULL,
@@ -800,3 +801,49 @@ CREATE INDEX IF NOT EXISTS idx_rep_item_transfers_invoice ON rep_item_transfers(
 CREATE INDEX IF NOT EXISTS idx_fin_tx_cashbox ON financial_transactions(cashbox_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_migration_logs_timestamp ON migration_logs(timestamp DESC);
+
+-- 40. روابط الربط الذكي والأجهزة المرتبطة (Device Pairing Tokens & Paired Devices)
+CREATE TABLE IF NOT EXISTS pairing_tokens (
+  id VARCHAR(64) PRIMARY KEY,
+  token_hash TEXT UNIQUE NOT NULL,
+  token_preview VARCHAR(32) NOT NULL,
+  created_by_user_id VARCHAR(64),
+  created_by_name TEXT NOT NULL,
+  target_user_id VARCHAR(64),
+  target_user_name TEXT DEFAULT '',
+  target_role VARCHAR(32) DEFAULT '',
+  target_device_type VARCHAR(24) NOT NULL DEFAULT 'any',
+  connection_mode VARCHAR(32) NOT NULL DEFAULT 'auto',
+  expires_at TIMESTAMPTZ NOT NULL,
+  single_use BOOLEAN NOT NULL DEFAULT TRUE,
+  used_count INT NOT NULL DEFAULT 0,
+  last_used_at TIMESTAMPTZ,
+  require_admin_approval BOOLEAN NOT NULL DEFAULT FALSE,
+  revoked_at TIMESTAMPTZ,
+  notes TEXT DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS paired_devices (
+  device_id VARCHAR(64) PRIMARY KEY,
+  device_name TEXT NOT NULL,
+  device_type VARCHAR(24) NOT NULL DEFAULT 'android',
+  os_version TEXT DEFAULT '',
+  app_version TEXT DEFAULT '',
+  linked_user_id VARCHAR(64),
+  linked_user_name TEXT DEFAULT '',
+  connection_mode VARCHAR(32) NOT NULL DEFAULT 'local_network',
+  server_url_used TEXT DEFAULT '',
+  ip_address VARCHAR(64) DEFAULT '',
+  status VARCHAR(24) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'pending_approval', 'revoked')),
+  pairing_token_id VARCHAR(64),
+  config_version INT NOT NULL DEFAULT 1,
+  paired_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  revoked_at TIMESTAMPTZ,
+  notes TEXT DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_pairing_tokens_expires ON pairing_tokens(expires_at DESC);
+CREATE INDEX IF NOT EXISTS idx_paired_devices_status ON paired_devices(status);
+CREATE INDEX IF NOT EXISTS idx_sessions_device ON user_sessions(device_id);

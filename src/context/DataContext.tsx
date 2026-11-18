@@ -9,7 +9,18 @@ import {
   saveReadCache,
   loadReadCache,
 } from '../services/storage';
-import { apiRequest, getConfiguredApiBaseUrl, setConfiguredApiBaseUrl } from '../services/api';
+import {
+  apiRequest,
+  getConfiguredApiBaseUrl,
+  setConfiguredApiBaseUrl,
+  getStoredConnectionProfiles,
+  saveStoredConnectionProfiles,
+  resolveModeEndpointUrl,
+  detectModeFromUrl,
+  testServerHealth,
+  getDefaultConnectionProfiles,
+} from '../services/api';
+import { syncConnectionConfigFromServer } from '../services/discovery';
 import { notifyLocal, subscribeNetworkStatus } from '../services/native';
 import {
   Product,
@@ -48,6 +59,8 @@ import {
   CustomerPriceHistoryEntry,
   CustomerStatementResponse,
   MobileNotificationItem,
+  ConnectionMode,
+  ConnectionProfilesConfig,
 } from '../types';
 import { useAuth } from './AuthContext';
 
@@ -171,8 +184,24 @@ export interface DataContextType extends DatabaseState {
   updateSettings: (newSettings: Partial<SystemSettings>) => Promise<void>;
 
   // Server & Connectivity
-  updateServerSettings: (newSettings: Partial<ServerConnectionSettings>) => Promise<void>;
-  testServerConnection: () => Promise<{ success: boolean; latencyMs: number; error?: string }>;
+  updateServerSettings: (
+    newSettings: Partial<ServerConnectionSettings>,
+    options?: {
+      persistToServer?: boolean;
+      applyToCurrentDevice?: boolean;
+      targetDeviceUrl?: string;
+    }
+  ) => Promise<{ success: boolean; error?: string }>;
+  testServerConnection: (customUrl?: string) => Promise<{
+    success: boolean;
+    latencyMs: number;
+    mode?: string;
+    protocol?: string;
+    httpsActive?: boolean;
+    lanUrls?: string[];
+    version?: string;
+    error?: string;
+  }>;
 
   // Database Migration & Integrity
   migrationLogs: MigrationLogEntry[];
@@ -286,15 +315,63 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             : Promise.resolve({ logs: [] }),
         ]);
         const d = bootRes.data || {};
+        const localProfiles = getStoredConnectionProfiles();
+        const serverConnConfig = d.settings?.extraSettings?.connectionConfig;
+        const mergedProfiles: ConnectionProfilesConfig = serverConnConfig
+          ? {
+              ...getDefaultConnectionProfiles(),
+              ...localProfiles,
+              ...serverConnConfig,
+              localNetwork: {
+                ...getDefaultConnectionProfiles().localNetwork,
+                ...localProfiles.localNetwork,
+                ...(serverConnConfig.localNetwork || {}),
+              },
+              freeRemote: {
+                ...localProfiles.freeRemote,
+                ...(serverConnConfig.freeRemote || {}),
+              },
+              proRemote: {
+                ...localProfiles.proRemote,
+                ...(serverConnConfig.proRemote || {}),
+              },
+              cloudVps: {
+                ...localProfiles.cloudVps,
+                ...(serverConnConfig.cloudVps || {}),
+              },
+            }
+          : localProfiles;
+
+        if (serverConnConfig) {
+          saveStoredConnectionProfiles(mergedProfiles);
+        }
+
+        const deviceBaseUrl = getConfiguredApiBaseUrl();
+        const activeMode: ConnectionMode = deviceBaseUrl
+          ? detectModeFromUrl(deviceBaseUrl, mergedProfiles)
+          : mergedProfiles.activeMode;
+
+        const hydratedServerSettings: ServerConnectionSettings = {
+          ...getEmptyClientDatabaseState().serverSettings!,
+          serverIp: mergedProfiles.localNetwork.ip || '192.168.1.100',
+          hostname: mergedProfiles.localNetwork.hostname || 'awlad-selim-server',
+          port: Number(mergedProfiles.localNetwork.port || 3000) || 3000,
+          apiBaseUrl: deviceBaseUrl || resolveModeEndpointUrl(activeMode, mergedProfiles),
+          connectionType: activeMode,
+          activeMode,
+          profiles: mergedProfiles,
+          serverStatus: 'online',
+          databaseStatus: 'connected',
+          syncStatus: offlineQueue.length > 0 ? 'pending' : 'connected',
+        };
+
         const nextStateBase: DatabaseState = {
           ...getEmptyClientDatabaseState(),
           ...d,
           migrationLogs: migRes.logs || [],
+          serverSettings: hydratedServerSettings,
         };
-        setData((prev) => ({
-          ...nextStateBase,
-          serverSettings: prev.serverSettings,
-        }));
+        setData(nextStateBase);
         setCustomerStatement(null);
         if (currentUser.role === 'representative') {
           saveReadCache(currentUser.id, currentUser.role, { dbState: nextStateBase });
@@ -505,11 +582,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [isAuthenticated, currentUser, loadRoleScopedData]);
 
   useEffect(() => {
+    const runReconnectSync = async () => {
+      const syncRes = await syncConnectionConfigFromServer({ triggerHeartbeat: true }).catch(() => ({
+        updated: false,
+        revoked: false,
+      }));
+      if (syncRes?.revoked) return;
+      flushOfflineOrders();
+      loadRoleScopedData();
+      refreshMobileNotifications();
+    };
+
     const unsubscribe = subscribeNetworkStatus((connected) => {
       if (connected && isAuthenticated) {
-        flushOfflineOrders();
-        loadRoleScopedData();
-        refreshMobileNotifications();
+        runReconnectSync();
       } else if (!connected) {
         setNetworkStatus('disconnected');
       }
@@ -519,14 +605,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         flushOfflineOrders();
       }
     }, 15000);
+    const heartbeatInterval = window.setInterval(() => {
+      if (isAuthenticated && navigator.onLine) {
+        syncConnectionConfigFromServer({ triggerHeartbeat: true })
+          .then((res) => {
+            if (res.switchedUrl) {
+              loadRoleScopedData();
+            }
+          })
+          .catch(() => {});
+      }
+    }, 90000);
     return () => {
       unsubscribe();
       window.clearInterval(interval);
+      window.clearInterval(heartbeatInterval);
     };
   }, [isAuthenticated, currentUser?.role, flushOfflineOrders, loadRoleScopedData, refreshMobileNotifications]);
 
   const triggerManualSync = async () => {
     setNetworkStatus('synchronizing');
+    await syncConnectionConfigFromServer({ triggerHeartbeat: true }).catch(() => {});
     await flushOfflineOrders();
     await loadRoleScopedData();
     await refreshMobileNotifications();
@@ -1282,32 +1381,118 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await loadRoleScopedData();
   };
 
-  const updateServerSettings = async (newSettings: Partial<ServerConnectionSettings>) => {
-    if (newSettings.apiBaseUrl !== undefined) {
+  const updateServerSettings = async (
+    newSettings: Partial<ServerConnectionSettings>,
+    options: {
+      persistToServer?: boolean;
+      applyToCurrentDevice?: boolean;
+      targetDeviceUrl?: string;
+    } = {}
+  ): Promise<{ success: boolean; error?: string }> => {
+    const prevServer = (data.serverSettings || getEmptyClientDatabaseState().serverSettings!) as ServerConnectionSettings;
+    const prevProfiles = prevServer.profiles || getStoredConnectionProfiles();
+    const nextProfiles: ConnectionProfilesConfig = newSettings.profiles
+      ? {
+          ...prevProfiles,
+          ...newSettings.profiles,
+          localNetwork: {
+            ...prevProfiles.localNetwork,
+            ...(newSettings.profiles.localNetwork || {}),
+          },
+          freeRemote: {
+            ...prevProfiles.freeRemote,
+            ...(newSettings.profiles.freeRemote || {}),
+          },
+          proRemote: {
+            ...prevProfiles.proRemote,
+            ...(newSettings.profiles.proRemote || {}),
+          },
+          cloudVps: {
+            ...prevProfiles.cloudVps,
+            ...(newSettings.profiles.cloudVps || {}),
+          },
+        }
+      : prevProfiles;
+
+    const canPersistServer =
+      options.persistToServer !== false &&
+      isAuthenticated &&
+      Boolean(currentUser && (currentUser.role === 'admin' || currentUser.permissions?.canManageSettings));
+
+    let persistedConnectionConfig = nextProfiles;
+
+    if (canPersistServer) {
+      try {
+        const res = await apiRequest<{ ok: boolean; settings?: SystemSettings }>('/api/admin/settings', {
+          method: 'PUT',
+          body: {
+            extraSettings: {
+              ...(data.settings?.extraSettings || {}),
+              connectionConfig: nextProfiles,
+            },
+          },
+        });
+        if (res.settings?.extraSettings?.connectionConfig) {
+          persistedConnectionConfig = res.settings.extraSettings.connectionConfig;
+        }
+      } catch (err: any) {
+        return {
+          success: false,
+          error: err?.message || 'تعذر حفظ إعدادات الاتصال في السيرفر المركزي',
+        };
+      }
+    }
+
+    saveStoredConnectionProfiles(persistedConnectionConfig);
+
+    if (options.applyToCurrentDevice === true) {
+      const targetUrl =
+        options.targetDeviceUrl !== undefined
+          ? options.targetDeviceUrl
+          : newSettings.apiBaseUrl ?? '';
+      setConfiguredApiBaseUrl(targetUrl);
+    } else if (options.applyToCurrentDevice === undefined && newSettings.apiBaseUrl !== undefined) {
       setConfiguredApiBaseUrl(newSettings.apiBaseUrl);
     }
-    setData((prev) => ({
-      ...prev,
-      serverSettings: { ...(prev.serverSettings as ServerConnectionSettings), ...newSettings },
-    }));
+
+    setData((prev) => {
+      const mergedExtra = {
+        ...(prev.settings?.extraSettings || {}),
+        connectionConfig: persistedConnectionConfig,
+      };
+      return {
+        ...prev,
+        settings: {
+          ...prev.settings,
+          extraSettings: mergedExtra,
+        },
+        serverSettings: {
+          ...(prev.serverSettings as ServerConnectionSettings),
+          ...newSettings,
+          profiles: persistedConnectionConfig,
+        },
+      };
+    });
+
+    return { success: true };
   };
 
-  const testServerConnection = async (): Promise<{ success: boolean; latencyMs: number; error?: string }> => {
-    const start = performance.now();
-    try {
-      const base = getConfiguredApiBaseUrl();
-      const res = await fetch(`${base}/api/health`);
-      const latencyMs = Math.round(performance.now() - start);
-      if (!res.ok) return { success: false, latencyMs, error: `استجابة غير صالحة (${res.status})` };
+  const testServerConnection = async (customUrl?: string) => {
+    const target = customUrl !== undefined ? customUrl : getConfiguredApiBaseUrl();
+    const res = await testServerHealth(target);
+    if (res.ok) {
       setNetworkStatus('connected');
-      return { success: true, latencyMs };
-    } catch {
-      return {
-        success: false,
-        latencyMs: Math.round(performance.now() - start),
-        error: 'تعذر الاتصال بالسيرفر، تأكد من تشغيل خدمة الخادم وعنوان الشبكة.',
-      };
     }
+    return {
+      success: res.ok,
+      latencyMs: res.latencyMs,
+      mode: res.mode,
+      protocol: res.protocol,
+      httpsActive: res.httpsActive,
+      lanUrls: res.lanUrls,
+      version: res.version,
+      error: res.error,
+    };
   };
 
   const runMigration = async (executedBy?: string, isTestRun = false) => {

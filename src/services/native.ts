@@ -306,3 +306,96 @@ export function registerAndroidBackButton(handler: () => boolean | void): () => 
     }
   };
 }
+
+export const DEVICE_ID_STORAGE_KEY = 'awlad_selim_device_id';
+
+export function getOrCreatePersistentDeviceId(): string {
+  try {
+    const existing = localStorage.getItem(DEVICE_ID_STORAGE_KEY)?.trim();
+    if (existing && existing.length >= 8) return existing;
+    const generated =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? `DEV-${crypto.randomUUID()}`
+        : `DEV-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem(DEVICE_ID_STORAGE_KEY, generated);
+    if (isNativeCapacitor()) {
+      Preferences.set({ key: DEVICE_ID_STORAGE_KEY, value: generated }).catch(() => {});
+    }
+    return generated;
+  } catch {
+    return `DEV-${Date.now().toString(36)}`;
+  }
+}
+
+export function getClientDeviceDescriptor(): {
+  deviceId: string;
+  deviceType: 'windows' | 'android' | 'ios' | 'web';
+  deviceName: string;
+  osVersion: string;
+  appVersion: string;
+} {
+  const deviceId = getOrCreatePersistentDeviceId();
+  const capPlatform = getNativePlatform();
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+  const isElectronDesktop = typeof window !== 'undefined' && Boolean((window as any).awladDesktop?.isElectron);
+
+  let deviceType: 'windows' | 'android' | 'ios' | 'web' = 'web';
+  if (capPlatform === 'android' || /android/i.test(ua)) deviceType = 'android';
+  else if (capPlatform === 'ios' || /iphone|ipad|ipod/i.test(ua)) deviceType = 'ios';
+  else if (isElectronDesktop || /windows/i.test(ua)) deviceType = 'windows';
+
+  let deviceName = 'متصفح الويب';
+  if (deviceType === 'windows') {
+    deviceName = isElectronDesktop ? 'كمبيوتر المحل (Windows Desktop)' : 'جهاز Windows';
+  } else if (deviceType === 'android') {
+    deviceName = isNativeCapacitor() ? 'تطبيق Android (AWLAD SELIM)' : 'هاتف Android';
+  } else if (deviceType === 'ios') {
+    deviceName = isNativeCapacitor() ? 'تطبيق iPhone (AWLAD SELIM)' : 'هاتف iPhone / iPad';
+  }
+
+  return {
+    deviceId,
+    deviceType,
+    deviceName,
+    osVersion: ua.slice(0, 75),
+    appVersion: '3.0.0',
+  };
+}
+
+export function subscribeDeepLinks(onUrl: (url: string) => void): () => void {
+  if (!isNativeCapacitor()) {
+    return () => {};
+  }
+  let active = true;
+  let handle: { remove: () => Promise<void> } | null = null;
+
+  CapacitorApp.getLaunchUrl()
+    .then((launch) => {
+      if (active && launch?.url) {
+        onUrl(launch.url);
+      }
+    })
+    .catch(() => {});
+
+  CapacitorApp.addListener('appUrlOpen', (event) => {
+    if (active && event?.url) {
+      onUrl(event.url);
+    }
+  })
+    .then((h) => {
+      if (!active) {
+        h.remove().catch(() => {});
+      } else {
+        handle = h;
+      }
+    })
+    .catch(() => {});
+
+  return () => {
+    active = false;
+    if (handle) {
+      handle.remove().catch(() => {});
+    }
+  };
+}
+

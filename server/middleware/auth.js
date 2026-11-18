@@ -1,10 +1,13 @@
 import { verifyJwt } from '../utils/crypto.js';
-import { validateActiveSession, recordAuditLog } from '../db/stores/authStore.js';
+import { validateActiveSession, recordAuditLog, checkDeviceAuthGuard } from '../db/stores/authStore.js';
 import { AppError } from '../utils/errors.js';
 
 const RATE_WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILED_ATTEMPTS = 10;
 const failedLoginMap = new Map();
+const PAIRING_RATE_WINDOW_MS = 5 * 60 * 1000;
+const MAX_PAIRING_REQUESTS = 90;
+const pairingRateMap = new Map();
 
 export function getClientIp(req) {
   const fwd = req.headers['x-forwarded-for'];
@@ -65,6 +68,27 @@ export function clearLoginFailure(req) {
 
 export function resetAllRateLimitsForTests() {
   failedLoginMap.clear();
+  pairingRateMap.clear();
+}
+
+export function checkPairingRateLimit(req, res, next) {
+  const ip = getClientIp(req);
+  const now = Date.now();
+  const entry = pairingRateMap.get(ip);
+  if (!entry || now - entry.windowStart >= PAIRING_RATE_WINDOW_MS) {
+    pairingRateMap.set(ip, { count: 1, windowStart: now });
+    return next();
+  }
+  entry.count += 1;
+  pairingRateMap.set(ip, entry);
+  if (entry.count > MAX_PAIRING_REQUESTS) {
+    return res.status(429).json({
+      ok: false,
+      code: 'PAIRING_RATE_LIMITED',
+      error: 'تم تجاوز الحد المسموح به لطلبات الربط من هذا العنوان. يرجى الانتظار بضع دقائق.',
+    });
+  }
+  return next();
 }
 
 export async function requireAuth(req, res, next) {
@@ -85,8 +109,14 @@ export async function requireAuth(req, res, next) {
       return res.status(401).json({ ok: false, code: 'SESSION_REVOKED', error: 'الجلسة غير نشطة أو تم تسجيل الخروج منها' });
     }
 
+    const effectiveDeviceId = req.get('x-device-id') || sessionCtx.deviceId || payload.did || '';
+    if (effectiveDeviceId) {
+      await checkDeviceAuthGuard(effectiveDeviceId);
+    }
+
     req.auth = {
       sessionId: payload.sid,
+      deviceId: effectiveDeviceId,
       user: sessionCtx.user,
       customerProfile: sessionCtx.customerProfile,
       representativeProfile: sessionCtx.representativeProfile,

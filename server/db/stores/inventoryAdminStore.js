@@ -3305,6 +3305,111 @@ export async function renameCategoryGlobal(categoryId, newName, actor) {
   return out;
 }
 
+function sanitizeRemoteHttpsUrl(rawUrl, label, { requireHttps = true } = {}) {
+  const trimmed = String(rawUrl || '').trim().replace(/\/+$/, '');
+  if (!trimmed) return '';
+  let candidate = trimmed;
+  if (!/^https?:\/\//i.test(candidate)) {
+    candidate = `https://${candidate}`;
+  }
+  let parsed;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    throw new AppError(400, `صيغة رابط ${label} غير صالحة`, 'INVALID_CONNECTION_URL');
+  }
+  if (requireHttps && parsed.protocol !== 'https:') {
+    throw new AppError(
+      400,
+      `يجب أن يستخدم ${label} بروتوكول HTTPS المشفر لحماية الاتصال الخارجي والتوكنات`,
+      'HTTPS_REQUIRED_FOR_REMOTE'
+    );
+  }
+  return parsed.origin + (parsed.pathname && parsed.pathname !== '/' ? parsed.pathname.replace(/\/+$/, '') : '');
+}
+
+export function sanitizeConnectionConfig(raw, prev = {}) {
+  if (!raw || typeof raw !== 'object') return prev;
+  const allowedModes = new Set(['local_network', 'free_remote', 'pro_remote', 'cloud_vps']);
+  const activeMode = allowedModes.has(raw.activeMode) ? raw.activeMode : (allowedModes.has(prev.activeMode) ? prev.activeMode : 'local_network');
+  const localRaw = raw.localNetwork && typeof raw.localNetwork === 'object' ? { ...(prev.localNetwork || {}), ...raw.localNetwork } : prev.localNetwork || {};
+  const portNum = Math.min(65535, Math.max(1, Number(localRaw.port || 3000) || 3000));
+  const cleanIp = String(localRaw.ip || '192.168.1.100')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .split('/')[0]
+    .split(':')[0];
+  const cleanHostname = String(localRaw.hostname || 'awlad-selim-server').trim().slice(0, 120);
+
+  const enforceHttps =
+    raw.enforceHttpsForRemote !== undefined
+      ? raw.enforceHttpsForRemote !== false
+      : prev.enforceHttpsForRemote !== false;
+
+  const rawTunnelUrl =
+    raw.freeRemote && Object.prototype.hasOwnProperty.call(raw.freeRemote, 'tunnelUrl')
+      ? raw.freeRemote.tunnelUrl
+      : prev.freeRemote?.tunnelUrl;
+  const rawDomainUrl =
+    raw.proRemote && Object.prototype.hasOwnProperty.call(raw.proRemote, 'domainUrl')
+      ? raw.proRemote.domainUrl
+      : prev.proRemote?.domainUrl;
+  const rawVpsUrl =
+    raw.cloudVps && Object.prototype.hasOwnProperty.call(raw.cloudVps, 'vpsUrl')
+      ? raw.cloudVps.vpsUrl
+      : prev.cloudVps?.vpsUrl;
+  const rawVpsNotes =
+    raw.cloudVps && Object.prototype.hasOwnProperty.call(raw.cloudVps, 'notes')
+      ? raw.cloudVps.notes
+      : prev.cloudVps?.notes;
+
+  const freeTunnelUrl = sanitizeRemoteHttpsUrl(rawTunnelUrl, 'الربط الخارجي المجاني (Cloudflare Quick Tunnel)', {
+    requireHttps: enforceHttps,
+  });
+  const proDomainUrl = sanitizeRemoteHttpsUrl(rawDomainUrl, 'الربط الخارجي الاحترافي (Named Tunnel)', {
+    requireHttps: enforceHttps,
+  });
+  const vpsUrl = sanitizeRemoteHttpsUrl(rawVpsUrl, 'السيرفر السحابي (Cloud VPS)', {
+    requireHttps: enforceHttps,
+  });
+
+  const prevVersion = Number(prev.configVersion || 0);
+  const nextVersion = Math.max(1, Number(raw.configVersion || 0) || (prevVersion >= 1 ? prevVersion + 1 : 1));
+  const autoDetect =
+    raw.freeRemote?.autoDetect !== undefined
+      ? Boolean(raw.freeRemote.autoDetect)
+      : prev.freeRemote?.autoDetect !== false;
+  const proProviderRaw = String(raw.proRemote?.provider || prev.proRemote?.provider || 'cloudflare_named_tunnel');
+  const proProvider = ['cloudflare_named_tunnel', 'nginx_reverse_proxy', 'custom'].includes(proProviderRaw)
+    ? proProviderRaw
+    : 'cloudflare_named_tunnel';
+
+  // Never persist secrets, tokens, passwords, or SSH keys in connectionConfig
+  return {
+    activeMode,
+    configVersion: nextVersion,
+    localNetwork: {
+      ip: cleanIp || '192.168.1.100',
+      port: portNum,
+      hostname: cleanHostname || 'awlad-selim-server',
+    },
+    freeRemote: {
+      tunnelUrl: freeTunnelUrl,
+      autoDetect,
+    },
+    proRemote: {
+      domainUrl: proDomainUrl,
+      provider: proProvider,
+    },
+    cloudVps: {
+      vpsUrl,
+      notes: String(rawVpsNotes || '').trim().slice(0, 400),
+    },
+    enforceHttpsForRemote: enforceHttps,
+    updatedAt: nowIso(),
+  };
+}
+
 export async function updateSystemSettings(updates, actor) {
   const now = nowIso();
   if (await isPgMode()) {
@@ -3317,6 +3422,12 @@ export async function updateSystemSettings(updates, actor) {
           ...prevExtra,
           ...(updates.extraSettings || {}),
         };
+        if (updates.extraSettings?.connectionConfig !== undefined) {
+          mergedExtra.connectionConfig = sanitizeConnectionConfig(
+            updates.extraSettings.connectionConfig,
+            prevExtra.connectionConfig || {}
+          );
+        }
         if (updates.mobileConfig !== undefined || updates.extraSettings?.mobileConfig !== undefined) {
           mergedExtra.mobileConfig = {
             ...(prevExtra.mobileConfig || {}),
@@ -3346,6 +3457,9 @@ export async function updateSystemSettings(updates, actor) {
         return { ...updates, extraSettings: mergedExtra, mobileConfig: mergedExtra.mobileConfig };
       } else {
         const extraSettings = { ...(updates.extraSettings || {}) };
+        if (extraSettings.connectionConfig !== undefined) {
+          extraSettings.connectionConfig = sanitizeConnectionConfig(extraSettings.connectionConfig, {});
+        }
         if (updates.mobileConfig) {
           extraSettings.mobileConfig = { ...(extraSettings.mobileConfig || {}), ...(updates.mobileConfig || {}) };
         }
@@ -3371,7 +3485,7 @@ export async function updateSystemSettings(updates, actor) {
         return { ...updates, extraSettings, mobileConfig: extraSettings.mobileConfig };
       }
     });
-    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: 'تحديث إعدادات المؤسسة', module: 'الإعدادات' });
+    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: 'تحديث إعدادات المؤسسة والاتصال', module: 'الإعدادات' });
     return updated;
   }
 
@@ -3381,6 +3495,12 @@ export async function updateSystemSettings(updates, actor) {
       ...prevExtra,
       ...(updates.extraSettings || {}),
     };
+    if (updates.extraSettings?.connectionConfig !== undefined) {
+      mergedExtra.connectionConfig = sanitizeConnectionConfig(
+        updates.extraSettings.connectionConfig,
+        prevExtra.connectionConfig || {}
+      );
+    }
     if (updates.mobileConfig !== undefined || updates.extraSettings?.mobileConfig !== undefined) {
       mergedExtra.mobileConfig = {
         ...(prevExtra.mobileConfig || {}),
@@ -3391,7 +3511,7 @@ export async function updateSystemSettings(updates, actor) {
     db.settings = { ...db.settings, ...updates, extraSettings: mergedExtra };
     return { ...db.settings, mobileConfig: mergedExtra.mobileConfig };
   });
-  await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: 'تحديث إعدادات المؤسسة', module: 'الإعدادات' });
+  await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: 'تحديث إعدادات المؤسسة والاتصال', module: 'الإعدادات' });
   return updated;
 }
 

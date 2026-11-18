@@ -1673,7 +1673,7 @@ async function runSuiteA_JsonLedgerHttp() {
       assert.equal(boot1.cashboxes.find((c) => c.id === cb0.id).currentBalance, cbBalBefore + 25);
 
       // Sales invoice stores dated priceHistory object and respects Idempotency-Key
-      const invDate = '2026-11-17';
+      const invDate = new Date().toISOString().split('T')[0];
       const si1 = await req(baseUrl, 'POST', '/api/invoices/sales', {
         token: adminToken,
         headers: { 'Idempotency-Key': 'idem-sale-35' },
@@ -1780,6 +1780,157 @@ async function runSuiteA_JsonLedgerHttp() {
 
       const cbAfterSettle = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data.cashboxes.find((c) => c.id === cb0.id).currentBalance;
       assert.equal(cbAfterSettle, cbBeforeSettle, 'Advance settlement must NEVER change cashbox balance');
+    });
+
+    await test('37. Dual/Multi-Connection System (JSON Ledger): 4 modes, HTTPS enforcement, dynamic CORS, zero secret leaks & RBAC guards', async () => {
+      // 1. Public /api/health reports supported modes & X-Forwarded-Proto HTTPS detection without secrets
+      const hPlain = await req(baseUrl, 'GET', '/api/health');
+      assert.equal(hPlain.status, 200);
+      assert.deepEqual(hPlain.json.connectionModesSupported, ['local_network', 'free_remote', 'pro_remote', 'cloud_vps']);
+      assert.equal(hPlain.json.httpsActive, false);
+      assert.ok(!JSON.stringify(hPlain.json).includes('JWT_SECRET'));
+      assert.ok(!JSON.stringify(hPlain.json).includes('tunnelToken'));
+
+      const hProxyHttps = await req(baseUrl, 'GET', '/api/health', {
+        headers: { 'X-Forwarded-Proto': 'https', 'X-Forwarded-Host': 'erp.awladselim.example.com' },
+      });
+      assert.equal(hProxyHttps.status, 200);
+      assert.equal(hProxyHttps.json.protocol, 'https');
+      assert.equal(hProxyHttps.json.httpsActive, true);
+
+      // 2. Dynamic CORS allows Capacitor, Quick Tunnel, LAN HTTP, and X-Forwarded-Host even when ALLOWED_ORIGINS is restricted
+      const prevAllowedOrigins = process.env.ALLOWED_ORIGINS;
+      try {
+        process.env.ALLOWED_ORIGINS = 'https://office.awladselim.com';
+        const allowedOriginsToCheck = [
+          { origin: 'capacitor://localhost', extraHeaders: {} },
+          { origin: 'https://localhost', extraHeaders: {} },
+          { origin: 'https://shop-tunnel.trycloudflare.com', extraHeaders: {} },
+          { origin: 'http://192.168.1.55:3000', extraHeaders: {} },
+          { origin: 'https://erp.awladselim.com', extraHeaders: { 'X-Forwarded-Host': 'erp.awladselim.com' } },
+        ];
+        for (const item of allowedOriginsToCheck) {
+          const corsRes = await fetch(`${baseUrl}/api/health`, {
+            headers: { Origin: item.origin, ...item.extraHeaders },
+          });
+          assert.equal(corsRes.status, 200);
+          assert.equal(
+            corsRes.headers.get('access-control-allow-origin'),
+            item.origin,
+            `Expected CORS allow for origin ${item.origin}`
+          );
+        }
+
+        const blockedRes = await fetch(`${baseUrl}/api/health`, {
+          headers: { Origin: 'https://evil-attacker.example.net' },
+        });
+        assert.equal(blockedRes.status, 403);
+      } finally {
+        if (prevAllowedOrigins === undefined) delete process.env.ALLOWED_ORIGINS;
+        else process.env.ALLOWED_ORIGINS = prevAllowedOrigins;
+      }
+
+      // 3. Unauthorized roles blocked from server-info, settings, backup, and cash-operations
+      const mgrNoSettingsLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: 'mgr_scope_test', password: 'MgrPassword!99' },
+      });
+      assert.equal(mgrNoSettingsLogin.status, 200);
+      const repLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: 'rep_karim', password: 'RepPassword!123' },
+      });
+      assert.equal(repLogin.status, 200);
+
+      for (const unauthorizedToken of [tokenCustA, repLogin.json.accessToken, mgrNoSettingsLogin.json.accessToken]) {
+        const siForb = await req(baseUrl, 'GET', '/api/admin/server-info', { token: unauthorizedToken });
+        assert.equal(siForb.status, 403, 'Unauthorized role must get 403 on /api/admin/server-info');
+        const setForb = await req(baseUrl, 'PUT', '/api/admin/settings', {
+          token: unauthorizedToken,
+          body: { extraSettings: { connectionConfig: { activeMode: 'free_remote' } } },
+        });
+        assert.equal(setForb.status, 403, 'Unauthorized role must get 403 on PUT /api/admin/settings');
+        const bakForb = await req(baseUrl, 'GET', '/api/admin/backup/export', { token: unauthorizedToken });
+        assert.equal(bakForb.status, 403, 'Unauthorized role must get 403 on /api/admin/backup/export');
+      }
+
+      // 4. Admin /api/admin/server-info returns port, lanUrls, databaseMode, zero secrets
+      const srvInfoRes = await req(baseUrl, 'GET', '/api/admin/server-info', {
+        token: adminToken,
+        headers: { 'X-Forwarded-Proto': 'https' },
+      });
+      assert.equal(srvInfoRes.status, 200);
+      assert.equal(srvInfoRes.json.ok, true);
+      assert.ok(typeof srvInfoRes.json.port === 'number');
+      assert.ok(Array.isArray(srvInfoRes.json.lanUrls));
+      assert.equal(srvInfoRes.json.httpsActive, true);
+      assert.equal(srvInfoRes.json.databaseMode, 'local-json-ledger');
+      assertNoSensitiveFields(srvInfoRes.json, 'server-info');
+
+      // 5. Capture DB snapshot metrics before mode switches (Single DB guarantee)
+      const snapBefore = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const beforeInvoicesCount = snapBefore.invoices.length;
+      const beforeCustomersCount = snapBefore.customers.length;
+      const beforeCashboxSum = snapBefore.cashboxes.reduce((s, c) => s + Number(c.currentBalance || 0), 0);
+
+      // Reject plain HTTP for remote modes
+      const badHttpRemote = await req(baseUrl, 'PUT', '/api/admin/settings', {
+        token: adminToken,
+        body: {
+          extraSettings: {
+            connectionConfig: {
+              activeMode: 'free_remote',
+              freeRemote: { tunnelUrl: 'http://insecure-demo.trycloudflare.com' },
+            },
+          },
+        },
+      });
+      assert.equal(badHttpRemote.status, 400);
+      assert.equal(badHttpRemote.json.code, 'HTTPS_REQUIRED_FOR_REMOTE');
+
+      // Save all 4 profiles with extraneous secret keys -> secrets MUST be stripped
+      const saveAll4 = await req(baseUrl, 'PUT', '/api/admin/settings', {
+        token: adminToken,
+        body: {
+          extraSettings: {
+            connectionConfig: {
+              activeMode: 'pro_remote',
+              localNetwork: { ip: '192.168.1.120', port: 3000, hostname: 'awlad-main-pc', adminSecret: 'MUST_STRIP' },
+              freeRemote: { tunnelUrl: 'https://awlad-test.trycloudflare.com', tunnelToken: 'SECRET_TOKEN' },
+              proRemote: { domainUrl: 'https://erp.awladselim.com', cloudflareApiKey: 'CF_SECRET' },
+              cloudVps: { vpsUrl: 'https://vps.awladselim.com', notes: 'مستقبلي', sshPassword: 'ROOT_PASSWORD' },
+              enforceHttpsForRemote: true,
+            },
+          },
+        },
+      });
+      assert.equal(saveAll4.status, 200);
+      const savedCfg = saveAll4.json.settings.extraSettings.connectionConfig;
+      assert.equal(savedCfg.activeMode, 'pro_remote');
+      assert.equal(savedCfg.localNetwork.ip, '192.168.1.120');
+      assert.equal(savedCfg.freeRemote.tunnelUrl, 'https://awlad-test.trycloudflare.com');
+      assert.equal(savedCfg.proRemote.domainUrl, 'https://erp.awladselim.com');
+      assert.equal(savedCfg.cloudVps.vpsUrl, 'https://vps.awladselim.com');
+      const cfgSerialized = JSON.stringify(savedCfg);
+      assert.ok(!cfgSerialized.includes('SECRET_TOKEN') && !cfgSerialized.includes('CF_SECRET') && !cfgSerialized.includes('ROOT_PASSWORD') && !cfgSerialized.includes('MUST_STRIP'));
+
+      // Switch between all 4 modes + verify single DB & token continuity across proxy headers
+      for (const nextMode of ['cloud_vps', 'free_remote', 'local_network']) {
+        const sw = await req(baseUrl, 'PUT', '/api/admin/settings', {
+          token: adminToken,
+          headers: { 'X-Forwarded-Proto': 'https', 'X-Forwarded-Host': 'erp.awladselim.com' },
+          body: { extraSettings: { connectionConfig: { activeMode: nextMode } } },
+        });
+        assert.equal(sw.status, 200);
+        assert.equal(sw.json.settings.extraSettings.connectionConfig.activeMode, nextMode);
+        assert.equal(sw.json.settings.extraSettings.connectionConfig.proRemote.domainUrl, 'https://erp.awladselim.com');
+      }
+
+      const snapAfter = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      assert.equal(snapAfter.invoices.length, beforeInvoicesCount);
+      assert.equal(snapAfter.customers.length, beforeCustomersCount);
+      assert.equal(
+        snapAfter.cashboxes.reduce((s, c) => s + Number(c.currentBalance || 0), 0),
+        beforeCashboxSum
+      );
     });
   } finally {
     await new Promise((resolve) => server.close(resolve));
@@ -2200,11 +2351,12 @@ async function runSuiteB_PostgresPgMem() {
       assert.equal(cpPg2.status, 200);
       assert.equal(cpPg2.json.deduplicated, true);
 
+      const pgInvDate = new Date().toISOString().split('T')[0];
       const salePg = await req(baseUrlPg, 'POST', '/api/invoices/sales', {
         token: pgAdminToken,
         headers: { 'Idempotency-Key': 'pg-idem-sale-36' },
         body: {
-          date: '2026-11-18',
+          date: pgInvDate,
           customerId: cust.id,
           warehouseId: wh1,
           cashboxId: cb1,
@@ -2219,7 +2371,7 @@ async function runSuiteB_PostgresPgMem() {
         token: pgAdminToken,
         headers: { 'Idempotency-Key': 'pg-idem-sale-36' },
         body: {
-          date: '2026-11-18',
+          date: pgInvDate,
           customerId: cust.id,
           warehouseId: wh1,
           cashboxId: cb1,
@@ -2236,7 +2388,7 @@ async function runSuiteB_PostgresPgMem() {
       assert.equal(pgPh.status, 200);
       const pgLast = (pgPh.json.priceHistory[prod.id] || []).slice(-1)[0];
       assert.equal(pgLast.price, 88);
-      assert.equal(pgLast.date, '2026-11-18');
+      assert.equal(pgLast.date, pgInvDate);
 
       // Supplier advance payment + zero-cashbox settle-advance in PG
       await req(baseUrlPg, 'POST', '/api/admin/suppliers/payment', {
@@ -2268,6 +2420,73 @@ async function runSuiteB_PostgresPgMem() {
 
       const bootEnd = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
       assert.equal(bootEnd.cashboxes.find((c) => c.id === cb1).currentBalance, cbBefore + 15 - 400);
+    });
+
+    await test('38. Dual/Multi-Connection System (PostgreSQL pg-mem): preserves single DB, enforces HTTPS & strips secrets', async () => {
+      const adminLogin = await req(baseUrlPg, 'POST', '/api/auth/login', {
+        body: { username: 'owner_tarek', password: 'OwnerStrongPassword!99' },
+      });
+      const pgAdminToken = adminLogin.json.accessToken;
+
+      const pgMgrLogin = await req(baseUrlPg, 'POST', '/api/auth/login', {
+        body: { username: 'mgr_scope_test', password: 'MgrPassword!99' },
+      });
+      assert.equal(pgMgrLogin.status, 200);
+      assert.equal((await req(baseUrlPg, 'GET', '/api/admin/server-info', { token: pgMgrLogin.json.accessToken })).status, 403);
+      assert.equal(
+        (
+          await req(baseUrlPg, 'PUT', '/api/admin/settings', {
+            token: pgMgrLogin.json.accessToken,
+            body: { extraSettings: { connectionConfig: { activeMode: 'cloud_vps' } } },
+          })
+        ).status,
+        403
+      );
+
+      const srvPg = await req(baseUrlPg, 'GET', '/api/admin/server-info', { token: pgAdminToken });
+      assert.equal(srvPg.status, 200);
+      assert.equal(srvPg.json.databaseMode, 'postgresql-enterprise');
+
+      const bootBefore = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      const beforeInvoices = bootBefore.invoices.length;
+
+      // Enforce HTTPS on PG settings update
+      const badPgRemote = await req(baseUrlPg, 'PUT', '/api/admin/settings', {
+        token: pgAdminToken,
+        body: {
+          extraSettings: {
+            connectionConfig: {
+              activeMode: 'cloud_vps',
+              cloudVps: { vpsUrl: 'http://unencrypted-vps.example.com' },
+            },
+          },
+        },
+      });
+      assert.equal(badPgRemote.status, 400);
+      assert.equal(badPgRemote.json.code, 'HTTPS_REQUIRED_FOR_REMOTE');
+
+      const savePg = await req(baseUrlPg, 'PUT', '/api/admin/settings', {
+        token: pgAdminToken,
+        body: {
+          extraSettings: {
+            connectionConfig: {
+              activeMode: 'free_remote',
+              localNetwork: { ip: '192.168.1.200', port: 3000, hostname: 'pg-central' },
+              freeRemote: { tunnelUrl: 'https://pg-shop.trycloudflare.com', tunnelToken: 'NO_LEAK' },
+              proRemote: { domainUrl: 'https://pg-erp.awladselim.com' },
+              cloudVps: { vpsUrl: 'https://pg-vps.awladselim.com', notes: 'PG Cloud' },
+            },
+          },
+        },
+      });
+      assert.equal(savePg.status, 200);
+      const pgCfg = savePg.json.settings.extraSettings.connectionConfig;
+      assert.equal(pgCfg.activeMode, 'free_remote');
+      assert.ok(!JSON.stringify(pgCfg).includes('NO_LEAK'));
+
+      const bootAfter = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      assert.equal(bootAfter.invoices.length, beforeInvoices);
+      assert.equal(bootAfter.settings.extraSettings.connectionConfig.proRemote.domainUrl, 'https://pg-erp.awladselim.com');
     });
   } finally {
     setInjectedPool(null);

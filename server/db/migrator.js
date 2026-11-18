@@ -167,6 +167,8 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
     const ownerTransactions = Array.isArray(sourceData.ownerTransactions) ? sourceData.ownerTransactions : [];
     const stockCounts = Array.isArray(sourceData.stockCounts) ? sourceData.stockCounts : [];
     const stockTransferRequests = Array.isArray(sourceData.stockTransferRequests) ? sourceData.stockTransferRequests : [];
+    const pairingTokens = Array.isArray(sourceData.pairingTokens) ? sourceData.pairingTokens : [];
+    const pairedDevices = Array.isArray(sourceData.pairedDevices) ? sourceData.pairedDevices : [];
     const auditLogs = Array.isArray(sourceData.auditLogs) ? sourceData.auditLogs : [];
 
     let embeddedPayments = 0;
@@ -1075,6 +1077,22 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
           details.stockTransferRequests++;
         }
 
+        for (const pt of pairingTokens) {
+          await client.query(`
+            INSERT INTO pairing_tokens (id, token_hash, token_preview, created_by_user_id, created_by_name, target_user_id, target_user_name, target_role, target_device_type, connection_mode, expires_at, single_use, used_count, last_used_at, require_admin_approval, revoked_at, notes, created_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+            ON CONFLICT (id) DO NOTHING;
+          `, [pt.id, pt.tokenHash, pt.tokenPreview || 'PAIR', pt.createdByUserId || null, pt.createdByName || 'النظام', pt.targetUserId || null, pt.targetUserName || '', pt.targetRole || '', pt.targetDeviceType || 'any', pt.connectionMode || 'auto', pt.expiresAt || new Date().toISOString(), pt.singleUse !== false, Number(pt.usedCount || 0), pt.lastUsedAt || null, Boolean(pt.requireAdminApproval), pt.revokedAt || null, pt.notes || '', pt.createdAt || new Date().toISOString()]);
+        }
+
+        for (const pd of pairedDevices) {
+          await client.query(`
+            INSERT INTO paired_devices (device_id, device_name, device_type, os_version, app_version, linked_user_id, linked_user_name, connection_mode, server_url_used, ip_address, status, pairing_token_id, config_version, paired_at, last_seen_at, revoked_at, notes)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+            ON CONFLICT (device_id) DO UPDATE SET status = EXCLUDED.status, last_seen_at = EXCLUDED.last_seen_at;
+          `, [pd.deviceId, pd.deviceName || 'جهاز غير معروف', pd.deviceType || 'android', pd.osVersion || '', pd.appVersion || '', pd.linkedUserId || null, pd.linkedUserName || '', pd.connectionMode || 'local_network', pd.serverUrlUsed || '', pd.ipAddress || '', pd.status || 'active', pd.pairingTokenId || null, Number(pd.configVersion || 1), pd.pairedAt || new Date().toISOString(), pd.lastSeenAt || new Date().toISOString(), pd.revokedAt || null, pd.notes || '']);
+        }
+
         for (const al of auditLogs) {
           await client.query(`
             INSERT INTO audit_logs (id, timestamp, user_id, user_name, action, module, record_id, notes)
@@ -1238,6 +1256,7 @@ export async function rollbackMigration(migrationIdOrBackup, executedBy = 'مد�
     await withTransaction(async (client) => {
       // Truncate/clear operational PostgreSQL tables only if explicitly rolling back to pre-migration JSON snapshot
       const tables = [
+        'pairing_tokens', 'paired_devices',
         'owner_transactions', 'owner_accounts',
         'stock_count_items', 'stock_counts',
         'stock_transfer_request_items', 'stock_transfer_requests',

@@ -2,12 +2,21 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { Customer, MobileConfig, Representative, User, UserRole, UserShortcutItem } from '../types';
 import {
   apiRequest,
+  detectModeFromUrl,
+  getConfiguredApiBaseUrl,
+  getStoredConnectionProfiles,
   getStoredTokens,
   hydrateServerUrlFromNative,
   saveStoredTokens,
   setAuthExpiredHandler,
 } from '../services/api';
+import { getClientDeviceDescriptor } from '../services/native';
 import { clearReadCache, purgeLegacyLocalDatabaseCache } from '../services/storage';
+
+export interface PairingBannerMessage {
+  type: 'success' | 'warning' | 'error';
+  message: string;
+}
 
 const DEFAULT_MOBILE_CONFIG: MobileConfig = {
   enableCustomerApp: true,
@@ -23,6 +32,9 @@ interface AuthContextType {
   mobileConfig: MobileConfig;
   linkWarning: string | null;
   sessionExpiredMessage: string | null;
+  pairingBanner: PairingBannerMessage | null;
+  setPairingBanner: (banner: PairingBannerMessage | null) => void;
+  clearPairingBanner: () => void;
   needsAdminSetup: boolean;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -46,6 +58,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [mobileConfig, setMobileConfig] = useState<MobileConfig>(DEFAULT_MOBILE_CONFIG);
   const [linkWarning, setLinkWarning] = useState<string | null>(null);
   const [sessionExpiredMessage, setSessionExpiredMessage] = useState<string | null>(null);
+  const [pairingBanner, setPairingBanner] = useState<PairingBannerMessage | null>(null);
   const [needsAdminSetup, setNeedsAdminSetup] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -88,13 +101,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSessionExpiredMessage(null);
       setNeedsAdminSetup(false);
     } catch (err: any) {
-      // If genuinely offline (status === 0), do not wipe tokens unless server rejected them (401)
-      if (err?.status === 401) {
+      // If genuinely offline (status === 0), do not wipe tokens unless server rejected them (401 or DEVICE_REVOKED)
+      if (err?.status === 401 || err?.code === 'DEVICE_REVOKED') {
         saveStoredTokens(null);
         setCurrentUser(null);
         setCustomerProfile(null);
         setRepresentativeProfile(null);
         setLinkWarning(null);
+        if (err?.code === 'DEVICE_REVOKED') {
+          setSessionExpiredMessage(err.message);
+        }
       }
     } finally {
       setIsLoading(false);
@@ -120,6 +136,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     password: string
   ): Promise<{ success: boolean; error?: string; requirePasswordChange?: boolean }> => {
     try {
+      const descriptor = getClientDeviceDescriptor();
+      const baseUrl = getConfiguredApiBaseUrl();
+      const mode = detectModeFromUrl(baseUrl, getStoredConnectionProfiles());
       const res = await apiRequest<{
         ok: boolean;
         accessToken: string;
@@ -131,7 +150,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         linkWarning: string | null;
       }>('/api/auth/login', {
         method: 'POST',
-        body: { username: username.trim(), password },
+        body: {
+          username: username.trim(),
+          password,
+          ...descriptor,
+          connectionMode: mode,
+          serverUrlUsed: baseUrl,
+        },
         skipAuth: true,
       });
 
@@ -251,6 +276,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         mobileConfig,
         linkWarning,
         sessionExpiredMessage,
+        pairingBanner,
+        setPairingBanner,
+        clearPairingBanner: () => setPairingBanner(null),
         needsAdminSetup,
         isAuthenticated: Boolean(currentUser),
         isLoading,

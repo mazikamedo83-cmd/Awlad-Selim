@@ -74,6 +74,8 @@ export function createEmptyDatabaseState() {
     ownerTransactions: [],
     stockCounts: [],
     stockTransferRequests: [],
+    pairingTokens: [],
+    pairedDevices: [],
     settings: {
       companyName: 'مؤسسة أولاد سليم للتجارة والتوزيع',
       companySubtitle: 'نظام المحاسبة وإدارة الأعمال المتكامل',
@@ -157,6 +159,8 @@ export function normalizeDbState(raw) {
     'ownerTransactions',
     'stockCounts',
     'stockTransferRequests',
+    'pairingTokens',
+    'pairedDevices',
   ];
   for (const key of arrayKeys) {
     if (!Array.isArray(db[key])) db[key] = [];

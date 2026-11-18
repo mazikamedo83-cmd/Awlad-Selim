@@ -207,6 +207,7 @@ export async function initializeSchema(customPool = null) {
       "ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ",
       "ALTER TABLE invoices ALTER COLUMN payment_method TYPE VARCHAR(32)",
       "ALTER TABLE invoice_payments ALTER COLUMN payment_method TYPE VARCHAR(32)",
+      "ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS device_id VARCHAR(64)",
     ];
     for (const stmt of alterStatements) {
       try {
@@ -231,6 +232,24 @@ export async function initializeSchema(customPool = null) {
       const idx = sql.indexOf(v4Marker);
       if (idx !== -1) {
         await currentPool.query(sql.slice(idx));
+      }
+    }
+
+    // Ensure v5 pairing/device tables exist on pre-existing v4 PG DBs
+    let hasV5PairingTables = false;
+    try {
+      const v5Check = await currentPool.query(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'pairing_tokens'"
+      );
+      hasV5PairingTables = Boolean(v5Check.rows && v5Check.rows.length > 0);
+    } catch {
+      hasV5PairingTables = false;
+    }
+    if (!hasV5PairingTables) {
+      const v5Marker = '-- 40. روابط الربط الذكي';
+      const idx5 = sql.indexOf(v5Marker);
+      if (idx5 !== -1) {
+        await currentPool.query(sql.slice(idx5));
       }
     }
 

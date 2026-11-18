@@ -616,6 +616,7 @@ export interface ExtraSettingsConfig {
     enableWhatsAppAlerts: boolean;
     whatsappNumber?: string;
   };
+  connectionConfig?: ConnectionProfilesConfig;
 }
 
 export interface SystemSettings {
@@ -716,13 +717,133 @@ export interface CustomerItemOrderRequest {
   statusHistory?: CustomerOrderStatusHistoryEntry[];
 }
 
+// أوضاع الاتصال المتعددة بالسيرفر المركزي (Dual / Multi Connection System)
+export type ConnectionMode = 'local_network' | 'free_remote' | 'pro_remote' | 'cloud_vps';
+
+export interface ConnectionProfilesConfig {
+  activeMode: ConnectionMode;
+  configVersion?: number;
+  localNetwork: {
+    ip: string;
+    port: number;
+    hostname?: string;
+  };
+  freeRemote: {
+    tunnelUrl: string; // Cloudflare Quick Tunnel (https://xxxx.trycloudflare.com)
+    autoDetect?: boolean;
+  };
+  proRemote: {
+    domainUrl: string; // Cloudflare Named Tunnel / Custom HTTPS Domain
+    provider?: string;
+  };
+  cloudVps: {
+    vpsUrl: string; // Future Cloud VPS HTTPS Endpoint
+    notes?: string;
+  };
+  enforceHttpsForRemote?: boolean;
+  updatedAt?: string;
+}
+
+export type DevicePlatform = 'windows' | 'android' | 'ios' | 'web';
+
+export interface TunnelRuntimeStatus {
+  status: 'offline' | 'starting' | 'online' | 'error';
+  provider: string;
+  tunnelUrl: string;
+  localPort: number;
+  startedAt: string | null;
+  updatedAt: string | null;
+  lastError: string | null;
+}
+
+export interface PairedDevice {
+  deviceId: string;
+  deviceName: string;
+  deviceType: DevicePlatform;
+  osVersion?: string;
+  appVersion?: string;
+  linkedUserId?: string;
+  linkedUserName?: string;
+  connectionMode: ConnectionMode | string;
+  serverUrlUsed?: string;
+  ipAddress?: string;
+  status: 'active' | 'pending_approval' | 'revoked';
+  pairingTokenId?: string;
+  configVersion?: number;
+  pairedAt: string;
+  lastSeenAt: string;
+  revokedAt?: string;
+  isRecentlyOnline?: boolean;
+  notes?: string;
+}
+
+export interface PairedDevicesSummary {
+  total: number;
+  active: number;
+  pendingApproval: number;
+  revoked: number;
+  onlineNow: number;
+}
+
+export interface PairingTokenRecord {
+  id: string;
+  tokenPreview: string;
+  createdByUserId?: string;
+  createdByName: string;
+  targetUserId?: string;
+  targetUserName?: string;
+  targetRole?: string;
+  targetDeviceType: 'any' | 'windows' | 'android' | 'ios';
+  connectionMode: ConnectionMode | 'auto';
+  expiresAt: string;
+  singleUse: boolean;
+  usedCount: number;
+  lastUsedAt?: string;
+  requireAdminApproval: boolean;
+  revokedAt?: string;
+  status: 'active' | 'used' | 'expired' | 'revoked' | 'invalid';
+  notes?: string;
+  createdAt: string;
+}
+
+export interface PairingCreateResponse {
+  ok: boolean;
+  tokenRecord: PairingTokenRecord;
+  rawToken: string;
+  serverBaseUrl: string;
+  directInviteUrl: string;
+  deepLinkUrl: string;
+  qrPayload: string;
+}
+
+export interface ConnectionDiscoveryResponse {
+  ok: boolean;
+  service: string;
+  version: string;
+  timestamp: string;
+  companyName: string;
+  activeMode: ConnectionMode;
+  configVersion: number;
+  supportedModes: ConnectionMode[];
+  port: number;
+  httpsActive: boolean;
+  activeEndpoint: string;
+  currentHostUrl?: string;
+  lanUrls: string[];
+  profiles: ConnectionProfilesConfig;
+  fallbackEndpoints: Array<{ mode: ConnectionMode; url: string; label: string }>;
+  tunnelStatus?: TunnelRuntimeStatus;
+}
+
 // إعدادات السيرفر والاتصال المحلي والشبكة
 export interface ServerConnectionSettings {
   serverIp: string;
   hostname: string;
   port: number;
   apiBaseUrl: string;
-  connectionType: 'lan' | 'vpn' | 'reverse_proxy' | 'offline_local';
+  connectionType: ConnectionMode | 'lan' | 'vpn' | 'reverse_proxy' | 'offline_local';
+  activeMode?: ConnectionMode;
+  profiles?: ConnectionProfilesConfig;
   serverStatus: 'online' | 'offline' | 'checking';
   databaseStatus: 'connected' | 'disconnected' | 'migrating';
   latencyMs: number;

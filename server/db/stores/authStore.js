@@ -303,11 +303,61 @@ function resolveLinkedProfilesJson(db, user) {
   return { customerProfile, representativeProfile, linkWarning };
 }
 
-export async function loginUser({ username, password, deviceInfo = '', ipAddress = '' }) {
+async function checkDeviceAuthGuardInternal(deviceId, clientOrPool = null) {
+  const cleanId = String(deviceId || '').trim();
+  if (!cleanId) return;
+  let device = null;
+  if (await isPgMode()) {
+    const q = clientOrPool || getPool();
+    const res = await q.query('SELECT status FROM paired_devices WHERE device_id = $1 LIMIT 1', [cleanId]);
+    device = res.rows[0] || null;
+  } else {
+    const db = readJsonDatabase();
+    device = (db.pairedDevices || []).find((d) => d.deviceId === cleanId) || null;
+  }
+  if (!device) return;
+  if (device.status === 'revoked') {
+    throw new AppError(
+      403,
+      'تم فصل أو إلغاء ربط هذا الجهاز من قِبل الإدارة. يرجى إعادة الربط عبر رابط جديد.',
+      'DEVICE_REVOKED'
+    );
+  }
+  if (device.status === 'pending_approval') {
+    throw new AppError(
+      403,
+      'هذا الجهاز بانتظار موافقة مدير النظام في لوحة إدارة الأجهزة.',
+      'DEVICE_PENDING_APPROVAL'
+    );
+  }
+}
+
+export async function checkDeviceAuthGuard(deviceId) {
+  return checkDeviceAuthGuardInternal(deviceId, null);
+}
+
+export async function loginUser({
+  username,
+  password,
+  deviceId = '',
+  deviceName = '',
+  deviceType = '',
+  osVersion = '',
+  appVersion = '',
+  connectionMode = '',
+  serverUrlUsed = '',
+  deviceInfo = '',
+  ipAddress = '',
+}) {
   const cleanUsername = String(username || '').trim().toLowerCase();
   const cleanPassword = String(password || '');
+  const cleanDeviceId = String(deviceId || '').trim().slice(0, 64);
   if (!cleanUsername || !cleanPassword) {
     throw new AppError(400, 'يرجى إدخال اسم المستخدم وكلمة المرور', 'MISSING_CREDENTIALS');
+  }
+
+  if (cleanDeviceId) {
+    await checkDeviceAuthGuardInternal(cleanDeviceId);
   }
 
   const expiresDate = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 86400 * 1000).toISOString();
@@ -346,13 +396,47 @@ export async function loginUser({ username, password, deviceInfo = '', ipAddress
       }
 
       await client.query(
-        `INSERT INTO user_sessions (id, user_id, refresh_token_hash, device_info, ip_address, expires_at, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [sessionId, row.id, refreshHash, deviceInfo || '', ipAddress || '', expiresDate, now]
+        `INSERT INTO user_sessions (id, user_id, refresh_token_hash, device_info, device_id, ip_address, expires_at, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [sessionId, row.id, refreshHash, deviceInfo || '', cleanDeviceId || null, ipAddress || '', expiresDate, now]
       );
 
       const userObj = mapPgUserRow(row);
       userObj.lastLogin = now;
+
+      if (cleanDeviceId) {
+        const devRes = await client.query('SELECT device_id, status FROM paired_devices WHERE device_id = $1 LIMIT 1', [
+          cleanDeviceId,
+        ]);
+        if (devRes.rows[0]) {
+          await client.query(
+            `UPDATE paired_devices SET linked_user_id = $1, linked_user_name = $2, last_seen_at = $3, ip_address = COALESCE(NULLIF($4, ''), ip_address)
+             WHERE device_id = $5`,
+            [userObj.id, userObj.fullName, now, ipAddress || '', cleanDeviceId]
+          );
+        } else {
+          const inferredType =
+            deviceType || (/iphone|ipad/i.test(deviceInfo) ? 'ios' : /android/i.test(deviceInfo) ? 'android' : /electron|windows/i.test(deviceInfo) ? 'windows' : 'web');
+          await client.query(
+            `INSERT INTO paired_devices (device_id, device_name, device_type, os_version, app_version, linked_user_id, linked_user_name, connection_mode, server_url_used, ip_address, status, paired_at, last_seen_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'active',$11,$11)`,
+            [
+              cleanDeviceId,
+              String(deviceName || `${userObj.fullName} (${inferredType})`).slice(0, 120),
+              inferredType,
+              String(osVersion || '').slice(0, 80),
+              String(appVersion || '3.0.0').slice(0, 40),
+              userObj.id,
+              userObj.fullName,
+              String(connectionMode || 'local_network').slice(0, 32),
+              String(serverUrlUsed || '').slice(0, 300),
+              String(ipAddress || '').slice(0, 64),
+              now,
+            ]
+          );
+        }
+      }
+
       const profiles = await resolveLinkedProfilesPg(client, userObj);
       return { user: userObj, ...profiles };
     });
@@ -362,6 +446,7 @@ export async function loginUser({ username, password, deviceInfo = '', ipAddress
         sub: result.user.id,
         role: result.user.role,
         sid: sessionId,
+        did: cleanDeviceId || null,
         cid: result.customerProfile?.id || null,
         rid: result.representativeProfile?.id || null,
       },
@@ -410,6 +495,35 @@ export async function loginUser({ username, password, deviceInfo = '', ipAddress
       user.passwordAlgo = 'bcrypt';
     }
     user.lastLogin = now;
+    if (cleanDeviceId) {
+      if (!Array.isArray(db.pairedDevices)) db.pairedDevices = [];
+      const existingDev = db.pairedDevices.find((d) => d.deviceId === cleanDeviceId);
+      if (existingDev) {
+        existingDev.linkedUserId = user.id;
+        existingDev.linkedUserName = user.fullName;
+        existingDev.lastSeenAt = now;
+        if (ipAddress) existingDev.ipAddress = ipAddress;
+      } else {
+        const inferredType =
+          deviceType || (/iphone|ipad/i.test(deviceInfo) ? 'ios' : /android/i.test(deviceInfo) ? 'android' : /electron|windows/i.test(deviceInfo) ? 'windows' : 'web');
+        db.pairedDevices.unshift({
+          deviceId: cleanDeviceId,
+          deviceName: String(deviceName || `${user.fullName} (${inferredType})`).slice(0, 120),
+          deviceType: inferredType,
+          osVersion: String(osVersion || '').slice(0, 80),
+          appVersion: String(appVersion || '3.0.0').slice(0, 40),
+          linkedUserId: user.id,
+          linkedUserName: user.fullName,
+          connectionMode: String(connectionMode || 'local_network').slice(0, 32),
+          serverUrlUsed: String(serverUrlUsed || '').slice(0, 300),
+          ipAddress: String(ipAddress || '').slice(0, 64),
+          status: 'active',
+          configVersion: 1,
+          pairedAt: now,
+          lastSeenAt: now,
+        });
+      }
+    }
     const profiles = resolveLinkedProfilesJson(db, user);
     return { user: structuredClone(user), ...profiles };
   });
@@ -421,6 +535,7 @@ export async function loginUser({ username, password, deviceInfo = '', ipAddress
       userId: found.user.id,
       refreshTokenHash: refreshHash,
       deviceInfo: deviceInfo || '',
+      deviceId: cleanDeviceId || '',
       ipAddress: ipAddress || '',
       expiresAt: expiresDate,
       revokedAt: null,
@@ -434,6 +549,7 @@ export async function loginUser({ username, password, deviceInfo = '', ipAddress
       sub: found.user.id,
       role: found.user.role,
       sid: sessionId,
+      did: cleanDeviceId || null,
       cid: found.customerProfile?.id || null,
       rid: found.representativeProfile?.id || null,
     },
@@ -461,10 +577,11 @@ export async function loginUser({ username, password, deviceInfo = '', ipAddress
   };
 }
 
-export async function refreshUserSession({ refreshToken, deviceInfo = '', ipAddress = '' }) {
+export async function refreshUserSession({ refreshToken, deviceId = '', deviceInfo = '', ipAddress = '' }) {
   if (!refreshToken) {
     throw new AppError(401, 'رمز التحديث مفقود', 'MISSING_REFRESH_TOKEN');
   }
+  const cleanDeviceId = String(deviceId || '').trim().slice(0, 64);
   const hash = sha256Hex(refreshToken);
   const newRefresh = generateRefreshToken();
   const newRefreshHash = sha256Hex(newRefresh);
@@ -481,6 +598,11 @@ export async function refreshUserSession({ refreshToken, deviceInfo = '', ipAddr
         throw new AppError(401, 'انتهت صلاحية الجلسة أو تم إلغاؤها', 'INVALID_SESSION');
       }
 
+      const effectiveDeviceId = cleanDeviceId || ses.device_id || '';
+      if (effectiveDeviceId) {
+        await checkDeviceAuthGuardInternal(effectiveDeviceId, client);
+      }
+
       const uRes = await client.query(`SELECT * FROM users WHERE id = $1 LIMIT 1`, [ses.user_id]);
       const userRow = uRes.rows[0];
       if (!userRow || !userRow.is_active) {
@@ -488,13 +610,13 @@ export async function refreshUserSession({ refreshToken, deviceInfo = '', ipAddr
       }
 
       await client.query(
-        `UPDATE user_sessions SET refresh_token_hash = $1, expires_at = $2, device_info = COALESCE(NULLIF($3, ''), device_info), ip_address = COALESCE(NULLIF($4, ''), ip_address) WHERE id = $5`,
-        [newRefreshHash, newExpires, deviceInfo, ipAddress, ses.id]
+        `UPDATE user_sessions SET refresh_token_hash = $1, expires_at = $2, device_info = COALESCE(NULLIF($3, ''), device_info), ip_address = COALESCE(NULLIF($4, ''), ip_address), device_id = COALESCE(NULLIF($5, ''), device_id) WHERE id = $6`,
+        [newRefreshHash, newExpires, deviceInfo, ipAddress, effectiveDeviceId, ses.id]
       );
 
       const user = mapPgUserRow(userRow);
       const profiles = await resolveLinkedProfilesPg(client, user);
-      return { sessionId: ses.id, user, ...profiles };
+      return { sessionId: ses.id, effectiveDeviceId, user, ...profiles };
     });
 
     const accessToken = signJwt(
@@ -502,6 +624,7 @@ export async function refreshUserSession({ refreshToken, deviceInfo = '', ipAddr
         sub: result.user.id,
         role: result.user.role,
         sid: result.sessionId,
+        did: result.effectiveDeviceId || null,
         cid: result.customerProfile?.id || null,
         rid: result.representativeProfile?.id || null,
       },
@@ -528,6 +651,10 @@ export async function refreshUserSession({ refreshToken, deviceInfo = '', ipAddr
     if (idx === -1) {
       throw new AppError(401, 'انتهت صلاحية الجلسة أو تم إلغاؤها', 'INVALID_SESSION');
     }
+    const effectiveDeviceId = cleanDeviceId || sessions[idx].deviceId || '';
+    if (effectiveDeviceId) {
+      await checkDeviceAuthGuardInternal(effectiveDeviceId);
+    }
     const db = readJsonDatabase();
     const user = db.users.find((u) => u.id === sessions[idx].userId);
     if (!user || !user.isActive) {
@@ -535,9 +662,10 @@ export async function refreshUserSession({ refreshToken, deviceInfo = '', ipAddr
     }
     sessions[idx].refreshTokenHash = newRefreshHash;
     sessions[idx].expiresAt = newExpires;
+    if (effectiveDeviceId) sessions[idx].deviceId = effectiveDeviceId;
     writeJsonSessions(sessions);
     const profiles = resolveLinkedProfilesJson(db, user);
-    return { sessionId: sessions[idx].id, user, ...profiles };
+    return { sessionId: sessions[idx].id, effectiveDeviceId, user, ...profiles };
   });
 
   const accessToken = signJwt(
@@ -545,6 +673,7 @@ export async function refreshUserSession({ refreshToken, deviceInfo = '', ipAddr
       sub: sesFound.user.id,
       role: sesFound.user.role,
       sid: sesFound.sessionId,
+      did: sesFound.effectiveDeviceId || null,
       cid: sesFound.customerProfile?.id || null,
       rid: sesFound.representativeProfile?.id || null,
     },
@@ -594,7 +723,7 @@ export async function validateActiveSession(sessionId, userId) {
   if (await isPgMode()) {
     const pool = getPool();
     const res = await pool.query(
-      `SELECT u.*, s.id AS session_id
+      `SELECT u.*, s.id AS session_id, s.device_id AS session_device_id
        FROM users u
        JOIN user_sessions s ON s.user_id = u.id
        WHERE u.id = $1 AND s.id = $2 AND s.revoked_at IS NULL AND s.expires_at > NOW()
@@ -608,6 +737,7 @@ export async function validateActiveSession(sessionId, userId) {
     return {
       user: sanitizeUser(user),
       rawUser: user,
+      deviceId: row.session_device_id || '',
       customerProfile: profiles.customerProfile,
       representativeProfile: profiles.representativeProfile,
       linkWarning: profiles.linkWarning,
@@ -626,6 +756,7 @@ export async function validateActiveSession(sessionId, userId) {
   return {
     user: sanitizeUser(user),
     rawUser: user,
+    deviceId: ses.deviceId || '',
     customerProfile: profiles.customerProfile,
     representativeProfile: profiles.representativeProfile,
     linkWarning: profiles.linkWarning,
@@ -817,4 +948,26 @@ export async function revokeAllUserSessions(userId) {
     if (changed) writeJsonSessions(sessions);
   });
 }
+
+export async function revokeSessionsByDeviceId(deviceId) {
+  const cleanId = String(deviceId || '').trim();
+  if (!cleanId) return;
+  const now = nowIso();
+  if (await isPgMode()) {
+    await getPool().query('UPDATE user_sessions SET revoked_at = $1 WHERE device_id = $2 AND revoked_at IS NULL', [now, cleanId]);
+    return;
+  }
+  await withJsonMutex(() => {
+    const sessions = readJsonSessions();
+    let changed = false;
+    for (const s of sessions) {
+      if (s.deviceId === cleanId && !s.revokedAt) {
+        s.revokedAt = now;
+        changed = true;
+      }
+    }
+    if (changed) writeJsonSessions(sessions);
+  });
+}
+
 
