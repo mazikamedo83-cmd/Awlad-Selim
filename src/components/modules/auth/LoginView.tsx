@@ -266,6 +266,15 @@ export const LoginView: React.FC = () => {
             </div>
           )}
 
+          {typeof navigator !== 'undefined' && navigator.onLine === false && (
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 shrink-0 text-amber-700 mt-0.5" />
+              <span className="leading-relaxed">
+                أنت الآن في وضع العمل دون إنترنت: يُسمح بتسجيل الدخول محلياً فقط للحسابات التي سبق التحقق منها بنجاح على هذا الجهاز، وسيتم إعادة التحقق من الصلاحيات فور عودة الاتصال بالسيرفر المركزي.
+              </span>
+            </div>
+          )}
+
           {error && (
             <div className="flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs font-bold text-red-700 animate-shake">
               <AlertCircle className="w-4 h-4 shrink-0" />

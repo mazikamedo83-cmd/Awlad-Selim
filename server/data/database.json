@@ -1,0 +1,152 @@
+{
+  "users": [
+    {
+      "id": "USR-MWLNWTN7-90067A",
+      "fullName": "123456",
+      "username": "123456",
+      "passwordHash": "$2b$10$IYHSFh7WwjQpoh26biVea.1RpKvZD8nDsAEQ6fpUNl0kpNFDLDO1W",
+      "passwordAlgo": "bcrypt",
+      "phone": "",
+      "role": "admin",
+      "jobTitle": "المدير العام",
+      "department": "الإدارة",
+      "isActive": true,
+      "mustChangePassword": false,
+      "permissions": {
+        "canView": true,
+        "canAdd": true,
+        "canEdit": true,
+        "canDelete": true,
+        "canPrint": true,
+        "canExport": true,
+        "canViewReports": true,
+        "canManageSales": true,
+        "canManagePurchases": true,
+        "canManageInventory": true,
+        "canManageWarehouses": true,
+        "canManageCashboxes": true,
+        "canManageAccounts": true,
+        "canManageReps": true,
+        "canManageTransfers": true,
+        "canManageEmployees": true,
+        "canManageSalaries": true,
+        "canManageUsers": true,
+        "canManageSettings": true,
+        "canAllowNegativeInventory": true,
+        "canViewPersonalAccounts": true,
+        "canCreatePersonalTx": true,
+        "canEditPersonalTx": true,
+        "canApprovePersonalAdjustment": true,
+        "canCreateStockCount": true,
+        "canApproveStockCount": true,
+        "canCreateStockTransfer": true,
+        "canApproveStockTransfer": true,
+        "canExecuteStockTransfer": true,
+        "canViewDeletedInvoices": true
+      },
+      "createdAt": "2026-11-18T05:09:57.140Z",
+      "lastLogin": "2026-11-18T05:09:57.310Z"
+    }
+  ],
+  "warehouses": [
+    {
+      "id": "wh-main",
+      "name": "المستودع الرئيسي",
+      "code": "WH-01",
+      "location": "المقر الرئيسي",
+      "isDefault": true,
+      "status": "active"
+    }
+  ],
+  "categories": [
+    {
+      "id": "cat-1",
+      "name": "مواد غذائية عامة",
+      "status": "active",
+      "createdAt": "2026-11-18T05:09:57.140Z"
+    }
+  ],
+  "products": [],
+  "customers": [],
+  "suppliers": [],
+  "invoices": [],
+  "invoiceReturns": [],
+  "cashboxes": [
+    {
+      "id": "cb-main",
+      "name": "الخزينة الرئيسية",
+      "type": "cashbox",
+      "openingBalance": 0,
+      "currentBalance": 0,
+      "isDefault": true
+    }
+  ],
+  "financialTransactions": [],
+  "cheques": [],
+  "installments": [],
+  "representatives": [],
+  "repTransfers": [],
+  "repItemTransfers": [],
+  "customerItemOrders": [],
+  "employees": [],
+  "advancesDeductions": [],
+  "attendance": [],
+  "payrolls": [],
+  "expenseIncomes": [],
+  "stockMovements": [],
+  "ownerAccounts": [],
+  "ownerTransactions": [],
+  "stockCounts": [],
+  "stockTransferRequests": [],
+  "pairingTokens": [],
+  "pairedDevices": [
+    {
+      "deviceId": "DEV-89bbe555-c8e0-457b-8fc1-6dbb8b737d64",
+      "deviceName": "هاتف Android",
+      "deviceType": "android",
+      "osVersion": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) C",
+      "appVersion": "3.0.0",
+      "linkedUserId": "USR-MWLNWTN7-90067A",
+      "linkedUserName": "123456",
+      "connectionMode": "pro_remote",
+      "serverUrlUsed": "https://ais-dev-umgjohq4zbitt6p2gtc3we-679503179490.europe-west2.run.app",
+      "ipAddress": "45.110.53.198",
+      "status": "active",
+      "configVersion": 1,
+      "pairedAt": "2026-11-18T05:09:57.310Z",
+      "lastSeenAt": "2026-11-18T05:21:47.543Z"
+    }
+  ],
+  "settings": {
+    "companyName": "مؤسسة أولاد سليم للتجارة والتوزيع",
+    "companySubtitle": "نظام المحاسبة وإدارة الأعمال المتكامل",
+    "phone1": "",
+    "phone2": "",
+    "address": "",
+    "commercialRegistration": "",
+    "taxNumber": "",
+    "currency": "ج.م",
+    "defaultPrintMode": "a4",
+    "invoiceNotes": "شكرًا لتعاملكم معنا",
+    "allowNegativeStock": false,
+    "extraSettings": {}
+  },
+  "sequences": {
+    "customerOrderNo": 0,
+    "salesInvoiceNo": 0,
+    "purchaseInvoiceNo": 0,
+    "salesReturnNo": 0,
+    "purchaseReturnNo": 0,
+    "stockMovementNo": 0,
+    "finTxNo": 0,
+    "repTransferNo": 0,
+    "repItemTransferNo": 0,
+    "expenseNo": 0,
+    "ownerTxNo": 0,
+    "stockCountNo": 0,
+    "stockTransferNo": 0,
+    "cashOpNo": 0
+  },
+  "lastSavedAt": "2026-11-18T05:21:47.543Z",
+  "version": "3.0.0"
+}

@@ -1932,6 +1932,234 @@ async function runSuiteA_JsonLedgerHttp() {
         beforeCashboxSum
       );
     });
+
+    await test('39. Customer & Rep Orders section: rep orders, strict RBAC isolation, approve does NOT auto-invoice, reject reason & separate convert', async () => {
+      const boot0 = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const wh0 = boot0.warehouses[0];
+      const cb0 = boot0.cashboxes[0];
+      const custABefore = boot0.customers.find((c) => c.id === custA.id);
+      const prodBefore = boot0.products.find((p) => p.id === prod1.id);
+      const invCountBefore = boot0.invoices.length;
+      const stockBefore = Number(prodBefore.stockPerWarehouse[wh0.id] || 0);
+      const balBefore = Number(custABefore.currentBalance || 0);
+
+      // 1. Rep submits an order for assigned custA
+      const repOrdRes = await req(baseUrl, 'POST', '/api/orders', {
+        token: tokenRep,
+        headers: { 'Idempotency-Key': 'rep-ord-39-1' },
+        body: {
+          customerId: custA.id,
+          items: [{ productId: prod1.id, unit: 'قطعة', quantity: 2.5 }],
+          notes: 'طلب مندوب تجريبي',
+        },
+      });
+      assert.equal(repOrdRes.status, 201);
+      const repOrd = repOrdRes.json.order;
+      assert.equal(repOrd.requesterType, 'representative');
+      assert.equal(repOrd.representativeId, repProfileId);
+      assert.ok(Number(repOrd.totalAmount) > 0);
+      assert.equal(repOrd.status, 'pending');
+
+      // Rep cannot submit order for unassigned custB -> 403
+      const repBlockedCustB = await req(baseUrl, 'POST', '/api/orders', {
+        token: tokenRep,
+        body: {
+          customerId: custB.id,
+          items: [{ productId: prod1.id, unit: 'قطعة', quantity: 1 }],
+        },
+      });
+      assert.equal(repBlockedCustB.status, 403);
+
+      // 2. Customer B creates a direct order; Rep must NOT see Customer B order in GET /api/orders and gets 403 on GET /api/orders/:id
+      const custBOrdRes = await req(baseUrl, 'POST', '/api/orders', {
+        token: tokenCustB,
+        body: {
+          items: [{ productId: prod1.id, unit: 'قطعة', quantity: 1 }],
+          notes: 'طلب مباشر من العميل ب',
+        },
+      });
+      assert.equal(custBOrdRes.status, 201);
+      const custBOrd = custBOrdRes.json.order;
+      assert.equal(custBOrd.requesterType, 'customer');
+
+      const repListRes = await req(baseUrl, 'GET', '/api/orders', { token: tokenRep });
+      assert.equal(repListRes.status, 200);
+      assert.ok(repListRes.json.orders.some((o) => o.id === repOrd.id));
+      assert.equal(repListRes.json.orders.some((o) => o.id === custBOrd.id), false, 'Rep MUST NOT see direct customer orders');
+      assert.equal((await req(baseUrl, 'GET', `/api/orders/${custBOrd.id}`, { token: tokenRep })).status, 403);
+
+      // Non-sales employee (e.g. warehouse staff without canManageSales) receives empty list / 403 on detail & review actions
+      const nonSalesRes = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'أمين مخزن اختبار',
+          username: 'wh_no_orders',
+          password: 'WhPassword!123',
+          role: 'warehouse',
+          permissions: { canView: true, canManageInventory: true },
+        },
+      });
+      assert.equal(nonSalesRes.status, 201);
+      const nonSalesToken = (await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: 'wh_no_orders', password: 'WhPassword!123' },
+      })).json.accessToken;
+
+      const staffOrdList = await req(baseUrl, 'GET', '/api/orders', { token: nonSalesToken });
+      assert.equal(staffOrdList.status, 200);
+      assert.equal(staffOrdList.json.orders.length, 0);
+      assert.equal((await req(baseUrl, 'GET', `/api/orders/${repOrd.id}`, { token: nonSalesToken })).status, 403);
+      assert.equal((await req(baseUrl, 'POST', `/api/orders/${repOrd.id}/approve`, { token: nonSalesToken, body: {} })).status, 403);
+
+      // 3. Review -> Approve lifecycle: must NOT auto-create invoice or touch stock/balances!
+      const revRes = await req(baseUrl, 'POST', `/api/orders/${repOrd.id}/review`, {
+        token: adminToken,
+        body: { notes: 'جاري المراجعة' },
+      });
+      assert.equal(revRes.status, 200);
+      assert.equal(revRes.json.order.status, 'under_review');
+
+      const appRes = await req(baseUrl, 'POST', `/api/orders/${repOrd.id}/approve`, {
+        token: adminToken,
+        body: {},
+      });
+      assert.equal(appRes.status, 200);
+      assert.equal(appRes.json.order.status, 'approved');
+      assert.ok(appRes.json.order.reviewedBy);
+      assert.ok(appRes.json.order.reviewedAt);
+
+      // Duplicate approve blocked with 409
+      const dupAppRes = await req(baseUrl, 'POST', `/api/orders/${repOrd.id}/approve`, {
+        token: adminToken,
+        body: {},
+      });
+      assert.equal(dupAppRes.status, 409);
+
+      // Verify ZERO change to invoices, stock, or customer balance upon approval
+      const bootAfterApprove = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      assert.equal(bootAfterApprove.invoices.length, invCountBefore, 'Approving order MUST NOT auto-create an invoice');
+      assert.equal(Number(bootAfterApprove.products.find((p) => p.id === prod1.id).stockPerWarehouse[wh0.id] || 0), stockBefore);
+      assert.equal(Number(bootAfterApprove.customers.find((c) => c.id === custA.id).currentBalance || 0), balBefore);
+
+      // Separate convert-to-invoice works & transitions order -> invoiced
+      const convRes = await req(baseUrl, 'POST', `/api/orders/${repOrd.id}/convert-to-invoice`, {
+        token: adminToken,
+        body: {
+          warehouseId: wh0.id,
+          warehouseName: wh0.name,
+          cashboxId: cb0.id,
+          status: 'confirmed',
+          paymentType: 'credit',
+          paidAmount: 0,
+          items: [{ productId: prod1.id, productName: prod1.name, unit: 'قطعة', unitFactor: 1, quantity: 2.5, unitPrice: 20 }],
+        },
+      });
+      assert.equal(convRes.status, 201);
+      assert.equal(convRes.json.order.status, 'invoiced');
+
+      // 4. Reject requires written reason & updates mobile state + notification
+      const emptyRej = await req(baseUrl, 'POST', `/api/orders/${custBOrd.id}/reject`, {
+        token: adminToken,
+        body: { reason: '   ' },
+      });
+      assert.equal(emptyRej.status, 400);
+
+      const okRej = await req(baseUrl, 'POST', `/api/orders/${custBOrd.id}/reject`, {
+        token: adminToken,
+        body: { reason: 'الكمية غير متوفرة مؤقتًا' },
+      });
+      assert.equal(okRej.status, 200);
+      assert.equal(okRej.json.order.status, 'rejected');
+      assert.equal(okRej.json.order.rejectionReason, 'الكمية غير متوفرة مؤقتًا');
+
+      const custBOrdersAfter = await req(baseUrl, 'GET', '/api/orders', { token: tokenCustB });
+      assert.equal(custBOrdersAfter.status, 200);
+      const rejectedForB = custBOrdersAfter.json.orders.find((o) => o.id === custBOrd.id);
+      assert.equal(rejectedForB.status, 'rejected');
+      assert.equal(rejectedForB.rejectionReason, 'الكمية غير متوفرة مؤقتًا');
+    });
+
+    await test('40. Customer user creation auto-links 1:1 profile, prevents duplicate linking & repairs legacy unlinked users', async () => {
+      // 1. Creating role='customer' user without linkedCustomerId auto-creates & links customer profile
+      const autoUserRes = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'متجر الأمل الجديد',
+          username: 'cust_amal_auto',
+          password: 'AmalPassword!123',
+          phone: '01077776666',
+          address: 'المنصورة',
+          role: 'customer',
+        },
+      });
+      assert.equal(autoUserRes.status, 201);
+      assert.ok(autoUserRes.json.user.linkedCustomerId, 'Expected auto-created linkedCustomerId');
+
+      const amalLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: 'cust_amal_auto', password: 'AmalPassword!123' },
+      });
+      assert.equal(amalLogin.status, 200);
+      const amalToken = amalLogin.json.accessToken;
+
+      const amalMe = await req(baseUrl, 'GET', '/api/customers/me', { token: amalToken });
+      assert.equal(amalMe.status, 200);
+      assert.equal(amalMe.json.customer.id, autoUserRes.json.user.linkedCustomerId);
+      assert.equal(amalMe.json.linkWarning, null);
+
+      const bootAuto = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const prodAny = bootAuto.products[0];
+      const amalOrd = await req(baseUrl, 'POST', '/api/orders', {
+        token: amalToken,
+        body: { items: [{ productId: prodAny.id, unit: prodAny.baseUnit, quantity: 1 }] },
+      });
+      assert.equal(amalOrd.status, 201);
+
+      // Attempting to link another user to an already-linked customer -> 409
+      const dupLinkRes = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'عميل متضارب',
+          username: 'cust_conflict_try',
+          password: 'Password!123',
+          role: 'customer',
+          linkedCustomerId: autoUserRes.json.user.linkedCustomerId,
+        },
+      });
+      assert.equal(dupLinkRes.status, 409);
+
+      // 2. Unlinked customer user created with autoCreateCustomerProfile: false gets repaired in one click
+      const unlinkedRes = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'عميل قديم غير مربوط',
+          username: 'cust_legacy_unlinked',
+          password: 'LegacyPassword!123',
+          phone: '01088887777',
+          role: 'customer',
+          autoCreateCustomerProfile: false,
+        },
+      });
+      assert.equal(unlinkedRes.status, 201);
+      assert.equal(unlinkedRes.json.user.linkedCustomerId, undefined);
+
+      const fixRes = await req(baseUrl, 'POST', '/api/customers/conflicts/fix-unlinked', { token: adminToken });
+      assert.equal(fixRes.status, 200);
+      assert.ok(fixRes.json.repairedCount >= 1);
+      assert.ok(fixRes.json.repaired.some((r) => r.userId === unlinkedRes.json.user.id));
+    });
+
+    await test('41. Backup & legacy migration artifact cleanup verified on repository tree and packaging config', async () => {
+      const rootDir = process.cwd();
+      assert.equal(fs.existsSync(path.join(rootDir, 'AWLAD_SELIM_BACKUP')), false, 'AWLAD_SELIM_BACKUP must be removed');
+      assert.equal(fs.existsSync(path.join(rootDir, 'server/data/migration_logs.json')), false, 'Sample migration_logs.json must be removed');
+      assert.equal(
+        fs.existsSync(path.join(rootDir, 'server/data/migration_snapshot_MIG-MWCM65VG-TPOP.json')),
+        false,
+        'Sample migration snapshot must be removed'
+      );
+      const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
+      assert.equal(pkg.build?.extraResources, undefined, 'package.json must not bundle server/data via extraResources');
+      assert.ok(Array.isArray(pkg.build?.files) && pkg.build.files.includes('!server/data/**/*'));
+    });
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -2487,6 +2715,107 @@ async function runSuiteB_PostgresPgMem() {
       const bootAfter = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
       assert.equal(bootAfter.invoices.length, beforeInvoices);
       assert.equal(bootAfter.settings.extraSettings.connectionConfig.proRemote.domainUrl, 'https://pg-erp.awladselim.com');
+    });
+
+    await test('42. Live PostgreSQL HTTP API verifies Rep Orders, Review->Approve isolation & Auto 1:1 Customer User Linking + Repair', async () => {
+      const pgAdminToken = (
+        await req(baseUrlPg, 'POST', '/api/auth/login', {
+          body: { username: 'owner_tarek', password: 'OwnerStrongPassword!99' },
+        })
+      ).json.accessToken;
+      const pgRepToken = (
+        await req(baseUrlPg, 'POST', '/api/auth/login', {
+          body: { username: 'rep_karim', password: 'RepPassword!123' },
+        })
+      ).json.accessToken;
+      const pgCustBToken = (
+        await req(baseUrlPg, 'POST', '/api/auth/login', {
+          body: { username: 'cust_salam', password: 'CustomerPassword!2' },
+        })
+      ).json.accessToken;
+
+      const boot0 = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      const repCustomers = (await req(baseUrlPg, 'GET', '/api/customers', { token: pgRepToken })).json.customers;
+      assert.ok(repCustomers.length >= 1);
+      const assignedCust = repCustomers[0];
+      const prod = boot0.products.find((p) => p.code === 'P-100') || boot0.products[0];
+      const invBefore = boot0.invoices.length;
+
+      // Rep submits order on PG
+      const repOrd = await req(baseUrlPg, 'POST', '/api/orders', {
+        token: pgRepToken,
+        body: {
+          customerId: assignedCust.id,
+          items: [{ productId: prod.id, unit: prod.baseUnit, quantity: 1.5 }],
+          notes: 'طلب مندوب PG',
+        },
+      });
+      assert.equal(repOrd.status, 201);
+      assert.equal(repOrd.json.order.requesterType, 'representative');
+      assert.ok(Number(repOrd.json.order.totalAmount) > 0);
+
+      // Customer B creates own order on PG -> hidden from Rep
+      const custBOrd = await req(baseUrlPg, 'POST', '/api/orders', {
+        token: pgCustBToken,
+        body: { items: [{ productId: prod.id, unit: prod.baseUnit, quantity: 1 }] },
+      });
+      assert.equal(custBOrd.status, 201);
+      const repOrdersPg = (await req(baseUrlPg, 'GET', '/api/orders', { token: pgRepToken })).json.orders;
+      assert.ok(repOrdersPg.some((o) => o.id === repOrd.json.order.id));
+      assert.equal(repOrdersPg.some((o) => o.id === custBOrd.json.order.id), false);
+
+      // Review & Approve on PG do NOT create invoice; duplicate approve -> 409
+      assert.equal((await req(baseUrlPg, 'POST', `/api/orders/${repOrd.json.order.id}/review`, { token: pgAdminToken, body: {} })).status, 200);
+      assert.equal((await req(baseUrlPg, 'POST', `/api/orders/${repOrd.json.order.id}/approve`, { token: pgAdminToken, body: {} })).status, 200);
+      assert.equal((await req(baseUrlPg, 'POST', `/api/orders/${repOrd.json.order.id}/approve`, { token: pgAdminToken, body: {} })).status, 409);
+
+      const bootAfterApp = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      assert.equal(bootAfterApp.invoices.length, invBefore);
+
+      // Reject requires reason on PG
+      assert.equal((await req(baseUrlPg, 'POST', `/api/orders/${custBOrd.json.order.id}/reject`, { token: pgAdminToken, body: { reason: '' } })).status, 400);
+      assert.equal((await req(baseUrlPg, 'POST', `/api/orders/${custBOrd.json.order.id}/reject`, { token: pgAdminToken, body: { reason: 'غير متوفر' } })).status, 200);
+
+      // Auto 1:1 customer link + duplicate 409 + fix-unlinked on PG
+      const pgAutoUser = await req(baseUrlPg, 'POST', '/api/admin/users', {
+        token: pgAdminToken,
+        body: {
+          fullName: 'عميل PG التلقائي',
+          username: 'pg_cust_auto',
+          password: 'PgPassword!123',
+          phone: '01066665555',
+          role: 'customer',
+        },
+      });
+      assert.equal(pgAutoUser.status, 201);
+      assert.ok(pgAutoUser.json.user.linkedCustomerId);
+
+      const pgDupLink = await req(baseUrlPg, 'POST', '/api/admin/users', {
+        token: pgAdminToken,
+        body: {
+          fullName: 'تضارب PG',
+          username: 'pg_cust_conflict',
+          password: 'PgPassword!123',
+          role: 'customer',
+          linkedCustomerId: pgAutoUser.json.user.linkedCustomerId,
+        },
+      });
+      assert.equal(pgDupLink.status, 409);
+
+      const pgUnlinked = await req(baseUrlPg, 'POST', '/api/admin/users', {
+        token: pgAdminToken,
+        body: {
+          fullName: 'عميل PG بدون ربط',
+          username: 'pg_cust_unlinked',
+          password: 'PgPassword!123',
+          role: 'customer',
+          autoCreateCustomerProfile: false,
+        },
+      });
+      assert.equal(pgUnlinked.status, 201);
+      const pgFix = await req(baseUrlPg, 'POST', '/api/customers/conflicts/fix-unlinked', { token: pgAdminToken });
+      assert.equal(pgFix.status, 200);
+      assert.ok(pgFix.json.repaired.some((r) => r.userId === pgUnlinked.json.user.id));
     });
   } finally {
     setInjectedPool(null);

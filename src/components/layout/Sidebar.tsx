@@ -6,9 +6,11 @@ import {
   Smartphone, Database, X, HelpCircle
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useData } from '../../context/DataContext';
 
 export type NavItemKey =
   | 'dashboard'
+  | 'customer-orders'
   | 'sales-invoices'
   | 'new-sale'
   | 'customers'
@@ -92,6 +94,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleCollapse,
 }) => {
   const { hasPermission, currentUser } = useAuth();
+  const { customerItemOrders = [] } = useData();
+  const pendingOrdersCount = customerItemOrders.filter((o) => o.status === 'pending').length;
 
   // Accordion state: only one section open at a time; clicking open section closes it.
   const [openSectionId, setOpenSectionId] = useState<string | null>('sales');
@@ -115,9 +119,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: ShoppingCart,
       permission: 'canManageSales',
       items: [
+        {
+          key: 'customer-orders',
+          label: 'طلبات العملاء والمندوبين',
+          badge: pendingOrdersCount > 0 ? `${pendingOrdersCount} جديد` : undefined,
+        },
         { key: 'sales-invoices', label: 'فواتير المبيعات' },
         { key: 'new-sale', label: 'فاتورة مبيعات جديدة (+)', badge: 'جديد' },
-        { key: 'customers', label: 'دليل العملاء والأرصدة' },
+        { key: 'customers', label: 'العملاء والأرصدة' },
         { key: 'sales-returns', label: 'مرتجع المبيعات' },
         { key: 'deleted-invoices', label: 'الفواتير المحذوفة والملغاة', permission: 'canViewDeletedInvoices' },
       ],

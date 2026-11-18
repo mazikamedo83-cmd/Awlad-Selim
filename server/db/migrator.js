@@ -169,6 +169,8 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
     const stockTransferRequests = Array.isArray(sourceData.stockTransferRequests) ? sourceData.stockTransferRequests : [];
     const pairingTokens = Array.isArray(sourceData.pairingTokens) ? sourceData.pairingTokens : [];
     const pairedDevices = Array.isArray(sourceData.pairedDevices) ? sourceData.pairedDevices : [];
+    const orderAdvancePayments = Array.isArray(sourceData.orderAdvancePayments) ? sourceData.orderAdvancePayments : [];
+    const syncConflicts = Array.isArray(sourceData.syncConflicts) ? sourceData.syncConflicts : [];
     const auditLogs = Array.isArray(sourceData.auditLogs) ? sourceData.auditLogs : [];
 
     let embeddedPayments = 0;
@@ -583,10 +585,11 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
           const whId = warehouseIds.has(inv.warehouseId) ? inv.warehouseId : fallbackWarehouseId;
           const cbId = cashboxIds.has(inv.cashboxId) ? inv.cashboxId : fallbackCashboxId;
           await client.query(`
-            INSERT INTO invoices (id, invoice_number, type, date, customer_id, customer_name, supplier_id, supplier_name, representative_id, representative_name, warehouse_id, warehouse_name, subtotal, discount_total, tax_total, grand_total, paid_amount, remaining_amount, payment_type, payment_method, cashbox_id, status, notes, linked_rep_transfer_id, linked_rep_transfer_number, linked_customer_order_id, returned_quantity_by_item, created_by, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
+            INSERT INTO invoices (id, invoice_number, type, date, customer_id, customer_name, supplier_id, supplier_name, representative_id, representative_name, warehouse_id, warehouse_name, subtotal, discount_total, tax_total, grand_total, paid_amount, applied_advance_amount, remaining_amount, payment_type, payment_method, cashbox_id, status, notes, linked_rep_transfer_id, linked_rep_transfer_number, linked_customer_order_id, returned_quantity_by_item, version, created_by, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
             ON CONFLICT (id) DO UPDATE SET
               paid_amount = EXCLUDED.paid_amount,
+              applied_advance_amount = EXCLUDED.applied_advance_amount,
               remaining_amount = EXCLUDED.remaining_amount,
               status = EXCLUDED.status,
               returned_quantity_by_item = EXCLUDED.returned_quantity_by_item;
@@ -608,6 +611,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             Number(inv.taxTotal || 0),
             Number(inv.grandTotal || 0),
             Number(inv.paidAmount || 0),
+            Number(inv.appliedAdvanceAmount || 0),
             Number(inv.remainingAmount || 0),
             inv.paymentType || 'cash',
             inv.paymentMethod || 'cash',
@@ -618,6 +622,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             inv.linkedRepTransferNumber || null,
             inv.linkedCustomerOrderId || null,
             JSON.stringify(inv.returnedQuantityByItem || {}),
+            Number(inv.version || 1),
             inv.createdBy || 'المدير العام',
             inv.createdAt || new Date().toISOString(),
           ]);
@@ -829,11 +834,29 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             details.warnings.push(`طلب عميل (${ord.requestNumber}) يشير لعميل غير موجود (${ord.customerId}) - تم تجاهله بالـ SQL مع بقاء الأصل.`);
             continue;
           }
+          const computedOrderTotal = Array.isArray(ord.items)
+            ? ord.items.reduce((s, it) => s + Number(it.unitPrice || 0) * Number(it.quantity || 0), 0)
+            : 0;
+          const ordTotal = Number(ord.totalAmount || computedOrderTotal || 0);
+          const ordAdv = Number(ord.advancePaidAmount || 0);
+          const ordRem = Math.max(0, Number(ord.remainingAmount ?? (ordTotal - ordAdv)));
           await client.query(`
-            INSERT INTO customer_item_orders (id, request_number, customer_id, user_id, customer_name, customer_phone, shop_name, delivery_address, geo_coordinates, status, notes, rejection_reason, reviewed_by, reviewed_at, invoice_id, invoice_number, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            INSERT INTO customer_item_orders (id, request_number, customer_id, user_id, requester_type, submitted_by_name, representative_id, representative_name, delivery_rep_id, delivery_rep_name, delivered_at, delivery_notes, delivery_proof, collected_amount, customer_name, customer_phone, shop_name, delivery_address, geo_coordinates, total_amount, advance_paid_amount, remaining_amount, status, source_platform, version, notes, rejection_reason, reviewed_by, reviewed_at, invoice_id, invoice_number, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32)
             ON CONFLICT (id) DO UPDATE SET
               status = EXCLUDED.status,
+              requester_type = EXCLUDED.requester_type,
+              submitted_by_name = EXCLUDED.submitted_by_name,
+              representative_id = EXCLUDED.representative_id,
+              representative_name = EXCLUDED.representative_name,
+              delivery_rep_id = EXCLUDED.delivery_rep_id,
+              delivery_rep_name = EXCLUDED.delivery_rep_name,
+              delivered_at = EXCLUDED.delivered_at,
+              delivery_notes = EXCLUDED.delivery_notes,
+              collected_amount = EXCLUDED.collected_amount,
+              total_amount = EXCLUDED.total_amount,
+              advance_paid_amount = EXCLUDED.advance_paid_amount,
+              remaining_amount = EXCLUDED.remaining_amount,
               invoice_id = EXCLUDED.invoice_id,
               invoice_number = EXCLUDED.invoice_number,
               reviewed_by = EXCLUDED.reviewed_by,
@@ -842,13 +865,28 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             ord.id,
             ord.requestNumber,
             ord.customerId,
-            resolvedCustomerUserId.get(ord.customerId) || null,
+            ord.userId || resolvedCustomerUserId.get(ord.customerId) || null,
+            ord.requesterType || (ord.representativeId ? 'representative' : 'customer'),
+            ord.submittedByName || ord.representativeName || ord.customerName || cust.name,
+            ord.representativeId || null,
+            ord.representativeName || '',
+            ord.deliveryRepId || null,
+            ord.deliveryRepName || '',
+            ord.deliveredAt || null,
+            ord.deliveryNotes || '',
+            ord.deliveryProof || null,
+            Number(ord.collectedAmount || 0),
             ord.customerName || cust.name,
             ord.customerPhone || cust.phone || '',
             ord.shopName || cust.shopName || '',
             ord.deliveryAddress || cust.address || '',
             ord.geoCoordinates || cust.geoCoordinates || '',
+            ordTotal,
+            ordAdv,
+            ordRem,
             ord.status || 'pending',
+            ord.sourcePlatform || 'web',
+            Number(ord.version || 1),
             ord.notes || '',
             ord.rejectionReason || null,
             ord.reviewedBy || null,
@@ -866,8 +904,8 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
               if (!productMap.has(it.productId)) continue;
               const prod = productMap.get(it.productId);
               await client.query(`
-                INSERT INTO customer_item_order_items (id, order_id, product_id, product_code, product_name, unit, unit_factor, quantity, reference_unit_price)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                INSERT INTO customer_item_order_items (id, order_id, product_id, product_code, product_name, product_image, unit, unit_factor, quantity, reference_unit_price)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                 ON CONFLICT (id) DO NOTHING;
               `, [
                 `${ord.id}-OITM-${idx + 1}`,
@@ -875,6 +913,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
                 it.productId,
                 prod?.code || '',
                 it.productName,
+                it.productImage || prod?.image || null,
                 it.unit || prod?.baseUnit || 'قطعة',
                 Number(it.unitFactor || 1),
                 Number(it.quantity || 1),
@@ -1093,6 +1132,24 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
           `, [pd.deviceId, pd.deviceName || 'جهاز غير معروف', pd.deviceType || 'android', pd.osVersion || '', pd.appVersion || '', pd.linkedUserId || null, pd.linkedUserName || '', pd.connectionMode || 'local_network', pd.serverUrlUsed || '', pd.ipAddress || '', pd.status || 'active', pd.pairingTokenId || null, Number(pd.configVersion || 1), pd.pairedAt || new Date().toISOString(), pd.lastSeenAt || new Date().toISOString(), pd.revokedAt || null, pd.notes || '']);
         }
 
+        for (const oap of orderAdvancePayments) {
+          if (!customerIds.has(oap.customerId)) continue;
+          const cbId = cashboxIds.has(oap.cashboxId) ? oap.cashboxId : fallbackCashboxId;
+          await client.query(`
+            INSERT INTO order_advance_payments (id, payment_number, order_id, customer_id, cashbox_id, cashbox_name, payment_method, amount, date, notes, status, applied_invoice_id, idempotency_key, created_by, created_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+            ON CONFLICT (id) DO NOTHING;
+          `, [oap.id, oap.paymentNumber, oap.orderId, oap.customerId, cbId, oap.cashboxName || '', oap.paymentMethod || 'cash', Number(oap.amount || 0), oap.date, oap.notes || '', oap.status || 'active', oap.appliedInvoiceId || null, oap.idempotencyKey || null, oap.createdBy || 'النظام', oap.createdAt || new Date().toISOString()]);
+        }
+
+        for (const scf of syncConflicts) {
+          await client.query(`
+            INSERT INTO sync_conflicts (id, operation_id, operation_type, entity_type, entity_id, device_id, user_id, user_name, conflict_reason, local_payload, server_snapshot, status, resolution_notes, resolved_by, resolved_at, created_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+            ON CONFLICT (id) DO NOTHING;
+          `, [scf.id, scf.operationId, scf.operationType, scf.entityType, scf.entityId || null, scf.deviceId || null, scf.userId || null, scf.userName || '', scf.conflictReason || '', JSON.stringify(scf.localPayload || {}), JSON.stringify(scf.serverSnapshot || {}), scf.status || 'needs_review', scf.resolutionNotes || '', scf.resolvedBy || null, scf.resolvedAt || null, scf.createdAt || new Date().toISOString()]);
+        }
+
         for (const al of auditLogs) {
           await client.query(`
             INSERT INTO audit_logs (id, timestamp, user_id, user_name, action, module, record_id, notes)
@@ -1112,6 +1169,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
         const maxStockCountSeq = extractMaxSuffix(stockCounts, 'countNumber', /^CNT-(\d+)$/i);
         const maxStockTransferSeq = extractMaxSuffix(stockTransferRequests, 'transferNumber', /^STR-(\d+)$/i);
         const maxCashOpSeq = extractMaxSuffix(financialTransactions, 'transactionNumber', /^COP-(\d+)$/i);
+        const maxOrderAdvSeq = extractMaxSuffix(orderAdvancePayments, 'paymentNumber', /^ADV-(\d+)$/i);
         const seqUpdates = [
           ['seq_customer_order_no', maxOrderSeq],
           ['seq_sales_invoice_no', maxSalesSeq],
@@ -1122,6 +1180,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
           ['seq_stock_count_no', maxStockCountSeq],
           ['seq_stock_transfer_no', maxStockTransferSeq],
           ['seq_cash_op_no', maxCashOpSeq],
+          ['seq_order_advance_no', maxOrderAdvSeq],
         ];
         for (const [seqName, maxVal] of seqUpdates) {
           if (maxVal > 0) {

@@ -87,24 +87,10 @@
       "server/**/*",
       "!server/tests/**/*",
       "!server/data/**/*",
-      "!AWLAD_SELIM_BACKUP/**/*",
       "!android/**/*",
       "!ios/**/*",
       "build/icon.*",
       "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "server/data",
-        "to": "server/data",
-        "filter": [
-          "**/*",
-          "!*.tmp",
-          "!sessions.json",
-          "!.jwt_secret",
-          "!.env*"
-        ]
-      }
     ],
     "asar": false,
     "compression": "store",

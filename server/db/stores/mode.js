@@ -149,6 +149,8 @@ export function mapPgCustomerRow(r) {
     priceHistory: r.price_history || {},
     notes: r.notes || '',
     status: r.status || 'active',
+    version: Number(r.version || 1),
+    updatedAt: r.updated_at ? isoTimestamp(r.updated_at) : isoTimestamp(r.created_at),
     createdAt: isoTimestamp(r.created_at),
   };
 }
@@ -183,23 +185,71 @@ export function mapPgProductRow(r, units = []) {
     importBatchId: r.import_batch_id || undefined,
     importedFromFile: Boolean(r.imported_from_file),
     sourceFileName: r.source_file_name || undefined,
+    version: Number(r.version || 1),
+    updatedAt: r.updated_at ? isoTimestamp(r.updated_at) : isoTimestamp(r.created_at),
     createdAt: isoTimestamp(r.created_at),
   };
 }
 
 export function mapPgOrderRow(r, items = [], history = []) {
   if (!r) return null;
+  const mappedItems = items.map((it) => {
+    const qty = Number(it.quantity || 0);
+    const unitPrice =
+      it.reference_unit_price !== null && it.reference_unit_price !== undefined
+        ? Number(it.reference_unit_price)
+        : undefined;
+    return {
+      productId: it.product_id,
+      productCode: it.product_code || '',
+      productName: it.product_name,
+      productImage: it.product_image || undefined,
+      unit: it.unit,
+      unitFactor: Number(it.unit_factor || 1),
+      quantity: qty,
+      unitPrice,
+    };
+  });
+  const computedTotal = mappedItems.reduce(
+    (sum, it) => sum + Number(it.unitPrice || 0) * Number(it.quantity || 0),
+    0
+  );
+  const storedTotal = Number(r.total_amount || 0);
+  const totalAmount = storedTotal > 0 ? storedTotal : Math.round(computedTotal * 100) / 100;
+  const advancePaidAmount = Number(r.advance_paid_amount || 0);
+  const remainingAmount =
+    r.remaining_amount !== undefined && r.remaining_amount !== null && Number(r.remaining_amount) > 0
+      ? Number(r.remaining_amount)
+      : Math.max(0, Math.round((totalAmount - advancePaidAmount) * 100) / 100);
+  const inferredRequesterType = r.requester_type || (r.representative_id ? 'representative' : 'customer');
   return {
     id: r.id,
     requestNumber: r.request_number,
     customerId: r.customer_id,
     userId: r.user_id || undefined,
+    requesterType: inferredRequesterType,
+    submittedByName: r.submitted_by_name || r.representative_name || r.customer_name || '',
+    representativeId: r.representative_id || undefined,
+    representativeName: r.representative_name || undefined,
+    deliveryRepId: r.delivery_rep_id || undefined,
+    deliveryRepName: r.delivery_rep_name || undefined,
+    deliveredAt: r.delivered_at ? isoTimestamp(r.delivered_at) : undefined,
+    deliveryNotes: r.delivery_notes || undefined,
+    deliveryProof: r.delivery_proof || undefined,
+    collectedAmount: Number(r.collected_amount || 0),
     customerName: r.customer_name,
     customerPhone: r.customer_phone || '',
     shopName: r.shop_name || '',
     deliveryAddress: r.delivery_address || '',
     geoCoordinates: r.geo_coordinates || '',
+    totalAmount,
+    advancePaidAmount,
+    remainingAmount,
     status: r.status,
+    sourcePlatform: r.source_platform || 'web',
+    originDeviceId: r.origin_device_id || undefined,
+    syncStatus: r.sync_status || 'synced',
+    version: Number(r.version || 1),
     notes: r.notes || '',
     rejectionReason: r.rejection_reason || undefined,
     reviewedBy: r.reviewed_by || undefined,
@@ -207,15 +257,7 @@ export function mapPgOrderRow(r, items = [], history = []) {
     invoiceId: r.invoice_id || undefined,
     invoiceNumber: r.invoice_number || undefined,
     idempotencyKey: r.idempotency_key || undefined,
-    items: items.map((it) => ({
-      productId: it.product_id,
-      productCode: it.product_code || '',
-      productName: it.product_name,
-      unit: it.unit,
-      unitFactor: Number(it.unit_factor || 1),
-      quantity: Number(it.quantity || 0),
-      unitPrice: it.reference_unit_price !== null && it.reference_unit_price !== undefined ? Number(it.reference_unit_price) : undefined,
-    })),
+    items: mappedItems,
     statusHistory: history.map((h) => ({
       id: h.id,
       fromStatus: h.from_status || null,
@@ -261,6 +303,7 @@ export function mapPgInvoiceRow(r, items = [], payments = []) {
     taxTotal: Number(r.tax_total || 0),
     grandTotal: Number(r.grand_total || 0),
     paidAmount: Number(r.paid_amount || 0),
+    appliedAdvanceAmount: Number(r.applied_advance_amount || 0),
     remainingAmount: Number(r.remaining_amount || 0),
     paymentType: r.payment_type,
     paymentMethod: r.payment_method,
@@ -284,6 +327,10 @@ export function mapPgInvoiceRow(r, items = [], payments = []) {
     linkedRepTransferNumber: r.linked_rep_transfer_number || undefined,
     linkedCustomerOrderId: r.linked_customer_order_id || undefined,
     returnedQuantityByItem: r.returned_quantity_by_item || {},
+    originDeviceId: r.origin_device_id || undefined,
+    syncStatus: r.sync_status || 'synced',
+    version: Number(r.version || 1),
+    updatedAt: r.updated_at ? isoTimestamp(r.updated_at) : isoTimestamp(r.created_at),
     createdBy: r.created_by,
     createdAt: isoTimestamp(r.created_at),
   };

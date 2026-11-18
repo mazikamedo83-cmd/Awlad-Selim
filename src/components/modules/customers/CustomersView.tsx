@@ -4,7 +4,7 @@ import {
   ArrowDownLeft, Printer, Download, Eye, Edit, Trash2, CheckCircle2, 
   Store, Camera, Upload, X, ExternalLink, ArrowRight, ArrowLeft, 
   Wifi, WifiOff, RefreshCw, Calendar, ShoppingCart, RotateCcw, 
-  Receipt, AlertCircle, Building2, ShieldAlert, Sparkles, Filter, Link2, Check, History
+  Receipt, AlertCircle, Building2, ShieldAlert, Sparkles, Filter, Link2, Check, History, Wallet, CloudOff
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -15,14 +15,18 @@ import { Modal } from '../../common/Modal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
 import { exportTableToPdf } from '../../common/PdfExporter';
-import { NewSaleInvoiceModal } from '../sales/NewSaleInvoiceModal';
 import { compressImageFileToDataUrl } from '../../../utils/image';
+import type { NavItemKey } from '../../layout/Sidebar';
 
-export const CustomersView: React.FC = () => {
+interface CustomersViewProps {
+  onNavigate?: (page: NavItemKey) => void;
+}
+
+export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
   const {
     customers, users, representatives, invoices, invoiceReturns, financialTransactions,
-    cashboxes, settings, networkStatus, customerItemOrders = [],
-    approveCustomerItemOrder, rejectCustomerItemOrder, linkCustomerUser, toggleCustomerUserStatus,
+    cashboxes, settings, networkStatus, customerItemOrders = [], orderAdvancePayments = [], syncQueue = [],
+    linkCustomerUser, repairUnlinkedCustomerUsers, toggleCustomerUserStatus,
     addCustomer, updateCustomer, deleteCustomer, recordCustomerPayment,
   } = useData();
   const { hasPermission } = useAuth();
@@ -34,6 +38,7 @@ export const CustomersView: React.FC = () => {
   // Search & Filter
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'blocked'>('all');
+  const [classificationFilter, setClassificationFilter] = useState<'all' | 'app_and_direct' | 'app_only' | 'regular'>('all');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
   // Modals state
@@ -64,15 +69,7 @@ export const CustomersView: React.FC = () => {
   const [printData, setPrintData] = useState<PrintData | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
-  // Customer Orders Management State
-  const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | 'pending' | 'approved' | 'invoiced' | 'rejected'>('all');
-  const [rejectingOrder, setRejectingOrder] = useState<CustomerItemOrderRequest | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
-  const [convertingOrder, setConvertingOrder] = useState<CustomerItemOrderRequest | null>(null);
-  const [expandedOrderHistoryId, setExpandedOrderHistoryId] = useState<string | null>(null);
-  const [orderActionBanner, setOrderActionBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  // Customer-User 1:1 Linking State
+  // Customer-User 1:1 Linking & Inline Creation State
   const [linkingCustomer, setLinkingCustomer] = useState<Customer | null>(null);
   const [linkMode, setLinkMode] = useState<'create' | 'existing'>('create');
   const [existingLinkUserId, setExistingLinkUserId] = useState('');
@@ -80,6 +77,10 @@ export const CustomersView: React.FC = () => {
   const [newCustomerPassword, setNewCustomerPassword] = useState('');
   const [linkError, setLinkError] = useState<string | null>(null);
   const [isLinking, setIsLinking] = useState(false);
+  const [isRepairingUnlinked, setIsRepairingUnlinked] = useState(false);
+  const [createPortalLogin, setCreatePortalLogin] = useState(false);
+  const [portalUsername, setPortalUsername] = useState('');
+  const [portalPassword, setPortalPassword] = useState('');
   const [conflicts, setConflicts] = useState<{ duplicatePhones: any[]; unlinkedCustomerUsers: any[] }>({
     duplicatePhones: [],
     unlinkedCustomerUsers: [],
@@ -138,13 +139,70 @@ export const CustomersView: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Dedicated customer tabs
-  const [detailTab, setDetailTab] = useState<'statement' | 'invoices' | 'payments' | 'returns' | 'prices'>('statement');
+  const [detailTab, setDetailTab] = useState<'statement' | 'invoices' | 'orders' | 'advances' | 'payments' | 'returns' | 'prices'>('statement');
 
   // Get active selected customer
   const selectedCustomer = useMemo(() => {
     if (!selectedCustomerId) return null;
     return customers.find(c => c.id === selectedCustomerId) || null;
   }, [customers, selectedCustomerId]);
+
+  const orderInvoiceIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const o of customerItemOrders) {
+      if (o.invoiceId) set.add(o.invoiceId);
+    }
+    return set;
+  }, [customerItemOrders]);
+
+  const customerClassificationMap = useMemo(() => {
+    const map = new Map<
+      string,
+      { key: 'app_and_direct' | 'app_only' | 'regular'; label: string; badgeClass: string }
+    >();
+    for (const c of customers) {
+      const hasOrders = customerItemOrders.some((o) => o.customerId === c.id);
+      const isApp = Boolean(c.userId) || hasOrders;
+      const hasDirectSales = invoices.some(
+        (inv) =>
+          inv.type === 'sales' &&
+          inv.status !== 'cancelled' &&
+          inv.customerId === c.id &&
+          !orderInvoiceIds.has(inv.id)
+      );
+      if (isApp && hasDirectSales) {
+        map.set(c.id, {
+          key: 'app_and_direct',
+          label: 'عميل تطبيق ومبيعات مباشرة',
+          badgeClass: 'bg-indigo-50 text-indigo-900 border border-indigo-200',
+        });
+      } else if (isApp) {
+        map.set(c.id, {
+          key: 'app_only',
+          label: 'عميل تطبيق',
+          badgeClass: 'bg-cyan-50 text-cyan-900 border border-cyan-200',
+        });
+      } else {
+        map.set(c.id, {
+          key: 'regular',
+          label: 'عميل عادي',
+          badgeClass: 'bg-slate-100 text-slate-700 border border-slate-200',
+        });
+      }
+    }
+    return map;
+  }, [customers, customerItemOrders, invoices, orderInvoiceIds]);
+
+  const tentativeCustomerIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const op of syncQueue) {
+      if (op.status === 'synced') continue;
+      if (op.payload?.customerId) set.add(String(op.payload.customerId));
+      if (op.payload?.partyId) set.add(String(op.payload.partyId));
+      if (op.localId && op.entityType === 'customer') set.add(String(op.localId));
+    }
+    return set;
+  }, [syncQueue]);
 
   // Filter customers list
   const filteredCustomers = useMemo(() => {
@@ -159,9 +217,11 @@ export const CustomersView: React.FC = () => {
         c.address.toLowerCase().includes(searchTerm.toLowerCase());
       
       const matchStatus = statusFilter === 'all' || c.status === statusFilter;
-      return matchSearch && matchStatus;
+      const clsKey = customerClassificationMap.get(c.id)?.key || 'regular';
+      const matchClass = classificationFilter === 'all' || clsKey === classificationFilter;
+      return matchSearch && matchStatus && matchClass;
     });
-  }, [customers, searchTerm, statusFilter]);
+  }, [customers, searchTerm, statusFilter, classificationFilter, customerClassificationMap]);
 
   // Overall metrics
   const totalDebts = useMemo(() => {
@@ -179,6 +239,20 @@ export const CustomersView: React.FC = () => {
       .filter(i => i.customerId === selectedCustomer.id && i.type === 'sales')
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [selectedCustomer, invoices]);
+
+  const selectedCustomerOrders = useMemo(() => {
+    if (!selectedCustomer) return [];
+    return customerItemOrders
+      .filter((o) => o.customerId === selectedCustomer.id)
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  }, [selectedCustomer, customerItemOrders]);
+
+  const selectedCustomerAdvances = useMemo(() => {
+    if (!selectedCustomer) return [];
+    return orderAdvancePayments
+      .filter((a) => a.customerId === selectedCustomer.id)
+      .sort((a, b) => (b.createdAt || b.date || '').localeCompare(a.createdAt || a.date || ''));
+  }, [selectedCustomer, orderAdvancePayments]);
 
   const selectedCustomerPayments = useMemo(() => {
     if (!selectedCustomer) return [];
@@ -199,7 +273,7 @@ export const CustomersView: React.FC = () => {
     id: string;
     date: string;
     docNumber: string;
-    type: 'رصيد أول المدة' | 'فاتورة مبيعات' | 'سند قبض نقدية' | 'مرتجع مبيعات';
+    type: 'رصيد أول المدة' | 'دفعة مقدمة على طلب' | 'فاتورة مبيعات' | 'سند قبض نقدية' | 'مرتجع مبيعات';
     description: string;
     debit: number;   // مدين (يزيد مديونية العميل)
     credit: number;  // دائن (يقلل مديونية العميل)
@@ -213,7 +287,7 @@ export const CustomersView: React.FC = () => {
       id: string;
       date: string;
       docNumber: string;
-      type: 'رصيد أول المدة' | 'فاتورة مبيعات' | 'سند قبض نقدية' | 'مرتجع مبيعات';
+      type: 'رصيد أول المدة' | 'دفعة مقدمة على طلب' | 'فاتورة مبيعات' | 'سند قبض نقدية' | 'مرتجع مبيعات';
       description: string;
       debit: number;
       credit: number;
@@ -235,23 +309,44 @@ export const CustomersView: React.FC = () => {
       });
     }
 
-    // 2. Sales invoices
+    // 2. Order advance payments (credited immediately on receipt; never double-counted on invoice conversion)
+    selectedCustomerAdvances.forEach(adv => {
+      if (adv.status !== 'refunded') {
+        events.push({
+          id: `adv-${adv.id}`,
+          date: adv.date || (adv.createdAt ? adv.createdAt.split('T')[0] : ''),
+          docNumber: adv.paymentNumber,
+          type: 'دفعة مقدمة على طلب',
+          description: `دفعة مقدمة على طلب (${adv.cashboxName || adv.cashboxId})${adv.notes ? ` — ${adv.notes}` : ''}`,
+          debit: 0,
+          credit: Number(adv.amount || 0),
+          timestamp: new Date(adv.createdAt || adv.date || '2026-01-01').getTime(),
+        });
+      }
+    });
+
+    // 3. Sales invoices (credit ONLY cash paid at invoice time, excluding appliedAdvanceAmount which was already credited)
     selectedCustomerInvoices.forEach(inv => {
       if (inv.status === 'confirmed') {
+        const appliedAdv = Number(inv.appliedAdvanceAmount || 0);
+        const cashAtInv =
+          inv.paidAtInvoice !== undefined
+            ? Number(inv.paidAtInvoice)
+            : Math.max(0, Number(inv.paidAmount || 0) - appliedAdv);
         events.push({
           id: inv.id,
           date: inv.date,
           docNumber: inv.invoiceNumber,
           type: 'فاتورة مبيعات',
-          description: `فاتورة مبيعات سلع غذائية (${inv.paymentType === 'cash' ? 'نقدي' : inv.paymentType === 'credit' ? 'آجل' : 'سداد جزئي'}) - ${inv.warehouseName}`,
+          description: `فاتورة مبيعات (${inv.paymentType === 'cash' ? 'نقدي' : inv.paymentType === 'credit' ? 'آجل' : 'سداد جزئي'})${appliedAdv > 0 ? ` [طبّقت دفعة مقدمة ${appliedAdv.toLocaleString()}]` : ''} - ${inv.warehouseName}`,
           debit: inv.grandTotal,
-          credit: inv.paidAmount > 0 ? inv.paidAmount : 0, // المدفوع الفوري يخفض الدين
-          timestamp: new Date(inv.date).getTime(),
+          credit: cashAtInv > 0 ? cashAtInv : 0,
+          timestamp: new Date(inv.createdAt || inv.date).getTime(),
         });
       }
     });
 
-    // 3. Customer payment transactions (collected separately from invoice creation)
+    // 4. Customer payment transactions (collected separately from invoice creation)
     selectedCustomerPayments.forEach(pay => {
       events.push({
         id: pay.id,
@@ -265,16 +360,18 @@ export const CustomersView: React.FC = () => {
       });
     });
 
-    // 4. Sales returns
+    // 5. Sales returns (credit customer balance ONLY when refundType === 'balance')
     selectedCustomerReturns.forEach(ret => {
+      const retAmount = Number((ret as any).totalAmount ?? ret.grandTotal ?? 0);
+      const balanceCredit = ret.refundType === 'balance' ? retAmount : 0;
       events.push({
         id: ret.id,
         date: ret.date,
         docNumber: ret.returnNumber,
         type: 'مرتجع مبيعات',
-        description: `مرتجع بضائع غذائية للفاتورة (${ret.originalInvoiceNumber}) - ${ret.reason}`,
+        description: `مرتجع بضائع للفاتورة (${ret.originalInvoiceNumber}) — ${ret.refundType === 'cash' ? 'رد نقدي من الخزينة بدون أثر على الرصيد' : 'خصم من رصيد العميل'} - ${ret.reason}`,
         debit: 0,
-        credit: ret.grandTotal,
+        credit: balanceCredit,
         timestamp: new Date(ret.date).getTime(),
       });
     });
@@ -299,7 +396,7 @@ export const CustomersView: React.FC = () => {
     });
 
     return rows;
-  }, [selectedCustomer, selectedCustomerInvoices, selectedCustomerPayments, selectedCustomerReturns]);
+  }, [selectedCustomer, selectedCustomerAdvances, selectedCustomerInvoices, selectedCustomerPayments, selectedCustomerReturns]);
 
   // Open Add modal
   const handleOpenAdd = () => {
@@ -322,6 +419,9 @@ export const CustomersView: React.FC = () => {
     setPhoneActionNotice(null);
     setMapActionWarning(null);
     setCustomerFormError(null);
+    setCreatePortalLogin(false);
+    setPortalUsername('');
+    setPortalPassword('');
     setEditingCustomer(null);
     setIsAddModalOpen(true);
   };
@@ -440,6 +540,16 @@ export const CustomersView: React.FC = () => {
       setCustomerFormError('يرجى إدخال عنوان المحل بالتفصيل');
       return;
     }
+    if (!editingCustomer && createPortalLogin) {
+      if (!portalUsername.trim()) {
+        setCustomerFormError('يرجى إدخال اسم المستخدم لحساب تطبيق العميل');
+        return;
+      }
+      if (portalPassword.length < 6) {
+        setCustomerFormError('كلمة مرور حساب العميل يجب أن تكون 6 أحرف على الأقل');
+        return;
+      }
+    }
 
     setIsSavingCustomer(true);
     try {
@@ -477,7 +587,30 @@ export const CustomersView: React.FC = () => {
           assignedRepId: formData.allowedRepIds[0] || undefined,
         });
         setSelectedCustomerId(created.id);
-        setCustomerBanner({ type: 'success', text: `تم تسجيل العميل (${created.name}) في المنظومة بنجاح.` });
+
+        if (createPortalLogin) {
+          const linkRes = await linkCustomerUser(created.id, {
+            createUser: {
+              fullName: created.name,
+              username: portalUsername.trim(),
+              password: portalPassword,
+              phone: created.phone,
+            },
+          });
+          if (linkRes.success) {
+            setCustomerBanner({
+              type: 'success',
+              text: `تم تسجيل العميل (${created.name}) وإنشاء وربط حساب التطبيق (${portalUsername.trim()}) تلقائياً بنجاح.`,
+            });
+          } else {
+            setCustomerBanner({
+              type: 'error',
+              text: `تم تسجيل العميل (${created.name})، لكن تعذر إنشاء حساب الدخول: ${linkRes.error || 'خطأ غير متوقع'}`,
+            });
+          }
+        } else {
+          setCustomerBanner({ type: 'success', text: `تم تسجيل العميل (${created.name}) في المنظومة بنجاح.` });
+        }
       }
       setIsAddModalOpen(false);
     } catch (err: any) {
@@ -792,6 +925,20 @@ export const CustomersView: React.FC = () => {
                   <span className="font-mono text-xs font-bold text-blue-900 bg-blue-100/70 px-2.5 py-0.5 rounded-lg border border-blue-200">
                     {selectedCustomer.code}
                   </span>
+                  {(() => {
+                    const cls = customerClassificationMap.get(selectedCustomer.id);
+                    return cls ? (
+                      <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-full ${cls.badgeClass}`}>
+                        {cls.label}
+                      </span>
+                    ) : null;
+                  })()}
+                  {tentativeCustomerIds.has(selectedCustomer.id) && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-black px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                      <CloudOff className="w-3 h-3" />
+                      <span>رصيد محلي مبدئي لحين المزامنة</span>
+                    </span>
+                  )}
                 </div>
 
                 {/* Direct Call & Google Maps Buttons */}
@@ -991,15 +1138,19 @@ export const CustomersView: React.FC = () => {
 
             {/* Total Payments Collected */}
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
-              <span className="text-[11px] font-bold text-slate-600 block mb-1">إجمالي التحصيلات المستلمة</span>
+              <span className="text-[11px] font-bold text-slate-600 block mb-1">إجمالي التحصيلات والدفعات المقدمة</span>
               <div className="text-xl font-black font-mono text-emerald-800">
                 {(
                   selectedCustomerPayments.reduce((a, b) => a + b.amount, 0) +
-                  selectedCustomerInvoices.reduce((a, b) => a + b.paidAmount, 0)
+                  selectedCustomerAdvances.filter(a => a.status !== 'refunded').reduce((a, b) => a + b.amount, 0) +
+                  selectedCustomerInvoices.reduce((a, b) => {
+                    const cashAtInv = b.paidAtInvoice !== undefined ? b.paidAtInvoice : Math.max(0, b.paidAmount - (b.appliedAdvanceAmount || 0));
+                    return a + cashAtInv;
+                  }, 0)
                 ).toLocaleString()} {settings.currency}
               </div>
               <span className="text-[10px] font-semibold text-slate-500">
-                سداد نقدي مباشر ومحصل
+                سندات قبض + دفعات طلبات مقدمة + مدفوع فواتير
               </span>
             </div>
 
@@ -1040,6 +1191,30 @@ export const CustomersView: React.FC = () => {
           >
             <ShoppingCart className="w-4 h-4" />
             <span>فواتير المبيعات ({selectedCustomerInvoices.length})</span>
+          </button>
+
+          <button
+            onClick={() => setDetailTab('orders')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black transition-all cursor-pointer ${
+              detailTab === 'orders'
+                ? 'bg-blue-900 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <ShoppingCart className="w-4 h-4" />
+            <span>الطلبات ({selectedCustomerOrders.length})</span>
+          </button>
+
+          <button
+            onClick={() => setDetailTab('advances')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black transition-all cursor-pointer ${
+              detailTab === 'advances'
+                ? 'bg-blue-900 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Wallet className="w-4 h-4" />
+            <span>الدفعات المقدمة ({selectedCustomerAdvances.length})</span>
           </button>
 
           <button
@@ -1146,6 +1321,7 @@ export const CustomersView: React.FC = () => {
                           <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
                             row.type === 'فاتورة مبيعات' ? 'bg-blue-50 text-blue-800 border border-blue-200' :
                             row.type === 'سند قبض نقدية' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
+                            row.type === 'دفعة مقدمة على طلب' ? 'bg-teal-50 text-teal-800 border border-teal-200' :
                             row.type === 'مرتجع مبيعات' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
                             'bg-slate-100 text-slate-800'
                           }`}>
@@ -1447,6 +1623,123 @@ export const CustomersView: React.FC = () => {
             )}
           </div>
         )}
+
+        {/* Tab: Customer Orders */}
+        {detailTab === 'orders' && (
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden text-xs">
+            <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <div>
+                <h3 className="font-black text-slate-900 text-sm">طلبات العميل الموحدة</h3>
+                <p className="text-[11px] text-slate-500">
+                  طلبات الشراء الواردة من تطبيق العميل أو عبر المندوبين وحالتها والدفعات المقدمة عليها
+                </p>
+              </div>
+              {onNavigate && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate('customer-orders')}
+                  className="px-3.5 py-2 rounded-xl bg-blue-900 text-white font-bold cursor-pointer"
+                >
+                  فتح قسم الطلبات
+                </button>
+              )}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-right border-collapse">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 text-[11px]">
+                    <th className="p-3">رقم الطلب</th>
+                    <th className="p-3">التاريخ</th>
+                    <th className="p-3">عدد الأصناف</th>
+                    <th className="p-3 text-center">الإجمالي</th>
+                    <th className="p-3 text-center">الدفعة المقدمة</th>
+                    <th className="p-3">الحالة</th>
+                    <th className="p-3">الفاتورة</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {selectedCustomerOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-10 text-center text-slate-400">
+                        لا توجد طلبات مسجلة لهذا العميل.
+                      </td>
+                    </tr>
+                  ) : (
+                    selectedCustomerOrders.map((ord) => (
+                      <tr key={ord.id} className="hover:bg-slate-50/80">
+                        <td className="p-3 font-mono font-bold text-blue-900">{ord.requestNumber}</td>
+                        <td className="p-3 font-mono text-slate-600">{(ord.createdAt || '').slice(0, 10)}</td>
+                        <td className="p-3">{ord.items?.length || 0} أصناف</td>
+                        <td className="p-3 text-center font-mono font-bold">
+                          {Number(ord.totalAmount || 0).toLocaleString()} {settings.currency}
+                        </td>
+                        <td className="p-3 text-center font-mono font-bold text-emerald-700">
+                          {Number(ord.advancePaidAmount || 0) > 0 ? `${Number(ord.advancePaidAmount).toLocaleString()} ${settings.currency}` : '—'}
+                        </td>
+                        <td className="p-3 font-bold">{ord.status}</td>
+                        <td className="p-3 font-mono text-blue-900">{ord.invoiceNumber || '—'}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Tab: Customer Advance Payments */}
+        {detailTab === 'advances' && (
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden text-xs">
+            <div className="p-4 bg-slate-50 border-b border-slate-200">
+              <h3 className="font-black text-slate-900 text-sm">سجل الدفعات المقدمة على الطلبات</h3>
+              <p className="text-[11px] text-slate-500">
+                تُقيد في حساب العميل الدائن والخزينة عند الاستلام وتُطبق تلقائياً عند تحويل الطلب إلى فاتورة دون تكرار
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-right border-collapse">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 text-[11px]">
+                    <th className="p-3">رقم الدفعة</th>
+                    <th className="p-3">التاريخ</th>
+                    <th className="p-3">الخزينة</th>
+                    <th className="p-3">الوسيلة</th>
+                    <th className="p-3 text-center">المبلغ</th>
+                    <th className="p-3">الحالة</th>
+                    <th className="p-3">ملاحظات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {selectedCustomerAdvances.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-10 text-center text-slate-400">
+                        لا توجد دفعات مقدمة مسجلة على طلبات هذا العميل.
+                      </td>
+                    </tr>
+                  ) : (
+                    selectedCustomerAdvances.map((adv) => (
+                      <tr key={adv.id} className="hover:bg-slate-50/80">
+                        <td className="p-3 font-mono font-bold text-blue-900">{adv.paymentNumber}</td>
+                        <td className="p-3 font-mono text-slate-600">{adv.date}</td>
+                        <td className="p-3 font-bold">{adv.cashboxName || adv.cashboxId}</td>
+                        <td className="p-3">{adv.paymentMethod === 'bank' ? 'تحويل بنكي' : adv.paymentMethod === 'cheque' ? 'شيك' : 'نقدي'}</td>
+                        <td className="p-3 text-center font-mono font-black text-emerald-700">
+                          {Number(adv.amount).toLocaleString()} {settings.currency}
+                        </td>
+                        <td className="p-3">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${adv.status === 'applied' ? 'bg-blue-50 text-blue-800 border border-blue-200' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'}`}>
+                            {adv.status === 'applied' ? 'مطبقة على فاتورة' : 'رصيد دائن متاح'}
+                          </span>
+                        </td>
+                        <td className="p-3 text-slate-600">{adv.notes || '—'}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
           </div>
         );
       })() : (
@@ -1454,7 +1747,7 @@ export const CustomersView: React.FC = () => {
       {/* Conflicts warning for admins */}
       {hasPermission('canManageUsers') &&
         (conflicts.duplicatePhones.length > 0 || conflicts.unlinkedCustomerUsers.length > 0) && (
-          <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-950 space-y-1.5">
+          <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-950 space-y-2">
             <div className="font-black flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
               <span>تنبيه تطابق بيانات العملاء وحسابات الدخول</span>
@@ -1465,235 +1758,79 @@ export const CustomersView: React.FC = () => {
               </p>
             )}
             {conflicts.unlinkedCustomerUsers.length > 0 && (
-              <p>
-                يوجد ({conflicts.unlinkedCustomerUsers.length}) حساب عميل غير مربوط بملف محل حتى الآن — استخدم زر "ربط حساب تطبيق" على بطاقة العميل لإكمال الربط.
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <p>
+                  يوجد ({conflicts.unlinkedCustomerUsers.length}) حساب عميل غير مربوط بملف محل حتى الآن.
+                </p>
+                <button
+                  type="button"
+                  disabled={isRepairingUnlinked}
+                  onClick={async () => {
+                    if (isRepairingUnlinked) return;
+                    setIsRepairingUnlinked(true);
+                    try {
+                      const res = await repairUnlinkedCustomerUsers();
+                      if (res.success) {
+                        setCustomerBanner({
+                          type: 'success',
+                          text: `تم إصلاح وربط (${res.repairedCount ?? 0}) حساب عميل بملفات عملاء 1:1 تلقائياً بنجاح.`,
+                        });
+                        const recheck = await apiRequest<{
+                          ok: boolean;
+                          duplicatePhones: any[];
+                          unlinkedCustomerUsers: any[];
+                        }>('/api/customers/conflicts/check');
+                        setConflicts({
+                          duplicatePhones: recheck.duplicatePhones || [],
+                          unlinkedCustomerUsers: recheck.unlinkedCustomerUsers || [],
+                        });
+                      } else {
+                        setCustomerBanner({
+                          type: 'error',
+                          text: res.error || 'تعذر إصلاح حسابات العملاء غير المربوطة',
+                        });
+                      }
+                    } finally {
+                      setIsRepairingUnlinked(false);
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl bg-amber-700 hover:bg-amber-800 text-white font-black cursor-pointer disabled:opacity-50"
+                >
+                  {isRepairingUnlinked
+                    ? 'جاري الإصلاح والربط...'
+                    : 'إصلاح وربط الحسابات غير المربوطة تلقائياً'}
+                </button>
+              </div>
             )}
           </div>
         )}
 
-      {/* Customer mobile-app item requests: complete lifecycle */}
+      {/* Compact Summary Banner Routing to Dedicated Orders Section */}
       {customerItemOrders.length > 0 && (
-        <section className="rounded-3xl border border-blue-200 bg-blue-50/50 p-5 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <h3 className="text-base font-black text-blue-950">طلبات الأصناف الواردة من تطبيق العملاء</h3>
-              <span className="rounded-full bg-amber-600 px-2.5 py-0.5 text-xs font-bold text-white">
-                {customerItemOrders.filter((o) => o.status === 'pending').length} جديد
-              </span>
-              <span className="rounded-full bg-blue-900 px-2.5 py-0.5 text-xs font-bold text-white">
-                {customerItemOrders.filter((o) => o.status === 'approved').length} جاهز للفوترة
-              </span>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
-              {[
-                { key: 'all', label: `الكل (${customerItemOrders.length})` },
-                { key: 'pending', label: 'جديد' },
-                { key: 'approved', label: 'مقبول' },
-                { key: 'invoiced', label: 'تمت الفوترة' },
-                { key: 'rejected', label: 'مرفوض' },
-              ].map((t) => (
-                <button
-                  key={t.key}
-                  onClick={() => setOrderStatusFilter(t.key as any)}
-                  className={`px-3 py-1.5 rounded-xl cursor-pointer transition-all ${
-                    orderStatusFilter === t.key
-                      ? 'bg-blue-900 text-white shadow-xs'
-                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
+        <section className="rounded-3xl border border-blue-200 bg-blue-50/70 p-4 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h3 className="text-sm font-black text-blue-950">طلبات العملاء والمندوبين الواردة من الموبايل</h3>
+            <span className="rounded-full bg-amber-600 px-2.5 py-0.5 font-bold text-white">
+              {customerItemOrders.filter((o) => o.status === 'pending').length} جديد
+            </span>
+            <span className="rounded-full bg-sky-700 px-2.5 py-0.5 font-bold text-white">
+              {customerItemOrders.filter((o) => o.status === 'under_review').length} قيد المراجعة
+            </span>
+            <span className="rounded-full bg-emerald-700 px-2.5 py-0.5 font-bold text-white">
+              {customerItemOrders.filter((o) => o.status === 'approved').length} مقبول
+            </span>
           </div>
 
-          {orderActionBanner && (
-            <div
-              className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-between ${
-                orderActionBanner.type === 'success'
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                  : 'bg-red-50 border-red-200 text-red-900'
-              }`}
+          {onNavigate && (
+            <button
+              type="button"
+              onClick={() => onNavigate('customer-orders')}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black shadow-xs cursor-pointer"
             >
-              <span>{orderActionBanner.text}</span>
-              <button onClick={() => setOrderActionBanner(null)} className="underline cursor-pointer">
-                إغلاق
-              </button>
-            </div>
+              <ShoppingCart className="w-4 h-4" />
+              <span>فتح قسم طلبات العملاء والمندوبين</span>
+            </button>
           )}
-
-          <div className="space-y-3">
-            {customerItemOrders
-              .filter((o) => orderStatusFilter === 'all' || o.status === orderStatusFilter)
-              .map((order) => {
-                const isExpanded = expandedOrderHistoryId === order.id;
-                const mapQuery = order.geoCoordinates?.trim() || order.deliveryAddress?.trim() || '';
-                const mapHref = mapQuery.startsWith('http')
-                  ? mapQuery
-                  : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
-                return (
-                  <div key={order.id} className="rounded-2xl border border-blue-100 bg-white p-4 shadow-xs space-y-3 text-xs">
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono font-black text-blue-900 bg-blue-50 px-2.5 py-0.5 rounded-lg border border-blue-200">
-                          {order.requestNumber}
-                        </span>
-                        <strong className="text-sm text-slate-900">{order.customerName}</strong>
-                        {order.shopName && (
-                          <span className="text-slate-600 font-semibold">({order.shopName})</span>
-                        )}
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                            order.status === 'pending'
-                              ? 'bg-amber-100 text-amber-800'
-                              : order.status === 'approved'
-                              ? 'bg-blue-100 text-blue-800'
-                              : order.status === 'rejected'
-                              ? 'bg-red-100 text-red-800'
-                              : 'bg-emerald-100 text-emerald-800'
-                          }`}
-                        >
-                          {order.status === 'pending'
-                            ? 'جديد — بانتظار المراجعة'
-                            : order.status === 'approved'
-                            ? 'مقبول — جاهز لتحويله لفاتورة'
-                            : order.status === 'rejected'
-                            ? 'مرفوض'
-                            : `تم التحويل لفاتورة (${order.invoiceNumber || ''})`}
-                        </span>
-                      </div>
-                      <span className="text-[11px] font-mono text-slate-500">
-                        {new Date(order.createdAt).toLocaleString('ar-EG')}
-                      </span>
-                    </div>
-
-                    {/* Customer Snapshot Info */}
-                    <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-600">
-                      {order.customerPhone && (
-                        <a
-                          href={`tel:${order.customerPhone}`}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 font-mono font-bold border border-emerald-200"
-                        >
-                          <Phone className="w-3 h-3" />
-                          <span>{order.customerPhone}</span>
-                        </a>
-                      )}
-                      {order.deliveryAddress && (
-                        <a
-                          href={mapHref}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-50 text-slate-800 border border-slate-200 hover:bg-blue-50"
-                        >
-                          <MapPin className="w-3 h-3 text-red-600" />
-                          <span>{order.deliveryAddress}</span>
-                          <ExternalLink className="w-3 h-3 text-blue-700" />
-                        </a>
-                      )}
-                    </div>
-
-                    {/* Order Items Table */}
-                    <div className="bg-slate-50 rounded-xl border border-slate-200 p-2.5 space-y-1">
-                      {order.items.map((it, idx) => (
-                        <div key={idx} className="flex items-center justify-between text-xs">
-                          <span className="font-bold text-slate-900">
-                            {idx + 1}. {it.productName}
-                          </span>
-                          <span className="font-mono text-slate-700">
-                            {it.quantity} {it.unit}
-                            {it.unitPrice && it.unitPrice > 0 ? ` • سعر استرشادي: ${it.unitPrice} ${settings.currency}` : ''}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {order.notes && (
-                      <p className="text-slate-600 bg-amber-50/50 p-2 rounded-lg border border-amber-100">
-                        <strong>ملاحظات العميل:</strong> {order.notes}
-                      </p>
-                    )}
-
-                    {order.status === 'rejected' && order.rejectionReason && (
-                      <p className="text-red-800 bg-red-50 p-2 rounded-lg border border-red-200 font-bold">
-                        سبب الرفض: {order.rejectionReason}
-                      </p>
-                    )}
-
-                    {/* Action Controls */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {order.status === 'pending' && (
-                          <>
-                            <button
-                              onClick={async () => {
-                                const r = await approveCustomerItemOrder(order.id);
-                                if (!r.success) {
-                                  setOrderActionBanner({ type: 'error', text: r.error || 'تعذر قبول الطلب' });
-                                } else {
-                                  setOrderActionBanner({ type: 'success', text: `تم قبول الطلب (${order.requestNumber}) بنجاح، ويمكنك الآن تحويله إلى فاتورة بيع.` });
-                                }
-                              }}
-                              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 px-4 py-2 text-xs font-bold text-white cursor-pointer"
-                            >
-                              <Check className="w-3.5 h-3.5" />
-                              <span>قبول الطلب</span>
-                            </button>
-                            <button
-                              onClick={() => {
-                                setRejectReason('');
-                                setRejectingOrder(order);
-                              }}
-                              className="inline-flex items-center gap-1.5 rounded-xl bg-red-700 hover:bg-red-800 px-4 py-2 text-xs font-bold text-white cursor-pointer"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                              <span>رفض الطلب</span>
-                            </button>
-                          </>
-                        )}
-
-                        {order.status === 'approved' && (
-                          <button
-                            onClick={() => setConvertingOrder(order)}
-                            className="inline-flex items-center gap-1.5 rounded-xl bg-blue-900 hover:bg-blue-950 px-4 py-2 text-xs font-black text-white shadow-sm cursor-pointer"
-                          >
-                            <ShoppingCart className="w-3.5 h-3.5" />
-                            <span>تحويل إلى فاتورة مبيعات</span>
-                          </button>
-                        )}
-                      </div>
-
-                      {order.statusHistory && order.statusHistory.length > 0 && (
-                        <button
-                          onClick={() => setExpandedOrderHistoryId(isExpanded ? null : order.id)}
-                          className="inline-flex items-center gap-1 text-[11px] text-slate-600 hover:text-blue-900 font-bold cursor-pointer"
-                        >
-                          <History className="w-3.5 h-3.5" />
-                          <span>{isExpanded ? 'إخفاء سجل الحالات' : `سجل الحالات (${order.statusHistory.length})`}</span>
-                        </button>
-                      )}
-                    </div>
-
-                    {isExpanded && order.statusHistory && (
-                      <div className="pt-2 border-t border-slate-100 space-y-1 text-[11px] text-slate-600">
-                        {order.statusHistory.map((h) => (
-                          <div key={h.id} className="flex items-center justify-between">
-                            <span>
-                              <strong>{h.toStatus}</strong> — بواسطة: {h.changedByName}
-                              {h.reason ? ` (${h.reason})` : ''}
-                            </span>
-                            <span className="font-mono text-[10px] text-slate-400">
-                              {new Date(h.changedAt).toLocaleString('ar-EG')}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-          </div>
         </section>
       )}
 
@@ -1701,13 +1838,13 @@ export const CustomersView: React.FC = () => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-xl font-black text-slate-900 tracking-tight">دليل العملاء والمحلات الغذائية</h2>
+            <h2 className="text-xl font-black text-slate-900 tracking-tight">العملاء والأرصدة</h2>
             <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-900 text-xs font-black border border-blue-200">
               {customers.length} محل
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            إدارة بيانات المحلات، الصور الميدانية، أرقام الموبايل، العناوين، التحصيلات، وكشوف الحسابات المستقلة
+            منظومة العملاء الموحدة — أرصدة وكشوف حسابات موحدة لجميع المبيعات المباشرة وطلبات التطبيق والمندوبين والدفعات المقدمة
           </p>
         </div>
 
@@ -1801,8 +1938,8 @@ export const CustomersView: React.FC = () => {
         </div>
 
         {/* Filters and Layout Toggle */}
-        <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+          <div className="flex flex-wrap items-center gap-2">
             <Filter className="w-4 h-4 text-slate-400" />
             <select
               value={statusFilter}
@@ -1812,6 +1949,16 @@ export const CustomersView: React.FC = () => {
               <option value="all">جميع الحالات ({customers.length})</option>
               <option value="active">نشط فقط</option>
               <option value="blocked">محظور فقط</option>
+            </select>
+            <select
+              value={classificationFilter}
+              onChange={(e) => setClassificationFilter(e.target.value as any)}
+              className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-hidden focus:border-blue-600"
+            >
+              <option value="all">جميع التصنيفات</option>
+              <option value="app_and_direct">عميل تطبيق ومبيعات مباشرة</option>
+              <option value="app_only">عميل تطبيق</option>
+              <option value="regular">عميل عادي</option>
             </select>
           </div>
 
@@ -1889,7 +2036,7 @@ export const CustomersView: React.FC = () => {
                     }`} />
                   </div>
 
-                  {/* Name and Code */}
+                  {/* Name, Code & Classification */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-mono text-[10px] font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
@@ -1904,6 +2051,22 @@ export const CustomersView: React.FC = () => {
                     <h3 className="text-sm font-black text-slate-900 truncate mt-1 group-hover:text-blue-900 transition-colors">
                       {cust.name}
                     </h3>
+                    <div className="flex flex-wrap items-center gap-1 mt-1">
+                      {(() => {
+                        const cls = customerClassificationMap.get(cust.id);
+                        return cls ? (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cls.badgeClass}`}>
+                            {cls.label}
+                          </span>
+                        ) : null;
+                      })()}
+                      {tentativeCustomerIds.has(cust.id) && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                          <CloudOff className="w-2.5 h-2.5" />
+                          <span>رصيد محلي مبدئي لحين المزامنة</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -2538,6 +2701,49 @@ export const CustomersView: React.FC = () => {
             </div>
           </div>
 
+          {!editingCustomer && hasPermission('canManageUsers') && (
+            <div className="rounded-2xl border border-blue-200 bg-blue-50/60 p-3.5 space-y-3">
+              <label className="flex items-center gap-2 font-black text-blue-950 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={createPortalLogin}
+                  onChange={(e) => setCreatePortalLogin(e.target.checked)}
+                  className="w-4 h-4 accent-blue-900"
+                />
+                <span>إنشاء حساب دخول لتطبيق العملاء وربطه تلقائياً (1:1)</span>
+              </label>
+
+              {createPortalLogin && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      اسم الدخول (Username): <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={portalUsername}
+                      onChange={(e) => setPortalUsername(e.target.value)}
+                      placeholder="مثال: cust_ahmad"
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-mono font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      كلمة المرور (6 أحرف على الأقل): <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="password"
+                      value={portalPassword}
+                      onChange={(e) => setPortalPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-mono"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Actions */}
           <div className="flex justify-end gap-2 pt-3 border-t">
             <button
@@ -2820,64 +3026,6 @@ export const CustomersView: React.FC = () => {
       )}
 
       {/* ========================================================= */}
-      {/* REJECT ORDER WITH MANDATORY REASON MODAL                  */}
-      {/* ========================================================= */}
-      {rejectingOrder && (
-        <Modal
-          isOpen={!!rejectingOrder}
-          onClose={() => setRejectingOrder(null)}
-          title={`رفض طلب العميل: ${rejectingOrder.requestNumber}`}
-          subtitle={`العميل: ${rejectingOrder.customerName}`}
-          maxWidth="md"
-        >
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (!rejectReason.trim()) return;
-              const r = await rejectCustomerItemOrder(rejectingOrder.id, rejectReason.trim());
-              if (!r.success) {
-                setOrderActionBanner({ type: 'error', text: r.error || 'تعذر رفض الطلب' });
-              } else {
-                setOrderActionBanner({ type: 'success', text: `تم رفض الطلب (${rejectingOrder.requestNumber}) وتبليغ العميل بالسبب.` });
-                setRejectingOrder(null);
-              }
-            }}
-            className="space-y-4 text-xs"
-          >
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">
-                سبب رفض الطلب (إلزامي وسيظهر للعميل): <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                rows={3}
-                required
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                placeholder="مثال: الصنف غير متوفر بالكمية المطلوبة حالياً..."
-                className="w-full border border-slate-300 rounded-xl p-2.5 focus:border-red-600 outline-hidden"
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-2 border-t">
-              <button
-                type="button"
-                onClick={() => setRejectingOrder(null)}
-                className="px-4 py-2 border rounded-xl font-bold cursor-pointer"
-              >
-                إلغاء
-              </button>
-              <button
-                type="submit"
-                disabled={!rejectReason.trim()}
-                className="px-5 py-2 bg-red-700 hover:bg-red-800 text-white rounded-xl font-black disabled:opacity-50 cursor-pointer"
-              >
-                تأكيد رفض الطلب
-              </button>
-            </div>
-          </form>
-        </Modal>
-      )}
-
-      {/* ========================================================= */}
       {/* CUSTOMER-USER 1:1 LINKING MODAL                           */}
       {/* ========================================================= */}
       {linkingCustomer && (
@@ -2910,7 +3058,7 @@ export const CustomersView: React.FC = () => {
                   setLinkError(res.error || 'تعذر ربط الحساب');
                   return;
                 }
-                setOrderActionBanner({
+                setCustomerBanner({
                   type: 'success',
                   text: `تم ربط العميل (${linkingCustomer.name}) بحساب الدخول بنجاح.`,
                 });
@@ -3014,22 +3162,6 @@ export const CustomersView: React.FC = () => {
           </form>
         </Modal>
       )}
-
-      {/* ========================================================= */}
-      {/* CONVERT APPROVED CUSTOMER ORDER TO SALES INVOICE MODAL    */}
-      {/* ========================================================= */}
-      <NewSaleInvoiceModal
-        isOpen={!!convertingOrder}
-        onClose={() => setConvertingOrder(null)}
-        sourceOrder={convertingOrder}
-        onInvoiceCreated={(inv) => {
-          setOrderActionBanner({
-            type: 'success',
-            text: `تم تحويل طلب العميل إلى الفاتورة (${inv?.invoiceNumber || ''}) بنجاح.`,
-          });
-          setConvertingOrder(null);
-        }}
-      />
 
       {/* ========================================================= */}
       {/* PRINT DOCUMENT MODAL (Statement, Receipt, Invoice)        */}

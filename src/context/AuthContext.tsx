@@ -12,6 +12,14 @@ import {
 } from '../services/api';
 import { getClientDeviceDescriptor } from '../services/native';
 import { clearReadCache, purgeLegacyLocalDatabaseCache } from '../services/storage';
+import {
+  clearLastVerifiedOfflineSession,
+  refreshCachedUserAuthorization,
+  restoreLastVerifiedOfflineSession,
+  revokeOfflineUser,
+  saveVerifiedOnlineCredentials,
+  verifyOfflineLogin,
+} from '../services/offlineAuth';
 
 export interface PairingBannerMessage {
   type: 'success' | 'warning' | 'error';
@@ -38,9 +46,13 @@ interface AuthContextType {
   needsAdminSetup: boolean;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isOfflineSession: boolean;
+  lastVerifiedAt: string | null;
+  permissionsMayBeStale: boolean;
   login: (username: string, password: string) => Promise<{ success: boolean; error?: string; requirePasswordChange?: boolean }>;
   bootstrapAdmin: (payload: { fullName: string; username: string; password: string; phone?: string; companyName?: string }) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
+  handleServerAuthRevoked: (reason?: string) => Promise<void>;
   updatePassword: (newPassword: string, currentPassword?: string) => Promise<{ success: boolean; error?: string }>;
   updateUserShortcuts: (shortcuts: UserShortcutItem[]) => Promise<{ success: boolean; shortcuts?: UserShortcutItem[]; error?: string }>;
   refreshAuthContext: () => Promise<void>;
@@ -61,25 +73,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [pairingBanner, setPairingBanner] = useState<PairingBannerMessage | null>(null);
   const [needsAdminSetup, setNeedsAdminSetup] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isOfflineSession, setIsOfflineSession] = useState(false);
+  const [lastVerifiedAt, setLastVerifiedAt] = useState<string | null>(null);
+  const [permissionsMayBeStale, setPermissionsMayBeStale] = useState(false);
 
   const checkStatusAndSession = useCallback(async () => {
     purgeLegacyLocalDatabaseCache();
     await hydrateServerUrlFromNative();
+    const baseUrl = getConfiguredApiBaseUrl();
+    let serverUnreachable = false;
+
     try {
       const statusRes = await apiRequest<{ ok: boolean; needsAdminSetup: boolean }>('/api/auth/status', {
         skipAuth: true,
       });
       setNeedsAdminSetup(Boolean(statusRes.needsAdminSetup));
-    } catch {
-      // ignore if offline or server URL not configured yet
+    } catch (err: any) {
+      if (err?.status === 0 || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+        serverUnreachable = true;
+      }
     }
 
     const tokens = getStoredTokens();
     if (!tokens?.accessToken) {
+      if (serverUnreachable) {
+        const restored = await restoreLastVerifiedOfflineSession(baseUrl).catch(() => null);
+        if (restored) {
+          setCurrentUser(restored.user);
+          setCustomerProfile(restored.customerProfile);
+          setRepresentativeProfile(restored.representativeProfile);
+          setIsOfflineSession(true);
+          setPermissionsMayBeStale(true);
+          setLastVerifiedAt(restored.lastVerifiedAt);
+          setNeedsAdminSetup(false);
+          setIsLoading(false);
+          return;
+        }
+      }
       setCurrentUser(null);
       setCustomerProfile(null);
       setRepresentativeProfile(null);
       setLinkWarning(null);
+      setIsOfflineSession(false);
+      setPermissionsMayBeStale(false);
+      setLastVerifiedAt(null);
       setIsLoading(false);
       return;
     }
@@ -100,22 +137,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLinkWarning(me.linkWarning || null);
       setSessionExpiredMessage(null);
       setNeedsAdminSetup(false);
+      setIsOfflineSession(false);
+      setPermissionsMayBeStale(false);
+      const nowIso = new Date().toISOString();
+      setLastVerifiedAt(nowIso);
+      refreshCachedUserAuthorization({
+        serverUrl: baseUrl,
+        user: me.user,
+        customerProfile: me.customerProfile || null,
+        representativeProfile: me.representativeProfile || null,
+      }).catch(() => {});
     } catch (err: any) {
-      // If genuinely offline (status === 0), do not wipe tokens unless server rejected them (401 or DEVICE_REVOKED)
-      if (err?.status === 401 || err?.code === 'DEVICE_REVOKED') {
+      if (err?.status === 401 || err?.code === 'DEVICE_REVOKED' || err?.code === 'ACCOUNT_DEACTIVATED') {
+        const prevUid = currentUser?.id;
+        if (prevUid) {
+          revokeOfflineUser(prevUid).catch(() => {});
+        } else {
+          clearLastVerifiedOfflineSession().catch(() => {});
+        }
         saveStoredTokens(null);
         setCurrentUser(null);
         setCustomerProfile(null);
         setRepresentativeProfile(null);
         setLinkWarning(null);
-        if (err?.code === 'DEVICE_REVOKED') {
+        setIsOfflineSession(false);
+        setPermissionsMayBeStale(false);
+        setLastVerifiedAt(null);
+        if (err?.code === 'DEVICE_REVOKED' || err?.code === 'ACCOUNT_DEACTIVATED') {
           setSessionExpiredMessage(err.message);
+        }
+      } else if (err?.status === 0 || serverUnreachable) {
+        const restored = await restoreLastVerifiedOfflineSession(baseUrl).catch(() => null);
+        if (restored) {
+          setCurrentUser(restored.user);
+          setCustomerProfile(restored.customerProfile);
+          setRepresentativeProfile(restored.representativeProfile);
+          setIsOfflineSession(true);
+          setPermissionsMayBeStale(true);
+          setLastVerifiedAt(restored.lastVerifiedAt);
+          setNeedsAdminSetup(false);
         }
       }
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [currentUser?.id]);
 
   useEffect(() => {
     setAuthExpiredHandler((message) => {
@@ -123,6 +189,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCustomerProfile(null);
       setRepresentativeProfile(null);
       setLinkWarning(null);
+      setIsOfflineSession(false);
+      setPermissionsMayBeStale(false);
       setSessionExpiredMessage(message || 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً.');
     });
     checkStatusAndSession();
@@ -135,10 +203,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     username: string,
     password: string
   ): Promise<{ success: boolean; error?: string; requirePasswordChange?: boolean }> => {
+    const descriptor = getClientDeviceDescriptor();
+    const baseUrl = getConfiguredApiBaseUrl();
+    const mode = detectModeFromUrl(baseUrl, getStoredConnectionProfiles());
     try {
-      const descriptor = getClientDeviceDescriptor();
-      const baseUrl = getConfiguredApiBaseUrl();
-      const mode = detectModeFromUrl(baseUrl, getStoredConnectionProfiles());
       const res = await apiRequest<{
         ok: boolean;
         accessToken: string;
@@ -161,6 +229,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       saveStoredTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });
+      await saveVerifiedOnlineCredentials({
+        serverUrl: baseUrl,
+        username: username.trim(),
+        password,
+        user: res.user,
+        customerProfile: res.customerProfile || null,
+        representativeProfile: res.representativeProfile || null,
+      }).catch(() => {});
+
       setCurrentUser(res.user);
       setCustomerProfile(res.customerProfile || null);
       setRepresentativeProfile(res.representativeProfile || null);
@@ -168,12 +245,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLinkWarning(res.linkWarning || null);
       setSessionExpiredMessage(null);
       setNeedsAdminSetup(false);
+      setIsOfflineSession(false);
+      setPermissionsMayBeStale(false);
+      setLastVerifiedAt(new Date().toISOString());
 
       return {
         success: true,
         requirePasswordChange: res.user.mustChangePassword === true,
       };
     } catch (err: any) {
+      if (err?.status === 0) {
+        const offlineRes = await verifyOfflineLogin({
+          serverUrl: baseUrl,
+          username: username.trim(),
+          password,
+        });
+        if (offlineRes.ok) {
+          setCurrentUser(offlineRes.user);
+          setCustomerProfile(offlineRes.customerProfile);
+          setRepresentativeProfile(offlineRes.representativeProfile);
+          setMobileConfig(DEFAULT_MOBILE_CONFIG);
+          setLinkWarning(null);
+          setSessionExpiredMessage(null);
+          setNeedsAdminSetup(false);
+          setIsOfflineSession(true);
+          setPermissionsMayBeStale(true);
+          setLastVerifiedAt(offlineRes.lastVerifiedAt);
+          return { success: true, requirePasswordChange: false };
+        }
+        return { success: false, error: offlineRes.error };
+      }
       return { success: false, error: err?.message || 'تعذر تسجيل الدخول' };
     }
   };
@@ -204,6 +305,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     const tokens = getStoredTokens();
+    const uid = currentUser?.id;
     try {
       await apiRequest('/api/auth/logout', {
         method: 'POST',
@@ -212,6 +314,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch {
       // always clear local session even if server unreachable
     }
+    await clearLastVerifiedOfflineSession(uid).catch(() => {});
     saveStoredTokens(null);
     clearReadCache();
     setCurrentUser(null);
@@ -220,7 +323,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setMobileConfig(DEFAULT_MOBILE_CONFIG);
     setLinkWarning(null);
     setSessionExpiredMessage(null);
+    setIsOfflineSession(false);
+    setPermissionsMayBeStale(false);
+    setLastVerifiedAt(null);
   };
+
+  const handleServerAuthRevoked = useCallback(
+    async (reason?: string) => {
+      if (currentUser?.id) {
+        await revokeOfflineUser(currentUser.id).catch(() => {});
+      } else {
+        await clearLastVerifiedOfflineSession().catch(() => {});
+      }
+      saveStoredTokens(null);
+      clearReadCache();
+      setCurrentUser(null);
+      setCustomerProfile(null);
+      setRepresentativeProfile(null);
+      setMobileConfig(DEFAULT_MOBILE_CONFIG);
+      setLinkWarning(null);
+      setIsOfflineSession(false);
+      setPermissionsMayBeStale(false);
+      setLastVerifiedAt(null);
+      setSessionExpiredMessage(reason || 'تم إيقاف الحساب أو سحب الصلاحية من السيرفر المركزي.');
+    },
+    [currentUser?.id]
+  );
 
   const updatePassword = async (
     newPassword: string,
@@ -232,7 +360,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         method: 'PUT',
         body: { currentPassword, newPassword },
       });
-      setCurrentUser((prev) => (prev ? { ...prev, mustChangePassword: false } : null));
+      const updatedUser: User = { ...currentUser, mustChangePassword: false };
+      setCurrentUser(updatedUser);
+      await saveVerifiedOnlineCredentials({
+        serverUrl: getConfiguredApiBaseUrl(),
+        username: updatedUser.username,
+        password: newPassword,
+        user: updatedUser,
+        customerProfile,
+        representativeProfile,
+      }).catch(() => {});
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err?.message || 'فشل تحديث كلمة المرور' };
@@ -282,9 +419,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         needsAdminSetup,
         isAuthenticated: Boolean(currentUser),
         isLoading,
+        isOfflineSession,
+        lastVerifiedAt,
+        permissionsMayBeStale,
         login,
         bootstrapAdmin,
         logout,
+        handleServerAuthRevoked,
         updatePassword,
         updateUserShortcuts,
         refreshAuthContext: checkStatusAndSession,

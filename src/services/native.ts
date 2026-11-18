@@ -273,6 +273,57 @@ export function subscribeNetworkStatus(
   };
 }
 
+export function subscribeAppForeground(onForeground: () => void): () => void {
+  let active = true;
+  let capHandle: { remove: () => Promise<void> } | null = null;
+
+  const trigger = () => {
+    if (active) onForeground();
+  };
+
+  const handleVisibility = () => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+      trigger();
+    }
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('focus', trigger);
+  }
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', handleVisibility);
+  }
+
+  if (isNativeCapacitor()) {
+    CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+      if (active && isActive) {
+        trigger();
+      }
+    })
+      .then((h) => {
+        if (!active) {
+          h.remove().catch(() => {});
+        } else {
+          capHandle = h;
+        }
+      })
+      .catch(() => {});
+  }
+
+  return () => {
+    active = false;
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('focus', trigger);
+    }
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', handleVisibility);
+    }
+    if (capHandle) {
+      capHandle.remove().catch(() => {});
+    }
+  };
+}
+
 export function registerAndroidBackButton(handler: () => boolean | void): () => void {
   if (!isNativeCapacitor() || getNativePlatform() !== 'android') {
     return () => {};

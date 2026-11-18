@@ -12,6 +12,8 @@ import { NewSaleInvoiceModal } from './NewSaleInvoiceModal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { exportToExcel } from '../../common/ExcelExporter';
+import { QuantityInput } from '../../common/QuantityInput';
+import { computeLineTotal } from '../../../utils/quantity';
 
 export interface SalesInvoicesViewProps {
   initialStatusFilter?: 'all' | 'confirmed' | 'draft' | 'cancelled';
@@ -890,15 +892,25 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                           <td className="p-2.5 font-bold text-slate-800">{item.productName}</td>
                           <td className="p-2.5 text-center text-slate-600">{item.unit}</td>
                           <td className="p-2.5 text-center">
-                            <input
-                              type="number"
-                              min={1}
+                            <QuantityInput
+                              allowDecimals
+                              min={0.001}
                               value={item.quantity}
-                              onChange={(e) => {
-                                const newQty = parseFloat(e.target.value) || 1;
-                                setEditItems(prev => prev.map((it, i) => i === idx ? { ...it, quantity: newQty, total: (newQty * it.unitPrice) - (it.discount || 0) } : it));
+                              onChange={(newQty) => {
+                                setEditItems((prev) =>
+                                  prev.map((it, i) =>
+                                    i === idx
+                                      ? {
+                                          ...it,
+                                          quantity: newQty,
+                                          total: computeLineTotal(newQty, it.unitPrice, it.discount || 0),
+                                        }
+                                      : it
+                                  )
+                                );
                               }}
-                              className="w-20 p-1.5 rounded-lg border border-slate-300 text-center font-bold"
+                              ariaLabel={`كمية ${item.productName}`}
+                              inputClassName="w-20 p-1.5 rounded-lg border border-slate-300 text-center font-bold font-mono outline-hidden focus:border-blue-700"
                             />
                           </td>
                           <td className="p-2.5 text-center">

@@ -29,6 +29,8 @@ import {
   OwnerPersonalTransaction,
   StockCountSession,
   StockTransferRequest,
+  OrderAdvancePayment,
+  SyncConflictRecord,
 } from '../types';
 
 const OFFLINE_ORDERS_QUEUE_KEY = 'awlad_selim_offline_orders_queue_v3';
@@ -49,6 +51,8 @@ export interface DatabaseState {
   repTransfers: RepTransfer[];
   repItemTransfers?: RepItemTransferRequest[];
   customerItemOrders?: CustomerItemOrderRequest[];
+  orderAdvancePayments?: OrderAdvancePayment[];
+  syncConflicts?: SyncConflictRecord[];
   employees: Employee[];
   advancesDeductions: EmployeeAdvanceDeduction[];
   attendance: AttendanceRecord[];
@@ -87,6 +91,8 @@ export function getEmptyClientDatabaseState(): DatabaseState {
     repTransfers: [],
     repItemTransfers: [],
     customerItemOrders: [],
+    orderAdvancePayments: [],
+    syncConflicts: [],
     employees: [],
     advancesDeductions: [],
     attendance: [],
@@ -143,7 +149,17 @@ export function getEmptyClientDatabaseState(): DatabaseState {
 export interface QueuedCustomerOrder {
   idempotencyKey: string;
   payload: {
-    items: Array<{ productId: string; productName: string; unit: string; quantity: number }>;
+    customerId?: string;
+    customerName?: string;
+    requesterType?: 'customer' | 'representative' | 'staff';
+    items: Array<{
+      productId: string;
+      productName: string;
+      unit: string;
+      unitFactor?: number;
+      unitPrice?: number;
+      quantity: number;
+    }>;
     notes?: string;
     deliveryAddress?: string;
     geoCoordinates?: string;

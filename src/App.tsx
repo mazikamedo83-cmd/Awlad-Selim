@@ -16,6 +16,7 @@ import { UserPermissions, CashOperationType } from './types';
 
 // Views
 import { DashboardView } from './components/modules/dashboard/DashboardView';
+import { CustomerRepOrdersView } from './components/modules/orders/CustomerRepOrdersView';
 import { SalesInvoicesView } from './components/modules/sales/SalesInvoicesView';
 import { DeletedInvoicesView } from './components/modules/sales/DeletedInvoicesView';
 import { CustomersView } from './components/modules/customers/CustomersView';
@@ -44,6 +45,7 @@ import {
 import { claimPairingInvitation, discoverServerCandidates, parsePairingInput } from './services/discovery';
 
 const PAGE_PERMISSIONS: Partial<Record<NavItemKey, keyof UserPermissions | Array<keyof UserPermissions>>> = {
+  'customer-orders': 'canManageSales',
   'sales-invoices': 'canManageSales',
   'new-sale': 'canManageSales',
   'customers': 'canManageSales',
@@ -305,6 +307,9 @@ const MainAppContent: React.FC = () => {
       case 'dashboard':
         return <DashboardView onNavigate={(page) => setCurrentPage(page)} />;
 
+      case 'customer-orders':
+        return <CustomerRepOrdersView />;
+
       case 'sales-invoices':
         return <SalesInvoicesView />;
 
@@ -315,7 +320,7 @@ const MainAppContent: React.FC = () => {
         return <DeletedInvoicesView />;
 
       case 'customers':
-        return <CustomersView />;
+        return <CustomersView onNavigate={(page) => setCurrentPage(page)} />;
 
       case 'purchase-invoices':
         return <PurchaseInvoicesView />;

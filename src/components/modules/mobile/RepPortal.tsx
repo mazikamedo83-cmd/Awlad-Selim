@@ -2,15 +2,32 @@ import React, { useMemo, useState, useEffect } from 'react';
 import {
   Home, Users, FilePlus2, FileText, Truck, Search, Plus, Minus,
   Trash2, CheckCircle2, AlertCircle, AlertTriangle, Phone, MapPin,
-  History, ShieldAlert, RefreshCw, Share2, FileDown, Boxes, ArrowLeftRight
+  History, ShieldAlert, RefreshCw, Share2, FileDown, Boxes, ArrowLeftRight, ClipboardList,
+  CloudOff, CloudCheck, Camera, Package
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
-import { CustomerPriceHistoryEntry, Invoice } from '../../../types';
+import { CustomerItemOrderRequest, CustomerPriceHistoryEntry, Invoice } from '../../../types';
 import { exportHtmlToPdf } from '../../common/PdfExporter';
 import { isNativeCapacitor } from '../../../services/native';
+import { QuantityInput } from '../../common/QuantityInput';
+import { computeLineTotal } from '../../../utils/quantity';
+import { compressImageFileToDataUrl } from '../../../utils/image';
 
-export type RepTabKey = 'home' | 'customers' | 'new-invoice' | 'invoices' | 'custody';
+const REP_ORDER_STATUS_LABELS: Record<string, string> = {
+  pending: 'جديد',
+  under_review: 'قيد المراجعة',
+  approved: 'مقبول',
+  rep_assigned: 'تم تعيين مندوب',
+  out_for_delivery: 'جاري التوصيل',
+  delivered: 'تم التسليم',
+  needs_review: 'يحتاج مراجعة',
+  invoiced: 'مفوتر',
+  rejected: 'مرفوض',
+  cancelled: 'ملغى',
+};
+
+export type RepTabKey = 'home' | 'customers' | 'new-invoice' | 'orders' | 'invoices' | 'custody';
 
 interface RepPortalProps {
   activeTab: RepTabKey;
@@ -93,6 +110,36 @@ export const RepPortal: React.FC<RepPortalProps> = ({ activeTab, onTabChange }) 
   const [cashNotes, setCashNotes] = useState<string>('');
   const [isSendingTransfer, setIsSendingTransfer] = useState(false);
 
+  // Representative purchase order state
+  const [ordCustomerId, setOrdCustomerId] = useState<string>('');
+  const [ordProductId, setOrdProductId] = useState<string>('');
+  const [ordUnitName, setOrdUnitName] = useState<string>('');
+  const [ordQty, setOrdQty] = useState<number>(1);
+  const [ordPrice, setOrdPrice] = useState<number>(0);
+  const [ordNotes, setOrdNotes] = useState<string>('');
+  const [ordItems, setOrdItems] = useState<
+    Array<{
+      productId: string;
+      productCode: string;
+      productName: string;
+      productImage?: string;
+      unit: string;
+      unitFactor: number;
+      quantity: number;
+      unitPrice: number;
+    }>
+  >([]);
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
+
+  // Delivery confirmation sheet state
+  const [deliveringOrder, setDeliveringOrder] = useState<CustomerItemOrderRequest | null>(null);
+  const [deliveryCollectedAmount, setDeliveryCollectedAmount] = useState<number>(0);
+  const [deliveryCashboxId, setDeliveryCashboxId] = useState<string>(data.cashboxes[0]?.id || 'CASH-01');
+  const [deliveryMethod, setDeliveryMethod] = useState<'cash' | 'bank' | 'cheque'>('cash');
+  const [deliveryNotes, setDeliveryNotes] = useState<string>('');
+  const [deliveryProof, setDeliveryProof] = useState<string>('');
+  const [isUpdatingDelivery, setIsUpdatingDelivery] = useState(false);
+
   useEffect(() => {
     if (!invWarehouseId && vanWarehouse?.id) {
       setInvWarehouseId(vanWarehouse.id);
@@ -100,7 +147,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({ activeTab, onTabChange }) 
     if (!invCashboxId && data.cashboxes[0]?.id) {
       setInvCashboxId(data.cashboxes[0].id);
     }
-  }, [vanWarehouse?.id, invWarehouseId, data.cashboxes, invCashboxId]);
+    if (!deliveryCashboxId && data.cashboxes[0]?.id) {
+      setDeliveryCashboxId(data.cashboxes[0].id);
+    }
+  }, [vanWarehouse?.id, invWarehouseId, data.cashboxes, invCashboxId, deliveryCashboxId]);
 
   useEffect(() => {
     let active = true;
@@ -168,7 +218,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({ activeTab, onTabChange }) 
         purchasePriceAtTime = u.purchasePrice || selectedProduct.purchasePrice * unitFactor;
       }
     }
-    const total = invQty * invPrice;
+    const total = computeLineTotal(invQty, invPrice);
     setInvItems((prev) => [
       ...prev,
       {
@@ -189,10 +239,218 @@ export const RepPortal: React.FC<RepPortalProps> = ({ activeTab, onTabChange }) 
     setInvPrice(0);
   };
 
+  const handleUpdateInvItemQty = (idx: number, nextQty: number) => {
+    setInvItems((prev) =>
+      prev.map((it, i) =>
+        i === idx
+          ? {
+              ...it,
+              quantity: nextQty,
+              total: computeLineTotal(nextQty, it.unitPrice, it.discount || 0),
+            }
+          : it
+      )
+    );
+  };
+
   const invGrandTotal = useMemo(
     () => invItems.reduce((sum, it) => sum + it.total, 0),
     [invItems]
   );
+
+  // Representative purchase order helpers
+  const selectedOrderProduct = useMemo(
+    () => activeProducts.find((p) => p.id === ordProductId) || null,
+    [activeProducts, ordProductId]
+  );
+
+  const handleSelectOrderProduct = (prodId: string) => {
+    setOrdProductId(prodId);
+    const prod = activeProducts.find((p) => p.id === prodId);
+    if (!prod) return;
+    if (prod.units && prod.units.length > 0) {
+      setOrdUnitName(prod.units[0].name);
+      setOrdPrice(prod.units[0].sellingPrice);
+    } else {
+      setOrdUnitName(prod.baseUnit);
+      setOrdPrice(prod.sellingPrice);
+    }
+    setOrdQty(1);
+  };
+
+  const handleOrderUnitChange = (unitName: string) => {
+    setOrdUnitName(unitName);
+    if (!selectedOrderProduct) return;
+    if (unitName === selectedOrderProduct.baseUnit) {
+      setOrdPrice(selectedOrderProduct.sellingPrice);
+    } else {
+      const u = selectedOrderProduct.units.find((x) => x.name === unitName);
+      if (u) setOrdPrice(u.sellingPrice);
+    }
+  };
+
+  const handleAddOrderItem = () => {
+    if (!selectedOrderProduct || ordQty <= 0) return;
+    let unitFactor = 1;
+    if (ordUnitName !== selectedOrderProduct.baseUnit) {
+      const u = selectedOrderProduct.units.find((x) => x.name === ordUnitName);
+      if (u) unitFactor = u.conversionFactor;
+    }
+    const unitUsed = ordUnitName || selectedOrderProduct.baseUnit;
+    setOrdItems((prev) => {
+      const existingIdx = prev.findIndex(
+        (it) => it.productId === selectedOrderProduct.id && it.unit === unitUsed
+      );
+      if (existingIdx >= 0) {
+        return prev.map((it, i) =>
+          i === existingIdx ? { ...it, quantity: it.quantity + ordQty, unitPrice: ordPrice } : it
+        );
+      }
+      return [
+        ...prev,
+        {
+          productId: selectedOrderProduct.id,
+          productCode: selectedOrderProduct.code,
+          productName: selectedOrderProduct.name,
+          productImage: selectedOrderProduct.image,
+          unit: unitUsed,
+          unitFactor,
+          quantity: ordQty,
+          unitPrice: ordPrice,
+        },
+      ];
+    });
+    setOrdProductId('');
+    setOrdQty(1);
+    setOrdPrice(0);
+  };
+
+  const ordTotalAmount = useMemo(
+    () => ordItems.reduce((sum, it) => sum + computeLineTotal(it.quantity, it.unitPrice), 0),
+    [ordItems]
+  );
+
+  const handleSubmitRepOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ordCustomerId) {
+      setFeedback({ type: 'error', text: 'يرجى اختيار العميل المطلوب له الطلب.' });
+      return;
+    }
+    if (!ordItems.length) {
+      setFeedback({ type: 'error', text: 'يرجى إضافة صنف واحد على الأقل للطلب.' });
+      return;
+    }
+    const cust = data.customers.find((c) => c.id === ordCustomerId);
+    setIsSubmittingOrder(true);
+    setFeedback(null);
+    const res = await data.createCustomerItemOrder({
+      customerId: ordCustomerId,
+      customerName: cust?.name || 'عميل',
+      customerPhone: cust?.phone,
+      shopName: cust?.shopName || cust?.name,
+      deliveryAddress: cust?.address,
+      geoCoordinates: cust?.geoCoordinates,
+      requesterType: 'representative',
+      items: ordItems,
+      totalAmount: ordTotalAmount,
+      notes: ordNotes.trim() || 'طلب شراء مرسل من المندوب',
+    });
+    setIsSubmittingOrder(false);
+    if (res.queuedOffline) {
+      setOrdItems([]);
+      setOrdNotes('');
+      setFeedback({
+        type: 'warning',
+        text: `تم حفظ الطلب محلياً في طابور المزامنة (${res.order?.requestNumber || ''}) وسيتم إرساله تلقائياً فور عودة الاتصال.`,
+      });
+    } else if (res.success) {
+      setOrdItems([]);
+      setOrdNotes('');
+      setFeedback({
+        type: 'success',
+        text: `تم إرسال الطلب رقم ${res.order?.requestNumber || ''} للإدارة للمراجعة والاعتماد.`,
+      });
+    } else {
+      setFeedback({ type: 'error', text: res.error || 'تعذر إرسال الطلب' });
+    }
+  };
+
+  const assignedDeliveryOrders = useMemo(() => {
+    return [...(data.customerItemOrders || [])]
+      .filter((o) =>
+        rep
+          ? o.deliveryRepId === rep.id
+          : o.status === 'rep_assigned' || o.status === 'out_for_delivery' || o.status === 'delivered'
+      )
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  }, [data.customerItemOrders, rep]);
+
+  const handleStartDelivery = async (ord: CustomerItemOrderRequest) => {
+    setFeedback(null);
+    setIsUpdatingDelivery(true);
+    try {
+      const res = await data.updateOrderDeliveryStatus(ord.id, { status: 'out_for_delivery' });
+      if (res.queuedOffline) {
+        setFeedback({ type: 'warning', text: `تم تسجيل بدء التوصيل للطلب ${ord.requestNumber} محلياً بانتظار المزامنة.` });
+      } else if (res.success) {
+        setFeedback({ type: 'success', text: `الطلب ${ord.requestNumber} الآن في حالة (جاري التوصيل).` });
+      } else {
+        setFeedback({ type: 'error', text: res.error || 'تعذر تحديث حالة التوصيل' });
+      }
+    } finally {
+      setIsUpdatingDelivery(false);
+    }
+  };
+
+  const handleOpenDeliverModal = (ord: CustomerItemOrderRequest) => {
+    const remainingAfterAdv = Math.max(0, Number(ord.totalAmount || 0) - Number(ord.advancePaidAmount || 0));
+    setDeliveringOrder(ord);
+    setDeliveryCollectedAmount(remainingAfterAdv);
+    setDeliveryCashboxId(data.cashboxes[0]?.id || 'CASH-01');
+    setDeliveryMethod('cash');
+    setDeliveryNotes('');
+    setDeliveryProof('');
+  };
+
+  const handleConfirmDelivered = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deliveringOrder || isUpdatingDelivery) return;
+    setIsUpdatingDelivery(true);
+    setFeedback(null);
+    try {
+      const res = await data.updateOrderDeliveryStatus(deliveringOrder.id, {
+        status: 'delivered',
+        collectedAmount: deliveryCollectedAmount > 0 ? deliveryCollectedAmount : 0,
+        cashboxId: deliveryCollectedAmount > 0 ? deliveryCashboxId : undefined,
+        paymentMethod: deliveryMethod,
+        deliveryNotes: deliveryNotes.trim() || undefined,
+        deliveryProof: deliveryProof || undefined,
+      });
+      if (res.queuedOffline) {
+        setFeedback({
+          type: 'warning',
+          text: `تم حفظ تأكيد تسليم الطلب ${deliveringOrder.requestNumber} محلياً في طابور المزامنة.`,
+        });
+        setDeliveringOrder(null);
+      } else if (res.success) {
+        setFeedback({
+          type: 'success',
+          text: `تم تسجيل تسليم الطلب ${deliveringOrder.requestNumber} بنجاح.`,
+        });
+        setDeliveringOrder(null);
+      } else {
+        setFeedback({ type: 'error', text: res.error || 'تعذر تأكيد التسليم' });
+      }
+    } finally {
+      setIsUpdatingDelivery(false);
+    }
+  };
+
+  const mySubmittedOrders = useMemo(() => {
+    return [...(data.customerItemOrders || [])]
+      .filter((o) => !rep || o.representativeId === rep.id || o.requesterType === 'representative')
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  }, [data.customerItemOrders, rep]);
 
   const effectiveVanId = invWarehouseId || vanWarehouse?.id || '';
 
@@ -322,8 +580,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({ activeTab, onTabChange }) 
     setInvItems([]);
     setInvNotes('');
     setFeedback({
-      type: 'success',
-      text: forceDraft
+      type: res.queuedOffline ? 'warning' : 'success',
+      text: res.queuedOffline
+        ? `تم حفظ الفاتورة محلياً (${res.invoice.invoiceNumber}) في طابور المزامنة بانتظار الإرسال التلقائي للسيرفر.`
+        : forceDraft
         ? `تم حفظ الفاتورة كمسودة (${res.invoice.invoiceNumber}).`
         : `تم اعتماد وإصدار الفاتورة (${res.invoice.invoiceNumber}) بنجاح.`,
     });
@@ -691,9 +951,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({ activeTab, onTabChange }) 
       {/* TAB 3: NEW SALES INVOICE */}
       {activeTab === 'new-invoice' && (
         <div className="space-y-4">
-          {data.isUsingOfflineCache && (
+          {(data.isUsingOfflineCache || !data.isServerReachable) && (
             <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-xs font-bold text-amber-900">
-              أنت في وضع عدم الاتصال (بيانات مخزنة). إصدار الفواتير وطلبات التحويل يتطلب الاتصال المباشر بسيرفر المحل.
+              أنت في وضع عدم الاتصال (بيانات محلية محفوظة). يتم حفظ الفواتير والطلبات والتحصيلات محلياً في طابور المزامنة وإرسالها تلقائياً عند عودة الاتصال.
             </div>
           )}
 
@@ -797,12 +1057,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({ activeTab, onTabChange }) 
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">الكمية</label>
-                    <input
-                      type="number"
-                      min={1}
+                    <QuantityInput
+                      allowDecimals
+                      min={0.001}
                       value={invQty}
-                      onChange={(e) => setInvQty(Math.max(1, Number(e.target.value)))}
-                      className="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                      onChange={setInvQty}
+                      ariaLabel="كمية الصنف"
+                      inputClassName="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white outline-hidden focus:border-blue-600"
                     />
                   </div>
                   <div>
@@ -834,21 +1095,32 @@ export const RepPortal: React.FC<RepPortalProps> = ({ activeTab, onTabChange }) 
             {invItems.length > 0 && (
               <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl px-3">
                 {invItems.map((it, idx) => (
-                  <div key={idx} className="py-2.5 flex items-center justify-between gap-2">
-                    <div>
-                      <p className="font-bold text-slate-900">{it.productName}</p>
+                  <div key={idx} className="py-2.5 flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-slate-900 truncate">{it.productName}</p>
                       <p className="text-[11px] text-slate-500 font-mono">
-                        {it.quantity} {it.unit} × {it.unitPrice.toLocaleString()} ={' '}
-                        {it.total.toLocaleString()} {data.settings.currency}
+                        {it.unit} × {it.unitPrice.toLocaleString()} ={' '}
+                        <strong className="text-blue-950">{it.total.toLocaleString()}</strong> {data.settings.currency}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setInvItems((prev) => prev.filter((_, i) => i !== idx))}
-                      className="min-h-[40px] min-w-[40px] flex items-center justify-center text-red-600 cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <QuantityInput
+                        showSteppers
+                        allowDecimals
+                        min={0.001}
+                        value={it.quantity}
+                        onChange={(q) => handleUpdateInvItemQty(idx, q)}
+                        onRemoveWhenZero={() => setInvItems((prev) => prev.filter((_, i) => i !== idx))}
+                        ariaLabel={`كمية ${it.productName}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setInvItems((prev) => prev.filter((_, i) => i !== idx))}
+                        className="min-h-[40px] min-w-[40px] flex items-center justify-center text-red-600 cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1020,17 +1292,25 @@ export const RepPortal: React.FC<RepPortalProps> = ({ activeTab, onTabChange }) 
                       <strong className="font-mono text-sm text-slate-900 tabular-nums block">
                         {inv.grandTotal.toLocaleString()} {data.settings.currency}
                       </strong>
-                      <span
-                        className={`text-[11px] font-bold ${
-                          inv.status === 'confirmed'
-                            ? 'text-emerald-700'
-                            : inv.status === 'draft'
-                            ? 'text-amber-700'
-                            : 'text-red-700'
-                        }`}
-                      >
-                        {inv.status === 'confirmed' ? 'معتمدة' : inv.status === 'draft' ? 'مسودة' : 'ملغاة'}
-                      </span>
+                      <div className="flex items-center justify-end gap-1.5 mt-0.5">
+                        <span
+                          className={`text-[11px] font-bold ${
+                            inv.status === 'confirmed'
+                              ? 'text-emerald-700'
+                              : inv.status === 'draft'
+                              ? 'text-amber-700'
+                              : 'text-red-700'
+                          }`}
+                        >
+                          {inv.status === 'confirmed' ? 'معتمدة' : inv.status === 'draft' ? 'مسودة' : 'ملغاة'}
+                        </span>
+                        {inv.syncStatus && inv.syncStatus !== 'synced' && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                            <CloudOff className="w-2.5 h-2.5" />
+                            <span>محلي</span>
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -1143,12 +1423,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({ activeTab, onTabChange }) 
                       </option>
                     ))}
                   </select>
-                  <input
-                    type="number"
-                    min={1}
+                  <QuantityInput
+                    allowDecimals
+                    min={0.001}
                     value={reqQty}
-                    onChange={(e) => setReqQty(Math.max(1, Number(e.target.value)))}
-                    className="w-20 min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold"
+                    onChange={setReqQty}
+                    ariaLabel="كمية التحويل المطلوبة"
+                    inputClassName="w-20 min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
                   />
                   <button
                     type="button"
@@ -1307,6 +1588,468 @@ export const RepPortal: React.FC<RepPortalProps> = ({ activeTab, onTabChange }) 
         </div>
       )}
 
+      {/* TAB 6: REPRESENTATIVE ORDERS & ASSIGNED DELIVERIES */}
+      {activeTab === 'orders' && (
+        <div className="space-y-4 text-xs">
+          {/* Assigned Delivery Orders */}
+          <div className="bg-white rounded-3xl border border-indigo-200 p-4 shadow-xs space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-black text-indigo-950 flex items-center gap-2">
+                <Truck className="w-4 h-4 text-indigo-700" />
+                <span>طلبات التسليم المعينة لك ({assignedDeliveryOrders.length})</span>
+              </h3>
+            </div>
+
+            {assignedDeliveryOrders.length === 0 ? (
+              <p className="text-slate-500 text-center py-4">
+                لا توجد طلبات توصيل معينة لك حالياً.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {assignedDeliveryOrders.map((ord) => {
+                  const total = Number(ord.totalAmount || 0);
+                  const adv = Number(ord.advancePaidAmount || 0);
+                  const remainingDue = Math.max(0, total - adv);
+                  return (
+                    <div key={ord.id} className="rounded-2xl border border-slate-200 p-3.5 bg-slate-50/70 space-y-2.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <span className="font-mono font-black text-sm text-blue-950">{ord.requestNumber}</span>
+                          <p className="font-bold text-slate-900 mt-0.5">
+                            {ord.shopName ? `${ord.shopName} (${ord.customerName})` : ord.customerName}
+                          </p>
+                          {ord.deliveryAddress && (
+                            <p className="text-[11px] text-slate-600 flex items-center gap-1 mt-0.5">
+                              <MapPin className="w-3 h-3 text-red-600 shrink-0" />
+                              <span>{ord.deliveryAddress}</span>
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="px-2.5 py-1 rounded-full text-[11px] font-black bg-indigo-100 text-indigo-900">
+                            {REP_ORDER_STATUS_LABELS[ord.status] || ord.status}
+                          </span>
+                          {ord.syncStatus && ord.syncStatus !== 'synced' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                              <CloudOff className="w-2.5 h-2.5" />
+                              <span>محلي بانتظار المزامنة</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              <CloudCheck className="w-2.5 h-2.5" />
+                              <span>متزامن</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-2.5 rounded-xl border border-slate-200 font-mono text-[11px]">
+                        <span>الإجمالي: <strong>{total.toLocaleString()} {data.settings.currency}</strong></span>
+                        {adv > 0 && <span className="text-emerald-700 font-bold">مدفوع مقدماً: {adv.toLocaleString()}</span>}
+                        <span className="text-blue-950 font-black">المطلوب عند التسليم: {remainingDue.toLocaleString()}</span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        {ord.customerPhone && (
+                          <a
+                            href={`tel:${ord.customerPhone}`}
+                            className="min-h-[40px] px-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono font-bold inline-flex items-center gap-1.5"
+                          >
+                            <Phone className="w-3.5 h-3.5" />
+                            <span>{ord.customerPhone}</span>
+                          </a>
+                        )}
+                        {ord.status === 'rep_assigned' && (
+                          <button
+                            type="button"
+                            disabled={isUpdatingDelivery}
+                            onClick={() => handleStartDelivery(ord)}
+                            className="flex-1 min-h-[40px] px-3 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-black cursor-pointer disabled:opacity-50"
+                          >
+                            بدء التوصيل
+                          </button>
+                        )}
+                        {(ord.status === 'rep_assigned' || ord.status === 'out_for_delivery') && (
+                          <button
+                            type="button"
+                            disabled={isUpdatingDelivery}
+                            onClick={() => handleOpenDeliverModal(ord)}
+                            className="flex-1 min-h-[40px] px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
+                          >
+                            تم التسليم
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <form
+            onSubmit={handleSubmitRepOrder}
+            className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3"
+          >
+            <h3 className="text-sm font-black text-slate-900">إرسال طلب شراء للإدارة</h3>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">العميل المسموح:</label>
+              <select
+                value={ordCustomerId}
+                onChange={(e) => setOrdCustomerId(e.target.value)}
+                className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
+              >
+                <option value="">-- اختر العميل --</option>
+                {data.customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.shopName ? `${c.shopName} (${c.name})` : c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-blue-50/60 border border-blue-200 space-y-2.5">
+              <label className="block font-bold text-slate-800">إضافة صنف للطلب:</label>
+              <select
+                value={ordProductId}
+                onChange={(e) => handleSelectOrderProduct(e.target.value)}
+                className="w-full min-h-[44px] rounded-xl border border-blue-300 px-3 font-bold bg-white"
+              >
+                <option value="">-- اختر الصنف --</option>
+                {activeProducts.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.baseUnit})
+                  </option>
+                ))}
+              </select>
+
+              {selectedOrderProduct && (
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">الوحدة</label>
+                    <select
+                      value={ordUnitName}
+                      onChange={(e) => handleOrderUnitChange(e.target.value)}
+                      className="w-full min-h-[42px] rounded-xl border border-slate-300 px-2 bg-white font-bold"
+                    >
+                      {selectedOrderProduct.units.map((u) => (
+                        <option key={u.id} value={u.name}>
+                          {u.name}
+                        </option>
+                      ))}
+                      <option value={selectedOrderProduct.baseUnit}>{selectedOrderProduct.baseUnit}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">الكمية</label>
+                    <QuantityInput
+                      allowDecimals
+                      min={0.001}
+                      value={ordQty}
+                      onChange={setOrdQty}
+                      ariaLabel="كمية الصنف في الطلب"
+                      inputClassName="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white outline-hidden focus:border-blue-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">السعر</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min={0}
+                      value={ordPrice}
+                      onChange={(e) => setOrdPrice(Math.max(0, Number(e.target.value)))}
+                      className="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {selectedOrderProduct && (
+                <button
+                  type="button"
+                  onClick={handleAddOrderItem}
+                  className="w-full min-h-[44px] rounded-xl bg-blue-900 text-white font-black flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>إضافة الصنف للطلب</span>
+                </button>
+              )}
+            </div>
+
+            {ordItems.length > 0 && (
+              <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl px-3">
+                {ordItems.map((it, idx) => (
+                  <div key={`${it.productId}-${it.unit}-${idx}`} className="py-2.5 flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-slate-900 truncate">{it.productName}</p>
+                      <p className="text-[11px] text-slate-500 font-mono">
+                        {it.unit} × {it.unitPrice.toLocaleString()} ={' '}
+                        <strong className="text-blue-950">
+                          {computeLineTotal(it.quantity, it.unitPrice).toLocaleString()}
+                        </strong>{' '}
+                        {data.settings.currency}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <QuantityInput
+                        showSteppers
+                        allowDecimals
+                        min={0.001}
+                        value={it.quantity}
+                        onChange={(q) =>
+                          setOrdItems((prev) =>
+                            prev.map((row, i) => (i === idx ? { ...row, quantity: q } : row))
+                          )
+                        }
+                        onRemoveWhenZero={() => setOrdItems((prev) => prev.filter((_, i) => i !== idx))}
+                        ariaLabel={`كمية ${it.productName}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setOrdItems((prev) => prev.filter((_, i) => i !== idx))}
+                        className="min-h-[40px] min-w-[40px] flex items-center justify-center text-red-600 cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">ملاحظات الطلب:</label>
+              <input
+                type="text"
+                value={ordNotes}
+                onChange={(e) => setOrdNotes(e.target.value)}
+                placeholder="ملاحظات للمراجعة أو التوصيل..."
+                className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+              />
+            </div>
+
+            {ordItems.length > 0 && (
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between font-black text-blue-950">
+                <span>إجمالي الطلب التقديري:</span>
+                <span className="font-mono text-sm">
+                  {ordTotalAmount.toLocaleString()} {data.settings.currency}
+                </span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isSubmittingOrder || !ordItems.length}
+              className="w-full min-h-[46px] rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black disabled:opacity-50 cursor-pointer"
+            >
+              {isSubmittingOrder ? 'جاري الإرسال...' : 'إرسال الطلب للإدارة'}
+            </button>
+          </form>
+
+          {/* Submitted Orders by this Rep */}
+          <div className="space-y-3">
+            <h4 className="font-black text-slate-900 px-1">طلباتي المرسلة ({mySubmittedOrders.length})</h4>
+            {mySubmittedOrders.length === 0 ? (
+              <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center text-slate-400">
+                لم تقم بإرسال أي طلبات شراء حتى الآن.
+              </div>
+            ) : (
+              mySubmittedOrders.map((ord) => (
+                <div key={ord.id} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="font-mono font-black text-sm text-blue-950">{ord.requestNumber}</span>
+                      <p className="text-slate-700 font-bold mt-0.5">
+                        العميل: {ord.customerName}
+                        {ord.shopName ? ` (${ord.shopName})` : ''}
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        {new Date(ord.createdAt).toLocaleString('ar-EG')}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <span
+                        className={`font-black text-xs px-2.5 py-1 rounded-full ${
+                          ord.status === 'invoiced'
+                            ? 'bg-blue-100 text-blue-900'
+                            : ord.status === 'approved' || ord.status === 'delivered'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : ord.status === 'under_review' || ord.status === 'rep_assigned' || ord.status === 'out_for_delivery'
+                            ? 'bg-indigo-100 text-indigo-800'
+                            : ord.status === 'rejected' || ord.status === 'needs_review'
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}
+                      >
+                        {ord.status === 'invoiced'
+                          ? `مفوتر (${ord.invoiceNumber || ''})`
+                          : REP_ORDER_STATUS_LABELS[ord.status] || ord.status}
+                      </span>
+                      {ord.syncStatus && ord.syncStatus !== 'synced' && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                          <CloudOff className="w-2.5 h-2.5" />
+                          <span>محلي بانتظار المزامنة</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {ord.status === 'rejected' && ord.rejectionReason && (
+                    <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">
+                      سبب الرفض من الإدارة: {ord.rejectionReason}
+                    </div>
+                  )}
+
+                  <div className="space-y-1 bg-slate-50 rounded-xl p-2.5">
+                    {(ord.items || []).map((it, i) => {
+                      const imgSrc = data.cachedMediaMap?.[it.productId] || it.productImage;
+                      return (
+                        <div key={i} className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {imgSrc && (
+                              <img src={imgSrc} alt={it.productName} className="w-7 h-7 rounded-lg object-cover border border-slate-200 shrink-0" />
+                            )}
+                            <span className="font-bold text-slate-800 truncate">{it.productName}</span>
+                          </div>
+                          <span className="font-mono text-slate-600 shrink-0">
+                            {it.quantity} {it.unit}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {(ord.totalAmount || 0) > 0 && (
+                    <div className="flex items-center justify-between font-black text-blue-950 pt-1">
+                      <span>الإجمالي</span>
+                      <span className="font-mono">
+                        {Number(ord.totalAmount).toLocaleString()} {data.settings.currency}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Delivery Confirmation Sheet */}
+      {deliveringOrder && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
+          <form
+            onSubmit={handleConfirmDelivered}
+            className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 space-y-3 text-xs pb-safe max-h-[85vh] overflow-y-auto"
+          >
+            <div className="flex items-center justify-between border-b pb-3">
+              <div>
+                <h4 className="font-black text-sm text-slate-900">
+                  تأكيد تسليم الطلب {deliveringOrder.requestNumber}
+                </h4>
+                <p className="text-slate-500">{deliveringOrder.customerName}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeliveringOrder(null)}
+                className="min-h-[38px] px-3 rounded-xl bg-slate-100 font-bold text-slate-700 cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                المبلغ المحصل عند التسليم ({data.settings.currency}):
+              </label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={deliveryCollectedAmount}
+                onChange={(e) => setDeliveryCollectedAmount(Math.max(0, Number(e.target.value)))}
+                className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-mono font-black text-center text-emerald-800"
+              />
+            </div>
+
+            {deliveryCollectedAmount > 0 && (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">الخزينة:</label>
+                  <select
+                    value={deliveryCashboxId}
+                    onChange={(e) => setDeliveryCashboxId(e.target.value)}
+                    className="w-full min-h-[42px] rounded-xl border border-slate-300 px-2 bg-white font-bold"
+                  >
+                    {data.cashboxes.map((cb) => (
+                      <option key={cb.id} value={cb.id}>
+                        {cb.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">وسيلة الدفع:</label>
+                  <select
+                    value={deliveryMethod}
+                    onChange={(e) => setDeliveryMethod(e.target.value as any)}
+                    className="w-full min-h-[42px] rounded-xl border border-slate-300 px-2 bg-white font-bold"
+                  >
+                    <option value="cash">نقدي</option>
+                    <option value="bank">تحويل بنكي</option>
+                    <option value="cheque">شيك</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">ملاحظات التسليم:</label>
+              <input
+                type="text"
+                value={deliveryNotes}
+                onChange={(e) => setDeliveryNotes(e.target.value)}
+                placeholder="استلم البضاعة بحالة سليمة..."
+                className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">صورة إثبات التسليم (اختياري):</label>
+              <label className="min-h-[42px] px-3 rounded-xl border border-blue-200 bg-blue-50 text-blue-900 font-bold inline-flex items-center gap-2 cursor-pointer">
+                <Camera className="w-4 h-4" />
+                <span>{deliveryProof ? 'تم التقاط الصورة (اضغط للتغيير)' : 'التقاط أو إرفاق صورة'}</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      const img = await compressImageFileToDataUrl(file);
+                      setDeliveryProof(img);
+                    } catch {
+                      // ignore
+                    }
+                  }}
+                />
+              </label>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isUpdatingDelivery}
+              className="w-full min-h-[46px] rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black disabled:opacity-50 cursor-pointer"
+            >
+              {isUpdatingDelivery ? 'جاري التسجيل...' : 'اعتماد تسليم الطلب'}
+            </button>
+          </form>
+        </div>
+      )}
+
       {/* Invoice Detail Sheet */}
       {selectedInvoice && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
@@ -1355,11 +2098,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({ activeTab, onTabChange }) 
 
       {/* Fixed Bottom Navigation Bar */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 pb-safe">
-        <div className="max-w-2xl mx-auto grid grid-cols-5 h-16 items-center">
+        <div className="max-w-2xl mx-auto grid grid-cols-6 h-16 items-center">
           {[
             { key: 'home' as const, label: 'الرئيسية', icon: Home },
             { key: 'customers' as const, label: 'عملائي', icon: Users },
             { key: 'new-invoice' as const, label: 'فاتورة بيع', icon: FilePlus2 },
+            { key: 'orders' as const, label: 'الطلبات', icon: ClipboardList },
             { key: 'invoices' as const, label: 'الفواتير', icon: FileText },
             { key: 'custody' as const, label: 'العهدة', icon: ArrowLeftRight },
           ].map((tab) => {
