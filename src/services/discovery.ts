@@ -1,5 +1,6 @@
 import {
   detectModeFromUrl,
+  fetchWithTimeout,
   getConfiguredApiBaseUrl,
   getFallbackEndpoints,
   getStoredConnectionProfiles,
@@ -7,13 +8,17 @@ import {
   normalizeServerUrl,
   resolveModeEndpointUrl,
   saveFallbackEndpoints,
+  saveFallbackEndpointsAsync,
   saveStoredConnectionProfiles,
-  saveStoredTokens,
+  saveStoredConnectionProfilesAsync,
+  saveStoredTokensAsync,
   setConfiguredApiBaseUrl,
+  setConfiguredApiBaseUrlAsync,
   testServerHealth,
   triggerAuthExpired,
 } from './api';
 import { getClientDeviceDescriptor, isNativeCapacitor } from './native';
+import { clearReadCache } from './storage';
 import type { ConnectionDiscoveryResponse, ConnectionMode, ConnectionProfilesConfig } from '../types';
 
 export interface DiscoveredServerCandidate {
@@ -31,6 +36,19 @@ export interface ParsedPairingInput {
   serverUrl?: string;
 }
 
+function sanitizeHttpServerUrl(raw: string): string | undefined {
+  const normalized = normalizeServerUrl(raw || '');
+  if (!normalized) return undefined;
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined;
+    if (!parsed.hostname) return undefined;
+    return parsed.origin + (parsed.pathname && parsed.pathname !== '/' ? parsed.pathname.replace(/\/+$/, '') : '');
+  } catch {
+    return undefined;
+  }
+}
+
 export function parsePairingInput(rawInput: string): ParsedPairingInput | null {
   const raw = String(rawInput || '').trim();
   if (!raw) return null;
@@ -40,23 +58,25 @@ export function parsePairingInput(rawInput: string): ParsedPairingInput | null {
     try {
       const parsed = JSON.parse(raw);
       const token = String(parsed.token || parsed.rawToken || '').trim();
-      const serverUrl = normalizeServerUrl(String(parsed.server || parsed.serverUrl || parsed.url || ''));
-      if (token) return { token, serverUrl: serverUrl || undefined };
+      const serverUrl = sanitizeHttpServerUrl(String(parsed.server || parsed.serverUrl || parsed.url || ''));
+      if (token) return { token, serverUrl };
     } catch {
       // ignore invalid JSON
     }
   }
 
-  // Custom scheme awladselim://pair?token=...&server=...
+  // Custom scheme awladselim://pair?token=...&server=... or awladselim://pair/TOKEN?server=...
   if (/^awladselim:\/\//i.test(raw)) {
     try {
       const parsed = new URL(raw);
-      const token = parsed.searchParams.get('token') || '';
+      const queryToken = parsed.searchParams.get('token') || parsed.searchParams.get('pair_token') || '';
+      const pathTokenMatch = parsed.pathname.match(/^\/([^/?#]+)/);
+      const token = (queryToken || (pathTokenMatch ? decodeURIComponent(pathTokenMatch[1]) : '')).trim();
       const server = parsed.searchParams.get('server') || '';
-      if (token.trim()) {
+      if (token) {
         return {
-          token: token.trim(),
-          serverUrl: server.trim() ? normalizeServerUrl(server.trim()) : undefined,
+          token,
+          serverUrl: server.trim() ? sanitizeHttpServerUrl(server.trim()) : undefined,
         };
       }
     } catch {
@@ -64,23 +84,24 @@ export function parsePairingInput(rawInput: string): ParsedPairingInput | null {
     }
   }
 
-  // HTTP / HTTPS invite URL: https://host/pair/TOKEN or https://host/?pair_token=TOKEN
+  // HTTP / HTTPS invite URL: https://host/pair/TOKEN or https://host/invite/TOKEN or https://host/?pair_token=TOKEN
   if (/^https?:\/\//i.test(raw)) {
     try {
       const parsed = new URL(raw);
+      const paramServer = parsed.searchParams.get('server');
+      const safeServer = (paramServer ? sanitizeHttpServerUrl(paramServer) : undefined) || sanitizeHttpServerUrl(parsed.origin);
       const queryToken = parsed.searchParams.get('pair_token') || parsed.searchParams.get('token');
       if (queryToken && queryToken.trim()) {
-        const paramServer = parsed.searchParams.get('server');
         return {
           token: queryToken.trim(),
-          serverUrl: paramServer ? normalizeServerUrl(paramServer) : parsed.origin,
+          serverUrl: safeServer,
         };
       }
       const match = parsed.pathname.match(/\/(?:pair|invite)\/([^/?#]+)/i);
       if (match && match[1]) {
         return {
           token: decodeURIComponent(match[1]).trim(),
-          serverUrl: parsed.origin,
+          serverUrl: safeServer,
         };
       }
     } catch {
@@ -88,24 +109,24 @@ export function parsePairingInput(rawInput: string): ParsedPairingInput | null {
     }
   }
 
-  // Relative /pair/TOKEN or /?pair_token=TOKEN
+  // Relative /pair/TOKEN or /invite/TOKEN
   const relMatch = raw.match(/^\/?(?:pair|invite)\/([^/?#]+)/i);
   if (relMatch && relMatch[1]) {
-    const origin = !isNativeCapacitor() && typeof window !== 'undefined' ? window.location.origin : '';
+    const origin = !isNativeCapacitor() && typeof window !== 'undefined' ? sanitizeHttpServerUrl(window.location.origin) : undefined;
     return {
       token: decodeURIComponent(relMatch[1]).trim(),
-      serverUrl: origin || undefined,
+      serverUrl: origin,
     };
   }
 
   // Raw token string fallback
   if (/^[A-Za-z0-9_-]{8,128}$/.test(raw)) {
     const fallbackBase =
-      getConfiguredApiBaseUrl() ||
-      (!isNativeCapacitor() && typeof window !== 'undefined' ? window.location.origin : '');
+      sanitizeHttpServerUrl(getConfiguredApiBaseUrl()) ||
+      (!isNativeCapacitor() && typeof window !== 'undefined' ? sanitizeHttpServerUrl(window.location.origin) : undefined);
     return {
       token: raw,
-      serverUrl: fallbackBase || undefined,
+      serverUrl: fallbackBase,
     };
   }
 
@@ -116,13 +137,8 @@ async function probeDiscoveryEndpoint(baseUrl: string, timeoutMs = 1100): Promis
   const clean = normalizeServerUrl(baseUrl);
   if (!clean) return null;
   const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(`${clean}/api/connection/discovery`, {
-      method: 'GET',
-      signal: controller.signal,
-    });
+    const res = await fetchWithTimeout(`${clean}/api/connection/discovery`, { method: 'GET' }, timeoutMs);
     if (!res.ok) return null;
     const data: ConnectionDiscoveryResponse = await res.json();
     if (!data?.ok || data.service !== 'AWLAD SELIM Enterprise Server') return null;
@@ -138,8 +154,6 @@ async function probeDiscoveryEndpoint(baseUrl: string, timeoutMs = 1100): Promis
     };
   } catch {
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -217,7 +231,8 @@ export async function discoverServerCandidates(): Promise<DiscoveredServerCandid
 }
 
 export async function claimPairingInvitation(
-  rawUrlOrToken: string
+  rawUrlOrToken: string,
+  options?: { clearExistingAuth?: boolean }
 ): Promise<{
   ok: boolean;
   companyName?: string;
@@ -232,9 +247,9 @@ export async function claimPairingInvitation(
   }
 
   const targetServer =
-    parsed.serverUrl ||
-    getConfiguredApiBaseUrl() ||
-    (!isNativeCapacitor() && typeof window !== 'undefined' ? window.location.origin : '');
+    sanitizeHttpServerUrl(parsed.serverUrl || '') ||
+    sanitizeHttpServerUrl(getConfiguredApiBaseUrl()) ||
+    (!isNativeCapacitor() && typeof window !== 'undefined' ? sanitizeHttpServerUrl(window.location.origin) : undefined);
 
   if (!targetServer) {
     return {
@@ -247,36 +262,35 @@ export async function claimPairingInvitation(
   const prevUrl = getConfiguredApiBaseUrl();
 
   try {
-    const res = await fetch(`${targetServer}/api/pairing/claim`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Device-Id': descriptor.deviceId,
+    // Strictly verify and claim the invitation token on the server BEFORE saving serverBaseUrl
+    const res = await fetchWithTimeout(
+      `${targetServer}/api/pairing/claim`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Device-Id': descriptor.deviceId,
+        },
+        body: JSON.stringify({
+          token: parsed.token,
+          deviceId: descriptor.deviceId,
+          deviceName: descriptor.deviceName,
+          deviceType: descriptor.deviceType,
+          osVersion: descriptor.osVersion,
+          appVersion: descriptor.appVersion,
+        }),
       },
-      body: JSON.stringify({
-        token: parsed.token,
-        deviceId: descriptor.deviceId,
-        deviceName: descriptor.deviceName,
-        deviceType: descriptor.deviceType,
-        osVersion: descriptor.osVersion,
-        appVersion: descriptor.appVersion,
-      }),
-    });
+      10000
+    );
     const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data?.ok) {
+    if (!res.ok || !data?.ok || data?.requiresLogin !== true) {
       return {
         ok: false,
         error: data?.error || `تعذر إتمام ربط الجهاز (${res.status})`,
       };
     }
 
-    const chosenEndpoint = normalizeServerUrl(data.endpointUrl || targetServer);
-    if (data.profiles) {
-      saveStoredConnectionProfiles(data.profiles);
-    }
-    if (Array.isArray(data.fallbackEndpoints)) {
-      saveFallbackEndpoints(data.fallbackEndpoints);
-    }
+    const chosenEndpoint = sanitizeHttpServerUrl(data.endpointUrl || '') || targetServer;
 
     // Check whether the chosen endpoint is reachable from this device, else fall back to targetServer that succeeded
     let finalBaseUrl = chosenEndpoint;
@@ -287,12 +301,30 @@ export async function claimPairingInvitation(
       }
     }
 
-    // Never auto-login: if switching to a different server, clear previous server's tokens cleanly
-    if (prevUrl && normalizeServerUrl(prevUrl) !== normalizeServerUrl(finalBaseUrl)) {
-      saveStoredTokens(null);
+    if (!sanitizeHttpServerUrl(finalBaseUrl)) {
+      return {
+        ok: false,
+        error: 'عنوان السيرفر المُرجع من الدعوة غير صالح.',
+      };
     }
 
-    setConfiguredApiBaseUrl(finalBaseUrl);
+    if (data.profiles) {
+      await saveStoredConnectionProfilesAsync(data.profiles);
+    }
+    if (Array.isArray(data.fallbackEndpoints)) {
+      await saveFallbackEndpointsAsync(data.fallbackEndpoints);
+    }
+
+    // Never auto-login or bypass auth: clear existing auth session & read cache when switching servers or requested (default true)
+    if (
+      options?.clearExistingAuth !== false ||
+      (prevUrl && normalizeServerUrl(prevUrl) !== normalizeServerUrl(finalBaseUrl))
+    ) {
+      await saveStoredTokensAsync(null);
+      clearReadCache();
+    }
+
+    await setConfiguredApiBaseUrlAsync(finalBaseUrl);
 
     return {
       ok: true,

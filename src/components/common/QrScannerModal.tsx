@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
-import { Camera, Upload, Link2, X, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Camera, Upload, Link2, X, AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
+import { hasCameraMediaSupport } from '../../services/native';
 
 interface QrScannerModalProps {
   isOpen: boolean;
@@ -18,12 +19,15 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
+  const [cameraRetryKey, setCameraRetryKey] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
   const detectedOnceRef = useRef(false);
+  const onDetectedRef = useRef(onDetected);
+  onDetectedRef.current = onDetected;
 
   const stopCamera = () => {
     if (rafRef.current !== null) {
@@ -39,6 +43,14 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
         }
       });
       streamRef.current = null;
+    }
+    if (videoRef.current) {
+      try {
+        videoRef.current.pause();
+      } catch {
+        // ignore
+      }
+      videoRef.current.srcObject = null;
     }
     setCameraActive(false);
   };
@@ -65,7 +77,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
 
     const startScanner = async () => {
       setCameraError(null);
-      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      if (!hasCameraMediaSupport()) {
         setCameraError('الكاميرا غير متاحة في هذا المتصفح/الجهاز. يمكنك رفع صورة QR أو لصق الرابط.');
         return;
       }
@@ -105,7 +117,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
               if (Array.isArray(codes) && codes[0]?.rawValue) {
                 detectedOnceRef.current = true;
                 stopCamera();
-                onDetected(String(codes[0].rawValue));
+                onDetectedRef.current(String(codes[0].rawValue));
                 return;
               }
             }
@@ -125,7 +137,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
             if (decoded?.data) {
               detectedOnceRef.current = true;
               stopCamera();
-              onDetected(decoded.data);
+              onDetectedRef.current(decoded.data);
               return;
             }
           }
@@ -136,9 +148,17 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
         rafRef.current = requestAnimationFrame(scanFrame);
       } catch (err: any) {
         if (!cancelled) {
+          const errName = String(err?.name || '');
+          const isPermissionDenied = errName === 'NotAllowedError' || errName === 'PermissionDeniedError';
+          const isNoCamera = errName === 'NotFoundError' || errName === 'DevicesNotFoundError';
+          const isCameraBusy = errName === 'NotReadableError' || errName === 'TrackStartError';
           setCameraError(
-            err?.name === 'NotAllowedError'
-              ? 'تم رفض إذن الكاميرا. اسمح للتطبيق باستخدام الكاميرا أو استخدم "رفع صورة QR" أو "لصق رابط الدعوة".'
+            isPermissionDenied
+              ? 'تم رفض إذن الكاميرا. اسمح للتطبيق باستخدام الكاميرا عند المطالبة (أو فعّل الإذن من إعدادات التطبيق في الهاتف إذا سبق الرفض نهائياً)، أو استخدم "رفع صورة QR" أو "لصق رابط الدعوة".'
+              : isNoCamera
+              ? 'لم يتم العثور على كاميرا متاحة على هذا الجهاز. يمكنك رفع صورة رمز QR أو لصق رابط الدعوة.'
+              : isCameraBusy
+              ? 'الكاميرا مستخدمة حالياً بواسطة تطبيق آخر. أغلقه وأعد المحاولة أو الصق رابط الدعوة.'
               : 'تعذر تشغيل الكاميرا على هذا الجهاز. يمكنك رفع صورة رمز QR أو لصق رابط الدعوة.'
           );
         }
@@ -151,11 +171,13 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
       cancelled = true;
       stopCamera();
     };
-  }, [isOpen, tab, onDetected]);
+  }, [isOpen, tab, cameraRetryKey]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFileError(null);
-    const file = e.target.files?.[0];
+    const inputEl = e.target;
+    const file = inputEl.files?.[0];
+    inputEl.value = '';
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
@@ -258,9 +280,30 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
                   </div>
                 )}
                 {cameraError && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center p-5 text-center text-white bg-slate-900/90 space-y-2">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center p-5 text-center text-white bg-slate-900/95 space-y-3">
                     <AlertCircle className="w-8 h-8 text-amber-400" />
                     <p className="text-xs leading-relaxed text-slate-200">{cameraError}</p>
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setCameraRetryKey((k) => k + 1)}
+                        className="px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>إعادة المحاولة</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          stopCamera();
+                          setTab('paste');
+                        }}
+                        className="px-3 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Link2 className="w-3.5 h-3.5" />
+                        <span>لصق الرابط بدلاً من الكاميرا</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

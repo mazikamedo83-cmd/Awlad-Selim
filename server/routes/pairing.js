@@ -5,6 +5,7 @@ import {
   claimPairingToken,
   recordDeviceHeartbeat,
   updateTunnelRuntimeStatus,
+  parseValidAndroidSha256Fingerprints,
 } from '../db/stores/connectionPairingStore.js';
 import { validateActiveSession } from '../db/stores/authStore.js';
 import { verifyJwt } from '../utils/crypto.js';
@@ -133,16 +134,24 @@ pairingApiRouter.post(
 
 export const pairingPublicPagesRouter = Router();
 
-pairingPublicPagesRouter.get('/.well-known/assetlinks.json', (_req, res) => {
+pairingPublicPagesRouter.get('/.well-known/assetlinks.json', (req, res) => {
   const packageName = (process.env.ANDROID_APP_ID || 'com.awladselim.erp').trim();
-  const fingerprints = String(process.env.ANDROID_APP_SHA256_FINGERPRINTS || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const configuredHost = String(process.env.ANDROID_APP_LINK_HOST || '').trim().toLowerCase();
+  const fingerprints = parseValidAndroidSha256Fingerprints(process.env.ANDROID_APP_SHA256_FINGERPRINTS || '');
 
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  if (fingerprints.length === 0) {
+  if (fingerprints.length === 0 || configuredHost === 'awladselim.app') {
     return res.json([]);
+  }
+  if (configuredHost) {
+    const reqHost = String(req.get('x-forwarded-host') || req.get('host') || '')
+      .split(',')[0]
+      .trim()
+      .split(':')[0]
+      .toLowerCase();
+    if (reqHost && reqHost !== configuredHost) {
+      return res.json([]);
+    }
   }
   return res.json([
     {

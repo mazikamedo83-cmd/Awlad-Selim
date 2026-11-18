@@ -17,12 +17,19 @@ import {
   Loader2,
   AlertCircle,
 } from 'lucide-react';
-import { apiRequest, getConnectionModeLabel } from '../../../services/api';
+import {
+  apiRequest,
+  getConnectionModeLabel,
+  getStoredConnectionProfiles,
+  resolvePairingEndpointForMode,
+  validateConnectionUrl,
+} from '../../../services/api';
 import { isNativeCapacitor, saveAndShareDocument } from '../../../services/native';
 import { QrCodeDisplay } from '../../common/QrCodeDisplay';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import type {
   ConnectionMode,
+  ConnectionProfilesConfig,
   PairedDevice,
   PairedDevicesSummary,
   PairingCreateResponse,
@@ -34,6 +41,7 @@ interface PairingAndDevicesPanelProps {
   users: User[];
   activeMode: ConnectionMode;
   activeEndpoint: string;
+  profiles?: ConnectionProfilesConfig;
   onShowToast: (msg: string) => void;
 }
 
@@ -68,6 +76,7 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
   users,
   activeMode,
   activeEndpoint,
+  profiles,
   onShowToast,
 }) => {
   const [tokens, setTokens] = useState<PairingTokenRecord[]>([]);
@@ -115,9 +124,29 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
     loadAll();
   }, [loadAll]);
 
+  const effectiveProfiles = profiles || getStoredConnectionProfiles();
+  const pairingTarget = resolvePairingEndpointForMode({
+    selectedMode: connectionMode,
+    activeMode,
+    profiles: effectiveProfiles,
+    activeEndpoint,
+  });
+  const targetUrlValidation = validateConnectionUrl(
+    pairingTarget.effectiveMode,
+    pairingTarget.endpointUrl,
+    effectiveProfiles.enforceHttpsForRemote !== false
+  );
+
   const handleCreatePairing = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (!targetUrlValidation.valid || !targetUrlValidation.normalizedUrl) {
+      setError(
+        targetUrlValidation.error ||
+          'عنوان السيرفر المختار غير صالح لإنشاء رابط الربط. يرجى ضبط عنوان الوضع المختار أولاً.'
+      );
+      return;
+    }
     setCreating(true);
     try {
       const res = await apiRequest<PairingCreateResponse>('/api/admin/pairing/tokens', {
@@ -130,7 +159,7 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
           singleUse,
           requireAdminApproval,
           notes,
-          serverBaseUrl: activeEndpoint || undefined,
+          serverBaseUrl: targetUrlValidation.normalizedUrl,
         },
       });
       setCreatedInvite(res);
@@ -187,13 +216,42 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
   };
 
   const handleResendDeviceLink = async (device: PairedDevice) => {
+    const validModes: ConnectionMode[] = ['local_network', 'free_remote', 'pro_remote', 'cloud_vps'];
+    const deviceMode: ConnectionMode = validModes.includes(device.connectionMode as ConnectionMode)
+      ? (device.connectionMode as ConnectionMode)
+      : activeMode;
+    const resendSelectedMode: 'auto' | ConnectionMode =
+      connectionMode === 'auto' ? deviceMode : connectionMode;
+    const resendTarget = resolvePairingEndpointForMode({
+      selectedMode: resendSelectedMode,
+      activeMode,
+      profiles: effectiveProfiles,
+      activeEndpoint,
+    });
+    const resendCheck = validateConnectionUrl(
+      resendTarget.effectiveMode,
+      resendTarget.endpointUrl,
+      effectiveProfiles.enforceHttpsForRemote !== false
+    );
+    if (!resendCheck.valid || !resendCheck.normalizedUrl) {
+      setError(
+        resendCheck.error ||
+          `عنوان السيرفر لوضع (${getConnectionModeLabel(resendTarget.effectiveMode)}) غير صالح لإعادة إرسال الرابط.`
+      );
+      return;
+    }
+
+    setError(null);
     setBusyId(device.deviceId);
     try {
       const res = await apiRequest<PairingCreateResponse>(
         `/api/admin/devices/${device.deviceId}/resend-link`,
         {
           method: 'POST',
-          body: { serverBaseUrl: activeEndpoint || undefined },
+          body: {
+            connectionMode: resendTarget.effectiveMode,
+            serverBaseUrl: resendCheck.normalizedUrl,
+          },
         }
       );
       setCreatedInvite(res);
@@ -381,10 +439,45 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
               />
               <span>يتطلب موافقة الإدارة بعد الربط</span>
             </label>
+          </div>
+
+          <div
+            className={`md:col-span-2 lg:col-span-4 p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+              targetUrlValidation.valid
+                ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+                : 'bg-red-50 border-red-200 text-red-900'
+            }`}
+          >
+            <div className="space-y-1 min-w-0">
+              <div className="font-black flex items-center gap-1.5">
+                {targetUrlValidation.valid ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                )}
+                <span>
+                  عنوان السيرفر الذي سيستخدمه الرابط ({getConnectionModeLabel(pairingTarget.effectiveMode)}):
+                </span>
+              </div>
+              <div
+                dir="ltr"
+                className={`font-mono text-xs font-bold break-all ${
+                  targetUrlValidation.valid ? 'text-emerald-800' : 'text-red-700'
+                }`}
+              >
+                {targetUrlValidation.normalizedUrl || pairingTarget.endpointUrl || '— غير مُعدّ —'}
+              </div>
+              {!targetUrlValidation.valid && (
+                <p className="text-[11px] font-bold text-red-700">
+                  {targetUrlValidation.error} يرجى ضبط عنوان هذا الوضع في بطاقات الاتصال أعلاه قبل إنشاء الدعوة.
+                </p>
+              )}
+            </div>
+
             <button
               type="submit"
-              disabled={creating}
-              className="mr-auto px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              disabled={creating || !targetUrlValidation.valid}
+              className="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0 self-start sm:self-center"
             >
               {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />}
               <span>{creating ? 'جاري التوليد...' : 'توليد رابط الربط ورمز QR'}</span>

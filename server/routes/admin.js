@@ -43,6 +43,7 @@ import {
   updateTunnelRuntimeStatus,
   getTunnelRuntimeStatus,
   resolveSafeConnectionProfiles,
+  parseValidAndroidSha256Fingerprints,
 } from '../db/stores/connectionPairingStore.js';
 import { checkPostgresHealth, initializeSchema } from '../db/postgres.js';
 import { runDataMigration, rollbackMigration, readMigrationLogs } from '../db/migrator.js';
@@ -93,6 +94,12 @@ router.get(
     const sys = await getSystemSettingsSafe();
     const connectionConfig = resolveSafeConnectionProfiles(sys, lanUrls, port);
     const { summary: devicesSummary } = await listPairedDevices();
+    const androidFingerprints = parseValidAndroidSha256Fingerprints(
+      process.env.ANDROID_APP_SHA256_FINGERPRINTS || ''
+    );
+    const androidAppLinkHost = String(process.env.ANDROID_APP_LINK_HOST || '').trim().toLowerCase();
+    const androidAppLinksReady =
+      androidFingerprints.length > 0 && Boolean(androidAppLinkHost) && androidAppLinkHost !== 'awladselim.app';
     res.json({
       ok: true,
       hostname: os.hostname(),
@@ -111,8 +118,14 @@ router.get(
       connectionConfig,
       devicesSummary,
       appLinksConfigured: {
-        android: Boolean(String(process.env.ANDROID_APP_SHA256_FINGERPRINTS || '').trim()),
+        android: androidAppLinksReady,
         ios: Boolean(String(process.env.APPLE_TEAM_ID || '').trim()),
+        androidDetails: {
+          packageName: (process.env.ANDROID_APP_ID || 'com.awladselim.erp').trim(),
+          appLinkHost: androidAppLinkHost && androidAppLinkHost !== 'awladselim.app' ? androidAppLinkHost : null,
+          hasValidFingerprints: androidFingerprints.length > 0,
+          fingerprintsCount: androidFingerprints.length,
+        },
       },
     });
   })

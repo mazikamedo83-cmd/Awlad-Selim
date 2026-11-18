@@ -20,7 +20,15 @@ export default defineConfig(() => {
     },
     server: {
       allowedHosts: true as const,
-      watch: {},
+      watch: {
+        ignored: [
+          '**/AWLAD_SELIM_BACKUP/**',
+          '**/android/**',
+          '**/ios/**',
+          '**/dist/**',
+          '**/dist-electron/**',
+        ],
+      },
     },
   };
 });

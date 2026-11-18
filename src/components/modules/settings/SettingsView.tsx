@@ -1642,7 +1642,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             <PairingAndDevicesPanel
               users={users || []}
               activeMode={connProfiles.activeMode}
-              activeEndpoint={activeEndpoint || currentDeviceUrl || `http://${connProfiles.localNetwork.ip || '192.168.1.100'}:${activePort}`}
+              activeEndpoint={activeEndpoint || (connProfiles.activeMode === 'local_network' ? currentDeviceUrl : '')}
+              profiles={connProfiles}
               onShowToast={showSavedBanner}
             />
           </div>

@@ -60,12 +60,16 @@ export function getFallbackEndpoints(): StoredFallbackEndpoint[] {
   }
 }
 
-export function saveFallbackEndpoints(list: StoredFallbackEndpoint[]): void {
+export async function saveFallbackEndpointsAsync(list: StoredFallbackEndpoint[]): Promise<void> {
   try {
-    setPref(FALLBACK_ENDPOINTS_KEY, JSON.stringify(list || [])).catch(() => {});
+    await setPref(FALLBACK_ENDPOINTS_KEY, JSON.stringify(list || []));
   } catch {
     // ignore
   }
+}
+
+export function saveFallbackEndpoints(list: StoredFallbackEndpoint[]): void {
+  saveFallbackEndpointsAsync(list).catch(() => {});
 }
 
 function isLocalOrIpHost(hostOrUrl: string): boolean {
@@ -144,12 +148,16 @@ export function getStoredConnectionProfiles(): ConnectionProfilesConfig {
   }
 }
 
-export function saveStoredConnectionProfiles(config: ConnectionProfilesConfig): void {
+export async function saveStoredConnectionProfilesAsync(config: ConnectionProfilesConfig): Promise<void> {
   try {
-    setPref(CONNECTION_PROFILES_KEY, JSON.stringify(config)).catch(() => {});
+    await setPref(CONNECTION_PROFILES_KEY, JSON.stringify(config));
   } catch {
     // ignore storage errors
   }
+}
+
+export function saveStoredConnectionProfiles(config: ConnectionProfilesConfig): void {
+  saveStoredConnectionProfilesAsync(config).catch(() => {});
 }
 
 export function resolveModeEndpointUrl(
@@ -178,12 +186,38 @@ export function resolveModeEndpointUrl(
   return '';
 }
 
+function isInvalidPartialIpv4(hostname: string): boolean {
+  if (!/^[\d.]+$/.test(hostname)) return false;
+  const parts = hostname.split('.');
+  if (parts.length !== 4) return true;
+  return parts.some((part) => {
+    if (!/^\d{1,3}$/.test(part)) return true;
+    const num = Number(part);
+    return !Number.isInteger(num) || num < 0 || num > 255;
+  });
+}
+
 export function validateConnectionUrl(
   mode: ConnectionMode,
   rawUrl: string,
   enforceHttpsForRemote = true
 ): { valid: boolean; normalizedUrl: string; error?: string } {
-  const normalizedUrl = normalizeServerUrl(rawUrl);
+  const trimmedRaw = String(rawUrl || '').trim();
+  if (!trimmedRaw) {
+    return {
+      valid: false,
+      normalizedUrl: '',
+      error: 'يرجى إدخال عنوان السيرفر أولاً.',
+    };
+  }
+  if (/\s/.test(trimmedRaw)) {
+    return {
+      valid: false,
+      normalizedUrl: '',
+      error: 'عنوان السيرفر يحتوي على مسافات غير صالحة.',
+    };
+  }
+  const normalizedUrl = normalizeServerUrl(trimmedRaw);
   if (!normalizedUrl) {
     return {
       valid: false,
@@ -201,17 +235,83 @@ export function validateConnectionUrl(
       error: 'صيغة عنوان السيرفر غير صالحة. تأكد من كتابة الرابط بشكل صحيح.',
     };
   }
-  if (mode !== 'local_network' && enforceHttpsForRemote && parsed.protocol !== 'https:') {
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     return {
       valid: false,
       normalizedUrl,
-      error: 'الاتصالات الخارجية تتطلب بروتوكول HTTPS المشفر لحماية البيانات والتوكنات.',
+      error: 'يجب أن يبدأ عنوان السيرفر ببروتوكول http:// أو https:// فقط.',
     };
+  }
+  const rawHostCandidate = normalizedUrl
+    .replace(/^https?:\/\//i, '')
+    .split('/')[0]
+    .split(':')[0]
+    .trim();
+  if (!parsed.hostname || isInvalidPartialIpv4(rawHostCandidate) || isInvalidPartialIpv4(parsed.hostname)) {
+    return {
+      valid: false,
+      normalizedUrl,
+      error: 'عنوان المضيف أو الـ IP غير مكتمل أو غير صالح.',
+    };
+  }
+  if (parsed.port) {
+    const portNum = Number(parsed.port);
+    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+      return {
+        valid: false,
+        normalizedUrl,
+        error: 'رقم المنفذ (Port) يجب أن يكون بين 1 و 65535.',
+      };
+    }
+  }
+  if (mode !== 'local_network') {
+    if (enforceHttpsForRemote && parsed.protocol !== 'https:') {
+      return {
+        valid: false,
+        normalizedUrl,
+        error: 'الاتصالات الخارجية تتطلب بروتوكول HTTPS المشفر لحماية البيانات والتوكنات.',
+      };
+    }
+    const hostLower = parsed.hostname.toLowerCase();
+    if (
+      hostLower === 'localhost' ||
+      hostLower === '127.0.0.1' ||
+      hostLower === '10.0.2.2' ||
+      !hostLower.includes('.') ||
+      hostLower.startsWith('.') ||
+      hostLower.endsWith('.') ||
+      hostLower.includes('..')
+    ) {
+      return {
+        valid: false,
+        normalizedUrl,
+        error: 'يجب إدخال دومين أو عنوان خارجي صالح لوضع الاتصال البعيد.',
+      };
+    }
   }
   return {
     valid: true,
     normalizedUrl: parsed.origin + (parsed.pathname && parsed.pathname !== '/' ? parsed.pathname.replace(/\/+$/, '') : ''),
   };
+}
+
+export function resolvePairingEndpointForMode(options: {
+  selectedMode: 'auto' | ConnectionMode;
+  activeMode: ConnectionMode;
+  profiles?: ConnectionProfilesConfig;
+  activeEndpoint?: string;
+}): { effectiveMode: ConnectionMode; endpointUrl: string } {
+  const effectiveMode: ConnectionMode =
+    options.selectedMode === 'auto' ? options.activeMode : options.selectedMode;
+  const profileUrl = options.profiles
+    ? resolveModeEndpointUrl(effectiveMode, options.profiles)
+    : '';
+  const endpointUrl =
+    profileUrl ||
+    (options.selectedMode === 'auto' || effectiveMode === options.activeMode
+      ? normalizeServerUrl(options.activeEndpoint || '')
+      : '');
+  return { effectiveMode, endpointUrl };
 }
 
 export function getConnectionModeLabel(mode?: string): string {
@@ -263,16 +363,20 @@ export function getStoredTokens(): StoredTokens | null {
   }
 }
 
-export function saveStoredTokens(tokens: StoredTokens | null): void {
+export async function saveStoredTokensAsync(tokens: StoredTokens | null): Promise<void> {
   try {
     if (!tokens) {
-      removePref(TOKENS_KEY).catch(() => {});
+      await removePref(TOKENS_KEY);
     } else {
-      setPref(TOKENS_KEY, JSON.stringify(tokens)).catch(() => {});
+      await setPref(TOKENS_KEY, JSON.stringify(tokens));
     }
   } catch {
     // ignore storage quota errors
   }
+}
+
+export function saveStoredTokens(tokens: StoredTokens | null): void {
+  saveStoredTokensAsync(tokens).catch(() => {});
 }
 
 export function getConfiguredApiBaseUrl(): string {
@@ -301,12 +405,41 @@ export function hasConfiguredServerUrl(): boolean {
   return Boolean(getConfiguredApiBaseUrl());
 }
 
-export function setConfiguredApiBaseUrl(url: string): void {
+export async function setConfiguredApiBaseUrlAsync(url: string): Promise<void> {
   const clean = normalizeServerUrl(url);
   if (!clean) {
-    removePref(SERVER_URL_KEY).catch(() => {});
+    await removePref(SERVER_URL_KEY);
   } else {
-    setPref(SERVER_URL_KEY, clean).catch(() => {});
+    await setPref(SERVER_URL_KEY, clean);
+  }
+}
+
+export function setConfiguredApiBaseUrl(url: string): void {
+  setConfiguredApiBaseUrlAsync(url).catch(() => {});
+}
+
+export async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      const err = new Error('Request timeout');
+      err.name = 'AbortError';
+      reject(err);
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([
+      fetch(url, { ...init, signal: controller.signal }),
+      timeoutPromise,
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
@@ -332,13 +465,8 @@ export async function testServerHealth(baseUrl: string): Promise<{
   }
 
   const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 7000);
   try {
-    const res = await fetch(`${effectiveBase}/api/health`, {
-      method: 'GET',
-      signal: controller.signal,
-    });
+    const res = await fetchWithTimeout(`${effectiveBase}/api/health`, { method: 'GET' }, 7000);
     const latencyMs = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt);
     if (!res.ok) {
       return { ok: false, latencyMs, error: `السيرفر استجاب برمز خطأ (${res.status})` };
@@ -366,8 +494,6 @@ export async function testServerHealth(baseUrl: string): Promise<{
           ? 'انتهت مهلة الاتصال بالسيرفر (7 ثوانٍ) — تأكد من عنوان السيرفر وتشغيل النفق أو الشبكة.'
           : 'تعذر الوصول إلى السيرفر المركزي. تأكد من تشغيل البرنامج على اللابتوب ومن رابط الاتصال.',
     };
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -460,22 +586,21 @@ export async function apiRequest<T = any>(
   };
 
   const executeFetch = async (token?: string) => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), options.timeoutMs || 20000);
     try {
-      return await fetch(url, {
-        method,
-        headers: buildHeaders(token),
-        body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-        signal: controller.signal,
-      });
+      return await fetchWithTimeout(
+        url,
+        {
+          method,
+          headers: buildHeaders(token),
+          body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+        },
+        options.timeoutMs || 20000
+      );
     } catch (err: any) {
       if (err?.name === 'AbortError') {
         throw new ApiError(0, 'انتهت مهلة الاتصال بالسيرفر، يرجى المحاولة مرة أخرى', 'TIMEOUT');
       }
       throw new ApiError(0, 'تعذر الاتصال بالسيرفر، تحقق من الشبكة أو تشغيل الخادم', 'NETWORK_ERROR');
-    } finally {
-      clearTimeout(timer);
     }
   };
 

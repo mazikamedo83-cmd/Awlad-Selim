@@ -143,6 +143,66 @@ export function resolveRequestPublicBaseUrl(req, preferredUrl = '') {
   return `${forwardedProto}://${host}`;
 }
 
+export function parseValidAndroidSha256Fingerprints(rawValue = '') {
+  return String(rawValue || '')
+    .split(',')
+    .map((s) => s.trim().toUpperCase())
+    .filter((fp) => {
+      if (!/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(fp)) return false;
+      // Reject all-zero or obviously fake repeated single-byte placeholders
+      if (fp === '00:'.repeat(31) + '00') return false;
+      return true;
+    });
+}
+
+function validatePairingServerUrl(rawUrl, mode, enforceHttps = true) {
+  const trimmed = String(rawUrl || '').trim().replace(/\/+$/, '');
+  if (!trimmed || /\s/.test(trimmed)) {
+    throw new AppError(400, 'عنوان السيرفر لوضع الاتصال المختار غير صالح أو مفقود.', 'INVALID_PAIRING_SERVER_URL');
+  }
+  let parsed;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    throw new AppError(400, 'صيغة عنوان السيرفر لرابط الربط غير صالحة.', 'INVALID_PAIRING_SERVER_URL');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new AppError(400, 'يجب أن يبدأ عنوان السيرفر بـ http:// أو https:// فقط.', 'INVALID_PAIRING_SERVER_URL');
+  }
+  if (!parsed.hostname) {
+    throw new AppError(400, 'عنوان السيرفر لا يحتوي على اسم مضيف صالح.', 'INVALID_PAIRING_SERVER_URL');
+  }
+  const rawHostCandidate = trimmed
+    .replace(/^https?:\/\//i, '')
+    .split('/')[0]
+    .split(':')[0]
+    .trim();
+  for (const hostToCheck of [rawHostCandidate, parsed.hostname]) {
+    if (/^[\d.]+$/.test(hostToCheck)) {
+      const octets = hostToCheck.split('.');
+      if (octets.length !== 4 || octets.some((o) => !/^\d{1,3}$/.test(o) || Number(o) > 255)) {
+        throw new AppError(400, 'عنوان IP للسيرفر غير مكتمل أو غير صالح.', 'INVALID_PAIRING_SERVER_URL');
+      }
+    }
+  }
+  if (mode !== 'local_network') {
+    if (enforceHttps && parsed.protocol !== 'https:') {
+      throw new AppError(400, 'أوضاع الاتصال الخارجية تتطلب رابط HTTPS مشفر.', 'HTTPS_REQUIRED_FOR_REMOTE');
+    }
+    const hostLower = parsed.hostname.toLowerCase();
+    if (
+      hostLower === 'localhost' ||
+      hostLower === '127.0.0.1' ||
+      hostLower === '10.0.2.2' ||
+      !hostLower.includes('.') ||
+      hostLower.includes('..')
+    ) {
+      throw new AppError(400, 'يجب إدخال دومين خارجي صالح لوضع الاتصال البعيد.', 'INVALID_PAIRING_SERVER_URL');
+    }
+  }
+  return parsed.origin + (parsed.pathname && parsed.pathname !== '/' ? parsed.pathname.replace(/\/+$/, '') : '');
+}
+
 export async function updateTunnelRuntimeStatus(payload = {}, actor = null) {
   const now = nowIso();
   const allowedStatus = new Set(['offline', 'starting', 'online', 'error']);
@@ -339,9 +399,18 @@ export async function createPairingToken(payload = {}, actor, req = null) {
   const { port, entries } = getLanUrlsForDiscovery();
   const profiles = resolveSafeConnectionProfiles(sys, entries, port);
   const effectiveMode = connectionMode === 'auto' ? profiles.activeMode : connectionMode;
-  const serverBaseUrl = resolveRequestPublicBaseUrl(
-    req,
-    payload.serverBaseUrl || resolveEndpointForMode(effectiveMode, profiles) || entries[0]?.url || `http://127.0.0.1:${port}`
+  const explicitBaseUrl = String(payload.serverBaseUrl || '').trim();
+  const modeEndpoint = resolveEndpointForMode(effectiveMode, profiles);
+  const rawCandidateUrl =
+    explicitBaseUrl ||
+    modeEndpoint ||
+    (effectiveMode === 'local_network'
+      ? entries[0]?.url || resolveRequestPublicBaseUrl(req) || `http://127.0.0.1:${port}`
+      : '');
+  const serverBaseUrl = validatePairingServerUrl(
+    rawCandidateUrl,
+    effectiveMode,
+    profiles.enforceHttpsForRemote !== false
   );
 
   const rawToken = crypto.randomBytes(18).toString('base64url');
@@ -395,7 +464,7 @@ export async function createPairingToken(payload = {}, actor, req = null) {
     );
   } else {
     await withJsonTransaction((db) => {
-      db.pairingTokens.unshift({ ...record, tokenHash });
+      db.pairingTokens.unshift({ ...record, serverBaseUrl, tokenHash });
       if (db.pairingTokens.length > 200) db.pairingTokens.length = 200;
     });
   }
@@ -492,6 +561,7 @@ export async function resolvePairingToken(rawToken, req = null) {
   const effectiveMode = tok.connectionMode === 'auto' ? profiles.activeMode : tok.connectionMode;
   const endpointUrl =
     resolveEndpointForMode(effectiveMode, profiles) ||
+    tok.serverBaseUrl ||
     resolveRequestPublicBaseUrl(req) ||
     entries[0]?.url ||
     `http://127.0.0.1:${port}`;
@@ -623,6 +693,7 @@ export async function claimPairingToken(payload = {}, req = null) {
       const effectiveMode = tok.connectionMode === 'auto' ? profiles.activeMode : tok.connectionMode;
       const endpointUrl =
         resolveEndpointForMode(effectiveMode, profiles) ||
+        tok.serverBaseUrl ||
         resolveRequestPublicBaseUrl(req) ||
         entries[0]?.url ||
         `http://127.0.0.1:${port}`;

@@ -362,25 +362,51 @@ export function getClientDeviceDescriptor(): {
   };
 }
 
-export function subscribeDeepLinks(onUrl: (url: string) => void): () => void {
+export function hasCameraMediaSupport(): boolean {
+  return typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia);
+}
+
+export async function getLaunchDeepLinkUrl(): Promise<string | null> {
+  if (!isNativeCapacitor()) return null;
+  try {
+    const launch = await CapacitorApp.getLaunchUrl();
+    const url = launch?.url?.trim();
+    return url || null;
+  } catch {
+    return null;
+  }
+}
+
+export function subscribeDeepLinks(
+  onUrl: (url: string) => void,
+  options?: { skipInitialLaunchUrl?: boolean }
+): () => void {
   if (!isNativeCapacitor()) {
     return () => {};
   }
   let active = true;
   let handle: { remove: () => Promise<void> } | null = null;
+  let lastUrl = '';
+  let lastSeenAt = 0;
 
-  CapacitorApp.getLaunchUrl()
-    .then((launch) => {
-      if (active && launch?.url) {
-        onUrl(launch.url);
-      }
-    })
-    .catch(() => {});
+  const dispatchUrl = (rawUrl?: string | null) => {
+    const clean = String(rawUrl || '').trim();
+    if (!active || !clean) return;
+    const now = Date.now();
+    if (clean === lastUrl && now - lastSeenAt < 4000) return;
+    lastUrl = clean;
+    lastSeenAt = now;
+    onUrl(clean);
+  };
+
+  if (!options?.skipInitialLaunchUrl) {
+    getLaunchDeepLinkUrl()
+      .then((url) => dispatchUrl(url))
+      .catch(() => {});
+  }
 
   CapacitorApp.addListener('appUrlOpen', (event) => {
-    if (active && event?.url) {
-      onUrl(event.url);
-    }
+    dispatchUrl(event?.url);
   })
     .then((h) => {
       if (!active) {
