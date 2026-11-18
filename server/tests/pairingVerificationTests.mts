@@ -43,6 +43,7 @@ const { parseValidAndroidSha256Fingerprints } = await import('../db/stores/conne
 
 const apiMod = await import('../../src/services/api.ts');
 const discoveryMod = await import('../../src/services/discovery.ts');
+const nativeMod = await import('../../src/services/native.ts');
 const supervisorMod = await import('../../scripts/tunnel-supervisor.mjs');
 
 let passed = 0;
@@ -241,6 +242,8 @@ async function runTests() {
       assert.equal(apiMod.validateConnectionUrl('pro_remote', 'https://localhost:3000', true).valid, false);
       assert.equal(apiMod.validateConnectionUrl('cloud_vps', 'https://intranet', true).valid, false);
       assert.equal(apiMod.validateConnectionUrl('local_network', 'http://192.168.1.10:3000', true).valid, true);
+      assert.equal(apiMod.validateConnectionUrl('local_network', 'awlad-selim-server.local:3000', true).valid, true);
+      assert.equal(apiMod.validateConnectionUrl('local_network', 'awlad-selim-server.local:3000', true).normalizedUrl, 'http://awlad-selim-server.local:3000');
       assert.equal(apiMod.validateConnectionUrl('cloud_vps', 'https://vps.awladselim.cloud', true).valid, true);
     });
 
@@ -468,7 +471,14 @@ async function runTests() {
       assert.equal(apiMod.getStoredTokens(), null);
       assert.equal(apiMod.getConfiguredApiBaseUrl(), baseUrl);
 
-      // Verify QR matrix encode -> jsQR decode -> parsePairingInput -> claimPairingInvitation round-trip for /invite/ link
+      // Reject unencrypted HTTP external domain BEFORE touching serverBaseUrl
+      const badHttpRemoteClaim = await discoveryMod.claimPairingInvitation(
+        'awladselim://pair?token=tok_http_block&server=http%3A%2F%2Fexternal-shop.example.com'
+      );
+      assert.equal(badHttpRemoteClaim.ok, false);
+      assert.equal(apiMod.getConfiguredApiBaseUrl(), baseUrl);
+
+      // Verify QR matrix encode -> jsQR decode -> parsePairingInput -> claimPairingInvitation round-trip for /invite/ link on Android device
       const createdInvite = await req(baseUrl, 'POST', '/api/admin/pairing/tokens', {
         token: adminToken,
         body: {
@@ -501,10 +511,20 @@ async function runTests() {
       }
       const decodedQr = jsQR(rgba, dim, dim);
       assert.equal(decodedQr?.data, inviteUrl);
-      const inviteClaim = await discoveryMod.claimPairingInvitation(decodedQr!.data, { clearExistingAuth: true });
-      assert.equal(inviteClaim.ok, true);
-      assert.equal(inviteClaim.endpointUrl, baseUrl);
-      assert.equal(apiMod.getStoredTokens(), null);
+
+      const origNavDesc = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+      Object.defineProperty(globalThis, 'navigator', {
+        configurable: true,
+        value: { userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36' },
+      });
+      try {
+        const inviteClaim = await discoveryMod.claimPairingInvitation(decodedQr!.data, { clearExistingAuth: true });
+        assert.equal(inviteClaim.ok, true);
+        assert.equal(inviteClaim.endpointUrl, baseUrl);
+        assert.equal(apiMod.getStoredTokens(), null);
+      } finally {
+        if (origNavDesc) Object.defineProperty(globalThis, 'navigator', origNavDesc);
+      }
 
       // Second use of single-use token must fail with 409 and NOT issue anything
       const replay = await req(baseUrl, 'POST', '/api/pairing/claim', {
@@ -977,6 +997,181 @@ async function runTests() {
       const custCatalog = await req(baseUrl, 'GET', '/api/products', { token: custLogin.json.accessToken });
       assert.equal(custCatalog.status, 200);
       assert.ok(custCatalog.json.products.some((p: any) => p.code === 'UNIFIED-01'));
+
+      // Customer role RBAC check: blocked from admin & staff routes even after valid pairing/login
+      const custAdminBlocked = await req(baseUrl, 'GET', '/api/admin/devices', { token: custLogin.json.accessToken });
+      assert.equal(custAdminBlocked.status, 403);
+    });
+
+    await test('UI & Android contract checks: PairingAndDevicesPanel non-override, AndroidManifest, and on-demand QR camera helper', async () => {
+      const panelSrc = fs.readFileSync(path.join(process.cwd(), 'src/components/modules/settings/PairingAndDevicesPanel.tsx'), 'utf8');
+      assert.ok(!panelSrc.includes('serverBaseUrl: activeEndpoint'), 'PairingAndDevicesPanel must NEVER pass serverBaseUrl: activeEndpoint directly');
+      assert.ok(panelSrc.includes('resolvePairingEndpointForMode'), 'PairingAndDevicesPanel must use resolvePairingEndpointForMode');
+      assert.ok(panelSrc.includes('targetUrlValidation.valid'), 'PairingAndDevicesPanel must preview and enforce URL validity before submission');
+
+      const manifestSrc = fs.readFileSync(path.join(process.cwd(), 'android/app/src/main/AndroidManifest.xml'), 'utf8');
+      assert.ok(manifestSrc.includes('android:scheme="awladselim" android:host="pair"'));
+      assert.ok(manifestSrc.includes('android:scheme="awladselim" android:host="invite"'));
+      assert.ok(manifestSrc.includes('android.permission.CAMERA'));
+
+      const appLinksManifest = fs.readFileSync(path.join(process.cwd(), 'android/app/src/applinks/AndroidManifest.xml'), 'utf8');
+      assert.ok(appLinksManifest.includes('android:pathPrefix="/pair/"'));
+      assert.ok(appLinksManifest.includes('android:pathPrefix="/invite/"'));
+
+      // Camera helper handles OverconstrainedError fallback & NotAllowedError without premature launch
+      const origNavDesc = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+      try {
+        let calls = 0;
+        Object.defineProperty(globalThis, 'navigator', {
+          configurable: true,
+          value: {
+            userAgent: 'Android',
+            mediaDevices: {
+              getUserMedia: async () => {
+                calls++;
+                if (calls === 1) {
+                  const err = new Error('Overconstrained');
+                  err.name = 'OverconstrainedError';
+                  throw err;
+                }
+                return { getTracks: () => [] };
+              },
+            },
+          },
+        });
+        const camOk = await nativeMod.requestCameraStreamForQr();
+        assert.equal(camOk.ok, true);
+        assert.equal(calls, 2);
+
+        Object.defineProperty(globalThis, 'navigator', {
+          configurable: true,
+          value: {
+            userAgent: 'Android',
+            mediaDevices: {
+              getUserMedia: async () => {
+                const err = new Error('Denied');
+                err.name = 'NotAllowedError';
+                throw err;
+              },
+            },
+          },
+        });
+        const camDenied = await nativeMod.requestCameraStreamForQr();
+        assert.equal(camDenied.ok, false);
+        if (!camDenied.ok) {
+          assert.equal(camDenied.reason, 'permission_denied');
+        }
+      } finally {
+        if (origNavDesc) Object.defineProperty(globalThis, 'navigator', origNavDesc);
+      }
+    });
+
+    await test('Pre-build Android security, LAN-only HTTP enforcement, manifest gating, Java 21 & Debug workflow checks', async () => {
+      // 1) App-layer LAN-only HTTP enforcement
+      assert.equal(apiMod.isLocalOrIpHost('192.168.1.50:3000'), true);
+      assert.equal(apiMod.isLocalOrIpHost('10.0.0.25:3000'), true);
+      assert.equal(apiMod.isLocalOrIpHost('172.16.5.10:3000'), true);
+      assert.equal(apiMod.isLocalOrIpHost('127.0.0.1:3000'), true);
+      assert.equal(apiMod.isLocalOrIpHost('awlad-selim-server.local:3000'), true);
+      assert.equal(apiMod.isLocalOrIpHost('203.0.113.10:3000'), false, 'Public IP must not be treated as LAN');
+      assert.equal(apiMod.isLocalOrIpHost('8.8.8.8'), false, 'Public IP 8.8.8.8 must not be treated as LAN');
+      assert.equal(apiMod.isLocalOrIpHost('erp.example.com'), false);
+
+      memStorage.clear();
+      apiMod.saveStoredConnectionProfiles({
+        activeMode: 'local_network',
+        localNetwork: { ip: '192.168.1.50', port: 3000, hostname: 'erp-lan' },
+        freeRemote: { tunnelUrl: '' },
+        proRemote: { domainUrl: '' },
+        cloudVps: { vpsUrl: '', notes: '' },
+        enforceHttpsForRemote: true,
+      });
+
+      const blockedPublicIp = await apiMod.testServerHealth('http://203.0.113.10:3000');
+      assert.equal(blockedPublicIp.ok, false);
+      assert.ok(blockedPublicIp.error?.includes('HTTPS'));
+
+      const blockedRemoteDomain = await apiMod.testServerHealth('http://shop.example.com');
+      assert.equal(blockedRemoteDomain.ok, false);
+      assert.ok(blockedRemoteDomain.error?.includes('HTTPS'));
+
+      // 2) AndroidManifest, network_security_config, and Capacitor config checks
+      const manifestSrc = fs.readFileSync(path.join(process.cwd(), 'android/app/src/main/AndroidManifest.xml'), 'utf8');
+      assert.ok(manifestSrc.includes('android:networkSecurityConfig="@xml/network_security_config"'));
+      assert.ok(!manifestSrc.includes('android:usesCleartextTraffic="true"'));
+      assert.ok(!manifestSrc.includes('android:autoVerify="true"'));
+
+      const netSecSrc = fs.readFileSync(path.join(process.cwd(), 'android/app/src/main/res/xml/network_security_config.xml'), 'utf8');
+      assert.ok(netSecSrc.includes('<base-config cleartextTrafficPermitted="true">'));
+      assert.ok(netSecSrc.includes('<debug-overrides>'));
+      const baseBlockMatch = netSecSrc.match(/<base-config[\s\S]*?<\/base-config>/);
+      assert.ok(baseBlockMatch && !baseBlockMatch[0].includes('certificates src="user"'), 'Release base-config must not trust user CAs');
+
+      const capConfigTs = fs.readFileSync(path.join(process.cwd(), 'capacitor.config.ts'), 'utf8');
+      assert.ok(!capConfigTs.includes('allowMixedContent'), 'allowMixedContent must never be enabled');
+
+      // 3) Gradle manifest merge gating & Java 21 checks
+      const appGradle = fs.readFileSync(path.join(process.cwd(), 'android/app/build.gradle'), 'utf8');
+      assert.ok(appGradle.includes("manifest.srcFile 'src/applinks/AndroidManifest.xml'"));
+      assert.ok(appGradle.includes('enableVerifiedAppLinks'));
+      assert.ok(appGradle.includes("configuredAppLinkHost != 'awladselim.app'"));
+
+      const capBuildGradle = fs.readFileSync(path.join(process.cwd(), 'android/app/capacitor.build.gradle'), 'utf8');
+      assert.ok(capBuildGradle.includes('JavaVersion.VERSION_21'));
+
+      // 4) GitHub Actions Debug APK workflow checks (no release signing, no App Links)
+      const workflowYml = fs.readFileSync(path.join(process.cwd(), '.github/workflows/mobile-android.yml'), 'utf8');
+      assert.ok(workflowYml.includes("java-version: '21'"));
+      assert.ok(workflowYml.includes('./gradlew assembleDebug'));
+      assert.ok(!workflowYml.includes('assembleRelease'));
+      assert.ok(!workflowYml.includes('signingConfig'));
+      assert.ok(workflowYml.includes("AWLAD_APP_LINK_HOST: ''"));
+    });
+
+    await test('Unified v3.0.0 Release readiness across Android, iOS, and Windows configs', () => {
+      const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'));
+      assert.equal(pkg.version, '3.0.0');
+      assert.equal(pkg.build?.productName, 'AWLAD SELIM');
+      assert.equal(pkg.build?.appId, 'com.awladselim.erp');
+      assert.equal(pkg.build?.portable?.artifactName, 'AWLAD-SELIM-Portable-${version}.exe');
+
+      const appGradle = fs.readFileSync(path.join(process.cwd(), 'android/app/build.gradle'), 'utf8');
+      assert.ok(appGradle.includes('versionName "3.0.0"'));
+      assert.ok(appGradle.includes('versionCode 3'));
+      assert.ok(appGradle.includes('hasValidReleaseSigning'));
+      assert.ok(appGradle.includes('signingConfigs.release'));
+      assert.ok(!appGradle.includes('signingConfigs.debug'));
+
+      const iosPlist = fs.readFileSync(path.join(process.cwd(), 'ios/App/App/Info.plist'), 'utf8');
+      assert.ok(iosPlist.includes('<key>CFBundleDisplayName</key>') && iosPlist.includes('AWLAD SELIM'));
+      assert.ok(iosPlist.includes('<key>CFBundleName</key>') && iosPlist.includes('<string>AWLAD SELIM</string>'));
+      assert.ok(iosPlist.includes('<key>NSAllowsLocalNetworking</key>') && iosPlist.includes('<true/>'));
+      assert.ok(!/<key>NSAllowsArbitraryLoads<\/key>\s*<true\/>/.test(iosPlist), 'NSAllowsArbitraryLoads must be false in Production');
+      assert.ok(iosPlist.includes('<key>NSCameraUsageDescription</key>'));
+
+      const privacyPlist = fs.readFileSync(path.join(process.cwd(), 'ios/App/App/PrivacyInfo.xcprivacy'), 'utf8');
+      assert.ok(privacyPlist.includes('NSPrivacyAccessedAPICategoryUserDefaults'));
+
+      const pbxproj = fs.readFileSync(path.join(process.cwd(), 'ios/App/App.xcodeproj/project.pbxproj'), 'utf8');
+      assert.ok(pbxproj.includes('MARKETING_VERSION = 3.0.0;'));
+      assert.ok(pbxproj.includes('CURRENT_PROJECT_VERSION = 3;'));
+      assert.ok(pbxproj.includes('CODE_SIGN_IDENTITY = "Apple Distribution";'));
+      assert.ok(pbxproj.includes('PrivacyInfo.xcprivacy'));
+
+      const androidRelYml = fs.readFileSync(path.join(process.cwd(), '.github/workflows/android-release.yml'), 'utf8');
+      assert.ok(androidRelYml.includes('./gradlew assembleRelease'));
+      assert.ok(androidRelYml.includes('apksigner') && androidRelYml.includes('verify --verbose --print-certs'));
+      assert.ok(androidRelYml.includes('ANDROID_KEYSTORE_BASE64'));
+
+      const iosRelYml = fs.readFileSync(path.join(process.cwd(), '.github/workflows/mobile-ios.yml'), 'utf8');
+      assert.ok(iosRelYml.includes('macos-latest'));
+      assert.ok(iosRelYml.includes('xcodebuild'));
+      assert.ok(iosRelYml.includes('APPLE_TEAM_ID'));
+      assert.ok(iosRelYml.includes('codesign --verify'));
+
+      const winRelYml = fs.readFileSync(path.join(process.cwd(), '.github/workflows/windows-build.yml'), 'utf8');
+      assert.ok(winRelYml.includes('AWLAD-SELIM-Setup-'));
+      assert.ok(winRelYml.includes('AWLAD-SELIM-Portable-'));
     });
 
     console.log(`\nALL PAIRING VERIFICATION TESTS PASSED (${passed} assertions/suites).\n`);

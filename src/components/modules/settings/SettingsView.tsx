@@ -278,6 +278,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
       const info = await apiRequest<any>('/api/admin/server-info');
       if (info?.ok) {
         setServerInfo(info);
+        const detectedTunnel = String(
+          info.connectionConfig?.freeRemote?.tunnelUrl ||
+            (info.tunnelStatus?.status === 'online' ? info.tunnelStatus?.tunnelUrl : '') ||
+            ''
+        ).trim();
+        if (detectedTunnel) {
+          setConnProfiles((prev) =>
+            !prev.freeRemote?.tunnelUrl && prev.freeRemote?.autoDetect !== false
+              ? {
+                  ...prev,
+                  freeRemote: { ...prev.freeRemote, tunnelUrl: detectedTunnel },
+                }
+              : prev
+          );
+        }
       }
     } catch {
       // ignore if offline

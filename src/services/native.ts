@@ -435,6 +435,73 @@ export function hasCameraMediaSupport(): boolean {
   return typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia);
 }
 
+export async function requestCameraStreamForQr(): Promise<
+  | { ok: true; stream: MediaStream }
+  | { ok: false; reason: 'unsupported' | 'permission_denied' | 'no_camera' | 'busy' | 'unknown'; error: string }
+> {
+  if (!hasCameraMediaSupport()) {
+    return {
+      ok: false,
+      reason: 'unsupported',
+      error: 'الكاميرا غير متاحة في هذا المتصفح/الجهاز. يمكنك رفع صورة QR أو لصق الرابط.',
+    };
+  }
+
+  try {
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      });
+    } catch (constraintErr: any) {
+      const errName = String(constraintErr?.name || '');
+      if (
+        errName === 'OverconstrainedError' ||
+        errName === 'ConstraintNotSatisfiedError' ||
+        errName === 'NotFoundError'
+      ) {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      } else {
+        throw constraintErr;
+      }
+    }
+    return { ok: true, stream };
+  } catch (err: any) {
+    const errName = String(err?.name || '');
+    if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+      return {
+        ok: false,
+        reason: 'permission_denied',
+        error:
+          'تم رفض إذن الكاميرا. اسمح للتطبيق باستخدام الكاميرا عند المطالبة (أو فعّل الإذن من إعدادات التطبيق في الهاتف إذا سبق الرفض نهائياً)، أو استخدم "رفع صورة QR" أو "لصق رابط الدعوة".',
+      };
+    }
+    if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
+      return {
+        ok: false,
+        reason: 'no_camera',
+        error: 'لم يتم العثور على كاميرا متاحة على هذا الجهاز. يمكنك رفع صورة رمز QR أو لصق رابط الدعوة.',
+      };
+    }
+    if (errName === 'NotReadableError' || errName === 'TrackStartError') {
+      return {
+        ok: false,
+        reason: 'busy',
+        error: 'الكاميرا مستخدمة حالياً بواسطة تطبيق آخر. أغلقه وأعد المحاولة أو الصق رابط الدعوة.',
+      };
+    }
+    return {
+      ok: false,
+      reason: 'unknown',
+      error: 'تعذر تشغيل الكاميرا على هذا الجهاز. يمكنك رفع صورة رمز QR أو لصق رابط الدعوة.',
+    };
+  }
+}
+
 export async function getLaunchDeepLinkUrl(): Promise<string | null> {
   if (!isNativeCapacitor()) return null;
   try {

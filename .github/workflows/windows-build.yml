@@ -81,17 +81,21 @@ jobs:
           $pkg = Get-Content "package.json" -Raw | ConvertFrom-Json
           $version = $pkg.version
           $expectedInstaller = "dist-electron/AWLAD-SELIM-Setup-$version.exe"
-          if (-not (Test-Path $expectedInstaller)) {
-            Write-Error "Expected installer not found: $expectedInstaller"
-            if (Test-Path "dist-electron") {
-              Get-ChildItem -Path "dist-electron"
+          $expectedPortable = "dist-electron/AWLAD-SELIM-Portable-$version.exe"
+          foreach ($targetExe in @($expectedInstaller, $expectedPortable)) {
+            if (-not (Test-Path $targetExe)) {
+              Write-Error "Expected Windows executable not found: $targetExe"
+              if (Test-Path "dist-electron") {
+                Get-ChildItem -Path "dist-electron"
+              }
+              exit 1
             }
-            exit 1
-          }
-          $file = Get-Item $expectedInstaller
-          if ($file.Length -le 0) {
-            Write-Error "Generated installer file is empty: $($file.FullName)"
-            exit 1
+            $file = Get-Item $targetExe
+            if ($file.Length -le 0) {
+              Write-Error "Generated Windows executable is empty: $($file.FullName)"
+              exit 1
+            }
+            Write-Host "Verified Windows EXE: $($file.Name) ($([Math]::Round($file.Length / 1MB, 2)) MB)"
           }
           $unpackedApp = "dist-electron/win-unpacked/resources/app"
           if (-not (Test-Path "$unpackedApp/dist/index.html")) {
@@ -116,12 +120,13 @@ jobs:
             Write-Error "Packaged JS bundle does not contain current version marker v$version"
             exit 1
           }
-          Write-Host "Verified packaged v$version UI and installer: $($file.Name) ($([Math]::Round($file.Length / 1MB, 2)) MB)"
 
-      - name: Upload Windows Setup.exe Artifact
+      - name: Upload Windows Setup & Portable EXE Artifacts
         uses: actions/upload-artifact@v6
         with:
           name: AWLAD-SELIM-Windows-Setup
-          path: dist-electron/AWLAD-SELIM-Setup-*.exe
+          path: |
+            dist-electron/AWLAD-SELIM-Setup-*.exe
+            dist-electron/AWLAD-SELIM-Portable-*.exe
           if-no-files-found: error
           retention-days: 30

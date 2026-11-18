@@ -2,7 +2,52 @@ apply plugin: 'com.android.application'
 
 def rawAppLinkHost = (project.findProperty('AWLAD_APP_LINK_HOST') ?: System.getenv('AWLAD_APP_LINK_HOST') ?: '').toString().trim().toLowerCase()
 def configuredAppLinkHost = rawAppLinkHost.replaceFirst('^https?://', '').split('/')[0].split(':')[0].trim()
-def enableVerifiedAppLinks = !configuredAppLinkHost.isEmpty() && configuredAppLinkHost != 'awladselim.app'
+def enableVerifiedAppLinks = (
+    !configuredAppLinkHost.isEmpty() &&
+    configuredAppLinkHost != 'awladselim.app' &&
+    configuredAppLinkHost != 'localhost' &&
+    configuredAppLinkHost.contains('.') &&
+    !configuredAppLinkHost.matches('^\\d+(\\.\\d+){3}$') &&
+    !configuredAppLinkHost.contains(' ')
+)
+
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file('keystore.properties')
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { stream ->
+        keystoreProperties.load(stream)
+    }
+}
+
+def releaseKeystorePath = (
+    System.getenv('AWLAD_ANDROID_KEYSTORE_PATH') ?:
+    keystoreProperties.getProperty('storeFile') ?:
+    ''
+).toString().trim()
+def releaseKeystorePassword = (
+    System.getenv('AWLAD_ANDROID_KEYSTORE_PASSWORD') ?:
+    keystoreProperties.getProperty('storePassword') ?:
+    ''
+).toString()
+def releaseKeyAlias = (
+    System.getenv('AWLAD_ANDROID_KEY_ALIAS') ?:
+    keystoreProperties.getProperty('keyAlias') ?:
+    ''
+).toString().trim()
+def releaseKeyPassword = (
+    System.getenv('AWLAD_ANDROID_KEY_PASSWORD') ?:
+    keystoreProperties.getProperty('keyPassword') ?:
+    ''
+).toString()
+
+def resolvedKeystoreFile = releaseKeystorePath ? file(releaseKeystorePath) : null
+def hasValidReleaseSigning = (
+    resolvedKeystoreFile != null &&
+    resolvedKeystoreFile.exists() &&
+    !releaseKeystorePassword.isEmpty() &&
+    !releaseKeyAlias.isEmpty() &&
+    !releaseKeyPassword.isEmpty()
+)
 
 android {
     namespace = "com.awladselim.erp"
@@ -11,16 +56,29 @@ android {
         applicationId "com.awladselim.erp"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 3
+        versionName "3.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         if (enableVerifiedAppLinks) {
-            manifestPlaceholders = [appLinkHost: configuredAppLinkHost]
+            manifestPlaceholders += [appLinkHost: configuredAppLinkHost]
         }
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        release {
+            if (hasValidReleaseSigning) {
+                storeFile resolvedKeystoreFile
+                storePassword releaseKeystorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+                enableV1Signing true
+                enableV2Signing true
+                enableV3Signing true
+            }
         }
     }
     if (enableVerifiedAppLinks) {
@@ -37,7 +95,21 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (hasValidReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
         }
+    }
+}
+
+gradle.taskGraph.whenReady { taskGraph ->
+    def buildingRelease = taskGraph.allTasks.any {
+        it.name.toLowerCase().contains('release') && (it.name.contains('assemble') || it.name.contains('bundle') || it.name.contains('package'))
+    }
+    if (buildingRelease && !hasValidReleaseSigning) {
+        throw new GradleException(
+            'Production Release signing keystore is not configured. Provide android/keystore.properties or AWLAD_ANDROID_KEYSTORE_* environment variables (never use debug keystore for Release).'
+        )
     }
 }
 

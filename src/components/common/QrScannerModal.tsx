@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
 import { Camera, Upload, Link2, X, AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
-import { hasCameraMediaSupport } from '../../services/native';
+import { requestCameraStreamForQr } from '../../services/native';
 
 interface QrScannerModalProps {
   isOpen: boolean;
@@ -78,28 +78,15 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
 
     const startScanner = async () => {
       setCameraError(null);
-      if (!hasCameraMediaSupport()) {
-        setCameraError('الكاميرا غير متاحة في هذا المتصفح/الجهاز. يمكنك رفع صورة QR أو لصق الرابط.');
-        return;
-      }
       try {
-        let stream: MediaStream;
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { ideal: 'environment' } },
-            audio: false,
-          });
-        } catch (constraintErr: any) {
-          const errName = String(constraintErr?.name || '');
-          if (errName === 'OverconstrainedError' || errName === 'ConstraintNotSatisfiedError') {
-            stream = await navigator.mediaDevices.getUserMedia({
-              video: true,
-              audio: false,
-            });
-          } else {
-            throw constraintErr;
+        const camRes = await requestCameraStreamForQr();
+        if (!camRes.ok) {
+          if (!cancelled) {
+            setCameraError(camRes.error);
           }
+          return;
         }
+        const stream = camRes.stream;
         if (cancelled) {
           stream.getTracks().forEach((t) => t.stop());
           return;
@@ -160,21 +147,9 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
         };
 
         rafRef.current = requestAnimationFrame(scanFrame);
-      } catch (err: any) {
+      } catch {
         if (!cancelled) {
-          const errName = String(err?.name || '');
-          const isPermissionDenied = errName === 'NotAllowedError' || errName === 'PermissionDeniedError';
-          const isNoCamera = errName === 'NotFoundError' || errName === 'DevicesNotFoundError';
-          const isCameraBusy = errName === 'NotReadableError' || errName === 'TrackStartError';
-          setCameraError(
-            isPermissionDenied
-              ? 'تم رفض إذن الكاميرا. اسمح للتطبيق باستخدام الكاميرا عند المطالبة (أو فعّل الإذن من إعدادات التطبيق في الهاتف إذا سبق الرفض نهائياً)، أو استخدم "رفع صورة QR" أو "لصق رابط الدعوة".'
-              : isNoCamera
-              ? 'لم يتم العثور على كاميرا متاحة على هذا الجهاز. يمكنك رفع صورة رمز QR أو لصق رابط الدعوة.'
-              : isCameraBusy
-              ? 'الكاميرا مستخدمة حالياً بواسطة تطبيق آخر. أغلقه وأعد المحاولة أو الصق رابط الدعوة.'
-              : 'تعذر تشغيل الكاميرا على هذا الجهاز. يمكنك رفع صورة رمز QR أو لصق رابط الدعوة.'
-          );
+          setCameraError('تعذر تشغيل الكاميرا على هذا الجهاز. يمكنك رفع صورة رمز QR أو لصق رابط الدعوة.');
         }
       }
     };
@@ -283,6 +258,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
               <div className="relative rounded-2xl overflow-hidden bg-slate-900 aspect-square max-h-72 w-full flex items-center justify-center border border-slate-800">
                 <video
                   ref={videoRef}
+                  autoPlay
                   playsInline
                   muted
                   className={`w-full h-full object-cover ${cameraActive ? 'opacity-100' : 'opacity-20'}`}

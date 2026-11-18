@@ -160,12 +160,14 @@ const MainAppContent: React.FC = () => {
       }
 
       inFlightPairingUrlsRef.current.add(dedupeKey);
+      let claimSucceeded = false;
       try {
         await hydrateServerUrlFromNative();
         if (!active) return;
         const res = await claimPairingInvitation(cleanUrl, { clearExistingAuth: true });
         if (!active) return;
         if (res.ok) {
+          claimSucceeded = true;
           setPairingBanner({
             type: res.requiresAdminApproval ? 'warning' : 'success',
             message: res.requiresAdminApproval
@@ -186,7 +188,7 @@ const MainAppContent: React.FC = () => {
           }
         }
       } finally {
-        recentPairingUrlsRef.current.set(dedupeKey, Date.now());
+        recentPairingUrlsRef.current.set(dedupeKey, claimSucceeded ? Date.now() : Date.now() - 4200);
         inFlightPairingUrlsRef.current.delete(dedupeKey);
       }
     };
@@ -299,8 +301,45 @@ const MainAppContent: React.FC = () => {
     return <LoginView />;
   }
 
+  const renderFloatingPairingBanner = () =>
+    pairingBanner ? (
+      <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[70] w-[calc(100%-1.5rem)] max-w-lg px-2 pointer-events-none">
+        <div
+          className={`pointer-events-auto p-3.5 rounded-2xl border shadow-xl text-xs font-bold flex items-start justify-between gap-2.5 ${
+            pairingBanner.type === 'success'
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+              : pairingBanner.type === 'warning'
+              ? 'bg-amber-50 border-amber-300 text-amber-900'
+              : 'bg-red-50 border-red-200 text-red-700'
+          }`}
+        >
+          <div className="flex items-start gap-2">
+            {pairingBanner.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-700 mt-0.5" />
+            ) : (
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            )}
+            <span className="leading-relaxed">{pairingBanner.message}</span>
+          </div>
+          <button
+            type="button"
+            onClick={clearPairingBanner}
+            className="p-1 rounded-lg hover:bg-black/5 shrink-0 cursor-pointer"
+            aria-label="إغلاق"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    ) : null;
+
   if (currentUser?.role === 'customer' || currentUser?.role === 'representative') {
-    return <MobilePortal />;
+    return (
+      <>
+        {renderFloatingPairingBanner()}
+        <MobilePortal />
+      </>
+    );
   }
 
   const requiredPerm = PAGE_PERMISSIONS[currentPage];
@@ -492,36 +531,7 @@ const MainAppContent: React.FC = () => {
         onClose={() => setCashOpModal((prev) => ({ ...prev, open: false }))}
       />
 
-      {pairingBanner && (
-        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[70] w-[calc(100%-1.5rem)] max-w-lg px-2 pointer-events-none">
-          <div
-            className={`pointer-events-auto p-3.5 rounded-2xl border shadow-xl text-xs font-bold flex items-start justify-between gap-2.5 ${
-              pairingBanner.type === 'success'
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
-                : pairingBanner.type === 'warning'
-                ? 'bg-amber-50 border-amber-300 text-amber-900'
-                : 'bg-red-50 border-red-200 text-red-700'
-            }`}
-          >
-            <div className="flex items-start gap-2">
-              {pairingBanner.type === 'success' ? (
-                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-700 mt-0.5" />
-              ) : (
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              )}
-              <span className="leading-relaxed">{pairingBanner.message}</span>
-            </div>
-            <button
-              type="button"
-              onClick={clearPairingBanner}
-              className="p-1 rounded-lg hover:bg-black/5 shrink-0 cursor-pointer"
-              aria-label="إغلاق"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      {renderFloatingPairingBanner()}
 
       <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col font-sans antialiased pb-safe">
         <Sidebar

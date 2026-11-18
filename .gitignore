@@ -13,4 +13,13 @@ android/capacitor-cordova-android-plugins/build/
 android/local.properties
 ios/App/Pods/
 ios/App/build/
-
+android/keystore.properties
+*.jks
+*.keystore
+*.p12
+*.cer
+*.mobileprovision
+*.ipa
+android/*.apk
+android/*.aab
+build/

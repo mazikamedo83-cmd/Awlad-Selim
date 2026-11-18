@@ -16,8 +16,8 @@
     "electron:icons": "node scripts/generate-win-icon.mjs",
     "electron:start": "npm run build && electron .",
     "electron:pack": "npm run clean && npm run build && npm run electron:icons && electron-builder --win --x64 --dir",
-    "electron:dist": "npm run clean && npm run build && npm run electron:icons && electron-builder --win nsis --x64 --publish never",
-    "electron:portable": "npm run clean && npm run build && npm run electron:icons && electron-builder --win portable --x64 --publish never",
+    "electron:dist": "npm run clean && npm run build && npm run electron:icons && electron-builder --win nsis portable --x64 --publish never",
+    "electron:portable": "npm run build && npm run electron:icons && electron-builder --win portable --x64 --publish never",
     "cap:sync": "npm run build && npx cap sync",
     "cap:android": "npx cap sync android",
     "cap:ios": "npx cap sync ios"
@@ -105,7 +105,12 @@
         }
       ],
       "icon": "build/icon.ico",
+      "requestedExecutionLevel": "asInvoker",
+      "legalTrademarks": "AWLAD SELIM",
       "artifactName": "AWLAD-SELIM-Setup-${version}.exe"
+    },
+    "portable": {
+      "artifactName": "AWLAD-SELIM-Portable-${version}.exe"
     },
     "nsis": {
       "oneClick": false,

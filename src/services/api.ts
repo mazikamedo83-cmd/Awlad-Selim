@@ -72,7 +72,19 @@ export function saveFallbackEndpoints(list: StoredFallbackEndpoint[]): void {
   saveFallbackEndpointsAsync(list).catch(() => {});
 }
 
-function isLocalOrIpHost(hostOrUrl: string): boolean {
+function isPrivateOrLoopbackIpv4(host: string): boolean {
+  const match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!match) return false;
+  const [a, b, c, d] = [Number(match[1]), Number(match[2]), Number(match[3]), Number(match[4])];
+  if ([a, b, c, d].some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return false;
+  if (a === 10 || a === 127) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 169 && b === 254) return true;
+  return false;
+}
+
+export function isLocalOrIpHost(hostOrUrl: string): boolean {
   const cleanHost = hostOrUrl
     .replace(/^https?:\/\//i, '')
     .split('/')[0]
@@ -80,9 +92,31 @@ function isLocalOrIpHost(hostOrUrl: string): boolean {
     .trim()
     .toLowerCase();
   if (!cleanHost) return true;
-  if (cleanHost === 'localhost' || cleanHost === '127.0.0.1' || cleanHost === '10.0.2.2') return true;
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(cleanHost)) return true;
+  if (
+    cleanHost === 'localhost' ||
+    cleanHost === '127.0.0.1' ||
+    cleanHost === '10.0.2.2' ||
+    cleanHost === 'awlad-selim-server'
+  ) {
+    return true;
+  }
+  if (cleanHost.endsWith('.local')) return true;
+  if (isPrivateOrLoopbackIpv4(cleanHost)) return true;
   return false;
+}
+
+function assertSafeHttpTransport(baseUrl: string): void {
+  if (!baseUrl) return;
+  if (/^http:\/\//i.test(baseUrl) && !isLocalOrIpHost(baseUrl)) {
+    const profiles = getStoredConnectionProfiles();
+    if (profiles.enforceHttpsForRemote !== false) {
+      throw new ApiError(
+        400,
+        'يُمنع الاتصال غير المشفر (HTTP) خارج الشبكة المحلية. يرجى استخدام رابط HTTPS آمن.',
+        'HTTPS_REQUIRED_FOR_REMOTE'
+      );
+    }
+  }
 }
 
 export function normalizeServerUrl(raw: string): string {
@@ -509,6 +543,15 @@ export async function testServerHealth(baseUrl: string): Promise<{
       error: 'يرجى إدخال عنوان السيرفر المركزي أولاً (مثل http://192.168.1.100:3000 أو رابط HTTPS).',
     };
   }
+  try {
+    assertSafeHttpTransport(effectiveBase);
+  } catch (err: any) {
+    return {
+      ok: false,
+      latencyMs: 0,
+      error: err?.message || 'الاتصالات الخارجية تتطلب HTTPS.',
+    };
+  }
 
   const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
   try {
@@ -614,6 +657,7 @@ export async function apiRequest<T = any>(
       'SERVER_URL_NOT_CONFIGURED'
     );
   }
+  assertSafeHttpTransport(base);
 
   const url = `${base}${path.startsWith('/') ? path : `/${path}`}`;
 

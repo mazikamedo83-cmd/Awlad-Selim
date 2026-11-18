@@ -187,8 +187,10 @@ export async function discoverServerCandidates(): Promise<DiscoveredServerCandid
   }
 
   // Known local host / emulator / hostname (.local) / router default endpoints
-  addUrl('http://127.0.0.1:3000');
-  addUrl('http://localhost:3000');
+  if (!isNativeCapacitor()) {
+    addUrl('http://127.0.0.1:3000');
+    addUrl('http://localhost:3000');
+  }
   const savedPort = Number(profiles.localNetwork?.port || 3000) || 3000;
   const savedHostname = String(profiles.localNetwork?.hostname || 'awlad-selim-server')
     .trim()
@@ -283,13 +285,25 @@ export async function claimPairingInvitation(
     };
   }
 
+  const storedProfiles = getStoredConnectionProfiles();
+  const initialEnforceHttps = storedProfiles.enforceHttpsForRemote !== false;
+  const initialMode = detectModeFromUrl(targetServer, storedProfiles);
+  const targetServerCheck = validateConnectionUrl(initialMode, targetServer, initialEnforceHttps);
+  if (!targetServerCheck.valid || !targetServerCheck.normalizedUrl) {
+    return {
+      ok: false,
+      error: targetServerCheck.error || 'عنوان السيرفر في رابط الدعوة غير صالح.',
+    };
+  }
+  const safeTargetServer = targetServerCheck.normalizedUrl;
+
   const descriptor = getClientDeviceDescriptor();
   const prevUrl = getConfiguredApiBaseUrl();
 
   try {
     // Strictly verify and claim the invitation token on the server BEFORE saving serverBaseUrl
     const res = await fetchWithTimeout(
-      `${targetServer}/api/pairing/claim`,
+      `${safeTargetServer}/api/pairing/claim`,
       {
         method: 'POST',
         headers: {
@@ -315,16 +329,17 @@ export async function claimPairingInvitation(
       };
     }
 
-    const chosenEndpoint = sanitizeHttpServerUrl(data.endpointUrl || '') || targetServer;
+    const chosenEndpoint = sanitizeHttpServerUrl(data.endpointUrl || '') || safeTargetServer;
+    const effectiveMode: ConnectionMode =
+      data.activeMode || detectModeFromUrl(chosenEndpoint, data.profiles);
+    const enforceHttps = data.profiles?.enforceHttpsForRemote !== false;
 
-    // Check whether the chosen endpoint is valid for the claimed mode & reachable from this device, else keep targetServer
-    let finalBaseUrl = targetServer;
-    if (chosenEndpoint === targetServer) {
-      finalBaseUrl = chosenEndpoint;
+    // Check whether the chosen endpoint is valid for the claimed mode & reachable from this device, else keep safeTargetServer
+    let finalBaseUrl = safeTargetServer;
+    if (chosenEndpoint === safeTargetServer) {
+      const sameCheck = validateConnectionUrl(effectiveMode, chosenEndpoint, enforceHttps);
+      finalBaseUrl = sameCheck.valid ? sameCheck.normalizedUrl : safeTargetServer;
     } else {
-      const effectiveMode: ConnectionMode =
-        data.activeMode || detectModeFromUrl(chosenEndpoint, data.profiles);
-      const enforceHttps = data.profiles?.enforceHttpsForRemote !== false;
       const urlCheck = validateConnectionUrl(effectiveMode, chosenEndpoint, enforceHttps);
       if (urlCheck.valid) {
         const check = await testServerHealth(urlCheck.normalizedUrl);
@@ -334,12 +349,18 @@ export async function claimPairingInvitation(
       }
     }
 
-    if (!sanitizeHttpServerUrl(finalBaseUrl)) {
+    const finalCheck = validateConnectionUrl(
+      detectModeFromUrl(finalBaseUrl, data.profiles || storedProfiles),
+      finalBaseUrl,
+      enforceHttps
+    );
+    if (!finalCheck.valid || !sanitizeHttpServerUrl(finalCheck.normalizedUrl)) {
       return {
         ok: false,
-        error: 'عنوان السيرفر المُرجع من الدعوة غير صالح.',
+        error: finalCheck.error || 'عنوان السيرفر المُرجع من الدعوة غير صالح.',
       };
     }
+    finalBaseUrl = finalCheck.normalizedUrl;
 
     if (data.profiles) {
       await saveStoredConnectionProfilesAsync(data.profiles);
