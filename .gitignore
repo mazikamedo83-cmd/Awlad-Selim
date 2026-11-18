@@ -14,9 +14,15 @@ android/local.properties
 ios/App/Pods/
 ios/App/build/
 android/keystore.properties
+android/keystore*
+release-keystore*
+ANDROID_KEYSTORE_BASE64*.txt
 *.jks
 *.keystore
 *.p12
+*.b64
+*.pem
+*.key
 *.cer
 *.mobileprovision
 *.ipa

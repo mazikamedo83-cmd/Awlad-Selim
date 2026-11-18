@@ -21,21 +21,25 @@ if (keystorePropertiesFile.exists()) {
 
 def releaseKeystorePath = (
     System.getenv('AWLAD_ANDROID_KEYSTORE_PATH') ?:
+    System.getenv('ANDROID_KEYSTORE_PATH') ?:
     keystoreProperties.getProperty('storeFile') ?:
     ''
 ).toString().trim()
 def releaseKeystorePassword = (
     System.getenv('AWLAD_ANDROID_KEYSTORE_PASSWORD') ?:
+    System.getenv('ANDROID_KEYSTORE_PASSWORD') ?:
     keystoreProperties.getProperty('storePassword') ?:
     ''
 ).toString()
 def releaseKeyAlias = (
     System.getenv('AWLAD_ANDROID_KEY_ALIAS') ?:
+    System.getenv('ANDROID_KEY_ALIAS') ?:
     keystoreProperties.getProperty('keyAlias') ?:
     ''
 ).toString().trim()
 def releaseKeyPassword = (
     System.getenv('AWLAD_ANDROID_KEY_PASSWORD') ?:
+    System.getenv('ANDROID_KEY_PASSWORD') ?:
     keystoreProperties.getProperty('keyPassword') ?:
     ''
 ).toString()

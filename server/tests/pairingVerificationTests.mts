@@ -1160,8 +1160,27 @@ async function runTests() {
 
       const androidRelYml = fs.readFileSync(path.join(process.cwd(), '.github/workflows/android-release.yml'), 'utf8');
       assert.ok(androidRelYml.includes('./gradlew assembleRelease'));
+      assert.ok(androidRelYml.includes('bundleRelease'));
       assert.ok(androidRelYml.includes('apksigner') && androidRelYml.includes('verify --verbose --print-certs'));
+      assert.ok(androidRelYml.includes('jarsigner -verify -verbose -certs "$APK_PATH"'));
+      assert.ok(androidRelYml.includes('jarsigner -verify -verbose -certs "$AAB_PATH"'));
       assert.ok(androidRelYml.includes('ANDROID_KEYSTORE_BASE64'));
+
+      const startProBat = fs.readFileSync(path.join(process.cwd(), 'scripts/start-pro-tunnel.bat'), 'utf8');
+      assert.ok(startProBat.includes('CLOUDFLARE_TUNNEL_TOKEN'));
+      assert.ok(startProBat.includes('tunnel-supervisor.mjs --mode=named'));
+
+      const tunnelTaskPs1 = fs.readFileSync(path.join(process.cwd(), 'scripts/install-windows-tunnel-task.ps1'), 'utf8');
+      assert.ok(tunnelTaskPs1.includes('AWLAD_SELIM_Free_Tunnel'));
+      assert.ok(tunnelTaskPs1.includes('AWLAD_SELIM_Pro_Tunnel'));
+
+      const genKeyPs1 = fs.readFileSync(path.join(process.cwd(), 'scripts/generate-android-release-key.ps1'), 'utf8');
+      assert.ok(genKeyPs1.includes('-keysize 4096'));
+      assert.ok(genKeyPs1.includes('ANDROID_KEYSTORE_BASE64'));
+
+      const genKeySh = fs.readFileSync(path.join(process.cwd(), 'scripts/generate-android-release-key.sh'), 'utf8');
+      assert.ok(genKeySh.includes('4096'));
+      assert.ok(genKeySh.includes('ANDROID_KEYSTORE_BASE64'));
 
       const iosRelYml = fs.readFileSync(path.join(process.cwd(), '.github/workflows/mobile-ios.yml'), 'utf8');
       assert.ok(iosRelYml.includes('macos-latest'));

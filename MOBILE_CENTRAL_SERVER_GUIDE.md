@@ -75,15 +75,28 @@ npm run server:start
   npm run cap:sync
   ```
 
-### بناء Android (`.apk` / `.aab`):
-- **آلياً عبر GitHub Actions**: يبني الـ Workflow الجديد `.github/workflows/mobile-android.yml` ملفات `app-debug.apk` و `app-release-unsigned.apk` ويرفعها في **Artifacts** تلقائياً.
+### بناء Android (`.apk` / `.aab`) ومفتاح الإنتاج:
+- **مفتاح التوقيع الإنتاجي النهائي (RSA 4096-bit)**:
+  - أنشئ مفتاح الإنتاج خارج مجلد المشروع تماماً عبر:
+    - على Windows: `powershell -ExecutionPolicy Bypass -File scripts\generate-android-release-key.ps1`
+    - على macOS / Linux: `bash scripts/generate-android-release-key.sh`
+  - يُحفظ المفتاح والنسخة الاحتياطية وملف Base64 خارج المشروع (`~/.awlad-selim-keys/`) ولا يُرفع مطلقاً إلى GitHub.
+  - أضف الأسرار الأربعة التالية في **GitHub Settings -> Secrets -> Actions**:
+    - `ANDROID_KEYSTORE_BASE64`
+    - `ANDROID_KEYSTORE_PASSWORD`
+    - `ANDROID_KEY_ALIAS`
+    - `ANDROID_KEY_PASSWORD`
+  - **تنبيه مهم**: لا يمكن تحديث نسخة قديمة موقعة بمفتاح Debug أو مفتاح سابق مباشرة فوق نفس التثبيت؛ يجب إلغاء تثبيت النسخة القديمة مرة واحدة قبل تثبيت APK الإنتاج الجديد.
+- **آلياً عبر GitHub Actions**:
+  - `.github/workflows/mobile-android.yml` يبني نسخة Debug تجريبية (`app-debug.apk`).
+  - `.github/workflows/android-release.yml` يبني النسخة الإنتاجية الموقعة (`AWLAD-SELIM-v3.0.0-release.apk` و`AWLAD-SELIM-v3.0.0-release.aab`) ويتحقق من التوقيع بـ `apksigner` و`jarsigner`.
 - **محلياً (باستخدام Android Studio + JDK 21)**:
   ```bash
   npm run build
   npx cap sync android
   npx cap open android
   ```
-  ثم اختر **Build -> Build Bundle(s) / APK(s) -> Build APK(s)** داخل Android Studio.
+  ثم اختر **Build -> Build Bundle(s) / APK(s) -> Build APK(s)** داخل Android Studio (أو `./gradlew assembleRelease bundleRelease` مع ضبط `android/keystore.properties` محلياً بدون رفعه لـ Git).
 
 ### بناء iOS (`.ipa` على macOS + Xcode):
 > ملاحظة تقنية: يتطلب تصدير وتوقيع تطبيق iOS جهاز **Mac** مع **Xcode** وحساب **Apple Developer**.

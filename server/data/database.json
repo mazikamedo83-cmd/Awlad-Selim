@@ -101,6 +101,22 @@
   "pairingTokens": [],
   "pairedDevices": [
     {
+      "deviceId": "DEV-17f7655e-99b3-408f-9803-ace3a5d07f8c",
+      "deviceName": "هاتف Android",
+      "deviceType": "android",
+      "osVersion": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) C",
+      "appVersion": "3.0.0",
+      "linkedUserId": "USR-MWMGUFAA-0F6DDC",
+      "linkedUserName": "Ahmed Farouk",
+      "connectionMode": "pro_remote",
+      "serverUrlUsed": "https://ais-dev-5egqzhb2aczomx2a73htmi-585438082356.europe-west2.run.app",
+      "ipAddress": "154.136.12.206",
+      "status": "active",
+      "configVersion": 1,
+      "pairedAt": "2026-11-18T20:03:47.539Z",
+      "lastSeenAt": "2026-11-18T20:06:00.277Z"
+    },
+    {
       "deviceId": "DEV-caccbc1f-944f-4aa9-bf19-fa45c03e778e",
       "deviceName": "هاتف Android",
       "deviceType": "android",
@@ -151,6 +167,6 @@
     "cashOpNo": 0,
     "orderAdvanceNo": 0
   },
-  "lastSavedAt": "2026-11-18T19:33:12.440Z",
+  "lastSavedAt": "2026-11-18T20:06:00.277Z",
   "version": "3.0.0"
 }

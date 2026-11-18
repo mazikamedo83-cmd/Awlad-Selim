@@ -76,8 +76,12 @@ jobs:
             echo "Refusing to fall back to debug signing for a Production Release."
             exit 1
           fi
-          echo "$KEYSTORE_B64" | base64 -d > "${{ runner.temp }}/awlad-selim-release.keystore"
+          printf '%s' "$KEYSTORE_B64" | tr -d '[:space:]' | base64 -d > "${{ runner.temp }}/awlad-selim-release.keystore"
           test -s "${{ runner.temp }}/awlad-selim-release.keystore"
+          if ! keytool -list -keystore "${{ runner.temp }}/awlad-selim-release.keystore" -storepass:env KEYSTORE_PASSWORD -alias "$KEY_ALIAS" >/dev/null 2>&1; then
+            echo "ERROR: Decoded Android keystore could not be unlocked with the provided ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS."
+            exit 1
+          fi
 
       - name: Make Gradle wrapper executable
         run: chmod +x android/gradlew
@@ -108,6 +112,7 @@ jobs:
             exit 1
           fi
           "$APKSIGNER" verify --verbose --print-certs "$APK_PATH"
+          jarsigner -verify -verbose -certs "$APK_PATH"
           jarsigner -verify -verbose -certs "$AAB_PATH"
 
           MERGED_MANIFEST=$(find android/app/build/intermediates/merged_manifests android/app/build/intermediates/merged_manifest -name AndroidManifest.xml 2>/dev/null | grep -i release | head -n 1 || true)
