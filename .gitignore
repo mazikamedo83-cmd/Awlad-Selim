@@ -30,3 +30,7 @@ android/*.apk
 android/*.aab
 build/
 dist-android/
+server/data/.jwt_secret
+server/data/*.tmp
+server/data/*.bak.json
+AWLAD_SELIM_BACKUP/

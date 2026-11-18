@@ -76,9 +76,9 @@ jobs:
             echo "Refusing to fall back to debug signing for a Production Release."
             exit 1
           fi
-          printf '%s' "$KEYSTORE_B64" | tr -d '[:space:]' | base64 -d > "${{ runner.temp }}/awlad-selim-release.keystore"
-          test -s "${{ runner.temp }}/awlad-selim-release.keystore"
-          if ! keytool -list -keystore "${{ runner.temp }}/awlad-selim-release.keystore" -storepass:env KEYSTORE_PASSWORD -alias "$KEY_ALIAS" >/dev/null 2>&1; then
+          printf '%s' "$KEYSTORE_B64" | tr -d '[:space:]' | base64 -d > "${{ runner.temp }}/AWLAD-SELIM-Release.jks"
+          test -s "${{ runner.temp }}/AWLAD-SELIM-Release.jks"
+          if ! keytool -list -keystore "${{ runner.temp }}/AWLAD-SELIM-Release.jks" -storepass:env KEYSTORE_PASSWORD -alias "$KEY_ALIAS" >/dev/null 2>&1; then
             echo "ERROR: Decoded Android keystore could not be unlocked with the provided ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS."
             exit 1
           fi
@@ -89,7 +89,7 @@ jobs:
       - name: Build Signed Release APK & AAB
         working-directory: android
         env:
-          AWLAD_ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/awlad-selim-release.keystore
+          AWLAD_ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/AWLAD-SELIM-Release.jks
           AWLAD_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD || secrets.AWLAD_ANDROID_KEYSTORE_PASSWORD }}
           AWLAD_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || secrets.AWLAD_ANDROID_KEY_ALIAS }}
           AWLAD_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD || secrets.AWLAD_ANDROID_KEY_PASSWORD }}
@@ -122,21 +122,21 @@ jobs:
           fi
 
           mkdir -p dist-android
-          cp "$APK_PATH" "dist-android/AWLAD-SELIM-v${VERSION}-release.apk"
-          cp "$AAB_PATH" "dist-android/AWLAD-SELIM-v${VERSION}-release.aab"
+          cp "$APK_PATH" "dist-android/AWLAD-SELIM-${VERSION}-Release.apk"
+          cp "$AAB_PATH" "dist-android/AWLAD-SELIM-${VERSION}-Release.aab"
           ls -lh dist-android/
 
       - name: Cleanup Temporary Keystore
         if: always()
-        run: rm -f "${{ runner.temp }}/awlad-selim-release.keystore"
+        run: rm -f "${{ runner.temp }}/AWLAD-SELIM-Release.jks"
 
       - name: Upload Signed Android Production Artifacts (APK & AAB)
         uses: actions/upload-artifact@v6
         with:
           name: AWLAD-SELIM-Android-Release
           path: |
-            dist-android/AWLAD-SELIM-v*-release.apk
-            dist-android/AWLAD-SELIM-v*-release.aab
+            dist-android/AWLAD-SELIM-*-Release.apk
+            dist-android/AWLAD-SELIM-*-Release.aab
           if-no-files-found: error
           retention-days: 90
 
@@ -145,5 +145,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist-android/AWLAD-SELIM-v*-release.apk
-            dist-android/AWLAD-SELIM-v*-release.aab
+            dist-android/AWLAD-SELIM-*-Release.apk
+            dist-android/AWLAD-SELIM-*-Release.aab

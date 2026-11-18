@@ -7,7 +7,7 @@ set -euo pipefail
 
 OUTPUT_DIR="${1:-$HOME/.awlad-selim-keys}"
 BACKUP_DIR="$OUTPUT_DIR/backups"
-KEY_ALIAS="${ANDROID_KEY_ALIAS:-awladselim_release}"
+KEY_ALIAS="${ANDROID_KEY_ALIAS:-AWLAD-SELIM}"
 VALIDITY_DAYS=10000
 DNAME="/CN=AWLAD SELIM ERP/OU=Mobile Engineering/O=AWLAD SELIM/L=Cairo/ST=Cairo/C=EG"
 KEYTOOL_DNAME="CN=AWLAD SELIM ERP, OU=Mobile Engineering, O=AWLAD SELIM, L=Cairo, ST=Cairo, C=EG"
@@ -22,7 +22,7 @@ esac
 mkdir -p "$OUTPUT_DIR" "$BACKUP_DIR"
 chmod 700 "$OUTPUT_DIR" "$BACKUP_DIR"
 
-KEYSTORE_PATH="$OUTPUT_DIR/awlad-selim-release.keystore"
+KEYSTORE_PATH="$OUTPUT_DIR/AWLAD-SELIM-Release.jks"
 if [ -e "$KEYSTORE_PATH" ]; then
   echo "ERROR: Refusing to overwrite existing keystore at $KEYSTORE_PATH" >&2
   exit 1
@@ -73,7 +73,7 @@ fi
 
 chmod 600 "$KEYSTORE_PATH"
 STAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_PATH="$BACKUP_DIR/awlad-selim-release-$STAMP.keystore"
+BACKUP_PATH="$BACKUP_DIR/AWLAD-SELIM-Release-$STAMP.jks"
 cp "$KEYSTORE_PATH" "$BACKUP_PATH"
 chmod 600 "$BACKUP_PATH"
 

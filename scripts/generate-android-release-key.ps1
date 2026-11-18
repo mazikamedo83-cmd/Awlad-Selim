@@ -5,7 +5,7 @@
 param(
   [string]$OutputDir = "",
   [string]$BackupDir = "",
-  [string]$Alias = "awladselim_release",
+  [string]$Alias = "AWLAD-SELIM",
   [int]$ValidityDays = 10000
 )
 
@@ -93,7 +93,7 @@ if (-not $KeytoolPath) {
 New-Item -ItemType Directory -Force -Path $ResolvedOutputDir | Out-Null
 New-Item -ItemType Directory -Force -Path $ResolvedBackupDir | Out-Null
 
-$KeystorePath = Join-Path $ResolvedOutputDir "awlad-selim-release.keystore"
+$KeystorePath = Join-Path $ResolvedOutputDir "AWLAD-SELIM-Release.jks"
 if (Test-Path $KeystorePath) {
   Write-Error "Refusing to overwrite existing production keystore at: $KeystorePath. Back it up or move it intentionally if rotating."
   exit 1
@@ -126,7 +126,7 @@ Write-Host "Key Alias     : $Alias"
 
 $Sha256 = "(unavailable)"
 $Stamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$BackupPath = Join-Path $ResolvedBackupDir "awlad-selim-release-$Stamp.keystore"
+$BackupPath = Join-Path $ResolvedBackupDir "AWLAD-SELIM-Release-$Stamp.jks"
 $Base64Path = Join-Path $ResolvedOutputDir "ANDROID_KEYSTORE_BASE64.txt"
 $SecretsNotePath = Join-Path $ResolvedOutputDir "GITHUB_SECRETS_REFERENCE.txt"
 
