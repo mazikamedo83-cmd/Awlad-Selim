@@ -33,6 +33,17 @@ export const DEFAULT_MOBILE_CONFIG = {
   requireOrderApproval: true,
 };
 
+export function normalizePhoneDigits(phone) {
+  let digits = String(phone || '').replace(/\D+/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('0020') && digits.length >= 13) {
+    digits = '0' + digits.slice(4);
+  } else if (digits.startsWith('20') && digits.length >= 12 && digits[2] === '1') {
+    digits = '0' + digits.slice(2);
+  }
+  return digits;
+}
+
 export function normalizeAllowedRepIds(assignedRepId, allowedRepIds) {
   const arr = [
     ...(assignedRepId ? [String(assignedRepId).trim()] : []),
@@ -763,6 +774,98 @@ export async function detectCustomerUserConflicts() {
   return { unlinkedUsers, unlinkedCustomers, duplicatePhones };
 }
 
+export async function runCustomerLinkConsistencyMigration() {
+  const now = nowIso();
+  let linkedCount = 0;
+
+  if (await isPgMode()) {
+    const pool = getPool();
+    const uRes = await pool.query(`SELECT * FROM users WHERE role = 'customer'`);
+    const cRes = await pool.query(`SELECT * FROM customers`);
+    const customers = cRes.rows.map(mapPgCustomerRow);
+    const linkedUserIds = new Set(customers.filter((c) => c.userId).map((c) => c.userId));
+    const unlinkedUsers = uRes.rows.map(mapPgUserRow).filter((u) => !linkedUserIds.has(u.id));
+    const unlinkedCustomers = customers.filter((c) => !c.userId);
+
+    for (const user of unlinkedUsers) {
+      const uPhone = normalizePhoneDigits(user.phone);
+      let candidate = null;
+
+      if (uPhone && uPhone.length >= 6) {
+        const phoneMatches = unlinkedCustomers.filter(
+          (c) => !c.userId && normalizePhoneDigits(c.phone) === uPhone
+        );
+        if (phoneMatches.length === 1) {
+          candidate = phoneMatches[0];
+        }
+      }
+
+      if (!candidate) {
+        const normFullName = String(user.fullName || '').trim().toLowerCase();
+        const normUsername = String(user.username || '').trim().toLowerCase();
+        const nameMatches = unlinkedCustomers.filter((c) => {
+          if (c.userId) return false;
+          const cname = String(c.name || '').trim().toLowerCase();
+          return (normFullName && cname === normFullName) || (normUsername && cname === normUsername);
+        });
+        if (nameMatches.length === 1) {
+          candidate = nameMatches[0];
+        }
+      }
+
+      if (candidate) {
+        await pool.query(
+          `UPDATE customers SET user_id = $1, version = COALESCE(version, 1) + 1, updated_at = $2 WHERE id = $3 AND user_id IS NULL`,
+          [user.id, now, candidate.id]
+        );
+        candidate.userId = user.id;
+        linkedCount += 1;
+      }
+    }
+    return { linkedCount };
+  }
+
+  await withJsonTransaction((db) => {
+    const linkedUserIds = new Set((db.customers || []).filter((c) => c.userId).map((c) => c.userId));
+    const unlinkedUsers = (db.users || []).filter((u) => u.role === 'customer' && !linkedUserIds.has(u.id));
+    const unlinkedCustomers = (db.customers || []).filter((c) => !c.userId);
+
+    for (const user of unlinkedUsers) {
+      const uPhone = normalizePhoneDigits(user.phone);
+      let candidate = null;
+
+      if (uPhone && uPhone.length >= 6) {
+        const phoneMatches = unlinkedCustomers.filter(
+          (c) => !c.userId && normalizePhoneDigits(c.phone) === uPhone
+        );
+        if (phoneMatches.length === 1) {
+          candidate = phoneMatches[0];
+        }
+      }
+
+      if (!candidate) {
+        const normFullName = String(user.fullName || '').trim().toLowerCase();
+        const normUsername = String(user.username || '').trim().toLowerCase();
+        const nameMatches = unlinkedCustomers.filter((c) => {
+          if (c.userId) return false;
+          const cname = String(c.name || '').trim().toLowerCase();
+          return (normFullName && cname === normFullName) || (normUsername && cname === normUsername);
+        });
+        if (nameMatches.length === 1) {
+          candidate = nameMatches[0];
+        }
+      }
+
+      if (candidate) {
+        candidate.userId = user.id;
+        candidate.version = Number(candidate.version || 1) + 1;
+        linkedCount += 1;
+      }
+    }
+  });
+  return { linkedCount };
+}
+
 // ==============================================================================
 // Products & Categories
 // ==============================================================================
@@ -1099,7 +1202,7 @@ export async function updateProduct(productId, updates, actor) {
         `UPDATE products SET
           code = $1, barcode = $2, name = $3, category = $4, category_id = $5, base_unit = $6,
           size = $7, color = $8, purchase_price = $9, selling_price = $10, min_stock_level = $11,
-          image = $12, notes = $13, status = $14, import_batch_id = $15, imported_from_file = $16, source_file_name = $17, updated_at = $18
+          image = $12, notes = $13, status = $14, import_batch_id = $15, imported_from_file = $16, source_file_name = $17, version = COALESCE(version, 1) + 1, updated_at = $18
          WHERE id = $19`,
         [
           nextCode,
@@ -1181,6 +1284,7 @@ export async function updateProduct(productId, updates, actor) {
       barcode: nextBarcode,
       image: updates.image !== undefined ? (updates.image || undefined) : cur.image,
       stockPerWarehouse: cur.stockPerWarehouse, // Protect stock map from direct override via product edit
+      version: Number(cur.version || 1) + 1,
     };
     return db.products[idx];
   });
@@ -1451,9 +1555,13 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
   let invoices = [];
   let returns = [];
   let paymentTxs = [];
+  let advancePayments = [];
+  let ordersCount = 0;
 
   if (await isPgMode()) {
     const pool = getPool();
+    const ordCntRes = await pool.query(`SELECT COUNT(*)::int AS cnt FROM customer_item_orders WHERE customer_id = $1`, [customerId]);
+    ordersCount = Number(ordCntRes.rows[0]?.cnt || 0);
     const invRes = await pool.query(
       `SELECT * FROM invoices WHERE customer_id = $1 AND type = 'sales' AND status <> 'draft' ORDER BY date DESC, created_at DESC`,
       [customerId]
@@ -1511,8 +1619,35 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
       description: r.description || '',
       createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at || '',
     }));
+
+    const advRes = await pool.query(
+      `SELECT * FROM order_advance_payments WHERE customer_id = $1 ORDER BY created_at DESC`,
+      [customerId]
+    );
+    advancePayments = advRes.rows.map((r) => ({
+      id: r.id,
+      paymentNumber: r.advance_number,
+      advanceNumber: r.advance_number,
+      orderId: r.order_id,
+      requestNumber: r.request_number,
+      customerId: r.customer_id,
+      customerName: r.customer_name,
+      amount: Number(r.amount || 0),
+      date: r.date instanceof Date ? r.date.toISOString().split('T')[0] : String(r.date || '').split('T')[0],
+      paymentMethod: r.payment_method,
+      cashboxId: r.cashbox_id,
+      cashboxName: r.cashbox_name,
+      status: r.status,
+      appliedInvoiceId: r.applied_invoice_id || undefined,
+      appliedInvoiceNumber: r.applied_invoice_number || undefined,
+      appliedAt: r.applied_at ? isoTimestamp(r.applied_at) : undefined,
+      notes: r.notes || '',
+      createdBy: r.created_by,
+      createdAt: isoTimestamp(r.created_at),
+    }));
   } else {
     const db = readJsonDatabase();
+    ordersCount = (db.customerItemOrders || []).filter((o) => o.customerId === customerId).length;
     invoices = (db.invoices || [])
       .filter((i) => i.customerId === customerId && i.type === 'sales' && i.status !== 'draft')
       .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
@@ -1522,6 +1657,9 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
     paymentTxs = (db.financialTransactions || [])
       .filter((tx) => tx.relatedEntityId === customerId && tx.type === 'customer_payment')
       .sort((a, b) => String(a.createdAt || a.date || '').localeCompare(String(b.createdAt || b.date || '')));
+    advancePayments = (db.orderAdvancePayments || [])
+      .filter((a) => a.customerId === customerId)
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
   }
 
   const sanitizedInvoices = invoices.map((inv) => ({
@@ -1540,6 +1678,7 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
     discountTotal: allowPriceView ? inv.discountTotal : 0,
     grandTotal: allowPriceView ? inv.grandTotal : 0,
     paidAmount: allowPriceView ? inv.paidAmount : 0,
+    appliedAdvanceAmount: allowPriceView ? Number(inv.appliedAdvanceAmount || 0) : 0,
     remainingAmount: allowPriceView ? inv.remainingAmount : 0,
   }));
 
@@ -1561,6 +1700,8 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
   }
 
   for (const inv of confirmedRaw) {
+    // Credit column on invoice row excludes previously deposited order advances (which appear as separate order_advance credit lines)
+    const directPaid = round2(Math.max(0, Number(inv.paidAmount || 0) - Number(inv.appliedAdvanceAmount || 0)));
     rawEntries.push({
       id: `INV-${inv.id}`,
       date: inv.date || '',
@@ -1570,16 +1711,16 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
       label: `فاتورة مبيعات (${inv.items?.length || 0} صنف)`,
       description:
         inv.paidAmount > 0
-          ? `إجمالي الفاتورة ${round2(inv.grandTotal)} · مسدد منها ${round2(inv.paidAmount)}`
+          ? `إجمالي الفاتورة ${round2(inv.grandTotal)} · مسدد منها ${round2(inv.paidAmount)}${inv.appliedAdvanceAmount ? ` (تشمل ${round2(inv.appliedAdvanceAmount)} دفعة طلب مقدمة)` : ''}`
           : `فاتورة مبيعات آجلة — رقم ${inv.invoiceNumber}`,
       debit: round2(inv.grandTotal || 0),
-      credit: round2(inv.paidAmount || 0),
+      credit: directPaid,
     });
   }
 
   const confirmedInvoiceIds = new Set(confirmedRaw.map((i) => i.id));
   for (const tx of paymentTxs) {
-    // Skip payments already tied directly to a confirmed invoice line so we don't double-count paidAmount
+    // Skip payments already tied directly to a confirmed invoice line so we don't double-count directPaid
     if (tx.relatedDocType === 'sales' && tx.relatedDocId && confirmedInvoiceIds.has(tx.relatedDocId)) {
       continue;
     }
@@ -1588,8 +1729,8 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
       date: tx.date || '',
       sortKey: `${tx.date || ''}-${tx.createdAt || tx.id}`,
       docNumber: tx.transactionNumber || tx.id,
-      type: 'customer_payment',
-      label: 'سند تحصيل / دفعة حساب',
+      type: tx.relatedDocType === 'order_advance' ? 'order_advance' : 'customer_payment',
+      label: tx.relatedDocType === 'order_advance' ? 'دفعة مقدمة على طلب' : 'سند تحصيل / دفعة حساب',
       description: tx.description || 'سداد نقدي من العميل',
       debit: 0,
       credit: round2(tx.amount || 0),
@@ -1627,8 +1768,14 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
     };
   });
 
+  const hasAppActivity = Boolean(customer.userId) || ordersCount > 0;
+  const hasDirectSales = confirmedRaw.some((i) => !i.linkedCustomerOrderId);
+  const customerType =
+    hasAppActivity && hasDirectSales ? 'hybrid' : hasAppActivity ? 'app_only' : 'direct_only';
+
   return {
     allowPriceView: Boolean(allowPriceView),
+    customerType,
     customer: {
       ...customer,
       openingBalance: allowPriceView ? customer.openingBalance : 0,
@@ -1637,6 +1784,7 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
     },
     invoices: sanitizedInvoices,
     returns: returns.map((r) => ({ ...r, grandTotal: allowPriceView ? r.grandTotal : 0 })),
+    advancePayments: allowPriceView ? advancePayments : [],
     summary: {
       openingBalance: allowPriceView ? openingBal : null,
       totalDebit: allowPriceView ? totalDebit : null,

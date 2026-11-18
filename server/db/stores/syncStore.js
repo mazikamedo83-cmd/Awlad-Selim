@@ -151,7 +151,7 @@ export async function getSyncPullPayload(authContext, { since = null } = {}) {
     if (settings.mobileConfig?.enableCustomerApp === false) {
       throw new AppError(403, 'تطبيق العملاء متوقف حاليًا من إعدادات الإدارة', 'CUSTOMER_APP_DISABLED');
     }
-    const products = await listProducts({ forCustomer: true, allowCustomerPriceView });
+    const products = await listProducts({ forCustomer: true, allowCustomerPriceView: allowPriceView });
     const categories = await listCategories();
     const orders = await listOrders(authContext);
     const statement = authContext.customerProfile
@@ -533,12 +533,12 @@ async function executeSingleSyncOperation(opType, rawPayload, operationId, devic
 
     case 'update_order_delivery': {
       if (!payload.orderId) throw new AppError(400, 'معرف الطلب مطلوب لتحديث التوصيل', 'ORDER_ID_REQUIRED');
-      const deliveryOut = await updateOrderDeliveryStatus(
+      const order = await updateOrderDeliveryStatus(
         payload.orderId,
         { ...payload, idempotencyKey: operationId },
         freshAuth
       );
-      return { entityId: payload.orderId, result: deliveryOut };
+      return { entityId: payload.orderId, result: { order } };
     }
 
     case 'execute_cash_operation': {

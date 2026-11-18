@@ -21,7 +21,7 @@ import { compressImageFileToDataUrl } from '../../../utils/image';
 export const CustomersView: React.FC = () => {
   const {
     customers, users, representatives, invoices, invoiceReturns, financialTransactions,
-    cashboxes, settings, networkStatus, customerItemOrders = [],
+    cashboxes, settings, networkStatus, customerItemOrders = [], orderAdvancePayments = [],
     approveCustomerItemOrder, rejectCustomerItemOrder, linkCustomerUser, toggleCustomerUserStatus,
     addCustomer, updateCustomer, deleteCustomer, recordCustomerPayment,
   } = useData();
@@ -34,6 +34,7 @@ export const CustomersView: React.FC = () => {
   // Search & Filter
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'blocked'>('all');
+  const [channelFilter, setChannelFilter] = useState<'all' | 'direct' | 'app' | 'hybrid'>('all');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
   // Modals state
@@ -65,7 +66,7 @@ export const CustomersView: React.FC = () => {
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
   // Customer Orders Management State
-  const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | 'pending' | 'approved' | 'invoiced' | 'rejected'>('all');
+  const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | 'pending' | 'under_review' | 'approved' | 'rep_assigned' | 'out_for_delivery' | 'delivered' | 'needs_review' | 'invoiced' | 'rejected'>('all');
   const [rejectingOrder, setRejectingOrder] = useState<CustomerItemOrderRequest | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [convertingOrder, setConvertingOrder] = useState<CustomerItemOrderRequest | null>(null);
@@ -93,11 +94,11 @@ export const CustomersView: React.FC = () => {
 
   useEffect(() => {
     if (!hasPermission('canManageUsers')) return;
-    apiRequest<{ ok: boolean; duplicatePhones: any[]; unlinkedCustomerUsers: any[] }>('/api/customers/conflicts/check')
+    apiRequest<{ ok: boolean; duplicatePhones: any[]; unlinkedUsers?: any[]; unlinkedCustomerUsers?: any[] }>('/api/customers/conflicts/check')
       .then((res) => {
         setConflicts({
           duplicatePhones: res.duplicatePhones || [],
-          unlinkedCustomerUsers: res.unlinkedCustomerUsers || [],
+          unlinkedCustomerUsers: res.unlinkedUsers || res.unlinkedCustomerUsers || [],
         });
       })
       .catch(() => {});
@@ -146,6 +147,26 @@ export const CustomersView: React.FC = () => {
     return customers.find(c => c.id === selectedCustomerId) || null;
   }, [customers, selectedCustomerId]);
 
+  const getCustomerChannel = useMemo(() => {
+    const appOrderCustomerIds = new Set(customerItemOrders.map((o) => o.customerId).filter(Boolean));
+    const directInvoiceCustomerIds = new Set(
+      invoices
+        .filter((i) => i.type === 'sales' && i.customerId && !i.linkedCustomerOrderId)
+        .map((i) => i.customerId!)
+    );
+    return (c: Customer): { key: 'direct' | 'app' | 'hybrid'; label: string; badgeClass: string } => {
+      const hasApp = Boolean(c.userId) || appOrderCustomerIds.has(c.id);
+      const hasDirect = directInvoiceCustomerIds.has(c.id);
+      if (hasApp && hasDirect) {
+        return { key: 'hybrid', label: 'تطبيق ومبيعات مباشرة', badgeClass: 'bg-indigo-50 text-indigo-800 border border-indigo-200' };
+      }
+      if (hasApp) {
+        return { key: 'app', label: 'عميل تطبيق', badgeClass: 'bg-sky-50 text-sky-800 border border-sky-200' };
+      }
+      return { key: 'direct', label: 'مبيعات مباشرة', badgeClass: 'bg-slate-100 text-slate-700 border border-slate-200' };
+    };
+  }, [customerItemOrders, invoices]);
+
   // Filter customers list
   const filteredCustomers = useMemo(() => {
     return customers.filter(c => {
@@ -159,9 +180,10 @@ export const CustomersView: React.FC = () => {
         c.address.toLowerCase().includes(searchTerm.toLowerCase());
       
       const matchStatus = statusFilter === 'all' || c.status === statusFilter;
-      return matchSearch && matchStatus;
+      const matchChannel = channelFilter === 'all' || getCustomerChannel(c).key === channelFilter;
+      return matchSearch && matchStatus && matchChannel;
     });
-  }, [customers, searchTerm, statusFilter]);
+  }, [customers, searchTerm, statusFilter, channelFilter, getCustomerChannel]);
 
   // Overall metrics
   const totalDebts = useMemo(() => {
@@ -199,7 +221,7 @@ export const CustomersView: React.FC = () => {
     id: string;
     date: string;
     docNumber: string;
-    type: 'رصيد أول المدة' | 'فاتورة مبيعات' | 'سند قبض نقدية' | 'مرتجع مبيعات';
+    type: 'رصيد أول المدة' | 'فاتورة مبيعات' | 'سند قبض نقدية' | 'دفعة مقدمة على طلب' | 'مرتجع مبيعات';
     description: string;
     debit: number;   // مدين (يزيد مديونية العميل)
     credit: number;  // دائن (يقلل مديونية العميل)
@@ -213,7 +235,7 @@ export const CustomersView: React.FC = () => {
       id: string;
       date: string;
       docNumber: string;
-      type: 'رصيد أول المدة' | 'فاتورة مبيعات' | 'سند قبض نقدية' | 'مرتجع مبيعات';
+      type: 'رصيد أول المدة' | 'فاتورة مبيعات' | 'سند قبض نقدية' | 'دفعة مقدمة على طلب' | 'مرتجع مبيعات';
       description: string;
       debit: number;
       credit: number;
@@ -235,23 +257,41 @@ export const CustomersView: React.FC = () => {
       });
     }
 
-    // 2. Sales invoices
+    // 2. Sales invoices (exclude appliedAdvanceAmount because the advance was already credited when paid)
     selectedCustomerInvoices.forEach(inv => {
       if (inv.status === 'confirmed') {
+        const appliedAdv = Number(inv.appliedAdvanceAmount || 0);
+        const directPaid = Math.max(0, Number(inv.paidAmount || 0) - appliedAdv);
         events.push({
           id: inv.id,
           date: inv.date,
           docNumber: inv.invoiceNumber,
           type: 'فاتورة مبيعات',
-          description: `فاتورة مبيعات سلع غذائية (${inv.paymentType === 'cash' ? 'نقدي' : inv.paymentType === 'credit' ? 'آجل' : 'سداد جزئي'}) - ${inv.warehouseName}`,
+          description: `فاتورة مبيعات (${inv.paymentType === 'cash' ? 'نقدي' : inv.paymentType === 'credit' ? 'آجل' : 'سداد جزئي'}) - ${inv.warehouseName}${appliedAdv > 0 ? ` · شاملة تطبيق دفعة مقدمة ${appliedAdv.toLocaleString()}` : ''}`,
           debit: inv.grandTotal,
-          credit: inv.paidAmount > 0 ? inv.paidAmount : 0, // المدفوع الفوري يخفض الدين
+          credit: directPaid,
           timestamp: new Date(inv.date).getTime(),
         });
       }
     });
 
-    // 3. Customer payment transactions (collected separately from invoice creation)
+    // 3. Order advance payments (collected before invoice conversion)
+    (orderAdvancePayments || [])
+      .filter((adv) => adv.customerId === selectedCustomer.id)
+      .forEach((adv) => {
+        events.push({
+          id: adv.id,
+          date: adv.date || (adv.createdAt ? adv.createdAt.split('T')[0] : ''),
+          docNumber: adv.paymentNumber,
+          type: 'دفعة مقدمة على طلب',
+          description: `دفعة مقدمة على طلب (${adv.requestNumber}) - الخزينة: ${adv.cashboxName || ''}${adv.notes ? ` - ${adv.notes}` : ''}`,
+          debit: 0,
+          credit: Number(adv.amount || 0),
+          timestamp: new Date(adv.createdAt || adv.date).getTime(),
+        });
+      });
+
+    // 4. Customer payment transactions (collected separately from invoice creation)
     selectedCustomerPayments.forEach(pay => {
       events.push({
         id: pay.id,
@@ -265,7 +305,7 @@ export const CustomersView: React.FC = () => {
       });
     });
 
-    // 4. Sales returns
+    // 5. Sales returns
     selectedCustomerReturns.forEach(ret => {
       events.push({
         id: ret.id,
@@ -299,7 +339,7 @@ export const CustomersView: React.FC = () => {
     });
 
     return rows;
-  }, [selectedCustomer, selectedCustomerInvoices, selectedCustomerPayments, selectedCustomerReturns]);
+  }, [selectedCustomer, selectedCustomerInvoices, orderAdvancePayments, selectedCustomerPayments, selectedCustomerReturns]);
 
   // Open Add modal
   const handleOpenAdd = () => {
@@ -1146,6 +1186,7 @@ export const CustomersView: React.FC = () => {
                           <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
                             row.type === 'فاتورة مبيعات' ? 'bg-blue-50 text-blue-800 border border-blue-200' :
                             row.type === 'سند قبض نقدية' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
+                            row.type === 'دفعة مقدمة على طلب' ? 'bg-indigo-50 text-indigo-800 border border-indigo-200' :
                             row.type === 'مرتجع مبيعات' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
                             'bg-slate-100 text-slate-800'
                           }`}>
@@ -1490,7 +1531,11 @@ export const CustomersView: React.FC = () => {
               {[
                 { key: 'all', label: `الكل (${customerItemOrders.length})` },
                 { key: 'pending', label: 'جديد' },
+                { key: 'under_review', label: 'قيد المراجعة' },
                 { key: 'approved', label: 'مقبول' },
+                { key: 'rep_assigned', label: 'معين لمندوب' },
+                { key: 'out_for_delivery', label: 'جاري التوصيل' },
+                { key: 'delivered', label: 'تم التسليم' },
                 { key: 'invoiced', label: 'تمت الفوترة' },
                 { key: 'rejected', label: 'مرفوض' },
               ].map((t) => (
@@ -1548,8 +1593,18 @@ export const CustomersView: React.FC = () => {
                           className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                             order.status === 'pending'
                               ? 'bg-amber-100 text-amber-800'
+                              : order.status === 'under_review'
+                              ? 'bg-sky-100 text-sky-800'
                               : order.status === 'approved'
                               ? 'bg-blue-100 text-blue-800'
+                              : order.status === 'rep_assigned'
+                              ? 'bg-indigo-100 text-indigo-800'
+                              : order.status === 'out_for_delivery'
+                              ? 'bg-purple-100 text-purple-800'
+                              : order.status === 'delivered'
+                              ? 'bg-teal-100 text-teal-800'
+                              : order.status === 'needs_review'
+                              ? 'bg-rose-100 text-rose-800'
                               : order.status === 'rejected'
                               ? 'bg-red-100 text-red-800'
                               : 'bg-emerald-100 text-emerald-800'
@@ -1557,12 +1612,27 @@ export const CustomersView: React.FC = () => {
                         >
                           {order.status === 'pending'
                             ? 'جديد — بانتظار المراجعة'
+                            : order.status === 'under_review'
+                            ? 'قيد المراجعة'
                             : order.status === 'approved'
                             ? 'مقبول — جاهز لتحويله لفاتورة'
+                            : order.status === 'rep_assigned'
+                            ? `معين للمندوب (${order.assignedDeliveryRepName || ''})`
+                            : order.status === 'out_for_delivery'
+                            ? 'جاري التوصيل'
+                            : order.status === 'delivered'
+                            ? 'تم التسليم — جاهز للفوترة'
+                            : order.status === 'needs_review'
+                            ? 'يحتاج مراجعة'
                             : order.status === 'rejected'
                             ? 'مرفوض'
                             : `تم التحويل لفاتورة (${order.invoiceNumber || ''})`}
                         </span>
+                        {Number(order.advancePaidAmount || 0) > 0 && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200 font-mono">
+                            دفعة مقدمة: {Number(order.advancePaidAmount).toLocaleString()} {settings.currency}
+                          </span>
+                        )}
                       </div>
                       <span className="text-[11px] font-mono text-slate-500">
                         {new Date(order.createdAt).toLocaleString('ar-EG')}
@@ -1653,7 +1723,7 @@ export const CustomersView: React.FC = () => {
                           </>
                         )}
 
-                        {order.status === 'approved' && (
+                        {['approved', 'rep_assigned', 'out_for_delivery', 'delivered'].includes(order.status) && (
                           <button
                             onClick={() => setConvertingOrder(order)}
                             className="inline-flex items-center gap-1.5 rounded-xl bg-blue-900 hover:bg-blue-950 px-4 py-2 text-xs font-black text-white shadow-sm cursor-pointer"
@@ -1802,7 +1872,7 @@ export const CustomersView: React.FC = () => {
 
         {/* Filters and Layout Toggle */}
         <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Filter className="w-4 h-4 text-slate-400" />
             <select
               value={statusFilter}
@@ -1812,6 +1882,16 @@ export const CustomersView: React.FC = () => {
               <option value="all">جميع الحالات ({customers.length})</option>
               <option value="active">نشط فقط</option>
               <option value="blocked">محظور فقط</option>
+            </select>
+            <select
+              value={channelFilter}
+              onChange={(e) => setChannelFilter(e.target.value as any)}
+              className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-hidden focus:border-blue-600"
+            >
+              <option value="all">كل التصنيفات</option>
+              <option value="direct">مبيعات مباشرة</option>
+              <option value="app">عميل تطبيق</option>
+              <option value="hybrid">تطبيق ومبيعات مباشرة</option>
             </select>
           </div>
 
@@ -1904,6 +1984,14 @@ export const CustomersView: React.FC = () => {
                     <h3 className="text-sm font-black text-slate-900 truncate mt-1 group-hover:text-blue-900 transition-colors">
                       {cust.name}
                     </h3>
+                    {(() => {
+                      const ch = getCustomerChannel(cust);
+                      return (
+                        <span className={`inline-block mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold ${ch.badgeClass}`}>
+                          {ch.label}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -2054,7 +2142,17 @@ export const CustomersView: React.FC = () => {
                       )}
                     </td>
                     <td className="p-3 font-mono font-bold text-blue-900">{cust.code}</td>
-                    <td className="p-3 font-black text-slate-900">{cust.name}</td>
+                    <td className="p-3 font-black text-slate-900">
+                      <div>{cust.name}</div>
+                      {(() => {
+                        const ch = getCustomerChannel(cust);
+                        return (
+                          <span className={`inline-block mt-0.5 px-2 py-0.5 rounded-md text-[10px] font-bold ${ch.badgeClass}`}>
+                            {ch.label}
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td className="p-3">
                       <a
                         href={`tel:${cust.phone}`}

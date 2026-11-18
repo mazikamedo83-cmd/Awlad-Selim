@@ -1,5 +1,5 @@
 import { verifyJwt } from '../utils/crypto.js';
-import { validateActiveSession, recordAuditLog } from '../db/stores/authStore.js';
+import { validateActiveSession, validateSyncPushSession, recordAuditLog } from '../db/stores/authStore.js';
 import { AppError } from '../utils/errors.js';
 
 const RATE_WINDOW_MS = 15 * 60 * 1000;
@@ -81,6 +81,37 @@ export async function requireAuth(req, res, next) {
     }
 
     const sessionCtx = await validateActiveSession(payload.sid, payload.sub);
+    if (!sessionCtx) {
+      return res.status(401).json({ ok: false, code: 'SESSION_REVOKED', error: 'الجلسة غير نشطة أو تم تسجيل الخروج منها' });
+    }
+
+    req.auth = {
+      sessionId: payload.sid,
+      user: sessionCtx.user,
+      customerProfile: sessionCtx.customerProfile,
+      representativeProfile: sessionCtx.representativeProfile,
+      linkWarning: sessionCtx.linkWarning,
+    };
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function requireSyncPushAuth(req, res, next) {
+  try {
+    const authHeader = req.get('authorization') || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!token) {
+      return res.status(401).json({ ok: false, code: 'UNAUTHORIZED', error: 'مطلوب تسجيل الدخول أولاً' });
+    }
+
+    const payload = verifyJwt(token);
+    if (!payload || !payload.sub || !payload.sid) {
+      return res.status(401).json({ ok: false, code: 'INVALID_TOKEN', error: 'انتهت صلاحية الجلسة أو رمز الدخول غير صالح' });
+    }
+
+    const sessionCtx = await validateSyncPushSession(payload.sid, payload.sub);
     if (!sessionCtx) {
       return res.status(401).json({ ok: false, code: 'SESSION_REVOKED', error: 'الجلسة غير نشطة أو تم تسجيل الخروج منها' });
     }

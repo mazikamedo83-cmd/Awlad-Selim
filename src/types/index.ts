@@ -163,6 +163,7 @@ export interface Product {
   importBatchId?: string;
   importedFromFile?: boolean;
   sourceFileName?: string;
+  version?: number;
   createdAt: string;
 }
 
@@ -198,6 +199,7 @@ export interface Customer {
   status: 'active' | 'blocked';
   // التاريخ الفعلي لأسعار الشراء السابقة لكل منتج: productId -> prices array [oldest to newest]
   priceHistory: Record<string, Array<number | CustomerPriceHistoryEntry>>;
+  version?: number;
   createdAt: string;
 }
 
@@ -260,6 +262,7 @@ export interface Invoice {
   taxTotal: number;
   grandTotal: number;
   paidAmount: number;
+  appliedAdvanceAmount?: number;
   remainingAmount: number;
   paymentType: 'cash' | 'credit' | 'partial';
   paymentMethod: 'cash' | 'bank' | 'cheque';
@@ -270,6 +273,7 @@ export interface Invoice {
   linkedRepTransferId?: string; // معرف طلب تحويل عهدة المندوب المرتبط
   linkedRepTransferNumber?: string; // رقم طلب تحويل عهدة المندوب المرتبط
   linkedCustomerOrderId?: string; // معرف طلب العميل المرتبط (1:1)
+  version?: number;
   createdBy: string;
   createdAt: string;
   returnedQuantityByItem?: Record<string, number>;
@@ -674,7 +678,18 @@ export interface RepItemTransferRequest {
 }
 
 
-export type CustomerItemOrderStatus = 'pending' | 'approved' | 'rejected' | 'invoiced';
+export type CustomerItemOrderStatus =
+  | 'pending'
+  | 'under_review'
+  | 'approved'
+  | 'rep_assigned'
+  | 'out_for_delivery'
+  | 'delivered'
+  | 'needs_review'
+  | 'rejected'
+  | 'invoiced'
+  | 'cancelled';
+
 export interface CustomerOrderStatusHistoryEntry {
   id: string;
   fromStatus: string | null;
@@ -689,6 +704,10 @@ export interface CustomerItemOrderRequest {
   requestNumber: string;
   customerId: string;
   userId?: string;
+  requesterType?: 'customer' | 'representative' | 'staff';
+  representativeId?: string;
+  representativeName?: string;
+  submittedByName?: string;
   customerName: string;
   customerPhone?: string;
   shopName?: string;
@@ -704,16 +723,111 @@ export interface CustomerItemOrderRequest {
     unitPrice?: number;
   }>;
   status: CustomerItemOrderStatus;
+  totalAmount?: number;
+  advancePaidAmount?: number;
   notes?: string;
   rejectionReason?: string;
   createdAt: string;
   updatedAt?: string;
   reviewedAt?: string;
   reviewedBy?: string;
+  deliveryRepId?: string;
+  deliveryRepName?: string;
+  assignedAt?: string;
+  deliveredAt?: string;
+  collectedAmount?: number;
+  deliveryNotes?: string;
+  deliveryProof?: string;
   invoiceId?: string;
   invoiceNumber?: string;
   idempotencyKey?: string;
+  originDeviceId?: string;
+  version?: number;
+  isLocalQueued?: boolean;
   statusHistory?: CustomerOrderStatusHistoryEntry[];
+}
+
+export interface OrderAdvancePayment {
+  id: string;
+  paymentNumber: string;
+  advanceNumber?: string;
+  orderId: string;
+  requestNumber: string;
+  customerId: string;
+  customerName: string;
+  amount: number;
+  date: string;
+  paymentMethod: 'cash' | 'bank' | 'cheque';
+  cashboxId: string;
+  cashboxName: string;
+  status: 'available' | 'applied' | 'refunded';
+  appliedInvoiceId?: string;
+  appliedInvoiceNumber?: string;
+  appliedAt?: string;
+  notes?: string;
+  originDeviceId?: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+export type SyncOperationType =
+  | 'create_order'
+  | 'order_delivery_update'
+  | 'order_advance_payment'
+  | 'create_sales_invoice'
+  | 'edit_sales_invoice'
+  | 'create_purchase_invoice'
+  | 'add_invoice_payment'
+  | 'create_invoice_return'
+  | 'customer_payment'
+  | 'create_customer'
+  | 'update_customer'
+  | 'cash_operation';
+
+export type SyncQueueStatus =
+  | 'local'
+  | 'pending'
+  | 'syncing'
+  | 'synced'
+  | 'failed'
+  | 'needs_review';
+
+export interface SyncQueueItem {
+  operationId: string;
+  userId: string;
+  deviceId: string;
+  operationType: SyncOperationType;
+  entityType: string;
+  entityId?: string;
+  localId?: string;
+  summaryAr: string;
+  payload: Record<string, any>;
+  status: SyncQueueStatus;
+  attempts: number;
+  lastError?: string;
+  conflictId?: string;
+  nextRetryAt?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SyncConflictRecord {
+  id: string;
+  operationId: string;
+  operationType: string;
+  entityType: string;
+  entityId?: string;
+  deviceId?: string;
+  userId?: string;
+  userName?: string;
+  conflictReason: string;
+  localPayload: Record<string, any>;
+  serverSnapshot: Record<string, any>;
+  status: 'needs_review' | 'resolved_keep_server' | 'resolved_apply_local' | 'dismissed';
+  resolutionNotes?: string;
+  resolvedBy?: string;
+  resolvedAt?: string;
+  createdAt: string;
 }
 
 // إعدادات السيرفر والاتصال المحلي والشبكة
@@ -948,18 +1062,31 @@ export interface MobileConfig {
 export interface MobileNotificationItem {
   id: string;
   type:
+    | 'order_status'
     | 'order_approved'
     | 'order_rejected'
     | 'order_invoiced'
+    | 'invoice'
     | 'invoice_confirmed'
+    | 'balance'
+    | 'item_transfer'
     | 'rep_item_transfer_executed'
     | 'rep_item_transfer_rejected'
+    | 'cash_transfer'
     | 'rep_cash_awaiting_receipt'
-    | 'draft_invoice_ready';
+    | 'draft_ready'
+    | 'draft_invoice_ready'
+    | 'delivery_order'
+    | 'customer_order'
+    | 'stock_count'
+    | 'stock_transfer'
+    | 'low_stock';
+  severity?: 'info' | 'warning' | 'success';
   title: string;
   body: string;
   createdAt: string;
   targetTab?: string;
+  relatedId?: string;
   referenceId?: string;
   referenceNumber?: string;
 }
@@ -968,7 +1095,7 @@ export interface CustomerStatementEntry {
   id: string;
   date: string;
   docNumber: string;
-  type: 'opening_balance' | 'sales_invoice' | 'customer_payment' | 'sales_return';
+  type: 'opening_balance' | 'sales_invoice' | 'customer_payment' | 'sales_return' | 'order_advance';
   label: string;
   description: string;
   debit: number | null;
@@ -979,6 +1106,9 @@ export interface CustomerStatementEntry {
 export interface CustomerStatementResponse {
   customer: Customer | null;
   allowPriceView: boolean;
+  invoices?: Invoice[];
+  returns?: InvoiceReturn[];
+  advancePayments?: OrderAdvancePayment[];
   summary: {
     openingBalance: number | null;
     totalDebit: number | null;

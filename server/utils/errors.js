@@ -42,6 +42,9 @@ export function sanitizeUser(user) {
     lastLogin: safe.lastLogin ?? safe.last_login ?? undefined,
     permissions: safe.permissions || {},
     shortcuts: Array.isArray(safe.shortcuts) ? safe.shortcuts : [],
+    ...(safe.linkedCustomerId || safe.linked_customer_id
+      ? { linkedCustomerId: safe.linkedCustomerId ?? safe.linked_customer_id }
+      : {}),
     createdAt: safe.createdAt ?? safe.created_at ?? nowIso(),
   };
 }

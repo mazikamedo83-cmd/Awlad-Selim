@@ -1,16 +1,19 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   DatabaseState,
   getEmptyClientDatabaseState,
   generateId,
   loadOfflineOrdersQueue,
   saveOfflineOrdersQueue,
-  QueuedCustomerOrder,
   saveReadCache,
   loadReadCache,
 } from '../services/storage';
 import { apiRequest, getConfiguredApiBaseUrl, setConfiguredApiBaseUrl } from '../services/api';
-import { notifyLocal, subscribeNetworkStatus } from '../services/native';
+import { getOrCreatePersistentDeviceId, notifyLocal, subscribeNetworkStatus } from '../services/native';
+import { localDb } from '../services/localDb';
+import { enqueueSyncOperation, runSyncCycle } from '../services/syncEngine';
+import { warmProductMediaCache, getCachedProductImageMap } from '../services/mediaCache';
+import { normalizeServerOrigin } from '../services/offlineAuth';
 import {
   Product,
   Customer,
@@ -48,14 +51,28 @@ import {
   CustomerPriceHistoryEntry,
   CustomerStatementResponse,
   MobileNotificationItem,
+  OrderAdvancePayment,
+  SyncConflictRecord,
+  SyncQueueItem,
 } from '../types';
 import { useAuth } from './AuthContext';
 
 export interface DataContextType extends DatabaseState {
   networkStatus: NetworkSyncStatus;
   lastSyncTime: string;
+  lastServerSyncAt: string | null;
   pendingChangesCount: number;
   offlineOrdersCount: number;
+  syncQueue: SyncQueueItem[];
+  syncConflicts: SyncConflictRecord[];
+  isServerReachable: boolean;
+  isSyncing: boolean;
+  pendingSyncCount: number;
+  failedSyncCount: number;
+  conflictsCount: number;
+  hasTentativeLocalBalances: boolean;
+  orderAdvancePayments: OrderAdvancePayment[];
+  cachedMediaMap: Record<string, string>;
   lastError: string | null;
   isUsingOfflineCache: boolean;
   lastCacheTimestamp: string | null;
@@ -67,6 +84,8 @@ export interface DataContextType extends DatabaseState {
   refreshCustomerStatement: () => Promise<void>;
   getCustomerPriceHistory: (customerId: string) => Promise<Record<string, CustomerPriceHistoryEntry[]>>;
   triggerManualSync: () => Promise<void>;
+  triggerSync: (forceAll?: boolean) => Promise<void>;
+  resolveSyncConflict: (conflictId: string, resolution: 'keep_server' | 'apply_local' | 'dismiss', notes?: string) => Promise<{ success: boolean; error?: string }>;
   exportBackup: () => Promise<void>;
   importBackup: (fileContent: string) => Promise<{ success: boolean; error?: string }>;
   resetSystemToFresh: () => Promise<void>;
@@ -149,10 +168,14 @@ export interface DataContextType extends DatabaseState {
   createRepItemTransfer: (transferData: Omit<RepItemTransferRequest, 'id' | 'requestNumber' | 'createdAt' | 'status' | 'createdBy'>) => Promise<{ success: boolean; request?: RepItemTransferRequest; error?: string }>;
   updateRepItemTransferStatus: (requestId: string, newStatus: RepItemTransferStatus, approvedItems?: RepTransferItem[], notes?: string) => Promise<{ success: boolean; error?: string }>;
 
-  // Customer Orders Lifecycle
+  // Customer Orders Lifecycle & Advance Payments & Delivery
   createCustomerItemOrder: (payload: Omit<CustomerItemOrderRequest, 'id' | 'requestNumber' | 'status' | 'createdAt'> & { idempotencyKey?: string }) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; queuedOffline?: boolean; error?: string }>;
+  reviewCustomerItemOrder: (id: string, notes?: string) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; error?: string }>;
   approveCustomerItemOrder: (id: string, notes?: string) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; error?: string }>;
   rejectCustomerItemOrder: (id: string, reason: string) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; error?: string }>;
+  assignOrderDeliveryRep: (id: string, repId: string, notes?: string) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; error?: string }>;
+  updateOrderDeliveryStatus: (id: string, payload: { status: string; collectedAmount?: number; deliveryNotes?: string; deliveryProof?: string }) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; queuedOffline?: boolean; error?: string }>;
+  recordOrderAdvancePayment: (id: string, payload: { amount: number; cashboxId: string; paymentMethod?: 'cash' | 'bank' | 'cheque'; date?: string; notes?: string }) => Promise<{ success: boolean; advancePayment?: OrderAdvancePayment; order?: CustomerItemOrderRequest; queuedOffline?: boolean; error?: string }>;
   convertOrderToInvoice: (orderId: string, invoicePayload: Partial<Invoice>) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; invoice?: Invoice; error?: string }>;
   updateCustomerItemOrder: (id: string, status: CustomerItemOrderRequest['status'], reason?: string) => Promise<{ success: boolean; error?: string }>;
 
@@ -211,11 +234,16 @@ export interface DataContextType extends DatabaseState {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentUser, isAuthenticated } = useAuth();
+  const { currentUser, customerProfile, representativeProfile, isAuthenticated, isOfflineSession, handleCentralAuthRevoked } = useAuth();
   const [data, setData] = useState<DatabaseState>(() => getEmptyClientDatabaseState());
   const [networkStatus, setNetworkStatus] = useState<NetworkSyncStatus>('connected');
   const [lastSyncTime, setLastSyncTime] = useState<string>(new Date().toLocaleTimeString('ar-EG'));
-  const [offlineQueue, setOfflineQueue] = useState<QueuedCustomerOrder[]>(() => loadOfflineOrdersQueue());
+  const [lastServerSyncAt, setLastServerSyncAt] = useState<string | null>(null);
+  const [syncQueue, setSyncQueue] = useState<SyncQueueItem[]>([]);
+  const [syncConflicts, setSyncConflicts] = useState<SyncConflictRecord[]>([]);
+  const [cachedMediaMap, setCachedMediaMap] = useState<Record<string, string>>({});
+  const [isServerReachable, setIsServerReachable] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine !== false : true);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [lastError, setLastError] = useState<string | null>(null);
   const [isInitialLoaded, setIsInitialLoaded] = useState<boolean>(false);
   const [isUsingOfflineCache, setIsUsingOfflineCache] = useState<boolean>(false);
@@ -223,93 +251,227 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [customerStatement, setCustomerStatement] = useState<CustomerStatementResponse | null>(null);
   const [mobileNotifications, setMobileNotifications] = useState<MobileNotificationItem[]>([]);
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
+  const dataRef = useRef(data);
+  dataRef.current = data;
+
+  const refreshQueueAndConflictsFromLocal = useCallback(async (userId?: string) => {
+    if (!userId) {
+      setSyncQueue([]);
+      setSyncConflicts([]);
+      return { queue: [] as SyncQueueItem[], conflicts: [] as SyncConflictRecord[] };
+    }
+    const [queue, conflicts, lastAt] = await Promise.all([
+      localDb.listSyncQueue(userId),
+      localDb.listConflicts(userId),
+      localDb.getMeta<string>('last_sync_at'),
+    ]);
+    setSyncQueue(queue);
+    setSyncConflicts(conflicts);
+    if (lastAt) setLastServerSyncAt(lastAt);
+    return { queue, conflicts };
+  }, []);
+
+  const persistCurrentSnapshot = useCallback(
+    async (nextState: DatabaseState, statementArg: CustomerStatementResponse | null = null) => {
+      if (!currentUser?.id) return;
+      const nowIso = new Date().toISOString();
+      const scope: 'staff' | 'representative' | 'customer' =
+        currentUser.role === 'customer'
+          ? 'customer'
+          : currentUser.role === 'representative'
+          ? 'representative'
+          : 'staff';
+      await localDb.saveSnapshot({
+        userId: currentUser.id,
+        scope,
+        serverOrigin: normalizeServerOrigin(getConfiguredApiBaseUrl()),
+        cachedAt: nowIso,
+        serverTime: nowIso,
+        user: currentUser,
+        customerProfile,
+        representativeProfile,
+        data: {
+          ...nextState,
+          customerStatement: statementArg,
+        },
+      });
+    },
+    [currentUser, customerProfile, representativeProfile]
+  );
+
+  const applyPullPayload = useCallback(
+    async (pullData: any) => {
+      if (!pullData || !currentUser) return;
+      const nextStateBase: DatabaseState = {
+        ...getEmptyClientDatabaseState(),
+        ...pullData,
+      };
+      // If pending offline queued orders exist, keep tentative local orders visible alongside server orders
+      const queue = await localDb.listSyncQueue(currentUser.id);
+      const pendingOrderOps = queue.filter(
+        (q) => q.operationType === 'create_order' && q.status !== 'synced'
+      );
+      const existingKeys = new Set((nextStateBase.customerItemOrders || []).map((o) => o.idempotencyKey).filter(Boolean));
+      const tentativeOrders: CustomerItemOrderRequest[] = pendingOrderOps
+        .filter((op) => !op.payload?.idempotencyKey || !existingKeys.has(op.payload.idempotencyKey))
+        .map((op) => ({
+          id: op.localId || op.operationId,
+          requestNumber: 'بانتظار المزامنة',
+          customerId: op.payload.customerId || customerProfile?.id || '',
+          userId: currentUser.id,
+          requesterType: op.payload.requesterType || (currentUser.role === 'representative' ? 'representative' : 'customer'),
+          customerName: op.payload.customerName || customerProfile?.name || currentUser.fullName,
+          customerPhone: op.payload.customerPhone || '',
+          shopName: op.payload.shopName || '',
+          deliveryAddress: op.payload.deliveryAddress || '',
+          geoCoordinates: op.payload.geoCoordinates || '',
+          items: op.payload.items || [],
+          status: 'pending',
+          notes: op.payload.notes || '',
+          idempotencyKey: op.payload.idempotencyKey,
+          createdAt: op.createdAt,
+          isLocalQueued: true,
+        }));
+
+      const mergedOrders = [...tentativeOrders, ...(nextStateBase.customerItemOrders || [])];
+      const mergedState: DatabaseState = {
+        ...nextStateBase,
+        customerItemOrders: mergedOrders,
+      };
+
+      let nextStmt: CustomerStatementResponse | null = null;
+      if (pullData.statement) {
+        nextStmt = {
+          customer: pullData.statement.customer || null,
+          allowPriceView: Boolean(pullData.statement.allowPriceView),
+          invoices: pullData.statement.invoices || [],
+          returns: pullData.statement.returns || [],
+          advancePayments: pullData.statement.advancePayments || pullData.orderAdvancePayments || [],
+          summary: pullData.statement.summary,
+          entries: pullData.statement.entries || [],
+        };
+      }
+
+      setData((prev) => ({
+        ...mergedState,
+        serverSettings: prev.serverSettings,
+      }));
+      setCustomerStatement(nextStmt);
+      if (Array.isArray(pullData.syncConflicts)) {
+        await localDb.replaceServerConflicts(pullData.syncConflicts);
+        setSyncConflicts(pullData.syncConflicts);
+      }
+
+      await persistCurrentSnapshot(mergedState, nextStmt);
+      saveReadCache(currentUser.id, currentUser.role, {
+        dbState: mergedState,
+        customerStatement: nextStmt,
+      });
+
+      const cachedImgs = await getCachedProductImageMap(mergedState.products || []);
+      if (Object.keys(cachedImgs).length > 0) {
+        setCachedMediaMap((prev) => ({ ...prev, ...cachedImgs }));
+      }
+      warmProductMediaCache(mergedState.products || [], (productId, dataUrl) => {
+        setCachedMediaMap((prev) => ({ ...prev, [productId]: dataUrl }));
+      }).catch(() => {});
+
+      const syncAt = pullData.serverTime || new Date().toISOString();
+      setLastServerSyncAt(syncAt);
+      setLastSyncTime(new Date().toLocaleTimeString('ar-EG'));
+      setIsUsingOfflineCache(false);
+      setIsServerReachable(true);
+      setLastCacheTimestamp(null);
+      setLastError(null);
+    },
+    [currentUser, customerProfile, persistCurrentSnapshot]
+  );
 
   const loadRoleScopedData = useCallback(async () => {
     if (!isAuthenticated || !currentUser) {
       setData(getEmptyClientDatabaseState());
       setCustomerStatement(null);
       setMobileNotifications([]);
+      setSyncQueue([]);
+      setSyncConflicts([]);
       setIsUsingOfflineCache(false);
       setLastCacheTimestamp(null);
       setIsInitialLoaded(true);
       return;
     }
 
-    try {
-      if (currentUser.role === 'customer') {
-        const [meRes, prodRes, catRes, ordRes, myInvRes, stmtRes] = await Promise.all([
-          apiRequest<{ ok: boolean; customer: Customer | null }>('/api/customers/me'),
-          apiRequest<{ ok: boolean; products: Product[] }>('/api/products'),
-          apiRequest<{ ok: boolean; categories: ProductCategory[] }>('/api/products/categories'),
-          apiRequest<{ ok: boolean; orders: CustomerItemOrderRequest[] }>('/api/orders'),
-          apiRequest<{ ok: boolean; invoices: Invoice[]; returns: InvoiceReturn[] }>('/api/invoices/my').catch(() => ({
-            invoices: [] as Invoice[],
-            returns: [] as InvoiceReturn[],
-          })),
-          apiRequest<{ ok: boolean } & CustomerStatementResponse>('/api/customers/me/statement').catch(() => null),
-        ]);
-
-        const nextStateBase: DatabaseState = {
-          ...getEmptyClientDatabaseState(),
-          customers: meRes.customer ? [meRes.customer] : [],
-          products: prodRes.products || [],
-          categories: catRes.categories || [],
-          customerItemOrders: ordRes.orders || [],
-          invoices: myInvRes.invoices || [],
-          invoiceReturns: myInvRes.returns || [],
-        };
-        const nextStmt = stmtRes
-          ? {
-              customer: stmtRes.customer || null,
-              allowPriceView: stmtRes.allowPriceView,
-              summary: stmtRes.summary,
-              entries: stmtRes.entries || [],
-            }
-          : null;
-
-        setData((prev) => ({
-          ...nextStateBase,
-          serverSettings: prev.serverSettings,
-        }));
-        setCustomerStatement(nextStmt);
-        saveReadCache(currentUser.id, currentUser.role, {
-          dbState: nextStateBase,
-          customerStatement: nextStmt,
+    // Migrate any legacy localStorage offline orders queue into IndexedDB/Vault syncQueue
+    const legacyQueue = loadOfflineOrdersQueue();
+    if (legacyQueue.length > 0) {
+      for (const entry of legacyQueue) {
+        await enqueueSyncOperation({
+          userId: currentUser.id,
+          operationType: 'create_order',
+          entityType: 'order',
+          localId: entry.idempotencyKey,
+          summaryAr: `طلب عميل (${entry.payload.items?.length || 0} صنف)`,
+          payload: {
+            ...entry.payload,
+            idempotencyKey: entry.idempotencyKey,
+          },
         });
-        setIsUsingOfflineCache(false);
-        setLastCacheTimestamp(null);
-      } else {
-        const [bootRes, migRes] = await Promise.all([
-          apiRequest<{ ok: boolean; data: any }>('/api/admin/bootstrap'),
-          currentUser.role === 'admin' || currentUser.permissions?.canManageSettings
-            ? apiRequest<{ ok: boolean; logs: MigrationLogEntry[] }>('/api/admin/migration/logs').catch(() => ({ logs: [] }))
-            : Promise.resolve({ logs: [] }),
-        ]);
-        const d = bootRes.data || {};
-        const nextStateBase: DatabaseState = {
-          ...getEmptyClientDatabaseState(),
-          ...d,
-          migrationLogs: migRes.logs || [],
-        };
-        setData((prev) => ({
-          ...nextStateBase,
-          serverSettings: prev.serverSettings,
-        }));
-        setCustomerStatement(null);
-        if (currentUser.role === 'representative') {
-          saveReadCache(currentUser.id, currentUser.role, { dbState: nextStateBase });
-        }
-        setIsUsingOfflineCache(false);
-        setLastCacheTimestamp(null);
       }
-      setNetworkStatus(offlineQueue.length > 0 ? 'pending' : 'connected');
-      setLastSyncTime(new Date().toLocaleTimeString('ar-EG'));
-      setLastError(null);
+      saveOfflineOrdersQueue([]);
+    }
+
+    const { queue } = await refreshQueueAndConflictsFromLocal(currentUser.id);
+    const pendingCountNow = queue.filter((q) => q.status !== 'synced').length;
+
+    // Load local snapshot immediately for instant offline-first hydration
+    const currentOrigin = normalizeServerOrigin(getConfiguredApiBaseUrl());
+    const localSnap = await localDb.getSnapshot(currentUser.id);
+    if (localSnap?.data && localSnap.serverOrigin === currentOrigin) {
+      const snapDb: DatabaseState = {
+        ...getEmptyClientDatabaseState(),
+        ...localSnap.data,
+      };
+      setData((prev) => ({
+        ...snapDb,
+        serverSettings: prev.serverSettings,
+      }));
+      if (localSnap.data.customerStatement) {
+        setCustomerStatement(localSnap.data.customerStatement);
+      }
+      setIsUsingOfflineCache(true);
+      setLastCacheTimestamp(localSnap.cachedAt);
+      const imgMap = await getCachedProductImageMap(snapDb.products || []);
+      if (Object.keys(imgMap).length > 0) {
+        setCachedMediaMap((prev) => ({ ...prev, ...imgMap }));
+      }
+      setIsInitialLoaded(true);
+    }
+
+    if (isOfflineSession && typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setIsServerReachable(false);
+      setNetworkStatus(pendingCountNow > 0 ? 'pending' : 'disconnected');
+      setIsInitialLoaded(true);
+      return;
+    }
+
+    try {
+      const [pullRes, migRes] = await Promise.all([
+        apiRequest<any>('/api/sync/pull', { timeoutMs: 25000 }),
+        currentUser.role === 'admin' || currentUser.permissions?.canManageSettings
+          ? apiRequest<{ ok: boolean; logs: MigrationLogEntry[] }>('/api/admin/migration/logs').catch(() => ({ logs: [] }))
+          : Promise.resolve({ logs: [] }),
+      ]);
+      await applyPullPayload({ ...pullRes, migrationLogs: migRes.logs || [] });
+      const postQueue = await refreshQueueAndConflictsFromLocal(currentUser.id);
+      const activePending = postQueue.queue.filter((q) => q.status !== 'synced').length;
+      setNetworkStatus(activePending > 0 ? 'pending' : 'connected');
     } catch (err: any) {
-      const canUseCache =
-        (currentUser.role === 'customer' || currentUser.role === 'representative') &&
-        err?.status === 0;
-      if (canUseCache) {
+      if (err?.status === 401 || err?.code === 'ACCOUNT_DEACTIVATED' || err?.code === 'DEVICE_REVOKED') {
+        await handleCentralAuthRevoked(err.message);
+        return;
+      }
+
+      // Fallback to readCache if localDb snapshot wasn't populated yet
+      if (!localSnap?.data) {
         const cached = loadReadCache<{ dbState: DatabaseState; customerStatement?: CustomerStatementResponse | null }>(
           currentUser.id,
           currentUser.role
@@ -327,12 +489,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setLastCacheTimestamp(cached.cachedAt);
         }
       }
+      setIsServerReachable(err?.status !== 0 ? true : false);
       setLastError(err?.message || 'تعذر مزامنة البيانات مع السيرفر');
-      setNetworkStatus(err?.status === 0 ? 'disconnected' : 'error');
+      setNetworkStatus(err?.status === 0 ? (pendingCountNow > 0 ? 'pending' : 'disconnected') : 'error');
     } finally {
       setIsInitialLoaded(true);
     }
-  }, [isAuthenticated, currentUser, offlineQueue.length]);
+  }, [isAuthenticated, currentUser, isOfflineSession, applyPullPayload, refreshQueueAndConflictsFromLocal, handleCentralAuthRevoked]);
 
   useEffect(() => {
     loadRoleScopedData();
@@ -476,59 +639,84 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [data.customers]
   );
 
-  // Flush queued customer orders when connection recovers
-  const flushOfflineOrders = useCallback(async () => {
-    if (!isAuthenticated || currentUser?.role !== 'customer') return;
-    const queue = loadOfflineOrdersQueue();
-    if (!queue.length) return;
-
-    const remaining: QueuedCustomerOrder[] = [];
-    for (const entry of queue) {
+  const triggerSync = useCallback(
+    async (forceAll = false) => {
+      if (!isAuthenticated || !currentUser?.id) return;
+      setIsSyncing(true);
+      setNetworkStatus('synchronizing');
       try {
-        await apiRequest('/api/orders', {
-          method: 'POST',
-          body: entry.payload,
-          idempotencyKey: entry.idempotencyKey,
-        });
-      } catch (err: any) {
-        if (err?.status === 0) {
-          remaining.push(entry);
+        const outcome = await runSyncCycle({ userId: currentUser.id, forceAll });
+        setIsServerReachable(outcome.serverReachable);
+        if (outcome.authRevoked) {
+          await handleCentralAuthRevoked(outcome.revokeReason);
+          return;
         }
-        // 4xx validation errors are dropped from queue rather than looping infinitely
+        await refreshQueueAndConflictsFromLocal(currentUser.id);
+        if (outcome.ok && outcome.pullData) {
+          await applyPullPayload(outcome.pullData);
+          const qAfter = await localDb.listSyncQueue(currentUser.id);
+          const pendingAfter = qAfter.filter((q) => q.status !== 'synced').length;
+          setNetworkStatus(pendingAfter > 0 ? 'pending' : 'connected');
+        } else {
+          const qAfter = await localDb.listSyncQueue(currentUser.id);
+          const pendingAfter = qAfter.filter((q) => q.status !== 'synced').length;
+          setNetworkStatus(outcome.serverReachable ? (pendingAfter > 0 ? 'pending' : 'error') : (pendingAfter > 0 ? 'pending' : 'disconnected'));
+          if (outcome.error) setLastError(outcome.error);
+        }
+      } finally {
+        setIsSyncing(false);
       }
-    }
-    saveOfflineOrdersQueue(remaining);
-    setOfflineQueue(remaining);
-    if (remaining.length < queue.length) {
-      await loadRoleScopedData();
-    }
-  }, [isAuthenticated, currentUser, loadRoleScopedData]);
+    },
+    [isAuthenticated, currentUser?.id, refreshQueueAndConflictsFromLocal, applyPullPayload, handleCentralAuthRevoked]
+  );
+
+  const resolveSyncConflict = useCallback(
+    async (conflictId: string, resolution: 'keep_server' | 'apply_local' | 'dismiss', notes = '') => {
+      try {
+        await apiRequest(`/api/sync/conflicts/${conflictId}/resolve`, {
+          method: 'POST',
+          body: { resolution, resolutionNotes: notes },
+        });
+        await triggerSync(false);
+        return { success: true };
+      } catch (err: any) {
+        return { success: false, error: err?.message || 'تعذر معالجة التعارض' };
+      }
+    },
+    [triggerSync]
+  );
 
   useEffect(() => {
     const unsubscribe = subscribeNetworkStatus((connected) => {
       if (connected && isAuthenticated) {
-        flushOfflineOrders();
-        loadRoleScopedData();
+        triggerSync(false);
         refreshMobileNotifications();
       } else if (!connected) {
+        setIsServerReachable(false);
         setNetworkStatus('disconnected');
       }
     });
-    const interval = window.setInterval(() => {
-      if (isAuthenticated && navigator.onLine) {
-        flushOfflineOrders();
+    const onOnline = () => {
+      if (isAuthenticated) {
+        triggerSync(false);
+        refreshMobileNotifications();
       }
-    }, 15000);
+    };
+    window.addEventListener('online', onOnline);
+    const interval = window.setInterval(() => {
+      if (isAuthenticated && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
+        triggerSync(false);
+      }
+    }, 30000);
     return () => {
       unsubscribe();
+      window.removeEventListener('online', onOnline);
       window.clearInterval(interval);
     };
-  }, [isAuthenticated, currentUser?.role, flushOfflineOrders, loadRoleScopedData, refreshMobileNotifications]);
+  }, [isAuthenticated, triggerSync, refreshMobileNotifications]);
 
   const triggerManualSync = async () => {
-    setNetworkStatus('synchronizing');
-    await flushOfflineOrders();
-    await loadRoleScopedData();
+    await triggerSync(true);
     await refreshMobileNotifications();
   };
 
@@ -720,17 +908,74 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Customers & Suppliers
   const addCustomer = async (custData: Omit<Customer, 'id' | 'createdAt' | 'currentBalance' | 'priceHistory'>): Promise<Customer> => {
-    const res = await apiRequest<{ ok: boolean; customer: Customer }>('/api/customers', {
-      method: 'POST',
-      body: custData,
-    });
-    await loadRoleScopedData();
-    return res.customer;
+    try {
+      const res = await apiRequest<{ ok: boolean; customer: Customer }>('/api/customers', {
+        method: 'POST',
+        body: custData,
+      });
+      await loadRoleScopedData();
+      return res.customer;
+    } catch (err: any) {
+      if (err?.status === 0 && currentUser?.id) {
+        const localCust: Customer = {
+          ...custData,
+          id: generateId('CUST-LOC'),
+          currentBalance: Number(custData.openingBalance || 0),
+          priceHistory: {},
+          createdAt: new Date().toISOString(),
+        };
+        await enqueueSyncOperation({
+          userId: currentUser.id,
+          operationType: 'create_customer',
+          entityType: 'customer',
+          localId: localCust.id,
+          summaryAr: `إضافة عميل: ${localCust.name}`,
+          payload: { ...custData, id: localCust.id },
+        });
+        await refreshQueueAndConflictsFromLocal(currentUser.id);
+        const nextDb = {
+          ...dataRef.current,
+          customers: [localCust, ...(dataRef.current.customers || [])],
+        };
+        setData(nextDb);
+        await persistCurrentSnapshot(nextDb);
+        setNetworkStatus('pending');
+        return localCust;
+      }
+      throw err;
+    }
   };
 
   const updateCustomer = async (id: string, updates: Partial<Customer>) => {
-    await apiRequest(`/api/customers/${id}`, { method: 'PUT', body: updates });
-    await loadRoleScopedData();
+    const existing = dataRef.current.customers.find((c) => c.id === id);
+    try {
+      await apiRequest(`/api/customers/${id}`, {
+        method: 'PUT',
+        body: { ...updates, expectedVersion: existing?.version },
+      });
+      await loadRoleScopedData();
+    } catch (err: any) {
+      if (err?.status === 0 && currentUser?.id) {
+        await enqueueSyncOperation({
+          userId: currentUser.id,
+          operationType: 'update_customer',
+          entityType: 'customer',
+          entityId: id,
+          summaryAr: `تعديل عميل: ${existing?.name || id}`,
+          payload: { customerId: id, updates, expectedVersion: existing?.version },
+        });
+        await refreshQueueAndConflictsFromLocal(currentUser.id);
+        const nextDb = {
+          ...dataRef.current,
+          customers: (dataRef.current.customers || []).map((c) => (c.id === id ? { ...c, ...updates } : c)),
+        };
+        setData(nextDb);
+        await persistCurrentSnapshot(nextDb);
+        setNetworkStatus('pending');
+        return;
+      }
+      throw err;
+    }
   };
 
   const deleteCustomer = async (id: string) => {
@@ -779,15 +1024,41 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     notes: string,
     paymentMethod: 'cash' | 'bank' | 'cheque' = 'cash'
   ) => {
+    const idempotencyKey = generateId('IDEMP');
     try {
       await apiRequest(`/api/customers/${customerId}/payment`, {
         method: 'POST',
         body: { amount, cashboxId, notes, paymentMethod },
-        idempotencyKey: generateId('IDEMP'),
+        idempotencyKey,
       });
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
+      if (err?.status === 0 && currentUser?.id) {
+        const cust = dataRef.current.customers.find((c) => c.id === customerId);
+        await enqueueSyncOperation({
+          userId: currentUser.id,
+          operationType: 'customer_payment',
+          entityType: 'customer',
+          entityId: customerId,
+          summaryAr: `تحصيل ${amount} من ${cust?.name || customerId}`,
+          payload: { customerId, amount, cashboxId, notes, paymentMethod, idempotencyKey },
+        });
+        await refreshQueueAndConflictsFromLocal(currentUser.id);
+        const nextDb = {
+          ...dataRef.current,
+          customers: (dataRef.current.customers || []).map((c) =>
+            c.id === customerId ? { ...c, currentBalance: Number(c.currentBalance || 0) - Number(amount || 0) } : c
+          ),
+          cashboxes: (dataRef.current.cashboxes || []).map((cb) =>
+            cb.id === cashboxId ? { ...cb, currentBalance: Number(cb.currentBalance || 0) + Number(amount || 0) } : cb
+          ),
+        };
+        setData(nextDb);
+        await persistCurrentSnapshot(nextDb);
+        setNetworkStatus('pending');
+        return { success: true };
+      }
       return { success: false, error: err?.message || 'فشل تسجيل التحصيل' };
     }
   };
@@ -849,41 +1120,94 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Invoices
+  // Invoices (Offline-First Queueing on Disconnection + Online Server Authority)
   const createSalesInvoice = async (invoiceData: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'>) => {
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      return { success: false, error: 'إصدار فواتير المبيعات يتطلب اتصالاً مباشراً بالسيرفر المركزي (لابتوب المحل).' };
-    }
+    const idempotencyKey = generateId('IDEMP');
     try {
       const res = await apiRequest<{ ok: boolean; invoice: Invoice }>('/api/invoices/sales', {
         method: 'POST',
         body: invoiceData,
-        idempotencyKey: generateId('IDEMP'),
+        idempotencyKey,
       });
       await loadRoleScopedData();
       return { success: true, invoice: res.invoice };
     } catch (err: any) {
+      if (err?.status === 0 && currentUser?.id) {
+        const localInvoice: Invoice = {
+          ...invoiceData,
+          id: generateId('INV-LOC'),
+          invoiceNumber: 'قيد المزامنة',
+          type: 'sales',
+          createdBy: currentUser.fullName,
+          createdAt: new Date().toISOString(),
+        };
+        await enqueueSyncOperation({
+          userId: currentUser.id,
+          operationType: 'create_sales_invoice',
+          entityType: 'invoice',
+          localId: localInvoice.id,
+          summaryAr: `فاتورة مبيعات (${invoiceData.customerName || 'عميل'}) — ${invoiceData.grandTotal}`,
+          payload: { ...invoiceData, idempotencyKey },
+        });
+        await refreshQueueAndConflictsFromLocal(currentUser.id);
+        const nextDb = {
+          ...dataRef.current,
+          invoices: [localInvoice, ...(dataRef.current.invoices || [])],
+        };
+        setData(nextDb);
+        await persistCurrentSnapshot(nextDb);
+        setNetworkStatus('pending');
+        return { success: true, invoice: localInvoice };
+      }
       return { success: false, error: err?.message || 'تعذر إنشاء فاتورة المبيعات' };
     }
   };
 
   const createPurchaseInvoice = async (invoiceData: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'>) => {
+    const idempotencyKey = generateId('IDEMP');
     try {
       const res = await apiRequest<{ ok: boolean; invoice: Invoice }>('/api/invoices/purchase', {
         method: 'POST',
         body: invoiceData,
-        idempotencyKey: generateId('IDEMP'),
+        idempotencyKey,
       });
       await loadRoleScopedData();
       return { success: true, invoice: res.invoice };
     } catch (err: any) {
+      if (err?.status === 0 && currentUser?.id) {
+        const localInvoice: Invoice = {
+          ...invoiceData,
+          id: generateId('PINV-LOC'),
+          invoiceNumber: 'قيد المزامنة',
+          type: 'purchase',
+          createdBy: currentUser.fullName,
+          createdAt: new Date().toISOString(),
+        };
+        await enqueueSyncOperation({
+          userId: currentUser.id,
+          operationType: 'create_purchase_invoice',
+          entityType: 'invoice',
+          localId: localInvoice.id,
+          summaryAr: `فاتورة شراء (${invoiceData.supplierName || 'مورد'}) — ${invoiceData.grandTotal}`,
+          payload: { ...invoiceData, idempotencyKey },
+        });
+        await refreshQueueAndConflictsFromLocal(currentUser.id);
+        const nextDb = {
+          ...dataRef.current,
+          invoices: [localInvoice, ...(dataRef.current.invoices || [])],
+        };
+        setData(nextDb);
+        await persistCurrentSnapshot(nextDb);
+        setNetworkStatus('pending');
+        return { success: true, invoice: localInvoice };
+      }
       return { success: false, error: err?.message || 'تعذر إنشاء فاتورة المشتريات' };
     }
   };
 
   const confirmDraftInvoice = async (invoiceId: string) => {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      return { success: false, error: 'اعتماد الفواتير يتطلب اتصالاً مباشراً بالسيرفر المركزي (لابتوب المحل).' };
+      return { success: false, error: 'اعتماد المسودات يتطلب اتصالاً مباشراً بالسيرفر المركزي.' };
     }
     try {
       const res = await apiRequest<{ ok: boolean; invoice: Invoice }>(`/api/invoices/${invoiceId}/confirm`, {
@@ -913,42 +1237,84 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     invoiceId: string,
     paymentData: { amount: number; date?: string; paymentMethod: 'cash' | 'bank' | 'cheque'; cashboxId: string; notes?: string }
   ) => {
+    const idempotencyKey = generateId('IDEMP');
     try {
       await apiRequest(`/api/invoices/${invoiceId}/payments`, {
         method: 'POST',
         body: paymentData,
-        idempotencyKey: generateId('IDEMP'),
+        idempotencyKey,
       });
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
+      if (err?.status === 0 && currentUser?.id) {
+        const inv = dataRef.current.invoices.find((i) => i.id === invoiceId);
+        await enqueueSyncOperation({
+          userId: currentUser.id,
+          operationType: 'add_invoice_payment',
+          entityType: 'invoice',
+          entityId: invoiceId,
+          summaryAr: `دفعة ${paymentData.amount} على فاتورة ${inv?.invoiceNumber || invoiceId}`,
+          payload: { invoiceId, ...paymentData, expectedVersion: inv?.version, idempotencyKey },
+        });
+        await refreshQueueAndConflictsFromLocal(currentUser.id);
+        setNetworkStatus('pending');
+        return { success: true };
+      }
       return { success: false, error: err?.message || 'تعذر تسجيل الدفعة' };
     }
   };
 
   const editSalesInvoice = async (invoiceId: string, updates: { date?: string; items?: Invoice['items']; discountTotal?: number; notes?: string }) => {
+    const inv = dataRef.current.invoices.find((i) => i.id === invoiceId);
     try {
       await apiRequest(`/api/invoices/${invoiceId}`, {
         method: 'PUT',
-        body: updates,
+        body: { ...updates, expectedVersion: inv?.version },
       });
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
+      if (err?.status === 0 && currentUser?.id) {
+        await enqueueSyncOperation({
+          userId: currentUser.id,
+          operationType: 'edit_sales_invoice',
+          entityType: 'invoice',
+          entityId: invoiceId,
+          summaryAr: `تعديل فاتورة ${inv?.invoiceNumber || invoiceId}`,
+          payload: { invoiceId, ...updates, expectedVersion: inv?.version },
+        });
+        await refreshQueueAndConflictsFromLocal(currentUser.id);
+        setNetworkStatus('pending');
+        return { success: true };
+      }
       return { success: false, error: err?.message || 'تعذر تعديل الفاتورة' };
     }
   };
 
   const createReturn = async (returnData: Omit<InvoiceReturn, 'id' | 'returnNumber' | 'createdAt' | 'createdBy'>) => {
+    const idempotencyKey = generateId('IDEMP');
     try {
       await apiRequest('/api/invoices/returns', {
         method: 'POST',
         body: returnData,
-        idempotencyKey: generateId('IDEMP'),
+        idempotencyKey,
       });
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
+      if (err?.status === 0 && currentUser?.id) {
+        await enqueueSyncOperation({
+          userId: currentUser.id,
+          operationType: 'create_invoice_return',
+          entityType: 'invoice_return',
+          summaryAr: `مرتجع ${returnData.partyName || ''} — ${returnData.grandTotal}`,
+          payload: { ...returnData, idempotencyKey },
+        });
+        await refreshQueueAndConflictsFromLocal(currentUser.id);
+        setNetworkStatus('pending');
+        return { success: true };
+      }
       return { success: false, error: err?.message || 'تعذر إنشاء المرتجع' };
     }
   };
@@ -1098,49 +1464,93 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Customer Item Orders Lifecycle (Real Server Persistence + Honest Offline Queue)
+  // Customer & Rep Item Orders Lifecycle (Real Server Persistence + Unified Offline Sync Queue)
   const createCustomerItemOrder = async (
     payload: Omit<CustomerItemOrderRequest, 'id' | 'requestNumber' | 'status' | 'createdAt'> & { idempotencyKey?: string }
   ) => {
     const idempotencyKey = payload.idempotencyKey || generateId('IDEMP');
+    const originDeviceId = getOrCreatePersistentDeviceId();
     try {
       const res = await apiRequest<{ ok: boolean; order: CustomerItemOrderRequest }>('/api/orders', {
         method: 'POST',
-        body: payload,
+        body: { ...payload, originDeviceId },
         idempotencyKey,
       });
       await loadRoleScopedData();
       return { success: true, order: res.order };
     } catch (err: any) {
-      if (err?.status === 0) {
-        // Real network offline: queue with idempotency key and honestly inform caller (NOT fake success!)
-        const currentQ = loadOfflineOrdersQueue();
-        if (!currentQ.some((q) => q.idempotencyKey === idempotencyKey)) {
-          const nextQ = [
-            ...currentQ,
-            {
-              idempotencyKey,
-              payload: {
-                items: payload.items,
-                notes: payload.notes,
-                deliveryAddress: payload.deliveryAddress,
-                geoCoordinates: payload.geoCoordinates,
-                shopName: payload.shopName,
-                customerPhone: payload.customerPhone,
-              },
-              queuedAt: new Date().toISOString(),
-            },
-          ];
-          saveOfflineOrdersQueue(nextQ);
-          setOfflineQueue(nextQ);
-        }
+      if (err?.status === 0 && currentUser?.id) {
+        const localId = generateId('ORD-LOC');
+        const op = await enqueueSyncOperation({
+          userId: currentUser.id,
+          operationType: 'create_order',
+          entityType: 'order',
+          localId,
+          summaryAr: `طلب جديد (${payload.customerName || 'عميل'}) — ${payload.items?.length || 0} صنف`,
+          payload: {
+            customerId: payload.customerId,
+            customerName: payload.customerName,
+            requesterType: payload.requesterType,
+            representativeId: payload.representativeId,
+            items: payload.items,
+            notes: payload.notes,
+            deliveryAddress: payload.deliveryAddress,
+            geoCoordinates: payload.geoCoordinates,
+            shopName: payload.shopName,
+            customerPhone: payload.customerPhone,
+            idempotencyKey,
+            originDeviceId,
+          },
+        });
+        await refreshQueueAndConflictsFromLocal(currentUser.id);
+        const tentativeOrder: CustomerItemOrderRequest = {
+          id: localId,
+          requestNumber: 'بانتظار المزامنة',
+          customerId: payload.customerId,
+          userId: currentUser.id,
+          requesterType: payload.requesterType || (currentUser.role === 'representative' ? 'representative' : 'customer'),
+          representativeId: payload.representativeId,
+          customerName: payload.customerName || customerProfile?.name || currentUser.fullName,
+          customerPhone: payload.customerPhone || '',
+          shopName: payload.shopName || '',
+          deliveryAddress: payload.deliveryAddress || '',
+          geoCoordinates: payload.geoCoordinates || '',
+          items: payload.items || [],
+          status: 'pending',
+          notes: payload.notes || '',
+          idempotencyKey,
+          originDeviceId: op.deviceId,
+          createdAt: new Date().toISOString(),
+          isLocalQueued: true,
+        };
+        const nextDb = {
+          ...dataRef.current,
+          customerItemOrders: [tentativeOrder, ...(dataRef.current.customerItemOrders || [])],
+        };
+        setData(nextDb);
+        await persistCurrentSnapshot(nextDb);
+        setNetworkStatus('pending');
         return {
           success: false,
           queuedOffline: true,
-          error: 'لا يوجد اتصال بالسيرفر حاليًا. تم حفظ الطلب في قائمة الانتظار للإرسال التلقائي فور عودة الشبكة.',
+          order: tentativeOrder,
+          error: 'لا يوجد اتصال بالسيرفر حاليًا. تم حفظ الطلب في طابور المزامنة وسيُرفع تلقائيًا عند عودة الشبكة.',
         };
       }
       return { success: false, error: err?.message || 'تعذر إرسال الطلب للسيرفر' };
+    }
+  };
+
+  const reviewCustomerItemOrder = async (id: string, notes?: string) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; order: CustomerItemOrderRequest }>(`/api/orders/${id}/review`, {
+        method: 'POST',
+        body: { notes },
+      });
+      await loadRoleScopedData();
+      return { success: true, order: res.order };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر وضع الطلب قيد المراجعة' };
     }
   };
 
@@ -1170,6 +1580,126 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const assignOrderDeliveryRep = async (id: string, repId: string, notes?: string) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; order: CustomerItemOrderRequest }>(`/api/orders/${id}/assign-rep`, {
+        method: 'POST',
+        body: { repId, notes },
+      });
+      await loadRoleScopedData();
+      return { success: true, order: res.order };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تعيين مندوب التوصيل' };
+    }
+  };
+
+  const updateOrderDeliveryStatus = async (
+    id: string,
+    payload: { status: string; collectedAmount?: number; deliveryNotes?: string; deliveryProof?: string }
+  ) => {
+    const idempotencyKey = generateId('DELIV');
+    try {
+      const res = await apiRequest<{ ok: boolean; order: CustomerItemOrderRequest }>(`/api/orders/${id}/delivery-status`, {
+        method: 'POST',
+        body: payload,
+        idempotencyKey,
+      });
+      await loadRoleScopedData();
+      return { success: true, order: res.order };
+    } catch (err: any) {
+      if (err?.status === 0 && currentUser?.id) {
+        const ord = dataRef.current.customerItemOrders?.find((o) => o.id === id);
+        await enqueueSyncOperation({
+          userId: currentUser.id,
+          operationType: 'order_delivery_update',
+          entityType: 'order',
+          entityId: id,
+          summaryAr: `تحديث توصيل الطلب (${ord?.requestNumber || id}) إلى ${payload.status}`,
+          payload: { orderId: id, ...payload, expectedVersion: ord?.version, idempotencyKey },
+        });
+        await refreshQueueAndConflictsFromLocal(currentUser.id);
+        const nextDb = {
+          ...dataRef.current,
+          customerItemOrders: (dataRef.current.customerItemOrders || []).map((o) =>
+            o.id === id ? { ...o, status: payload.status as any, deliveryNotes: payload.deliveryNotes ?? o.deliveryNotes, isLocalQueued: true } : o
+          ),
+        };
+        setData(nextDb);
+        await persistCurrentSnapshot(nextDb);
+        setNetworkStatus('pending');
+        return { success: true, queuedOffline: true };
+      }
+      return { success: false, error: err?.message || 'تعذر تحديث حالة التوصيل' };
+    }
+  };
+
+  const recordOrderAdvancePayment = async (
+    id: string,
+    payload: { amount: number; cashboxId: string; paymentMethod?: 'cash' | 'bank' | 'cheque'; date?: string; notes?: string }
+  ) => {
+    const idempotencyKey = generateId('OADV');
+    const originDeviceId = getOrCreatePersistentDeviceId();
+    try {
+      const res = await apiRequest<{ ok: boolean; advancePayment: OrderAdvancePayment; order: CustomerItemOrderRequest }>(
+        `/api/orders/${id}/advance-payment`,
+        {
+          method: 'POST',
+          body: { ...payload, originDeviceId },
+          idempotencyKey,
+        }
+      );
+      await loadRoleScopedData();
+      return { success: true, advancePayment: res.advancePayment, order: res.order };
+    } catch (err: any) {
+      if (err?.status === 0 && currentUser?.id) {
+        const ord = dataRef.current.customerItemOrders?.find((o) => o.id === id);
+        const cb = dataRef.current.cashboxes.find((c) => c.id === payload.cashboxId);
+        await enqueueSyncOperation({
+          userId: currentUser.id,
+          operationType: 'order_advance_payment',
+          entityType: 'order_advance',
+          entityId: id,
+          summaryAr: `دفعة مقدمة ${payload.amount} على طلب ${ord?.requestNumber || id}`,
+          payload: { orderId: id, ...payload, idempotencyKey, originDeviceId },
+        });
+        await refreshQueueAndConflictsFromLocal(currentUser.id);
+        const tentativeAdvance: OrderAdvancePayment = {
+          id: generateId('OADV-LOC'),
+          paymentNumber: 'قيد المزامنة',
+          orderId: id,
+          requestNumber: ord?.requestNumber || '',
+          customerId: ord?.customerId || '',
+          customerName: ord?.customerName || '',
+          amount: Number(payload.amount || 0),
+          date: payload.date || new Date().toISOString().split('T')[0],
+          paymentMethod: payload.paymentMethod || 'cash',
+          cashboxId: payload.cashboxId,
+          cashboxName: cb?.name || '',
+          status: 'available',
+          notes: payload.notes || '',
+          originDeviceId,
+          createdBy: currentUser.fullName,
+          createdAt: new Date().toISOString(),
+        };
+        const nextDb = {
+          ...dataRef.current,
+          orderAdvancePayments: [tentativeAdvance, ...(dataRef.current.orderAdvancePayments || [])],
+          customerItemOrders: (dataRef.current.customerItemOrders || []).map((o) =>
+            o.id === id ? { ...o, advancePaidAmount: Number(o.advancePaidAmount || 0) + Number(payload.amount || 0) } : o
+          ),
+          cashboxes: (dataRef.current.cashboxes || []).map((c) =>
+            c.id === payload.cashboxId ? { ...c, currentBalance: Number(c.currentBalance || 0) + Number(payload.amount || 0) } : c
+          ),
+        };
+        setData(nextDb);
+        await persistCurrentSnapshot(nextDb);
+        setNetworkStatus('pending');
+        return { success: true, advancePayment: tentativeAdvance, queuedOffline: true };
+      }
+      return { success: false, error: err?.message || 'تعذر تسجيل الدفعة المقدمة على الطلب' };
+    }
+  };
+
   const convertOrderToInvoice = async (orderId: string, invoicePayload: Partial<Invoice>) => {
     try {
       const res = await apiRequest<{ ok: boolean; order: CustomerItemOrderRequest; invoice: Invoice }>(
@@ -1187,9 +1717,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateCustomerItemOrder = async (id: string, status: CustomerItemOrderRequest['status'], reason?: string) => {
+    if (status === 'under_review') return reviewCustomerItemOrder(id, reason);
     if (status === 'approved') return approveCustomerItemOrder(id, reason);
     if (status === 'rejected') return rejectCustomerItemOrder(id, reason || 'لم يتم تحديد سبب');
-    return { success: false, error: 'استخدم تحويل الطلب إلى فاتورة لإكمال دورة الاعتماد' };
+    return { success: false, error: 'استخدم أزرار التوصيل أو التحويل إلى فاتورة لإكمال دورة الاعتماد' };
   };
 
   // Employees & HR
@@ -1333,7 +1864,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // v4 Cash Operations
+  // v4 Cash Operations (with offline queue support)
   const executeCashOperation = async (payload: CashOperationPayload) => {
     const idempotencyKey = payload.idempotencyKey || generateId('CASH');
     try {
@@ -1353,6 +1884,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         expenseIncomeRecord: res.expenseIncomeRecord,
       };
     } catch (err: any) {
+      if (err?.status === 0 && currentUser?.id) {
+        await enqueueSyncOperation({
+          userId: currentUser.id,
+          operationType: 'cash_operation',
+          entityType: 'cashbox',
+          entityId: payload.cashboxId,
+          summaryAr: `عملية نقدية (${payload.type}) — ${payload.amount}`,
+          payload: { ...payload, idempotencyKey },
+        });
+        await refreshQueueAndConflictsFromLocal(currentUser.id);
+        setNetworkStatus('pending');
+        return { success: true };
+      }
       return { success: false, error: err?.message || 'تعذر تنفيذ العملية النقدية' };
     }
   };
@@ -1576,9 +2120,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const pendingSyncCount = useMemo(
+    () => syncQueue.filter((q) => q.status === 'pending' || q.status === 'local' || q.status === 'syncing').length,
+    [syncQueue]
+  );
+  const failedSyncCount = useMemo(
+    () => syncQueue.filter((q) => q.status === 'failed').length,
+    [syncQueue]
+  );
+  const conflictsCount = useMemo(
+    () => syncConflicts.filter((c) => c.status === 'needs_review').length,
+    [syncConflicts]
+  );
+  const hasTentativeLocalBalances = useMemo(
+    () => syncQueue.some((q) => q.status !== 'synced'),
+    [syncQueue]
+  );
+  const offlineOrdersCount = useMemo(
+    () => syncQueue.filter((q) => q.operationType === 'create_order' && q.status !== 'synced').length,
+    [syncQueue]
+  );
+
   if (!isInitialLoaded && isAuthenticated) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-900 text-white font-['Cairo']">
+      <div className="flex items-center justify-center min-h-screen bg-slate-900 text-white font-sans antialiased">
         <div className="text-center space-y-4">
           <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
           <p className="text-lg font-bold">جاري مزامنة بيانات نظام أولاد سليم...</p>
@@ -1592,10 +2157,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         ...data,
         auditLogs: data.auditLogs || [],
+        orderAdvancePayments: data.orderAdvancePayments || [],
+        syncQueue,
+        syncConflicts,
+        cachedMediaMap,
+        isServerReachable,
+        isSyncing,
+        pendingSyncCount,
+        failedSyncCount,
+        conflictsCount,
+        hasTentativeLocalBalances,
+        lastServerSyncAt,
         networkStatus,
         lastSyncTime,
-        pendingChangesCount: offlineQueue.length,
-        offlineOrdersCount: offlineQueue.length,
+        pendingChangesCount: pendingSyncCount + failedSyncCount,
+        offlineOrdersCount,
         lastError,
         isUsingOfflineCache,
         lastCacheTimestamp,
@@ -1607,6 +2183,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         refreshCustomerStatement,
         getCustomerPriceHistory,
         triggerManualSync,
+        triggerSync,
+        resolveSyncConflict,
         exportBackup,
         importBackup,
         resetSystemToFresh,
@@ -1661,8 +2239,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createRepItemTransfer,
         updateRepItemTransferStatus,
         createCustomerItemOrder,
+        reviewCustomerItemOrder,
         approveCustomerItemOrder,
         rejectCustomerItemOrder,
+        assignOrderDeliveryRep,
+        updateOrderDeliveryStatus,
+        recordOrderAdvancePayment,
         convertOrderToInvoice,
         updateCustomerItemOrder,
         addEmployee,

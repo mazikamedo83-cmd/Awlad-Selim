@@ -632,6 +632,52 @@ export async function validateActiveSession(sessionId, userId) {
   };
 }
 
+export async function validateSyncPushSession(sessionId, userId) {
+  if (await isPgMode()) {
+    const pool = getPool();
+    const res = await pool.query(
+      `SELECT u.*, s.id AS session_id, s.revoked_at AS session_revoked_at
+       FROM users u
+       JOIN user_sessions s ON s.user_id = u.id
+       WHERE u.id = $1 AND s.id = $2 AND s.expires_at > NOW()
+       LIMIT 1`,
+      [userId, sessionId]
+    );
+    const row = res.rows[0];
+    if (!row) return null;
+    // If user is still active and explicitly logged out (revoked session), reject with 401.
+    // If user was deactivated by admin (row.is_active === false), let pushSyncBatch quarantine queued offline ops as ACCOUNT_DEACTIVATED.
+    if (row.is_active && row.session_revoked_at) return null;
+    const user = mapPgUserRow(row);
+    const profiles = await resolveLinkedProfilesPg(pool, user);
+    return {
+      user: sanitizeUser(user),
+      rawUser: user,
+      customerProfile: profiles.customerProfile,
+      representativeProfile: profiles.representativeProfile,
+      linkWarning: profiles.linkWarning,
+    };
+  }
+
+  const sessions = readJsonSessions();
+  const ses = sessions.find(
+    (s) => s.id === sessionId && s.userId === userId && new Date(s.expiresAt).getTime() > Date.now()
+  );
+  if (!ses) return null;
+  const db = readJsonDatabase();
+  const user = db.users.find((u) => u.id === userId);
+  if (!user) return null;
+  if (user.isActive && ses.revokedAt) return null;
+  const profiles = resolveLinkedProfilesJson(db, user);
+  return {
+    user: sanitizeUser(user),
+    rawUser: user,
+    customerProfile: profiles.customerProfile,
+    representativeProfile: profiles.representativeProfile,
+    linkWarning: profiles.linkWarning,
+  };
+}
+
 export async function changeOwnPassword({ userId, currentPassword, newPassword }, meta = {}) {
   const cleanNew = String(newPassword || '');
   if (cleanNew.length < 6) {

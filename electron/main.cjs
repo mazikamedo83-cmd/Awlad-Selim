@@ -1,6 +1,7 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell, clipboard } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, clipboard, nativeTheme } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { prepareElectronDataDirectory } = require('./dataBootstrap.cjs');
 
@@ -186,6 +187,101 @@ function registerIpcHandlers() {
     clipboard.writeText(String(text || ''));
     return { ok: true };
   });
+
+  // Encrypted local offline vault (AES-256-GCM) inside active desktop dataDir
+  const getVaultDir = () => {
+    const baseDir = desktopState.dataDir || app.getPath('userData');
+    const dir = path.join(baseDir, 'offline-vault');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  };
+
+  const getVaultKey = () => {
+    const dir = getVaultDir();
+    const keyFile = path.join(dir, '.vault.key');
+    if (fs.existsSync(keyFile)) {
+      const buf = fs.readFileSync(keyFile);
+      if (buf.length === 32) return buf;
+    }
+    const key = crypto.randomBytes(32);
+    fs.writeFileSync(keyFile, key, { mode: 0o600 });
+    return key;
+  };
+
+  const vaultFilePath = (store, key) => {
+    const safeStore = String(store || 'meta').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const safeKey = crypto.createHash('sha256').update(String(key || 'item')).digest('hex').slice(0, 32);
+    const subDir = path.join(getVaultDir(), safeStore);
+    if (!fs.existsSync(subDir)) fs.mkdirSync(subDir, { recursive: true });
+    return path.join(subDir, `${safeKey}.enc`);
+  };
+
+  ipcMain.handle('awlad:offline-get', (_event, store, key) => {
+    try {
+      const file = vaultFilePath(store, key);
+      if (!fs.existsSync(file)) return { ok: true, value: null };
+      const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const vaultKey = getVaultKey();
+      const decipher = crypto.createDecipheriv('aes-256-gcm', vaultKey, Buffer.from(raw.iv, 'hex'));
+      decipher.setAuthTag(Buffer.from(raw.tag, 'hex'));
+      const plain = Buffer.concat([decipher.update(Buffer.from(raw.ct, 'base64')), decipher.final()]).toString('utf8');
+      return { ok: true, value: JSON.parse(plain) };
+    } catch {
+      return { ok: false, value: null };
+    }
+  });
+
+  ipcMain.handle('awlad:offline-set', (_event, store, key, value) => {
+    try {
+      const file = vaultFilePath(store, key);
+      const vaultKey = getVaultKey();
+      const iv = crypto.randomBytes(12);
+      const cipher = crypto.createCipheriv('aes-256-gcm', vaultKey, iv);
+      const ct = Buffer.concat([cipher.update(JSON.stringify(value ?? null), 'utf8'), cipher.final()]);
+      const tag = cipher.getAuthTag();
+      fs.writeFileSync(
+        file,
+        JSON.stringify({ v: 1, iv: iv.toString('hex'), tag: tag.toString('hex'), ct: ct.toString('base64') }),
+        'utf8'
+      );
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err?.message || 'Vault write failed' };
+    }
+  });
+
+  ipcMain.handle('awlad:offline-remove', (_event, store, key) => {
+    try {
+      const file = vaultFilePath(store, key);
+      if (fs.existsSync(file)) fs.unlinkSync(file);
+      return { ok: true };
+    } catch {
+      return { ok: false };
+    }
+  });
+
+  ipcMain.handle('awlad:offline-read-media', (_event, mediaKey) => {
+    try {
+      const safeName = String(mediaKey || 'media').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120);
+      const mediaFile = path.join(getVaultDir(), 'media', `${safeName}.txt`);
+      if (!fs.existsSync(mediaFile)) return { ok: true, dataUrl: null };
+      return { ok: true, dataUrl: fs.readFileSync(mediaFile, 'utf8') };
+    } catch {
+      return { ok: false, dataUrl: null };
+    }
+  });
+
+  ipcMain.handle('awlad:offline-write-media', (_event, mediaKey, dataUrl) => {
+    try {
+      const safeName = String(mediaKey || 'media').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120);
+      const mediaDir = path.join(getVaultDir(), 'media');
+      if (!fs.existsSync(mediaDir)) fs.mkdirSync(mediaDir, { recursive: true });
+      fs.writeFileSync(path.join(mediaDir, `${safeName}.txt`), String(dataUrl || ''), 'utf8');
+      return { ok: true };
+    } catch {
+      return { ok: false };
+    }
+  });
 }
 
 async function createMainWindow(startUrl, appRoot) {
@@ -193,12 +289,15 @@ async function createMainWindow(startUrl, appRoot) {
   const iconIco = path.join(appRoot, 'build', 'icon.ico');
   const chosenIcon = process.platform === 'win32' && fs.existsSync(iconIco) ? iconIco : iconPng;
 
+  nativeTheme.themeSource = 'light';
+
   mainWindow = new BrowserWindow({
     width: 1366,
     height: 860,
     minWidth: 1024,
     minHeight: 680,
     show: false,
+    backgroundColor: '#f8fafc',
     title: 'AWLAD SELIM - أولاد سليم للمحاسبة وإدارة الأعمال',
     icon: fs.existsSync(chosenIcon) ? chosenIcon : undefined,
     webPreferences: {
@@ -206,7 +305,15 @@ async function createMainWindow(startUrl, appRoot) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      zoomFactor: 1.0,
+      spellcheck: false,
     },
+  });
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.setZoomFactor(1.0);
+    }
   });
 
   mainWindow.once('ready-to-show', () => {

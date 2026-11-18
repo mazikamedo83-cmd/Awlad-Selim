@@ -15,6 +15,7 @@ CREATE SEQUENCE IF NOT EXISTS seq_owner_tx_no;
 CREATE SEQUENCE IF NOT EXISTS seq_stock_count_no;
 CREATE SEQUENCE IF NOT EXISTS seq_stock_transfer_no;
 CREATE SEQUENCE IF NOT EXISTS seq_cash_op_no;
+CREATE SEQUENCE IF NOT EXISTS seq_order_advance_no;
 
 -- 1. المستخدمون والصلاحيات (Users & Roles)
 CREATE TABLE IF NOT EXISTS users (
@@ -111,6 +112,7 @@ CREATE TABLE IF NOT EXISTS products (
   import_batch_id VARCHAR(64),
   imported_from_file BOOLEAN NOT NULL DEFAULT FALSE,
   source_file_name TEXT,
+  version INT NOT NULL DEFAULT 1,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -150,6 +152,7 @@ CREATE TABLE IF NOT EXISTS customers (
   price_history JSONB NOT NULL DEFAULT '{}'::jsonb,
   notes TEXT,
   status VARCHAR(16) NOT NULL DEFAULT 'active',
+  version INT NOT NULL DEFAULT 1,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -198,6 +201,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   tax_total NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
   grand_total NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
   paid_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+  applied_advance_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
   remaining_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
   payment_type VARCHAR(16) NOT NULL, -- 'cash' | 'credit' | 'partial'
   payment_method VARCHAR(32) NOT NULL DEFAULT 'cash',
@@ -208,6 +212,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   linked_rep_transfer_number VARCHAR(64),
   linked_customer_order_id VARCHAR(64),
   returned_quantity_by_item JSONB NOT NULL DEFAULT '{}'::jsonb,
+  version INT NOT NULL DEFAULT 1,
   created_by VARCHAR(64) NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -578,20 +583,34 @@ CREATE TABLE IF NOT EXISTS customer_item_orders (
   request_number VARCHAR(64) UNIQUE NOT NULL,
   customer_id VARCHAR(64) NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
   user_id VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
+  requester_type VARCHAR(24) NOT NULL DEFAULT 'customer',
+  representative_id VARCHAR(64),
+  representative_name TEXT DEFAULT '',
+  submitted_by_name TEXT DEFAULT '',
   customer_name TEXT NOT NULL,
   customer_phone VARCHAR(32) NOT NULL DEFAULT '',
   shop_name TEXT DEFAULT '',
   delivery_address TEXT NOT NULL DEFAULT '',
   geo_coordinates TEXT DEFAULT '',
-  status VARCHAR(24) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'invoiced', 'cancelled')),
+  status VARCHAR(32) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'under_review', 'approved', 'rejected', 'rep_assigned', 'out_for_delivery', 'delivered', 'needs_review', 'invoiced', 'cancelled')),
+  total_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+  advance_paid_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
   notes TEXT,
   rejection_reason TEXT,
   reviewed_by VARCHAR(64),
   reviewed_by_user_id VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
   reviewed_at TIMESTAMPTZ,
+  delivery_rep_id VARCHAR(64),
+  delivery_rep_name TEXT DEFAULT '',
+  assigned_at TIMESTAMPTZ,
+  delivered_at TIMESTAMPTZ,
+  collected_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+  delivery_notes TEXT DEFAULT '',
+  delivery_proof TEXT DEFAULT '',
   invoice_id VARCHAR(64) UNIQUE REFERENCES invoices(id) ON DELETE SET NULL,
   invoice_number VARCHAR(64),
   idempotency_key VARCHAR(128) UNIQUE,
+  origin_device_id VARCHAR(128),
   version INT NOT NULL DEFAULT 1,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -800,3 +819,66 @@ CREATE INDEX IF NOT EXISTS idx_rep_item_transfers_invoice ON rep_item_transfers(
 CREATE INDEX IF NOT EXISTS idx_fin_tx_cashbox ON financial_transactions(cashbox_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_migration_logs_timestamp ON migration_logs(timestamp DESC);
+
+-- 40. دفعات الطلبات المقدمة (Order Advance Payments - رصيد دائن للعميل قبل الفوترة)
+CREATE TABLE IF NOT EXISTS order_advance_payments (
+  id VARCHAR(64) PRIMARY KEY,
+  advance_number VARCHAR(64) UNIQUE NOT NULL,
+  order_id VARCHAR(64) NOT NULL REFERENCES customer_item_orders(id) ON DELETE RESTRICT,
+  request_number VARCHAR(64) NOT NULL,
+  customer_id VARCHAR(64) NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
+  customer_name TEXT NOT NULL,
+  amount NUMERIC(14, 2) NOT NULL CHECK (amount > 0),
+  date DATE NOT NULL,
+  payment_method VARCHAR(32) NOT NULL DEFAULT 'cash',
+  cashbox_id VARCHAR(64) NOT NULL REFERENCES cashboxes(id) ON DELETE RESTRICT,
+  cashbox_name TEXT NOT NULL,
+  status VARCHAR(24) NOT NULL DEFAULT 'available' CHECK (status IN ('available', 'applied', 'refunded')),
+  applied_invoice_id VARCHAR(64) REFERENCES invoices(id) ON DELETE SET NULL,
+  applied_invoice_number VARCHAR(64),
+  applied_at TIMESTAMPTZ,
+  notes TEXT DEFAULT '',
+  origin_device_id VARCHAR(128),
+  idempotency_key VARCHAR(128) UNIQUE,
+  created_by VARCHAR(64) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 41. سجل عمليات المزامنة غير المتصلة (Offline Sync Operation Logs)
+CREATE TABLE IF NOT EXISTS sync_operation_logs (
+  id VARCHAR(64) PRIMARY KEY,
+  operation_id VARCHAR(128) UNIQUE NOT NULL,
+  operation_type VARCHAR(64) NOT NULL,
+  user_id VARCHAR(64) NOT NULL,
+  device_id VARCHAR(128) DEFAULT '',
+  status VARCHAR(24) NOT NULL,
+  entity_id VARCHAR(64),
+  response_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 42. تعارضات المزامنة التي تتطلب مراجعة إدارية (Sync Conflicts - Never Last-Write-Wins)
+CREATE TABLE IF NOT EXISTS sync_conflicts (
+  id VARCHAR(64) PRIMARY KEY,
+  operation_id VARCHAR(128) NOT NULL,
+  operation_type VARCHAR(64) NOT NULL,
+  entity_type VARCHAR(64) NOT NULL,
+  entity_id VARCHAR(64),
+  user_id VARCHAR(64) NOT NULL,
+  user_name TEXT DEFAULT '',
+  device_id VARCHAR(128) DEFAULT '',
+  conflict_reason TEXT NOT NULL,
+  local_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  server_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status VARCHAR(32) NOT NULL DEFAULT 'needs_review' CHECK (status IN ('needs_review', 'resolved_keep_server', 'resolved_apply_local', 'dismissed')),
+  resolved_by VARCHAR(64),
+  resolved_by_name TEXT,
+  resolution_notes TEXT DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  resolved_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_order_adv_order ON order_advance_payments(order_id);
+CREATE INDEX IF NOT EXISTS idx_order_adv_customer ON order_advance_payments(customer_id);
+CREATE INDEX IF NOT EXISTS idx_sync_conflicts_status ON sync_conflicts(status, created_at DESC);
+

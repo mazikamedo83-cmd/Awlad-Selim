@@ -111,7 +111,7 @@ export const LoginView: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 relative overflow-hidden font-['Cairo'] pt-safe pb-safe">
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 relative overflow-hidden font-sans antialiased pt-safe pb-safe">
       <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 rounded-full bg-blue-600/10 blur-3xl pointer-events-none"></div>
       <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-96 h-96 rounded-full bg-sky-500/10 blur-3xl pointer-events-none"></div>
 
@@ -302,6 +302,12 @@ export const LoginView: React.FC = () => {
                   : 'دخول النظام'}
               </span>
             </button>
+
+            {!needsAdminSetup && (
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-medium text-center leading-relaxed">
+                يدعم النظام الدخول دون إنترنت فقط للحسابات التي سبق التحقق منها على هذا الجهاز وبكلمة مرورها الصحيحة؛ وتُحدَّث الصلاحيات فور عودة الاتصال بالسيرفر المركزي.
+              </div>
+            )}
           </form>
         </div>
 

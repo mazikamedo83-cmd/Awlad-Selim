@@ -23,7 +23,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
   sourceOrder = null,
 }) => {
   const {
-    products, customers, warehouses, representatives, cashboxes,
+    products, customers, warehouses, representatives, cashboxes, orderAdvancePayments = [],
     settings, createSalesInvoice, convertOrderToInvoice, createRepItemTransfer,
     getCustomerPriceHistory,
   } = useData();
@@ -310,10 +310,28 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     return Math.max(0, subtotal - discountTotal);
   }, [subtotal, discountTotal]);
 
+  const availableOrderAdvance = useMemo(() => {
+    if (!sourceOrder) return 0;
+    const fromRecords = (orderAdvancePayments || [])
+      .filter((a) => a.orderId === sourceOrder.id && a.status === 'available')
+      .reduce((sum, a) => sum + Number(a.amount || 0), 0);
+    return Math.max(fromRecords, Number(sourceOrder.advancePaidAmount || 0));
+  }, [sourceOrder, orderAdvancePayments]);
+
+  const appliedAdvanceAmount = useMemo(() => {
+    if (!sourceOrder) return 0;
+    return Math.min(grandTotal, Math.max(0, availableOrderAdvance));
+  }, [sourceOrder, grandTotal, availableOrderAdvance]);
+
+  const maxNewCashAllowed = useMemo(() => {
+    return Math.max(0, grandTotal - appliedAdvanceAmount);
+  }, [grandTotal, appliedAdvanceAmount]);
+
   const remainingAmount = useMemo(() => {
     if (paymentType === 'cash') return 0;
-    return Math.max(0, grandTotal - paidAmount);
-  }, [grandTotal, paidAmount, paymentType]);
+    const newCash = paymentType === 'credit' ? 0 : Math.min(maxNewCashAllowed, Math.max(0, Number(paidAmount) || 0));
+    return Math.max(0, grandTotal - appliedAdvanceAmount - newCash);
+  }, [grandTotal, appliedAdvanceAmount, maxNewCashAllowed, paidAmount, paymentType]);
 
   const shortageItems = useMemo(() => {
     const list: Array<{
@@ -348,11 +366,11 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
 
   useEffect(() => {
     if (paymentType === 'cash') {
-      setPaidAmount(grandTotal);
+      setPaidAmount(maxNewCashAllowed);
     } else if (paymentType === 'credit') {
       setPaidAmount(0);
     }
-  }, [paymentType, grandTotal]);
+  }, [paymentType, maxNewCashAllowed]);
 
   const handleSubmitInvoice = useCallback(async (shouldPrint = false) => {
     if (isSubmitting) return;
@@ -407,10 +425,16 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
         }
       }
 
-      const rawPaid = Number(paidAmount) || 0;
-      const effectivePaid = paymentType === 'cash' ? grandTotal : paymentType === 'credit' ? 0 : Math.min(grandTotal, Math.max(0, rawPaid));
+      const rawNewCash = Number(paidAmount) || 0;
+      const effectiveNewCash =
+        paymentType === 'cash'
+          ? maxNewCashAllowed
+          : paymentType === 'credit'
+          ? 0
+          : Math.min(maxNewCashAllowed, Math.max(0, rawNewCash));
+      const effectivePaid = appliedAdvanceAmount + effectiveNewCash;
 
-      const payload = {
+      const payload: any = {
         date: invoiceDate,
         customerId: selectedCustomerId || undefined,
         customerName: selectedCustomer?.name || sourceOrder?.customerName || 'عميل نقدي / عام',
@@ -424,6 +448,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
         taxTotal: 0,
         grandTotal,
         paidAmount: effectivePaid,
+        ...(sourceOrder ? { appliedAdvanceAmount, newCashPaid: effectiveNewCash } : {}),
         remainingAmount: paymentType === 'cash' ? 0 : Math.max(0, grandTotal - effectivePaid),
         paymentType,
         paymentMethod: 'cash' as const,
@@ -453,7 +478,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     isSubmitting, items, warehouses, selectedWarehouseId, representatives, selectedRepId, currentUser,
     settings.allowNegativeStock, invoiceStatusMode, shortageItems, createRepItemTransfer, invoiceDate,
     selectedCustomerId, selectedCustomer, sourceOrder, subtotal, discountTotal, grandTotal, paymentType,
-    paidAmount, selectedCashboxId, notes, convertOrderToInvoice, createSalesInvoice, onInvoiceCreated, onClose
+    paidAmount, maxNewCashAllowed, appliedAdvanceAmount, selectedCashboxId, notes, convertOrderToInvoice, createSalesInvoice, onInvoiceCreated, onClose
   ]);
 
   const submitRef = useRef(handleSubmitInvoice);
@@ -892,14 +917,23 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
               <span className="font-mono">{grandTotal.toFixed(2)} {settings.currency}</span>
             </div>
 
+            {appliedAdvanceAmount > 0 && (
+              <div className="flex justify-between text-xs font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5">
+                <span>دفعة مقدمة مسجلة مسبقاً على الطلب (مطبّقة):</span>
+                <span className="font-mono">{appliedAdvanceAmount.toFixed(2)} {settings.currency}</span>
+              </div>
+            )}
+
             {paymentType === 'partial' && (
               <div className="flex items-center justify-between pt-1">
-                <span className="font-bold text-emerald-700">المدفوع نقداً:</span>
+                <span className="font-bold text-emerald-700">
+                  {appliedAdvanceAmount > 0 ? 'المدفوع نقداً الإضافي الآن:' : 'المدفوع نقداً:'}
+                </span>
                 <div className="w-32">
                   <input
                     type="number"
                     min="0"
-                    max={grandTotal}
+                    max={maxNewCashAllowed}
                     value={paidAmount}
                     onChange={(e) => setPaidAmount(Number(e.target.value))}
                     className="w-full bg-emerald-50 border border-emerald-300 rounded-lg px-2 py-1 text-center font-mono font-bold text-emerald-800 text-xs"

@@ -1,12 +1,12 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import {
-  Home, Package, ShoppingCart, ClipboardList, Receipt, Search, Plus, Minus,
+  Package, ShoppingCart, Receipt, Search, Plus, Minus,
   Trash2, CheckCircle2, AlertCircle, Clock, MapPin, Phone, Building2,
   RefreshCw, History, FileDown, Share2, ShieldAlert, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
-import { CustomerPriceHistoryEntry, Invoice, Product } from '../../../types';
+import { CustomerItemOrderStatus, CustomerPriceHistoryEntry, Invoice, Product } from '../../../types';
 import { getCurrentLocationSafe, isNativeCapacitor } from '../../../services/native';
 import { exportHtmlToPdf } from '../../common/PdfExporter';
 import { exportToExcel } from '../../common/ExcelExporter';
@@ -17,7 +17,21 @@ interface CustomerPortalProps {
   activeTab: CustomerTabKey;
   onTabChange: (tab: CustomerTabKey) => void;
   focusReferenceId?: string | null;
+  onCartCountChange?: (count: number) => void;
 }
+
+const ORDER_STATUS_META: Record<CustomerItemOrderStatus, { label: string; colorClass: string }> = {
+  pending: { label: 'جديد — بانتظار المراجعة', colorClass: 'text-amber-700' },
+  under_review: { label: 'قيد المراجعة', colorClass: 'text-sky-700' },
+  approved: { label: 'تمت الموافقة (جاري التجهيز)', colorClass: 'text-blue-800' },
+  rep_assigned: { label: 'تم تعيين مندوب للتوصيل', colorClass: 'text-indigo-700' },
+  out_for_delivery: { label: 'في الطريق للتوصيل', colorClass: 'text-purple-700' },
+  delivered: { label: 'تم التسليم', colorClass: 'text-teal-700' },
+  needs_review: { label: 'يحتاج مراجعة', colorClass: 'text-rose-700' },
+  rejected: { label: 'مرفوض', colorClass: 'text-red-700' },
+  invoiced: { label: 'تم إصدار الفاتورة', colorClass: 'text-emerald-700' },
+  cancelled: { label: 'ملغى', colorClass: 'text-slate-500' },
+};
 
 const createClientIdempotencyKey = () =>
   `ord-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -25,6 +39,7 @@ const createClientIdempotencyKey = () =>
 export const CustomerPortal: React.FC<CustomerPortalProps> = ({
   activeTab,
   onTabChange,
+  onCartCountChange,
 }) => {
   const { currentUser, customerProfile, mobileConfig } = useAuth();
   const data = useData();
@@ -299,6 +314,10 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
   }, [data.customerItemOrders]);
 
   const cartTotalQty = cartItems.reduce((sum, it) => sum + it.quantity, 0);
+  useEffect(() => {
+    onCartCountChange?.(cartTotalQty);
+  }, [cartTotalQty, onCartCountChange]);
+
   const cartEstimatedTotal = cartItems.reduce(
     (sum, it) => sum + (it.unitPrice ? it.unitPrice * it.quantity : 0),
     0
@@ -443,9 +462,9 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                 <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 col-span-2 sm:col-span-1">
                   <span className="text-[11px] text-slate-500 block">طلباتي الجارية</span>
                   <strong className="text-lg font-black font-mono tabular-nums text-amber-700">
-                    {myOrders.filter((o) => o.status === 'pending' || o.status === 'approved').length}
+                    {myOrders.filter((o) => !['invoiced', 'rejected', 'cancelled'].includes(o.status)).length}
                   </strong>
-                  <span className="text-[11px] text-slate-500 block">بانتظار التجهيز/الفوترة</span>
+                  <span className="text-[11px] text-slate-500 block">قيد التجهيز والتوصيل</span>
                 </div>
               </div>
             ) : (
@@ -490,24 +509,19 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
               <p className="text-xs text-slate-400 py-4 text-center">لم ترسل أي طلبات توريد حتى الآن.</p>
             ) : (
               <div className="divide-y divide-slate-100">
-                {myOrders.slice(0, 3).map((ord) => (
-                  <div key={ord.id} className="py-3 flex items-center justify-between text-xs gap-2">
-                    <div>
-                      <span className="font-mono font-black text-blue-950">{ord.requestNumber}</span>
-                      <span className="text-slate-400 mx-1.5">·</span>
-                      <span className="text-slate-600">{ord.items?.length || 0} أصناف</span>
+                {myOrders.slice(0, 3).map((ord) => {
+                  const meta = ORDER_STATUS_META[ord.status] || { label: ord.status, colorClass: 'text-slate-700' };
+                  return (
+                    <div key={ord.id} className="py-3 flex items-center justify-between text-xs gap-2">
+                      <div>
+                        <span className="font-mono font-black text-blue-950">{ord.requestNumber}</span>
+                        <span className="text-slate-400 mx-1.5">·</span>
+                        <span className="text-slate-600">{ord.items?.length || 0} أصناف</span>
+                      </div>
+                      <span className={`font-bold ${meta.colorClass}`}>{meta.label}</span>
                     </div>
-                    <span className="font-bold text-slate-700">
-                      {ord.status === 'pending'
-                        ? 'قيد المراجعة'
-                        : ord.status === 'approved'
-                        ? 'تمت الموافقة'
-                        : ord.status === 'invoiced'
-                        ? 'تم إصدار الفاتورة'
-                        : 'مرفوض'}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -576,14 +590,23 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                     key={prod.id}
                     className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col justify-between gap-3 text-xs"
                   >
-                    <div className="space-y-1.5">
-                      <div className="flex items-start justify-between gap-2">
-                        <h3 className="font-black text-sm text-slate-900">{prod.name}</h3>
-                        <span className="font-mono text-[11px] text-slate-500 shrink-0">{prod.code}</span>
+                    <div className="flex items-start gap-3">
+                      {(data.cachedMediaMap?.[prod.id] || prod.image) && (
+                        <img
+                          src={data.cachedMediaMap?.[prod.id] || prod.image}
+                          alt={prod.name}
+                          className="w-12 h-12 rounded-xl object-cover border border-slate-200 shrink-0 bg-slate-50"
+                        />
+                      )}
+                      <div className="space-y-1 flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="font-black text-sm text-slate-900 truncate">{prod.name}</h3>
+                          <span className="font-mono text-[11px] text-slate-500 shrink-0">{prod.code}</span>
+                        </div>
+                        <p className="text-[11px] text-slate-500">
+                          {prod.category} · {avail > 0 ? 'متوفر بالمخزون' : 'غير متوفر حالياً'}
+                        </p>
                       </div>
-                      <p className="text-[11px] text-slate-500">
-                        {prod.category} · {avail > 0 ? 'متوفر بالمخزون' : 'غير متوفر حالياً'}
-                      </p>
                     </div>
 
                     <div className="space-y-2.5 pt-2 border-t border-slate-100">
@@ -808,37 +831,46 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
           ) : (
             myOrders.map((ord) => {
               const isExpanded = expandedHistoryId === ord.id;
+              const statusMeta = ORDER_STATUS_META[ord.status] || { label: ord.status, colorClass: 'text-slate-700' };
               return (
                 <div key={ord.id} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <span className="font-mono font-black text-sm text-blue-950">
-                        {ord.requestNumber}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-mono font-black text-sm text-blue-950">
+                          {ord.requestNumber}
+                        </span>
+                        {ord.isLocalQueued && (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-bold">
+                            في انتظار المزامنة
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[11px] text-slate-500 mt-0.5">
                         {new Date(ord.createdAt).toLocaleDateString('ar-EG')} · {ord.items?.length || 0} أصناف
                       </p>
                     </div>
-                    <span
-                      className={`font-bold text-xs ${
-                        ord.status === 'invoiced'
-                          ? 'text-emerald-700'
-                          : ord.status === 'approved'
-                          ? 'text-blue-800'
-                          : ord.status === 'rejected'
-                          ? 'text-red-700'
-                          : 'text-amber-700'
-                      }`}
-                    >
-                      {ord.status === 'pending'
-                        ? 'قيد المراجعة'
-                        : ord.status === 'approved'
-                        ? 'تمت الموافقة'
-                        : ord.status === 'invoiced'
-                        ? `مفوتر (${ord.invoiceNumber || ''})`
-                        : 'مرفوض'}
+                    <span className={`font-bold text-xs ${statusMeta.colorClass}`}>
+                      {ord.status === 'invoiced' && ord.invoiceNumber
+                        ? `${statusMeta.label} (${ord.invoiceNumber})`
+                        : statusMeta.label}
                     </span>
                   </div>
+
+                  {(ord.assignedDeliveryRepName || (allowPriceView && Number(ord.advancePaidAmount || 0) > 0)) && (
+                    <div className="flex flex-wrap gap-2 text-[11px]">
+                      {ord.assignedDeliveryRepName && (
+                        <span className="px-2.5 py-1 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-900 font-bold">
+                          مندوب التوصيل: {ord.assignedDeliveryRepName}
+                        </span>
+                      )}
+                      {allowPriceView && Number(ord.advancePaidAmount || 0) > 0 && (
+                        <span className="px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 font-bold font-mono">
+                          دفعة مقدمة مسددة: {Number(ord.advancePaidAmount).toLocaleString()} {data.settings.currency}
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   {ord.rejectionReason && (
                     <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold">
@@ -879,23 +911,20 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
 
                   {isExpanded && ord.statusHistory && ord.statusHistory.length > 0 && (
                     <div className="border-t border-slate-200 pt-2 space-y-1.5 text-[11px] text-slate-600">
-                      {ord.statusHistory.map((h) => (
-                        <div key={h.id} className="flex items-center justify-between">
-                          <span>
-                            {h.toStatus === 'pending'
-                              ? 'إرسال الطلب'
-                              : h.toStatus === 'approved'
-                              ? 'اعتماد الإدارة'
-                              : h.toStatus === 'invoiced'
-                              ? 'إصدار الفاتورة'
-                              : 'رفض الطلب'}
-                            {h.reason ? ` — ${h.reason}` : ''}
-                          </span>
-                          <span className="font-mono text-slate-400">
-                            {new Date(h.changedAt).toLocaleString('ar-EG')}
-                          </span>
-                        </div>
-                      ))}
+                      {ord.statusHistory.map((h) => {
+                        const hm = ORDER_STATUS_META[h.toStatus as CustomerItemOrderStatus];
+                        return (
+                          <div key={h.id} className="flex items-center justify-between gap-2">
+                            <span>
+                              {hm ? hm.label : h.toStatus}
+                              {h.reason ? ` — ${h.reason}` : ''}
+                            </span>
+                            <span className="font-mono text-slate-400 shrink-0">
+                              {new Date(h.changedAt).toLocaleString('ar-EG')}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -1114,35 +1143,6 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
           </div>
         </div>
       )}
-
-      {/* Fixed Bottom Navigation Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 pb-safe">
-        <div className="max-w-2xl mx-auto grid grid-cols-5 h-16 items-center">
-          {[
-            { key: 'home' as const, label: 'الرئيسية', icon: Home },
-            { key: 'catalog' as const, label: 'الكتالوج', icon: Package },
-            { key: 'cart' as const, label: `السلة (${cartTotalQty})`, icon: ShoppingCart },
-            { key: 'orders' as const, label: 'طلباتي', icon: ClipboardList },
-            { key: 'account' as const, label: 'فواتيري', icon: Receipt },
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.key;
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => onTabChange(tab.key)}
-                className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors ${
-                  active ? 'text-blue-900 font-black' : 'text-slate-500 font-medium'
-                }`}
-              >
-                <Icon className="w-5 h-5" />
-                <span className="text-[10px] whitespace-nowrap">{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </nav>
     </div>
   );
 };

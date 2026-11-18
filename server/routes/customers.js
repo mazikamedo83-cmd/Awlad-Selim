@@ -117,6 +117,24 @@ router.get(
 );
 
 router.get(
+  '/:id/statement',
+  requireStaff,
+  requirePermission('canView'),
+  asyncHandler(async (req, res) => {
+    const customer = await getCustomerById(req.params.id);
+    if (!customer) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
+    if (req.auth.user.role === 'representative') {
+      const rep = req.auth.representativeProfile || (await getRepresentativeByUserId(req.auth.user.id));
+      if (!rep || !isCustomerAllowedForRep(customer, rep.id)) {
+        throw new AppError(403, 'غير مصرح لك بالوصول لكشف حساب عميل غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
+      }
+    }
+    const statement = await getCustomerStatementData(customer.id, { allowPriceView: true });
+    res.json({ ok: true, statement, ...statement });
+  })
+);
+
+router.get(
   '/:id',
   requireStaff,
   requirePermission('canView'),

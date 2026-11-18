@@ -45,7 +45,7 @@
         "canViewDeletedInvoices": true
       },
       "createdAt": "2026-11-18T05:09:57.140Z",
-      "lastLogin": "2026-11-18T05:09:57.310Z"
+      "lastLogin": "2026-11-18T06:47:37.838Z"
     }
   ],
   "warehouses": [
@@ -98,25 +98,6 @@
   "ownerTransactions": [],
   "stockCounts": [],
   "stockTransferRequests": [],
-  "pairingTokens": [],
-  "pairedDevices": [
-    {
-      "deviceId": "DEV-89bbe555-c8e0-457b-8fc1-6dbb8b737d64",
-      "deviceName": "هاتف Android",
-      "deviceType": "android",
-      "osVersion": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) C",
-      "appVersion": "3.0.0",
-      "linkedUserId": "USR-MWLNWTN7-90067A",
-      "linkedUserName": "123456",
-      "connectionMode": "pro_remote",
-      "serverUrlUsed": "https://ais-dev-umgjohq4zbitt6p2gtc3we-679503179490.europe-west2.run.app",
-      "ipAddress": "45.110.53.198",
-      "status": "active",
-      "configVersion": 1,
-      "pairedAt": "2026-11-18T05:09:57.310Z",
-      "lastSeenAt": "2026-11-18T05:21:47.543Z"
-    }
-  ],
   "settings": {
     "companyName": "مؤسسة أولاد سليم للتجارة والتوزيع",
     "companySubtitle": "نظام المحاسبة وإدارة الأعمال المتكامل",
@@ -147,6 +128,25 @@
     "stockTransferNo": 0,
     "cashOpNo": 0
   },
-  "lastSavedAt": "2026-11-18T05:21:47.543Z",
-  "version": "3.0.0"
+  "lastSavedAt": "2026-11-18T06:47:38.010Z",
+  "version": "3.0.0",
+  "pairingTokens": [],
+  "pairedDevices": [
+    {
+      "deviceId": "DEV-89bbe555-c8e0-457b-8fc1-6dbb8b737d64",
+      "deviceName": "هاتف Android",
+      "deviceType": "android",
+      "osVersion": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) C",
+      "appVersion": "3.0.0",
+      "linkedUserId": "USR-MWLNWTN7-90067A",
+      "linkedUserName": "123456",
+      "connectionMode": "pro_remote",
+      "serverUrlUsed": "https://ais-dev-umgjohq4zbitt6p2gtc3we-679503179490.europe-west2.run.app",
+      "ipAddress": "45.110.53.198",
+      "status": "active",
+      "configVersion": 1,
+      "pairedAt": "2026-11-18T05:09:57.310Z",
+      "lastSeenAt": "2026-11-18T05:21:47.543Z"
+    }
+  ]
 }

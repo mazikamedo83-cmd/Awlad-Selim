@@ -1,12 +1,12 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import {
-  Home, Users, FilePlus2, FileText, Truck, Search, Plus, Minus,
+  FilePlus2, Truck, Search, Plus, Minus,
   Trash2, CheckCircle2, AlertCircle, AlertTriangle, Phone, MapPin,
-  History, ShieldAlert, RefreshCw, Share2, FileDown, Boxes, ArrowLeftRight
+  History, ShieldAlert, RefreshCw, Share2, FileDown, Boxes
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
-import { CustomerPriceHistoryEntry, Invoice } from '../../../types';
+import { CustomerItemOrderRequest, CustomerItemOrderStatus, CustomerPriceHistoryEntry, Invoice } from '../../../types';
 import { exportHtmlToPdf } from '../../common/PdfExporter';
 import { isNativeCapacitor } from '../../../services/native';
 
@@ -92,6 +92,27 @@ export const RepPortal: React.FC<RepPortalProps> = ({ activeTab, onTabChange }) 
   const [cashAmount, setCashAmount] = useState<number>(0);
   const [cashNotes, setCashNotes] = useState<string>('');
   const [isSendingTransfer, setIsSendingTransfer] = useState(false);
+
+  // Rep delivery orders & rep customer order request modal/panel
+  const [customersSubView, setCustomersSubView] = useState<'list' | 'orders'>('list');
+  const [repOrderCustomerId, setRepOrderCustomerId] = useState<string>('');
+  const [repOrderProdId, setRepOrderProdId] = useState<string>('');
+  const [repOrderUnit, setRepOrderUnit] = useState<string>('');
+  const [repOrderQty, setRepOrderQty] = useState<number>(1);
+  const [repOrderNotes, setRepOrderNotes] = useState<string>('');
+  const [repOrderItems, setRepOrderItems] = useState<Array<{
+    productId: string;
+    productCode: string;
+    productName: string;
+    unit: string;
+    unitFactor: number;
+    quantity: number;
+    unitPrice: number;
+  }>>([]);
+  const [isSubmittingRepOrder, setIsSubmittingRepOrder] = useState(false);
+  const [deliveryReviewId, setDeliveryReviewId] = useState<string | null>(null);
+  const [deliveryReviewNote, setDeliveryReviewNote] = useState<string>('');
+  const [busyDeliveryOrderId, setBusyDeliveryOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!invWarehouseId && vanWarehouse?.id) {
@@ -359,6 +380,139 @@ export const RepPortal: React.FC<RepPortalProps> = ({ activeTab, onTabChange }) 
     });
   }, [myInvoices, myItemTransfers]);
 
+  const myAssignedDeliveries = useMemo(() => {
+    return (data.customerItemOrders || [])
+      .filter((o) =>
+        rep && (o.assignedDeliveryRepId === rep.id || o.representativeId === rep.id)
+      )
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  }, [data.customerItemOrders, rep]);
+
+  const activeDeliveryOrders = useMemo(
+    () =>
+      myAssignedDeliveries.filter((o) =>
+        ['rep_assigned', 'out_for_delivery', 'needs_review'].includes(o.status)
+      ),
+    [myAssignedDeliveries]
+  );
+
+  const getDeliveryStatusLabel = (status: CustomerItemOrderStatus) => {
+    switch (status) {
+      case 'pending': return 'جديد';
+      case 'under_review': return 'قيد المراجعة';
+      case 'approved': return 'مقبول';
+      case 'rep_assigned': return 'مسند لك للتوصيل';
+      case 'out_for_delivery': return 'جاري التوصيل';
+      case 'delivered': return 'تم التسليم';
+      case 'needs_review': return 'يحتاج مراجعة';
+      case 'invoiced': return 'مفوتر';
+      case 'rejected': return 'مرفوض';
+      default: return status;
+    }
+  };
+
+  const handleDeliveryStatusChange = async (
+    order: CustomerItemOrderRequest,
+    status: 'out_for_delivery' | 'delivered' | 'needs_review',
+    reason?: string
+  ) => {
+    setBusyDeliveryOrderId(order.id);
+    setFeedback(null);
+    try {
+      const res = await data.updateOrderDeliveryStatus(order.id, status, reason);
+      if (res.success) {
+        setDeliveryReviewId(null);
+        setDeliveryReviewNote('');
+        setFeedback({
+          type: res.queuedOffline ? 'warning' : 'success',
+          text: res.queuedOffline
+            ? `تم تسجيل حالة التوصيل (${getDeliveryStatusLabel(status)}) محلياً للمزامنة التلقائية.`
+            : `تم تحديث حالة الطلب ${order.requestNumber} إلى (${getDeliveryStatusLabel(status)}).`,
+        });
+      } else {
+        setFeedback({ type: 'error', text: res.error || 'تعذر تحديث حالة التوصيل' });
+      }
+    } finally {
+      setBusyDeliveryOrderId(null);
+    }
+  };
+
+  const handleSelectRepOrderProduct = (prodId: string) => {
+    setRepOrderProdId(prodId);
+    const prod = activeProducts.find((p) => p.id === prodId);
+    if (!prod) return;
+    setRepOrderUnit(prod.units?.[0]?.name || prod.baseUnit);
+    setRepOrderQty(1);
+  };
+
+  const handleAddRepOrderItem = () => {
+    const prod = activeProducts.find((p) => p.id === repOrderProdId);
+    if (!prod || repOrderQty <= 0) return;
+    const unitName = repOrderUnit || prod.baseUnit;
+    const matched = prod.units?.find((u) => u.name === unitName);
+    const unitFactor = matched ? Number(matched.conversionFactor || 1) : 1;
+    const unitPrice = matched ? Number(matched.sellingPrice || 0) : Number(prod.sellingPrice || 0);
+    setRepOrderItems((prev) => [
+      ...prev,
+      {
+        productId: prod.id,
+        productCode: prod.code,
+        productName: prod.name,
+        unit: unitName,
+        unitFactor,
+        quantity: repOrderQty,
+        unitPrice,
+      },
+    ]);
+    setRepOrderProdId('');
+    setRepOrderQty(1);
+  };
+
+  const handleSubmitRepOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!repOrderCustomerId) {
+      setFeedback({ type: 'error', text: 'يرجى اختيار العميل للطلب أولاً.' });
+      return;
+    }
+    if (!repOrderItems.length) {
+      setFeedback({ type: 'error', text: 'يرجى إضافة صنف واحد على الأقل للطلب.' });
+      return;
+    }
+    const cust = data.customers.find((c) => c.id === repOrderCustomerId);
+    if (!cust) {
+      setFeedback({ type: 'error', text: 'العميل غير متاح ضمن نطاق حسابك.' });
+      return;
+    }
+    setIsSubmittingRepOrder(true);
+    setFeedback(null);
+    try {
+      const res = await data.createCustomerItemOrder({
+        customerId: cust.id,
+        customerName: cust.name,
+        customerPhone: cust.phone,
+        shopName: cust.shopName || cust.name,
+        deliveryAddress: cust.address,
+        geoCoordinates: cust.geoCoordinates,
+        items: repOrderItems,
+        notes: repOrderNotes.trim() || `طلب ميداني مرفوع بواسطة المندوب (${rep?.name || currentUser?.fullName || ''})`,
+      });
+      if (res.success || res.queuedOffline) {
+        setRepOrderItems([]);
+        setRepOrderNotes('');
+        setFeedback({
+          type: res.queuedOffline ? 'warning' : 'success',
+          text: res.queuedOffline
+            ? 'تم حفظ طلب العميل محلياً للمزامنة التلقائية فور عودة الاتصال.'
+            : `تم إرسال طلب العميل (${res.order?.requestNumber || ''}) للإدارة بنجاح.`,
+        });
+      } else {
+        setFeedback({ type: 'error', text: res.error || 'تعذر إرسال الطلب' });
+      }
+    } finally {
+      setIsSubmittingRepOrder(false);
+    }
+  };
+
   const filteredCustomers = useMemo(() => {
     const q = customerSearch.trim().toLowerCase();
     return data.customers.filter(
@@ -604,85 +758,341 @@ export const RepPortal: React.FC<RepPortalProps> = ({ activeTab, onTabChange }) 
               </button>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* TAB 2: ALLOWED CUSTOMERS */}
-      {activeTab === 'customers' && (
-        <div className="space-y-3">
-          <div className="bg-white rounded-2xl border border-slate-200 p-3 shadow-xs">
-            <div className="relative">
-              <input
-                type="text"
-                value={customerSearch}
-                onChange={(e) => setCustomerSearch(e.target.value)}
-                placeholder="ابحث باسم العميل أو المحل أو المنطقة أو الهاتف..."
-                className="w-full rounded-xl border border-slate-300 py-3 pr-10 pl-3 text-xs font-semibold outline-hidden focus:border-blue-600"
-              />
-              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3.5" />
-            </div>
-          </div>
-
-          {filteredCustomers.length === 0 ? (
-            <div className="bg-white rounded-3xl border border-slate-200 p-10 text-center text-xs text-slate-500">
-              لا يوجد عملاء مخصصون لحسابك حالياً. راجع مدير النظام لتحديد العملاء المسموحين لك.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {filteredCustomers.map((c) => {
-                const mapsQuery = encodeURIComponent(c.geoCoordinates || c.address || c.name);
-                return (
-                  <div
-                    key={c.id}
-                    className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs"
-                  >
-                    <div className="flex items-start justify-between gap-2">
+          {activeDeliveryOrders.length > 0 && (
+            <div className="bg-white rounded-3xl border border-indigo-200 p-4 shadow-xs space-y-3 text-xs">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-black text-indigo-950">
+                  أوامر التوصيل المسندة لك ({activeDeliveryOrders.length})
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomersSubView('orders');
+                    onTabChange('customers');
+                  }}
+                  className="text-xs font-bold text-blue-900 cursor-pointer"
+                >
+                  عرض سجل الطلبات
+                </button>
+              </div>
+              <div className="space-y-2.5">
+                {activeDeliveryOrders.map((ord) => (
+                  <div key={ord.id} className="p-3 rounded-2xl bg-indigo-50/50 border border-indigo-200 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
                       <div>
-                        <h3 className="font-black text-sm text-slate-900">{c.shopName || c.name}</h3>
-                        <p className="text-[11px] text-slate-500">
-                          {c.name} · {c.code} {c.area ? `· ${c.area}` : ''}
-                        </p>
+                        <span className="font-mono font-black text-blue-950">{ord.requestNumber}</span>
+                        <span className="mx-1.5 text-slate-400">·</span>
+                        <strong className="text-slate-900">{ord.shopName || ord.customerName}</strong>
                       </div>
-                      <strong
-                        className={`font-mono text-sm tabular-nums ${
-                          c.currentBalance > 0 ? 'text-red-700' : 'text-emerald-700'
-                        }`}
-                      >
-                        {c.currentBalance.toLocaleString()} {data.settings.currency}
-                      </strong>
+                      <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-900 text-[10px] font-bold">
+                        {getDeliveryStatusLabel(ord.status)}
+                      </span>
                     </div>
-
+                    {ord.deliveryAddress && (
+                      <p className="text-[11px] text-slate-600">{ord.deliveryAddress}</p>
+                    )}
                     <div className="flex flex-wrap gap-2">
-                      <a
-                        href={`tel:${c.phone}`}
-                        className="min-h-[42px] px-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono font-bold inline-flex items-center gap-1.5"
-                      >
-                        <Phone className="w-4 h-4" />
-                        <span>{c.phone}</span>
-                      </a>
-                      <a
-                        href={`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="min-h-[42px] px-3 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1.5"
-                      >
-                        <MapPin className="w-4 h-4" />
-                        <span>الموقع</span>
-                      </a>
+                      {ord.status === 'rep_assigned' && (
+                        <button
+                          type="button"
+                          disabled={busyDeliveryOrderId === ord.id}
+                          onClick={() => handleDeliveryStatusChange(ord, 'out_for_delivery')}
+                          className="min-h-[38px] px-3 rounded-xl bg-purple-700 text-white font-bold cursor-pointer disabled:opacity-50"
+                        >
+                          بدء التوصيل
+                        </button>
+                      )}
+                      {(ord.status === 'rep_assigned' || ord.status === 'out_for_delivery') && (
+                        <button
+                          type="button"
+                          disabled={busyDeliveryOrderId === ord.id}
+                          onClick={() => handleDeliveryStatusChange(ord, 'delivered')}
+                          className="min-h-[38px] px-3 rounded-xl bg-emerald-700 text-white font-bold cursor-pointer disabled:opacity-50"
+                        >
+                          تأكيد التسليم للعميل
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => {
-                          setInvCustomerId(c.id);
-                          onTabChange('new-invoice');
+                          setDeliveryReviewId(deliveryReviewId === ord.id ? null : ord.id);
+                          setDeliveryReviewNote('');
                         }}
-                        className="min-h-[42px] flex-1 px-3 rounded-xl bg-blue-900 text-white font-bold cursor-pointer"
+                        className="min-h-[38px] px-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 font-bold cursor-pointer"
                       >
-                        فاتورة جديدة
+                        ملاحظة / يحتاج مراجعة
                       </button>
                     </div>
+                    {deliveryReviewId === ord.id && (
+                      <div className="flex gap-2 pt-1">
+                        <input
+                          type="text"
+                          value={deliveryReviewNote}
+                          onChange={(e) => setDeliveryReviewNote(e.target.value)}
+                          placeholder="اذكر سبب المراجعة أو العودة للإدارة..."
+                          className="flex-1 min-h-[38px] rounded-xl border border-rose-300 px-2.5 bg-white"
+                        />
+                        <button
+                          type="button"
+                          disabled={busyDeliveryOrderId === ord.id || !deliveryReviewNote.trim()}
+                          onClick={() => handleDeliveryStatusChange(ord, 'needs_review', deliveryReviewNote.trim())}
+                          className="min-h-[38px] px-3 rounded-xl bg-rose-700 text-white font-bold cursor-pointer disabled:opacity-50"
+                        >
+                          إرسال
+                        </button>
+                      </div>
+                    )}
                   </div>
-                );
-              })}
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 2: ALLOWED CUSTOMERS + REP ORDERS */}
+      {activeTab === 'customers' && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-200 text-xs">
+            <button
+              type="button"
+              onClick={() => setCustomersSubView('list')}
+              className={`min-h-[42px] rounded-xl font-bold cursor-pointer ${
+                customersSubView === 'list' ? 'bg-blue-900 text-white' : 'text-slate-600'
+              }`}
+            >
+              عملائي ({data.customers.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setCustomersSubView('orders')}
+              className={`min-h-[42px] rounded-xl font-bold cursor-pointer ${
+                customersSubView === 'orders' ? 'bg-blue-900 text-white' : 'text-slate-600'
+              }`}
+            >
+              طلبات العملاء والتوصيل ({myAssignedDeliveries.length})
+            </button>
+          </div>
+
+          {customersSubView === 'list' ? (
+            <>
+              <div className="bg-white rounded-2xl border border-slate-200 p-3 shadow-xs">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={customerSearch}
+                    onChange={(e) => setCustomerSearch(e.target.value)}
+                    placeholder="ابحث باسم العميل أو المحل أو المنطقة أو الهاتف..."
+                    className="w-full rounded-xl border border-slate-300 py-3 pr-10 pl-3 text-xs font-semibold outline-hidden focus:border-blue-600"
+                  />
+                  <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3.5" />
+                </div>
+              </div>
+
+              {filteredCustomers.length === 0 ? (
+                <div className="bg-white rounded-3xl border border-slate-200 p-10 text-center text-xs text-slate-500">
+                  لا يوجد عملاء مخصصون لحسابك حالياً. راجع مدير النظام لتحديد العملاء المسموحين لك.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {filteredCustomers.map((c) => {
+                    const mapsQuery = encodeURIComponent(c.geoCoordinates || c.address || c.name);
+                    return (
+                      <div
+                        key={c.id}
+                        className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h3 className="font-black text-sm text-slate-900">{c.shopName || c.name}</h3>
+                            <p className="text-[11px] text-slate-500">
+                              {c.name} · {c.code} {c.area ? `· ${c.area}` : ''}
+                            </p>
+                          </div>
+                          <strong
+                            className={`font-mono text-sm tabular-nums ${
+                              c.currentBalance > 0 ? 'text-red-700' : 'text-emerald-700'
+                            }`}
+                          >
+                            {c.currentBalance.toLocaleString()} {data.settings.currency}
+                          </strong>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <a
+                            href={`tel:${c.phone}`}
+                            className="min-h-[42px] px-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono font-bold inline-flex items-center gap-1.5"
+                          >
+                            <Phone className="w-4 h-4" />
+                            <span>{c.phone}</span>
+                          </a>
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="min-h-[42px] px-3 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1.5"
+                          >
+                            <MapPin className="w-4 h-4" />
+                            <span>الموقع</span>
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setInvCustomerId(c.id);
+                              onTabChange('new-invoice');
+                            }}
+                            className="min-h-[42px] flex-1 px-3 rounded-xl bg-blue-900 text-white font-bold cursor-pointer"
+                          >
+                            فاتورة جديدة
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRepOrderCustomerId(c.id);
+                              setCustomersSubView('orders');
+                            }}
+                            className="min-h-[42px] px-3 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-900 font-bold cursor-pointer"
+                          >
+                            طلب أصناف
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="space-y-3 text-xs">
+              <form
+                onSubmit={handleSubmitRepOrder}
+                className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3"
+              >
+                <h4 className="font-black text-sm text-slate-900">رفع طلب أصناف جديد لعميل (متاح أونلاين وأوفلاين)</h4>
+                <select
+                  value={repOrderCustomerId}
+                  onChange={(e) => setRepOrderCustomerId(e.target.value)}
+                  className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 bg-white font-bold"
+                >
+                  <option value="">-- اختر العميل المسموح --</option>
+                  {data.customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.shopName ? `${c.shopName} (${c.name})` : c.name} — {c.phone}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex flex-wrap gap-2">
+                  <select
+                    value={repOrderProdId}
+                    onChange={(e) => handleSelectRepOrderProduct(e.target.value)}
+                    className="flex-1 min-w-[180px] min-h-[42px] rounded-xl border border-slate-300 px-2.5 bg-white font-bold"
+                  >
+                    <option value="">-- اختر الصنف --</option>
+                    {activeProducts.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.sellingPrice} {data.settings.currency})
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min={1}
+                    value={repOrderQty}
+                    onChange={(e) => setRepOrderQty(Math.max(1, Number(e.target.value)))}
+                    className="w-20 min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddRepOrderItem}
+                    className="min-h-[42px] px-3.5 rounded-xl bg-blue-900 text-white font-bold cursor-pointer"
+                  >
+                    إضافة
+                  </button>
+                </div>
+
+                {repOrderItems.length > 0 && (
+                  <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-xl">
+                    {repOrderItems.map((it, idx) => (
+                      <div key={idx} className="flex items-center justify-between">
+                        <span className="font-bold">
+                          {it.productName} ({it.quantity} {it.unit})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setRepOrderItems((prev) => prev.filter((_, i) => i !== idx))}
+                          className="text-red-600 font-bold px-2 cursor-pointer"
+                        >
+                          حذف
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <input
+                  type="text"
+                  value={repOrderNotes}
+                  onChange={(e) => setRepOrderNotes(e.target.value)}
+                  placeholder="ملاحظات الطلب والتسليم..."
+                  className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+                />
+
+                <button
+                  type="submit"
+                  disabled={isSubmittingRepOrder || !repOrderCustomerId || repOrderItems.length === 0}
+                  className="w-full min-h-[44px] rounded-xl bg-emerald-700 text-white font-black disabled:opacity-50 cursor-pointer"
+                >
+                  {isSubmittingRepOrder ? 'جاري الإرسال...' : 'إرسال طلب العميل للإدارة'}
+                </button>
+              </form>
+
+              {myAssignedDeliveries.map((ord) => (
+                <div key={ord.id} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-mono font-black text-blue-950">{ord.requestNumber}</span>
+                      <span className="mx-1.5 text-slate-400">·</span>
+                      <strong className="text-slate-900">{ord.shopName || ord.customerName}</strong>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-900 font-bold text-[10px]">
+                      {getDeliveryStatusLabel(ord.status)}
+                    </span>
+                  </div>
+                  <div className="space-y-1 bg-slate-50 rounded-xl p-2 text-[11px]">
+                    {(ord.items || []).map((it, idx) => (
+                      <div key={idx} className="flex justify-between">
+                        <span>{it.productName}</span>
+                        <span className="font-mono">{it.quantity} {it.unit}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {['rep_assigned', 'out_for_delivery', 'needs_review'].includes(ord.status) && (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {ord.status === 'rep_assigned' && (
+                        <button
+                          type="button"
+                          disabled={busyDeliveryOrderId === ord.id}
+                          onClick={() => handleDeliveryStatusChange(ord, 'out_for_delivery')}
+                          className="min-h-[38px] px-3 rounded-xl bg-purple-700 text-white font-bold cursor-pointer"
+                        >
+                          بدء التوصيل
+                        </button>
+                      )}
+                      {(ord.status === 'rep_assigned' || ord.status === 'out_for_delivery') && (
+                        <button
+                          type="button"
+                          disabled={busyDeliveryOrderId === ord.id}
+                          onClick={() => handleDeliveryStatusChange(ord, 'delivered')}
+                          className="min-h-[38px] px-3 rounded-xl bg-emerald-700 text-white font-bold cursor-pointer"
+                        >
+                          تأكيد التسليم
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -693,7 +1103,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({ activeTab, onTabChange }) 
         <div className="space-y-4">
           {data.isUsingOfflineCache && (
             <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-xs font-bold text-amber-900">
-              أنت في وضع عدم الاتصال (بيانات مخزنة). إصدار الفواتير وطلبات التحويل يتطلب الاتصال المباشر بسيرفر المحل.
+              وضع عدم الاتصال (بيانات محلية): يتم حفظ الفاتورة محلياً وترحيلها تلقائياً للسيرفر فور عودة الشبكة مع مراجعة الأرصدة.
             </div>
           )}
 
@@ -1352,35 +1762,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({ activeTab, onTabChange }) 
           </div>
         </div>
       )}
-
-      {/* Fixed Bottom Navigation Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 pb-safe">
-        <div className="max-w-2xl mx-auto grid grid-cols-5 h-16 items-center">
-          {[
-            { key: 'home' as const, label: 'الرئيسية', icon: Home },
-            { key: 'customers' as const, label: 'عملائي', icon: Users },
-            { key: 'new-invoice' as const, label: 'فاتورة بيع', icon: FilePlus2 },
-            { key: 'invoices' as const, label: 'الفواتير', icon: FileText },
-            { key: 'custody' as const, label: 'العهدة', icon: ArrowLeftRight },
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.key;
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => onTabChange(tab.key)}
-                className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors ${
-                  active ? 'text-blue-900 font-black' : 'text-slate-500 font-medium'
-                }`}
-              >
-                <Icon className="w-5 h-5" />
-                <span className="text-[10px] whitespace-nowrap">{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </nav>
     </div>
   );
 };

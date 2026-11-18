@@ -291,7 +291,7 @@ async function runCoreSuite(baseUrl, modeLabel) {
     });
     assert.equal(advRes.status, 201);
     assert.equal(advRes.json.advancePayment.amount, 5000);
-    assert.equal(advRes.json.advancePayment.status, 'active');
+    assert.equal(advRes.json.advancePayment.status, 'available');
     assert.equal(advRes.json.order.advancePaidAmount, 5000);
     assert.equal(advRes.json.order.remainingAmount, 5000);
 
@@ -417,7 +417,7 @@ async function runCoreSuite(baseUrl, modeLabel) {
     assert.equal(boot.customers.find((c) => c.id === custId).currentBalance, -3000);
     assert.equal(boot.cashboxes.find((c) => c.id === cbId).currentBalance, 5000);
     assert.equal(boot.products.find((p) => p.id === prodId).stockPerWarehouse[whId], 48);
-    assert.equal(boot.orderAdvancePayments.find((a) => a.orderId === orderId).status, 'active');
+    assert.equal(boot.orderAdvancePayments.find((a) => a.orderId === orderId).status, 'available');
   });
 
   await test(`[${modeLabel}] 3. Offline Sync Push/Pull, Deduplication, Alias Chaining & Conflict Review (No Silent LWW)`, async () => {

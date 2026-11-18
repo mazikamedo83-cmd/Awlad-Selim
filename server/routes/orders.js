@@ -3,8 +3,12 @@ import {
   listOrders,
   getOrderById,
   createCustomerOrder,
+  reviewCustomerOrder,
   approveCustomerOrder,
   rejectCustomerOrder,
+  assignOrderDeliveryRep,
+  updateOrderDeliveryStatus,
+  recordOrderAdvancePayment,
   convertOrderToInvoice,
 } from '../db/stores/ordersStore.js';
 import {
@@ -54,6 +58,16 @@ router.post(
 );
 
 router.post(
+  '/:id/review',
+  requireStaff,
+  requirePermission('canManageSales'),
+  asyncHandler(async (req, res) => {
+    const order = await reviewCustomerOrder(req.params.id, req.auth.user);
+    res.json({ ok: true, order });
+  })
+);
+
+router.post(
   '/:id/approve',
   requireStaff,
   requirePermission('canManageSales'),
@@ -70,6 +84,35 @@ router.post(
   asyncHandler(async (req, res) => {
     const order = await rejectCustomerOrder(req.params.id, req.body || {}, req.auth.user);
     res.json({ ok: true, order });
+  })
+);
+
+router.post(
+  '/:id/assign-rep',
+  requireStaff,
+  requirePermission('canManageSales'),
+  asyncHandler(async (req, res) => {
+    const order = await assignOrderDeliveryRep(req.params.id, req.body || {}, req.auth.user);
+    res.json({ ok: true, order });
+  })
+);
+
+router.post(
+  '/:id/delivery-status',
+  requireStaff,
+  asyncHandler(async (req, res) => {
+    const order = await updateOrderDeliveryStatus(req.params.id, req.body || {}, req.auth.user);
+    res.json({ ok: true, order });
+  })
+);
+
+router.post(
+  '/:id/advance-payment',
+  requireStaff,
+  asyncHandler(async (req, res) => {
+    const idempotencyKey = req.get('Idempotency-Key') || req.body?.idempotencyKey || null;
+    const result = await recordOrderAdvancePayment(req.params.id, req.body || {}, req.auth.user, idempotencyKey);
+    res.status(result.deduplicated ? 200 : 201).json({ ok: true, ...result });
   })
 );
 

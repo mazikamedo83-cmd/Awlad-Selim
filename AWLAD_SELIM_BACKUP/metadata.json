@@ -1,6 +1,0 @@
-{
-  "name": "AWLAD SELIM - أولاد سليم للمحاسبة وإدارة الأعمال",
-  "description": "نظام أولاد سليم المتكامل للمحاسبة وإدارة الأعمال لتجارة المواد الغذائية بالجملة، إدارة المبيعات والمشتريات والمخازن والعملاء والموردين والمناديب والرواتب.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

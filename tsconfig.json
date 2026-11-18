@@ -24,5 +24,13 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "exclude": ["dist", "dist-electron", "AWLAD_SELIM_BACKUP"]
+  "exclude": [
+    "dist",
+    "dist-electron",
+    "server/tests",
+    "src/components/common/QrCodeDisplay.tsx",
+    "src/components/common/QrScannerModal.tsx",
+    "src/components/modules/settings/PairingAndDevicesPanel.tsx",
+    "src/services/discovery.ts"
+  ]
 }

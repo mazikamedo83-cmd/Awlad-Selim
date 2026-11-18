@@ -104,7 +104,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
     setPassword('');
     setPhone(u.phone);
     setRole(u.role);
-    setLinkedCustomerId('');
+    setLinkedCustomerId(u.linkedCustomerId || '');
     setJobTitle(u.jobTitle);
     setDepartment(u.department);
     setPermissions({ ...DEFAULT_PERMISSIONS, ...(u.permissions || {}) });
@@ -143,6 +143,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           permissions,
           mustChangePassword,
           newPassword: password.trim() || undefined,
+          linkedCustomerId: role === 'customer' ? (linkedCustomerId || undefined) : undefined,
         });
         if (!res.success) {
           setFormError(res.error || 'تعذر تحديث بيانات المستخدم');
@@ -532,7 +533,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
             </div>
           </div>
 
-          {role === 'customer' && !editingUser && (
+          {role === 'customer' && (
             <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 space-y-1.5">
               <label className="block font-bold text-blue-950">ربط هذا الحساب بملف العميل مباشرة (1:1):</label>
               <select
@@ -542,7 +543,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
               >
                 <option value="">-- بدون ربط حالي (يمكن الربط لاحقاً من دليل العملاء) --</option>
                 {customers
-                  .filter((c) => !c.userId)
+                  .filter((c) => !c.userId || (editingUser && c.userId === editingUser.id) || c.id === linkedCustomerId)
                   .map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name} {c.shopName ? `(${c.shopName})` : ''} — {c.phone}

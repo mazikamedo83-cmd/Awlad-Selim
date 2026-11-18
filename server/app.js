@@ -12,8 +12,10 @@ import personalAccountsRoutes from './routes/personalAccounts.js';
 import stockCountsRoutes from './routes/stockCounts.js';
 import stockTransfersRoutes from './routes/stockTransfers.js';
 import mobileRoutes from './routes/mobile.js';
+import syncRoutes from './routes/sync.js';
 import { checkPostgresHealth, initializeSchema } from './db/postgres.js';
 import { getAuthStatus, bootstrapAdmin } from './db/stores/authStore.js';
+import { runCustomerLinkConsistencyMigration } from './db/stores/catalogStore.js';
 import { exportFullBackup, restoreFullBackup } from './db/stores/inventoryAdminStore.js';
 import { requireAuth, requireAdmin, asyncHandler, errorMiddleware } from './middleware/auth.js';
 import { resetPgModeCache, isPgMode } from './db/stores/mode.js';
@@ -48,6 +50,12 @@ export async function initializeServerRuntime() {
     } catch (err) {
       console.error('[Bootstrap Warning]:', err.message);
     }
+  }
+
+  try {
+    await runCustomerLinkConsistencyMigration();
+  } catch (err) {
+    console.warn('[Migration Warning]: customer link consistency:', err.message);
   }
 }
 
@@ -168,6 +176,7 @@ export function createApiApp() {
   app.use('/api/stock-counts', stockCountsRoutes);
   app.use('/api/stock-transfers', stockTransfersRoutes);
   app.use('/api/mobile', mobileRoutes);
+  app.use('/api/sync', syncRoutes);
 
   // Legacy full-database endpoints strictly locked to Admin only (401 unauth, 403 non-admin)
   app.get(

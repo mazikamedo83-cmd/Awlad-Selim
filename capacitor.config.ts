@@ -4,9 +4,19 @@ const config: CapacitorConfig = {
   appId: 'com.awladselim.erp',
   appName: 'AWLAD SELIM',
   webDir: 'dist',
+  backgroundColor: '#f8fafc',
   server: {
     androidScheme: 'https',
     cleartext: true,
+  },
+  android: {
+    backgroundColor: '#f8fafc',
+    allowMixedContent: true,
+  },
+  ios: {
+    contentInset: 'never',
+    allowsLinkPreview: false,
+    scrollEnabled: true,
   },
   plugins: {
     SplashScreen: {

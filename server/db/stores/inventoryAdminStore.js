@@ -30,7 +30,7 @@ import {
   isoDateOnly,
   isoTimestamp,
 } from './mode.js';
-import { recordAuditLog, listAuditLogs } from './authStore.js';
+import { recordAuditLog, listAuditLogs, revokeAllUserSessions } from './authStore.js';
 import {
   listCustomers,
   listCategories,
@@ -38,6 +38,7 @@ import {
   getRepresentativeByUserId,
   isCustomerAllowedForRep,
   getSystemSettingsSafe,
+  normalizePhoneDigits,
 } from './catalogStore.js';
 import { listInvoices } from './invoicesStore.js';
 import { listOrders } from './ordersStore.js';
@@ -83,6 +84,8 @@ export async function getStaffBootstrapData(actor) {
       smRes,
       stRes,
       orders,
+      advPayRes,
+      syncConfRes,
       audits,
     ] = await Promise.all([
       isAdminOrUserMgr ? pool.query('SELECT * FROM users ORDER BY created_at DESC') : Promise.resolve({ rows: [] }),
@@ -110,6 +113,8 @@ export async function getStaffBootstrapData(actor) {
       pool.query('SELECT * FROM stock_movements ORDER BY created_at DESC LIMIT 1500'),
       pool.query('SELECT * FROM system_settings LIMIT 1'),
       listOrders({ user: actor }),
+      pool.query('SELECT * FROM order_advance_payments ORDER BY created_at DESC LIMIT 1000'),
+      pool.query('SELECT * FROM sync_conflicts ORDER BY created_at DESC LIMIT 300'),
       isAdminOrUserMgr ? listAuditLogs(300) : Promise.resolve([]),
     ]);
 
@@ -171,6 +176,10 @@ export async function getStaffBootstrapData(actor) {
 
     const allowedCustIdSet = isRep ? new Set(custs.map((c) => c.id)) : null;
     const visibleInvIdSet = isRep ? new Set(invs.map((i) => i.id)) : null;
+    const canViewAllConflicts =
+      actor.role === 'admin' ||
+      Boolean(actor.permissions?.canManageSales) ||
+      Boolean(actor.permissions?.canManageAccounts);
 
     return {
       mode: 'postgresql-enterprise',
@@ -351,6 +360,50 @@ export async function getStaffBootstrapData(actor) {
           receivedAt: rit.received_at ? isoTimestamp(rit.received_at) : undefined,
         })),
       customerItemOrders: orders,
+      orderAdvancePayments: advPayRes.rows
+        .filter((ap) => !isRep || (allowedCustIdSet && allowedCustIdSet.has(ap.customer_id)))
+        .map((ap) => ({
+          id: ap.id,
+          paymentNumber: ap.advance_number,
+          advanceNumber: ap.advance_number,
+          orderId: ap.order_id,
+          requestNumber: ap.request_number,
+          customerId: ap.customer_id,
+          customerName: ap.customer_name,
+          amount: Number(ap.amount || 0),
+          date: isoDateOnly(ap.date),
+          paymentMethod: ap.payment_method || 'cash',
+          cashboxId: ap.cashbox_id,
+          cashboxName: ap.cashbox_name,
+          status: ap.status || 'available',
+          appliedInvoiceId: ap.applied_invoice_id || undefined,
+          appliedInvoiceNumber: ap.applied_invoice_number || undefined,
+          appliedAt: ap.applied_at ? isoTimestamp(ap.applied_at) : undefined,
+          notes: ap.notes || '',
+          originDeviceId: ap.origin_device_id || undefined,
+          createdBy: ap.created_by,
+          createdAt: isoTimestamp(ap.created_at),
+        })),
+      syncConflicts: syncConfRes.rows
+        .filter((c) => canViewAllConflicts || c.user_id === actor.id)
+        .map((c) => ({
+          id: c.id,
+          operationId: c.operation_id,
+          operationType: c.operation_type,
+          entityType: c.entity_type,
+          entityId: c.entity_id || undefined,
+          deviceId: c.device_id || undefined,
+          userId: c.user_id || undefined,
+          userName: c.user_name || '',
+          conflictReason: c.conflict_reason,
+          localPayload: c.local_payload || {},
+          serverSnapshot: c.server_snapshot || {},
+          status: c.status,
+          resolutionNotes: c.resolution_notes || '',
+          resolvedBy: c.resolved_by || undefined,
+          resolvedAt: c.resolved_at ? isoTimestamp(c.resolved_at) : undefined,
+          createdAt: isoTimestamp(c.created_at),
+        })),
       employees: isRep
         ? []
         : empRes.rows.map((e) => ({
@@ -496,8 +549,17 @@ export async function getStaffBootstrapData(actor) {
       ? (repProfile ? (db.repItemTransfers || []).filter((rit) => rit.representativeId === repProfile.id) : [])
       : db.repItemTransfers,
     customerItemOrders: isRep
-      ? (db.customerItemOrders || []).filter((o) => scopedCustomerIdSet.has(o.customerId))
+      ? (db.customerItemOrders || []).filter((o) => scopedCustomerIdSet.has(o.customerId) || (repProfile && (o.representativeId === repProfile.id || o.deliveryRepId === repProfile.id)))
       : db.customerItemOrders,
+    orderAdvancePayments: isRep
+      ? (db.orderAdvancePayments || []).filter((ap) => scopedCustomerIdSet.has(ap.customerId))
+      : (db.orderAdvancePayments || []),
+    syncConflicts: (db.syncConflicts || []).filter((c) =>
+      actor.role === 'admin' ||
+      Boolean(actor.permissions?.canManageSales) ||
+      Boolean(actor.permissions?.canManageAccounts) ||
+      c.userId === actor.id
+    ),
     employees: isRep ? [] : db.employees,
     advancesDeductions: isRep ? [] : db.advancesDeductions,
     attendance: isRep ? [] : db.attendance,
@@ -1391,15 +1453,48 @@ export async function getMobileNotifications(authContext) {
     }
     const orders = await listOrders(authContext);
     for (const o of orders.slice(0, 15)) {
-      if (o.status === 'approved') {
+      if (o.status === 'under_review') {
+        notifications.push({
+          id: `notif-ord-rev-${o.id}-${o.updatedAt || o.createdAt}`,
+          type: 'order_status',
+          severity: 'info',
+          title: `طلبك قيد المراجعة (${o.requestNumber})`,
+          body: 'تراجع الإدارة أصناف الطلب وتجهيزات التوريد حالياً.',
+          relatedId: o.id,
+          createdAt: o.updatedAt || o.createdAt,
+        });
+      } else if (o.status === 'approved') {
         notifications.push({
           id: `notif-ord-app-${o.id}-${o.updatedAt || o.createdAt}`,
           type: 'order_status',
           severity: 'info',
           title: `تم اعتماد طلبك (${o.requestNumber})`,
-          body: 'وافقت الإدارة على طلبك وجارٍ تجهيز الفاتورة.',
+          body: 'وافقت الإدارة على طلبك وجارٍ التنسيق للتسليم أو الفوترة.',
           relatedId: o.id,
           createdAt: o.reviewedAt || o.updatedAt || o.createdAt,
+        });
+      } else if (o.status === 'rep_assigned' || o.status === 'out_for_delivery') {
+        notifications.push({
+          id: `notif-ord-deliv-${o.id}-${o.status}`,
+          type: 'order_status',
+          severity: 'info',
+          title:
+            o.status === 'rep_assigned'
+              ? `تم تعيين مندوب توصيل لطلبك (${o.requestNumber})`
+              : `طلبك في الطريق للتسليم (${o.requestNumber})`,
+          body: o.deliveryRepName ? `مندوب التوصيل: ${o.deliveryRepName}` : 'خرج الطلب للتوصيل إليكم.',
+          relatedId: o.id,
+          createdAt: o.assignedAt || o.updatedAt || o.createdAt,
+        });
+      } else if (o.status === 'delivered') {
+        notifications.push({
+          id: `notif-ord-done-${o.id}`,
+          type: 'order_status',
+          severity: 'success',
+          title: `تم تسليم الطلب (${o.requestNumber})`,
+          body: 'تم تسليم الأصناف وجارٍ الاعتماد النهائي للفاتورة.',
+          relatedId: o.id,
+          createdAt: o.deliveredAt || o.updatedAt || o.createdAt,
         });
       } else if (o.status === 'invoiced') {
         notifications.push({
@@ -1409,6 +1504,16 @@ export async function getMobileNotifications(authContext) {
           title: `تم تحويل طلبك لفاتورة (${o.invoiceNumber || o.requestNumber})`,
           body: `يمكنك مراجعة تفاصيل الفاتورة في تبويب فواتيري وحسابي.`,
           relatedId: o.invoiceId || o.id,
+          createdAt: o.updatedAt || o.createdAt,
+        });
+      } else if (o.status === 'needs_review') {
+        notifications.push({
+          id: `notif-ord-nr-${o.id}`,
+          type: 'order_status',
+          severity: 'warning',
+          title: `الطلب بحاجة لمراجعة الإدارة (${o.requestNumber})`,
+          body: o.notes || 'سيتم التواصل معك لتأكيد التفاصيل.',
+          relatedId: o.id,
           createdAt: o.updatedAt || o.createdAt,
         });
       } else if (o.status === 'rejected') {
@@ -1510,6 +1615,23 @@ export async function getMobileNotifications(authContext) {
       }
     }
 
+    for (const ord of boot.customerItemOrders || []) {
+      if (ord.deliveryRepId === rep.id && ['rep_assigned', 'out_for_delivery'].includes(ord.status)) {
+        notifications.push({
+          id: `notif-rep-ord-${ord.id}-${ord.status}`,
+          type: 'delivery_order',
+          severity: ord.status === 'rep_assigned' ? 'warning' : 'info',
+          title:
+            ord.status === 'rep_assigned'
+              ? `أمر توصيل جديد مسند إليك (${ord.requestNumber})`
+              : `أمر توصيل قيد التنفيذ (${ord.requestNumber})`,
+          body: `${ord.customerName} — ${(ord.items || []).length} صنف`,
+          relatedId: ord.id,
+          createdAt: ord.assignedAt || ord.updatedAt || ord.createdAt,
+        });
+      }
+    }
+
     for (const tr of boot.repTransfers || []) {
       if (tr.status === 'awaiting_receipt' && tr.receiverId === rep.id) {
         notifications.push({
@@ -1531,16 +1653,19 @@ export async function getMobileNotifications(authContext) {
 
     if (isAdmin || perms.canManageSales) {
       for (const ord of boot.customerItemOrders || []) {
-        if (ord.status === 'pending') {
+        if (['pending', 'under_review', 'needs_review'].includes(ord.status)) {
           notifications.push({
-            id: `notif-staff-ord-${ord.id}`,
+            id: `notif-staff-ord-${ord.id}-${ord.status}`,
             type: 'customer_order',
             severity: 'warning',
-            title: `طلب عميل جديد بانتظار المراجعة (${ord.requestNumber})`,
+            title:
+              ord.status === 'needs_review'
+                ? `طلب يحتاج مراجعة تعارض (${ord.requestNumber})`
+                : `طلب جديد بانتظار المراجعة (${ord.requestNumber})`,
             body: `${ord.customerName || 'عميل'} — ${(ord.items || []).length} صنف`,
             relatedId: ord.id,
-            targetTab: 'customers',
-            createdAt: ord.createdAt,
+            targetTab: 'customer-orders',
+            createdAt: ord.updatedAt || ord.createdAt,
           });
         }
       }
@@ -1684,11 +1809,53 @@ export async function createAdminUser(payload, actor) {
   const passwordHash = await hashPasswordBcrypt(password);
   const id = generateServerId('USR');
   const now = nowIso();
+  const normUserPhone = normalizePhoneDigits(payload.phone);
 
   if (await isPgMode()) {
     const user = await withTransaction(async (client) => {
       const dup = await client.query('SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1', [username]);
       if (dup.rows[0]) throw new AppError(409, 'اسم المستخدم مسجل مسبقًا', 'DUPLICATE_USERNAME');
+
+      let resolvedCustomerId = null;
+      let shouldAutoCreateCustomer = false;
+
+      if (targetRole === 'customer') {
+        if (payload.linkedCustomerId) {
+          const lcRes = await client.query('SELECT id, user_id FROM customers WHERE id = $1 FOR UPDATE', [payload.linkedCustomerId]);
+          if (!lcRes.rows[0]) {
+            throw new AppError(404, 'ملف العميل المحدد غير موجود', 'CUSTOMER_NOT_FOUND');
+          }
+          if (lcRes.rows[0].user_id) {
+            throw new AppError(409, 'ملف العميل المحدد مرتبط بالفعل بحساب آخر', 'CUSTOMER_ALREADY_LINKED');
+          }
+          resolvedCustomerId = lcRes.rows[0].id;
+        } else {
+          if (normUserPhone) {
+            const custRows = (await client.query('SELECT id, user_id, phone, secondary_phone FROM customers')).rows;
+            const matches = custRows.filter(
+              (c) => normalizePhoneDigits(c.phone) === normUserPhone || normalizePhoneDigits(c.secondary_phone) === normUserPhone
+            );
+            if (matches.length > 1) {
+              throw new AppError(
+                409,
+                'يوجد أكثر من عميل مسجل بنفس رقم الهاتف، يرجى ربط الحساب بملف العميل المحدد يدوياً',
+                'AMBIGUOUS_CUSTOMER_PHONE'
+              );
+            }
+            if (matches.length === 1) {
+              if (matches[0].user_id) {
+                throw new AppError(409, 'العميل المطابق لرقم الهاتف مرتبط بالفعل بحساب آخر', 'CUSTOMER_ALREADY_LINKED');
+              }
+              resolvedCustomerId = matches[0].id;
+            } else {
+              shouldAutoCreateCustomer = true;
+            }
+          } else {
+            shouldAutoCreateCustomer = true;
+          }
+        }
+      }
+
       await client.query(
         `INSERT INTO users (id, full_name, username, password_hash, password_algo, phone, address, notes, role, job_title, department, is_active, must_change_password, permissions, created_at)
          VALUES ($1,$2,$3,$4,'bcrypt',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
@@ -1700,7 +1867,7 @@ export async function createAdminUser(payload, actor) {
           payload.phone || '',
           payload.address || '',
           payload.notes || '',
-          payload.role || 'sales',
+          targetRole,
           payload.jobTitle || '',
           payload.department || '',
           payload.isActive ?? true,
@@ -1709,14 +1876,33 @@ export async function createAdminUser(payload, actor) {
           now,
         ]
       );
-      if (payload.linkedCustomerId && payload.role === 'customer') {
-        const dupLink = await client.query('SELECT id FROM customers WHERE user_id = $1 LIMIT 1', [id]);
-        if (!dupLink.rows[0]) {
-          await client.query('UPDATE customers SET user_id = $1 WHERE id = $2', [id, payload.linkedCustomerId]);
+
+      if (targetRole === 'customer') {
+        if (resolvedCustomerId) {
+          await client.query('UPDATE customers SET user_id = $1, updated_at = $2 WHERE id = $3', [id, now, resolvedCustomerId]);
+        } else if (shouldAutoCreateCustomer) {
+          resolvedCustomerId = generateServerId('CUS');
+          const autoCode = `CUS-${resolvedCustomerId.slice(-8)}`;
+          await client.query(
+            `INSERT INTO customers (id, code, user_id, name, phone, address, opening_balance, current_balance, price_history, notes, status, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, 0, 0, '{}'::jsonb, $7, 'active', $8)`,
+            [
+              resolvedCustomerId,
+              autoCode,
+              id,
+              fullName,
+              payload.phone || '',
+              payload.address || '',
+              payload.notes || 'تم إنشاؤه تلقائياً مع حساب تطبيق العميل',
+              now,
+            ]
+          );
         }
       }
+
       const r = await client.query('SELECT * FROM users WHERE id = $1', [id]);
-      return sanitizeUser(mapPgUserRow(r.rows[0]));
+      const sanitized = sanitizeUser(mapPgUserRow(r.rows[0]));
+      return resolvedCustomerId ? { ...sanitized, linkedCustomerId: resolvedCustomerId } : sanitized;
     });
     await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إنشاء حساب مستخدم (${username})`, module: 'المستخدمون', recordId: id });
     return user;
@@ -1726,6 +1912,45 @@ export async function createAdminUser(payload, actor) {
     if (db.users.some((u) => String(u.username || '').toLowerCase() === username.toLowerCase())) {
       throw new AppError(409, 'اسم المستخدم مسجل مسبقًا', 'DUPLICATE_USERNAME');
     }
+
+    let resolvedCustomerId = null;
+    let shouldAutoCreateCustomer = false;
+
+    if (targetRole === 'customer') {
+      db.customers = db.customers || [];
+      if (payload.linkedCustomerId) {
+        const cust = db.customers.find((c) => c.id === payload.linkedCustomerId);
+        if (!cust) {
+          throw new AppError(404, 'ملف العميل المحدد غير موجود', 'CUSTOMER_NOT_FOUND');
+        }
+        if (cust.userId) {
+          throw new AppError(409, 'ملف العميل المحدد مرتبط بالفعل بحساب آخر', 'CUSTOMER_ALREADY_LINKED');
+        }
+        resolvedCustomerId = cust.id;
+      } else if (normUserPhone) {
+        const matches = db.customers.filter(
+          (c) => normalizePhoneDigits(c.phone) === normUserPhone || normalizePhoneDigits(c.secondaryPhone) === normUserPhone
+        );
+        if (matches.length > 1) {
+          throw new AppError(
+            409,
+            'يوجد أكثر من عميل مسجل بنفس رقم الهاتف، يرجى ربط الحساب بملف العميل المحدد يدوياً',
+            'AMBIGUOUS_CUSTOMER_PHONE'
+          );
+        }
+        if (matches.length === 1) {
+          if (matches[0].userId) {
+            throw new AppError(409, 'العميل المطابق لرقم الهاتف مرتبط بالفعل بحساب آخر', 'CUSTOMER_ALREADY_LINKED');
+          }
+          resolvedCustomerId = matches[0].id;
+        } else {
+          shouldAutoCreateCustomer = true;
+        }
+      } else {
+        shouldAutoCreateCustomer = true;
+      }
+    }
+
     const newUser = {
       id,
       fullName,
@@ -1735,7 +1960,7 @@ export async function createAdminUser(payload, actor) {
       phone: payload.phone || '',
       address: payload.address || '',
       notes: payload.notes || '',
-      role: payload.role || 'sales',
+      role: targetRole,
       jobTitle: payload.jobTitle || '',
       department: payload.department || '',
       isActive: payload.isActive ?? true,
@@ -1744,11 +1969,33 @@ export async function createAdminUser(payload, actor) {
       createdAt: now,
     };
     db.users.push(newUser);
-    if (payload.linkedCustomerId && payload.role === 'customer') {
-      const cust = db.customers.find((c) => c.id === payload.linkedCustomerId);
-      if (cust) cust.userId = id;
+
+    if (targetRole === 'customer') {
+      if (resolvedCustomerId) {
+        const cust = db.customers.find((c) => c.id === resolvedCustomerId);
+        if (cust) cust.userId = id;
+      } else if (shouldAutoCreateCustomer) {
+        resolvedCustomerId = generateServerId('CUS');
+        db.customers.unshift({
+          id: resolvedCustomerId,
+          code: `CUS-${resolvedCustomerId.slice(-8)}`,
+          userId: id,
+          allowedRepIds: [],
+          name: fullName,
+          phone: payload.phone || '',
+          address: payload.address || '',
+          openingBalance: 0,
+          currentBalance: 0,
+          priceHistory: {},
+          notes: payload.notes || 'تم إنشاؤه تلقائياً مع حساب تطبيق العميل',
+          status: 'active',
+          createdAt: now,
+        });
+      }
     }
-    return sanitizeUser(newUser);
+
+    const sanitized = sanitizeUser(newUser);
+    return resolvedCustomerId ? { ...sanitized, linkedCustomerId: resolvedCustomerId } : sanitized;
   });
   await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إنشاء حساب مستخدم (${username})`, module: 'المستخدمون', recordId: id });
   return user;
@@ -1796,11 +2043,21 @@ export async function updateAdminUser(userId, updates, actor) {
       if (nextPasswordHash) {
         await client.query(`UPDATE users SET password_hash = $1, password_algo = 'bcrypt' WHERE id = $2`, [nextPasswordHash, userId]);
       }
+      if (updates.linkedCustomerId !== undefined && (updates.role ?? cur.role) === 'customer') {
+        await client.query(`UPDATE customers SET user_id = NULL WHERE user_id = $1`, [userId]);
+        if (updates.linkedCustomerId) {
+          await client.query(`UPDATE customers SET user_id = $1 WHERE id = $2`, [userId, updates.linkedCustomerId]);
+        }
+      }
       if (updates.isActive === false) {
         await client.query(`UPDATE user_sessions SET revoked_at = $1 WHERE user_id = $2 AND revoked_at IS NULL`, [now, userId]);
       }
       const next = await client.query('SELECT * FROM users WHERE id = $1', [userId]);
-      return sanitizeUser(mapPgUserRow(next.rows[0]));
+      const lcRes = (updates.role ?? cur.role) === 'customer'
+        ? await client.query('SELECT id FROM customers WHERE user_id = $1 LIMIT 1', [userId])
+        : { rows: [] };
+      const sanitized = sanitizeUser(mapPgUserRow(next.rows[0]));
+      return lcRes.rows[0]?.id ? { ...sanitized, linkedCustomerId: lcRes.rows[0].id } : sanitized;
     });
     await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تحديث حساب مستخدم (${user.username})`, module: 'المستخدمون', recordId: userId });
     return user;
@@ -1813,7 +2070,7 @@ export async function updateAdminUser(userId, updates, actor) {
     if (actor?.role !== 'admin' && cur.role === 'admin') {
       throw new AppError(403, 'غير مصرح لغير المدير العام بتعديل بيانات أو صلاحيات حساب المدير العام', 'FORBIDDEN_ADMIN_ESCALATION');
     }
-    const { newPassword, passwordHash: _ignoredHash, ...rest } = updates;
+    const { newPassword, linkedCustomerId, passwordHash: _ignoredHash, ...rest } = updates;
     db.users[idx] = {
       ...cur,
       ...rest,
@@ -1821,8 +2078,22 @@ export async function updateAdminUser(userId, updates, actor) {
       passwordHash: nextPasswordHash || cur.passwordHash,
       passwordAlgo: nextPasswordHash ? 'bcrypt' : cur.passwordAlgo,
     };
-    return sanitizeUser(db.users[idx]);
+    if (linkedCustomerId !== undefined && (updates.role ?? cur.role) === 'customer') {
+      for (const c of db.customers || []) {
+        if (c.userId === userId) c.userId = undefined;
+      }
+      if (linkedCustomerId) {
+        const cust = (db.customers || []).find((c) => c.id === linkedCustomerId);
+        if (cust) cust.userId = userId;
+      }
+    }
+    const sanitized = sanitizeUser(db.users[idx]);
+    const linkedCust = (updates.role ?? cur.role) === 'customer' ? (db.customers || []).find((c) => c.userId === userId) : null;
+    return linkedCust ? { ...sanitized, linkedCustomerId: linkedCust.id } : sanitized;
   });
+  if (updates.isActive === false) {
+    await revokeAllUserSessions(userId);
+  }
   await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تحديث حساب مستخدم (${user.username})`, module: 'المستخدمون', recordId: userId });
   return user;
 }

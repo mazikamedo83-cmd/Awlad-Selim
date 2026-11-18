@@ -15,23 +15,27 @@ import {
   Users2,
   Users,
   FileBarChart,
-  Shield,
   Settings,
   ArrowDownCircle,
   ArrowUpCircle,
+  ArrowLeftRight,
   TrendingDown,
   TrendingUp,
   WifiOff,
   ChevronLeft,
   ChevronDown,
+  Maximize,
+  Minimize,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
 import { registerAndroidBackButton } from '../../../services/native';
 import { CashOperationType, MobileNotificationItem, UserPermissions } from '../../../types';
-import { NavItemKey } from '../../layout/Sidebar';
+import { NavItemKey } from '../../../config/navigation';
+import { UI_CLASSES } from '../../../styles/designSystem';
 import { MobileNotificationsSheet } from './MobileNotificationsSheet';
 import { MobileServerModal } from './MobileServerModal';
+import { SyncCenterModal } from '../../common/SyncCenterModal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 
 interface StaffMobileShellProps {
@@ -53,7 +57,8 @@ interface LauncherSection {
   id: string;
   title: string;
   icon: React.ElementType;
-  colorClass: string;
+  headerGradientClass: string;
+  iconBadgeClass: string;
   permission?: keyof UserPermissions | Array<keyof UserPermissions>;
   items: LauncherItem[];
 }
@@ -64,17 +69,30 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
   onOpenCashOp,
   children,
 }) => {
-  const { currentUser, hasPermission, logout, refreshAuthContext } = useAuth();
+  const { currentUser, hasPermission, logout, refreshAuthContext, isOfflineSession, permissionsMayBeStale } = useAuth();
   const data = useData();
 
   const [isLauncherOpen, setIsLauncherOpen] = useState(false);
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<Record<string, boolean>>({});
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
+  const [isSyncCenterOpen, setIsSyncCenterOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const toggleSectionCollapse = (sectionId: string) => {
     setCollapsedSectionIds((prev) => ({ ...prev, [sectionId]: !prev[sectionId] }));
+  };
+
+  const toggleFullscreen = () => {
+    if (typeof document === 'undefined') return;
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen().catch(() => {});
+      setIsFullscreen(false);
+    }
   };
 
   const checkPerm = (perm?: keyof UserPermissions | Array<keyof UserPermissions>) => {
@@ -99,6 +117,10 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         setIsServerModalOpen(false);
         return true;
       }
+      if (isSyncCenterOpen) {
+        setIsSyncCenterOpen(false);
+        return true;
+      }
       if (isLauncherOpen) {
         setIsLauncherOpen(false);
         return true;
@@ -109,7 +131,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
       }
       return false;
     });
-  }, [showLogoutConfirm, isNotificationsOpen, isServerModalOpen, isLauncherOpen, currentPage, onNavigate]);
+  }, [showLogoutConfirm, isNotificationsOpen, isServerModalOpen, isSyncCenterOpen, isLauncherOpen, currentPage, onNavigate]);
 
   // Close drawer cleanly via Escape key on desktop/tablet keyboards
   useEffect(() => {
@@ -129,12 +151,14 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         id: 'sales',
         title: 'المبيعات والعملاء',
         icon: ShoppingCart,
-        colorClass: 'bg-blue-50 text-blue-900 border-blue-200',
+        headerGradientClass: 'bg-gradient-to-l from-blue-50/95 via-sky-50/80 to-indigo-50/65 text-blue-950 border-blue-100/90',
+        iconBadgeClass: 'bg-gradient-to-br from-blue-600/15 to-indigo-500/15 text-blue-800',
         permission: 'canManageSales',
         items: [
           { key: 'new-sale', label: 'فاتورة مبيعات جديدة (+)', badge: 'سريع' },
           { key: 'sales-invoices', label: 'فواتير المبيعات' },
           { key: 'customers', label: 'دليل العملاء والأرصدة والتحصيل' },
+          { key: 'customer-orders', label: 'طلبات العملاء والمناديب', badge: 'موحد' },
           { key: 'sales-returns', label: 'مرتجع المبيعات' },
           { key: 'deleted-invoices', label: 'الفواتير المحذوفة والملغاة', permission: 'canViewDeletedInvoices' },
         ],
@@ -143,7 +167,8 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         id: 'purchases',
         title: 'المشتريات والموردون',
         icon: Truck,
-        colorClass: 'bg-purple-50 text-purple-900 border-purple-200',
+        headerGradientClass: 'bg-gradient-to-l from-indigo-50/90 via-blue-50/75 to-violet-50/70 text-indigo-950 border-indigo-100/90',
+        iconBadgeClass: 'bg-gradient-to-br from-indigo-600/15 to-violet-500/15 text-indigo-800',
         permission: 'canManagePurchases',
         items: [
           { key: 'new-purchase', label: 'فاتورة شراء جديدة (+)' },
@@ -156,7 +181,8 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         id: 'inventory',
         title: 'المخازن والمنتجات',
         icon: Boxes,
-        colorClass: 'bg-amber-50 text-amber-900 border-amber-200',
+        headerGradientClass: 'bg-gradient-to-l from-sky-50/95 via-blue-50/80 to-indigo-50/65 text-blue-950 border-sky-100/90',
+        iconBadgeClass: 'bg-gradient-to-br from-sky-600/15 to-blue-600/15 text-blue-800',
         permission: 'canManageInventory',
         items: [
           { key: 'products', label: 'المنتجات والأسعار والباركود' },
@@ -184,7 +210,8 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         id: 'finance',
         title: 'المالية والخزائن',
         icon: Wallet,
-        colorClass: 'bg-emerald-50 text-emerald-900 border-emerald-200',
+        headerGradientClass: 'bg-gradient-to-l from-blue-50/90 via-indigo-50/75 to-violet-50/70 text-blue-950 border-blue-100/90',
+        iconBadgeClass: 'bg-gradient-to-br from-blue-700/15 to-violet-500/15 text-indigo-800',
         permission: 'canManageCashboxes',
         items: [
           { key: 'cashboxes', label: 'الخزائن والبنوك والحركة النقدية' },
@@ -197,7 +224,8 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         id: 'cheques',
         title: 'الشيكات والأقساط',
         icon: CreditCard,
-        colorClass: 'bg-indigo-50 text-indigo-900 border-indigo-200',
+        headerGradientClass: 'bg-gradient-to-l from-violet-50/85 via-indigo-50/75 to-blue-50/70 text-indigo-950 border-indigo-100/90',
+        iconBadgeClass: 'bg-gradient-to-br from-violet-600/15 to-blue-600/15 text-indigo-800',
         permission: 'canManageAccounts',
         items: [
           { key: 'cheques', label: 'الشيكات (واردة / صادرة)' },
@@ -208,7 +236,8 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         id: 'reps',
         title: 'المندوبون والتحويلات',
         icon: Users2,
-        colorClass: 'bg-cyan-50 text-cyan-900 border-cyan-200',
+        headerGradientClass: 'bg-gradient-to-l from-sky-50/90 via-blue-50/80 to-violet-50/65 text-blue-950 border-sky-100/90',
+        iconBadgeClass: 'bg-gradient-to-br from-sky-600/15 to-indigo-600/15 text-blue-800',
         permission: 'canManageReps',
         items: [
           { key: 'reps', label: 'قائمة المناديب والعهد' },
@@ -220,7 +249,8 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         id: 'hr',
         title: 'الموظفون والرواتب',
         icon: Users,
-        colorClass: 'bg-rose-50 text-rose-900 border-rose-200',
+        headerGradientClass: 'bg-gradient-to-l from-indigo-50/85 via-slate-50/90 to-blue-50/75 text-slate-900 border-indigo-100/90',
+        iconBadgeClass: 'bg-gradient-to-br from-indigo-600/15 to-blue-600/15 text-indigo-800',
         permission: 'canManageEmployees',
         items: [
           { key: 'employees', label: 'شؤون الموظفين' },
@@ -233,7 +263,8 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         id: 'reports-users',
         title: 'التقارير والمستخدمون',
         icon: FileBarChart,
-        colorClass: 'bg-slate-100 text-slate-900 border-slate-300',
+        headerGradientClass: 'bg-gradient-to-l from-blue-50/85 via-slate-50/95 to-violet-50/65 text-slate-900 border-blue-100/90',
+        iconBadgeClass: 'bg-gradient-to-br from-blue-600/15 to-violet-500/15 text-blue-900',
         items: [
           { key: 'reports', label: 'جميع التقارير والأرباح', permission: 'canViewReports' },
           { key: 'users', label: 'إدارة المستخدمين والصلاحيات', permission: 'canManageUsers' },
@@ -244,10 +275,12 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         id: 'settings',
         title: 'الإعدادات والنسخ الاحتياطي',
         icon: Settings,
-        colorClass: 'bg-slate-100 text-slate-900 border-slate-300',
+        headerGradientClass: 'bg-gradient-to-l from-slate-100/85 via-blue-50/70 to-indigo-50/65 text-slate-900 border-slate-200/90',
+        iconBadgeClass: 'bg-gradient-to-br from-slate-600/15 to-indigo-600/15 text-slate-800',
         permission: 'canManageSettings',
         items: [
           { key: 'system-settings', label: 'إعدادات النظام والحساب', allowAllStaff: true },
+          { key: 'shortcuts-settings', label: 'اختصارات لوحة المفاتيح', allowAllStaff: true },
           { key: 'branches-settings', label: 'الفروع', permission: 'canManageSettings' },
           { key: 'barcode-settings', label: 'إعدادات الباركود', permission: 'canManageSettings' },
           { key: 'printers-settings', label: 'الطابعات المتعددة', permission: 'canManageSettings' },
@@ -280,6 +313,15 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     [sections, currentUser]
   );
 
+  // Auto-expand section containing the active page
+  useEffect(() => {
+    if (currentPage === 'dashboard') return;
+    const owner = filteredSections.find((sec) => sec.items.some((it) => it.key === currentPage));
+    if (owner) {
+      setCollapsedSectionIds((prev) => (prev[owner.id] ? { ...prev, [owner.id]: false } : prev));
+    }
+  }, [currentPage, filteredSections]);
+
   const getRoleArabicLabel = (role?: string) => {
     switch (role) {
       case 'admin':
@@ -300,6 +342,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
   const handleSelectNotification = (item: MobileNotificationItem) => {
     const allowedTargets: NavItemKey[] = [
       'customers',
+      'customer-orders',
       'rep-item-transfers',
       'rep-transfers',
       'stock-counts',
@@ -316,7 +359,13 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     }
   };
 
-  // Primary top navigation tabs scoped strictly by actual Windows permissions
+  const pendingTransfersCount = useMemo(
+    () => (data.repTransfers || []).filter((t) => t.status === 'awaiting_receipt').length,
+    [data.repTransfers]
+  );
+
+  // Exact top bar order after «الأقسام»:
+  // 2. الرئيسية  3. المخزون  4. المالية  5. المبيعات
   const topNavTabs = useMemo(() => {
     const tabs: Array<{ key: string; label: string; icon: React.ElementType; active: boolean; onClick: () => void }> = [
       {
@@ -330,30 +379,6 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         },
       },
     ];
-
-    if (checkPerm('canManageSales')) {
-      tabs.push({
-        key: 'sales',
-        label: 'المبيعات',
-        icon: ShoppingCart,
-        active: ['sales-invoices', 'new-sale', 'customers', 'sales-returns', 'deleted-invoices'].includes(currentPage),
-        onClick: () => {
-          setIsLauncherOpen(false);
-          onNavigate('sales-invoices');
-        },
-      });
-    } else if (checkPerm('canManagePurchases')) {
-      tabs.push({
-        key: 'purchases',
-        label: 'المشتريات',
-        icon: Truck,
-        active: ['purchase-invoices', 'new-purchase', 'suppliers', 'purchase-returns'].includes(currentPage),
-        onClick: () => {
-          setIsLauncherOpen(false);
-          onNavigate('purchase-invoices');
-        },
-      });
-    }
 
     if (checkPerm(['canManageInventory', 'canManageWarehouses', 'canCreateStockCount', 'canCreateStockTransfer'])) {
       tabs.push({
@@ -406,32 +431,66 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
       });
     }
 
+    if (checkPerm('canManageSales')) {
+      tabs.push({
+        key: 'sales',
+        label: 'المبيعات',
+        icon: ShoppingCart,
+        active: ['sales-invoices', 'new-sale', 'customers', 'customer-orders', 'sales-returns', 'deleted-invoices'].includes(currentPage),
+        onClick: () => {
+          setIsLauncherOpen(false);
+          onNavigate('sales-invoices');
+        },
+      });
+    } else if (checkPerm('canManagePurchases')) {
+      tabs.push({
+        key: 'purchases',
+        label: 'المشتريات',
+        icon: Truck,
+        active: ['purchase-invoices', 'new-purchase', 'suppliers', 'purchase-returns'].includes(currentPage),
+        onClick: () => {
+          setIsLauncherOpen(false);
+          onNavigate('purchase-invoices');
+        },
+      });
+    }
+
     return tabs;
   }, [currentPage, currentUser, onNavigate]);
 
+  const statusDotClass =
+    data.networkStatus === 'connected'
+      ? 'bg-emerald-400'
+      : data.networkStatus === 'synchronizing'
+      ? 'bg-sky-400 animate-pulse'
+      : data.networkStatus === 'pending'
+      ? 'bg-amber-400'
+      : 'bg-rose-400';
+
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-800 font-['Cairo'] antialiased pb-6">
-      {/* Unified Blue Top Header Bar */}
-      <header className="sticky top-0 z-30 bg-blue-950 text-white shadow-md pt-safe no-print">
+    <div className={UI_CLASSES.appShell}>
+      {/* Unified Blue Top Header Bar (Desktop, Windows, Android, iOS) */}
+      <header className={UI_CLASSES.blueHeaderBar}>
         <div className="max-w-7xl mx-auto px-2.5 sm:px-5">
-          {/* Desktop single-row / Mobile row 1: Brand + (Desktop inline nav) + Utility actions */}
+          {/* Row 1: Brand + (Desktop inline 5-button nav) + Utility actions */}
           <div className="h-14 flex items-center justify-between gap-2 sm:gap-4">
             {/* Brand & Identity */}
             <div className="flex items-center gap-2.5 min-w-0 shrink">
               <img
                 src="/awlad-selim-logo.png"
                 alt="AWLAD SELIM"
-                className="h-9 w-9 object-contain bg-white rounded-xl p-1 shrink-0"
+                className="h-9 w-9 object-contain bg-white rounded-xl p-1 shrink-0 shadow-xs"
               />
               <div className="min-w-0">
-                <h1 className="text-xs sm:text-sm font-black truncate leading-tight">AWLAD SELIM</h1>
+                <h1 className="text-xs sm:text-sm font-black truncate leading-tight tracking-wide">AWLAD SELIM</h1>
                 <p className="text-[10px] text-blue-200 truncate">
                   {getRoleArabicLabel(currentUser?.role)} · {currentUser?.fullName}
                 </p>
               </div>
             </div>
 
-            {/* Primary Navigation + الأقسام Button (Single-row on lg+ screens) */}
+            {/* 5 Primary Buttons in Exact Order on Desktop (lg+):
+                1. الأقسام  2. الرئيسية  3. المخزون  4. المالية  5. المبيعات */}
             <nav
               aria-label="التنقل الرئيسي"
               className="hidden lg:flex items-center gap-1.5 flex-1 justify-center min-w-0"
@@ -441,10 +500,10 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                 onClick={() => setIsLauncherOpen((prev) => !prev)}
                 aria-expanded={isLauncherOpen}
                 aria-controls="staff-sections-drawer"
-                className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 border transition-colors cursor-pointer ${
+                className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 border transition-all cursor-pointer ${
                   isLauncherOpen
-                    ? 'bg-sky-400/20 text-white border-sky-300/70'
-                    : 'bg-white/10 text-blue-50 border-white/15 hover:bg-white/20 hover:text-white'
+                    ? 'bg-gradient-to-l from-sky-400/30 via-blue-400/25 to-violet-400/30 text-white border-sky-200/75 shadow-sm'
+                    : 'bg-white/10 text-blue-50 border-white/20 hover:bg-white/20 hover:text-white'
                 }`}
               >
                 <Menu className="w-4 h-4 shrink-0" />
@@ -461,10 +520,10 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                     type="button"
                     onClick={tab.onClick}
                     aria-current={tab.active ? 'page' : undefined}
-                    className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                    className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-all cursor-pointer ${
                       tab.active
-                        ? 'bg-white text-blue-950 font-black shadow-xs'
-                        : 'text-blue-100 hover:bg-white/10 hover:text-white font-bold'
+                        ? 'bg-gradient-to-l from-white via-blue-50 to-indigo-50 text-blue-950 font-black shadow-sm ring-1 ring-white/70'
+                        : 'text-blue-100 hover:bg-white/12 hover:text-white font-bold'
                     }`}
                   >
                     <TabIcon className="w-4 h-4 shrink-0" />
@@ -474,8 +533,55 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
               })}
             </nav>
 
-            {/* Right Utility Controls */}
-            <div className="flex items-center gap-1 shrink-0">
+            {/* Right/End Utility Controls */}
+            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+              {pendingTransfersCount > 0 && checkPerm('canManageTransfers') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsLauncherOpen(false);
+                    onNavigate('rep-transfers');
+                  }}
+                  title={`يوجد ${pendingTransfersCount} طلب تحويل بالنصف معلق يحتاج تأكيد`}
+                  className="hidden sm:flex items-center gap-1 px-2.5 min-h-[38px] rounded-xl bg-amber-400/20 hover:bg-amber-400/30 border border-amber-300/40 text-amber-100 text-[11px] font-bold cursor-pointer"
+                >
+                  <ArrowLeftRight className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  <span className="hidden xl:inline">تحويل بالنصف</span>
+                  <span className="px-1.5 py-0.2 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black font-mono">
+                    {pendingTransfersCount}
+                  </span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setIsSyncCenterOpen(true)}
+                title={
+                  data.networkStatus === 'connected'
+                    ? 'متصل بالشبكة المركزية — اضغط لفتح مركز المزامنة'
+                    : data.networkStatus === 'synchronizing'
+                    ? 'جاري المزامنة مع السيرفر المركزي...'
+                    : 'وضع العمل المحلي / دون اتصال — اضغط لفتح مركز المزامنة'
+                }
+                className="relative flex items-center gap-1.5 px-2.5 min-h-[38px] rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-[11px] font-bold text-blue-100 cursor-pointer transition-colors"
+              >
+                <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotClass}`} />
+                <span className="hidden xl:inline">
+                  {data.networkStatus === 'connected' ? 'متصل' : data.networkStatus === 'synchronizing' ? 'مزامنة' : 'محلي'}
+                </span>
+                {(data.pendingSyncCount + data.failedSyncCount + data.conflictsCount) > 0 && (
+                  <span
+                    className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center ${
+                      data.conflictsCount > 0 || data.failedSyncCount > 0
+                        ? 'bg-rose-500 text-white'
+                        : 'bg-amber-400 text-slate-950'
+                    }`}
+                  >
+                    {data.pendingSyncCount + data.failedSyncCount + data.conflictsCount}
+                  </span>
+                )}
+              </button>
+
               <button
                 type="button"
                 onClick={() => {
@@ -516,6 +622,16 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
 
               <button
                 type="button"
+                onClick={toggleFullscreen}
+                className="hidden md:flex min-h-[40px] min-w-[40px] items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+                title="ملء الشاشة"
+                aria-label="ملء الشاشة"
+              >
+                {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setShowLogoutConfirm(true)}
                 className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-red-600/90 hover:bg-red-700 text-white cursor-pointer"
                 title="تسجيل الخروج"
@@ -526,27 +642,25 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
             </div>
           </div>
 
-          {/* Mobile & Tablet (< lg) Navigation Strip inside the Blue Top Bar */}
+          {/* Mobile & Tablet (< lg): All 5 primary buttons inside the SAME Blue Top Header */}
           <nav
             aria-label="أزرار التنقل الرئيسية"
-            className="lg:hidden border-t border-white/10 py-1.5 flex items-center justify-between sm:justify-start gap-1 sm:gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none]"
+            className="lg:hidden border-t border-white/15 py-1.5 flex items-center justify-between gap-1 sm:gap-1.5"
           >
             <button
               type="button"
               onClick={() => setIsLauncherOpen((prev) => !prev)}
               aria-expanded={isLauncherOpen}
               aria-controls="staff-sections-drawer"
-              className={`min-h-[40px] px-2 sm:px-3.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold flex items-center gap-1 sm:gap-1.5 whitespace-nowrap shrink-0 border transition-colors cursor-pointer ${
+              className={`flex-1 sm:flex-initial min-h-[40px] px-1.5 sm:px-3.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap border transition-all cursor-pointer ${
                 isLauncherOpen
-                  ? 'bg-sky-400/20 text-white border-sky-300/70'
-                  : 'bg-white/10 text-blue-50 border-white/15 hover:bg-white/20 hover:text-white'
+                  ? 'bg-gradient-to-l from-sky-400/30 via-blue-400/25 to-violet-400/30 text-white border-sky-200/75 shadow-sm'
+                  : 'bg-white/10 text-blue-50 border-white/20 hover:bg-white/20 hover:text-white'
               }`}
             >
               <Menu className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
               <span>الأقسام</span>
             </button>
-
-            <div className="h-5 w-px bg-white/15 shrink-0" aria-hidden="true" />
 
             {topNavTabs.map((tab) => {
               const TabIcon = tab.icon;
@@ -556,10 +670,10 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                   type="button"
                   onClick={tab.onClick}
                   aria-current={tab.active ? 'page' : undefined}
-                  className={`min-h-[40px] px-2 sm:px-3.5 py-1.5 rounded-xl text-[11px] sm:text-xs flex items-center gap-1 sm:gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                  className={`flex-1 sm:flex-initial min-h-[40px] px-1.5 sm:px-3.5 py-1.5 rounded-xl text-[11px] sm:text-xs flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap transition-all cursor-pointer ${
                     tab.active
-                      ? 'bg-white text-blue-950 font-black shadow-xs'
-                      : 'text-blue-100 hover:bg-white/10 hover:text-white font-bold'
+                      ? 'bg-gradient-to-l from-white via-blue-50 to-indigo-50 text-blue-950 font-black shadow-sm ring-1 ring-white/70'
+                      : 'text-blue-100 hover:bg-white/12 hover:text-white font-bold'
                   }`}
                 >
                   <TabIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
@@ -571,26 +685,65 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Main Content Area (Original Dashboard & All Views Restored Intact) */}
       <main className="max-w-7xl mx-auto p-3 sm:p-5 space-y-3">
         {(data.isUsingOfflineCache || data.networkStatus === 'disconnected') && (
-          <div className="p-3 rounded-2xl bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-center justify-between gap-2 no-print">
+          <div className="p-3 rounded-2xl bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex flex-wrap items-center justify-between gap-2 no-print">
             <div className="flex items-center gap-2 min-w-0">
               <WifiOff className="w-4 h-4 text-amber-700 shrink-0" />
               <span className="truncate">
-                بيانات مخزنة مؤقتاً — تعذر الاتصال بالسيرفر المركزي
+                {isOfflineSession
+                  ? 'وضع العمل المحلي (دون إنترنت) — يتم حفظ العمليات محلياً وتطبيقها على السيرفر فور عودة الاتصال'
+                  : 'بيانات مخزنة مؤقتاً — تعذر الاتصال بالسيرفر المركزي'}
+                {permissionsMayBeStale ? ' · الصلاحيات محفوظة من آخر تحقق' : ''}
                 {data.lastCacheTimestamp
                   ? ` · ${new Date(data.lastCacheTimestamp).toLocaleTimeString('ar-EG')}`
                   : ''}
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => data.triggerManualSync()}
-              className="px-3 py-1.5 rounded-xl bg-amber-600 text-white text-[11px] font-bold shrink-0 cursor-pointer"
-            >
-              إعادة المحاولة
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsSyncCenterOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-white border border-amber-300 text-amber-900 text-[11px] font-bold cursor-pointer"
+              >
+                مركز المزامنة
+              </button>
+              <button
+                type="button"
+                onClick={() => data.triggerManualSync()}
+                className="px-3 py-1.5 rounded-xl bg-amber-600 text-white text-[11px] font-bold cursor-pointer"
+              >
+                إعادة المحاولة
+              </button>
+            </div>
+          </div>
+        )}
+
+        {(data.pendingSyncCount > 0 || data.failedSyncCount > 0 || data.conflictsCount > 0) && (
+          <div
+            className={`p-3 rounded-2xl border text-xs font-bold flex flex-wrap items-center justify-between gap-2 no-print ${
+              data.conflictsCount > 0 || data.failedSyncCount > 0
+                ? 'bg-rose-50 border-rose-300 text-rose-900'
+                : 'bg-blue-50 border-blue-200 text-blue-900'
+            }`}
+          >
+            <span>
+              {data.conflictsCount > 0
+                ? `يوجد (${data.conflictsCount}) تعارضات مزامنة تحتاج مراجعة قبل الاعتماد النهائي.`
+                : data.failedSyncCount > 0
+                ? `يوجد (${data.failedSyncCount}) عمليات تعذرت مزامنتها و(${data.pendingSyncCount}) بانتظار الرفع.`
+                : `يوجد (${data.pendingSyncCount}) عمليات محلية بانتظار المزامنة (الأرصدة المحلية تقديرية حتى تأكيد السيرفر).`}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setIsSyncCenterOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-blue-900 text-white text-[11px] font-bold cursor-pointer"
+              >
+                فتح مركز المزامنة
+              </button>
+            </div>
           </div>
         )}
 
@@ -600,31 +753,31 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
       {/* Side Drawer Backdrop */}
       {isLauncherOpen && (
         <div
-          className="fixed inset-0 z-40 bg-slate-950/55 backdrop-blur-xs transition-opacity no-print"
+          className="fixed inset-0 z-40 bg-slate-950/45 backdrop-blur-xs transition-opacity no-print"
           onClick={() => setIsLauncherOpen(false)}
           aria-hidden="true"
         />
       )}
 
-      {/* RTL Sliding Side Drawer (Triggered exclusively by «الأقسام» button) */}
+      {/* RTL Soft-Gradient Sliding Side Drawer (Triggered exclusively by «الأقسام» button) */}
       <aside
         id="staff-sections-drawer"
         aria-label="قائمة الأقسام الجانبية"
         aria-hidden={!isLauncherOpen}
-        className={`fixed inset-y-0 right-0 z-50 w-[86vw] max-w-[340px] sm:w-80 lg:w-96 bg-white text-slate-800 shadow-2xl border-l border-slate-200 flex flex-col pt-safe pb-safe transition-transform duration-200 ease-out no-print ${
+        className={`${UI_CLASSES.softGradientDrawer} ${
           isLauncherOpen ? 'translate-x-0 pointer-events-auto' : 'translate-x-full pointer-events-none'
         }`}
       >
-        {/* Drawer Header */}
-        <div className="flex items-center justify-between gap-3 px-4 py-3.5 border-b border-slate-200 bg-blue-950 text-white shrink-0">
+        {/* Drawer Header with Royal Blue -> Indigo Gradient */}
+        <div className={UI_CLASSES.drawerHeaderGradient}>
           <div className="flex items-center gap-2.5 min-w-0">
             <img
               src="/awlad-selim-logo.png"
               alt="AWLAD SELIM"
-              className="h-8 w-8 object-contain bg-white rounded-lg p-1 shrink-0"
+              className="h-9 w-9 object-contain bg-white rounded-xl p-1 shrink-0 shadow-xs"
             />
             <div className="min-w-0">
-              <h2 className="text-sm font-black truncate">أقسام النظام</h2>
+              <h2 className="text-sm font-black truncate tracking-wide">أقسام النظام</h2>
               <p className="text-[11px] text-blue-200 truncate">
                 {getRoleArabicLabel(currentUser?.role)} · {currentUser?.fullName}
               </p>
@@ -634,7 +787,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
           <button
             type="button"
             onClick={() => setIsLauncherOpen(false)}
-            className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer shrink-0"
+            className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-white/12 hover:bg-white/25 border border-white/15 text-white cursor-pointer shrink-0 transition-colors"
             aria-label="إغلاق القائمة الجانبية"
             title="إغلاق القائمة"
           >
@@ -643,7 +796,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         </div>
 
         {/* Drawer Scrollable Sections & Sub-Functions */}
-        <div className="flex-1 overflow-y-auto p-3.5 space-y-3 bg-slate-50/70">
+        <div className="flex-1 overflow-y-auto p-3.5 space-y-3 bg-gradient-to-b from-slate-50/80 via-blue-50/25 to-indigo-50/40">
           {/* Quick Dashboard Link */}
           <button
             type="button"
@@ -651,23 +804,29 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
               setIsLauncherOpen(false);
               onNavigate('dashboard');
             }}
-            className={`w-full min-h-[44px] px-3.5 py-2.5 rounded-xl flex items-center justify-between text-xs font-bold border transition-colors cursor-pointer ${
+            className={`w-full min-h-[46px] px-3.5 py-2.5 rounded-2xl flex items-center justify-between text-xs font-bold border transition-all cursor-pointer ${
               currentPage === 'dashboard'
-                ? 'bg-blue-950 text-white border-blue-950 shadow-xs font-black'
-                : 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50'
+                ? UI_CLASSES.drawerActiveItem
+                : 'bg-gradient-to-l from-white via-blue-50/45 to-indigo-50/45 text-slate-800 border-blue-100/90 hover:from-blue-50/80 hover:to-indigo-50/80 shadow-2xs'
             }`}
           >
             <div className="flex items-center gap-2.5">
-              <LayoutDashboard className="w-4 h-4 shrink-0" />
+              <div
+                className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 ${
+                  currentPage === 'dashboard' ? 'bg-white/20 text-white' : 'bg-blue-100/80 text-blue-800'
+                }`}
+              >
+                <LayoutDashboard className="w-4 h-4 shrink-0" />
+              </div>
               <span>لوحة التحكم الرئيسية</span>
             </div>
-            <ChevronLeft className={`w-4 h-4 shrink-0 ${currentPage === 'dashboard' ? 'text-blue-200' : 'text-slate-400'}`} />
+            <ChevronLeft className={`w-4 h-4 shrink-0 ${currentPage === 'dashboard' ? 'text-blue-100' : 'text-slate-400'}`} />
           </button>
 
           {/* Quick Cash Operations (if cashbox permission granted) */}
           {checkPerm('canManageCashboxes') && (
-            <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-3 space-y-2">
-              <p className="text-xs font-black text-emerald-950">العمليات النقدية السريعة</p>
+            <div className="bg-gradient-to-br from-blue-50/85 via-white to-violet-50/75 border border-blue-100/90 rounded-2xl p-3 space-y-2 shadow-2xs">
+              <p className="text-xs font-black text-blue-950">العمليات النقدية السريعة</p>
               <div className="grid grid-cols-2 gap-2 text-xs font-bold">
                 <button
                   type="button"
@@ -675,7 +834,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                     setIsLauncherOpen(false);
                     onOpenCashOp('cash_deposit');
                   }}
-                  className="min-h-[42px] flex items-center justify-center gap-1.5 rounded-xl bg-white border border-emerald-200 text-emerald-800 hover:bg-emerald-100 cursor-pointer"
+                  className="min-h-[42px] flex items-center justify-center gap-1.5 rounded-xl bg-white/95 border border-blue-100 text-emerald-700 hover:bg-emerald-50/80 transition-colors cursor-pointer shadow-2xs"
                 >
                   <ArrowDownCircle className="w-4 h-4 shrink-0" />
                   <span>إيداع نقدي</span>
@@ -686,7 +845,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                     setIsLauncherOpen(false);
                     onOpenCashOp('cash_withdrawal');
                   }}
-                  className="min-h-[42px] flex items-center justify-center gap-1.5 rounded-xl bg-white border border-rose-200 text-rose-800 hover:bg-rose-50 cursor-pointer"
+                  className="min-h-[42px] flex items-center justify-center gap-1.5 rounded-xl bg-white/95 border border-blue-100 text-rose-700 hover:bg-rose-50/80 transition-colors cursor-pointer shadow-2xs"
                 >
                   <ArrowUpCircle className="w-4 h-4 shrink-0" />
                   <span>سحب نقدي</span>
@@ -697,7 +856,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                     setIsLauncherOpen(false);
                     onOpenCashOp('expense');
                   }}
-                  className="min-h-[42px] flex items-center justify-center gap-1.5 rounded-xl bg-white border border-orange-200 text-orange-800 hover:bg-orange-50 cursor-pointer"
+                  className="min-h-[42px] flex items-center justify-center gap-1.5 rounded-xl bg-white/95 border border-blue-100 text-orange-700 hover:bg-orange-50/80 transition-colors cursor-pointer shadow-2xs"
                 >
                   <TrendingDown className="w-4 h-4 shrink-0" />
                   <span>مصروف</span>
@@ -708,7 +867,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                     setIsLauncherOpen(false);
                     onOpenCashOp('profit_deposit');
                   }}
-                  className="min-h-[42px] flex items-center justify-center gap-1.5 rounded-xl bg-white border border-teal-200 text-teal-800 hover:bg-teal-50 cursor-pointer"
+                  className="min-h-[42px] flex items-center justify-center gap-1.5 rounded-xl bg-white/95 border border-blue-100 text-indigo-700 hover:bg-indigo-50/80 transition-colors cursor-pointer shadow-2xs"
                 >
                   <TrendingUp className="w-4 h-4 shrink-0" />
                   <span>إيداع ربحي</span>
@@ -717,33 +876,45 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
             </div>
           )}
 
-          {/* Filtered System Sections */}
+          {/* Filtered System Sections with Harmonious Soft Gradients */}
           {filteredSections.map((sec) => {
             const SecIcon = sec.icon;
             const isSectionCollapsed = Boolean(collapsedSectionIds[sec.id]);
+            const hasActiveChild = sec.items.some((item) => item.key === currentPage);
             return (
-              <div key={sec.id} className="rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-2xs">
+              <div
+                key={sec.id}
+                className={`rounded-2xl border overflow-hidden bg-white/95 shadow-2xs transition-colors ${
+                  hasActiveChild ? 'border-blue-300/90 ring-1 ring-blue-100' : 'border-blue-100/80'
+                }`}
+              >
                 <button
                   type="button"
                   onClick={() => toggleSectionCollapse(sec.id)}
                   aria-expanded={!isSectionCollapsed}
-                  className={`w-full px-3.5 py-2.5 flex items-center justify-between gap-2 text-xs font-black cursor-pointer ${
+                  className={`w-full px-3.5 py-2.5 flex items-center justify-between gap-2 text-xs font-black transition-colors cursor-pointer ${
                     !isSectionCollapsed ? 'border-b ' : ''
-                  }${sec.colorClass}`}
+                  }${
+                    hasActiveChild
+                      ? 'bg-gradient-to-l from-blue-100/90 via-sky-50 to-violet-100/75 text-blue-950 border-blue-200/80'
+                      : sec.headerGradientClass
+                  }`}
                 >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <SecIcon className="w-4 h-4 shrink-0" />
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 ${sec.iconBadgeClass}`}>
+                      <SecIcon className="w-4 h-4 shrink-0" />
+                    </span>
                     <span className="truncate">{sec.title}</span>
                   </div>
                   <ChevronDown
-                    className={`w-4 h-4 shrink-0 transition-transform duration-150 ${
+                    className={`w-4 h-4 shrink-0 text-blue-700/70 transition-transform duration-200 ${
                       isSectionCollapsed ? 'rotate-90' : ''
                     }`}
                   />
                 </button>
 
                 {!isSectionCollapsed && (
-                  <div className="divide-y divide-slate-100">
+                  <div className="divide-y divide-slate-100/90 p-1.5 space-y-0.5 bg-gradient-to-b from-white to-slate-50/40">
                     {sec.items.map((item) => {
                       const active = currentPage === item.key;
                       return (
@@ -754,19 +925,32 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                             setIsLauncherOpen(false);
                             onNavigate(item.key);
                           }}
-                          className={`w-full min-h-[44px] px-4 py-2.5 flex items-center justify-between gap-2 text-right text-xs font-bold transition-colors cursor-pointer ${
-                            active ? 'bg-blue-50 text-blue-950 font-black' : 'text-slate-700 hover:bg-slate-50'
+                          className={`w-full min-h-[42px] px-3 py-2 rounded-xl flex items-center justify-between gap-2 text-right text-xs font-bold transition-all cursor-pointer ${
+                            active
+                              ? 'bg-gradient-to-l from-blue-700 via-blue-600 to-indigo-600 text-white font-black shadow-xs'
+                              : 'text-slate-700 hover:bg-gradient-to-l hover:from-blue-50/80 hover:to-violet-50/60 hover:text-blue-950'
                           }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                active ? 'bg-white' : 'bg-blue-300'
+                              }`}
+                            />
                             <span className="truncate">{item.label}</span>
                             {item.badge && (
-                              <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 text-[10px] font-black shrink-0">
+                              <span
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-black shrink-0 ${
+                                  active
+                                    ? 'bg-white/20 text-white'
+                                    : 'bg-gradient-to-l from-blue-100 to-indigo-100 text-blue-900'
+                                }`}
+                              >
                                 {item.badge}
                               </span>
                             )}
                           </div>
-                          <ChevronLeft className={`w-4 h-4 shrink-0 ${active ? 'text-blue-700' : 'text-slate-400'}`} />
+                          <ChevronLeft className={`w-4 h-4 shrink-0 ${active ? 'text-blue-100' : 'text-slate-400'}`} />
                         </button>
                       );
                     })}
@@ -775,6 +959,15 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
               </div>
             );
           })}
+        </div>
+
+        {/* Drawer Footer */}
+        <div className="px-4 py-2.5 border-t border-blue-100/80 bg-gradient-to-l from-slate-50 via-blue-50/50 to-indigo-50/50 text-center shrink-0">
+          <div className="text-[11px] text-slate-600 font-bold flex items-center justify-center gap-2">
+            <span>AWLAD SELIM</span>
+            <span className="text-blue-300">•</span>
+            <span className="text-indigo-700">نظام محاسبي متكامل وآمن</span>
+          </div>
         </div>
       </aside>
 
@@ -794,6 +987,11 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
           await refreshAuthContext();
           await data.triggerManualSync();
         }}
+      />
+
+      <SyncCenterModal
+        isOpen={isSyncCenterOpen}
+        onClose={() => setIsSyncCenterOpen(false)}
       />
 
       <ConfirmDialog

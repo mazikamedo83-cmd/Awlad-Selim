@@ -29,6 +29,8 @@ import {
   OwnerPersonalTransaction,
   StockCountSession,
   StockTransferRequest,
+  OrderAdvancePayment,
+  SyncConflictRecord,
 } from '../types';
 
 const OFFLINE_ORDERS_QUEUE_KEY = 'awlad_selim_offline_orders_queue_v3';
@@ -49,6 +51,8 @@ export interface DatabaseState {
   repTransfers: RepTransfer[];
   repItemTransfers?: RepItemTransferRequest[];
   customerItemOrders?: CustomerItemOrderRequest[];
+  orderAdvancePayments?: OrderAdvancePayment[];
+  syncConflicts?: SyncConflictRecord[];
   employees: Employee[];
   advancesDeductions: EmployeeAdvanceDeduction[];
   attendance: AttendanceRecord[];
@@ -87,6 +91,8 @@ export function getEmptyClientDatabaseState(): DatabaseState {
     repTransfers: [],
     repItemTransfers: [],
     customerItemOrders: [],
+    orderAdvancePayments: [],
+    syncConflicts: [],
     employees: [],
     advancesDeductions: [],
     attendance: [],

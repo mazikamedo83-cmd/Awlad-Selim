@@ -9,16 +9,20 @@ import { DataProvider } from './context/DataContext';
 import { ShortcutsProvider, useShortcuts } from './context/ShortcutsContext';
 import { LoginView } from './components/modules/auth/LoginView';
 import { ChangePasswordModal } from './components/modules/auth/ChangePasswordModal';
-import { Header } from './components/layout/Header';
-import { Sidebar, NavItemKey } from './components/layout/Sidebar';
+import { MobilePortal } from './components/modules/mobile/MobilePortal';
+import { StaffMobileShell } from './components/modules/mobile/StaffMobileShell';
+import { NavItemKey } from './config/navigation';
 import { ShieldAlert } from 'lucide-react';
-import { UserPermissions, CashOperationType } from './types';
+import { CashOperationType } from './types';
+import { PAGE_PERMISSIONS } from './config/navigation';
+import { UI_CLASSES } from './styles/designSystem';
 
 // Views
 import { DashboardView } from './components/modules/dashboard/DashboardView';
 import { SalesInvoicesView } from './components/modules/sales/SalesInvoicesView';
 import { DeletedInvoicesView } from './components/modules/sales/DeletedInvoicesView';
 import { CustomersView } from './components/modules/customers/CustomersView';
+import { CustomerRepOrdersView } from './components/modules/orders/CustomerRepOrdersView';
 import { PurchaseInvoicesView } from './components/modules/purchases/PurchaseInvoicesView';
 import { SuppliersView } from './components/modules/suppliers/SuppliersView';
 import { ReturnsView } from './components/modules/returns/ReturnsView';
@@ -32,58 +36,6 @@ import { EmployeesView } from './components/modules/employees/EmployeesView';
 import { ReportsView } from './components/modules/reports/ReportsView';
 import { UsersManagementView } from './components/modules/users/UsersManagementView';
 import { SettingsView } from './components/modules/settings/SettingsView';
-import { MobilePortal } from './components/modules/mobile/MobilePortal';
-import { StaffMobileShell } from './components/modules/mobile/StaffMobileShell';
-import { isNativeCapacitor } from './services/native';
-
-const PAGE_PERMISSIONS: Partial<Record<NavItemKey, keyof UserPermissions | Array<keyof UserPermissions>>> = {
-  'sales-invoices': 'canManageSales',
-  'new-sale': 'canManageSales',
-  'customers': 'canManageSales',
-  'sales-returns': 'canManageSales',
-  'deleted-invoices': 'canViewDeletedInvoices',
-  'purchase-invoices': 'canManagePurchases',
-  'new-purchase': 'canManagePurchases',
-  'suppliers': 'canManagePurchases',
-  'purchase-returns': 'canManagePurchases',
-  'products': 'canManageInventory',
-  'product-categories': 'canManageInventory',
-  'units-settings': ['canManageInventory', 'canManageSettings'],
-  'abu-selim-import': 'canManageInventory',
-  'warehouses': 'canManageWarehouses',
-  'stock-transfers': 'canManageInventory',
-  'stock-transfers-orders': ['canCreateStockTransfer', 'canApproveStockTransfer', 'canExecuteStockTransfer', 'canManageInventory'],
-  'stock-adjustments': 'canManageInventory',
-  'stock-counts': ['canCreateStockCount', 'canApproveStockCount', 'canManageInventory'],
-  'damaged-stock': 'canManageInventory',
-  'stock-movements': 'canManageInventory',
-  'cashboxes': 'canManageCashboxes',
-  'cashbox-transfer': 'canManageCashboxes',
-  'expenses': 'canManageCashboxes',
-  'personal-accounts': 'canViewPersonalAccounts',
-  'cheques': 'canManageAccounts',
-  'installments': 'canManageAccounts',
-  'reps': 'canManageReps',
-  'rep-transfers': 'canManageTransfers',
-  'rep-item-transfers': 'canManageTransfers',
-  'employees': 'canManageEmployees',
-  'attendance': 'canManageEmployees',
-  'advances': 'canManageSalaries',
-  'payroll': 'canManageSalaries',
-  'reports': 'canViewReports',
-  'users': 'canManageUsers',
-  'audit-log': 'canManageUsers',
-  'server-settings': 'canManageSettings',
-  'backup': 'canManageSettings',
-  'migration': 'canManageSettings',
-  'branches-settings': 'canManageSettings',
-  'barcode-settings': 'canManageSettings',
-  'printers-settings': 'canManageSettings',
-  'invoice-settings': 'canManageSettings',
-  'mobile-settings': 'canManageSettings',
-  'online-sync-settings': 'canManageSettings',
-  'services-settings': 'canManageSettings',
-};
 
 const ShortcutGlobalActions: React.FC<{ onOpenCashOp: (mode: CashOperationType) => void }> = ({ onOpenCashOp }) => {
   const { registerHandler } = useShortcuts();
@@ -101,35 +53,14 @@ const ShortcutGlobalActions: React.FC<{ onOpenCashOp: (mode: CashOperationType) 
 const MainAppContent: React.FC = () => {
   const { isAuthenticated, isLoading, currentUser, hasPermission } = useAuth();
   const [currentPage, setCurrentPage] = useState<NavItemKey>('dashboard');
-  const [isSidebarOpenMobile, setIsSidebarOpenMobile] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [cashOpModal, setCashOpModal] = useState<{ open: boolean; mode: CashOperationType }>({
     open: false,
     mode: 'cash_deposit',
   });
-  const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return window.innerWidth < 1024;
-  });
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const mq = window.matchMedia('(max-width: 1023px)');
-    const sync = () => setIsMobileViewport(mq.matches);
-    sync();
-    if (mq.addEventListener) {
-      mq.addEventListener('change', sync);
-      return () => mq.removeEventListener('change', sync);
-    }
-    mq.addListener(sync);
-    return () => mq.removeListener(sync);
-  }, []);
-
-  const useMobileStaffShell = isNativeCapacitor() || isMobileViewport;
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-900 text-white font-['Cairo']">
+      <div className={UI_CLASSES.loadingScreen}>
         <div className="text-center space-y-4">
           <div className="w-14 h-14 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
           <p className="text-sm font-bold text-slate-300">جاري تشغيل نظام أولاد سليم...</p>
@@ -161,7 +92,7 @@ const MainAppContent: React.FC = () => {
           <p className="text-xs text-slate-500">هذه الصلاحية مقيدة لحسابك. يرجى مراجعة المدير العام عند الحاجة.</p>
           <button
             onClick={() => setCurrentPage('dashboard')}
-            className="px-5 py-2 rounded-xl bg-blue-900 text-white text-xs font-bold"
+            className="px-5 py-2 rounded-xl bg-blue-900 text-white text-xs font-bold cursor-pointer"
           >
             العودة إلى الرئيسية
           </button>
@@ -184,6 +115,9 @@ const MainAppContent: React.FC = () => {
 
       case 'customers':
         return <CustomersView />;
+
+      case 'customer-orders':
+        return <CustomerRepOrdersView />;
 
       case 'purchase-invoices':
         return <PurchaseInvoicesView />;
@@ -332,49 +266,13 @@ const MainAppContent: React.FC = () => {
         onClose={() => setCashOpModal((prev) => ({ ...prev, open: false }))}
       />
 
-      {useMobileStaffShell ? (
-        <StaffMobileShell
-          currentPage={currentPage}
-          onNavigate={(page) => setCurrentPage(page)}
-          onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })}
-        >
-          {renderActivePage()}
-        </StaffMobileShell>
-      ) : (
-        <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col font-['Cairo'] antialiased">
-          <Sidebar
-            currentPage={currentPage}
-            onNavigate={(page) => setCurrentPage(page)}
-            isOpenMobile={isSidebarOpenMobile}
-            onCloseMobile={() => setIsSidebarOpenMobile(false)}
-            isCollapsed={isSidebarCollapsed}
-            onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-          />
-
-          <div
-            className={`flex-1 flex flex-col transition-all duration-300 ${
-              isSidebarCollapsed ? 'lg:mr-20' : 'lg:mr-72'
-            }`}
-          >
-            <Header
-              onToggleSidebar={() => {
-                if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
-                  setIsSidebarCollapsed((prev) => !prev);
-                } else {
-                  setIsSidebarOpenMobile((prev) => !prev);
-                }
-              }}
-              onNavigate={(page) => setCurrentPage(page)}
-              onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })}
-              onNavigateToTransfers={() => setCurrentPage('rep-transfers')}
-            />
-
-            <main className="flex-1 p-4 sm:p-6 max-w-7xl w-full mx-auto">
-              {renderActivePage()}
-            </main>
-          </div>
-        </div>
-      )}
+      <StaffMobileShell
+        currentPage={currentPage}
+        onNavigate={(page) => setCurrentPage(page)}
+        onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })}
+      >
+        {renderActivePage()}
+      </StaffMobileShell>
     </ShortcutsProvider>
   );
 };

@@ -207,6 +207,27 @@ export async function initializeSchema(customPool = null) {
       "ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ",
       "ALTER TABLE invoices ALTER COLUMN payment_method TYPE VARCHAR(32)",
       "ALTER TABLE invoice_payments ALTER COLUMN payment_method TYPE VARCHAR(32)",
+      "CREATE SEQUENCE IF NOT EXISTS seq_order_advance_no",
+      "ALTER TABLE products ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1",
+      "ALTER TABLE customers ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1",
+      "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS applied_advance_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00",
+      "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1",
+      "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS requester_type VARCHAR(24) NOT NULL DEFAULT 'customer'",
+      "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS representative_id VARCHAR(64)",
+      "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS representative_name TEXT DEFAULT ''",
+      "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS submitted_by_name TEXT DEFAULT ''",
+      "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS total_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00",
+      "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS advance_paid_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00",
+      "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS delivery_rep_id VARCHAR(64)",
+      "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS delivery_rep_name TEXT DEFAULT ''",
+      "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ",
+      "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ",
+      "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS collected_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00",
+      "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS delivery_notes TEXT DEFAULT ''",
+      "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS delivery_proof TEXT DEFAULT ''",
+      "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS origin_device_id VARCHAR(128)",
+      "ALTER TABLE customer_item_orders DROP CONSTRAINT IF EXISTS customer_item_orders_status_check",
+      "ALTER TABLE customer_item_orders ADD CONSTRAINT customer_item_orders_status_check CHECK (status IN ('pending', 'under_review', 'approved', 'rejected', 'rep_assigned', 'out_for_delivery', 'delivered', 'needs_review', 'invoiced', 'cancelled'))",
     ];
     for (const stmt of alterStatements) {
       try {
@@ -229,6 +250,24 @@ export async function initializeSchema(customPool = null) {
     if (!hasV4Tables) {
       const v4Marker = '-- 34. الحسابات الشخصية';
       const idx = sql.indexOf(v4Marker);
+      if (idx !== -1) {
+        await currentPool.query(sql.slice(idx));
+      }
+    }
+
+    // Ensure v4.1 offline sync + order advance tables exist on upgraded PG DBs
+    let hasV41Tables = false;
+    try {
+      const v41Check = await currentPool.query(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'order_advance_payments'"
+      );
+      hasV41Tables = Boolean(v41Check.rows && v41Check.rows.length > 0);
+    } catch {
+      hasV41Tables = false;
+    }
+    if (!hasV41Tables) {
+      const v41Marker = '-- 40. دفعات الطلبات المقدمة';
+      const idx = sql.indexOf(v41Marker);
       if (idx !== -1) {
         await currentPool.query(sql.slice(idx));
       }
