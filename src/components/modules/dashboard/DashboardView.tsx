@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
-import { NavItemKey } from '../../../config/navigation';
+import { NavItemKey } from '../../layout/Sidebar';
 import { Modal } from '../../common/Modal';
 import { NewSaleInvoiceModal } from '../sales/NewSaleInvoiceModal';
 import { CashOperationModal } from '../finance/CashOperationModal';

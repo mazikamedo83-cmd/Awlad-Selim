@@ -123,7 +123,20 @@ export function getEmptyClientDatabaseState(): DatabaseState {
       hostname: typeof window !== 'undefined' ? window.location.hostname : 'localhost',
       port: typeof window !== 'undefined' ? Number(window.location.port || (window.location.protocol === 'https:' ? 443 : 3000)) : 3000,
       apiBaseUrl: typeof window !== 'undefined' ? window.location.origin : '',
-      connectionType: 'reverse_proxy',
+      connectionType: 'local_network',
+      activeMode: 'local_network',
+      profiles: {
+        activeMode: 'local_network',
+        localNetwork: {
+          ip: typeof window !== 'undefined' ? window.location.hostname || '192.168.1.100' : '192.168.1.100',
+          port: 3000,
+          hostname: 'awlad-selim-server',
+        },
+        freeRemote: { tunnelUrl: '' },
+        proRemote: { domainUrl: '' },
+        cloudVps: { vpsUrl: '', notes: '' },
+        enforceHttpsForRemote: true,
+      },
       serverStatus: 'checking',
       databaseStatus: 'connected',
       latencyMs: 0,
@@ -136,7 +149,17 @@ export function getEmptyClientDatabaseState(): DatabaseState {
 export interface QueuedCustomerOrder {
   idempotencyKey: string;
   payload: {
-    items: Array<{ productId: string; productName: string; unit: string; quantity: number }>;
+    customerId?: string;
+    customerName?: string;
+    requesterType?: 'customer' | 'representative' | 'staff';
+    items: Array<{
+      productId: string;
+      productName: string;
+      unit: string;
+      unitFactor?: number;
+      unitPrice?: number;
+      quantity: number;
+    }>;
     notes?: string;
     deliveryAddress?: string;
     geoCoordinates?: string;

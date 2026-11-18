@@ -393,6 +393,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             />
           </div>
 
+          <div className="awlad-table-scroll">
           <table className="w-full text-right text-xs">
             <thead>
               <tr className="bg-slate-50 font-bold border-b text-slate-700">
@@ -421,6 +422,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

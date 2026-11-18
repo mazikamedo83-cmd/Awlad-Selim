@@ -179,6 +179,12 @@ async function runCoreSuite(baseUrl, modeLabel) {
         password: 'RepPassword!2026',
         phone: '01233332222',
         role: 'representative',
+        permissions: {
+          canView: true,
+          canAdd: true,
+          canManageSales: true,
+          canManageAccounts: true,
+        },
       },
     });
     assert.equal(uRep.status, 201);
@@ -291,7 +297,7 @@ async function runCoreSuite(baseUrl, modeLabel) {
     });
     assert.equal(advRes.status, 201);
     assert.equal(advRes.json.advancePayment.amount, 5000);
-    assert.equal(advRes.json.advancePayment.status, 'available');
+    assert.equal(advRes.json.advancePayment.status, 'active');
     assert.equal(advRes.json.order.advancePaidAmount, 5000);
     assert.equal(advRes.json.order.remainingAmount, 5000);
 
@@ -417,7 +423,7 @@ async function runCoreSuite(baseUrl, modeLabel) {
     assert.equal(boot.customers.find((c) => c.id === custId).currentBalance, -3000);
     assert.equal(boot.cashboxes.find((c) => c.id === cbId).currentBalance, 5000);
     assert.equal(boot.products.find((p) => p.id === prodId).stockPerWarehouse[whId], 48);
-    assert.equal(boot.orderAdvancePayments.find((a) => a.orderId === orderId).status, 'available');
+    assert.equal(boot.orderAdvancePayments.find((a) => a.orderId === orderId).status, 'active');
   });
 
   await test(`[${modeLabel}] 3. Offline Sync Push/Pull, Deduplication, Alias Chaining & Conflict Review (No Silent LWW)`, async () => {
@@ -428,6 +434,7 @@ async function runCoreSuite(baseUrl, modeLabel) {
     assert.equal(pullCust.json.customerProfile.id, custId);
     assert.equal(pullCust.json.products[0].purchasePrice, undefined);
     assert.equal(pullCust.json.products[0].stockPerWarehouse, undefined);
+    assert.equal(pullCust.json.products[0].inStock, true, 'Customer catalog MUST preserve inStock flag');
 
     const pullOther = await req(baseUrl, 'GET', '/api/sync/pull', { token: otherCustToken });
     assert.equal(pullOther.status, 200);
@@ -641,11 +648,12 @@ async function runCoreSuite(baseUrl, modeLabel) {
     assert.equal(revPush.json.results[0].status, 'needs_review');
     assert.equal(revPush.json.results[0].code, 'PERMISSION_REVOKED');
 
-    // Deactivate user -> ACCOUNT_DEACTIVATED + stoppedDueToAuthRevoke === true
+    // Deactivate user -> immediate 401 SESSION_REVOKED on both push & pull; queued order must NOT execute
     await req(baseUrl, 'PUT', `/api/admin/users/${staffSalesId}`, {
       token: adminToken,
       body: { isActive: false },
     });
+    const ordersBeforeDeact = (await req(baseUrl, 'GET', '/api/orders', { token: adminToken })).json.orders.length;
     const deactPush = await req(baseUrl, 'POST', '/api/sync/push', {
       token: staffSalesToken,
       body: {
@@ -662,9 +670,232 @@ async function runCoreSuite(baseUrl, modeLabel) {
         ],
       },
     });
-    assert.equal(deactPush.status, 200);
-    assert.equal(deactPush.json.stoppedDueToAuthRevoke, true);
-    assert.equal(deactPush.json.results[0].code, 'ACCOUNT_DEACTIVATED');
+    assert.equal(deactPush.status, 401);
+    assert.equal(deactPush.json.code, 'SESSION_REVOKED');
+    const deactPull = await req(baseUrl, 'GET', '/api/sync/pull', { token: staffSalesToken });
+    assert.equal(deactPull.status, 401);
+    const ordersAfterDeact = (await req(baseUrl, 'GET', '/api/orders', { token: adminToken })).json.orders.length;
+    assert.equal(ordersAfterDeact, ordersBeforeDeact, 'Deactivated account push MUST NOT execute any operation');
+  });
+
+  await test(`[${modeLabel}] 4. Full Offline Sync Batch (Purchase/Return/Expense/Payment/Update), Rep Boundaries, Order Reject, updateAdminUser Phone Match & Attachment Quarantine`, async () => {
+    // 4a. Customer order review -> reject requires reason, and succeeds with reason without touching stock/invoices
+    const rejOrdRes = await req(baseUrl, 'POST', '/api/orders', {
+      token: custToken,
+      body: { items: [{ productId: prodId, unit: 'زجاجة', quantity: 1 }], notes: 'طلب سيتم رفضه' },
+    });
+    assert.equal(rejOrdRes.status, 201);
+    const rejOrdId = rejOrdRes.json.order.id;
+    const revStep = await req(baseUrl, 'POST', `/api/orders/${rejOrdId}/review`, { token: adminToken, body: { notes: 'مراجعة أولية' } });
+    assert.equal(revStep.status, 200);
+    assert.equal(revStep.json.order.status, 'under_review');
+    const rejEmpty = await req(baseUrl, 'POST', `/api/orders/${rejOrdId}/reject`, { token: adminToken, body: { reason: '' } });
+    assert.equal(rejEmpty.status, 400);
+    const rejOk = await req(baseUrl, 'POST', `/api/orders/${rejOrdId}/reject`, { token: adminToken, body: { reason: 'الكمية غير متوفرة حالياً' } });
+    assert.equal(rejOk.status, 200);
+    assert.equal(rejOk.json.order.status, 'rejected');
+
+    // 4b. Customer unauthorized to sync staff financial operations
+    const custStaffPush = await req(baseUrl, 'POST', '/api/sync/push', {
+      token: custToken,
+      body: {
+        deviceId: 'DEV-CUST-01',
+        operations: [{ operationId: `OP-CUST-FORBIDDEN-${modeLabel}`, operationType: 'create_sales_invoice', payload: {} }],
+      },
+    });
+    assert.equal(custStaffPush.status, 200);
+    assert.equal(custStaffPush.json.results[0].status, 'needs_review');
+    assert.equal(custStaffPush.json.results[0].code, 'PERMISSION_REVOKED');
+
+    // 4c. Rep collecting payment for unassigned customer -> blocked as needs_review (CUSTOMER_NOT_ASSIGNED_TO_REP)
+    const otherCustRow = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data.customers.find((c) => c.phone === '01099990001');
+    const repForbiddenPay = await req(baseUrl, 'POST', '/api/sync/push', {
+      token: repToken,
+      body: {
+        deviceId: 'DEV-REP-01',
+        operations: [
+          {
+            operationId: `OP-REP-UNASSIGNED-${modeLabel}`,
+            operationType: 'record_customer_payment',
+            payload: { customerId: otherCustRow.id, amount: 100, cashboxId: cbId, paymentMethod: 'cash' },
+          },
+        ],
+      },
+    });
+    assert.equal(repForbiddenPay.status, 200);
+    assert.equal(repForbiddenPay.json.results[0].code, 'CUSTOMER_NOT_ASSIGNED_TO_REP');
+
+    // 4d. Corrupted/oversized deliveryProof on Rep delivery update MUST NOT fail cash collection & delivery status
+    const delivOrdRes = await req(baseUrl, 'POST', '/api/orders', {
+      token: custToken,
+      body: { items: [{ productId: prodId, unit: 'زجاجة', quantity: 2 }], notes: 'طلب تحصيل عند التسليم' },
+    });
+    assert.equal(delivOrdRes.status, 201);
+    const delivOrdId = delivOrdRes.json.order.id;
+    await req(baseUrl, 'POST', `/api/orders/${delivOrdId}/approve`, { token: adminToken, body: {} });
+    await req(baseUrl, 'POST', `/api/orders/${delivOrdId}/assign-rep`, { token: adminToken, body: { repId } });
+
+    const repDelivSync = await req(baseUrl, 'POST', '/api/sync/push', {
+      token: repToken,
+      body: {
+        deviceId: 'DEV-REP-01',
+        operations: [
+          {
+            operationId: `OP-REP-DELIV-BADIMG-${modeLabel}`,
+            operationType: 'update_order_delivery',
+            payload: {
+              orderId: delivOrdId,
+              status: 'delivered',
+              collectedAmount: 500,
+              cashboxId: cbId,
+              paymentMethod: 'cash',
+              deliveryNotes: 'تم التسليم',
+              deliveryProof: 'corrupted-not-an-image-payload-###',
+            },
+          },
+        ],
+      },
+    });
+    assert.equal(repDelivSync.status, 200);
+    assert.equal(repDelivSync.json.results[0].status, 'synced', 'Corrupted attachment MUST NOT abort financial delivery/collection sync');
+    assert.equal(repDelivSync.json.results[0].result.order.status, 'delivered');
+    assert.equal(repDelivSync.json.results[0].result.order.collectedAmount, 500);
+    assert.equal(repDelivSync.json.results[0].result?.order?.deliveryProof, undefined);
+
+    // 4e. updateAdminUser auto-matching normalized phone vs AMBIGUOUS_CUSTOMER_PHONE
+    const manualOnlyCustRes = await req(baseUrl, 'POST', '/api/customers', {
+      token: adminToken,
+      body: { code: `CUS-PROMO-${modeLabel}`, name: 'عميل ترقية', phone: '01122334455', address: 'المعادي' },
+    });
+    assert.equal(manualOnlyCustRes.status, 201);
+    const promoUserRes = await req(baseUrl, 'POST', '/api/admin/users', {
+      token: adminToken,
+      body: { fullName: 'حساب سيتم تحويله لعميل', username: `promo_user_${modeLabel.toLowerCase()}`, password: 'UserPass!2026', phone: '01122334455', role: 'sales' },
+    });
+    assert.equal(promoUserRes.status, 201);
+    const updPromoRes = await req(baseUrl, 'PUT', `/api/admin/users/${promoUserRes.json.user.id}`, {
+      token: adminToken,
+      body: { role: 'customer', autoCreateCustomerProfile: true },
+    });
+    assert.equal(updPromoRes.status, 200);
+    assert.equal(updPromoRes.json.user.linkedCustomerId, manualOnlyCustRes.json.customer.id, 'updateAdminUser MUST reuse existing unlinked customer by normalized phone');
+
+    // Ambiguous phone during updateAdminUser -> 409 AMBIGUOUS_CUSTOMER_PHONE
+    const ambigUpdUser = await req(baseUrl, 'POST', '/api/admin/users', {
+      token: adminToken,
+      body: { fullName: 'تحديث مكرر', username: `ambig_upd_${modeLabel.toLowerCase()}`, password: 'UserPass!2026', phone: '01099990001', role: 'sales' },
+    });
+    assert.equal(ambigUpdUser.status, 201);
+    const ambigUpdFail = await req(baseUrl, 'PUT', `/api/admin/users/${ambigUpdUser.json.user.id}`, {
+      token: adminToken,
+      body: { role: 'customer', autoCreateCustomerProfile: true },
+    });
+    assert.equal(ambigUpdFail.status, 409);
+    assert.equal(ambigUpdFail.json.code, 'AMBIGUOUS_CUSTOMER_PHONE');
+
+    // 4f. Full mixed Sync Batch: create_purchase_invoice, create_sales_invoice, add_invoice_payment, create_invoice_return, execute_cash_operation (expense + profit_deposit), update_customer, AND 1 invalid op
+    const suppRes = await req(baseUrl, 'POST', '/api/admin/suppliers', {
+      token: adminToken,
+      body: { code: `SUP-${modeLabel}`, name: 'مورد الجملة الرئيسي', phone: '01000011223', address: 'القاهرة', openingBalance: 0 },
+    });
+    assert.equal(suppRes.status, 201);
+    const suppId = suppRes.json.supplier.id;
+
+    const fullBatchRes = await req(baseUrl, 'POST', '/api/sync/push', {
+      token: adminToken,
+      body: {
+        deviceId: 'DEV-WIN-ADMIN',
+        operations: [
+          {
+            operationId: `OP-PUR-${modeLabel}`,
+            operationType: 'create_purchase_invoice',
+            payload: {
+              localId: `PUR-LOC-${modeLabel}`,
+              supplierId: suppId,
+              warehouseId: whId,
+              cashboxId: cbId,
+              status: 'confirmed',
+              paymentType: 'partial',
+              paidAmount: 1000,
+              items: [{ productId: prodId, productName: 'زيت طعام ممتاز 1 لتر', unit: 'زجاجة', unitFactor: 1, quantity: 5, unitPrice: 800 }],
+            },
+          },
+          {
+            operationId: `OP-EXP-${modeLabel}`,
+            operationType: 'execute_cash_operation',
+            payload: { type: 'expense', cashboxId: cbId, amount: 200, category: 'كهرباء', notes: 'سند صرف أوفلاين' },
+          },
+          {
+            operationId: `OP-INC-${modeLabel}`,
+            operationType: 'execute_cash_operation',
+            payload: { type: 'profit_deposit', cashboxId: cbId, amount: 150, category: 'إيرادات أخرى', notes: 'سند قبض أوفلاين' },
+          },
+          {
+            operationId: `OP-SALE-${modeLabel}`,
+            operationType: 'create_sales_invoice',
+            payload: {
+              localId: `SAL-LOC-${modeLabel}`,
+              customerId: custId,
+              warehouseId: whId,
+              cashboxId: cbId,
+              status: 'confirmed',
+              paymentType: 'credit',
+              paidAmount: 0,
+              items: [{ productId: prodId, productName: 'زيت طعام ممتاز 1 لتر', unit: 'زجاجة', unitFactor: 1, quantity: 3, unitPrice: 1000 }],
+            },
+          },
+          {
+            operationId: `OP-PAYINV-${modeLabel}`,
+            operationType: 'add_invoice_payment',
+            payload: { invoiceId: `SAL-LOC-${modeLabel}`, amount: 1000, cashboxId: cbId, paymentMethod: 'cash', notes: 'سداد جزئي' },
+          },
+          {
+            operationId: `OP-RET-${modeLabel}`,
+            operationType: 'create_invoice_return',
+            payload: {
+              type: 'sales_return',
+              originalInvoiceId: `SAL-LOC-${modeLabel}`,
+              partyId: custId,
+              partyName: 'سوبر ماركت النور',
+              warehouseId: whId,
+              warehouseName: 'المستودع الرئيسي',
+              refundType: 'balance',
+              reason: 'تلف تغليف',
+              items: [{ productId: prodId, productName: 'زيت طعام ممتاز 1 لتر', unit: 'زجاجة', unitFactor: 1, quantity: 1, unitPrice: 1000, total: 1000 }],
+              grandTotal: 1000,
+            },
+          },
+          {
+            operationId: `OP-UPDCUST-${modeLabel}`,
+            operationType: 'update_customer',
+            payload: { customerId: custId, notes: 'ملاحظة محدثة أوفلاين' },
+          },
+          {
+            operationId: `OP-FAIL-VAL-${modeLabel}`,
+            operationType: 'execute_cash_operation',
+            payload: { type: 'expense', cashboxId: cbId, amount: -50, category: 'خطأ' },
+          },
+        ],
+      },
+    });
+    assert.equal(fullBatchRes.status, 200);
+    assert.equal(fullBatchRes.json.results.length, 8);
+    for (let i = 0; i < 7; i += 1) {
+      assert.equal(fullBatchRes.json.results[i].status, 'synced', `Batch op ${i} should sync`);
+    }
+    assert.equal(fullBatchRes.json.results[7].status, 'failed', 'Invalid amount should fail without blocking other ops');
+
+    // Verify exact final balances in central DB
+    const bootFinal = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+    // Cashbox started test 4 at 5000 + 500 (deliv collect) - 1000 (purchase paid) - 200 (exp) + 150 (inc) + 1000 (inv pay) = 5450
+    assert.equal(bootFinal.cashboxes.find((c) => c.id === cbId).currentBalance, 5450);
+    // Supplier: 5 * 800 = 4000 - 1000 paid = 3000
+    assert.equal(bootFinal.suppliers.find((s) => s.id === suppId).currentBalance, 3000);
+    // Customer: started test 4 at -3000 - 500 (deliv collect) + 3000 (sale) - 1000 (pay) - 1000 (return) = -2500
+    assert.equal(bootFinal.customers.find((c) => c.id === custId).currentBalance, -2500);
+    assert.equal(bootFinal.customers.find((c) => c.id === custId).notes, 'ملاحظة محدثة أوفلاين');
+    // Stock: started test 4 at 47 (48 after Test 2 minus 1 from Test 3d) + 5 (purchase) - 3 (sale) + 1 (return) = 50
+    assert.equal(bootFinal.products.find((p) => p.id === prodId).stockPerWarehouse[whId], 50);
   });
 }
 

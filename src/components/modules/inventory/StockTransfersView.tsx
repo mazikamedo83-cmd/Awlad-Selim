@@ -481,7 +481,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
         </div>
 
         {/* Added items table */}
-        <div className="border border-slate-200 rounded-xl overflow-hidden max-h-56 overflow-y-auto">
+        <div className="border border-slate-200 rounded-xl awlad-table-scroll max-h-56 overflow-y-auto">
           <table className="w-full text-right text-[11px]">
             <thead className="bg-slate-100 text-slate-700 font-bold border-b">
               <tr>
@@ -993,7 +993,7 @@ export const StockTransfersView: React.FC = () => {
               </div>
             </div>
 
-            <div className="border border-slate-200 rounded-xl overflow-hidden max-h-64 overflow-y-auto">
+            <div className="border border-slate-200 rounded-xl awlad-table-scroll max-h-64 overflow-y-auto">
               <table className="w-full text-right text-[11px]">
                 <thead className="bg-slate-100 text-slate-700 font-bold border-b">
                   <tr>
@@ -1140,26 +1140,28 @@ export const StockTransfersView: React.FC = () => {
               <div>المستودع: <strong>{previewInvoice.warehouseName}</strong></div>
               <div>الإجمالي: <strong className="font-mono text-blue-900">{previewInvoice.grandTotal.toLocaleString()} {settings.currency}</strong></div>
             </div>
-            <table className="w-full text-right text-[11px] border rounded-xl overflow-hidden">
-              <thead className="bg-slate-100 font-bold border-b">
-                <tr>
-                  <th className="p-2">الصنف</th>
-                  <th className="p-2 text-center">الوحدة</th>
-                  <th className="p-2 text-center">الكمية</th>
-                  <th className="p-2 text-center">الإجمالي</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {previewInvoice.items.map((it, i) => (
-                  <tr key={i}>
-                    <td className="p-2 font-bold">{it.productName}</td>
-                    <td className="p-2 text-center">{it.unit}</td>
-                    <td className="p-2 text-center font-mono">{it.quantity}</td>
-                    <td className="p-2 text-center font-mono font-bold">{it.total.toLocaleString()}</td>
+            <div className="border border-slate-200 rounded-xl awlad-table-scroll">
+              <table className="w-full text-right text-[11px]">
+                <thead className="bg-slate-100 font-bold border-b">
+                  <tr>
+                    <th className="p-2">الصنف</th>
+                    <th className="p-2 text-center">الوحدة</th>
+                    <th className="p-2 text-center">الكمية</th>
+                    <th className="p-2 text-center">الإجمالي</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y">
+                  {previewInvoice.items.map((it, i) => (
+                    <tr key={i}>
+                      <td className="p-2 font-bold">{it.productName}</td>
+                      <td className="p-2 text-center">{it.unit}</td>
+                      <td className="p-2 text-center font-mono">{it.quantity}</td>
+                      <td className="p-2 text-center font-mono font-bold">{it.total.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </Modal>
       )}

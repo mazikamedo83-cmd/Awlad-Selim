@@ -25,6 +25,24 @@ export function getNativePlatform(): 'android' | 'ios' | 'web' {
   }
 }
 
+export function syncNativeStatusBarStyle(appearance: 'light-header' | 'dark-header'): void {
+  if (!isNativeCapacitor()) return;
+  try {
+    const plugins = (Capacitor as any).Plugins;
+    const systemBars = plugins?.SystemBars;
+    if (systemBars && typeof systemBars.setStyle === 'function') {
+      systemBars
+        .setStyle({
+          bar: 'StatusBar',
+          style: appearance === 'light-header' ? 'LIGHT' : 'DARK',
+        })
+        .catch(() => {});
+    }
+  } catch {
+    // ignore on platforms without SystemBars
+  }
+}
+
 export async function getPref(key: string): Promise<string | null> {
   if (!isNativeCapacitor()) {
     try {
@@ -273,6 +291,57 @@ export function subscribeNetworkStatus(
   };
 }
 
+export function subscribeAppForeground(onForeground: () => void): () => void {
+  let active = true;
+  let capHandle: { remove: () => Promise<void> } | null = null;
+
+  const trigger = () => {
+    if (active) onForeground();
+  };
+
+  const handleVisibility = () => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+      trigger();
+    }
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('focus', trigger);
+  }
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', handleVisibility);
+  }
+
+  if (isNativeCapacitor()) {
+    CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+      if (active && isActive) {
+        trigger();
+      }
+    })
+      .then((h) => {
+        if (!active) {
+          h.remove().catch(() => {});
+        } else {
+          capHandle = h;
+        }
+      })
+      .catch(() => {});
+  }
+
+  return () => {
+    active = false;
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('focus', trigger);
+    }
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', handleVisibility);
+    }
+    if (capHandle) {
+      capHandle.remove().catch(() => {});
+    }
+  };
+}
+
 export function registerAndroidBackButton(handler: () => boolean | void): () => void {
   if (!isNativeCapacitor() || getNativePlatform() !== 'android') {
     return () => {};
@@ -307,119 +376,106 @@ export function registerAndroidBackButton(handler: () => boolean | void): () => 
   };
 }
 
-const PERSISTENT_DEVICE_ID_KEY = 'awlad_selim_persistent_device_id';
-let memoryFallbackDeviceId = '';
+export const DEVICE_ID_STORAGE_KEY = 'awlad_selim_device_id';
 
 export function getOrCreatePersistentDeviceId(): string {
   try {
-    if (typeof localStorage !== 'undefined') {
-      const existing = localStorage.getItem(PERSISTENT_DEVICE_ID_KEY)?.trim();
-      if (existing) return existing;
+    const existing = localStorage.getItem(DEVICE_ID_STORAGE_KEY)?.trim();
+    if (existing && existing.length >= 8) return existing;
+    const generated =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? `DEV-${crypto.randomUUID()}`
+        : `DEV-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem(DEVICE_ID_STORAGE_KEY, generated);
+    if (isNativeCapacitor()) {
+      Preferences.set({ key: DEVICE_ID_STORAGE_KEY, value: generated }).catch(() => {});
     }
+    return generated;
   } catch {
-    // ignore storage read error
+    return `DEV-${Date.now().toString(36)}`;
   }
-  if (memoryFallbackDeviceId) return memoryFallbackDeviceId;
-
-  const rnd =
-    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-      ? crypto.randomUUID().replace(/-/g, '').slice(0, 16)
-      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
-  const platformPrefix = getNativePlatform() === 'android' ? 'AND' : getNativePlatform() === 'ios' ? 'IOS' : 'DEV';
-  const generated = `${platformPrefix}-${rnd.toUpperCase()}`;
-  memoryFallbackDeviceId = generated;
-
-  try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(PERSISTENT_DEVICE_ID_KEY, generated);
-    }
-  } catch {
-    // ignore
-  }
-  if (isNativeCapacitor()) {
-    Preferences.set({ key: PERSISTENT_DEVICE_ID_KEY, value: generated }).catch(() => {});
-  }
-  return generated;
 }
 
 export function getClientDeviceDescriptor(): {
   deviceId: string;
-  deviceName: string;
   deviceType: 'windows' | 'android' | 'ios' | 'web';
+  deviceName: string;
   osVersion: string;
   appVersion: string;
 } {
   const deviceId = getOrCreatePersistentDeviceId();
-  const nativePlat = getNativePlatform();
-  const ua = typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : '';
-  const isElectron =
-    typeof window !== 'undefined' && Boolean((window as any)?.awladDesktop?.isElectron);
+  const capPlatform = getNativePlatform();
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+  const isElectronDesktop = typeof window !== 'undefined' && Boolean((window as any).awladDesktop?.isElectron);
 
   let deviceType: 'windows' | 'android' | 'ios' | 'web' = 'web';
-  if (nativePlat === 'android') deviceType = 'android';
-  else if (nativePlat === 'ios') deviceType = 'ios';
-  else if (isElectron || /windows/i.test(ua)) deviceType = 'windows';
-  else if (/android/i.test(ua)) deviceType = 'android';
-  else if (/iphone|ipad|ipod/i.test(ua)) deviceType = 'ios';
+  if (capPlatform === 'android' || /android/i.test(ua)) deviceType = 'android';
+  else if (capPlatform === 'ios' || /iphone|ipad|ipod/i.test(ua)) deviceType = 'ios';
+  else if (isElectronDesktop || /windows/i.test(ua)) deviceType = 'windows';
 
-  const deviceName =
-    deviceType === 'windows'
-      ? 'AWLAD SELIM Windows Desktop'
-      : deviceType === 'android'
-      ? 'AWLAD SELIM Android'
-      : deviceType === 'ios'
-      ? 'AWLAD SELIM iPhone / iPad'
-      : 'AWLAD SELIM Web Browser';
+  let deviceName = 'متصفح الويب';
+  if (deviceType === 'windows') {
+    deviceName = isElectronDesktop ? 'كمبيوتر المحل (Windows Desktop)' : 'جهاز Windows';
+  } else if (deviceType === 'android') {
+    deviceName = isNativeCapacitor() ? 'تطبيق Android (AWLAD SELIM)' : 'هاتف Android';
+  } else if (deviceType === 'ios') {
+    deviceName = isNativeCapacitor() ? 'تطبيق iPhone (AWLAD SELIM)' : 'هاتف iPhone / iPad';
+  }
 
   return {
     deviceId,
-    deviceName,
     deviceType,
-    osVersion: ua.slice(0, 80),
+    deviceName,
+    osVersion: ua.slice(0, 75),
     appVersion: '3.0.0',
   };
 }
 
 export function hasCameraMediaSupport(): boolean {
+  return typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia);
+}
+
+export async function getLaunchDeepLinkUrl(): Promise<string | null> {
+  if (!isNativeCapacitor()) return null;
   try {
-    return typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+    const launch = await CapacitorApp.getLaunchUrl();
+    const url = launch?.url?.trim();
+    return url || null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-export async function getInitialAppLaunchUrl(): Promise<string | null> {
-  if (isNativeCapacitor()) {
-    try {
-      const launch = await CapacitorApp.getLaunchUrl();
-      if (launch?.url) return launch.url;
-    } catch {
-      // ignore if unsupported
-    }
-  }
-  if (typeof window !== 'undefined' && window.location?.href) {
-    const href = window.location.href;
-    if (
-      /[?&](pair_token|token)=/i.test(href) ||
-      /\/(?:pair|invite)\//i.test(window.location.pathname) ||
-      /^awladselim:\/\//i.test(href)
-    ) {
-      return href;
-    }
-  }
-  return null;
-}
-
-export function subscribeAppUrlOpen(onUrl: (url: string) => void): () => void {
+export function subscribeDeepLinks(
+  onUrl: (url: string) => void,
+  options?: { skipInitialLaunchUrl?: boolean }
+): () => void {
   if (!isNativeCapacitor()) {
     return () => {};
   }
   let active = true;
   let handle: { remove: () => Promise<void> } | null = null;
+  let lastUrl = '';
+  let lastSeenAt = 0;
+
+  const dispatchUrl = (rawUrl?: string | null) => {
+    const clean = String(rawUrl || '').trim();
+    if (!active || !clean) return;
+    const now = Date.now();
+    if (clean === lastUrl && now - lastSeenAt < 4000) return;
+    lastUrl = clean;
+    lastSeenAt = now;
+    onUrl(clean);
+  };
+
+  if (!options?.skipInitialLaunchUrl) {
+    getLaunchDeepLinkUrl()
+      .then((url) => dispatchUrl(url))
+      .catch(() => {});
+  }
+
   CapacitorApp.addListener('appUrlOpen', (event) => {
-    if (active && event?.url) {
-      onUrl(event.url);
-    }
+    dispatchUrl(event?.url);
   })
     .then((h) => {
       if (!active) {

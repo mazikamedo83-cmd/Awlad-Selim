@@ -1,14 +1,12 @@
 import { verifyJwt } from '../utils/crypto.js';
-import { validateActiveSession, validateSyncPushSession, recordAuditLog } from '../db/stores/authStore.js';
-import { getDeviceStatusForGuard } from '../db/stores/connectionPairingStore.js';
+import { validateActiveSession, recordAuditLog, checkDeviceAuthGuard } from '../db/stores/authStore.js';
 import { AppError } from '../utils/errors.js';
 
 const RATE_WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILED_ATTEMPTS = 10;
 const failedLoginMap = new Map();
-
-const PAIRING_RATE_WINDOW_MS = 10 * 60 * 1000;
-const MAX_PAIRING_REQUESTS = 120;
+const PAIRING_RATE_WINDOW_MS = 5 * 60 * 1000;
+const MAX_PAIRING_REQUESTS = 90;
 const pairingRateMap = new Map();
 
 export function getClientIp(req) {
@@ -68,30 +66,29 @@ export function clearLoginFailure(req) {
   }
 }
 
-export function checkPairingRateLimit(req, res, next) {
-  const ip = getClientIp(req);
-  const key = `pair::${ip}`;
-  const now = Date.now();
-  const entry = pairingRateMap.get(key);
-  if (!entry || now - entry.firstAt >= PAIRING_RATE_WINDOW_MS) {
-    pairingRateMap.set(key, { count: 1, firstAt: now });
-    return next();
-  }
-  if (entry.count >= MAX_PAIRING_REQUESTS) {
-    return res.status(429).json({
-      ok: false,
-      code: 'PAIRING_RATE_LIMITED',
-      error: 'تم تجاوز الحد الأقصى لطلبات ربط الأجهزة. يرجى المحاولة بعد قليل.',
-    });
-  }
-  entry.count += 1;
-  pairingRateMap.set(key, entry);
-  next();
-}
-
 export function resetAllRateLimitsForTests() {
   failedLoginMap.clear();
   pairingRateMap.clear();
+}
+
+export function checkPairingRateLimit(req, res, next) {
+  const ip = getClientIp(req);
+  const now = Date.now();
+  const entry = pairingRateMap.get(ip);
+  if (!entry || now - entry.windowStart >= PAIRING_RATE_WINDOW_MS) {
+    pairingRateMap.set(ip, { count: 1, windowStart: now });
+    return next();
+  }
+  entry.count += 1;
+  pairingRateMap.set(ip, entry);
+  if (entry.count > MAX_PAIRING_REQUESTS) {
+    return res.status(429).json({
+      ok: false,
+      code: 'PAIRING_RATE_LIMITED',
+      error: 'تم تجاوز الحد المسموح به لطلبات الربط من هذا العنوان. يرجى الانتظار بضع دقائق.',
+    });
+  }
+  return next();
 }
 
 export async function requireAuth(req, res, next) {
@@ -107,76 +104,23 @@ export async function requireAuth(req, res, next) {
       return res.status(401).json({ ok: false, code: 'INVALID_TOKEN', error: 'انتهت صلاحية الجلسة أو رمز الدخول غير صالح' });
     }
 
-    const reqDeviceId = String(req.get('x-device-id') || '').trim();
-    if (reqDeviceId) {
-      const guard = await getDeviceStatusForGuard(reqDeviceId);
-      if (guard.blocked) {
-        return res.status(403).json({
-          ok: false,
-          code: guard.code,
-          error: guard.message,
-          deviceStatus: guard.device?.status,
-        });
-      }
-    }
-
     const sessionCtx = await validateActiveSession(payload.sid, payload.sub);
     if (!sessionCtx) {
       return res.status(401).json({ ok: false, code: 'SESSION_REVOKED', error: 'الجلسة غير نشطة أو تم تسجيل الخروج منها' });
     }
 
-    req.auth = {
-      sessionId: payload.sid,
-      user: sessionCtx.user,
-      customerProfile: sessionCtx.customerProfile,
-      representativeProfile: sessionCtx.representativeProfile,
-      linkWarning: sessionCtx.linkWarning,
-      deviceId: reqDeviceId || undefined,
-    };
-    next();
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function requireSyncPushAuth(req, res, next) {
-  try {
-    const authHeader = req.get('authorization') || '';
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-    if (!token) {
-      return res.status(401).json({ ok: false, code: 'UNAUTHORIZED', error: 'مطلوب تسجيل الدخول أولاً' });
-    }
-
-    const payload = verifyJwt(token);
-    if (!payload || !payload.sub || !payload.sid) {
-      return res.status(401).json({ ok: false, code: 'INVALID_TOKEN', error: 'انتهت صلاحية الجلسة أو رمز الدخول غير صالح' });
-    }
-
-    const reqDeviceId = String(req.get('x-device-id') || '').trim();
-    if (reqDeviceId) {
-      const guard = await getDeviceStatusForGuard(reqDeviceId);
-      if (guard.blocked) {
-        return res.status(403).json({
-          ok: false,
-          code: guard.code,
-          error: guard.message,
-          deviceStatus: guard.device?.status,
-        });
-      }
-    }
-
-    const sessionCtx = await validateSyncPushSession(payload.sid, payload.sub);
-    if (!sessionCtx) {
-      return res.status(401).json({ ok: false, code: 'SESSION_REVOKED', error: 'الجلسة غير نشطة أو تم تسجيل الخروج منها' });
+    const effectiveDeviceId = req.get('x-device-id') || sessionCtx.deviceId || payload.did || '';
+    if (effectiveDeviceId) {
+      await checkDeviceAuthGuard(effectiveDeviceId);
     }
 
     req.auth = {
       sessionId: payload.sid,
+      deviceId: effectiveDeviceId,
       user: sessionCtx.user,
       customerProfile: sessionCtx.customerProfile,
       representativeProfile: sessionCtx.representativeProfile,
       linkWarning: sessionCtx.linkWarning,
-      deviceId: reqDeviceId || undefined,
     };
     next();
   } catch (err) {

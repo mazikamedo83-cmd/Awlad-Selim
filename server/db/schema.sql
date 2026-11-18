@@ -44,8 +44,8 @@ CREATE TABLE IF NOT EXISTS user_sessions (
   id VARCHAR(64) PRIMARY KEY,
   user_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   refresh_token_hash TEXT UNIQUE NOT NULL,
+  device_id VARCHAR(64),
   device_info TEXT,
-  device_id VARCHAR(64) DEFAULT '',
   ip_address VARCHAR(64),
   expires_at TIMESTAMPTZ NOT NULL,
   revoked_at TIMESTAMPTZ,
@@ -213,6 +213,9 @@ CREATE TABLE IF NOT EXISTS invoices (
   linked_rep_transfer_number VARCHAR(64),
   linked_customer_order_id VARCHAR(64),
   returned_quantity_by_item JSONB NOT NULL DEFAULT '{}'::jsonb,
+  idempotency_key VARCHAR(128),
+  origin_device_id VARCHAR(64),
+  sync_status VARCHAR(24) NOT NULL DEFAULT 'synced',
   version INT NOT NULL DEFAULT 1,
   created_by VARCHAR(64) NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -578,52 +581,55 @@ CREATE TABLE IF NOT EXISTS migration_logs (
   notes TEXT
 );
 
--- 30. طلبات أصناف العملاء (Customer Item Orders)
+-- 30. طلبات العملاء والمندوبين (Customer & Representative Item Orders)
 CREATE TABLE IF NOT EXISTS customer_item_orders (
   id VARCHAR(64) PRIMARY KEY,
   request_number VARCHAR(64) UNIQUE NOT NULL,
   customer_id VARCHAR(64) NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
   user_id VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
   requester_type VARCHAR(24) NOT NULL DEFAULT 'customer',
+  submitted_by_name TEXT DEFAULT '',
   representative_id VARCHAR(64),
   representative_name TEXT DEFAULT '',
-  submitted_by_name TEXT DEFAULT '',
   customer_name TEXT NOT NULL,
   customer_phone VARCHAR(32) NOT NULL DEFAULT '',
   shop_name TEXT DEFAULT '',
   delivery_address TEXT NOT NULL DEFAULT '',
   geo_coordinates TEXT DEFAULT '',
-  status VARCHAR(32) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'under_review', 'approved', 'rejected', 'rep_assigned', 'out_for_delivery', 'delivered', 'needs_review', 'invoiced', 'cancelled')),
   total_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
   advance_paid_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+  remaining_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+  status VARCHAR(24) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'under_review', 'approved', 'rejected', 'rep_assigned', 'out_for_delivery', 'delivered', 'needs_review', 'invoiced', 'cancelled')),
+  delivery_rep_id VARCHAR(64),
+  delivery_rep_name TEXT DEFAULT '',
+  delivered_at TIMESTAMPTZ,
+  delivery_notes TEXT DEFAULT '',
+  delivery_proof TEXT,
+  collected_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+  source_platform VARCHAR(24) NOT NULL DEFAULT 'web',
+  origin_device_id VARCHAR(64),
+  sync_status VARCHAR(24) NOT NULL DEFAULT 'synced',
   notes TEXT,
   rejection_reason TEXT,
   reviewed_by VARCHAR(64),
   reviewed_by_user_id VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
   reviewed_at TIMESTAMPTZ,
-  delivery_rep_id VARCHAR(64),
-  delivery_rep_name TEXT DEFAULT '',
-  assigned_at TIMESTAMPTZ,
-  delivered_at TIMESTAMPTZ,
-  collected_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
-  delivery_notes TEXT DEFAULT '',
-  delivery_proof TEXT DEFAULT '',
   invoice_id VARCHAR(64) UNIQUE REFERENCES invoices(id) ON DELETE SET NULL,
   invoice_number VARCHAR(64),
   idempotency_key VARCHAR(128) UNIQUE,
-  origin_device_id VARCHAR(128),
   version INT NOT NULL DEFAULT 1,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 31. تفاصيل أصناف طلب العميل (Customer Order Items)
+-- 31. تفاصيل أصناف طلب العميل والمندوب (Customer Order Items)
 CREATE TABLE IF NOT EXISTS customer_item_order_items (
   id VARCHAR(64) PRIMARY KEY,
   order_id VARCHAR(64) NOT NULL REFERENCES customer_item_orders(id) ON DELETE CASCADE,
   product_id VARCHAR(64) NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
   product_code VARCHAR(64),
   product_name TEXT NOT NULL,
+  product_image TEXT,
   unit VARCHAR(32) NOT NULL,
   unit_factor NUMERIC(12, 3) NOT NULL DEFAULT 1.000,
   quantity NUMERIC(12, 3) NOT NULL CHECK (quantity > 0),
@@ -821,75 +827,13 @@ CREATE INDEX IF NOT EXISTS idx_fin_tx_cashbox ON financial_transactions(cashbox_
 CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_migration_logs_timestamp ON migration_logs(timestamp DESC);
 
--- 40. دفعات الطلبات المقدمة (Order Advance Payments - رصيد دائن للعميل قبل الفوترة)
-CREATE TABLE IF NOT EXISTS order_advance_payments (
-  id VARCHAR(64) PRIMARY KEY,
-  advance_number VARCHAR(64) UNIQUE NOT NULL,
-  order_id VARCHAR(64) NOT NULL REFERENCES customer_item_orders(id) ON DELETE RESTRICT,
-  request_number VARCHAR(64) NOT NULL,
-  customer_id VARCHAR(64) NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
-  customer_name TEXT NOT NULL,
-  amount NUMERIC(14, 2) NOT NULL CHECK (amount > 0),
-  date DATE NOT NULL,
-  payment_method VARCHAR(32) NOT NULL DEFAULT 'cash',
-  cashbox_id VARCHAR(64) NOT NULL REFERENCES cashboxes(id) ON DELETE RESTRICT,
-  cashbox_name TEXT NOT NULL,
-  status VARCHAR(24) NOT NULL DEFAULT 'available' CHECK (status IN ('available', 'applied', 'refunded')),
-  applied_invoice_id VARCHAR(64) REFERENCES invoices(id) ON DELETE SET NULL,
-  applied_invoice_number VARCHAR(64),
-  applied_at TIMESTAMPTZ,
-  notes TEXT DEFAULT '',
-  origin_device_id VARCHAR(128),
-  idempotency_key VARCHAR(128) UNIQUE,
-  created_by VARCHAR(64) NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- 41. سجل عمليات المزامنة غير المتصلة (Offline Sync Operation Logs)
-CREATE TABLE IF NOT EXISTS sync_operation_logs (
-  id VARCHAR(64) PRIMARY KEY,
-  operation_id VARCHAR(128) UNIQUE NOT NULL,
-  operation_type VARCHAR(64) NOT NULL,
-  user_id VARCHAR(64) NOT NULL,
-  device_id VARCHAR(128) DEFAULT '',
-  status VARCHAR(24) NOT NULL,
-  entity_id VARCHAR(64),
-  response_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- 42. تعارضات المزامنة التي تتطلب مراجعة إدارية (Sync Conflicts - Never Last-Write-Wins)
-CREATE TABLE IF NOT EXISTS sync_conflicts (
-  id VARCHAR(64) PRIMARY KEY,
-  operation_id VARCHAR(128) NOT NULL,
-  operation_type VARCHAR(64) NOT NULL,
-  entity_type VARCHAR(64) NOT NULL,
-  entity_id VARCHAR(64),
-  user_id VARCHAR(64) NOT NULL,
-  user_name TEXT DEFAULT '',
-  device_id VARCHAR(128) DEFAULT '',
-  conflict_reason TEXT NOT NULL,
-  local_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
-  server_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
-  status VARCHAR(32) NOT NULL DEFAULT 'needs_review' CHECK (status IN ('needs_review', 'resolved_keep_server', 'resolved_apply_local', 'dismissed')),
-  resolved_by VARCHAR(64),
-  resolved_by_name TEXT,
-  resolution_notes TEXT DEFAULT '',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  resolved_at TIMESTAMPTZ
-);
-
-CREATE INDEX IF NOT EXISTS idx_order_adv_order ON order_advance_payments(order_id);
-CREATE INDEX IF NOT EXISTS idx_order_adv_customer ON order_advance_payments(customer_id);
-CREATE INDEX IF NOT EXISTS idx_sync_conflicts_status ON sync_conflicts(status, created_at DESC);
-
--- 43. رموز ربط الأجهزة (Device Pairing Tokens)
+-- 40. روابط الربط الذكي والأجهزة المرتبطة (Device Pairing Tokens & Paired Devices)
 CREATE TABLE IF NOT EXISTS pairing_tokens (
   id VARCHAR(64) PRIMARY KEY,
   token_hash TEXT UNIQUE NOT NULL,
   token_preview VARCHAR(32) NOT NULL,
   created_by_user_id VARCHAR(64),
-  created_by_name TEXT NOT NULL DEFAULT '',
+  created_by_name TEXT NOT NULL,
   target_user_id VARCHAR(64),
   target_user_name TEXT DEFAULT '',
   target_role VARCHAR(32) DEFAULT '',
@@ -905,19 +849,18 @@ CREATE TABLE IF NOT EXISTS pairing_tokens (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 44. الأجهزة المرتبطة (Paired Devices)
 CREATE TABLE IF NOT EXISTS paired_devices (
   device_id VARCHAR(64) PRIMARY KEY,
-  device_name TEXT NOT NULL DEFAULT '',
+  device_name TEXT NOT NULL,
   device_type VARCHAR(24) NOT NULL DEFAULT 'android',
-  os_version VARCHAR(80) DEFAULT '',
-  app_version VARCHAR(40) DEFAULT '',
+  os_version TEXT DEFAULT '',
+  app_version TEXT DEFAULT '',
   linked_user_id VARCHAR(64),
   linked_user_name TEXT DEFAULT '',
   connection_mode VARCHAR(32) NOT NULL DEFAULT 'local_network',
   server_url_used TEXT DEFAULT '',
   ip_address VARCHAR(64) DEFAULT '',
-  status VARCHAR(32) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'pending_approval', 'rejected', 'disconnected', 'revoked')),
+  status VARCHAR(24) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'pending_approval', 'revoked')),
   pairing_token_id VARCHAR(64),
   config_version INT NOT NULL DEFAULT 1,
   paired_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -927,6 +870,66 @@ CREATE TABLE IF NOT EXISTS paired_devices (
 );
 
 CREATE INDEX IF NOT EXISTS idx_pairing_tokens_expires ON pairing_tokens(expires_at DESC);
-CREATE INDEX IF NOT EXISTS idx_paired_devices_status ON paired_devices(status, last_seen_at DESC);
+CREATE INDEX IF NOT EXISTS idx_paired_devices_status ON paired_devices(status);
+CREATE INDEX IF NOT EXISTS idx_sessions_device ON user_sessions(device_id);
 
+-- 41. الدفعات المقدمة لطلبات العملاء (Order Advance Payments / Customer Credit before Invoicing)
+CREATE TABLE IF NOT EXISTS order_advance_payments (
+  id VARCHAR(64) PRIMARY KEY,
+  payment_number VARCHAR(64) UNIQUE NOT NULL,
+  order_id VARCHAR(64) NOT NULL REFERENCES customer_item_orders(id) ON DELETE CASCADE,
+  customer_id VARCHAR(64) NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
+  cashbox_id VARCHAR(64) NOT NULL REFERENCES cashboxes(id) ON DELETE RESTRICT,
+  cashbox_name TEXT NOT NULL DEFAULT '',
+  payment_method VARCHAR(32) NOT NULL DEFAULT 'cash',
+  amount NUMERIC(14, 2) NOT NULL CHECK (amount > 0),
+  date DATE NOT NULL,
+  notes TEXT DEFAULT '',
+  status VARCHAR(24) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'applied', 'refunded')),
+  applied_invoice_id VARCHAR(64),
+  idempotency_key VARCHAR(128) UNIQUE,
+  origin_device_id VARCHAR(64),
+  created_by VARCHAR(64) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 42. سجل تعارضات المزامنة للمراجعة اليدوية (Sync Conflicts - No Silent Overwrites)
+CREATE TABLE IF NOT EXISTS sync_conflicts (
+  id VARCHAR(64) PRIMARY KEY,
+  operation_id VARCHAR(128) NOT NULL,
+  operation_type VARCHAR(64) NOT NULL,
+  entity_type VARCHAR(64) NOT NULL,
+  entity_id VARCHAR(64),
+  device_id VARCHAR(64),
+  user_id VARCHAR(64),
+  user_name TEXT DEFAULT '',
+  conflict_reason TEXT NOT NULL,
+  local_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  server_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status VARCHAR(32) NOT NULL DEFAULT 'needs_review' CHECK (status IN ('needs_review', 'resolved_keep_server', 'resolved_apply_local', 'dismissed')),
+  resolution_notes TEXT DEFAULT '',
+  resolved_by VARCHAR(64),
+  resolved_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 43. سجل منع تكرار عمليات المزامنة (Offline Sync Operation Deduplication Log)
+CREATE TABLE IF NOT EXISTS sync_operation_logs (
+  id VARCHAR(64) PRIMARY KEY,
+  operation_id VARCHAR(128) NOT NULL,
+  user_id VARCHAR(64) NOT NULL,
+  device_id VARCHAR(64),
+  operation_type VARCHAR(64) NOT NULL,
+  entity_type VARCHAR(64) NOT NULL,
+  entity_id VARCHAR(64),
+  status VARCHAR(32) NOT NULL,
+  response_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, operation_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_order_advances_order ON order_advance_payments(order_id);
+CREATE INDEX IF NOT EXISTS idx_order_advances_customer ON order_advance_payments(customer_id);
+CREATE INDEX IF NOT EXISTS idx_sync_conflicts_status ON sync_conflicts(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sync_ops_user_op ON sync_operation_logs(user_id, operation_id);
 

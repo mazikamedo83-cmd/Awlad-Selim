@@ -1,32 +1,23 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell, clipboard, nativeTheme } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, clipboard, session } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
-const crypto = require('node:crypto');
+const nodeCrypto = require('node:crypto');
 const { pathToFileURL } = require('node:url');
-const {
-  prepareElectronDataDirectory,
-  acquireDatabaseLock,
-  releaseDatabaseLock,
-  readTunnelAutoStartConfig,
-  writeTunnelAutoStartConfig,
-} = require('./dataBootstrap.cjs');
-const { createTunnelSupervisor } = require('./tunnelSupervisor.cjs');
+const { prepareElectronDataDirectory } = require('./dataBootstrap.cjs');
 
 let mainWindow = null;
 let serverInstance = null;
-let dbLockPath = null;
-const tunnelSupervisor = createTunnelSupervisor({
-  getPort: () => desktopState.port || 3000,
-});
 let desktopState = {
   isElectron: true,
   platform: process.platform,
   dataDir: '',
   backupsDir: '',
+  offlineClientDir: '',
+  distDir: '',
+  uiEntry: '',
   envFilePath: null,
   port: 3000,
   lanUrls: [],
-  serverStatus: 'online',
   databaseState: null,
 };
 let isShuttingDown = false;
@@ -140,6 +131,7 @@ function buildApplicationMenu() {
       label: 'عرض',
       submenu: [
         { label: 'إعادة تحميل', role: 'reload' },
+        { label: 'إعادة تحميل قسري (مسح الكاش)', role: 'forceReload' },
         { label: 'تكبير', role: 'zoomIn' },
         { label: 'تصغير', role: 'zoomOut' },
         { label: 'الحجم الافتراضي', role: 'resetZoom' },
@@ -177,6 +169,51 @@ function buildApplicationMenu() {
   Menu.setApplicationMenu(menu);
 }
 
+function ensureOfflineClientKey() {
+  if (!desktopState.offlineClientDir) return null;
+  fs.mkdirSync(desktopState.offlineClientDir, { recursive: true });
+  const keyPath = path.join(desktopState.offlineClientDir, '.vault.key');
+  if (fs.existsSync(keyPath)) {
+    const raw = fs.readFileSync(keyPath);
+    if (raw.length === 32) return raw;
+  }
+  const key = nodeCrypto.randomBytes(32);
+  fs.writeFileSync(keyPath, key, { mode: 0o600 });
+  return key;
+}
+
+function sanitizeKeySegment(val) {
+  return String(val || 'default').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'default';
+}
+
+function writeEncryptedOfflineFile(filePath, plainBuffer) {
+  const key = ensureOfflineClientKey();
+  if (!key) throw new Error('Offline client directory not initialized');
+  const iv = nodeCrypto.randomBytes(12);
+  const cipher = nodeCrypto.createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(plainBuffer), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  const payload = Buffer.concat([Buffer.from('AWL1', 'ascii'), iv, tag, encrypted]);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const tmpPath = `${filePath}.${process.pid}.tmp`;
+  fs.writeFileSync(tmpPath, payload);
+  fs.renameSync(tmpPath, filePath);
+}
+
+function readEncryptedOfflineFile(filePath) {
+  if (!fs.existsSync(filePath)) return null;
+  const key = ensureOfflineClientKey();
+  if (!key) return null;
+  const raw = fs.readFileSync(filePath);
+  if (raw.length < 32 || raw.subarray(0, 4).toString('ascii') !== 'AWL1') return null;
+  const iv = raw.subarray(4, 16);
+  const tag = raw.subarray(16, 32);
+  const data = raw.subarray(32);
+  const decipher = nodeCrypto.createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(data), decipher.final()]);
+}
+
 function registerIpcHandlers() {
   ipcMain.handle('awlad:get-desktop-info', () => ({
     ...desktopState,
@@ -200,169 +237,79 @@ function registerIpcHandlers() {
     return { ok: true };
   });
 
-  ipcMain.handle('awlad:get-auto-start', () => {
-    const supported = process.platform === 'win32' || process.platform === 'darwin';
-    if (!supported) return { ok: true, openAtLogin: false, supported: false };
+  ipcMain.handle('awlad:offline-kv-get', (_event, namespace, key) => {
     try {
-      const settings = app.getLoginItemSettings();
-      return { ok: true, openAtLogin: Boolean(settings.openAtLogin), supported: true };
-    } catch {
-      return { ok: false, openAtLogin: false, supported };
-    }
-  });
-
-  ipcMain.handle('awlad:set-auto-start', (_event, enabled) => {
-    const supported = process.platform === 'win32' || process.platform === 'darwin';
-    if (!supported) {
-      return { ok: false, openAtLogin: false, supported: false, error: 'التشغيل التلقائي مدعوم على Windows و macOS فقط.' };
-    }
-    try {
-      app.setLoginItemSettings({
-        openAtLogin: Boolean(enabled),
-        args: ['--minimized'],
-      });
-      const settings = app.getLoginItemSettings();
-      return { ok: true, openAtLogin: Boolean(settings.openAtLogin), supported: true };
-    } catch (err) {
-      return { ok: false, openAtLogin: false, supported: true, error: err?.message || 'تعذر حفظ إعداد التشغيل التلقائي' };
-    }
-  });
-
-  ipcMain.handle('awlad:get-tunnel-status', () => ({
-    ok: true,
-    status: tunnelSupervisor.getStatus(),
-  }));
-
-  ipcMain.handle('awlad:start-tunnel', (_event, opts) => tunnelSupervisor.start(opts || {}));
-
-  ipcMain.handle('awlad:stop-tunnel', () => tunnelSupervisor.stop());
-
-  ipcMain.handle('awlad:get-tunnel-auto-start', () => {
-    const cfg = readTunnelAutoStartConfig(desktopState.dataDir);
-    return {
-      ok: true,
-      config: {
-        enabled: cfg.enabled,
-        mode: cfg.mode,
-        domainUrl: cfg.domainUrl,
-        hasToken: Boolean(cfg.token),
-      },
-    };
-  });
-
-  ipcMain.handle('awlad:set-tunnel-auto-start', (_event, opts = {}) => {
-    try {
-      const saved = writeTunnelAutoStartConfig(desktopState.dataDir, opts || {});
-      return {
-        ok: true,
-        config: {
-          enabled: saved.enabled,
-          mode: saved.mode,
-          domainUrl: saved.domainUrl,
-          hasToken: Boolean(saved.token),
-        },
-      };
-    } catch (err) {
-      return {
-        ok: false,
-        error: err?.message || 'تعذر حفظ إعداد التشغيل التلقائي للنفق',
-        config: { enabled: false, mode: 'free_remote', domainUrl: '', hasToken: false },
-      };
-    }
-  });
-
-  // Encrypted local offline vault (AES-256-GCM) inside active desktop dataDir
-  const getVaultDir = () => {
-    const baseDir = desktopState.dataDir || app.getPath('userData');
-    const dir = path.join(baseDir, 'offline-vault');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    return dir;
-  };
-
-  const getVaultKey = () => {
-    const dir = getVaultDir();
-    const keyFile = path.join(dir, '.vault.key');
-    if (fs.existsSync(keyFile)) {
-      const buf = fs.readFileSync(keyFile);
-      if (buf.length === 32) return buf;
-    }
-    const key = crypto.randomBytes(32);
-    fs.writeFileSync(keyFile, key, { mode: 0o600 });
-    return key;
-  };
-
-  const vaultFilePath = (store, key) => {
-    const safeStore = String(store || 'meta').replace(/[^a-zA-Z0-9_-]/g, '_');
-    const safeKey = crypto.createHash('sha256').update(String(key || 'item')).digest('hex').slice(0, 32);
-    const subDir = path.join(getVaultDir(), safeStore);
-    if (!fs.existsSync(subDir)) fs.mkdirSync(subDir, { recursive: true });
-    return path.join(subDir, `${safeKey}.enc`);
-  };
-
-  ipcMain.handle('awlad:offline-get', (_event, store, key) => {
-    try {
-      const file = vaultFilePath(store, key);
-      if (!fs.existsSync(file)) return { ok: true, value: null };
-      const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
-      const vaultKey = getVaultKey();
-      const decipher = crypto.createDecipheriv('aes-256-gcm', vaultKey, Buffer.from(raw.iv, 'hex'));
-      decipher.setAuthTag(Buffer.from(raw.tag, 'hex'));
-      const plain = Buffer.concat([decipher.update(Buffer.from(raw.ct, 'base64')), decipher.final()]).toString('utf8');
-      return { ok: true, value: JSON.parse(plain) };
-    } catch {
-      return { ok: false, value: null };
-    }
-  });
-
-  ipcMain.handle('awlad:offline-set', (_event, store, key, value) => {
-    try {
-      const file = vaultFilePath(store, key);
-      const vaultKey = getVaultKey();
-      const iv = crypto.randomBytes(12);
-      const cipher = crypto.createCipheriv('aes-256-gcm', vaultKey, iv);
-      const ct = Buffer.concat([cipher.update(JSON.stringify(value ?? null), 'utf8'), cipher.final()]);
-      const tag = cipher.getAuthTag();
-      fs.writeFileSync(
-        file,
-        JSON.stringify({ v: 1, iv: iv.toString('hex'), tag: tag.toString('hex'), ct: ct.toString('base64') }),
-        'utf8'
+      if (!desktopState.offlineClientDir) return { ok: false, value: null };
+      const filePath = path.join(
+        desktopState.offlineClientDir,
+        sanitizeKeySegment(namespace),
+        `${sanitizeKeySegment(key)}.enc`
       );
+      const buf = readEncryptedOfflineFile(filePath);
+      if (!buf) return { ok: true, value: null };
+      return { ok: true, value: JSON.parse(buf.toString('utf8')) };
+    } catch (err) {
+      return { ok: false, value: null, error: err?.message || String(err) };
+    }
+  });
+
+  ipcMain.handle('awlad:offline-kv-set', (_event, namespace, key, value) => {
+    try {
+      if (!desktopState.offlineClientDir) return { ok: false };
+      const filePath = path.join(
+        desktopState.offlineClientDir,
+        sanitizeKeySegment(namespace),
+        `${sanitizeKeySegment(key)}.enc`
+      );
+      writeEncryptedOfflineFile(filePath, Buffer.from(JSON.stringify(value), 'utf8'));
       return { ok: true };
     } catch (err) {
-      return { ok: false, error: err?.message || 'Vault write failed' };
+      return { ok: false, error: err?.message || String(err) };
     }
   });
 
-  ipcMain.handle('awlad:offline-remove', (_event, store, key) => {
+  ipcMain.handle('awlad:offline-kv-delete', (_event, namespace, key) => {
     try {
-      const file = vaultFilePath(store, key);
-      if (fs.existsSync(file)) fs.unlinkSync(file);
+      if (!desktopState.offlineClientDir) return { ok: false };
+      const filePath = path.join(
+        desktopState.offlineClientDir,
+        sanitizeKeySegment(namespace),
+        `${sanitizeKeySegment(key)}.enc`
+      );
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
       return { ok: true };
-    } catch {
-      return { ok: false };
+    } catch (err) {
+      return { ok: false, error: err?.message || String(err) };
     }
   });
 
-  ipcMain.handle('awlad:offline-read-media', (_event, mediaKey) => {
+  ipcMain.handle('awlad:offline-media-write', (_event, mediaKey, dataUrl) => {
     try {
-      const safeName = String(mediaKey || 'media').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120);
-      const mediaFile = path.join(getVaultDir(), 'media', `${safeName}.txt`);
-      if (!fs.existsSync(mediaFile)) return { ok: true, dataUrl: null };
-      return { ok: true, dataUrl: fs.readFileSync(mediaFile, 'utf8') };
-    } catch {
-      return { ok: false, dataUrl: null };
-    }
-  });
-
-  ipcMain.handle('awlad:offline-write-media', (_event, mediaKey, dataUrl) => {
-    try {
-      const safeName = String(mediaKey || 'media').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120);
-      const mediaDir = path.join(getVaultDir(), 'media');
-      if (!fs.existsSync(mediaDir)) fs.mkdirSync(mediaDir, { recursive: true });
-      fs.writeFileSync(path.join(mediaDir, `${safeName}.txt`), String(dataUrl || ''), 'utf8');
+      if (!desktopState.offlineClientDir) return { ok: false };
+      const filePath = path.join(
+        desktopState.offlineClientDir,
+        'media',
+        `${sanitizeKeySegment(mediaKey)}.enc`
+      );
+      writeEncryptedOfflineFile(filePath, Buffer.from(String(dataUrl || ''), 'utf8'));
       return { ok: true };
-    } catch {
-      return { ok: false };
+    } catch (err) {
+      return { ok: false, error: err?.message || String(err) };
+    }
+  });
+
+  ipcMain.handle('awlad:offline-media-read', (_event, mediaKey) => {
+    try {
+      if (!desktopState.offlineClientDir) return { ok: false, dataUrl: null };
+      const filePath = path.join(
+        desktopState.offlineClientDir,
+        'media',
+        `${sanitizeKeySegment(mediaKey)}.enc`
+      );
+      const buf = readEncryptedOfflineFile(filePath);
+      return { ok: true, dataUrl: buf ? buf.toString('utf8') : null };
+    } catch (err) {
+      return { ok: false, dataUrl: null, error: err?.message || String(err) };
     }
   });
 }
@@ -371,8 +318,6 @@ async function createMainWindow(startUrl, appRoot) {
   const iconPng = path.join(appRoot, 'build', 'icon.png');
   const iconIco = path.join(appRoot, 'build', 'icon.ico');
   const chosenIcon = process.platform === 'win32' && fs.existsSync(iconIco) ? iconIco : iconPng;
-
-  nativeTheme.themeSource = 'light';
 
   mainWindow = new BrowserWindow({
     width: 1366,
@@ -388,7 +333,6 @@ async function createMainWindow(startUrl, appRoot) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      zoomFactor: 1.0,
       spellcheck: false,
     },
   });
@@ -396,17 +340,13 @@ async function createMainWindow(startUrl, appRoot) {
   mainWindow.webContents.on('did-finish-load', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.setZoomFactor(1.0);
+      mainWindow.webContents.setVisualZoomLevelLimits(1, 3).catch(() => {});
     }
   });
 
-  const launchMinimized = process.argv.includes('--minimized');
   mainWindow.once('ready-to-show', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      if (launchMinimized) {
-        mainWindow.minimize();
-      } else {
-        mainWindow.maximize();
-      }
+      mainWindow.maximize();
       mainWindow.show();
     }
   });
@@ -423,18 +363,24 @@ async function createMainWindow(startUrl, appRoot) {
     mainWindow = null;
   });
 
-  await mainWindow.loadURL(startUrl);
+  try {
+    await session.defaultSession.clearCache();
+    await session.defaultSession.clearStorageData({
+      origin: startUrl,
+      storages: ['serviceworkers', 'cachestorage'],
+    });
+  } catch (err) {
+    console.warn('[Electron Cache Clear Warning]:', err?.message || err);
+  }
+
+  await mainWindow.loadURL(startUrl, {
+    extraHeaders: 'pragma: no-cache\nCache-Control: no-cache, no-store, must-revalidate\n',
+  });
 }
 
 async function shutdownGracefully() {
   if (isShuttingDown) return;
   isShuttingDown = true;
-
-  try {
-    await tunnelSupervisor.stop();
-  } catch (err) {
-    console.error('[Electron Tunnel Shutdown Error]:', err);
-  }
 
   if (serverInstance && typeof serverInstance.close === 'function') {
     try {
@@ -442,11 +388,6 @@ async function shutdownGracefully() {
     } catch (err) {
       console.error('[Electron Server Shutdown Error]:', err);
     }
-  }
-
-  if (dbLockPath) {
-    releaseDatabaseLock(dbLockPath);
-    dbLockPath = null;
   }
 }
 
@@ -479,24 +420,28 @@ async function bootstrapApplication() {
 
   desktopState.dataDir = prepResult.targetDataDir;
   desktopState.backupsDir = prepResult.backupsDir;
+  desktopState.offlineClientDir = path.join(path.dirname(prepResult.targetDataDir), 'offline_client');
   desktopState.envFilePath = prepResult.envFilePath;
   desktopState.databaseState = prepResult.databaseState;
 
-  try {
-    dbLockPath = acquireDatabaseLock(prepResult.targetDataDir);
-  } catch (err) {
-    dialog.showErrorBox(
-      'خادم AWLAD SELIM يعمل بالفعل',
-      err?.message || 'توجد نسخة أخرى قيد التشغيل على نفس قاعدة البيانات.'
-    );
-    app.exit(1);
-    return;
-  }
-
-  const devStartUrl = (process.env.ELECTRON_START_URL || '').trim();
+  const devStartUrl = !app.isPackaged ? (process.env.ELECTRON_START_URL || '').trim() : '';
   let startUrl = devStartUrl;
 
   if (!devStartUrl) {
+    const distDir = path.join(appRoot, 'dist');
+    const distIndexPath = path.join(distDir, 'index.html');
+    if (!fs.existsSync(distIndexPath)) {
+      dialog.showErrorBox(
+        'ملفات الواجهة مفقودة - AWLAD SELIM',
+        `تعذر العثور على ملف الواجهة المحدث:\n${distIndexPath}\n\nيرجى إعادة تثبيت أو إعادة بناء نسخة Windows.`
+      );
+      app.exit(1);
+      return;
+    }
+
+    desktopState.distDir = distDir;
+    desktopState.uiEntry = distIndexPath;
+
     const serverEntryUrl = pathToFileURL(path.join(appRoot, 'server', 'index.js')).href;
     const { startStandaloneServer } = await import(serverEntryUrl);
 
@@ -504,14 +449,14 @@ async function bootstrapApplication() {
       serverInstance = await startStandaloneServer({
         host: '0.0.0.0',
         port: Number(process.env.PORT || process.env.API_PORT || 3000),
-        distDir: path.join(appRoot, 'dist'),
+        distDir,
         envFiles: prepResult.envFilePath ? [prepResult.envFilePath] : [],
-        allowPortFallback: false,
+        allowPortFallback: process.env.AWLAD_ALLOW_PORT_FALLBACK === 'true',
       });
     } catch (err) {
       dialog.showErrorBox(
         'تعذر تشغيل خادم AWLAD SELIM المحلي',
-        `حدث خطأ أثناء تشغيل الخادم الداخلي على المنفذ ${process.env.PORT || 3000}.\n\n${err.message}\n\nإذا كان هناك خادم آخر يعمل على نفس المنفذ، أغلقه ثم أعد فتح البرنامج.`
+        `حدث خطأ أثناء تشغيل الخادم الداخلي على المنفذ ${process.env.PORT || 3000}.\n\n${err.message}\n\nإذا كان هناك خادم قديم أو آخر يعمل على نفس المنفذ، أغلقه ثم أعد فتح البرنامج.`
       );
       app.exit(1);
       return;
@@ -519,27 +464,7 @@ async function bootstrapApplication() {
 
     desktopState.port = serverInstance.port;
     desktopState.lanUrls = serverInstance.lanUrls || [];
-    desktopState.serverStatus = 'online';
-    if (serverInstance.httpServer) {
-      serverInstance.httpServer.on('error', (err) => {
-        console.error('[Electron Embedded Server Error]:', err);
-        desktopState.serverStatus = 'error';
-      });
-    }
     startUrl = serverInstance.localUrl;
-
-    const autoTunnelCfg = readTunnelAutoStartConfig(prepResult.targetDataDir);
-    if (autoTunnelCfg.enabled) {
-      try {
-        tunnelSupervisor.start({
-          mode: autoTunnelCfg.mode,
-          token: autoTunnelCfg.token,
-          domainUrl: autoTunnelCfg.domainUrl,
-        });
-      } catch (tunErr) {
-        console.warn('[Electron Auto-Tunnel Warning]:', tunErr?.message || tunErr);
-      }
-    }
   }
 
   registerIpcHandlers();

@@ -8,6 +8,7 @@ import { InvoiceReturn, Invoice } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
+import { QuantityInput } from '../../common/QuantityInput';
 
 export interface ReturnsViewProps {
   initialTypeFilter?: 'all' | 'sales_return' | 'purchase_return';
@@ -233,7 +234,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden awlad-table-scroll">
         <table className="w-full text-right text-xs">
           <thead>
             <tr className="bg-slate-50 font-bold border-b text-slate-700">
@@ -363,7 +364,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
 
           {/* Item Quantities Return Form */}
           {selectedInvoice && (
-            <div className="border rounded-xl p-3 bg-slate-50 space-y-2">
+            <div className="border rounded-xl p-3 bg-slate-50 space-y-2 awlad-table-scroll">
               <h4 className="font-bold text-slate-800">الأصناف المتوفرة بالفاتورة الأصلية للإرجاع:</h4>
               <table className="w-full text-right text-xs bg-white rounded-lg border">
                 <thead>
@@ -389,16 +390,19 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                         </td>
                         <td className="p-2 text-center">{it.unitPrice}</td>
                         <td className="p-2 text-center">
-                          <input
-                            type="number"
-                            min="0"
+                          <QuantityInput
+                            allowDecimals
+                            min={0}
                             max={maxAllowed}
                             value={returnQuantities[it.productId] || 0}
-                            onChange={(e) => setReturnQuantities({
-                              ...returnQuantities,
-                              [it.productId]: Math.min(maxAllowed, Number(e.target.value))
-                            })}
-                            className="w-20 border rounded-lg p-1 text-center font-mono font-bold"
+                            onChange={(q) =>
+                              setReturnQuantities((prev) => ({
+                                ...prev,
+                                [it.productId]: Math.min(maxAllowed, Math.max(0, q)),
+                              }))
+                            }
+                            ariaLabel={`كمية المرتجع ${it.productName}`}
+                            inputClassName="w-20 border rounded-lg p-1 text-center font-mono font-bold outline-hidden focus:border-blue-700"
                           />
                         </td>
                       </tr>

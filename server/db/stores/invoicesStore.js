@@ -51,10 +51,26 @@ function recomputeInvoiceTotals(payload, existingItems = []) {
   const discountTotal = round2(payload.discountTotal ?? itemDiscounts);
   const taxTotal = round2(payload.taxTotal ?? 0);
   const grandTotal = round2(Math.max(0, subtotal - discountTotal + taxTotal));
-  const appliedAdvanceAmount = round2(Math.min(grandTotal, Math.max(0, payload.appliedAdvanceAmount || 0)));
-  const defaultTotalPaid = payload.paymentType === 'cash' ? grandTotal : appliedAdvanceAmount;
-  const rawPaid = round2(payload.paidAmount ?? defaultTotalPaid);
-  const paidAmount = Math.min(grandTotal, Math.max(appliedAdvanceAmount, rawPaid));
+  const rawAppliedAdvance = round2(Math.max(0, Number(payload.appliedAdvanceAmount || 0)));
+
+  let paidAmount;
+  let appliedAdvanceAmount;
+  if (rawAppliedAdvance > 0) {
+    if (payload.paidAtInvoice !== undefined) {
+      const cashAtInvoice = round2(Math.max(0, Number(payload.paidAtInvoice || 0)));
+      appliedAdvanceAmount = round2(Math.min(Math.max(0, grandTotal - cashAtInvoice), rawAppliedAdvance));
+      paidAmount = round2(Math.min(grandTotal, cashAtInvoice + appliedAdvanceAmount));
+    } else {
+      const rawPaid = round2(payload.paidAmount ?? 0);
+      paidAmount = Math.min(grandTotal, Math.max(0, rawPaid));
+      appliedAdvanceAmount = round2(Math.min(paidAmount, rawAppliedAdvance));
+    }
+  } else {
+    appliedAdvanceAmount = 0;
+    const rawPaid = round2(payload.paidAmount ?? (payload.paymentType === 'cash' ? grandTotal : 0));
+    paidAmount = Math.min(grandTotal, Math.max(0, rawPaid));
+  }
+
   const remainingAmount = round2(Math.max(0, grandTotal - paidAmount));
   const paymentType = remainingAmount <= 0 ? 'cash' : paidAmount > 0 ? 'partial' : 'credit';
 
@@ -64,8 +80,8 @@ function recomputeInvoiceTotals(payload, existingItems = []) {
     discountTotal,
     taxTotal,
     grandTotal,
-    appliedAdvanceAmount,
     paidAmount,
+    appliedAdvanceAmount,
     remainingAmount,
     paymentType,
   };
@@ -131,16 +147,15 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
       );
     }
 
-    const appliedAdv = round2(Math.min(Number(invoice.grandTotal || 0), Math.max(0, Number(invoice.appliedAdvanceAmount || 0))));
-    const newCashPaid = round2(Math.max(0, Number(invoice.paidAmount || 0) - appliedAdv));
+    const appliedAdv = round2(Math.max(0, Number(invoice.appliedAdvanceAmount || 0)));
+    const cashAtInvoice = round2(Math.max(0, Number(invoice.paidAmount || 0) - appliedAdv));
+    const customerBalanceDelta = round2(Number(invoice.remainingAmount || 0) + appliedAdv);
 
     if (invoice.customerId) {
       const cRes = await client.query(`SELECT * FROM customers WHERE id = $1 FOR UPDATE`, [invoice.customerId]);
       if (cRes.rows[0]) {
         const cust = cRes.rows[0];
-        // Customer balance was already credited (-appliedAdv) when the advance was collected; add grandTotal - newCashPaid so net debt is remainingAmount.
-        const balanceDelta = round2(Number(invoice.grandTotal || 0) - newCashPaid);
-        const nextBalance = round2(Number(cust.current_balance || 0) + balanceDelta);
+        const nextBalance = round2(Number(cust.current_balance || 0) + customerBalanceDelta);
         const priceHistory = { ...(cust.price_history || {}) };
         for (const item of invoice.items) {
           const hist = Array.isArray(priceHistory[item.productId]) ? [...priceHistory[item.productId]] : [];
@@ -162,10 +177,10 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
       }
     }
 
-    if (newCashPaid > 0) {
+    if (cashAtInvoice > 0) {
       const cbRes = await client.query(`SELECT * FROM cashboxes WHERE id = $1 FOR UPDATE`, [invoice.cashboxId]);
       if (!cbRes.rows[0]) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
-      const nextCb = round2(Number(cbRes.rows[0].current_balance || 0) + newCashPaid);
+      const nextCb = round2(Number(cbRes.rows[0].current_balance || 0) + cashAtInvoice);
       await client.query(`UPDATE cashboxes SET current_balance = $1 WHERE id = $2`, [nextCb, invoice.cashboxId]);
 
       const txId = generateServerId('FT');
@@ -177,7 +192,7 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
           txId,
           txNo,
           invoice.date,
-          newCashPaid,
+          cashAtInvoice,
           cbRes.rows[0].id,
           cbRes.rows[0].name,
           nextCb,
@@ -192,10 +207,10 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
       );
     }
 
-    if (invoice.representativeId && newCashPaid > 0) {
+    if (invoice.representativeId && cashAtInvoice > 0) {
       const repRes = await client.query(`SELECT * FROM representatives WHERE id = $1 FOR UPDATE`, [invoice.representativeId]);
       if (repRes.rows[0]) {
-        const nextRep = round2(Number(repRes.rows[0].current_balance || 0) + newCashPaid);
+        const nextRep = round2(Number(repRes.rows[0].current_balance || 0) + cashAtInvoice);
         await client.query(`UPDATE representatives SET current_balance = $1 WHERE id = $2`, [nextRep, invoice.representativeId]);
       }
     }
@@ -338,14 +353,14 @@ export function applyConfirmedEffectsJsonTx(db, invoice, actor) {
       });
     }
 
-    const appliedAdv = round2(Math.min(Number(invoice.grandTotal || 0), Math.max(0, Number(invoice.appliedAdvanceAmount || 0))));
-    const newCashPaid = round2(Math.max(0, Number(invoice.paidAmount || 0) - appliedAdv));
+    const appliedAdv = round2(Math.max(0, Number(invoice.appliedAdvanceAmount || 0)));
+    const cashAtInvoice = round2(Math.max(0, Number(invoice.paidAmount || 0) - appliedAdv));
+    const customerBalanceDelta = round2(Number(invoice.remainingAmount || 0) + appliedAdv);
 
     if (invoice.customerId) {
       const cust = db.customers.find((c) => c.id === invoice.customerId);
       if (cust) {
-        const balanceDelta = round2(Number(invoice.grandTotal || 0) - newCashPaid);
-        cust.currentBalance = round2(Number(cust.currentBalance || 0) + balanceDelta);
+        cust.currentBalance = round2(Number(cust.currentBalance || 0) + customerBalanceDelta);
         const priceHistory = { ...(cust.priceHistory || {}) };
         for (const item of invoice.items) {
           const prev = Array.isArray(priceHistory[item.productId]) ? [...priceHistory[item.productId]] : [];
@@ -362,10 +377,10 @@ export function applyConfirmedEffectsJsonTx(db, invoice, actor) {
       }
     }
 
-    if (newCashPaid > 0) {
+    if (cashAtInvoice > 0) {
       const cb = db.cashboxes.find((c) => c.id === invoice.cashboxId);
       if (!cb) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
-      cb.currentBalance = round2(Number(cb.currentBalance || 0) + newCashPaid);
+      cb.currentBalance = round2(Number(cb.currentBalance || 0) + cashAtInvoice);
       db.financialTransactions.unshift({
         id: generateServerId('FT'),
         transactionNumber: `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`,
@@ -373,11 +388,12 @@ export function applyConfirmedEffectsJsonTx(db, invoice, actor) {
         type: 'customer_payment',
         cashboxId: cb.id,
         cashboxName: cb.name,
-        amount: newCashPaid,
+        amount: cashAtInvoice,
         category: 'مبيعات نقدية',
         relatedDocType: 'sales',
         relatedDocId: invoice.id,
         relatedDocNumber: invoice.invoiceNumber,
+        relatedEntityId: invoice.customerId,
         partyId: invoice.customerId,
         partyName: invoice.customerName,
         description: `تحصيل دفعة مبيعات فاتورة رقم ${invoice.invoiceNumber}`,
@@ -386,9 +402,9 @@ export function applyConfirmedEffectsJsonTx(db, invoice, actor) {
       });
     }
 
-    if (invoice.representativeId && newCashPaid > 0) {
+    if (invoice.representativeId && cashAtInvoice > 0) {
       const rep = db.representatives.find((r) => r.id === invoice.representativeId);
-      if (rep) rep.currentBalance = round2(Number(rep.currentBalance || 0) + newCashPaid);
+      if (rep) rep.currentBalance = round2(Number(rep.currentBalance || 0) + cashAtInvoice);
     }
 
     if (invoice.linkedRepTransferId) {
@@ -502,8 +518,8 @@ export async function createInvoiceInsidePgTx(client, type, payload, actor) {
   const invDate = payload.date || todayIso();
 
   await client.query(
-    `INSERT INTO invoices (id, invoice_number, type, date, customer_id, customer_name, supplier_id, supplier_name, representative_id, representative_name, warehouse_id, warehouse_name, subtotal, discount_total, tax_total, grand_total, paid_amount, applied_advance_amount, remaining_amount, payment_type, payment_method, cashbox_id, status, notes, linked_rep_transfer_id, linked_rep_transfer_number, linked_customer_order_id, returned_quantity_by_item, version, created_by, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,'{}'::jsonb,1,$28,$29)`,
+    `INSERT INTO invoices (id, invoice_number, type, date, customer_id, customer_name, supplier_id, supplier_name, representative_id, representative_name, warehouse_id, warehouse_name, subtotal, discount_total, tax_total, grand_total, paid_amount, applied_advance_amount, remaining_amount, payment_type, payment_method, cashbox_id, status, notes, linked_rep_transfer_id, linked_rep_transfer_number, linked_customer_order_id, returned_quantity_by_item, idempotency_key, origin_device_id, sync_status, version, created_by, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,'{}'::jsonb,$28,$29,$30,1,$31,$32)`,
     [
       invoiceId,
       invoiceNumber,
@@ -532,6 +548,9 @@ export async function createInvoiceInsidePgTx(client, type, payload, actor) {
       payload.linkedRepTransferId || null,
       payload.linkedRepTransferNumber || null,
       payload.linkedCustomerOrderId || null,
+      payload.idempotencyKey || null,
+      payload.originDeviceId || null,
+      payload.syncStatus || 'synced',
       actor.fullName,
       now,
     ]
@@ -596,6 +615,8 @@ export async function createInvoiceInsidePgTx(client, type, payload, actor) {
     linkedRepTransferNumber: payload.linkedRepTransferNumber || undefined,
     linkedCustomerOrderId: payload.linkedCustomerOrderId || undefined,
     returnedQuantityByItem: {},
+    originDeviceId: payload.originDeviceId || undefined,
+    syncStatus: payload.syncStatus || 'synced',
     version: 1,
     createdBy: actor.fullName,
     createdAt: now,
@@ -679,6 +700,8 @@ export function createInvoiceInsideJsonTx(db, type, payload, actor) {
     linkedRepTransferNumber: payload.linkedRepTransferNumber || undefined,
     linkedCustomerOrderId: payload.linkedCustomerOrderId || undefined,
     returnedQuantityByItem: {},
+    originDeviceId: payload.originDeviceId || undefined,
+    syncStatus: payload.syncStatus || 'synced',
     version: 1,
     createdBy: actor.fullName,
     createdAt: now,
@@ -831,6 +854,12 @@ export async function confirmDraftInvoice(invoiceId, actor) {
 
       await applyConfirmedEffectsPgTx(client, inv, actor);
       await client.query(`UPDATE invoices SET status = 'confirmed', updated_at = $1 WHERE id = $2`, [now, invoiceId]);
+      if (inv.linkedCustomerOrderId && Number(inv.appliedAdvanceAmount || 0) > 0) {
+        await client.query(
+          `UPDATE order_advance_payments SET status = 'applied', applied_invoice_id = $1 WHERE order_id = $2 AND status = 'active'`,
+          [invoiceId, inv.linkedCustomerOrderId]
+        );
+      }
       return fetchFullInvoicePg(client, invoiceId);
     });
   } else {
@@ -865,6 +894,15 @@ export async function confirmDraftInvoice(invoiceId, actor) {
 
       applyConfirmedEffectsJsonTx(db, inv, actor);
       inv.status = 'confirmed';
+      inv.updatedAt = now;
+      if (inv.linkedCustomerOrderId && Number(inv.appliedAdvanceAmount || 0) > 0) {
+        for (const adv of db.orderAdvancePayments || []) {
+          if (adv.orderId === inv.linkedCustomerOrderId && adv.status === 'active') {
+            adv.status = 'applied';
+            adv.appliedInvoiceId = inv.id;
+          }
+        }
+      }
       return inv;
     });
   }
@@ -1020,6 +1058,7 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
     inv.remainingAmount = totals.remainingAmount;
     inv.paymentType = totals.paymentType;
     inv.version = Number(inv.version || 1) + 1;
+    inv.updatedAt = now;
     if (updates.notes !== undefined) inv.notes = updates.notes;
     return inv;
   });
@@ -1049,15 +1088,13 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
             await client.query(`UPDATE products SET stock_per_warehouse = $1, updated_at = $2 WHERE id = $3`, [JSON.stringify(stockMap), now, item.productId]);
           }
         }
-        const curAppliedAdv = round2(Math.max(0, Number(cur.appliedAdvanceAmount || 0)));
-        const curCashPaid = round2(Math.max(0, Number(cur.paidAmount || 0) - curAppliedAdv));
-        const curBalanceRevert = round2(Number(cur.grandTotal || 0) - curCashPaid);
-
+        const appliedAdv = cur.type === 'sales' ? round2(Number(cur.appliedAdvanceAmount || 0)) : 0;
+        const cashToReverse = round2(Math.max(0, Number(cur.paidAmount || 0) - appliedAdv));
         if (cur.customerId) {
           const cRes = await client.query(`SELECT current_balance FROM customers WHERE id = $1 FOR UPDATE`, [cur.customerId]);
           if (cRes.rows[0]) {
             await client.query(`UPDATE customers SET current_balance = $1 WHERE id = $2`, [
-              round2(Number(cRes.rows[0].current_balance || 0) - curBalanceRevert),
+              round2(Number(cRes.rows[0].current_balance || 0) - Number(cur.remainingAmount || 0) - appliedAdv),
               cur.customerId,
             ]);
           }
@@ -1071,19 +1108,19 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
             ]);
           }
         }
-        if (curCashPaid > 0 && cur.cashboxId) {
+        if (cashToReverse > 0 && cur.cashboxId) {
           const cbRes = await client.query(`SELECT current_balance FROM cashboxes WHERE id = $1 FOR UPDATE`, [cur.cashboxId]);
           if (cbRes.rows[0]) {
             const nextCb =
               cur.type === 'sales'
-                ? round2(Number(cbRes.rows[0].current_balance || 0) - curCashPaid)
-                : round2(Number(cbRes.rows[0].current_balance || 0) + curCashPaid);
+                ? round2(Number(cbRes.rows[0].current_balance || 0) - cashToReverse)
+                : round2(Number(cbRes.rows[0].current_balance || 0) + cashToReverse);
             await client.query(`UPDATE cashboxes SET current_balance = $1 WHERE id = $2`, [nextCb, cur.cashboxId]);
           }
         }
-        if (curAppliedAdv > 0 || cur.linkedCustomerOrderId) {
+        if (appliedAdv > 0) {
           await client.query(
-            `UPDATE order_advance_payments SET status = 'available', applied_invoice_id = NULL, applied_invoice_number = NULL, applied_at = NULL WHERE applied_invoice_id = $1 AND status = 'applied'`,
+            `UPDATE order_advance_payments SET status = 'active', applied_invoice_id = NULL WHERE applied_invoice_id = $1`,
             [invoiceId]
           );
         }
@@ -1119,40 +1156,37 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
           prod.stockPerWarehouse[cur.warehouseId] = cur.type === 'sales' ? round3(curQty + baseQty) : round3(curQty - baseQty);
         }
       }
-      const curAppliedAdv = round2(Math.max(0, Number(cur.appliedAdvanceAmount || 0)));
-      const curCashPaid = round2(Math.max(0, Number(cur.paidAmount || 0) - curAppliedAdv));
-      const curBalanceRevert = round2(Number(cur.grandTotal || 0) - curCashPaid);
-
+      const appliedAdv = cur.type === 'sales' ? round2(Number(cur.appliedAdvanceAmount || 0)) : 0;
+      const cashToReverse = round2(Math.max(0, Number(cur.paidAmount || 0) - appliedAdv));
       if (cur.customerId) {
         const cust = db.customers.find((c) => c.id === cur.customerId);
-        if (cust) cust.currentBalance = round2(Number(cust.currentBalance || 0) - curBalanceRevert);
+        if (cust) cust.currentBalance = round2(Number(cust.currentBalance || 0) - Number(cur.remainingAmount || 0) - appliedAdv);
       }
       if (cur.supplierId) {
         const supp = db.suppliers.find((s) => s.id === cur.supplierId);
         if (supp) supp.currentBalance = round2(Number(supp.currentBalance || 0) - Number(cur.remainingAmount || 0));
       }
-      if (curCashPaid > 0 && cur.cashboxId) {
+      if (cashToReverse > 0 && cur.cashboxId) {
         const cb = db.cashboxes.find((c) => c.id === cur.cashboxId);
         if (cb) {
           cb.currentBalance =
             cur.type === 'sales'
-              ? round2(Number(cb.currentBalance || 0) - curCashPaid)
-              : round2(Number(cb.currentBalance || 0) + curCashPaid);
+              ? round2(Number(cb.currentBalance || 0) - cashToReverse)
+              : round2(Number(cb.currentBalance || 0) + cashToReverse);
         }
       }
-      if (curAppliedAdv > 0 || cur.linkedCustomerOrderId) {
-        for (const adv of db.orderAdvancePayments || []) {
-          if (adv.appliedInvoiceId === invoiceId && adv.status === 'applied') {
-            adv.status = 'available';
-            delete adv.appliedInvoiceId;
-            delete adv.appliedInvoiceNumber;
-            delete adv.appliedAt;
+      if (appliedAdv > 0) {
+        for (const oap of db.orderAdvancePayments || []) {
+          if (oap.appliedInvoiceId === invoiceId) {
+            oap.status = 'active';
+            oap.appliedInvoiceId = undefined;
           }
         }
       }
     }
     cur.status = 'cancelled';
     cur.version = Number(cur.version || 1) + 1;
+    cur.updatedAt = now;
     cur.notes = `${cur.notes || ''} [تم الإلغاء: ${cleanReason}]`.trim();
     return cur;
   });

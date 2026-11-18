@@ -1102,7 +1102,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               </div>
 
               {selectedItemsForReq.length > 0 && (
-                <div className="border border-slate-200 rounded-xl overflow-hidden mt-2 bg-white">
+                <div className="border border-slate-200 rounded-xl awlad-table-scroll mt-2 bg-white">
                   <table className="w-full text-right text-[11px]">
                     <thead className="bg-slate-100 border-b">
                       <tr>
@@ -1189,7 +1189,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
 
             <div>
               <span className="font-bold text-slate-800 block mb-1.5">الأصناف المطلوبة وحالة العجز:</span>
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <div className="border border-slate-200 rounded-xl awlad-table-scroll">
                 <table className="w-full text-right text-xs">
                   <thead className="bg-slate-100 border-b">
                     <tr>

@@ -29,18 +29,6 @@ const DEFAULT_CONNECTION_CONFIG = {
     vpsUrl: '',
     notes: '',
   },
-  deploymentProfile: {
-    hostingLocation: 'laptop_windows',
-    domainType: 'none',
-    planTier: 'free',
-    subscriptionStatus: 'none',
-    subscriptionNote: '',
-  },
-  appDownloadUrls: {
-    androidApkUrl: '',
-    iosStoreUrl: '',
-    windowsUrl: '',
-  },
   enforceHttpsForRemote: true,
   updatedAt: null,
 };
@@ -100,14 +88,6 @@ export function resolveSafeConnectionProfiles(settingsObj, lanEntries = [], acti
     cloudVps: {
       ...DEFAULT_CONNECTION_CONFIG.cloudVps,
       ...(raw.cloudVps || {}),
-    },
-    deploymentProfile: {
-      ...DEFAULT_CONNECTION_CONFIG.deploymentProfile,
-      ...(raw.deploymentProfile || {}),
-    },
-    appDownloadUrls: {
-      ...DEFAULT_CONNECTION_CONFIG.appDownloadUrls,
-      ...(raw.appDownloadUrls || {}),
     },
     enforceHttpsForRemote: raw.enforceHttpsForRemote !== false,
   };
@@ -221,54 +201,6 @@ function validatePairingServerUrl(rawUrl, mode, enforceHttps = true) {
     }
   }
   return parsed.origin + (parsed.pathname && parsed.pathname !== '/' ? parsed.pathname.replace(/\/+$/, '') : '');
-}
-
-export async function testConnectionEndpointReachability(mode = 'local_network', rawUrl = '', enforceHttps = true) {
-  const normalized = validatePairingServerUrl(rawUrl, mode, enforceHttps);
-  const started = Date.now();
-  let response;
-  try {
-    response = await fetch(`${normalized}/api/connection/discovery`, {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(5500),
-    });
-  } catch (err) {
-    const rawMsg = String(err?.cause?.message || err?.message || '').toLowerCase();
-    const isTlsErr = /cert|tls|ssl|self-signed|unable to verify|hostname/i.test(rawMsg);
-    const reason = isTlsErr
-      ? 'فشل التحقق من شهادة الأمان TLS/HTTPS الخاصة بالسيرفر.'
-      : err?.name === 'TimeoutError'
-      ? 'انتهت مهلة الاتصال بالسيرفر بدون استجابة.'
-      : 'تعذر الوصول إلى عنوان السيرفر عبر الشبكة.';
-    throw new AppError(400, `${reason} (${normalized})`, isTlsErr ? 'TLS_VERIFICATION_FAILED' : 'PAIRING_ENDPOINT_UNREACHABLE');
-  }
-
-  let data = null;
-  try {
-    data = await response.json();
-  } catch {
-    data = null;
-  }
-  if (!response.ok || !data?.ok || data?.service !== 'AWLAD SELIM Enterprise Server') {
-    throw new AppError(
-      400,
-      `العنوان استجاب برمز (${response.status}) لكنه ليس خادم AWLAD SELIM النشط.`,
-      'PAIRING_ENDPOINT_NOT_AWLAD'
-    );
-  }
-
-  return {
-    ok: true,
-    valid: true,
-    reachable: true,
-    url: normalized,
-    latencyMs: Math.max(1, Date.now() - started),
-    companyName: data.companyName || 'أولاد سليم للتجارة والتوزيع',
-    activeMode: data.activeMode || mode,
-    version: data.version || '3.0.0',
-    httpsVerified: normalized.startsWith('https://'),
-  };
 }
 
 export async function updateTunnelRuntimeStatus(payload = {}, actor = null) {
@@ -480,10 +412,6 @@ export async function createPairingToken(payload = {}, actor, req = null) {
     effectiveMode,
     profiles.enforceHttpsForRemote !== false
   );
-
-  if (payload.verifyReachability === true) {
-    await testConnectionEndpointReachability(effectiveMode, serverBaseUrl, profiles.enforceHttpsForRemote !== false);
-  }
 
   const rawToken = crypto.randomBytes(18).toString('base64url');
   const tokenHash = sha256Hex(rawToken);
@@ -849,25 +777,7 @@ export async function getDeviceStatusForGuard(deviceId) {
       exists: true,
       blocked: true,
       code: 'DEVICE_REVOKED',
-      message: 'تم إلغاء ربط هذا الجهاز من قِبل الإدارة. يرجى إعادة الربط عبر رابط جديد.',
-      device,
-    };
-  }
-  if (device.status === 'disconnected') {
-    return {
-      exists: true,
-      blocked: true,
-      code: 'DEVICE_DISCONNECTED',
-      message: 'تم فصل اتصال هذا الجهاز من قِبل الإدارة. يمكنك إعادة الاعتماد من الإدارة أو إعادة الربط.',
-      device,
-    };
-  }
-  if (device.status === 'rejected') {
-    return {
-      exists: true,
-      blocked: true,
-      code: 'DEVICE_REJECTED',
-      message: 'تم رفض طلب ربط هذا الجهاز من قِبل مدير النظام.',
+      message: 'تم فصل أو إلغاء ربط هذا الجهاز من قِبل الإدارة. يرجى إعادة الربط عبر رابط جديد.',
       device,
     };
   }
@@ -925,15 +835,15 @@ export async function touchDeviceActivity({
       );
       return { deviceId: cleanId, status: 'active' };
     }
-    if (['revoked', 'pending_approval', 'rejected', 'disconnected'].includes(existing.status)) {
+    if (existing.status === 'revoked' || existing.status === 'pending_approval') {
       return existing;
     }
     await getPool().query(
       `UPDATE paired_devices SET
          last_seen_at = $1,
-         connection_mode = CASE WHEN COALESCE($2, '') <> '' THEN $2 ELSE connection_mode END,
-         server_url_used = CASE WHEN COALESCE($3, '') <> '' THEN $3 ELSE server_url_used END,
-         ip_address = CASE WHEN COALESCE($4, '') <> '' THEN $4 ELSE ip_address END,
+         connection_mode = COALESCE(NULLIF($2, ''), connection_mode),
+         server_url_used = COALESCE(NULLIF($3, ''), server_url_used),
+         ip_address = COALESCE(NULLIF($4, ''), ip_address),
          linked_user_id = COALESCE($5, linked_user_id),
          linked_user_name = CASE WHEN COALESCE($6, '') <> '' THEN $6 ELSE linked_user_name END
        WHERE device_id = $7`,
@@ -975,7 +885,7 @@ export async function touchDeviceActivity({
       return created;
     }
     const existing = db.pairedDevices[idx];
-    if (['revoked', 'pending_approval', 'rejected', 'disconnected'].includes(existing.status)) {
+    if (existing.status === 'revoked' || existing.status === 'pending_approval') {
       return existing;
     }
     existing.lastSeenAt = now;
@@ -1053,8 +963,6 @@ export async function listPairedDevices() {
     total: enriched.length,
     active: enriched.filter((d) => d.status === 'active').length,
     pendingApproval: enriched.filter((d) => d.status === 'pending_approval').length,
-    rejected: enriched.filter((d) => d.status === 'rejected').length,
-    disconnected: enriched.filter((d) => d.status === 'disconnected').length,
     revoked: enriched.filter((d) => d.status === 'revoked').length,
     onlineNow: enriched.filter((d) => d.isRecentlyOnline).length,
   };
@@ -1066,25 +974,17 @@ export async function approvePairedDevice(deviceId, actor) {
   const now = nowIso();
   let updated;
   if (await isPgMode()) {
-    const existingRes = await getPool().query('SELECT * FROM paired_devices WHERE device_id = $1 LIMIT 1', [deviceId]);
-    const existing = mapPgPairedDeviceRow(existingRes.rows[0]);
-    if (!existing) throw new AppError(404, 'الجهاز غير موجود', 'DEVICE_NOT_FOUND');
-    if (existing.status === 'revoked') {
-      throw new AppError(409, 'تم إلغاء ربط هذا الجهاز نهائياً. يجب مسح QR أو فتح رابط ربط جديد.', 'DEVICE_REVOKED_REPAIR_REQUIRED');
-    }
     const res = await getPool().query(
       `UPDATE paired_devices SET status = 'active', revoked_at = NULL, last_seen_at = COALESCE(last_seen_at, $1)
        WHERE device_id = $2 RETURNING *`,
       [now, deviceId]
     );
+    if (!res.rows[0]) throw new AppError(404, 'الجهاز غير موجود', 'DEVICE_NOT_FOUND');
     updated = mapPgPairedDeviceRow(res.rows[0]);
   } else {
     updated = await withJsonTransaction((db) => {
       const dev = (db.pairedDevices || []).find((d) => d.deviceId === deviceId);
       if (!dev) throw new AppError(404, 'الجهاز غير موجود', 'DEVICE_NOT_FOUND');
-      if (dev.status === 'revoked') {
-        throw new AppError(409, 'تم إلغاء ربط هذا الجهاز نهائياً. يجب مسح QR أو فتح رابط ربط جديد.', 'DEVICE_REVOKED_REPAIR_REQUIRED');
-      }
       dev.status = 'active';
       dev.revokedAt = undefined;
       return dev;
@@ -1095,70 +995,6 @@ export async function approvePairedDevice(deviceId, actor) {
     userId: actor.id,
     userName: actor.fullName,
     action: `اعتماد ربط الجهاز (${updated.deviceName} - ${updated.deviceType})`,
-    module: 'الأجهزة والاتصال',
-    recordId: deviceId,
-  });
-  return updated;
-}
-
-export async function rejectPairedDevice(deviceId, reason = '', actor) {
-  const now = nowIso();
-  const cleanReason = String(reason || '').trim().slice(0, 240);
-  let updated;
-  if (await isPgMode()) {
-    const res = await getPool().query(
-      `UPDATE paired_devices SET status = 'rejected', revoked_at = $1,
-       notes = CASE WHEN COALESCE($2, '') <> '' THEN $2 ELSE notes END
-       WHERE device_id = $3 RETURNING *`,
-      [now, cleanReason, deviceId]
-    );
-    if (!res.rows[0]) throw new AppError(404, 'الجهاز غير موجود', 'DEVICE_NOT_FOUND');
-    updated = mapPgPairedDeviceRow(res.rows[0]);
-  } else {
-    updated = await withJsonTransaction((db) => {
-      const dev = (db.pairedDevices || []).find((d) => d.deviceId === deviceId);
-      if (!dev) throw new AppError(404, 'الجهاز غير موجود', 'DEVICE_NOT_FOUND');
-      dev.status = 'rejected';
-      dev.revokedAt = now;
-      if (cleanReason) dev.notes = cleanReason;
-      return dev;
-    });
-  }
-
-  await revokeSessionsByDeviceId(deviceId);
-  await recordAuditLog({
-    userId: actor.id,
-    userName: actor.fullName,
-    action: `رفض طلب ربط الجهاز (${updated.deviceName} - ${updated.deviceType})`,
-    module: 'الأجهزة والاتصال',
-    recordId: deviceId,
-  });
-  return updated;
-}
-
-export async function disconnectPairedDevice(deviceId, actor) {
-  let updated;
-  if (await isPgMode()) {
-    const res = await getPool().query(
-      `UPDATE paired_devices SET status = 'disconnected' WHERE device_id = $1 RETURNING *`,
-      [deviceId]
-    );
-    if (!res.rows[0]) throw new AppError(404, 'الجهاز غير موجود', 'DEVICE_NOT_FOUND');
-    updated = mapPgPairedDeviceRow(res.rows[0]);
-  } else {
-    updated = await withJsonTransaction((db) => {
-      const dev = (db.pairedDevices || []).find((d) => d.deviceId === deviceId);
-      if (!dev) throw new AppError(404, 'الجهاز غير موجود', 'DEVICE_NOT_FOUND');
-      dev.status = 'disconnected';
-      return dev;
-    });
-  }
-
-  await revokeSessionsByDeviceId(deviceId);
-  await recordAuditLog({
-    userId: actor.id,
-    userName: actor.fullName,
-    action: `فصل اتصال الجهاز مؤقتاً (${updated.deviceName} - ${updated.deviceType})`,
     module: 'الأجهزة والاتصال',
     recordId: deviceId,
   });
@@ -1189,7 +1025,7 @@ export async function revokePairedDevice(deviceId, actor) {
   await recordAuditLog({
     userId: actor.id,
     userName: actor.fullName,
-    action: `إلغاء ربط الجهاز نهائياً (${updated.deviceName} - ${updated.deviceType})`,
+    action: `فصل وإلغاء ربط الجهاز (${updated.deviceName} - ${updated.deviceType})`,
     module: 'الأجهزة والاتصال',
     recordId: deviceId,
   });

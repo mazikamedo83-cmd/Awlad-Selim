@@ -10,7 +10,6 @@ import {
   updateOwnShortcuts,
 } from '../db/stores/authStore.js';
 import { getSystemSettingsSafe } from '../db/stores/catalogStore.js';
-import { getDeviceStatusForGuard } from '../db/stores/connectionPairingStore.js';
 import {
   asyncHandler,
   checkLoginRateLimit,
@@ -45,25 +44,19 @@ router.post(
   '/login',
   checkLoginRateLimit,
   asyncHandler(async (req, res) => {
-    const reqDeviceId = String(req.get('x-device-id') || req.body?.deviceId || '').trim();
-    if (reqDeviceId) {
-      const guard = await getDeviceStatusForGuard(reqDeviceId);
-      if (guard.blocked) {
-        return res.status(403).json({
-          ok: false,
-          code: guard.code,
-          error: guard.message,
-          deviceStatus: guard.device?.status,
-        });
-      }
-    }
     try {
       const result = await loginUser({
         username: req.body?.username,
         password: req.body?.password,
+        deviceId: req.get('x-device-id') || req.body?.deviceId || '',
+        deviceName: req.body?.deviceName || '',
+        deviceType: req.body?.deviceType || '',
+        osVersion: req.body?.osVersion || '',
+        appVersion: req.body?.appVersion || '',
+        connectionMode: req.body?.connectionMode || '',
+        serverUrlUsed: req.body?.serverUrlUsed || '',
         ipAddress: getClientIp(req),
         deviceInfo: req.get('user-agent') || '',
-        deviceId: reqDeviceId,
       });
       clearLoginFailure(req);
       const sysSettings = await getSystemSettingsSafe();
@@ -80,23 +73,11 @@ router.post(
 router.post(
   '/refresh',
   asyncHandler(async (req, res) => {
-    const reqDeviceId = String(req.get('x-device-id') || req.body?.deviceId || '').trim();
-    if (reqDeviceId) {
-      const guard = await getDeviceStatusForGuard(reqDeviceId);
-      if (guard.blocked) {
-        return res.status(403).json({
-          ok: false,
-          code: guard.code,
-          error: guard.message,
-          deviceStatus: guard.device?.status,
-        });
-      }
-    }
     const result = await refreshUserSession({
       refreshToken: req.body?.refreshToken,
+      deviceId: req.get('x-device-id') || req.body?.deviceId || '',
       ipAddress: getClientIp(req),
       deviceInfo: req.get('user-agent') || '',
-      deviceId: reqDeviceId,
     });
     res.json({ ok: true, ...result });
   })

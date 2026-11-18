@@ -345,6 +345,7 @@ export const ReportsView: React.FC = () => {
         {selectedReport === 'sales' && (
           <div>
             <h3 className="text-sm font-black mb-3">فواتير المبيعات الصادرة خلال الفترة ({periodSales.length} فاتورة)</h3>
+            <div className="awlad-table-scroll">
             <table className="w-full text-right text-xs">
               <thead>
                 <tr className="bg-slate-50 font-bold border-b">
@@ -369,6 +370,7 @@ export const ReportsView: React.FC = () => {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 
@@ -376,6 +378,7 @@ export const ReportsView: React.FC = () => {
         {selectedReport === 'customer_debts' && (
           <div>
             <h3 className="text-sm font-black mb-3">تقرير مديونيات وأرصدة العملاء المستحقة</h3>
+            <div className="awlad-table-scroll">
             <table className="w-full text-right text-xs">
               <thead>
                 <tr className="bg-slate-50 font-bold border-b">
@@ -400,6 +403,7 @@ export const ReportsView: React.FC = () => {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 
@@ -407,6 +411,7 @@ export const ReportsView: React.FC = () => {
         {selectedReport === 'rep_transfers' && (
           <div>
             <h3 className="text-sm font-black mb-3">تقرير حركات نظام "طلب تحويل بالنصف" للمناديب</h3>
+            <div className="awlad-table-scroll">
             <table className="w-full text-right text-xs">
               <thead>
                 <tr className="bg-slate-50 font-bold border-b">
@@ -433,6 +438,7 @@ export const ReportsView: React.FC = () => {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 
@@ -440,6 +446,7 @@ export const ReportsView: React.FC = () => {
         {selectedReport === 'purchases' && (
           <div>
             <h3 className="text-sm font-black mb-3">فواتير المشتريات والتوريدات خلال الفترة ({periodPurchases.length} فاتورة)</h3>
+            <div className="awlad-table-scroll">
             <table className="w-full text-right text-xs">
               <thead>
                 <tr className="bg-slate-50 font-bold border-b">
@@ -468,6 +475,7 @@ export const ReportsView: React.FC = () => {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 
@@ -475,6 +483,7 @@ export const ReportsView: React.FC = () => {
         {selectedReport === 'supplier_debts' && (
           <div>
             <h3 className="text-sm font-black mb-3">تقرير أرصدة ومستحقات الموردين</h3>
+            <div className="awlad-table-scroll">
             <table className="w-full text-right text-xs">
               <thead>
                 <tr className="bg-slate-50 font-bold border-b">
@@ -497,6 +506,7 @@ export const ReportsView: React.FC = () => {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 
@@ -504,6 +514,7 @@ export const ReportsView: React.FC = () => {
         {selectedReport === 'stock_counts' && (
           <div>
             <h3 className="text-sm font-black mb-3">تقرير جلسات جرد المخزون ({stockCounts.length})</h3>
+            <div className="awlad-table-scroll">
             <table className="w-full text-right text-xs">
               <thead>
                 <tr className="bg-slate-50 font-bold border-b">
@@ -535,6 +546,7 @@ export const ReportsView: React.FC = () => {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 
@@ -542,6 +554,7 @@ export const ReportsView: React.FC = () => {
         {selectedReport === 'stock_transfers' && (
           <div>
             <h3 className="text-sm font-black mb-3">تقرير أوامر تحويل الأصناف المنظمة ({stockTransferRequests.length})</h3>
+            <div className="awlad-table-scroll">
             <table className="w-full text-right text-xs">
               <thead>
                 <tr className="bg-slate-50 font-bold border-b">
@@ -570,6 +583,7 @@ export const ReportsView: React.FC = () => {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 
@@ -587,6 +601,7 @@ export const ReportsView: React.FC = () => {
                 </div>
               ))}
             </div>
+            <div className="awlad-table-scroll">
             <table className="w-full text-right text-xs">
               <thead>
                 <tr className="bg-slate-50 font-bold border-b">
@@ -618,6 +633,7 @@ export const ReportsView: React.FC = () => {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </div>

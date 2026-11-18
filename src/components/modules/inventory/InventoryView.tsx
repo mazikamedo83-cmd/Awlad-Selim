@@ -953,7 +953,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           </button>
         </form>
 
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden awlad-table-scroll">
           <table className="w-full text-right text-xs">
             <thead>
               <tr className="bg-slate-50 border-b text-slate-700 font-bold">
@@ -1106,7 +1106,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           </button>
         </form>
 
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden awlad-table-scroll">
           <table className="w-full text-right text-xs">
             <thead>
               <tr className="bg-slate-50 border-b text-slate-700 font-bold">

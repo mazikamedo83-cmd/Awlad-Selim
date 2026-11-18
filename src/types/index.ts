@@ -122,7 +122,6 @@ export interface User {
   lastLogin?: string;
   permissions: UserPermissions;
   shortcuts?: UserShortcutItem[];
-  linkedCustomerId?: string;
   createdAt: string;
 }
 
@@ -158,6 +157,8 @@ export interface Product {
   sellingPrice: number;
   minStockLevel: number;
   stockPerWarehouse: Record<string, number>; // warehouseId -> quantity in base unit
+  inStock?: boolean;
+  availableQty?: number;
   image?: string;
   status: 'active' | 'archived'; // active = نشط، archived = موقوف منطقياً
   notes?: string;
@@ -165,6 +166,7 @@ export interface Product {
   importedFromFile?: boolean;
   sourceFileName?: string;
   version?: number;
+  updatedAt?: string;
   createdAt: string;
 }
 
@@ -200,7 +202,10 @@ export interface Customer {
   status: 'active' | 'blocked';
   // التاريخ الفعلي لأسعار الشراء السابقة لكل منتج: productId -> prices array [oldest to newest]
   priceHistory: Record<string, Array<number | CustomerPriceHistoryEntry>>;
+  syncStatus?: SyncQueueStatus | 'synced';
+  originDeviceId?: string;
   version?: number;
+  updatedAt?: string;
   createdAt: string;
 }
 
@@ -214,6 +219,7 @@ export interface Supplier {
   openingBalance: number; // موجب = له مستحقات علينا، سالب = دفع زيادة
   currentBalance: number;
   status?: 'active' | 'suspended'; // حالة المورد: نشط / موقوف
+  syncStatus?: SyncQueueStatus | 'synced';
   createdAt: string;
 }
 
@@ -263,6 +269,7 @@ export interface Invoice {
   taxTotal: number;
   grandTotal: number;
   paidAmount: number;
+  paidAtInvoice?: number;
   appliedAdvanceAmount?: number;
   remainingAmount: number;
   paymentType: 'cash' | 'credit' | 'partial';
@@ -274,7 +281,12 @@ export interface Invoice {
   linkedRepTransferId?: string; // معرف طلب تحويل عهدة المندوب المرتبط
   linkedRepTransferNumber?: string; // رقم طلب تحويل عهدة المندوب المرتبط
   linkedCustomerOrderId?: string; // معرف طلب العميل المرتبط (1:1)
+  localId?: string;
+  operationId?: string;
+  originDeviceId?: string;
+  syncStatus?: SyncQueueStatus | 'synced';
   version?: number;
+  updatedAt?: string;
   createdBy: string;
   createdAt: string;
   returnedQuantityByItem?: Record<string, number>;
@@ -307,6 +319,8 @@ export interface InvoiceReturn {
   cashboxId?: string;
   reason: string;
   notes?: string;
+  syncStatus?: SyncQueueStatus | 'synced';
+  originDeviceId?: string;
   createdBy: string;
   createdAt: string;
 }
@@ -343,13 +357,14 @@ export interface FinancialTransaction {
   targetCashboxName?: string;
   amount: number;
   category: string;
-  relatedDocType?: 'sales' | 'purchase' | 'sales_return' | 'purchase_return' | 'rep_transfer' | 'salary' | 'manual';
+  relatedDocType?: 'sales' | 'purchase' | 'sales_return' | 'purchase_return' | 'rep_transfer' | 'salary' | 'manual' | 'order_advance';
   relatedDocId?: string;
   relatedDocNumber?: string;
   partyId?: string;
   partyName?: string;
   description: string;
   notes?: string;
+  syncStatus?: SyncQueueStatus | 'synced';
   createdBy: string;
   createdAt: string;
 }
@@ -517,6 +532,7 @@ export interface ExpenseIncomeRecord {
   recipientOrPayer: string;
   notes?: string;
   attachmentName?: string;
+  syncStatus?: SyncQueueStatus | 'synced';
   createdBy: string;
   createdAt: string;
 }
@@ -614,7 +630,6 @@ export interface ExtraSettingsConfig {
     syncIntervalSeconds: number;
     cloudEndpointUrl?: string;
   };
-  connectionConfig?: ConnectionProfilesConfig;
   shortcuts?: Array<{ keyCombo: string; actionLabel: string; targetPage: string }>;
   servicesConfig?: {
     enableBarcodeScanner: boolean;
@@ -622,6 +637,7 @@ export interface ExtraSettingsConfig {
     enableWhatsAppAlerts: boolean;
     whatsappNumber?: string;
   };
+  connectionConfig?: ConnectionProfilesConfig;
 }
 
 export interface SystemSettings {
@@ -684,11 +700,11 @@ export type CustomerItemOrderStatus =
   | 'pending'
   | 'under_review'
   | 'approved'
+  | 'rejected'
   | 'rep_assigned'
   | 'out_for_delivery'
   | 'delivered'
   | 'needs_review'
-  | 'rejected'
   | 'invoiced'
   | 'cancelled';
 
@@ -701,15 +717,43 @@ export interface CustomerOrderStatusHistoryEntry {
   changedAt: string;
 }
 
+export interface OrderAdvancePayment {
+  id: string;
+  paymentNumber: string;
+  orderId: string;
+  orderNumber?: string;
+  customerId: string;
+  customerName?: string;
+  cashboxId: string;
+  cashboxName?: string;
+  paymentMethod: 'cash' | 'bank' | 'cheque';
+  amount: number;
+  date: string;
+  notes?: string;
+  status: 'active' | 'applied' | 'refunded';
+  appliedInvoiceId?: string;
+  createdBy: string;
+  createdAt: string;
+  operationId?: string;
+  originDeviceId?: string;
+  syncStatus?: SyncQueueStatus;
+}
+
 export interface CustomerItemOrderRequest {
   id: string;
   requestNumber: string;
-  customerId: string;
-  userId?: string;
   requesterType?: 'customer' | 'representative' | 'staff';
+  submittedByName?: string;
   representativeId?: string;
   representativeName?: string;
-  submittedByName?: string;
+  deliveryRepId?: string;
+  deliveryRepName?: string;
+  deliveredAt?: string;
+  deliveryNotes?: string;
+  deliveryProof?: string;
+  collectedAmount?: number;
+  customerId: string;
+  userId?: string;
   customerName: string;
   customerPhone?: string;
   shopName?: string;
@@ -725,115 +769,145 @@ export interface CustomerItemOrderRequest {
     quantity: number;
     unitPrice?: number;
   }>;
-  status: CustomerItemOrderStatus;
   totalAmount?: number;
+  totalEstimatedAmount?: number;
   advancePaidAmount?: number;
+  remainingAmount?: number;
+  status: CustomerItemOrderStatus;
+  sourcePlatform?: string;
+  localId?: string;
+  operationId?: string;
+  originDeviceId?: string;
+  syncStatus?: SyncQueueStatus;
+  version?: number;
   notes?: string;
   rejectionReason?: string;
   createdAt: string;
   updatedAt?: string;
   reviewedAt?: string;
   reviewedBy?: string;
-  deliveryRepId?: string;
-  deliveryRepName?: string;
-  assignedDeliveryRepId?: string;
-  assignedDeliveryRepName?: string;
-  assignedAt?: string;
-  deliveredAt?: string;
-  collectedAmount?: number;
-  deliveryNotes?: string;
-  deliveryProof?: string;
   invoiceId?: string;
   invoiceNumber?: string;
   idempotencyKey?: string;
-  originDeviceId?: string;
-  version?: number;
-  isLocalQueued?: boolean;
-  syncStatus?: SyncQueueStatus;
   statusHistory?: CustomerOrderStatusHistoryEntry[];
 }
 
-export interface OrderAdvancePayment {
-  id: string;
-  paymentNumber: string;
-  advanceNumber?: string;
-  orderId: string;
-  requestNumber: string;
-  customerId: string;
-  customerName: string;
-  amount: number;
-  date: string;
-  paymentMethod: 'cash' | 'bank' | 'cheque';
-  cashboxId: string;
-  cashboxName: string;
-  status: 'available' | 'applied' | 'refunded';
-  appliedInvoiceId?: string;
-  appliedInvoiceNumber?: string;
-  appliedAt?: string;
-  notes?: string;
-  originDeviceId?: string;
-  createdBy: string;
-  createdAt: string;
+// أوضاع الاتصال المتعددة بالسيرفر المركزي (Dual / Multi Connection System)
+export type ConnectionMode = 'local_network' | 'free_remote' | 'pro_remote' | 'cloud_vps';
+
+export interface ConnectionProfilesConfig {
+  activeMode: ConnectionMode;
+  configVersion?: number;
+  localNetwork: {
+    ip: string;
+    port: number;
+    hostname?: string;
+  };
+  freeRemote: {
+    tunnelUrl: string; // Cloudflare Quick Tunnel (https://xxxx.trycloudflare.com)
+    autoDetect?: boolean;
+  };
+  proRemote: {
+    domainUrl: string; // Cloudflare Named Tunnel / Custom HTTPS Domain
+    provider?: string;
+  };
+  cloudVps: {
+    vpsUrl: string; // Future Cloud VPS HTTPS Endpoint
+    notes?: string;
+  };
+  enforceHttpsForRemote?: boolean;
+  updatedAt?: string;
 }
 
-export type SyncOperationType =
-  | 'create_order'
-  | 'order_delivery_update'
-  | 'order_advance_payment'
-  | 'create_sales_invoice'
-  | 'edit_sales_invoice'
-  | 'create_purchase_invoice'
-  | 'add_invoice_payment'
-  | 'create_invoice_return'
-  | 'customer_payment'
-  | 'create_customer'
-  | 'update_customer'
-  | 'cash_operation';
+export type DevicePlatform = 'windows' | 'android' | 'ios' | 'web';
 
-export type SyncQueueStatus =
-  | 'local'
-  | 'pending'
-  | 'syncing'
-  | 'synced'
-  | 'failed'
-  | 'needs_review';
+export interface TunnelRuntimeStatus {
+  status: 'offline' | 'starting' | 'online' | 'error';
+  provider: string;
+  tunnelUrl: string;
+  localPort: number;
+  startedAt: string | null;
+  updatedAt: string | null;
+  lastError: string | null;
+}
 
-export interface SyncQueueItem {
-  operationId: string;
-  userId: string;
+export interface PairedDevice {
   deviceId: string;
-  operationType: SyncOperationType;
-  entityType: string;
-  entityId?: string;
-  localId?: string;
-  summaryAr: string;
-  payload: Record<string, any>;
-  status: SyncQueueStatus;
-  attempts: number;
-  lastError?: string;
-  conflictId?: string;
-  nextRetryAt?: number;
-  createdAt: string;
-  updatedAt: string;
+  deviceName: string;
+  deviceType: DevicePlatform;
+  osVersion?: string;
+  appVersion?: string;
+  linkedUserId?: string;
+  linkedUserName?: string;
+  connectionMode: ConnectionMode | string;
+  serverUrlUsed?: string;
+  ipAddress?: string;
+  status: 'active' | 'pending_approval' | 'revoked';
+  pairingTokenId?: string;
+  configVersion?: number;
+  pairedAt: string;
+  lastSeenAt: string;
+  revokedAt?: string;
+  isRecentlyOnline?: boolean;
+  notes?: string;
 }
 
-export interface SyncConflictRecord {
+export interface PairedDevicesSummary {
+  total: number;
+  active: number;
+  pendingApproval: number;
+  revoked: number;
+  onlineNow: number;
+}
+
+export interface PairingTokenRecord {
   id: string;
-  operationId: string;
-  operationType: string;
-  entityType: string;
-  entityId?: string;
-  deviceId?: string;
-  userId?: string;
-  userName?: string;
-  conflictReason: string;
-  localPayload: Record<string, any>;
-  serverSnapshot: Record<string, any>;
-  status: 'needs_review' | 'resolved_keep_server' | 'resolved_apply_local' | 'dismissed';
-  resolutionNotes?: string;
-  resolvedBy?: string;
-  resolvedAt?: string;
+  tokenPreview: string;
+  createdByUserId?: string;
+  createdByName: string;
+  targetUserId?: string;
+  targetUserName?: string;
+  targetRole?: string;
+  targetDeviceType: 'any' | 'windows' | 'android' | 'ios';
+  connectionMode: ConnectionMode | 'auto';
+  expiresAt: string;
+  singleUse: boolean;
+  usedCount: number;
+  lastUsedAt?: string;
+  requireAdminApproval: boolean;
+  revokedAt?: string;
+  status: 'active' | 'used' | 'expired' | 'revoked' | 'invalid';
+  notes?: string;
   createdAt: string;
+}
+
+export interface PairingCreateResponse {
+  ok: boolean;
+  tokenRecord: PairingTokenRecord;
+  rawToken: string;
+  serverBaseUrl: string;
+  directInviteUrl: string;
+  deepLinkUrl: string;
+  qrPayload: string;
+}
+
+export interface ConnectionDiscoveryResponse {
+  ok: boolean;
+  service: string;
+  version: string;
+  timestamp: string;
+  companyName: string;
+  activeMode: ConnectionMode;
+  configVersion: number;
+  supportedModes: ConnectionMode[];
+  port: number;
+  httpsActive: boolean;
+  activeEndpoint: string;
+  currentHostUrl?: string;
+  lanUrls: string[];
+  profiles: ConnectionProfilesConfig;
+  fallbackEndpoints: Array<{ mode: ConnectionMode; url: string; label: string }>;
+  tunnelStatus?: TunnelRuntimeStatus;
 }
 
 // إعدادات السيرفر والاتصال المحلي والشبكة
@@ -842,7 +916,9 @@ export interface ServerConnectionSettings {
   hostname: string;
   port: number;
   apiBaseUrl: string;
-  connectionType: 'lan' | 'vpn' | 'reverse_proxy' | 'offline_local';
+  connectionType: ConnectionMode | 'lan' | 'vpn' | 'reverse_proxy' | 'offline_local';
+  activeMode?: ConnectionMode;
+  profiles?: ConnectionProfilesConfig;
   serverStatus: 'online' | 'offline' | 'checking';
   databaseStatus: 'connected' | 'disconnected' | 'migrating';
   latencyMs: number;
@@ -1068,31 +1144,21 @@ export interface MobileConfig {
 export interface MobileNotificationItem {
   id: string;
   type:
-    | 'order_status'
+    | 'customer_order'
+    | 'order_under_review'
     | 'order_approved'
     | 'order_rejected'
     | 'order_invoiced'
-    | 'invoice'
+    | 'order_status'
     | 'invoice_confirmed'
-    | 'balance'
-    | 'item_transfer'
     | 'rep_item_transfer_executed'
     | 'rep_item_transfer_rejected'
-    | 'cash_transfer'
     | 'rep_cash_awaiting_receipt'
-    | 'draft_ready'
-    | 'draft_invoice_ready'
-    | 'delivery_order'
-    | 'customer_order'
-    | 'stock_count'
-    | 'stock_transfer'
-    | 'low_stock';
-  severity?: 'info' | 'warning' | 'success';
+    | 'draft_invoice_ready';
   title: string;
   body: string;
   createdAt: string;
   targetTab?: string;
-  relatedId?: string;
   referenceId?: string;
   referenceNumber?: string;
 }
@@ -1101,7 +1167,7 @@ export interface CustomerStatementEntry {
   id: string;
   date: string;
   docNumber: string;
-  type: 'opening_balance' | 'sales_invoice' | 'customer_payment' | 'sales_return' | 'order_advance';
+  type: 'opening_balance' | 'sales_invoice' | 'customer_payment' | 'order_advance' | 'sales_return';
   label: string;
   description: string;
   debit: number | null;
@@ -1111,140 +1177,78 @@ export interface CustomerStatementEntry {
 
 export interface CustomerStatementResponse {
   customer: Customer | null;
+  customerType?: 'regular' | 'app' | 'hybrid';
   allowPriceView: boolean;
-  invoices?: Invoice[];
-  returns?: InvoiceReturn[];
+  orders?: CustomerItemOrderRequest[];
   advancePayments?: OrderAdvancePayment[];
   summary: {
     openingBalance: number | null;
     totalDebit: number | null;
     totalCredit: number | null;
     currentBalance: number | null;
+    activeAdvanceBalance?: number | null;
+    openOrdersCount?: number;
+    openOrdersEstimatedTotal?: number | null;
     invoicesCount: number;
     returnsCount: number;
+    ordersCount?: number;
   };
   entries: CustomerStatementEntry[];
 }
 
-export type ConnectionMode = 'local_network' | 'free_remote' | 'pro_remote' | 'cloud_vps';
+export type SyncQueueStatus = 'local' | 'pending' | 'syncing' | 'synced' | 'failed' | 'needs_review';
 
-export interface ConnectionProfilesConfig {
-  activeMode?: ConnectionMode;
-  configVersion?: number;
-  localNetwork?: {
-    ip: string;
-    port: number;
-    hostname?: string;
-  };
-  freeRemote?: {
-    tunnelUrl: string;
-    autoDetect?: boolean;
-  };
-  proRemote?: {
-    domainUrl: string;
-    provider?: string;
-  };
-  cloudVps?: {
-    vpsUrl: string;
-    notes?: string;
-  };
-  deploymentProfile?: {
-    hostingLocation?: 'laptop_windows' | 'cloud_vps' | 'local_server';
-    domainType?: 'none' | 'trycloudflare' | 'custom_domain';
-    planTier?: 'free' | 'pro' | 'enterprise_vps' | 'self_hosted';
-    subscriptionStatus?: 'none' | 'active' | 'trial' | 'paused';
-    subscriptionNote?: string;
-  };
-  appDownloadUrls?: {
-    androidApkUrl?: string;
-    iosStoreUrl?: string;
-    windowsUrl?: string;
-  };
-  enforceHttpsForRemote?: boolean;
-  updatedAt?: string | null;
-}
+export type SyncOperationType =
+  | 'create_order'
+  | 'create_sales_invoice'
+  | 'edit_sales_invoice'
+  | 'create_purchase_invoice'
+  | 'create_invoice_return'
+  | 'add_invoice_payment'
+  | 'record_customer_payment'
+  | 'record_order_advance'
+  | 'update_order_delivery'
+  | 'execute_cash_operation'
+  | 'create_customer'
+  | 'update_customer';
 
-export interface ConnectionDiscoveryResponse {
-  ok: boolean;
-  service: string;
-  version: string;
-  timestamp?: string;
-  companyName?: string;
-  activeMode: ConnectionMode;
-  configVersion?: number;
-  supportedModes?: ConnectionMode[];
-  port?: number;
-  httpsActive?: boolean;
-  activeEndpoint?: string;
-  currentHostUrl?: string;
-  lanUrls?: string[];
-  profiles?: ConnectionProfilesConfig;
-  fallbackEndpoints?: Array<{ mode: ConnectionMode; url: string; label: string }>;
-  tunnelStatus?: Record<string, any>;
-}
-
-export interface PairedDevice {
+export interface SyncQueueItem {
+  operationId: string;
+  userId: string;
   deviceId: string;
-  deviceName: string;
-  deviceType: 'windows' | 'android' | 'ios' | 'web' | string;
-  osVersion?: string;
-  appVersion?: string;
-  linkedUserId?: string;
-  linkedUserName?: string;
-  connectionMode: ConnectionMode | string;
-  serverUrlUsed?: string;
-  ipAddress?: string;
-  status: 'active' | 'pending_approval' | 'rejected' | 'disconnected' | 'revoked';
-  pairingTokenId?: string;
-  configVersion?: number;
-  pairedAt: string;
-  lastSeenAt: string;
-  revokedAt?: string;
-  notes?: string;
-  isRecentlyOnline?: boolean;
-}
-
-export interface PairedDevicesSummary {
-  total: number;
-  active: number;
-  pendingApproval: number;
-  rejected?: number;
-  disconnected?: number;
-  revoked: number;
-  onlineNow: number;
-}
-
-export interface PairingTokenRecord {
-  id: string;
-  tokenPreview: string;
-  createdByUserId?: string;
-  createdByName: string;
-  targetUserId?: string;
-  targetUserName?: string;
-  targetRole?: string;
-  targetDeviceType: 'any' | 'windows' | 'android' | 'ios';
-  connectionMode: 'auto' | ConnectionMode;
-  expiresAt: string;
-  singleUse: boolean;
-  usedCount: number;
-  lastUsedAt?: string;
-  requireAdminApproval: boolean;
-  revokedAt?: string;
-  notes?: string;
+  operationType: SyncOperationType;
+  entityType: string;
+  entityId?: string;
+  localId?: string;
+  summaryAr: string;
+  payload: Record<string, any>;
+  status: SyncQueueStatus;
+  attempts: number;
+  lastError?: string;
+  conflictId?: string;
+  nextRetryAt?: number;
   createdAt: string;
-  status: 'active' | 'used' | 'revoked' | 'expired' | 'invalid';
+  updatedAt: string;
 }
 
-export interface PairingCreateResponse {
-  ok?: boolean;
-  tokenRecord: PairingTokenRecord;
-  rawToken: string;
-  serverBaseUrl: string;
-  directInviteUrl: string;
-  deepLinkUrl: string;
-  qrPayload: string;
+export interface SyncConflictRecord {
+  id: string;
+  operationId: string;
+  operationType: SyncOperationType | string;
+  entityType: string;
+  entityId?: string;
+  deviceId?: string;
+  userId?: string;
+  userName?: string;
+  conflictReason: string;
+  localPayload: Record<string, any>;
+  serverSnapshot: Record<string, any>;
+  status: 'needs_review' | 'resolved_keep_server' | 'resolved_apply_local' | 'dismissed';
+  resolutionNotes?: string;
+  resolvedBy?: string;
+  resolvedAt?: string;
+  createdAt: string;
 }
-
 
 
 

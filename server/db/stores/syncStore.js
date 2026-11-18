@@ -229,13 +229,14 @@ async function findLoggedOperation(userId, operationId) {
 async function saveLoggedOperation({ operationId, operationType, userId, deviceId, status, entityId = null, responseJson = null }) {
   const now = nowIso();
   const id = generateServerId('SYL');
+  const entityType = getEntityTypeForOp(operationType);
   if (await isPgMode()) {
     const pool = getPool();
     await pool.query(
-      `INSERT INTO sync_operation_logs (id, operation_id, operation_type, user_id, device_id, status, entity_id, response_json, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-       ON CONFLICT (operation_id) DO NOTHING`,
-      [id, operationId, operationType, userId, deviceId || null, status, entityId, JSON.stringify(responseJson || {}), now]
+      `INSERT INTO sync_operation_logs (id, operation_id, user_id, device_id, operation_type, entity_type, entity_id, status, response_json, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       ON CONFLICT (user_id, operation_id) DO NOTHING`,
+      [id, operationId, userId, deviceId || null, operationType, entityType, entityId, status, JSON.stringify(responseJson || {}), now]
     );
     return;
   }
@@ -326,23 +327,8 @@ async function createConflictRecord({
   return record;
 }
 
-function normalizeSyncOpType(rawType) {
-  switch (String(rawType || '').trim()) {
-    case 'order_delivery_update':
-      return 'update_order_delivery';
-    case 'order_advance_payment':
-      return 'record_order_advance';
-    case 'customer_payment':
-      return 'record_customer_payment';
-    case 'cash_operation':
-      return 'execute_cash_operation';
-    default:
-      return String(rawType || '').trim();
-  }
-}
-
 function getEntityTypeForOp(opType) {
-  switch (normalizeSyncOpType(opType)) {
+  switch (opType) {
     case 'create_order':
     case 'update_order_delivery':
       return 'order';
@@ -377,8 +363,7 @@ function assertOperationPermission(opType, freshAuth) {
   const isRep = u.role === 'representative';
   const isCust = u.role === 'customer';
 
-  const normalizedOp = normalizeSyncOpType(opType);
-  switch (normalizedOp) {
+  switch (opType) {
     case 'create_order':
       if (isCust || isRep || isAdmin || perms.canManageSales || perms.canAdd) return;
       break;
@@ -431,9 +416,8 @@ function resolvePayloadAliases(payload, aliasMap) {
 }
 
 async function buildConflictSnapshot(opType, payload, freshAuth) {
-  const normalizedOp = normalizeSyncOpType(opType);
   try {
-    if (normalizedOp === 'create_sales_invoice' || normalizedOp === 'edit_sales_invoice') {
+    if (opType === 'create_sales_invoice' || opType === 'edit_sales_invoice') {
       const products = await listProducts();
       const whId = payload.warehouseId;
       const relevantIds = new Set((payload.items || []).map((i) => i.productId));
@@ -448,20 +432,20 @@ async function buildConflictSnapshot(opType, payload, freshAuth) {
           })),
       };
     }
-    if (normalizedOp === 'create_customer' || normalizedOp === 'update_customer') {
+    if (opType === 'create_customer' || opType === 'update_customer') {
       const customers = await listCustomers();
       const normPhone = normalizePhoneDigits(payload.phone);
       const byId = payload.customerId ? customers.find((c) => c.id === payload.customerId) : null;
       const byPhone = normPhone ? customers.find((c) => normalizePhoneDigits(c.phone) === normPhone) : null;
       return { existingCustomer: byId || byPhone || null };
     }
-    if (normalizedOp === 'update_order_delivery' || normalizedOp === 'record_order_advance') {
+    if (opType === 'update_order_delivery' || opType === 'record_order_advance') {
       if (payload.orderId) {
         const order = await getOrderById(payload.orderId, freshAuth);
         return { order };
       }
     }
-    if (normalizedOp === 'add_invoice_payment' && payload.invoiceId) {
+    if (opType === 'add_invoice_payment' && payload.invoiceId) {
       const invs = await listInvoices(freshAuth.user);
       const inv = invs.find((i) => i.id === payload.invoiceId);
       return { invoice: inv || null };
@@ -475,9 +459,8 @@ async function buildConflictSnapshot(opType, payload, freshAuth) {
 async function executeSingleSyncOperation(opType, rawPayload, operationId, deviceId, freshAuth, { ignoreVersionCheck = false } = {}) {
   const actor = freshAuth.user;
   const payload = { ...(rawPayload || {}), originDeviceId: rawPayload?.originDeviceId || deviceId || undefined };
-  const normalizedOp = normalizeSyncOpType(opType);
 
-  switch (normalizedOp) {
+  switch (opType) {
     case 'create_order': {
       const { order, deduplicated } = await createCustomerOrder(
         { ...payload, idempotencyKey: operationId },
@@ -494,14 +477,13 @@ async function executeSingleSyncOperation(opType, rawPayload, operationId, devic
     case 'edit_sales_invoice': {
       const targetId = payload.invoiceId || payload.id;
       if (!targetId) throw new AppError(400, 'معرف الفاتورة مطلوب للتعديل', 'INVOICE_ID_REQUIRED');
-      const baseVersion = payload.baseVersion ?? payload.expectedVersion;
-      if (!ignoreVersionCheck && baseVersion !== undefined) {
+      if (!ignoreVersionCheck && payload.baseVersion !== undefined) {
         const allInvs = await listInvoices(actor);
         const current = allInvs.find((i) => i.id === targetId);
-        if (current && Number(current.version || 1) > Number(baseVersion)) {
+        if (current && Number(current.version || 1) > Number(payload.baseVersion)) {
           throw new AppError(
             409,
-            `تم تعديل الفاتورة (${current.invoiceNumber}) على السيرفر إلى إصدار (${current.version}) بعد حفظ النسخة المحلية (${baseVersion})`,
+            `تم تعديل الفاتورة (${current.invoiceNumber}) على السيرفر إلى إصدار (${current.version}) بعد حفظ النسخة المحلية (${payload.baseVersion})`,
             'VERSION_CONFLICT',
             { serverInvoice: current }
           );
@@ -552,12 +534,12 @@ async function executeSingleSyncOperation(opType, rawPayload, operationId, devic
 
     case 'update_order_delivery': {
       if (!payload.orderId) throw new AppError(400, 'معرف الطلب مطلوب لتحديث التوصيل', 'ORDER_ID_REQUIRED');
-      const order = await updateOrderDeliveryStatus(
+      const deliveryOut = await updateOrderDeliveryStatus(
         payload.orderId,
         { ...payload, idempotencyKey: operationId },
         freshAuth
       );
-      return { entityId: payload.orderId, result: { order } };
+      return { entityId: payload.orderId, result: deliveryOut };
     }
 
     case 'execute_cash_operation': {
@@ -588,17 +570,15 @@ async function executeSingleSyncOperation(opType, rawPayload, operationId, devic
       if (!targetId) throw new AppError(400, 'معرف العميل مطلوب للتحديث', 'CUSTOMER_ID_REQUIRED');
       const current = await getCustomerById(targetId);
       if (!current) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
-      const baseVersion = payload.baseVersion ?? payload.expectedVersion;
-      if (!ignoreVersionCheck && baseVersion !== undefined && Number(current.version || 1) > Number(baseVersion)) {
+      if (!ignoreVersionCheck && payload.baseVersion !== undefined && Number(current.version || 1) > Number(payload.baseVersion)) {
         throw new AppError(
           409,
-          `تم تعديل بيانات العميل (${current.name}) على السيرفر إلى إصدار (${current.version}) بعد حفظ نسختك (${baseVersion})`,
+          `تم تعديل بيانات العميل (${current.name}) على السيرفر إلى إصدار (${current.version}) بعد حفظ نسختك (${payload.baseVersion})`,
           'VERSION_CONFLICT',
           { existingCustomer: current }
         );
       }
-      const customerUpdates = payload.updates && typeof payload.updates === 'object' ? { ...payload, ...payload.updates } : payload;
-      const customer = await updateCustomer(targetId, customerUpdates, actor);
+      const customer = await updateCustomer(targetId, payload, actor);
       return { entityId: customer.id, result: { customer } };
     }
 
@@ -780,9 +760,8 @@ export async function pushSyncBatch({ operations = [], deviceId = '' } = {}, aut
   };
 }
 
-export async function resolveSyncConflict(conflictId, { action, resolution, resolutionNotes = '' } = {}, actor) {
-  const resolvedAction = action || resolution;
-  if (!['keep_server', 'dismiss', 'apply_local'].includes(resolvedAction)) {
+export async function resolveSyncConflict(conflictId, { action, resolutionNotes = '' } = {}, actor) {
+  if (!['keep_server', 'dismiss', 'apply_local'].includes(action)) {
     throw new AppError(400, 'إجراء معالجة التعارض غير صالح', 'INVALID_CONFLICT_ACTION');
   }
 
@@ -803,7 +782,7 @@ export async function resolveSyncConflict(conflictId, { action, resolution, reso
   }
 
   let appliedResult = null;
-  if (resolvedAction === 'apply_local') {
+  if (action === 'apply_local') {
     const managerAuth = {
       user: actor,
       customerProfile: null,
@@ -821,9 +800,9 @@ export async function resolveSyncConflict(conflictId, { action, resolution, reso
   }
 
   const nextStatus =
-    resolvedAction === 'keep_server'
+    action === 'keep_server'
       ? 'resolved_keep_server'
-      : resolvedAction === 'apply_local'
+      : action === 'apply_local'
       ? 'resolved_apply_local'
       : 'dismissed';
   const now = nowIso();

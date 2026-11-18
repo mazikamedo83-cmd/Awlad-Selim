@@ -74,11 +74,11 @@ export function createEmptyDatabaseState() {
     ownerTransactions: [],
     stockCounts: [],
     stockTransferRequests: [],
-    orderAdvancePayments: [],
-    syncOperationLogs: [],
-    syncConflicts: [],
     pairingTokens: [],
     pairedDevices: [],
+    orderAdvancePayments: [],
+    syncConflicts: [],
+    syncOperationLogs: [],
     settings: {
       companyName: 'مؤسسة أولاد سليم للتجارة والتوزيع',
       companySubtitle: 'نظام المحاسبة وإدارة الأعمال المتكامل',
@@ -163,11 +163,11 @@ export function normalizeDbState(raw) {
     'ownerTransactions',
     'stockCounts',
     'stockTransferRequests',
-    'orderAdvancePayments',
-    'syncOperationLogs',
-    'syncConflicts',
     'pairingTokens',
     'pairedDevices',
+    'orderAdvancePayments',
+    'syncConflicts',
+    'syncOperationLogs',
   ];
   for (const key of arrayKeys) {
     if (!Array.isArray(db[key])) db[key] = [];

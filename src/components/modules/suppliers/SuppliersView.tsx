@@ -550,7 +550,7 @@ export const SuppliersView: React.FC = () => {
               </div>
             </div>
 
-            <div className="border border-slate-200 rounded-xl overflow-hidden max-h-96 overflow-y-auto">
+            <div className="border border-slate-200 rounded-xl awlad-table-scroll max-h-96 overflow-y-auto">
               <table className="w-full text-right text-xs">
                 <thead className="bg-slate-100 text-slate-700 font-bold sticky top-0 border-b">
                   <tr>

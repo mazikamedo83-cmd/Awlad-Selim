@@ -104,7 +104,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
     setPassword('');
     setPhone(u.phone);
     setRole(u.role);
-    setLinkedCustomerId(u.linkedCustomerId || '');
+    const linkedCust = customers.find((c) => c.userId === u.id);
+    setLinkedCustomerId(linkedCust?.id || '');
     setJobTitle(u.jobTitle);
     setDepartment(u.department);
     setPermissions({ ...DEFAULT_PERMISSIONS, ...(u.permissions || {}) });
@@ -133,6 +134,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
     setIsSaving(true);
     try {
       if (editingUser) {
+        const currentLinkedCustomer = customers.find((c) => c.userId === editingUser.id);
         const res = await updateUser(editingUser.id, {
           fullName: fullName.trim(),
           username: username.trim(),
@@ -143,7 +145,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           permissions,
           mustChangePassword,
           newPassword: password.trim() || undefined,
-          linkedCustomerId: role === 'customer' ? (linkedCustomerId || undefined) : undefined,
+          linkedCustomerId: role === 'customer' && linkedCustomerId ? linkedCustomerId : undefined,
+          autoCreateCustomerProfile: role === 'customer' && !linkedCustomerId && !currentLinkedCustomer,
         });
         if (!res.success) {
           setFormError(res.error || 'تعذر تحديث بيانات المستخدم');
@@ -164,12 +167,19 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           mustChangePassword,
           permissions,
           linkedCustomerId: role === 'customer' && linkedCustomerId ? linkedCustomerId : undefined,
+          autoCreateCustomerProfile: role === 'customer' && !linkedCustomerId,
         });
         if (!res.success) {
           setFormError(res.error || 'تعذر إنشاء المستخدم');
           return;
         }
-        setStatusMessage({ type: 'success', text: `تم إنشاء حساب (${username.trim()}) بنجاح على السيرفر.` });
+        setStatusMessage({
+          type: 'success',
+          text:
+            role === 'customer'
+              ? `تم إنشاء حساب العميل (${username.trim()}) وربطه بملف عميل تلقائياً بنجاح.`
+              : `تم إنشاء حساب (${username.trim()}) بنجاح على السيرفر.`,
+        });
       }
       setIsAddModalOpen(false);
     } finally {
@@ -536,20 +546,39 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           {role === 'customer' && (
             <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 space-y-1.5">
               <label className="block font-bold text-blue-950">ربط هذا الحساب بملف العميل مباشرة (1:1):</label>
-              <select
-                value={linkedCustomerId}
-                onChange={(e) => setLinkedCustomerId(e.target.value)}
-                className="w-full bg-white border border-blue-300 rounded-xl p-2 font-bold"
-              >
-                <option value="">-- بدون ربط حالي (يمكن الربط لاحقاً من دليل العملاء) --</option>
-                {customers
-                  .filter((c) => !c.userId || (editingUser && c.userId === editingUser.id) || c.id === linkedCustomerId)
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} {c.shopName ? `(${c.shopName})` : ''} — {c.phone}
-                    </option>
-                  ))}
-              </select>
+              {editingUser && (() => {
+                const alreadyLinked = customers.find((c) => c.userId === editingUser.id);
+                if (alreadyLinked) {
+                  return (
+                    <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 font-bold">
+                      مربوط حالياً بملف العميل: {alreadyLinked.name}{' '}
+                      {alreadyLinked.shopName ? `(${alreadyLinked.shopName})` : ''} — {alreadyLinked.code}
+                    </div>
+                  );
+                }
+                return (
+                  <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
+                    تنبيه: حساب العميل غير مربوط بملف عميل حالياً — اختر عميلاً من القائمة أو احفظ لإنشاء وربط ملف عميل تلقائياً.
+                  </div>
+                );
+              })()}
+
+              {(!editingUser || !customers.some((c) => c.userId === editingUser.id)) && (
+                <select
+                  value={linkedCustomerId}
+                  onChange={(e) => setLinkedCustomerId(e.target.value)}
+                  className="w-full bg-white border border-blue-300 rounded-xl p-2 font-bold"
+                >
+                  <option value="">-- إنشاء وربط ملف عميل جديد تلقائياً (مستحسن) --</option>
+                  {customers
+                    .filter((c) => !c.userId)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} {c.shopName ? `(${c.shopName})` : ''} — {c.phone}
+                      </option>
+                    ))}
+                </select>
+              )}
             </div>
           )}
 

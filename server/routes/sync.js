@@ -5,13 +5,14 @@ import {
   listSyncConflicts,
   resolveSyncConflict,
 } from '../db/stores/syncStore.js';
-import { requireAuth, requireSyncPushAuth, requireStaff, asyncHandler } from '../middleware/auth.js';
+import { requireAuth, requireStaff, asyncHandler } from '../middleware/auth.js';
 
 const router = Router();
 
+router.use(requireAuth);
+
 router.get(
   '/pull',
-  requireAuth,
   asyncHandler(async (req, res) => {
     const since = typeof req.query.since === 'string' ? req.query.since : null;
     const payload = await getSyncPullPayload(req.auth, { since });
@@ -21,7 +22,6 @@ router.get(
 
 router.post(
   '/push',
-  requireSyncPushAuth,
   asyncHandler(async (req, res) => {
     const deviceId = req.get('x-device-id') || req.body?.deviceId || req.auth.deviceId || '';
     const result = await pushSyncBatch(
@@ -37,7 +37,6 @@ router.post(
 
 router.get(
   '/conflicts',
-  requireAuth,
   asyncHandler(async (req, res) => {
     const status = typeof req.query.status === 'string' ? req.query.status : null;
     const conflicts = await listSyncConflicts(req.auth, { status });
@@ -47,7 +46,6 @@ router.get(
 
 router.post(
   '/conflicts/:id/resolve',
-  requireAuth,
   requireStaff,
   asyncHandler(async (req, res) => {
     const u = req.auth.user;

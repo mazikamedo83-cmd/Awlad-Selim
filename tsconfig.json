@@ -24,9 +24,5 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "exclude": [
-    "dist",
-    "dist-electron",
-    "server/tests"
-  ]
+  "exclude": ["dist", "dist-electron", "AWLAD_SELIM_BACKUP"]
 }

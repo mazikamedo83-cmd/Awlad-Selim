@@ -4,21 +4,13 @@ const config: CapacitorConfig = {
   appId: 'com.awladselim.erp',
   appName: 'AWLAD SELIM',
   webDir: 'dist',
-  backgroundColor: '#f8fafc',
   server: {
     androidScheme: 'https',
-    cleartext: true,
-  },
-  android: {
-    backgroundColor: '#f8fafc',
-    allowMixedContent: true,
-  },
-  ios: {
-    contentInset: 'never',
-    allowsLinkPreview: false,
-    scrollEnabled: true,
   },
   plugins: {
+    CapacitorHttp: {
+      enabled: true,
+    },
     SplashScreen: {
       launchShowDuration: 1500,
       backgroundColor: '#0f172a',
@@ -28,6 +20,11 @@ const config: CapacitorConfig = {
     LocalNotifications: {
       smallIcon: 'ic_stat_icon_config_sample',
       iconColor: '#1e3a8a',
+    },
+    SystemBars: {
+      insetsHandling: 'css',
+      initialViewportFitValueHint: 'cover',
+      style: 'DARK',
     },
   },
 };

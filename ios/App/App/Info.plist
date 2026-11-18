@@ -5,14 +5,7 @@
   <key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>CFBundleDevelopmentRegion</key>
-	<string>ar</string>
-	<key>CFBundleLocalizations</key>
-	<array>
-		<string>ar</string>
-		<string>en</string>
-	</array>
-	<key>UIUserInterfaceStyle</key>
-	<string>Light</string>
+	<string>en</string>
 	<key>CFBundleDisplayName</key>
         <string>AWLAD SELIM</string>
 	<key>CFBundleExecutable</key>
@@ -73,10 +66,12 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>UIUserInterfaceStyle</key>
+	<string>Light</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>يستخدم التطبيق الموقع الجغرافي لتوثيق زيارات المندوبين وعناوين تسليم طلبات العملاء.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>يستخدم التطبيق الكاميرا لمسح رمز الاستجابة السريعة (QR Code) الخاص بربط الجهاز بسيرفر الشركة.</string>
+	<string>يستخدم التطبيق الكاميرا لمسح رموز QR الخاصة بربط الجهاز بالسيرفر المركزي ومسح الباركود.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -93,7 +88,7 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 		<key>NSAllowsArbitraryLoads</key>
-		<false/>
+		<true/>
 	</dict>
 </dict>
 </plist>

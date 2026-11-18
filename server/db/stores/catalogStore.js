@@ -33,14 +33,11 @@ export const DEFAULT_MOBILE_CONFIG = {
   requireOrderApproval: true,
 };
 
-export function normalizePhoneDigits(phone) {
-  let digits = String(phone || '').replace(/\D+/g, '');
+export function normalizePhoneDigits(rawPhone) {
+  let digits = String(rawPhone || '').replace(/\D/g, '');
   if (!digits) return '';
-  if (digits.startsWith('0020') && digits.length >= 13) {
-    digits = '0' + digits.slice(4);
-  } else if (digits.startsWith('20') && digits.length >= 12 && digits[2] === '1') {
-    digits = '0' + digits.slice(2);
-  }
+  if (digits.startsWith('0020') && digits.length >= 13) digits = '0' + digits.slice(4);
+  else if (digits.startsWith('20') && digits.length >= 12) digits = '0' + digits.slice(2);
   return digits;
 }
 
@@ -288,7 +285,7 @@ export async function updateCustomer(customerId, updates, actor) {
         `UPDATE customers SET
           name = $1, phone = $2, secondary_phone = $3, shop_name = $4, shop_photo = $5, photo = $6,
           address = $7, area = $8, geo_coordinates = $9, notes = $10, status = $11, user_id = $12,
-          assigned_rep_id = $13, allowed_rep_ids = $14, updated_at = $15
+          assigned_rep_id = $13, allowed_rep_ids = $14, version = COALESCE(version, 1) + 1, updated_at = $15
          WHERE id = $16`,
         [
           updates.name ?? cur.name,
@@ -344,6 +341,8 @@ export async function updateCustomer(customerId, updates, actor) {
       assignedRepId: repAlloc.assignedRepId,
       allowedRepIds: repAlloc.allowedRepIds,
       currentBalance: cur.currentBalance, // Prevent direct balance override via profile edit
+      version: Number(cur.version || 1) + 1,
+      updatedAt: now,
     };
     db.customers[idx] = merged;
     return merged;
@@ -771,99 +770,152 @@ export async function detectCustomerUserConflicts() {
   }
   const duplicatePhones = [...phoneCounts.entries()].filter(([, cnt]) => cnt > 1).map(([phone, count]) => ({ phone, count }));
 
-  return { unlinkedUsers, unlinkedCustomers, duplicatePhones };
+  return {
+    unlinkedUsers,
+    unlinkedCustomerUsers: unlinkedUsers,
+    unlinkedCustomers,
+    duplicatePhones,
+  };
 }
 
-export async function runCustomerLinkConsistencyMigration() {
+export async function repairUnlinkedCustomerUsers(actor) {
   const now = nowIso();
-  let linkedCount = 0;
-
   if (await isPgMode()) {
-    const pool = getPool();
-    const uRes = await pool.query(`SELECT * FROM users WHERE role = 'customer'`);
-    const cRes = await pool.query(`SELECT * FROM customers`);
-    const customers = cRes.rows.map(mapPgCustomerRow);
-    const linkedUserIds = new Set(customers.filter((c) => c.userId).map((c) => c.userId));
-    const unlinkedUsers = uRes.rows.map(mapPgUserRow).filter((u) => !linkedUserIds.has(u.id));
-    const unlinkedCustomers = customers.filter((c) => !c.userId);
+    const repairRes = await withTransaction(async (client) => {
+      const unlinkedRes = await client.query(
+        `SELECT u.* FROM users u
+         LEFT JOIN customers c ON c.user_id = u.id
+         WHERE u.role = 'customer' AND c.id IS NULL`
+      );
+      const unlinkedCustsRes = await client.query(`SELECT * FROM customers WHERE user_id IS NULL`);
+      const unlinkedCustomers = unlinkedCustsRes.rows.map(mapPgCustomerRow);
+      const createdOrLinked = [];
+      const ambiguousConflicts = [];
 
-    for (const user of unlinkedUsers) {
-      const uPhone = normalizePhoneDigits(user.phone);
-      let candidate = null;
+      for (let idx = 0; idx < unlinkedRes.rows.length; idx++) {
+        const u = unlinkedRes.rows[idx];
+        const normUserPhone = normalizePhoneDigits(u.phone);
+        const matches = normUserPhone
+          ? unlinkedCustomers.filter(
+              (c) =>
+                !c.userId &&
+                (normalizePhoneDigits(c.phone) === normUserPhone ||
+                  normalizePhoneDigits(c.secondaryPhone) === normUserPhone)
+            )
+          : [];
 
-      if (uPhone && uPhone.length >= 6) {
-        const phoneMatches = unlinkedCustomers.filter(
-          (c) => !c.userId && normalizePhoneDigits(c.phone) === uPhone
-        );
-        if (phoneMatches.length === 1) {
-          candidate = phoneMatches[0];
+        if (matches.length === 1) {
+          const target = matches[0];
+          await client.query(`UPDATE customers SET user_id = $1, updated_at = $2 WHERE id = $3`, [u.id, now, target.id]);
+          target.userId = u.id;
+          createdOrLinked.push({ userId: u.id, username: u.username, customerId: target.id, code: target.code, action: 'linked_existing' });
+        } else if (matches.length > 1) {
+          ambiguousConflicts.push({
+            userId: u.id,
+            username: u.username,
+            phone: u.phone || '',
+            candidateCustomerIds: matches.map((m) => m.id),
+            reason: 'رقم الهاتف مطابق لأكثر من ملف عميل في الدليل - يتطلب تحديداً يدوياً',
+          });
+        } else {
+          const custId = generateServerId('CUS');
+          const code = `CUS-${String(Date.now()).slice(-5)}-${idx + 1}`;
+          await client.query(
+            `INSERT INTO customers (id, code, user_id, name, phone, address, shop_address, opening_balance, current_balance, notes, status, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$6,0,0,$7,$8,$9,$9)`,
+            [
+              custId,
+              code,
+              u.id,
+              u.full_name || u.username,
+              u.phone || '',
+              u.address || '',
+              'ملف عميل مُنشأ تلقائيًا عبر أداة إصلاح الربط',
+              u.is_active === false ? 'blocked' : 'active',
+              now,
+            ]
+          );
+          createdOrLinked.push({ userId: u.id, username: u.username, customerId: custId, code, action: 'created_and_linked' });
         }
       }
+      return { repairedCount: createdOrLinked.length, repaired: createdOrLinked, ambiguousConflicts };
+    });
 
-      if (!candidate) {
-        const normFullName = String(user.fullName || '').trim().toLowerCase();
-        const normUsername = String(user.username || '').trim().toLowerCase();
-        const nameMatches = unlinkedCustomers.filter((c) => {
-          if (c.userId) return false;
-          const cname = String(c.name || '').trim().toLowerCase();
-          return (normFullName && cname === normFullName) || (normUsername && cname === normUsername);
-        });
-        if (nameMatches.length === 1) {
-          candidate = nameMatches[0];
-        }
-      }
-
-      if (candidate) {
-        await pool.query(
-          `UPDATE customers SET user_id = $1, version = COALESCE(version, 1) + 1, updated_at = $2 WHERE id = $3 AND user_id IS NULL`,
-          [user.id, now, candidate.id]
-        );
-        candidate.userId = user.id;
-        linkedCount += 1;
-      }
+    if (repairRes.repairedCount > 0) {
+      await recordAuditLog({
+        userId: actor.id,
+        userName: actor.fullName,
+        action: `إصلاح وربط ${repairRes.repairedCount} حساب عميل بملف في الدليل الموحد`,
+        module: 'العملاء',
+      });
     }
-    return { linkedCount };
+    return repairRes;
   }
 
-  await withJsonTransaction((db) => {
-    const linkedUserIds = new Set((db.customers || []).filter((c) => c.userId).map((c) => c.userId));
-    const unlinkedUsers = (db.users || []).filter((u) => u.role === 'customer' && !linkedUserIds.has(u.id));
-    const unlinkedCustomers = (db.customers || []).filter((c) => !c.userId);
+  const repairRes = await withJsonTransaction(async (db) => {
+    const linkedIds = new Set((db.customers || []).filter((c) => c.userId).map((c) => c.userId));
+    const unlinked = (db.users || []).filter((u) => u.role === 'customer' && !linkedIds.has(u.id));
+    const createdOrLinked = [];
+    const ambiguousConflicts = [];
 
-    for (const user of unlinkedUsers) {
-      const uPhone = normalizePhoneDigits(user.phone);
-      let candidate = null;
+    for (let idx = 0; idx < unlinked.length; idx++) {
+      const u = unlinked[idx];
+      const normUserPhone = normalizePhoneDigits(u.phone);
+      const matches = normUserPhone
+        ? (db.customers || []).filter(
+            (c) =>
+              !c.userId &&
+              (normalizePhoneDigits(c.phone) === normUserPhone ||
+                normalizePhoneDigits(c.secondaryPhone) === normUserPhone)
+          )
+        : [];
 
-      if (uPhone && uPhone.length >= 6) {
-        const phoneMatches = unlinkedCustomers.filter(
-          (c) => !c.userId && normalizePhoneDigits(c.phone) === uPhone
-        );
-        if (phoneMatches.length === 1) {
-          candidate = phoneMatches[0];
-        }
-      }
-
-      if (!candidate) {
-        const normFullName = String(user.fullName || '').trim().toLowerCase();
-        const normUsername = String(user.username || '').trim().toLowerCase();
-        const nameMatches = unlinkedCustomers.filter((c) => {
-          if (c.userId) return false;
-          const cname = String(c.name || '').trim().toLowerCase();
-          return (normFullName && cname === normFullName) || (normUsername && cname === normUsername);
+      if (matches.length === 1) {
+        const target = matches[0];
+        target.userId = u.id;
+        target.updatedAt = now;
+        createdOrLinked.push({ userId: u.id, username: u.username, customerId: target.id, code: target.code, action: 'linked_existing' });
+      } else if (matches.length > 1) {
+        ambiguousConflicts.push({
+          userId: u.id,
+          username: u.username,
+          phone: u.phone || '',
+          candidateCustomerIds: matches.map((m) => m.id),
+          reason: 'رقم الهاتف مطابق لأكثر من ملف عميل في الدليل - يتطلب تحديداً يدوياً',
         });
-        if (nameMatches.length === 1) {
-          candidate = nameMatches[0];
-        }
-      }
-
-      if (candidate) {
-        candidate.userId = user.id;
-        candidate.version = Number(candidate.version || 1) + 1;
-        linkedCount += 1;
+      } else {
+        const custId = generateServerId('CUS');
+        const code = `CUS-${String(Date.now()).slice(-5)}-${idx + 1}`;
+        const newCust = {
+          id: custId,
+          code,
+          userId: u.id,
+          name: u.fullName || u.username,
+          phone: u.phone || '',
+          address: u.address || '',
+          openingBalance: 0,
+          currentBalance: 0,
+          priceHistory: {},
+          notes: 'ملف عميل مُنشأ تلقائيًا عبر أداة إصلاح الربط',
+          status: u.isActive === false ? 'blocked' : 'active',
+          createdAt: now,
+        };
+        db.customers.unshift(newCust);
+        createdOrLinked.push({ userId: u.id, username: u.username, customerId: custId, code, action: 'created_and_linked' });
       }
     }
+    return { repairedCount: createdOrLinked.length, repaired: createdOrLinked, ambiguousConflicts };
   });
-  return { linkedCount };
+
+  if (repairRes.repairedCount > 0) {
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `إصلاح وربط ${repairRes.repairedCount} حساب عميل بملف في الدليل الموحد`,
+      module: 'العملاء',
+    });
+  }
+  return repairRes;
 }
 
 // ==============================================================================
@@ -1285,6 +1337,7 @@ export async function updateProduct(productId, updates, actor) {
       image: updates.image !== undefined ? (updates.image || undefined) : cur.image,
       stockPerWarehouse: cur.stockPerWarehouse, // Protect stock map from direct override via product edit
       version: Number(cur.version || 1) + 1,
+      updatedAt: now,
     };
     return db.products[idx];
   });
@@ -1555,13 +1608,11 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
   let invoices = [];
   let returns = [];
   let paymentTxs = [];
+  let orders = [];
   let advancePayments = [];
-  let ordersCount = 0;
 
   if (await isPgMode()) {
     const pool = getPool();
-    const ordCntRes = await pool.query(`SELECT COUNT(*)::int AS cnt FROM customer_item_orders WHERE customer_id = $1`, [customerId]);
-    ordersCount = Number(ordCntRes.rows[0]?.cnt || 0);
     const invRes = await pool.query(
       `SELECT * FROM invoices WHERE customer_id = $1 AND type = 'sales' AND status <> 'draft' ORDER BY date DESC, created_at DESC`,
       [customerId]
@@ -1583,7 +1634,7 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
         payMap.set(py.invoice_id, arr);
       }
     }
-    const { mapPgInvoiceRow } = await import('./mode.js');
+    const { mapPgInvoiceRow, mapPgOrderRow } = await import('./mode.js');
     invoices = invRes.rows.map((r) => mapPgInvoiceRow(r, itemsMap.get(r.id) || [], payMap.get(r.id) || []));
 
     const retRes = await pool.query(
@@ -1620,34 +1671,34 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
       createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at || '',
     }));
 
+    const ordRes = await pool.query(
+      `SELECT * FROM customer_item_orders WHERE customer_id = $1 ORDER BY created_at DESC`,
+      [customerId]
+    );
+    orders = ordRes.rows.map((r) => mapPgOrderRow(r, [], []));
+
     const advRes = await pool.query(
       `SELECT * FROM order_advance_payments WHERE customer_id = $1 ORDER BY created_at DESC`,
       [customerId]
     );
     advancePayments = advRes.rows.map((r) => ({
       id: r.id,
-      paymentNumber: r.advance_number,
-      advanceNumber: r.advance_number,
+      paymentNumber: r.payment_number,
       orderId: r.order_id,
-      requestNumber: r.request_number,
       customerId: r.customer_id,
-      customerName: r.customer_name,
+      cashboxId: r.cashbox_id,
+      cashboxName: r.cashbox_name || '',
+      paymentMethod: r.payment_method || 'cash',
       amount: Number(r.amount || 0),
       date: r.date instanceof Date ? r.date.toISOString().split('T')[0] : String(r.date || '').split('T')[0],
-      paymentMethod: r.payment_method,
-      cashboxId: r.cashbox_id,
-      cashboxName: r.cashbox_name,
-      status: r.status,
-      appliedInvoiceId: r.applied_invoice_id || undefined,
-      appliedInvoiceNumber: r.applied_invoice_number || undefined,
-      appliedAt: r.applied_at ? isoTimestamp(r.applied_at) : undefined,
       notes: r.notes || '',
+      status: r.status || 'active',
+      appliedInvoiceId: r.applied_invoice_id || undefined,
       createdBy: r.created_by,
       createdAt: isoTimestamp(r.created_at),
     }));
   } else {
     const db = readJsonDatabase();
-    ordersCount = (db.customerItemOrders || []).filter((o) => o.customerId === customerId).length;
     invoices = (db.invoices || [])
       .filter((i) => i.customerId === customerId && i.type === 'sales' && i.status !== 'draft')
       .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
@@ -1655,8 +1706,11 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
       .filter((r) => r.partyId === customerId && r.type === 'sales_return')
       .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
     paymentTxs = (db.financialTransactions || [])
-      .filter((tx) => tx.relatedEntityId === customerId && tx.type === 'customer_payment')
+      .filter((tx) => (tx.relatedEntityId === customerId || tx.partyId === customerId) && tx.type === 'customer_payment')
       .sort((a, b) => String(a.createdAt || a.date || '').localeCompare(String(b.createdAt || b.date || '')));
+    orders = (db.customerItemOrders || [])
+      .filter((o) => o.customerId === customerId)
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
     advancePayments = (db.orderAdvancePayments || [])
       .filter((a) => a.customerId === customerId)
       .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
@@ -1700,8 +1754,12 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
   }
 
   for (const inv of confirmedRaw) {
-    // Credit column on invoice row excludes previously deposited order advances (which appear as separate order_advance credit lines)
-    const directPaid = round2(Math.max(0, Number(inv.paidAmount || 0) - Number(inv.appliedAdvanceAmount || 0)));
+    const appliedAdv = round2(inv.appliedAdvanceAmount || 0);
+    const cashAtInvoice = round2(Math.max(0, Number(inv.paidAmount || 0) - appliedAdv));
+    const descParts = [`إجمالي الفاتورة ${round2(inv.grandTotal)}`];
+    if (appliedAdv > 0) descParts.push(`خصم دفعة مقدمة ${appliedAdv}`);
+    if (cashAtInvoice > 0) descParts.push(`مسدد عند الفوترة ${cashAtInvoice}`);
+    if (inv.linkedCustomerOrderId) descParts.push('محولة من طلب');
     rawEntries.push({
       id: `INV-${inv.id}`,
       date: inv.date || '',
@@ -1710,27 +1768,28 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
       type: 'sales_invoice',
       label: `فاتورة مبيعات (${inv.items?.length || 0} صنف)`,
       description:
-        inv.paidAmount > 0
-          ? `إجمالي الفاتورة ${round2(inv.grandTotal)} · مسدد منها ${round2(inv.paidAmount)}${inv.appliedAdvanceAmount ? ` (تشمل ${round2(inv.appliedAdvanceAmount)} دفعة طلب مقدمة)` : ''}`
+        inv.paidAmount > 0 || inv.linkedCustomerOrderId
+          ? descParts.join(' · ')
           : `فاتورة مبيعات آجلة — رقم ${inv.invoiceNumber}`,
       debit: round2(inv.grandTotal || 0),
-      credit: directPaid,
+      credit: cashAtInvoice,
     });
   }
 
   const confirmedInvoiceIds = new Set(confirmedRaw.map((i) => i.id));
   for (const tx of paymentTxs) {
-    // Skip payments already tied directly to a confirmed invoice line so we don't double-count directPaid
+    // Skip payments already tied directly to a confirmed invoice line so we don't double-count paidAmount
     if (tx.relatedDocType === 'sales' && tx.relatedDocId && confirmedInvoiceIds.has(tx.relatedDocId)) {
       continue;
     }
+    const isOrderAdv = tx.relatedDocType === 'order_advance';
     rawEntries.push({
       id: `PAY-${tx.id}`,
       date: tx.date || '',
       sortKey: `${tx.date || ''}-${tx.createdAt || tx.id}`,
       docNumber: tx.transactionNumber || tx.id,
-      type: tx.relatedDocType === 'order_advance' ? 'order_advance' : 'customer_payment',
-      label: tx.relatedDocType === 'order_advance' ? 'دفعة مقدمة على طلب' : 'سند تحصيل / دفعة حساب',
+      type: isOrderAdv ? 'order_advance' : 'customer_payment',
+      label: isOrderAdv ? 'دفعة مقدمة على طلب (غير مفوترة بعد)' : 'سند تحصيل / دفعة حساب',
       description: tx.description || 'سداد نقدي من العميل',
       debit: 0,
       credit: round2(tx.amount || 0),
@@ -1768,30 +1827,46 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
     };
   });
 
-  const hasAppActivity = Boolean(customer.userId) || ordersCount > 0;
-  const hasDirectSales = confirmedRaw.some((i) => !i.linkedCustomerOrderId);
+  const openOrders = orders.filter((o) => !['invoiced', 'rejected', 'cancelled'].includes(o.status));
+  const activeAdvanceBalance = round2(
+    advancePayments.filter((a) => a.status === 'active').reduce((s, a) => s + Number(a.amount || 0), 0)
+  );
+  const directSalesCount = confirmedRaw.filter((i) => !i.linkedCustomerOrderId).length;
+  const appSourceFlag = Boolean(customer.userId) || orders.length > 0;
   const customerType =
-    hasAppActivity && hasDirectSales ? 'hybrid' : hasAppActivity ? 'app_only' : 'direct_only';
+    appSourceFlag && directSalesCount > 0 ? 'hybrid' : appSourceFlag ? 'app' : 'regular';
 
   return {
     allowPriceView: Boolean(allowPriceView),
-    customerType,
     customer: {
       ...customer,
       openingBalance: allowPriceView ? customer.openingBalance : 0,
       currentBalance: allowPriceView ? customer.currentBalance : 0,
       priceHistory: allowPriceView ? customer.priceHistory : {},
     },
+    customerType,
     invoices: sanitizedInvoices,
     returns: returns.map((r) => ({ ...r, grandTotal: allowPriceView ? r.grandTotal : 0 })),
-    advancePayments: allowPriceView ? advancePayments : [],
+    orders: orders.map((o) => ({
+      ...o,
+      totalAmount: allowPriceView ? o.totalAmount : 0,
+      advancePaidAmount: allowPriceView ? o.advancePaidAmount : 0,
+      remainingAmount: allowPriceView ? o.remainingAmount : 0,
+    })),
+    advancePayments: advancePayments.map((a) => ({ ...a, amount: allowPriceView ? a.amount : 0 })),
     summary: {
       openingBalance: allowPriceView ? openingBal : null,
       totalDebit: allowPriceView ? totalDebit : null,
       totalCredit: allowPriceView ? totalCredit : null,
       currentBalance: allowPriceView ? round2(customer.currentBalance || 0) : null,
+      activeAdvanceBalance: allowPriceView ? activeAdvanceBalance : null,
+      openOrdersCount: openOrders.length,
+      openOrdersEstimatedTotal: allowPriceView
+        ? round2(openOrders.reduce((s, o) => s + Number(o.totalAmount || 0), 0))
+        : null,
       invoicesCount: confirmedRaw.length,
       returnsCount: returns.length,
+      ordersCount: orders.length,
     },
     entries,
   };

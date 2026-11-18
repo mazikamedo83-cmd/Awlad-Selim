@@ -15,6 +15,7 @@ export interface EnqueueOperationParams {
   localId?: string;
   summaryAr: string;
   payload: Record<string, any>;
+  initialStatus?: 'local' | 'pending';
 }
 
 export interface SyncRunOutcome {
@@ -39,8 +40,27 @@ export function generateOperationId(prefix = 'OP'): string {
   return `${prefix}-${rand}`.toUpperCase();
 }
 
+function sanitizeSyncPayloadAttachments(payload: Record<string, any>): Record<string, any> {
+  const next = { ...(payload || {}) };
+  if (typeof next.deliveryProof === 'string' && next.deliveryProof.trim()) {
+    const proof = next.deliveryProof.trim();
+    const valid =
+      (/^data:image\/(png|jpe?g|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(proof) ||
+        /^https?:\/\/\S+$/i.test(proof) ||
+        proof.startsWith('/product-images/')) &&
+      proof.length <= 2_500_000;
+    if (!valid) {
+      delete next.deliveryProof;
+      const warn = '[تم استبعاد صورة مرفقة غير صالحة أو كبيرة الحجم مع الحفاظ على بيانات العملية]';
+      next.deliveryNotes = next.deliveryNotes ? `${next.deliveryNotes} ${warn}` : warn;
+    }
+  }
+  return next;
+}
+
 export async function enqueueSyncOperation(params: EnqueueOperationParams): Promise<SyncQueueItem> {
   const now = new Date().toISOString();
+  const safePayload = sanitizeSyncPayloadAttachments(params.payload);
   const item: SyncQueueItem = {
     operationId: generateOperationId('OP'),
     userId: params.userId,
@@ -51,10 +71,10 @@ export async function enqueueSyncOperation(params: EnqueueOperationParams): Prom
     localId: params.localId,
     summaryAr: params.summaryAr,
     payload: {
-      ...params.payload,
+      ...safePayload,
       originDeviceId: getOrCreatePersistentDeviceId(),
     },
-    status: 'pending',
+    status: params.initialStatus || 'local',
     attempts: 0,
     createdAt: now,
     updatedAt: now,
@@ -93,6 +113,17 @@ export async function runSyncCycle(options: {
       if (!options.forceAll && item.nextRetryAt && item.nextRetryAt > nowMs) return false;
       return true;
     });
+
+    // Promote queued local/failed items into explicit 'pending' state before batching
+    for (const item of eligible) {
+      if (item.status === 'local' || item.status === 'failed') {
+        await localDb.upsertSyncQueueItem({
+          ...item,
+          status: 'pending',
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    }
 
     let pushedCount = 0;
     let syncedCount = 0;
@@ -200,20 +231,25 @@ export async function runSyncCycle(options: {
           }
         }
       } catch (err: any) {
-        if (err?.status === 401 || err?.code === 'ACCOUNT_DEACTIVATED' || err?.code === 'DEVICE_REVOKED') {
+        const isRevoked = err?.status === 401 || err?.code === 'ACCOUNT_DEACTIVATED' || err?.code === 'DEVICE_REVOKED';
+        if (isRevoked) {
           authRevoked = true;
           revokeReason = err.message;
         }
         for (const item of chunk) {
-          failedCount += 1;
+          if (isRevoked) {
+            conflictCount += 1;
+          } else {
+            failedCount += 1;
+          }
           const attempts = item.attempts + 1;
           const backoffMs = Math.min(120000, 5000 * Math.pow(2, attempts - 1));
           await localDb.upsertSyncQueueItem({
             ...item,
-            status: err?.status === 0 ? 'pending' : 'failed',
+            status: isRevoked ? 'needs_review' : err?.status === 0 ? 'pending' : 'failed',
             attempts,
             lastError: err?.message || 'تعذر إرسال دفعة المزامنة',
-            nextRetryAt: Date.now() + backoffMs,
+            nextRetryAt: isRevoked ? undefined : Date.now() + backoffMs,
             updatedAt: new Date().toISOString(),
           });
         }

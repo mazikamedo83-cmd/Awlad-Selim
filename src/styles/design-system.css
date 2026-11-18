@@ -1,0 +1,86 @@
+/* ==========================================================================
+   AWLAD SELIM – Central Unified Design System
+   Single source of visual truth for Preview, Windows Electron, Android, iOS
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* Typography */
+  --awlad-font-sans: 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --awlad-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+
+  /* Core Brand Colors (Google AI Studio Preview Baseline) */
+  --awlad-primary: #1e3a8a;
+  --awlad-primary-950: #172554;
+  --awlad-primary-600: #2563eb;
+  --awlad-primary-soft: #eff6ff;
+
+  /* Navigation Chrome */
+  --awlad-sidebar-bg: #0f172a;
+  --awlad-sidebar-header-bg: #020617;
+  --awlad-sidebar-border: #1e293b;
+  --awlad-sidebar-text: #e2e8f0;
+  --awlad-sidebar-muted: #94a3b8;
+
+  /* Surfaces & Borders */
+  --awlad-surface-page: rgba(241, 245, 249, 0.7);
+  --awlad-surface-card: #ffffff;
+  --awlad-surface-muted: #f8fafc;
+  --awlad-border-subtle: #e2e8f0;
+  --awlad-border-strong: #cbd5e1;
+
+  /* Text Hierarchy */
+  --awlad-text-primary: #0f172a;
+  --awlad-text-body: #1e293b;
+  --awlad-text-muted: #64748b;
+
+  /* Semantic Status */
+  --awlad-success: #059669;
+  --awlad-warning: #d97706;
+  --awlad-danger: #dc2626;
+
+  /* Geometry & Elevation */
+  --awlad-radius-card: 1rem;
+  --awlad-radius-control: 0.75rem;
+  --awlad-radius-pill: 9999px;
+  --awlad-shadow-card: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+  --awlad-shadow-modal: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
+
+  /* Layout Dimensions & Safe Areas */
+  --awlad-sidebar-width: 18rem;
+  --awlad-sidebar-collapsed-width: 5rem;
+  --awlad-safe-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+  --awlad-safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
+  --awlad-safe-left: max(env(safe-area-inset-left, 0px), var(--safe-area-inset-left, 0px));
+  --awlad-safe-right: max(env(safe-area-inset-right, 0px), var(--safe-area-inset-right, 0px));
+}
+
+/* Unified numeric legibility in accounting tables & KPI cards */
+.awlad-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Unified horizontal-scroll wrapper for wide accounting tables on mobile/tablet */
+.awlad-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Cross-platform Safe Area helpers (notches, status bars, home indicators) */
+.pt-safe {
+  padding-top: var(--awlad-safe-top);
+}
+
+.pb-safe {
+  padding-bottom: var(--awlad-safe-bottom);
+}
+
+.ps-safe {
+  padding-inline-start: var(--awlad-safe-right);
+}
+
+.pe-safe {
+  padding-inline-end: var(--awlad-safe-left);
+}

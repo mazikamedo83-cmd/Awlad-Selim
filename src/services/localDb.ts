@@ -410,6 +410,26 @@ export const localDb = {
           cachedAt: new Date().toISOString(),
         };
       }
+    } else if (isNativeCapacitor()) {
+      try {
+        const res = await Filesystem.readFile({
+          path: `awlad_offline/media/${safeFileSegment(mediaKey)}.txt`,
+          directory: Directory.Data,
+          encoding: Encoding.UTF8,
+        });
+        const dataUrl = String(res.data || '');
+        if (dataUrl.startsWith('data:')) {
+          return {
+            mediaKey,
+            sourceUrlHash: mediaKey,
+            mimeType: dataUrl.split(';')[0]?.replace('data:', '') || 'image/png',
+            dataUrl,
+            cachedAt: new Date().toISOString(),
+          };
+        }
+      } catch {
+        // ignore missing mobile media cache file
+      }
     }
     return null;
   },

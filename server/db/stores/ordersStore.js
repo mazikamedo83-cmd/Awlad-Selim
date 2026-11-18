@@ -5,15 +5,7 @@ import {
   readJsonDatabase,
 } from '../jsonLedger.js';
 import { generateServerId } from '../../utils/crypto.js';
-import {
-  AppError,
-  nowIso,
-  todayIso,
-  round2,
-  round3,
-  getUnitSellingPrice,
-  getUnitFactor,
-} from '../../utils/errors.js';
+import { AppError, nowIso, todayIso, round2, round3, getUnitSellingPrice, getUnitFactor } from '../../utils/errors.js';
 import {
   buildScopedIdemKey,
   findPgIdempotency,
@@ -21,59 +13,106 @@ import {
   findJsonIdempotency,
   saveJsonIdempotency,
 } from '../../utils/idempotency.js';
-import { isPgMode, mapPgOrderRow, isoTimestamp, isoDateOnly } from './mode.js';
+import { isPgMode, mapPgOrderRow, mapPgCustomerRow, isoDateOnly, isoTimestamp } from './mode.js';
 import { recordAuditLog } from './authStore.js';
 import { createInvoiceInsidePgTx, createInvoiceInsideJsonTx } from './invoicesStore.js';
 import {
   getRepresentativeByUserId,
-  listCustomers,
   isCustomerAllowedForRep,
   getSystemSettingsSafe,
 } from './catalogStore.js';
 
-function mapPgOrderAdvanceRow(r) {
-  if (!r) return null;
-  return {
-    id: r.id,
-    paymentNumber: r.advance_number,
-    advanceNumber: r.advance_number,
-    orderId: r.order_id,
-    requestNumber: r.request_number,
-    customerId: r.customer_id,
-    customerName: r.customer_name,
-    amount: Number(r.amount || 0),
-    date: isoDateOnly(r.date),
-    paymentMethod: r.payment_method || 'cash',
-    cashboxId: r.cashbox_id,
-    cashboxName: r.cashbox_name,
-    status: r.status || 'available',
-    appliedInvoiceId: r.applied_invoice_id || undefined,
-    appliedInvoiceNumber: r.applied_invoice_number || undefined,
-    appliedAt: r.applied_at ? isoTimestamp(r.applied_at) : undefined,
-    notes: r.notes || '',
-    originDeviceId: r.origin_device_id || undefined,
-    createdBy: r.created_by,
-    createdAt: isoTimestamp(r.created_at),
-  };
+function normalizeStatusFilter(rawStatus) {
+  const s = String(rawStatus || '').trim().toLowerCase();
+  if (!s || s === 'all') return '';
+  if (s === 'new') return 'pending';
+  return s;
+}
+
+function enrichOrderCollection(orders, productImageMap) {
+  return (orders || []).map((ord) => {
+    const items = (ord.items || []).map((it) => ({
+      ...it,
+      productImage: it.productImage || productImageMap.get(it.productId) || undefined,
+    }));
+    const computedTotal = items.reduce(
+      (sum, it) => sum + Number(it.unitPrice || 0) * Number(it.quantity || 0),
+      0
+    );
+    const totalAmount =
+      Number(ord.totalAmount || 0) > 0 ? round2(ord.totalAmount) : round2(computedTotal);
+    const advancePaidAmount = round2(ord.advancePaidAmount || 0);
+    const remainingAmount = Math.max(0, round2(totalAmount - advancePaidAmount));
+    const requesterType =
+      ord.requesterType || (ord.representativeId ? 'representative' : 'customer');
+    const submittedByName =
+      ord.submittedByName || ord.representativeName || ord.customerName || '';
+    return {
+      ...ord,
+      requesterType,
+      submittedByName,
+      totalAmount,
+      advancePaidAmount,
+      remainingAmount,
+      items,
+    };
+  });
+}
+
+function matchesOrderFilters(ord, filters = {}) {
+  const cleanStatus = normalizeStatusFilter(filters.status);
+  if (cleanStatus && ord.status !== cleanStatus) return false;
+
+  if (filters.requesterType && filters.requesterType !== 'all') {
+    const type = ord.requesterType || (ord.representativeId ? 'representative' : 'customer');
+    if (type !== filters.requesterType) return false;
+  }
+
+  const createdDay = String(ord.createdAt || '').slice(0, 10);
+  if (filters.dateFrom && createdDay && createdDay < filters.dateFrom) return false;
+  if (filters.dateTo && createdDay && createdDay > filters.dateTo) return false;
+
+  if (filters.search && String(filters.search).trim()) {
+    const q = String(filters.search).trim().toLowerCase();
+    const haystack = [
+      ord.requestNumber,
+      ord.customerName,
+      ord.shopName,
+      ord.submittedByName,
+      ord.representativeName,
+      ord.customerPhone,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    if (!haystack.includes(q)) return false;
+  }
+
+  return true;
 }
 
 export async function listOrders(authContext, filters = {}) {
-  const isCustomer = authContext.user.role === 'customer';
-  const isRep = authContext.user.role === 'representative';
-  const targetCustomerId = isCustomer ? authContext.customerProfile?.id || null : filters.customerId || null;
+  const actor = authContext.user;
+  const isCustomer = actor.role === 'customer';
+  const isRep = actor.role === 'representative';
+  const isSalesManager = actor.role === 'admin' || Boolean(actor.permissions?.canManageSales);
 
+  if (!isCustomer && !isRep && !isSalesManager) {
+    return [];
+  }
+
+  const targetCustomerId = isCustomer ? authContext.customerProfile?.id || null : filters.customerId || null;
   if (isCustomer && !targetCustomerId) {
     return [];
   }
 
-  let repProfile = null;
-  let allowedCustomerIds = null;
+  let rep = null;
   if (isRep) {
-    repProfile = authContext.representativeProfile || (await getRepresentativeByUserId(authContext.user.id));
-    if (!repProfile) return [];
-    const allowedCusts = await listCustomers({ forRepId: repProfile.id });
-    allowedCustomerIds = new Set(allowedCusts.map((c) => c.id));
+    rep = authContext.representativeProfile || (await getRepresentativeByUserId(actor.id));
+    if (!rep) return [];
   }
+
+  const cleanStatus = normalizeStatusFilter(filters.status);
 
   if (await isPgMode()) {
     const pool = getPool();
@@ -83,20 +122,39 @@ export async function listOrders(authContext, filters = {}) {
       params.push(targetCustomerId);
       clauses.push(`customer_id = $${params.length}`);
     }
-    if (filters.status) {
-      params.push(filters.status);
+    if (isRep) {
+      params.push(actor.id);
+      const userParam = `$${params.length}`;
+      params.push(rep.id);
+      const repParam = `$${params.length}`;
+      clauses.push(`(user_id = ${userParam} OR representative_id = ${repParam} OR delivery_rep_id = ${repParam})`);
+    }
+    if (cleanStatus) {
+      params.push(cleanStatus);
       clauses.push(`status = $${params.length}`);
+    }
+    if (filters.requesterType && filters.requesterType !== 'all') {
+      params.push(filters.requesterType);
+      clauses.push(`requester_type = $${params.length}`);
     }
     const whereSql = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     const ordRes = await pool.query(`SELECT * FROM customer_item_orders ${whereSql} ORDER BY created_at DESC`, params);
     if (ordRes.rows.length === 0) return [];
 
     const ordIds = ordRes.rows.map((r) => r.id);
-    const itemsRes = await pool.query(`SELECT * FROM customer_item_order_items WHERE order_id = ANY($1::varchar[])`, [ordIds]);
-    const histRes = await pool.query(
-      `SELECT * FROM order_status_history WHERE order_id = ANY($1::varchar[]) ORDER BY changed_at ASC`,
-      [ordIds]
-    );
+    const [itemsRes, histRes, prodImgRes] = await Promise.all([
+      pool.query(`SELECT * FROM customer_item_order_items WHERE order_id = ANY($1::varchar[])`, [ordIds]),
+      pool.query(
+        `SELECT * FROM order_status_history WHERE order_id = ANY($1::varchar[]) ORDER BY changed_at ASC`,
+        [ordIds]
+      ),
+      pool.query(`SELECT id, image FROM products WHERE image IS NOT NULL AND image <> ''`),
+    ]);
+
+    const productImageMap = new Map();
+    for (const p of prodImgRes.rows) {
+      if (p.image) productImageMap.set(p.id, p.image);
+    }
 
     const itemsMap = new Map();
     for (const it of itemsRes.rows) {
@@ -111,74 +169,92 @@ export async function listOrders(authContext, filters = {}) {
       histMap.set(h.order_id, list);
     }
 
-    const list = ordRes.rows.map((r) => mapPgOrderRow(r, itemsMap.get(r.id) || [], histMap.get(r.id) || []));
-    return isRep
-      ? list.filter(
-          (o) =>
-            (allowedCustomerIds && allowedCustomerIds.has(o.customerId)) ||
-            (repProfile && (o.deliveryRepId === repProfile.id || o.representativeId === repProfile.id))
-        )
-      : list;
+    const list = enrichOrderCollection(
+      ordRes.rows.map((r) => mapPgOrderRow(r, itemsMap.get(r.id) || [], histMap.get(r.id) || [])),
+      productImageMap
+    );
+    return list.filter((o) => matchesOrderFilters(o, filters));
   }
 
   const db = readJsonDatabase();
-  return db.customerItemOrders
+  const productImageMap = new Map();
+  for (const p of db.products || []) {
+    if (p.image) productImageMap.set(p.id, p.image);
+  }
+
+  const scoped = (db.customerItemOrders || [])
     .filter((o) => {
       if (targetCustomerId && o.customerId !== targetCustomerId) return false;
-      if (
-        isRep &&
-        !(
-          (allowedCustomerIds && allowedCustomerIds.has(o.customerId)) ||
-          (repProfile && (o.deliveryRepId === repProfile.id || o.representativeId === repProfile.id))
-        )
-      ) {
-        return false;
+      if (isRep) {
+        const ownedByRepUser =
+          o.userId === actor.id ||
+          (rep && (o.representativeId === rep.id || o.deliveryRepId === rep.id));
+        if (!ownedByRepUser) return false;
       }
-      if (filters.status && o.status !== filters.status) return false;
       return true;
     })
     .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+
+  return enrichOrderCollection(scoped, productImageMap).filter((o) => matchesOrderFilters(o, filters));
 }
 
 export async function getOrderById(orderId, authContext) {
+  const actor = authContext.user;
+  const isCustomer = actor.role === 'customer';
+  const isRep = actor.role === 'representative';
+  const isSalesManager = actor.role === 'admin' || Boolean(actor.permissions?.canManageSales);
+
+  if (!isCustomer && !isRep && !isSalesManager) {
+    throw new AppError(403, 'غير مصرح لك بالوصول إلى طلبات العملاء والمندوبين', 'FORBIDDEN_ORDER_ACCESS');
+  }
+
   if (await isPgMode()) {
     const pool = getPool();
     const ordRes = await pool.query(`SELECT * FROM customer_item_orders WHERE id = $1 LIMIT 1`, [orderId]);
     const row = ordRes.rows[0];
     if (!row) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
 
-    if (authContext.user.role === 'customer' && row.customer_id !== authContext.customerProfile?.id) {
+    if (isCustomer && row.customer_id !== authContext.customerProfile?.id) {
       throw new AppError(403, 'غير مصرح لك بعرض طلبات عميل آخر', 'FORBIDDEN_ORDER_ACCESS');
     }
-    if (authContext.user.role === 'representative') {
-      const rep = authContext.representativeProfile || (await getRepresentativeByUserId(authContext.user.id));
-      const allowedCusts = rep ? await listCustomers({ forRepId: rep.id }) : [];
-      const assignedToRep = rep && (row.delivery_rep_id === rep.id || row.representative_id === rep.id);
-      if (!assignedToRep && !allowedCusts.some((c) => c.id === row.customer_id)) {
-        throw new AppError(403, 'غير مصرح لك بعرض طلبات عميل غير معين لك', 'FORBIDDEN_ORDER_ACCESS');
+    if (isRep) {
+      const rep = authContext.representativeProfile || (await getRepresentativeByUserId(actor.id));
+      const ownedByRep =
+        row.user_id === actor.id ||
+        (rep && (row.representative_id === rep.id || row.delivery_rep_id === rep.id));
+      if (!ownedByRep) {
+        throw new AppError(403, 'غير مصرح لك بعرض طلبات غير مخصصة لك', 'FORBIDDEN_ORDER_ACCESS');
       }
     }
 
-    const itemsRes = await pool.query(`SELECT * FROM customer_item_order_items WHERE order_id = $1`, [orderId]);
-    const histRes = await pool.query(`SELECT * FROM order_status_history WHERE order_id = $1 ORDER BY changed_at ASC`, [orderId]);
-    return mapPgOrderRow(row, itemsRes.rows, histRes.rows);
+    const [itemsRes, histRes, prodImgRes] = await Promise.all([
+      pool.query(`SELECT * FROM customer_item_order_items WHERE order_id = $1`, [orderId]),
+      pool.query(`SELECT * FROM order_status_history WHERE order_id = $1 ORDER BY changed_at ASC`, [orderId]),
+      pool.query(`SELECT id, image FROM products WHERE image IS NOT NULL AND image <> ''`),
+    ]);
+    const productImageMap = new Map(prodImgRes.rows.map((p) => [p.id, p.image]));
+    return enrichOrderCollection([mapPgOrderRow(row, itemsRes.rows, histRes.rows)], productImageMap)[0];
   }
 
   const db = readJsonDatabase();
   const order = db.customerItemOrders.find((o) => o.id === orderId);
   if (!order) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
-  if (authContext.user.role === 'customer' && order.customerId !== authContext.customerProfile?.id) {
+  if (isCustomer && order.customerId !== authContext.customerProfile?.id) {
     throw new AppError(403, 'غير مصرح لك بعرض طلبات عميل آخر', 'FORBIDDEN_ORDER_ACCESS');
   }
-  if (authContext.user.role === 'representative') {
-    const rep = authContext.representativeProfile || (await getRepresentativeByUserId(authContext.user.id));
-    const cust = db.customers.find((c) => c.id === order.customerId);
-    const assignedToRep = rep && (order.deliveryRepId === rep.id || order.representativeId === rep.id);
-    if (!rep || (!assignedToRep && !isCustomerAllowedForRep(cust, rep.id))) {
-      throw new AppError(403, 'غير مصرح لك بعرض طلبات عميل غير معين لك', 'FORBIDDEN_ORDER_ACCESS');
+  if (isRep) {
+    const rep = authContext.representativeProfile || (await getRepresentativeByUserId(actor.id));
+    const ownedByRep =
+      order.userId === actor.id ||
+      (rep && (order.representativeId === rep.id || order.deliveryRepId === rep.id));
+    if (!ownedByRep) {
+      throw new AppError(403, 'غير مصرح لك بعرض طلبات غير مخصصة لك', 'FORBIDDEN_ORDER_ACCESS');
     }
   }
-  return order;
+  const productImageMap = new Map(
+    (db.products || []).filter((p) => p.image).map((p) => [p.id, p.image])
+  );
+  return enrichOrderCollection([order], productImageMap)[0];
 }
 
 export async function createCustomerOrder(payload, authContext) {
@@ -186,9 +262,15 @@ export async function createCustomerOrder(payload, authContext) {
   const isCustomer = actor.role === 'customer';
   const isRep = actor.role === 'representative';
   const settings = await getSystemSettingsSafe();
+
   if (isCustomer && settings.mobileConfig?.enableCustomerApp === false) {
     throw new AppError(403, 'استقبال طلبات العملاء من تطبيق الموبايل متوقف حاليًا من إعدادات الإدارة', 'CUSTOMER_APP_DISABLED');
   }
+  if (isRep && settings.mobileConfig?.enableRepApp === false) {
+    throw new AppError(403, 'بوابة المندوبين من تطبيق الموبايل متوقفة حاليًا من إعدادات الإدارة', 'REP_APP_DISABLED');
+  }
+
+  const requesterType = isCustomer ? 'customer' : isRep ? 'representative' : 'staff';
 
   // Strictly determine authoritative customerId — NEVER trust client customerId for customer accounts
   const targetCustomerId = isCustomer ? authContext.customerProfile?.id : payload.customerId;
@@ -196,7 +278,7 @@ export async function createCustomerOrder(payload, authContext) {
     throw new AppError(
       400,
       isCustomer
-        ? 'حساب العميل غير مربوط بملف عميل في الدليل. يرجى التواصل مع الإدارة لإتمام الربط.'
+        ? 'حسابك غير مربوط بملف عميل في الدليل بعد. يرجى التواصل مع الإدارة لإتمام الربط.'
         : 'يرجى تحديد العميل المطلوب إنشاء الطلب له',
       'CUSTOMER_PROFILE_REQUIRED'
     );
@@ -208,8 +290,6 @@ export async function createCustomerOrder(payload, authContext) {
   }
 
   const idempotencyKey = payload.idempotencyKey ? String(payload.idempotencyKey).trim().slice(0, 128) : null;
-  const requesterType = isRep ? 'representative' : 'customer';
-  const originDeviceId = payload.originDeviceId ? String(payload.originDeviceId).slice(0, 128) : null;
   const now = nowIso();
   const orderId = generateServerId('ORD');
 
@@ -229,17 +309,15 @@ export async function createCustomerOrder(payload, authContext) {
       if (!cust) throw new AppError(404, 'ملف العميل غير موجود', 'CUSTOMER_NOT_FOUND');
       if (cust.status === 'blocked') throw new AppError(403, 'حساب العميل موقوف حاليًا ولا يمكنه إرسال طلبات', 'CUSTOMER_BLOCKED');
 
-      let repInfo = null;
+      let repProfile = null;
       if (isRep) {
-        repInfo = authContext.representativeProfile || (await getRepresentativeByUserId(actor.id));
-        const { mapPgCustomerRow } = await import('./mode.js');
-        if (!repInfo || !isCustomerAllowedForRep(mapPgCustomerRow(cust), repInfo.id)) {
+        repProfile = authContext.representativeProfile || (await getRepresentativeByUserId(actor.id));
+        if (!repProfile || !isCustomerAllowedForRep(mapPgCustomerRow(cust), repProfile.id)) {
           throw new AppError(403, 'غير مصرح لك بإنشاء طلب لعميل غير معين في قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
         }
       }
 
       const resolvedItems = [];
-      let totalAmount = 0;
       for (const item of rawItems) {
         const qty = round3(item.quantity);
         if (!item.productId || qty <= 0) {
@@ -262,21 +340,24 @@ export async function createCustomerOrder(payload, authContext) {
         };
         const unitName = String(item.unit || prod.base_unit);
         const unitFactor = getUnitFactor(prodObj, unitName);
-        const catalogPrice = round2(getUnitSellingPrice(prodObj, unitName));
-        const referenceUnitPrice = (isCustomer || isRep) ? catalogPrice : round2(item.unitPrice ?? catalogPrice);
-        totalAmount = round2(totalAmount + qty * referenceUnitPrice);
+        const referenceUnitPrice = round2(getUnitSellingPrice(prodObj, unitName));
 
         resolvedItems.push({
           id: generateServerId('OITM'),
           productId: prod.id,
           productCode: prod.code,
           productName: prod.name,
+          productImage: prod.image || undefined,
           unit: unitName,
           unitFactor,
           quantity: qty,
           unitPrice: referenceUnitPrice,
         });
       }
+
+      const totalAmount = round2(
+        resolvedItems.reduce((sum, it) => sum + Number(it.unitPrice || 0) * Number(it.quantity || 0), 0)
+      );
 
       const seqRes = await client.query(`SELECT nextval('seq_customer_order_no') AS n`);
       const seqNum = Number(seqRes.rows[0]?.n || 1);
@@ -286,38 +367,51 @@ export async function createCustomerOrder(payload, authContext) {
       const shopName = String(payload.shopName || cust.shop_name || '').trim();
       const deliveryAddress = String(payload.deliveryAddress || cust.address || cust.shop_address || '').trim();
       const geoCoordinates = String(payload.geoCoordinates || cust.geo_coordinates || cust.map_location || '').trim();
-      const submittedByName = isRep ? repInfo?.name || actor.fullName : cust.name;
+      const sourcePlatform = String(payload.sourcePlatform || 'web').slice(0, 24);
+      const originDeviceId = payload.originDeviceId ? String(payload.originDeviceId).slice(0, 64) : null;
 
       await client.query(
-        `INSERT INTO customer_item_orders (id, request_number, customer_id, user_id, requester_type, representative_id, representative_name, submitted_by_name, customer_name, customer_phone, shop_name, delivery_address, geo_coordinates, status, total_amount, advance_paid_amount, notes, idempotency_key, origin_device_id, version, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending',$14,0,$15,$16,$17,1,$18,$18)`,
+        `INSERT INTO customer_item_orders (id, request_number, customer_id, user_id, requester_type, submitted_by_name, representative_id, representative_name, customer_name, customer_phone, shop_name, delivery_address, geo_coordinates, total_amount, advance_paid_amount, remaining_amount, status, source_platform, origin_device_id, sync_status, notes, idempotency_key, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,0,$14,'pending',$15,$16,'synced',$17,$18,$19,$19)`,
         [
           orderId,
           requestNumber,
           cust.id,
           actor.id,
           requesterType,
-          repInfo?.id || null,
-          repInfo?.name || '',
-          submittedByName,
+          actor.fullName,
+          repProfile?.id || null,
+          repProfile?.name || '',
           cust.name,
           customerPhone,
           shopName,
           deliveryAddress,
           geoCoordinates,
           totalAmount,
+          sourcePlatform,
+          originDeviceId,
           String(payload.notes || '').trim(),
           idempotencyKey,
-          originDeviceId,
           now,
         ]
       );
 
       for (const it of resolvedItems) {
         await client.query(
-          `INSERT INTO customer_item_order_items (id, order_id, product_id, product_code, product_name, unit, unit_factor, quantity, reference_unit_price)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-          [it.id, orderId, it.productId, it.productCode, it.productName, it.unit, it.unitFactor, it.quantity, it.unitPrice]
+          `INSERT INTO customer_item_order_items (id, order_id, product_id, product_code, product_name, product_image, unit, unit_factor, quantity, reference_unit_price)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+          [
+            it.id,
+            orderId,
+            it.productId,
+            it.productCode,
+            it.productName,
+            it.productImage || null,
+            it.unit,
+            it.unitFactor,
+            it.quantity,
+            it.unitPrice,
+          ]
         );
       }
 
@@ -325,7 +419,14 @@ export async function createCustomerOrder(payload, authContext) {
       await client.query(
         `INSERT INTO order_status_history (id, order_id, from_status, to_status, changed_by_user_id, changed_by_name, reason, changed_at)
          VALUES ($1,$2,NULL,'pending',$3,$4,$5,$6)`,
-        [histId, orderId, actor.id, actor.fullName, isRep ? 'إنشاء طلب عبر المندوب' : 'إنشاء طلب جديد من العميل', now]
+        [
+          histId,
+          orderId,
+          actor.id,
+          actor.fullName,
+          isRep ? `إنشاء طلب جديد من المندوب (${repProfile?.name || actor.fullName})` : 'إنشاء طلب جديد من العميل',
+          now,
+        ]
       );
 
       const ordRes = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1`, [orderId]);
@@ -338,8 +439,8 @@ export async function createCustomerOrder(payload, authContext) {
       await recordAuditLog({
         userId: actor.id,
         userName: actor.fullName,
-        action: `إرسال طلب جديد (${result.order.requestNumber})`,
-        module: 'طلبات العملاء',
+        action: `إرسال طلب ${isRep ? 'مندوب' : 'عميل'} جديد (${result.order.requestNumber})`,
+        module: 'طلبات العملاء والمندوبين',
         recordId: result.order.id,
       });
     }
@@ -359,16 +460,15 @@ export async function createCustomerOrder(payload, authContext) {
     if (!cust) throw new AppError(404, 'ملف العميل غير موجود', 'CUSTOMER_NOT_FOUND');
     if (cust.status === 'blocked') throw new AppError(403, 'حساب العميل موقوف حاليًا ولا يمكنه إرسال طلبات', 'CUSTOMER_BLOCKED');
 
-    let repInfo = null;
+    let repProfile = null;
     if (isRep) {
-      repInfo = authContext.representativeProfile || (db.representatives || []).find((r) => r.userId === actor.id);
-      if (!repInfo || !isCustomerAllowedForRep(cust, repInfo.id)) {
+      repProfile = authContext.representativeProfile || (db.representatives || []).find((r) => r.userId === actor.id);
+      if (!repProfile || !isCustomerAllowedForRep(cust, repProfile.id)) {
         throw new AppError(403, 'غير مصرح لك بإنشاء طلب لعميل غير معين في قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
       }
     }
 
     const resolvedItems = [];
-    let totalAmount = 0;
     for (const item of rawItems) {
       const qty = round3(item.quantity);
       if (!item.productId || qty <= 0) {
@@ -379,19 +479,21 @@ export async function createCustomerOrder(payload, authContext) {
         throw new AppError(404, `الصنف غير متاح أو غير نشط (${item.productName || item.productId})`, 'PRODUCT_UNAVAILABLE');
       }
       const unitName = String(item.unit || prod.baseUnit);
-      const catalogPrice = round2(getUnitSellingPrice(prod, unitName));
-      const unitPrice = (isCustomer || isRep) ? catalogPrice : round2(item.unitPrice ?? catalogPrice);
-      totalAmount = round2(totalAmount + qty * unitPrice);
       resolvedItems.push({
         productId: prod.id,
         productCode: prod.code,
         productName: prod.name,
+        productImage: prod.image || undefined,
         unit: unitName,
         unitFactor: getUnitFactor(prod, unitName),
         quantity: qty,
-        unitPrice,
+        unitPrice: round2(getUnitSellingPrice(prod, unitName)),
       });
     }
+
+    const totalAmount = round2(
+      resolvedItems.reduce((sum, it) => sum + Number(it.unitPrice || 0) * Number(it.quantity || 0), 0)
+    );
 
     const seqNum = nextJsonSequence(db, 'customerOrderNo', db.customerItemOrders, 'requestNumber', /(\d+)$/);
     const requestNumber = `COR-${String(seqNum).padStart(5, '0')}`;
@@ -402,30 +504,33 @@ export async function createCustomerOrder(payload, authContext) {
       customerId: cust.id,
       userId: actor.id,
       requesterType,
-      representativeId: repInfo?.id || undefined,
-      representativeName: repInfo?.name || undefined,
-      submittedByName: isRep ? repInfo?.name || actor.fullName : cust.name,
+      submittedByName: actor.fullName,
+      representativeId: repProfile?.id || undefined,
+      representativeName: repProfile?.name || undefined,
       customerName: cust.name,
       customerPhone: String(payload.customerPhone || cust.phone || '').trim(),
       shopName: String(payload.shopName || cust.shopName || '').trim(),
       deliveryAddress: String(payload.deliveryAddress || cust.address || '').trim(),
       geoCoordinates: String(payload.geoCoordinates || cust.geoCoordinates || '').trim(),
-      items: resolvedItems,
       totalAmount,
       advancePaidAmount: 0,
       remainingAmount: totalAmount,
+      collectedAmount: 0,
+      items: resolvedItems,
       status: 'pending',
+      sourcePlatform: String(payload.sourcePlatform || 'web').slice(0, 24),
+      originDeviceId: payload.originDeviceId || undefined,
+      syncStatus: 'synced',
+      version: 1,
       notes: String(payload.notes || '').trim(),
       idempotencyKey: idempotencyKey || undefined,
-      originDeviceId: originDeviceId || undefined,
-      version: 1,
       statusHistory: [
         {
           id: generateServerId('OSH'),
           fromStatus: null,
           toStatus: 'pending',
           changedByName: actor.fullName,
-          reason: isRep ? 'إنشاء طلب عبر المندوب' : 'إنشاء طلب جديد من العميل',
+          reason: isRep ? `إنشاء طلب جديد من المندوب (${repProfile?.name || actor.fullName})` : 'إنشاء طلب جديد من العميل',
           changedAt: now,
         },
       ],
@@ -441,15 +546,15 @@ export async function createCustomerOrder(payload, authContext) {
     await recordAuditLog({
       userId: actor.id,
       userName: actor.fullName,
-      action: `إرسال طلب جديد (${result.order.requestNumber})`,
-      module: 'طلبات العملاء',
+      action: `إرسال طلب ${isRep ? 'مندوب' : 'عميل'} جديد (${result.order.requestNumber})`,
+      module: 'طلبات العملاء والمندوبين',
       recordId: result.order.id,
     });
   }
   return result;
 }
 
-export async function reviewCustomerOrder(orderId, actor) {
+export async function reviewCustomerOrder(orderId, { notes = '' } = {}, actor) {
   const now = nowIso();
   if (await isPgMode()) {
     const order = await withTransaction(async (client) => {
@@ -457,33 +562,33 @@ export async function reviewCustomerOrder(orderId, actor) {
       const row = ordRes.rows[0];
       if (!row) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
       if (row.status === 'under_review') {
-        const itemsRes = await client.query(`SELECT * FROM customer_item_order_items WHERE order_id = $1`, [orderId]);
-        const histRes = await client.query(`SELECT * FROM order_status_history WHERE order_id = $1 ORDER BY changed_at ASC`, [orderId]);
-        return mapPgOrderRow(row, itemsRes.rows, histRes.rows);
+        throw new AppError(409, 'الطلب قيد المراجعة بالفعل (منع التكرار)', 'ORDER_ALREADY_UNDER_REVIEW');
       }
       if (row.status !== 'pending') {
-        throw new AppError(409, `لا يمكن وضع طلب بحالة (${row.status}) قيد المراجعة`, 'INVALID_ORDER_TRANSITION');
+        throw new AppError(409, `لا يمكن تحويل طلب بحالة (${row.status}) إلى قيد المراجعة`, 'INVALID_ORDER_TRANSITION');
       }
 
       await client.query(
-        `UPDATE customer_item_orders SET status = 'under_review', reviewed_by = $1, reviewed_by_user_id = $2, reviewed_at = $3, version = COALESCE(version, 1) + 1, updated_at = $3 WHERE id = $4`,
+        `UPDATE customer_item_orders SET status = 'under_review', reviewed_by = $1, reviewed_by_user_id = $2, reviewed_at = $3, updated_at = $3 WHERE id = $4`,
         [actor.fullName, actor.id, now, orderId]
       );
       await client.query(
         `INSERT INTO order_status_history (id, order_id, from_status, to_status, changed_by_user_id, changed_by_name, reason, changed_at)
-         VALUES ($1,$2,$3,'under_review',$4,$5,$6,$7)`,
-        [generateServerId('OSH'), orderId, row.status, actor.id, actor.fullName, 'بدء مراجعة الطلب من الإدارة', now]
+         VALUES ($1,$2,'pending','under_review',$3,$4,$5,$6)`,
+        [generateServerId('OSH'), orderId, actor.id, actor.fullName, notes || 'بدء مراجعة الطلب من الإدارة', now]
       );
+
       const updated = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1`, [orderId]);
       const itemsRes = await client.query(`SELECT * FROM customer_item_order_items WHERE order_id = $1`, [orderId]);
       const histRes = await client.query(`SELECT * FROM order_status_history WHERE order_id = $1 ORDER BY changed_at ASC`, [orderId]);
       return mapPgOrderRow(updated.rows[0], itemsRes.rows, histRes.rows);
     });
+
     await recordAuditLog({
       userId: actor.id,
       userName: actor.fullName,
-      action: `بدء مراجعة الطلب (${order.requestNumber})`,
-      module: 'طلبات العملاء',
+      action: `تحويل الطلب (${order.requestNumber}) إلى قيد المراجعة`,
+      module: 'طلبات العملاء والمندوبين',
       recordId: orderId,
     });
     return order;
@@ -492,32 +597,30 @@ export async function reviewCustomerOrder(orderId, actor) {
   const order = await withJsonTransaction(async (db) => {
     const ord = db.customerItemOrders.find((o) => o.id === orderId);
     if (!ord) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
-    if (ord.status === 'under_review') return ord;
-    if (ord.status !== 'pending') {
-      throw new AppError(409, `لا يمكن وضع طلب بحالة (${ord.status}) قيد المراجعة`, 'INVALID_ORDER_TRANSITION');
-    }
-    const prevStatus = ord.status;
+    if (ord.status === 'under_review') throw new AppError(409, 'الطلب قيد المراجعة بالفعل', 'ORDER_ALREADY_UNDER_REVIEW');
+    if (ord.status !== 'pending') throw new AppError(409, `لا يمكن تحويل طلب بحالة (${ord.status}) إلى قيد المراجعة`, 'INVALID_ORDER_TRANSITION');
+
     ord.status = 'under_review';
     ord.reviewedBy = actor.fullName;
     ord.reviewedAt = now;
-    ord.version = Number(ord.version || 1) + 1;
     ord.updatedAt = now;
     ord.statusHistory = ord.statusHistory || [];
     ord.statusHistory.push({
       id: generateServerId('OSH'),
-      fromStatus: prevStatus,
+      fromStatus: 'pending',
       toStatus: 'under_review',
       changedByName: actor.fullName,
-      reason: 'بدء مراجعة الطلب من الإدارة',
+      reason: notes || 'بدء مراجعة الطلب من الإدارة',
       changedAt: now,
     });
     return ord;
   });
+
   await recordAuditLog({
     userId: actor.id,
     userName: actor.fullName,
-    action: `بدء مراجعة الطلب (${order.requestNumber})`,
-    module: 'طلبات العملاء',
+    action: `تحويل الطلب (${order.requestNumber}) إلى قيد المراجعة`,
+    module: 'طلبات العملاء والمندوبين',
     recordId: orderId,
   });
   return order;
@@ -525,7 +628,6 @@ export async function reviewCustomerOrder(orderId, actor) {
 
 export async function approveCustomerOrder(orderId, { notes = '' } = {}, actor) {
   const now = nowIso();
-  const approvable = new Set(['pending', 'under_review', 'needs_review']);
   if (await isPgMode()) {
     const order = await withTransaction(async (client) => {
       const ordRes = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1 FOR UPDATE`, [orderId]);
@@ -534,19 +636,19 @@ export async function approveCustomerOrder(orderId, { notes = '' } = {}, actor) 
       if (row.status === 'approved') {
         throw new AppError(409, 'تمت الموافقة على هذا الطلب مسبقًا (منع الاعتماد المكرر)', 'ORDER_ALREADY_APPROVED');
       }
-      if (!approvable.has(row.status)) {
+      if (row.status !== 'pending' && row.status !== 'under_review') {
         throw new AppError(409, `لا يمكن قبول طلب بحالة (${row.status})`, 'INVALID_ORDER_TRANSITION');
       }
 
       const prevStatus = row.status;
       await client.query(
-        `UPDATE customer_item_orders SET status = 'approved', reviewed_by = $1, reviewed_by_user_id = $2, reviewed_at = $3, version = COALESCE(version, 1) + 1, updated_at = $3 WHERE id = $4`,
+        `UPDATE customer_item_orders SET status = 'approved', reviewed_by = $1, reviewed_by_user_id = $2, reviewed_at = $3, updated_at = $3 WHERE id = $4`,
         [actor.fullName, actor.id, now, orderId]
       );
       await client.query(
         `INSERT INTO order_status_history (id, order_id, from_status, to_status, changed_by_user_id, changed_by_name, reason, changed_at)
          VALUES ($1,$2,$3,'approved',$4,$5,$6,$7)`,
-        [generateServerId('OSH'), orderId, prevStatus, actor.id, actor.fullName, notes || 'اعتماد الطلب من الإدارة (بدون إنشاء فاتورة أو خصم مخزون)', now]
+        [generateServerId('OSH'), orderId, prevStatus, actor.id, actor.fullName, notes || 'قبول الطلب من الإدارة (متاح لاستكمال إجراءات الفوترة)', now]
       );
 
       const updated = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1`, [orderId]);
@@ -558,8 +660,8 @@ export async function approveCustomerOrder(orderId, { notes = '' } = {}, actor) 
     await recordAuditLog({
       userId: actor.id,
       userName: actor.fullName,
-      action: `الموافقة على طلب العميل (${order.requestNumber})`,
-      module: 'طلبات العملاء',
+      action: `قبول الطلب (${order.requestNumber})`,
+      module: 'طلبات العملاء والمندوبين',
       recordId: orderId,
     });
     return order;
@@ -568,14 +670,15 @@ export async function approveCustomerOrder(orderId, { notes = '' } = {}, actor) 
   const order = await withJsonTransaction(async (db) => {
     const ord = db.customerItemOrders.find((o) => o.id === orderId);
     if (!ord) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
-    if (ord.status === 'approved') throw new AppError(409, 'تمت الموافقة على هذا الطلب مسبقًا', 'ORDER_ALREADY_APPROVED');
-    if (!approvable.has(ord.status)) throw new AppError(409, `لا يمكن قبول طلب بحالة (${ord.status})`, 'INVALID_ORDER_TRANSITION');
+    if (ord.status === 'approved') throw new AppError(409, 'تمت الموافقة على هذا الطلب مسبقًا (منع الاعتماد المكرر)', 'ORDER_ALREADY_APPROVED');
+    if (ord.status !== 'pending' && ord.status !== 'under_review') {
+      throw new AppError(409, `لا يمكن قبول طلب بحالة (${ord.status})`, 'INVALID_ORDER_TRANSITION');
+    }
 
     const prevStatus = ord.status;
     ord.status = 'approved';
     ord.reviewedBy = actor.fullName;
     ord.reviewedAt = now;
-    ord.version = Number(ord.version || 1) + 1;
     ord.updatedAt = now;
     ord.statusHistory = ord.statusHistory || [];
     ord.statusHistory.push({
@@ -583,7 +686,7 @@ export async function approveCustomerOrder(orderId, { notes = '' } = {}, actor) 
       fromStatus: prevStatus,
       toStatus: 'approved',
       changedByName: actor.fullName,
-      reason: notes || 'اعتماد الطلب من الإدارة (بدون إنشاء فاتورة أو خصم مخزون)',
+      reason: notes || 'قبول الطلب من الإدارة (متاح لاستكمال إجراءات الفوترة)',
       changedAt: now,
     });
     return ord;
@@ -592,8 +695,8 @@ export async function approveCustomerOrder(orderId, { notes = '' } = {}, actor) 
   await recordAuditLog({
     userId: actor.id,
     userName: actor.fullName,
-    action: `الموافقة على طلب العميل (${order.requestNumber})`,
-    module: 'طلبات العملاء',
+    action: `قبول الطلب (${order.requestNumber})`,
+    module: 'طلبات العملاء والمندوبين',
     recordId: orderId,
   });
   return order;
@@ -602,7 +705,7 @@ export async function approveCustomerOrder(orderId, { notes = '' } = {}, actor) 
 export async function rejectCustomerOrder(orderId, { reason }, actor) {
   const cleanReason = String(reason || '').trim();
   if (!cleanReason) {
-    throw new AppError(400, 'يجب إدخال سبب واضح لرفض طلب العميل', 'REJECTION_REASON_REQUIRED');
+    throw new AppError(400, 'يجب إدخال سبب واضح لرفض الطلب', 'REJECTION_REASON_REQUIRED');
   }
   const now = nowIso();
 
@@ -616,7 +719,7 @@ export async function rejectCustomerOrder(orderId, { reason }, actor) {
 
       const prevStatus = row.status;
       await client.query(
-        `UPDATE customer_item_orders SET status = 'rejected', rejection_reason = $1, reviewed_by = $2, reviewed_by_user_id = $3, reviewed_at = $4, version = COALESCE(version, 1) + 1, updated_at = $4 WHERE id = $5`,
+        `UPDATE customer_item_orders SET status = 'rejected', rejection_reason = $1, reviewed_by = $2, reviewed_by_user_id = $3, reviewed_at = $4, updated_at = $4 WHERE id = $5`,
         [cleanReason, actor.fullName, actor.id, now, orderId]
       );
       await client.query(
@@ -634,8 +737,8 @@ export async function rejectCustomerOrder(orderId, { reason }, actor) {
     await recordAuditLog({
       userId: actor.id,
       userName: actor.fullName,
-      action: `رفض طلب العميل (${order.requestNumber})`,
-      module: 'طلبات العملاء',
+      action: `رفض الطلب (${order.requestNumber})`,
+      module: 'طلبات العملاء والمندوبين',
       recordId: orderId,
       notes: cleanReason,
     });
@@ -653,7 +756,6 @@ export async function rejectCustomerOrder(orderId, { reason }, actor) {
     ord.rejectionReason = cleanReason;
     ord.reviewedBy = actor.fullName;
     ord.reviewedAt = now;
-    ord.version = Number(ord.version || 1) + 1;
     ord.updatedAt = now;
     ord.statusHistory = ord.statusHistory || [];
     ord.statusHistory.push({
@@ -670,51 +772,44 @@ export async function rejectCustomerOrder(orderId, { reason }, actor) {
   await recordAuditLog({
     userId: actor.id,
     userName: actor.fullName,
-    action: `رفض طلب العميل (${order.requestNumber})`,
-    module: 'طلبات العملاء',
+    action: `رفض الطلب (${order.requestNumber})`,
+    module: 'طلبات العملاء والمندوبين',
     recordId: orderId,
     notes: cleanReason,
   });
   return order;
 }
 
-export async function assignOrderDeliveryRep(orderId, payload = {}, actor) {
-  const repId = String(payload.representativeId || payload.repId || '').trim();
-  const notes = String(payload.notes || '').trim();
-  if (!repId) throw new AppError(400, 'يرجى تحديد المندوب المكلف بالتوصيل', 'REP_REQUIRED');
+export async function assignOrderDeliveryRep(orderId, { repId, notes = '' } = {}, actor) {
+  if (!repId) throw new AppError(400, 'يرجى تحديد المندوب المسؤول عن تسليم الطلب', 'REP_REQUIRED');
   const now = nowIso();
-  const blockedStatuses = new Set(['rejected', 'cancelled', 'invoiced']);
 
   if (await isPgMode()) {
     const order = await withTransaction(async (client) => {
       const ordRes = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1 FOR UPDATE`, [orderId]);
       const row = ordRes.rows[0];
       if (!row) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
-      if (blockedStatuses.has(row.status)) {
-        throw new AppError(409, `لا يمكن تعيين مندوب توصيل لطلب بحالة (${row.status})`, 'INVALID_ORDER_TRANSITION');
+      if (['invoiced', 'rejected', 'cancelled'].includes(row.status)) {
+        throw new AppError(409, `لا يمكن تعيين مندوب لطلب بحالة (${row.status})`, 'INVALID_ORDER_TRANSITION');
       }
 
-      const repRes = await client.query(`SELECT id, name FROM representatives WHERE id = $1 LIMIT 1`, [repId]);
+      const repRes = await client.query(`SELECT id, name, status FROM representatives WHERE id = $1 LIMIT 1`, [repId]);
       const rep = repRes.rows[0];
-      if (!rep) throw new AppError(404, 'المندوب المختار غير موجود', 'REP_NOT_FOUND');
+      if (!rep) throw new AppError(404, 'المندوب المحدد غير موجود', 'REP_NOT_FOUND');
+      if (rep.status && rep.status !== 'active') throw new AppError(409, 'حساب المندوب غير نشط حالياً', 'REP_INACTIVE');
 
       const prevStatus = row.status;
+      const nextStatus = ['out_for_delivery', 'delivered'].includes(prevStatus) ? prevStatus : 'rep_assigned';
       await client.query(
-        `UPDATE customer_item_orders SET status = 'rep_assigned', delivery_rep_id = $1, delivery_rep_name = $2, assigned_at = $3, delivery_notes = CASE WHEN COALESCE($4, '') <> '' THEN $4 ELSE delivery_notes END, reviewed_by = COALESCE(reviewed_by, $5), reviewed_by_user_id = COALESCE(reviewed_by_user_id, $6), reviewed_at = COALESCE(reviewed_at, $3), version = COALESCE(version, 1) + 1, updated_at = $3 WHERE id = $7`,
-        [rep.id, rep.name, now, String(notes || '').trim(), actor.fullName, actor.id, orderId]
+        `UPDATE customer_item_orders
+         SET delivery_rep_id = $1, delivery_rep_name = $2, status = $3, version = COALESCE(version, 1) + 1, updated_at = $4
+         WHERE id = $5`,
+        [rep.id, rep.name, nextStatus, now, orderId]
       );
       await client.query(
         `INSERT INTO order_status_history (id, order_id, from_status, to_status, changed_by_user_id, changed_by_name, reason, changed_at)
-         VALUES ($1,$2,$3,'rep_assigned',$4,$5,$6,$7)`,
-        [
-          generateServerId('OSH'),
-          orderId,
-          prevStatus,
-          actor.id,
-          actor.fullName,
-          `تعيين مندوب التوصيل: ${rep.name}${notes ? ` (${notes})` : ''}`,
-          now,
-        ]
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [generateServerId('OSH'), orderId, prevStatus, nextStatus, actor.id, actor.fullName, notes || `تعيين المندوب (${rep.name}) لتنفيذ التسليم`, now]
       );
 
       const updated = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1`, [orderId]);
@@ -726,8 +821,8 @@ export async function assignOrderDeliveryRep(orderId, payload = {}, actor) {
     await recordAuditLog({
       userId: actor.id,
       userName: actor.fullName,
-      action: `تعيين المندوب (${order.deliveryRepName}) لتوصيل الطلب (${order.requestNumber})`,
-      module: 'طلبات العملاء',
+      action: `تعيين المندوب (${order.deliveryRepName}) للطلب (${order.requestNumber})`,
+      module: 'طلبات العملاء والمندوبين',
       recordId: orderId,
     });
     return order;
@@ -736,29 +831,27 @@ export async function assignOrderDeliveryRep(orderId, payload = {}, actor) {
   const order = await withJsonTransaction(async (db) => {
     const ord = db.customerItemOrders.find((o) => o.id === orderId);
     if (!ord) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
-    if (blockedStatuses.has(ord.status)) {
-      throw new AppError(409, `لا يمكن تعيين مندوب توصيل لطلب بحالة (${ord.status})`, 'INVALID_ORDER_TRANSITION');
+    if (['invoiced', 'rejected', 'cancelled'].includes(ord.status)) {
+      throw new AppError(409, `لا يمكن تعيين مندوب لطلب بحالة (${ord.status})`, 'INVALID_ORDER_TRANSITION');
     }
     const rep = (db.representatives || []).find((r) => r.id === repId);
-    if (!rep) throw new AppError(404, 'المندوب المختار غير موجود', 'REP_NOT_FOUND');
+    if (!rep) throw new AppError(404, 'المندوب المحدد غير موجود', 'REP_NOT_FOUND');
+    if (rep.status && rep.status !== 'active') throw new AppError(409, 'حساب المندوب غير نشط حالياً', 'REP_INACTIVE');
 
     const prevStatus = ord.status;
-    ord.status = 'rep_assigned';
+    const nextStatus = ['out_for_delivery', 'delivered'].includes(prevStatus) ? prevStatus : 'rep_assigned';
     ord.deliveryRepId = rep.id;
     ord.deliveryRepName = rep.name;
-    ord.assignedAt = now;
-    if (notes && String(notes).trim()) ord.deliveryNotes = String(notes).trim();
-    ord.reviewedBy = ord.reviewedBy || actor.fullName;
-    ord.reviewedAt = ord.reviewedAt || now;
+    ord.status = nextStatus;
     ord.version = Number(ord.version || 1) + 1;
     ord.updatedAt = now;
     ord.statusHistory = ord.statusHistory || [];
     ord.statusHistory.push({
       id: generateServerId('OSH'),
       fromStatus: prevStatus,
-      toStatus: 'rep_assigned',
+      toStatus: nextStatus,
       changedByName: actor.fullName,
-      reason: `تعيين مندوب التوصيل: ${rep.name}${notes ? ` (${notes})` : ''}`,
+      reason: notes || `تعيين المندوب (${rep.name}) لتنفيذ التسليم`,
       changedAt: now,
     });
     return ord;
@@ -767,56 +860,354 @@ export async function assignOrderDeliveryRep(orderId, payload = {}, actor) {
   await recordAuditLog({
     userId: actor.id,
     userName: actor.fullName,
-    action: `تعيين المندوب (${order.deliveryRepName}) لتوصيل الطلب (${order.requestNumber})`,
-    module: 'طلبات العملاء',
+    action: `تعيين المندوب (${order.deliveryRepName}) للطلب (${order.requestNumber})`,
+    module: 'طلبات العملاء والمندوبين',
     recordId: orderId,
   });
   return order;
 }
 
-export async function updateOrderDeliveryStatus(orderId, payload = {}, actorOrAuth) {
-  const actor = actorOrAuth?.user ? actorOrAuth.user : actorOrAuth;
-  const targetStatus = String(payload.status || '').trim();
-  const allowedTargets = new Set(['out_for_delivery', 'delivered', 'needs_review']);
-  if (!allowedTargets.has(targetStatus)) {
-    throw new AppError(400, 'حالة التوصيل المطلوبة غير صالحة', 'INVALID_DELIVERY_STATUS');
+export async function recordOrderAdvancePaymentPgTx(client, orderId, payload, actor, idempotencyKey = '') {
+  const amount = round2(payload.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new AppError(400, 'مبلغ الدفعة المقدمة يجب أن يكون أكبر من الصفر', 'INVALID_AMOUNT');
   }
-  const deliveryNotes = String(payload.deliveryNotes || '').trim();
-  const deliveryProof = String(payload.deliveryProof || '').trim();
-  const hasCollected = payload.collectedAmount !== undefined && payload.collectedAmount !== null && payload.collectedAmount !== '';
-  const collectedAmount = hasCollected ? round2(Number(payload.collectedAmount || 0)) : null;
-  const now = nowIso();
+  const cleanIdem = idempotencyKey ? String(idempotencyKey).trim().slice(0, 128) : null;
+  if (cleanIdem) {
+    const dupAdv = await client.query(`SELECT * FROM order_advance_payments WHERE idempotency_key = $1 LIMIT 1`, [cleanIdem]);
+    if (dupAdv.rows[0]) {
+      const ordRes = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1`, [dupAdv.rows[0].order_id]);
+      const itemsRes = await client.query(`SELECT * FROM customer_item_order_items WHERE order_id = $1`, [dupAdv.rows[0].order_id]);
+      const histRes = await client.query(`SELECT * FROM order_status_history WHERE order_id = $1 ORDER BY changed_at ASC`, [dupAdv.rows[0].order_id]);
+      return { deduplicated: true, advancePayment: dupAdv.rows[0], order: mapPgOrderRow(ordRes.rows[0], itemsRes.rows, histRes.rows) };
+    }
+  }
 
+  const ordRes = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1 FOR UPDATE`, [orderId]);
+  const ord = ordRes.rows[0];
+  if (!ord) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
+  if (['rejected', 'cancelled', 'invoiced'].includes(ord.status)) {
+    throw new AppError(409, `لا يمكن تسجيل دفعة مقدمة على طلب بحالة (${ord.status})`, 'INVALID_ORDER_STATUS_FOR_ADVANCE');
+  }
+
+  const custRes = await client.query(`SELECT * FROM customers WHERE id = $1 FOR UPDATE`, [ord.customer_id]);
+  if (!custRes.rows[0]) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
+  const cust = custRes.rows[0];
+
+  let cashboxId = payload.cashboxId;
+  if (!cashboxId) {
+    const defCb = await client.query(`SELECT id FROM cashboxes WHERE is_default = TRUE LIMIT 1`);
+    const anyCb = defCb.rows[0] || (await client.query(`SELECT id FROM cashboxes LIMIT 1`)).rows[0];
+    if (!anyCb) throw new AppError(400, 'لا توجد خزينة متاحة', 'CASHBOX_REQUIRED');
+    cashboxId = anyCb.id;
+  }
+  const cbRes = await client.query(`SELECT * FROM cashboxes WHERE id = $1 FOR UPDATE`, [cashboxId]);
+  if (!cbRes.rows[0]) throw new AppError(404, 'الخزينة المحددة غير موجودة', 'CASHBOX_NOT_FOUND');
+  const cb = cbRes.rows[0];
+
+  const ordTotal = round2(ord.total_amount || 0);
+  const prevAdvance = round2(ord.advance_paid_amount || 0);
+  const nextAdvance = round2(prevAdvance + amount);
+  if (ordTotal > 0 && nextAdvance > ordTotal + 0.01) {
+    throw new AppError(400, `مجموع الدفعات المقدمة (${nextAdvance}) يتجاوز إجمالي الطلب (${ordTotal})`, 'EXCEEDS_ORDER_TOTAL');
+  }
+
+  const now = nowIso();
+  const payDate = payload.date || todayIso();
+  const cleanMethod = ['cash', 'bank', 'cheque'].includes(payload.paymentMethod) ? payload.paymentMethod : 'cash';
+  const seqRes = await client.query(`SELECT nextval('seq_order_advance_no') AS n`);
+  const paymentNumber = `ADV-${String(Number(seqRes.rows[0]?.n || 1)).padStart(5, '0')}`;
+  const advId = generateServerId('OAD');
+
+  const nextCbBalance = round2(Number(cb.current_balance || 0) + amount);
+  const nextCustBalance = round2(Number(cust.current_balance || 0) - amount);
+  const nextOrdRemaining = Math.max(0, round2(ordTotal - nextAdvance));
+
+  await client.query(`UPDATE cashboxes SET current_balance = $1 WHERE id = $2`, [nextCbBalance, cb.id]);
+  await client.query(`UPDATE customers SET current_balance = $1, updated_at = $2 WHERE id = $3`, [nextCustBalance, now, cust.id]);
+  await client.query(
+    `UPDATE customer_item_orders SET advance_paid_amount = $1, remaining_amount = $2, version = COALESCE(version, 1) + 1, updated_at = $3 WHERE id = $4`,
+    [nextAdvance, nextOrdRemaining, now, orderId]
+  );
+
+  await client.query(
+    `INSERT INTO order_advance_payments (id, payment_number, order_id, customer_id, cashbox_id, cashbox_name, payment_method, amount, date, notes, status, idempotency_key, origin_device_id, created_by, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'active',$11,$12,$13,$14)`,
+    [
+      advId,
+      paymentNumber,
+      orderId,
+      cust.id,
+      cb.id,
+      cb.name,
+      cleanMethod,
+      amount,
+      payDate,
+      payload.notes || `دفعة مقدمة على الطلب رقم ${ord.request_number}`,
+      cleanIdem,
+      payload.originDeviceId || null,
+      actor.fullName,
+      now,
+    ]
+  );
+
+  const ftId = generateServerId('FT');
+  const ftNum = `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`;
+  await client.query(
+    `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, notes, created_by, created_at)
+     VALUES ($1,$2,$3,'customer_payment',$4,$5,$6,$7,'دفعة مقدمة على طلب','customer',$8,$9,'order_advance',$10,$11,$12,$13,$14,$15)`,
+    [
+      ftId,
+      ftNum,
+      payDate,
+      amount,
+      cb.id,
+      cb.name,
+      nextCbBalance,
+      cust.id,
+      cust.name,
+      orderId,
+      ord.request_number,
+      `دفعة مقدمة على الطلب رقم ${ord.request_number} (رصيد دائن قبل الفوترة)`,
+      payload.notes || '',
+      actor.fullName,
+      now,
+    ]
+  );
+
+  const [updatedOrd, itemsRes, histRes] = await Promise.all([
+    client.query(`SELECT * FROM customer_item_orders WHERE id = $1`, [orderId]),
+    client.query(`SELECT * FROM customer_item_order_items WHERE order_id = $1`, [orderId]),
+    client.query(`SELECT * FROM order_status_history WHERE order_id = $1 ORDER BY changed_at ASC`, [orderId]),
+  ]);
+  return {
+    deduplicated: false,
+    advancePayment: {
+      id: advId,
+      paymentNumber,
+      orderId,
+      customerId: cust.id,
+      cashboxId: cb.id,
+      cashboxName: cb.name,
+      paymentMethod: cleanMethod,
+      amount,
+      date: payDate,
+      notes: payload.notes || '',
+      status: 'active',
+      createdBy: actor.fullName,
+      createdAt: now,
+    },
+    order: mapPgOrderRow(updatedOrd.rows[0], itemsRes.rows, histRes.rows),
+    customerBalance: nextCustBalance,
+    cashboxBalance: nextCbBalance,
+  };
+}
+
+export function recordOrderAdvancePaymentJsonTx(db, orderId, payload, actor, idempotencyKey = '') {
+  const amount = round2(payload.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new AppError(400, 'مبلغ الدفعة المقدمة يجب أن يكون أكبر من الصفر', 'INVALID_AMOUNT');
+  }
+  const cleanIdem = idempotencyKey ? String(idempotencyKey).trim().slice(0, 128) : null;
+  db.orderAdvancePayments = db.orderAdvancePayments || [];
+  if (cleanIdem) {
+    const dupAdv = db.orderAdvancePayments.find((a) => a.idempotencyKey === cleanIdem);
+    if (dupAdv) {
+      const existingOrd = db.customerItemOrders.find((o) => o.id === dupAdv.orderId);
+      return { deduplicated: true, advancePayment: dupAdv, order: existingOrd };
+    }
+  }
+
+  const ord = db.customerItemOrders.find((o) => o.id === orderId);
+  if (!ord) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
+  if (['rejected', 'cancelled', 'invoiced'].includes(ord.status)) {
+    throw new AppError(409, `لا يمكن تسجيل دفعة مقدمة على طلب بحالة (${ord.status})`, 'INVALID_ORDER_STATUS_FOR_ADVANCE');
+  }
+  const cust = db.customers.find((c) => c.id === ord.customerId);
+  if (!cust) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
+  const cb =
+    (payload.cashboxId ? db.cashboxes.find((c) => c.id === payload.cashboxId) : null) ||
+    db.cashboxes.find((c) => c.isDefault) ||
+    db.cashboxes[0];
+  if (!cb) throw new AppError(404, 'الخزينة المحددة غير موجودة', 'CASHBOX_NOT_FOUND');
+
+  const ordTotal = round2(ord.totalAmount || 0);
+  const prevAdvance = round2(ord.advancePaidAmount || 0);
+  const nextAdvance = round2(prevAdvance + amount);
+  if (ordTotal > 0 && nextAdvance > ordTotal + 0.01) {
+    throw new AppError(400, `مجموع الدفعات المقدمة (${nextAdvance}) يتجاوز إجمالي الطلب (${ordTotal})`, 'EXCEEDS_ORDER_TOTAL');
+  }
+
+  const now = nowIso();
+  const payDate = payload.date || todayIso();
+  const cleanMethod = ['cash', 'bank', 'cheque'].includes(payload.paymentMethod) ? payload.paymentMethod : 'cash';
+  const seqNum = nextJsonSequence(db, 'orderAdvanceNo', db.orderAdvancePayments, 'paymentNumber', /(\d+)$/);
+  const paymentNumber = `ADV-${String(seqNum).padStart(5, '0')}`;
+  const advId = generateServerId('OAD');
+
+  cb.currentBalance = round2(Number(cb.currentBalance || 0) + amount);
+  cust.currentBalance = round2(Number(cust.currentBalance || 0) - amount);
+  cust.updatedAt = now;
+  ord.advancePaidAmount = nextAdvance;
+  ord.remainingAmount = Math.max(0, round2(ordTotal - nextAdvance));
+  ord.version = Number(ord.version || 1) + 1;
+  ord.updatedAt = now;
+
+  const advObj = {
+    id: advId,
+    paymentNumber,
+    orderId: ord.id,
+    customerId: cust.id,
+    cashboxId: cb.id,
+    cashboxName: cb.name,
+    paymentMethod: cleanMethod,
+    amount,
+    date: payDate,
+    notes: payload.notes || `دفعة مقدمة على الطلب رقم ${ord.requestNumber}`,
+    status: 'active',
+    idempotencyKey: cleanIdem || undefined,
+    originDeviceId: payload.originDeviceId || undefined,
+    createdBy: actor.fullName,
+    createdAt: now,
+  };
+  db.orderAdvancePayments.unshift(advObj);
+
+  db.financialTransactions.unshift({
+    id: generateServerId('FT'),
+    transactionNumber: `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`,
+    date: payDate,
+    type: 'customer_payment',
+    cashboxId: cb.id,
+    cashboxName: cb.name,
+    balanceAfter: cb.currentBalance,
+    amount,
+    category: 'دفعة مقدمة على طلب',
+    relatedDocType: 'order_advance',
+    relatedDocId: ord.id,
+    relatedDocNumber: ord.requestNumber,
+    relatedEntityId: cust.id,
+    partyId: cust.id,
+    partyName: cust.name,
+    description: `دفعة مقدمة على الطلب رقم ${ord.requestNumber} (رصيد دائن قبل الفوترة)`,
+    notes: payload.notes || '',
+    createdBy: actor.fullName,
+    createdAt: now,
+  });
+
+  return {
+    deduplicated: false,
+    advancePayment: advObj,
+    order: ord,
+    customerBalance: cust.currentBalance,
+    cashboxBalance: cb.currentBalance,
+  };
+}
+
+export async function recordOrderAdvancePayment(orderId, payload, actor, idempotencyKey = '') {
+  const endpoint = `POST /api/orders/${orderId}/advance-payment`;
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
+
+  const out = (await isPgMode())
+    ? await withTransaction(async (client) => {
+        const dup = await findPgIdempotency(client, scopedIdem);
+        if (dup) return { ...dup, deduplicated: true };
+        const res = await recordOrderAdvancePaymentPgTx(client, orderId, payload, actor, idempotencyKey);
+        await savePgIdempotency(client, scopedIdem, actor, endpoint, res);
+        return res;
+      })
+    : await withJsonTransaction(async (db) => {
+        const dup = findJsonIdempotency(scopedIdem);
+        if (dup) return { ...dup, deduplicated: true };
+        const res = recordOrderAdvancePaymentJsonTx(db, orderId, payload, actor, idempotencyKey);
+        saveJsonIdempotency(scopedIdem, res);
+        return res;
+      });
+
+  if (!out.deduplicated) {
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `تسجيل دفعة مقدمة (${payload.amount}) على الطلب (${out.order?.requestNumber || orderId})`,
+      module: 'المالية',
+      recordId: orderId,
+    });
+  }
+  return out;
+}
+
+export async function updateOrderDeliveryStatus(orderId, payload, authContext) {
+  const actor = authContext.user;
+  const targetStatus = String(payload.status || '').trim();
+  if (!['out_for_delivery', 'delivered'].includes(targetStatus)) {
+    throw new AppError(400, 'حالة التوصيل غير صالحة (يجب أن تكون جاري التوصيل أو تم التسليم)', 'INVALID_DELIVERY_STATUS');
+  }
   const isRep = actor.role === 'representative';
-  const repProfile = actorOrAuth?.representativeProfile || (isRep ? await getRepresentativeByUserId(actor.id) : null);
-  const canManageSales = actor.role === 'admin' || Boolean(actor.permissions?.canManageSales);
+  const rep = isRep ? authContext.representativeProfile || (await getRepresentativeByUserId(actor.id)) : null;
+  if (isRep && !rep) {
+    throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
+  }
+  const now = nowIso();
+  const collectedAmount = round2(Math.max(0, Number(payload.collectedAmount || 0)));
+  const rawProof = payload.deliveryProof ? String(payload.deliveryProof).trim() : '';
+  let deliveryProof = undefined;
+  let deliveryNotes = String(payload.deliveryNotes || '').trim();
+  if (rawProof) {
+    const isValidImageRef =
+      /^data:image\/(png|jpe?g|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(rawProof) ||
+      /^https?:\/\/\S+$/i.test(rawProof) ||
+      rawProof.startsWith('/product-images/');
+    if (isValidImageRef && rawProof.length <= 2_500_000) {
+      deliveryProof = rawProof;
+    } else {
+      const proofWarn = '[تم استبعاد مرفق صورة التسليم لتلف الصيغة أو تجاوز الحجم المسموح مع حفظ التسليم والتحصيل بأمان]';
+      deliveryNotes = deliveryNotes ? `${deliveryNotes} ${proofWarn}` : proofWarn;
+    }
+  }
+  const idempotencyKey = payload.idempotencyKey ? String(payload.idempotencyKey).trim() : '';
 
   if (await isPgMode()) {
-    const order = await withTransaction(async (client) => {
+    const out = await withTransaction(async (client) => {
       const ordRes = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1 FOR UPDATE`, [orderId]);
       const row = ordRes.rows[0];
       if (!row) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
-
-      if (isRep) {
-        if (!repProfile || (row.delivery_rep_id !== repProfile.id && row.representative_id !== repProfile.id)) {
-          throw new AppError(403, 'غير مصرح لك بتحديث حالة طلب غير مكلف به', 'FORBIDDEN_ORDER_ACCESS');
-        }
-      } else if (!canManageSales) {
-        throw new AppError(403, 'ليس لديك صلاحية تحديث حالة توصيل الطلب', 'FORBIDDEN');
-      }
-
       if (['rejected', 'cancelled', 'invoiced'].includes(row.status)) {
-        throw new AppError(409, `لا يمكن تغيير حالة التوصيل لطلب بحالة (${row.status})`, 'INVALID_ORDER_TRANSITION');
+        throw new AppError(409, `لا يمكن تحديث التوصيل لطلب بحالة (${row.status})`, 'INVALID_ORDER_TRANSITION');
+      }
+      if (isRep) {
+        const allowed = row.delivery_rep_id === rep.id || row.representative_id === rep.id || row.user_id === actor.id;
+        if (!allowed) throw new AppError(403, 'غير مصرح لك بتحديث حالة تسليم طلب لم يتم تعيينك له', 'FORBIDDEN_ORDER_ACCESS');
       }
 
       const prevStatus = row.status;
-      const deliveredAt = targetStatus === 'delivered' ? now : row.delivered_at;
-      const nextCollected = collectedAmount !== null ? collectedAmount : Number(row.collected_amount || 0);
+      const nextCollected = round2(Number(row.collected_amount || 0) + collectedAmount);
+      const nextRemaining = Math.max(0, round2(Number(row.total_amount || 0) - Number(row.advance_paid_amount || 0) - collectedAmount));
 
       await client.query(
-        `UPDATE customer_item_orders SET status = $1, delivered_at = $2, collected_amount = $3, delivery_notes = CASE WHEN COALESCE($4, '') <> '' THEN $4 ELSE delivery_notes END, delivery_proof = CASE WHEN COALESCE($5, '') <> '' THEN $5 ELSE delivery_proof END, version = COALESCE(version, 1) + 1, updated_at = $6 WHERE id = $7`,
-        [targetStatus, deliveredAt, nextCollected, deliveryNotes, deliveryProof, now, orderId]
+        `UPDATE customer_item_orders
+         SET status = $1,
+             delivery_rep_id = COALESCE(delivery_rep_id, $2),
+             delivery_rep_name = CASE WHEN COALESCE(delivery_rep_name, '') = '' THEN $3 ELSE delivery_rep_name END,
+             delivered_at = CASE WHEN $1 = 'delivered' THEN COALESCE(delivered_at, $4) ELSE delivered_at END,
+             delivery_notes = CASE WHEN $5 <> '' THEN $5 ELSE delivery_notes END,
+             delivery_proof = COALESCE($6, delivery_proof),
+             collected_amount = $7,
+             remaining_amount = $8,
+             version = COALESCE(version, 1) + 1,
+             updated_at = $4
+         WHERE id = $9`,
+        [
+          targetStatus,
+          rep?.id || null,
+          rep?.name || '',
+          now,
+          deliveryNotes,
+          deliveryProof || null,
+          nextCollected,
+          nextRemaining,
+          orderId,
+        ]
       );
+
       await client.query(
         `INSERT INTO order_status_history (id, order_id, from_status, to_status, changed_by_user_id, changed_by_name, reason, changed_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
@@ -827,49 +1218,73 @@ export async function updateOrderDeliveryStatus(orderId, payload = {}, actorOrAu
           targetStatus,
           actor.id,
           actor.fullName,
-          deliveryNotes || (targetStatus === 'delivered' ? 'تأكيد تسليم الطلب ميدانياً' : targetStatus === 'out_for_delivery' ? 'خروج المندوب للتوصيل' : 'تحويل الطلب للمراجعة'),
+          deliveryNotes || (targetStatus === 'delivered' ? `تم تسليم الطلب للعميل${collectedAmount > 0 ? ` مع تحصيل ${collectedAmount}` : ''}` : 'بدء توصيل الطلب للعميل'),
           now,
         ]
       );
 
-      const updated = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1`, [orderId]);
-      const itemsRes = await client.query(`SELECT * FROM customer_item_order_items WHERE order_id = $1`, [orderId]);
-      const histRes = await client.query(`SELECT * FROM order_status_history WHERE order_id = $1 ORDER BY changed_at ASC`, [orderId]);
-      return mapPgOrderRow(updated.rows[0], itemsRes.rows, histRes.rows);
+      let advanceResult = null;
+      if (collectedAmount > 0) {
+        advanceResult = await recordOrderAdvancePaymentPgTx(
+          client,
+          orderId,
+          {
+            amount: collectedAmount,
+            cashboxId: payload.cashboxId,
+            paymentMethod: payload.paymentMethod || 'cash',
+            date: payload.date || todayIso(),
+            notes: deliveryNotes || `تحصيل مندوب عند تسليم الطلب رقم ${row.request_number}`,
+            originDeviceId: payload.originDeviceId,
+          },
+          actor,
+          idempotencyKey ? `${idempotencyKey}-adv` : ''
+        );
+      }
+
+      const [updatedOrd, itemsRes, histRes] = await Promise.all([
+        client.query(`SELECT * FROM customer_item_orders WHERE id = $1`, [orderId]),
+        client.query(`SELECT * FROM customer_item_order_items WHERE order_id = $1`, [orderId]),
+        client.query(`SELECT * FROM order_status_history WHERE order_id = $1 ORDER BY changed_at ASC`, [orderId]),
+      ]);
+      return {
+        order: mapPgOrderRow(updatedOrd.rows[0], itemsRes.rows, histRes.rows),
+        advancePayment: advanceResult?.advancePayment || null,
+      };
     });
 
     await recordAuditLog({
       userId: actor.id,
       userName: actor.fullName,
-      action: `تحديث حالة التوصيل للطلب (${order.requestNumber}) -> ${targetStatus}`,
-      module: 'طلبات العملاء',
+      action: `تحديث حالة توصيل الطلب (${out.order.requestNumber}) إلى ${targetStatus}`,
+      module: 'طلبات العملاء والمندوبين',
       recordId: orderId,
     });
-    return order;
+    return out;
   }
 
-  const order = await withJsonTransaction(async (db) => {
+  const out = await withJsonTransaction(async (db) => {
     const ord = db.customerItemOrders.find((o) => o.id === orderId);
     if (!ord) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
-
-    if (isRep) {
-      if (!repProfile || (ord.deliveryRepId !== repProfile.id && ord.representativeId !== repProfile.id)) {
-        throw new AppError(403, 'غير مصرح لك بتحديث حالة طلب غير مكلف به', 'FORBIDDEN_ORDER_ACCESS');
-      }
-    } else if (!canManageSales) {
-      throw new AppError(403, 'ليس لديك صلاحية تحديث حالة توصيل الطلب', 'FORBIDDEN');
-    }
-
     if (['rejected', 'cancelled', 'invoiced'].includes(ord.status)) {
-      throw new AppError(409, `لا يمكن تغيير حالة التوصيل لطلب بحالة (${ord.status})`, 'INVALID_ORDER_TRANSITION');
+      throw new AppError(409, `لا يمكن تحديث التوصيل لطلب بحالة (${ord.status})`, 'INVALID_ORDER_TRANSITION');
+    }
+    if (isRep) {
+      const allowed = ord.deliveryRepId === rep.id || ord.representativeId === rep.id || ord.userId === actor.id;
+      if (!allowed) throw new AppError(403, 'غير مصرح لك بتحديث حالة تسليم طلب لم يتم تعيينك له', 'FORBIDDEN_ORDER_ACCESS');
     }
 
     const prevStatus = ord.status;
     ord.status = targetStatus;
-    if (targetStatus === 'delivered') ord.deliveredAt = now;
-    if (collectedAmount !== null) ord.collectedAmount = collectedAmount;
+    if (!ord.deliveryRepId && rep) {
+      ord.deliveryRepId = rep.id;
+      ord.deliveryRepName = rep.name;
+    }
+    if (targetStatus === 'delivered' && !ord.deliveredAt) {
+      ord.deliveredAt = now;
+    }
     if (deliveryNotes) ord.deliveryNotes = deliveryNotes;
     if (deliveryProof) ord.deliveryProof = deliveryProof;
+    ord.collectedAmount = round2(Number(ord.collectedAmount || 0) + collectedAmount);
     ord.version = Number(ord.version || 1) + 1;
     ord.updatedAt = now;
     ord.statusHistory = ord.statusHistory || [];
@@ -878,294 +1293,53 @@ export async function updateOrderDeliveryStatus(orderId, payload = {}, actorOrAu
       fromStatus: prevStatus,
       toStatus: targetStatus,
       changedByName: actor.fullName,
-      reason:
-        deliveryNotes ||
-        (targetStatus === 'delivered'
-          ? 'تأكيد تسليم الطلب ميدانياً'
-          : targetStatus === 'out_for_delivery'
-          ? 'خروج المندوب للتوصيل'
-          : 'تحويل الطلب للمراجعة'),
+      reason: deliveryNotes || (targetStatus === 'delivered' ? `تم تسليم الطلب للعميل${collectedAmount > 0 ? ` مع تحصيل ${collectedAmount}` : ''}` : 'بدء توصيل الطلب للعميل'),
       changedAt: now,
     });
-    return ord;
+
+    let advanceResult = null;
+    if (collectedAmount > 0) {
+      advanceResult = recordOrderAdvancePaymentJsonTx(
+        db,
+        orderId,
+        {
+          amount: collectedAmount,
+          cashboxId: payload.cashboxId,
+          paymentMethod: payload.paymentMethod || 'cash',
+          date: payload.date || todayIso(),
+          notes: deliveryNotes || `تحصيل مندوب عند تسليم الطلب رقم ${ord.requestNumber}`,
+          originDeviceId: payload.originDeviceId,
+        },
+        actor,
+        idempotencyKey ? `${idempotencyKey}-adv` : ''
+      );
+    }
+
+    return { order: ord, advancePayment: advanceResult?.advancePayment || null };
   });
 
   await recordAuditLog({
     userId: actor.id,
     userName: actor.fullName,
-    action: `تحديث حالة التوصيل للطلب (${order.requestNumber}) -> ${targetStatus}`,
-    module: 'طلبات العملاء',
+    action: `تحديث حالة توصيل الطلب (${out.order.requestNumber}) إلى ${targetStatus}`,
+    module: 'طلبات العملاء والمندوبين',
     recordId: orderId,
   });
-  return order;
-}
-
-export async function recordOrderAdvancePayment(orderId, payload = {}, actor, idempotencyKey = '') {
-  const amount = round2(payload.amount);
-  if (!Number.isFinite(amount) || amount <= 0) {
-    throw new AppError(400, 'مبلغ الدفعة المقدمة يجب أن يكون أكبر من صفر', 'INVALID_AMOUNT');
-  }
-  const cleanMethod = ['cash', 'bank', 'cheque'].includes(String(payload.paymentMethod || ''))
-    ? String(payload.paymentMethod)
-    : 'cash';
-  const methodLabel = cleanMethod === 'bank' ? 'تحويل بنكي' : cleanMethod === 'cheque' ? 'شيك' : 'نقدي';
-  const notes = String(payload.notes || '').trim();
-  const payDate = payload.date || todayIso();
-  const originDeviceId = payload.originDeviceId ? String(payload.originDeviceId).slice(0, 128) : null;
-  const now = nowIso();
-  const endpoint = `POST /api/orders/${orderId}/advance-payment`;
-  const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
-
-  const isRep = actor.role === 'representative';
-  const canStaffFinance =
-    actor.role === 'admin' || Boolean(actor.permissions?.canManageSales) || Boolean(actor.permissions?.canManageAccounts);
-
-  if (!isRep && !canStaffFinance) {
-    throw new AppError(403, 'ليس لديك صلاحية تسجيل دفعة مقدمة على الطلب', 'FORBIDDEN');
-  }
-
-  if (await isPgMode()) {
-    const out = await withTransaction(async (client) => {
-      const dup = await findPgIdempotency(client, scopedIdem);
-      if (dup?.advancePayment) return { deduplicated: true, ...dup };
-
-      const ordRes = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1 FOR UPDATE`, [orderId]);
-      const row = ordRes.rows[0];
-      if (!row) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
-
-      if (isRep) {
-        const repProfile = await getRepresentativeByUserId(actor.id);
-        const custCheck = await client.query(`SELECT * FROM customers WHERE id = $1 LIMIT 1`, [row.customer_id]);
-        const { mapPgCustomerRow } = await import('./mode.js');
-        const custObj = custCheck.rows[0] ? mapPgCustomerRow(custCheck.rows[0]) : null;
-        const assigned = repProfile && (row.delivery_rep_id === repProfile.id || row.representative_id === repProfile.id || (custObj && isCustomerAllowedForRep(custObj, repProfile.id)));
-        if (!assigned) {
-          throw new AppError(403, 'غير مصرح لك بتسجيل دفعة مقدمة لطلب عميل غير معين لك', 'FORBIDDEN_ORDER_ACCESS');
-        }
-      }
-
-      if (['rejected', 'cancelled', 'invoiced'].includes(row.status)) {
-        throw new AppError(409, `لا يمكن تسجيل دفعة مقدمة على طلب بحالة (${row.status})`, 'INVALID_ORDER_TRANSITION');
-      }
-
-      const itemsRes = await client.query(`SELECT * FROM customer_item_order_items WHERE order_id = $1`, [orderId]);
-      const itemsTotal = itemsRes.rows.reduce(
-        (s, it) => s + Number(it.quantity || 0) * Number(it.reference_unit_price || 0),
-        0
-      );
-      const orderTotal = round2(Number(row.total_amount || itemsTotal || 0));
-      const curAdvance = round2(Number(row.advance_paid_amount || 0));
-      if (orderTotal > 0 && round2(curAdvance + amount) > round2(orderTotal + 0.01)) {
-        throw new AppError(
-          409,
-          `إجمالي الدفعات المقدمة (${round2(curAdvance + amount)}) يتجاوز إجمالي قيمة الطلب (${orderTotal})`,
-          'EXCEEDS_ORDER_TOTAL'
-        );
-      }
-
-      let cbRow = null;
-      if (payload.cashboxId) {
-        const cbRes = await client.query(`SELECT * FROM cashboxes WHERE id = $1 FOR UPDATE`, [payload.cashboxId]);
-        cbRow = cbRes.rows[0];
-      } else {
-        const cbDef = await client.query(`SELECT * FROM cashboxes WHERE is_default = TRUE LIMIT 1 FOR UPDATE`);
-        cbRow = cbDef.rows[0] || (await client.query(`SELECT * FROM cashboxes LIMIT 1 FOR UPDATE`)).rows[0];
-      }
-      if (!cbRow) throw new AppError(404, 'الخزينة المحددة غير موجودة', 'CASHBOX_NOT_FOUND');
-
-      const custRes = await client.query(`SELECT * FROM customers WHERE id = $1 FOR UPDATE`, [row.customer_id]);
-      const cust = custRes.rows[0];
-      if (!cust) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
-
-      const seqRes = await client.query(`SELECT nextval('seq_order_advance_no') AS n`);
-      const advNum = `ADV-${String(Number(seqRes.rows[0]?.n || 1)).padStart(5, '0')}`;
-      const advId = generateServerId('ADV');
-
-      await client.query(
-        `INSERT INTO order_advance_payments (id, advance_number, order_id, request_number, customer_id, customer_name, amount, date, payment_method, cashbox_id, cashbox_name, status, notes, origin_device_id, idempotency_key, created_by, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'available',$12,$13,$14,$15,$16)`,
-        [advId, advNum, orderId, row.request_number, cust.id, cust.name, amount, payDate, cleanMethod, cbRow.id, cbRow.name, notes, originDeviceId, idempotencyKey || null, actor.fullName, now]
-      );
-
-      const nextCbBalance = round2(Number(cbRow.current_balance || 0) + amount);
-      await client.query(`UPDATE cashboxes SET current_balance = $1 WHERE id = $2`, [nextCbBalance, cbRow.id]);
-
-      const nextCustBalance = round2(Number(cust.current_balance || 0) - amount);
-      await client.query(`UPDATE customers SET current_balance = $1, version = COALESCE(version, 1) + 1, updated_at = $2 WHERE id = $3`, [
-        nextCustBalance,
-        now,
-        cust.id,
-      ]);
-
-      const nextOrdAdvance = round2(curAdvance + amount);
-      await client.query(
-        `UPDATE customer_item_orders SET advance_paid_amount = $1, version = COALESCE(version, 1) + 1, updated_at = $2 WHERE id = $3`,
-        [nextOrdAdvance, now, orderId]
-      );
-
-      const ftId = generateServerId('FT');
-      const ftNum = `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`;
-      const desc = `دفعة مقدمة (${methodLabel}) على طلب رقم ${row.request_number} (رصيد دائن قبل الفوترة)`;
-      await client.query(
-        `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, notes, created_by, created_at)
-         VALUES ($1,$2,$3,'customer_payment',$4,$5,$6,$7,$8,'customer',$9,$10,'order_advance',$11,$12,$13,$14,$15,$16)`,
-        [ftId, ftNum, payDate, amount, cbRow.id, cbRow.name, nextCbBalance, `دفعة مقدمة على طلب (${methodLabel})`, cust.id, cust.name, orderId, row.request_number, desc, notes, actor.fullName, now]
-      );
-
-      const advRes = await client.query(`SELECT * FROM order_advance_payments WHERE id = $1`, [advId]);
-      const ordUpd = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1`, [orderId]);
-      const histRes = await client.query(`SELECT * FROM order_status_history WHERE order_id = $1 ORDER BY changed_at ASC`, [orderId]);
-      const payloadOut = {
-        advancePayment: mapPgOrderAdvanceRow(advRes.rows[0]),
-        order: mapPgOrderRow(ordUpd.rows[0], itemsRes.rows, histRes.rows),
-        cashboxBalance: nextCbBalance,
-        customerBalance: nextCustBalance,
-        transactionId: ftId,
-      };
-      await savePgIdempotency(client, scopedIdem, actor, endpoint, payloadOut);
-      return { deduplicated: false, ...payloadOut };
-    });
-
-    if (!out.deduplicated) {
-      await recordAuditLog({
-        userId: actor.id,
-        userName: actor.fullName,
-        action: `تسجيل دفعة مقدمة (${amount}) على الطلب (${out.order.requestNumber})`,
-        module: 'طلبات العملاء',
-        recordId: orderId,
-      });
-    }
-    return out;
-  }
-
-  // JSON Ledger fallback
-  const out = await withJsonTransaction(async (db) => {
-    const dup = findJsonIdempotency(scopedIdem);
-    if (dup?.advancePayment) return { deduplicated: true, ...dup };
-
-    const ord = db.customerItemOrders.find((o) => o.id === orderId);
-    if (!ord) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
-
-    const cust = db.customers.find((c) => c.id === ord.customerId);
-    if (!cust) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
-
-    if (isRep) {
-      const repProfile = (db.representatives || []).find((r) => r.userId === actor.id);
-      const assigned =
-        repProfile &&
-        (ord.deliveryRepId === repProfile.id || ord.representativeId === repProfile.id || isCustomerAllowedForRep(cust, repProfile.id));
-      if (!assigned) {
-        throw new AppError(403, 'غير مصرح لك بتسجيل دفعة مقدمة لطلب عميل غير معين لك', 'FORBIDDEN_ORDER_ACCESS');
-      }
-    }
-
-    if (['rejected', 'cancelled', 'invoiced'].includes(ord.status)) {
-      throw new AppError(409, `لا يمكن تسجيل دفعة مقدمة على طلب بحالة (${ord.status})`, 'INVALID_ORDER_TRANSITION');
-    }
-
-    const itemsTotal = (ord.items || []).reduce((s, it) => s + Number(it.quantity || 0) * Number(it.unitPrice || 0), 0);
-    const orderTotal = round2(Number(ord.totalAmount || itemsTotal || 0));
-    const curAdvance = round2(Number(ord.advancePaidAmount || 0));
-    if (orderTotal > 0 && round2(curAdvance + amount) > round2(orderTotal + 0.01)) {
-      throw new AppError(
-        409,
-        `إجمالي الدفعات المقدمة (${round2(curAdvance + amount)}) يتجاوز إجمالي قيمة الطلب (${orderTotal})`,
-        'EXCEEDS_ORDER_TOTAL'
-      );
-    }
-
-    const cb = (payload.cashboxId ? db.cashboxes.find((c) => c.id === payload.cashboxId) : null) || db.cashboxes.find((c) => c.isDefault) || db.cashboxes[0];
-    if (!cb) throw new AppError(404, 'الخزينة المحددة غير موجودة', 'CASHBOX_NOT_FOUND');
-
-    db.orderAdvancePayments = db.orderAdvancePayments || [];
-    const seqNum = nextJsonSequence(db, 'orderAdvanceNo', db.orderAdvancePayments, 'advanceNumber', /(\d+)$/);
-    const advNum = `ADV-${String(seqNum).padStart(5, '0')}`;
-    const advId = generateServerId('ADV');
-
-    const advRecord = {
-      id: advId,
-      paymentNumber: advNum,
-      advanceNumber: advNum,
-      orderId,
-      requestNumber: ord.requestNumber,
-      customerId: cust.id,
-      customerName: cust.name,
-      amount,
-      date: payDate,
-      paymentMethod: cleanMethod,
-      cashboxId: cb.id,
-      cashboxName: cb.name,
-      status: 'available',
-      notes,
-      originDeviceId: originDeviceId || undefined,
-      createdBy: actor.fullName,
-      createdAt: now,
-    };
-    db.orderAdvancePayments.unshift(advRecord);
-
-    cb.currentBalance = round2(Number(cb.currentBalance || 0) + amount);
-    cust.currentBalance = round2(Number(cust.currentBalance || 0) - amount);
-    cust.version = Number(cust.version || 1) + 1;
-    ord.advancePaidAmount = round2(curAdvance + amount);
-    ord.remainingAmount = round2(Math.max(0, orderTotal - ord.advancePaidAmount));
-    ord.version = Number(ord.version || 1) + 1;
-    ord.updatedAt = now;
-
-    const ftId = generateServerId('FT');
-    const ftNum = `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`;
-    const desc = `دفعة مقدمة (${methodLabel}) على طلب رقم ${ord.requestNumber} (رصيد دائن قبل الفوترة)`;
-    db.financialTransactions.unshift({
-      id: ftId,
-      transactionNumber: ftNum,
-      date: payDate,
-      type: 'customer_payment',
-      cashboxId: cb.id,
-      cashboxName: cb.name,
-      balanceAfter: cb.currentBalance,
-      amount,
-      paymentMethod: cleanMethod,
-      category: `دفعة مقدمة على طلب (${methodLabel})`,
-      relatedDocType: 'order_advance',
-      relatedDocId: orderId,
-      relatedDocNumber: ord.requestNumber,
-      relatedEntityId: cust.id,
-      partyId: cust.id,
-      partyName: cust.name,
-      description: desc,
-      notes,
-      createdBy: actor.fullName,
-      createdAt: now,
-    });
-
-    const payloadOut = {
-      advancePayment: advRecord,
-      order: ord,
-      cashboxBalance: cb.currentBalance,
-      customerBalance: cust.currentBalance,
-      transactionId: ftId,
-    };
-    saveJsonIdempotency(scopedIdem, payloadOut);
-    return { deduplicated: false, ...payloadOut };
-  });
-
-  if (!out.deduplicated) {
-    await recordAuditLog({
-      userId: actor.id,
-      userName: actor.fullName,
-      action: `تسجيل دفعة مقدمة (${amount}) على الطلب (${out.order.requestNumber})`,
-      module: 'طلبات العملاء',
-      recordId: orderId,
-    });
-  }
   return out;
 }
 
-const CONVERTIBLE_ORDER_STATUSES = new Set(['approved', 'rep_assigned', 'out_for_delivery', 'delivered', 'needs_review']);
+const CONVERTIBLE_ORDER_STATUSES = new Set(['approved', 'rep_assigned', 'out_for_delivery', 'delivered']);
 
-export async function convertOrderToInvoice(orderId, invoicePayload, actor) {
+export async function convertOrderToInvoice(orderId, invoicePayload, actor, idempotencyKey = '') {
   const now = nowIso();
+  const endpoint = `POST /api/orders/${orderId}/convert-to-invoice`;
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
+
   if (await isPgMode()) {
     const result = await withTransaction(async (client) => {
+      const dup = await findPgIdempotency(client, scopedIdem);
+      if (dup?.invoice && dup?.order) return { ...dup, deduplicated: true };
+
       const ordRes = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1 FOR UPDATE`, [orderId]);
       const ord = ordRes.rows[0];
       if (!ord) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
@@ -1175,6 +1349,12 @@ export async function convertOrderToInvoice(orderId, invoicePayload, actor) {
       if (!CONVERTIBLE_ORDER_STATUSES.has(ord.status)) {
         throw new AppError(409, 'يجب الموافقة على الطلب أولاً قبل تحويله إلى فاتورة مبيعات', 'ORDER_NOT_APPROVED');
       }
+
+      const advRes = await client.query(
+        `SELECT * FROM order_advance_payments WHERE order_id = $1 AND status = 'active' FOR UPDATE`,
+        [orderId]
+      );
+      const activeAdvanceSum = round2(advRes.rows.reduce((s, r) => s + Number(r.amount || 0), 0));
 
       const itemsRes = await client.query(`SELECT * FROM customer_item_order_items WHERE order_id = $1`, [orderId]);
       const orderItems = itemsRes.rows;
@@ -1192,33 +1372,10 @@ export async function convertOrderToInvoice(orderId, invoicePayload, actor) {
               discount: 0,
             }));
 
-      // Sum available advance payments recorded on this order
-      const advRes = await client.query(
-        `SELECT id, amount FROM order_advance_payments WHERE order_id = $1 AND status = 'available' FOR UPDATE`,
-        [orderId]
-      );
-      const availableAdvance = round2(advRes.rows.reduce((s, r) => s + Number(r.amount || 0), 0));
-
-      const itemSub = itemsForInvoice.reduce((s, it) => s + Number(it.quantity || 0) * Number(it.unitPrice || 0), 0);
-      const prelimGrand = round2(Math.max(0, itemSub - Number(invoicePayload.discountTotal || 0) + Number(invoicePayload.taxTotal || 0)));
-      const appliedAdvanceAmount = round2(Math.min(prelimGrand, availableAdvance));
-
-      let totalPaidInput;
-      const explicitNewCash =
-        invoicePayload.newCashPaid !== undefined
-          ? invoicePayload.newCashPaid
-          : invoicePayload.paidAtInvoice;
-      if (explicitNewCash !== undefined) {
-        totalPaidInput = round2(appliedAdvanceAmount + Math.max(0, Number(explicitNewCash || 0)));
-      } else if (invoicePayload.paidAmount !== undefined && invoicePayload._includesAppliedAdvance) {
-        totalPaidInput = round2(Math.max(appliedAdvanceAmount, Number(invoicePayload.paidAmount || 0)));
-      } else {
-        const cashOnTop =
-          invoicePayload.paymentType === 'cash'
-            ? Math.max(0, prelimGrand - appliedAdvanceAmount)
-            : round2(Math.max(0, Number(invoicePayload.paidAmount || 0)));
-        totalPaidInput = round2(appliedAdvanceAmount + cashOnTop);
-      }
+      const paidAtInvoice =
+        activeAdvanceSum > 0
+          ? round2(Math.max(0, Number(invoicePayload.paidAtInvoice ?? invoicePayload.paidAmount ?? 0)))
+          : undefined;
 
       const invoice = await createInvoiceInsidePgTx(
         client,
@@ -1226,19 +1383,20 @@ export async function convertOrderToInvoice(orderId, invoicePayload, actor) {
         {
           ...invoicePayload,
           customerId: ord.customer_id,
+          representativeId: invoicePayload.representativeId || ord.delivery_rep_id || ord.representative_id || undefined,
           items: itemsForInvoice,
-          appliedAdvanceAmount,
-          paidAmount: totalPaidInput,
+          appliedAdvanceAmount: activeAdvanceSum,
+          paidAtInvoice,
           linkedCustomerOrderId: ord.id,
-          notes: invoicePayload.notes || `فاتورة محولة من طلب العميل رقم ${ord.request_number}`,
+          notes: invoicePayload.notes || `فاتورة محولة من الطلب رقم ${ord.request_number}`,
         },
         actor
       );
 
-      if (appliedAdvanceAmount > 0 && advRes.rows.length > 0 && invoice.status === 'confirmed') {
+      if (activeAdvanceSum > 0 && invoice.status === 'confirmed') {
         await client.query(
-          `UPDATE order_advance_payments SET status = 'applied', applied_invoice_id = $1, applied_invoice_number = $2, applied_at = $3 WHERE order_id = $4 AND status = 'available'`,
-          [invoice.id, invoice.invoiceNumber, now, orderId]
+          `UPDATE order_advance_payments SET status = 'applied', applied_invoice_id = $1 WHERE order_id = $2 AND status = 'active'`,
+          [invoice.id, orderId]
         );
       }
 
@@ -1250,34 +1408,33 @@ export async function convertOrderToInvoice(orderId, invoicePayload, actor) {
       await client.query(
         `INSERT INTO order_status_history (id, order_id, from_status, to_status, changed_by_user_id, changed_by_name, reason, changed_at)
          VALUES ($1,$2,$3,'invoiced',$4,$5,$6,$7)`,
-        [
-          generateServerId('OSH'),
-          orderId,
-          prevStatus,
-          actor.id,
-          actor.fullName,
-          `تحويل الطلب إلى فاتورة مبيعات رقم ${invoice.invoiceNumber} (${invoice.status === 'draft' ? 'مسودة' : 'معتمدة'})${appliedAdvanceAmount > 0 ? ` مع تطبيق دفعة مقدمة بقيمة ${appliedAdvanceAmount}` : ''}`,
-          now,
-        ]
+        [generateServerId('OSH'), orderId, prevStatus, actor.id, actor.fullName, `تحويل الطلب إلى فاتورة مبيعات رقم ${invoice.invoiceNumber} (${invoice.status === 'draft' ? 'مسودة' : 'معتمدة'})`, now]
       );
 
       const updated = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1`, [orderId]);
       const histRes = await client.query(`SELECT * FROM order_status_history WHERE order_id = $1 ORDER BY changed_at ASC`, [orderId]);
-      return { order: mapPgOrderRow(updated.rows[0], orderItems, histRes.rows), invoice };
+      const payloadOut = { order: mapPgOrderRow(updated.rows[0], orderItems, histRes.rows), invoice };
+      await savePgIdempotency(client, scopedIdem, actor, endpoint, payloadOut);
+      return { deduplicated: false, ...payloadOut };
     });
 
-    await recordAuditLog({
-      userId: actor.id,
-      userName: actor.fullName,
-      action: `تحويل طلب العميل (${result.order.requestNumber}) إلى فاتورة (${result.invoice.invoiceNumber})`,
-      module: 'طلبات العملاء',
-      recordId: orderId,
-    });
+    if (!result.deduplicated) {
+      await recordAuditLog({
+        userId: actor.id,
+        userName: actor.fullName,
+        action: `تحويل الطلب (${result.order.requestNumber}) إلى فاتورة (${result.invoice.invoiceNumber})`,
+        module: 'طلبات العملاء والمندوبين',
+        recordId: orderId,
+      });
+    }
     return result;
   }
 
   // JSON Ledger fallback
   const result = await withJsonTransaction(async (db) => {
+    const dup = findJsonIdempotency(scopedIdem);
+    if (dup?.invoice && dup?.order) return { ...dup, deduplicated: true };
+
     const ord = db.customerItemOrders.find((o) => o.id === orderId);
     if (!ord) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
     if (ord.status === 'invoiced' || ord.invoiceId) {
@@ -1286,6 +1443,9 @@ export async function convertOrderToInvoice(orderId, invoicePayload, actor) {
     if (!CONVERTIBLE_ORDER_STATUSES.has(ord.status)) {
       throw new AppError(409, 'يجب الموافقة على الطلب أولاً قبل تحويله إلى فاتورة مبيعات', 'ORDER_NOT_APPROVED');
     }
+
+    const activeAdvances = (db.orderAdvancePayments || []).filter((a) => a.orderId === orderId && a.status === 'active');
+    const activeAdvanceSum = round2(activeAdvances.reduce((s, a) => s + Number(a.amount || 0), 0));
 
     const itemsForInvoice =
       Array.isArray(invoicePayload.items) && invoicePayload.items.length > 0
@@ -1300,30 +1460,10 @@ export async function convertOrderToInvoice(orderId, invoicePayload, actor) {
             discount: 0,
           }));
 
-    const availableAdvances = (db.orderAdvancePayments || []).filter(
-      (a) => a.orderId === orderId && a.status === 'available'
-    );
-    const availableAdvance = round2(availableAdvances.reduce((s, a) => s + Number(a.amount || 0), 0));
-    const itemSub = itemsForInvoice.reduce((s, it) => s + Number(it.quantity || 0) * Number(it.unitPrice || 0), 0);
-    const prelimGrand = round2(Math.max(0, itemSub - Number(invoicePayload.discountTotal || 0) + Number(invoicePayload.taxTotal || 0)));
-    const appliedAdvanceAmount = round2(Math.min(prelimGrand, availableAdvance));
-
-    let totalPaidInput;
-    const explicitNewCash =
-      invoicePayload.newCashPaid !== undefined
-        ? invoicePayload.newCashPaid
-        : invoicePayload.paidAtInvoice;
-    if (explicitNewCash !== undefined) {
-      totalPaidInput = round2(appliedAdvanceAmount + Math.max(0, Number(explicitNewCash || 0)));
-    } else if (invoicePayload.paidAmount !== undefined && invoicePayload._includesAppliedAdvance) {
-      totalPaidInput = round2(Math.max(appliedAdvanceAmount, Number(invoicePayload.paidAmount || 0)));
-    } else {
-      const cashOnTop =
-        invoicePayload.paymentType === 'cash'
-          ? Math.max(0, prelimGrand - appliedAdvanceAmount)
-          : round2(Math.max(0, Number(invoicePayload.paidAmount || 0)));
-      totalPaidInput = round2(appliedAdvanceAmount + cashOnTop);
-    }
+    const paidAtInvoice =
+      activeAdvanceSum > 0
+        ? round2(Math.max(0, Number(invoicePayload.paidAtInvoice ?? invoicePayload.paidAmount ?? 0)))
+        : undefined;
 
     const invoice = createInvoiceInsideJsonTx(
       db,
@@ -1331,21 +1471,20 @@ export async function convertOrderToInvoice(orderId, invoicePayload, actor) {
       {
         ...invoicePayload,
         customerId: ord.customerId,
+        representativeId: invoicePayload.representativeId || ord.deliveryRepId || ord.representativeId || undefined,
         items: itemsForInvoice,
-        appliedAdvanceAmount,
-        paidAmount: totalPaidInput,
+        appliedAdvanceAmount: activeAdvanceSum,
+        paidAtInvoice,
         linkedCustomerOrderId: ord.id,
-        notes: invoicePayload.notes || `فاتورة محولة من طلب العميل رقم ${ord.requestNumber}`,
+        notes: invoicePayload.notes || `فاتورة محولة من الطلب رقم ${ord.requestNumber}`,
       },
       actor
     );
 
-    if (appliedAdvanceAmount > 0 && invoice.status === 'confirmed') {
-      for (const adv of availableAdvances) {
+    if (activeAdvanceSum > 0 && invoice.status === 'confirmed') {
+      for (const adv of activeAdvances) {
         adv.status = 'applied';
         adv.appliedInvoiceId = invoice.id;
-        adv.appliedInvoiceNumber = invoice.invoiceNumber;
-        adv.appliedAt = now;
       }
     }
 
@@ -1361,18 +1500,22 @@ export async function convertOrderToInvoice(orderId, invoicePayload, actor) {
       fromStatus: prevStatus,
       toStatus: 'invoiced',
       changedByName: actor.fullName,
-      reason: `تحويل الطلب إلى فاتورة مبيعات رقم ${invoice.invoiceNumber} (${invoice.status === 'draft' ? 'مسودة' : 'معتمدة'})${appliedAdvanceAmount > 0 ? ` مع تطبيق دفعة مقدمة بقيمة ${appliedAdvanceAmount}` : ''}`,
+      reason: `تحويل الطلب إلى فاتورة مبيعات رقم ${invoice.invoiceNumber} (${invoice.status === 'draft' ? 'مسودة' : 'معتمدة'})`,
       changedAt: now,
     });
-    return { order: ord, invoice };
+    const payloadOut = { order: ord, invoice };
+    saveJsonIdempotency(scopedIdem, payloadOut);
+    return { deduplicated: false, ...payloadOut };
   });
 
-  await recordAuditLog({
-    userId: actor.id,
-    userName: actor.fullName,
-    action: `تحويل طلب العميل (${result.order.requestNumber}) إلى فاتورة (${result.invoice.invoiceNumber})`,
-    module: 'طلبات العملاء',
-    recordId: orderId,
-  });
+  if (!result.deduplicated) {
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `تحويل الطلب (${result.order.requestNumber}) إلى فاتورة (${result.invoice.invoiceNumber})`,
+      module: 'طلبات العملاء والمندوبين',
+      recordId: orderId,
+    });
+  }
   return result;
 }

@@ -341,37 +341,9 @@ export async function claimPairingInvitation(
   }
 }
 
-export async function autoDiscoverBestServer(): Promise<{
-  found: boolean;
-  best?: DiscoveredServerCandidate;
-  candidates: DiscoveredServerCandidate[];
-}> {
-  const candidates = await discoverServerCandidates();
-  if (candidates.length === 0) {
-    return { found: false, candidates: [] };
-  }
-  const best = candidates[0];
-  if (best.profiles) {
-    await saveStoredConnectionProfilesAsync(best.profiles);
-  }
-  if (Array.isArray(best.fallbackEndpoints)) {
-    await saveFallbackEndpointsAsync(best.fallbackEndpoints);
-  }
-  if (isNativeCapacitor() && !getConfiguredApiBaseUrl()) {
-    await setConfiguredApiBaseUrlAsync(best.url);
-  }
-  return { found: true, best, candidates };
-}
-
 export async function syncConnectionConfigFromServer(options?: {
   triggerHeartbeat?: boolean;
-}): Promise<{
-  updated: boolean;
-  switchedUrl?: string;
-  revoked?: boolean;
-  error?: string;
-  quickTunnelChangedWarning?: string;
-}> {
+}): Promise<{ updated: boolean; switchedUrl?: string; revoked?: boolean }> {
   const currentBase = getConfiguredApiBaseUrl();
   const effectiveCurrent =
     currentBase || (!isNativeCapacitor() && typeof window !== 'undefined' ? window.location.origin : '');
@@ -386,7 +358,6 @@ export async function syncConnectionConfigFromServer(options?: {
   const tokens = getStoredTokens();
   const localProfiles = getStoredConnectionProfiles();
   const localVersion = Number(localProfiles.configVersion || 1);
-  const previousMode = detectModeFromUrl(effectiveCurrent, localProfiles);
 
   for (const candidateUrl of candidates) {
     try {
@@ -413,14 +384,11 @@ export async function syncConnectionConfigFromServer(options?: {
       }).finally(() => clearTimeout(timer));
 
       const data = await res.json().catch(() => null);
-      if (
-        res.status === 403 &&
-        ['DEVICE_REVOKED', 'DEVICE_REJECTED', 'DEVICE_DISCONNECTED', 'DEVICE_PENDING_APPROVAL'].includes(data?.code)
-      ) {
-        triggerAuthExpired(data?.error || 'تم إيقاف أو فصل ربط هذا الجهاز من الإدارة.');
-        return { updated: false, revoked: true, error: data?.error };
+      if (res.status === 403 && data?.code === 'DEVICE_REVOKED') {
+        triggerAuthExpired(data?.error || 'تم فصل هذا الجهاز من الإدارة.');
+        return { updated: false, revoked: true };
       }
-      if (!data || data.service !== 'AWLAD SELIM Enterprise Server') continue;
+      if (!data) continue;
 
       if (data.profiles) {
         saveStoredConnectionProfiles(data.profiles);
@@ -435,14 +403,7 @@ export async function syncConnectionConfigFromServer(options?: {
       // Auto-switch base URL if device was on a failing URL and fell back, or if server pushed a new active endpoint/tunnel URL
       if (candidateUrl !== effectiveCurrent && (isNativeCapacitor() || currentBase)) {
         setConfiguredApiBaseUrl(candidateUrl);
-        return {
-          updated: true,
-          switchedUrl: candidateUrl,
-          quickTunnelChangedWarning:
-            previousMode === 'free_remote'
-              ? `لم يعد عنوان Quick Tunnel السابق متاحاً؛ تم التحويل تلقائياً إلى المسار البديل (${candidateUrl}).`
-              : undefined,
-        };
+        return { updated: true, switchedUrl: candidateUrl };
       }
 
       if (
@@ -454,14 +415,7 @@ export async function syncConnectionConfigFromServer(options?: {
         const probeNew = await testServerHealth(nextPreferred);
         if (probeNew.ok) {
           setConfiguredApiBaseUrl(nextPreferred);
-          return {
-            updated: true,
-            switchedUrl: nextPreferred,
-            quickTunnelChangedWarning:
-              data.activeMode === 'free_remote'
-                ? `تم تحديث رابط Cloudflare Quick Tunnel على السيرفر إلى (${nextPreferred}) لأن الرابط المجاني متغير عند إعادة التشغيل.`
-                : undefined,
-          };
+          return { updated: true, switchedUrl: nextPreferred };
         }
       }
 

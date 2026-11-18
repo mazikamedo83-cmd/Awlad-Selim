@@ -1781,6 +1781,385 @@ async function runSuiteA_JsonLedgerHttp() {
       const cbAfterSettle = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data.cashboxes.find((c) => c.id === cb0.id).currentBalance;
       assert.equal(cbAfterSettle, cbBeforeSettle, 'Advance settlement must NEVER change cashbox balance');
     });
+
+    await test('37. Dual/Multi-Connection System (JSON Ledger): 4 modes, HTTPS enforcement, dynamic CORS, zero secret leaks & RBAC guards', async () => {
+      // 1. Public /api/health reports supported modes & X-Forwarded-Proto HTTPS detection without secrets
+      const hPlain = await req(baseUrl, 'GET', '/api/health');
+      assert.equal(hPlain.status, 200);
+      assert.deepEqual(hPlain.json.connectionModesSupported, ['local_network', 'free_remote', 'pro_remote', 'cloud_vps']);
+      assert.equal(hPlain.json.httpsActive, false);
+      assert.ok(!JSON.stringify(hPlain.json).includes('JWT_SECRET'));
+      assert.ok(!JSON.stringify(hPlain.json).includes('tunnelToken'));
+
+      const hProxyHttps = await req(baseUrl, 'GET', '/api/health', {
+        headers: { 'X-Forwarded-Proto': 'https', 'X-Forwarded-Host': 'erp.awladselim.example.com' },
+      });
+      assert.equal(hProxyHttps.status, 200);
+      assert.equal(hProxyHttps.json.protocol, 'https');
+      assert.equal(hProxyHttps.json.httpsActive, true);
+
+      // 2. Dynamic CORS allows Capacitor, Quick Tunnel, LAN HTTP, and X-Forwarded-Host even when ALLOWED_ORIGINS is restricted
+      const prevAllowedOrigins = process.env.ALLOWED_ORIGINS;
+      try {
+        process.env.ALLOWED_ORIGINS = 'https://office.awladselim.com';
+        const allowedOriginsToCheck = [
+          { origin: 'capacitor://localhost', extraHeaders: {} },
+          { origin: 'https://localhost', extraHeaders: {} },
+          { origin: 'https://shop-tunnel.trycloudflare.com', extraHeaders: {} },
+          { origin: 'http://192.168.1.55:3000', extraHeaders: {} },
+          { origin: 'https://erp.awladselim.com', extraHeaders: { 'X-Forwarded-Host': 'erp.awladselim.com' } },
+        ];
+        for (const item of allowedOriginsToCheck) {
+          const corsRes = await fetch(`${baseUrl}/api/health`, {
+            headers: { Origin: item.origin, ...item.extraHeaders },
+          });
+          assert.equal(corsRes.status, 200);
+          assert.equal(
+            corsRes.headers.get('access-control-allow-origin'),
+            item.origin,
+            `Expected CORS allow for origin ${item.origin}`
+          );
+        }
+
+        const blockedRes = await fetch(`${baseUrl}/api/health`, {
+          headers: { Origin: 'https://evil-attacker.example.net' },
+        });
+        assert.equal(blockedRes.status, 403);
+      } finally {
+        if (prevAllowedOrigins === undefined) delete process.env.ALLOWED_ORIGINS;
+        else process.env.ALLOWED_ORIGINS = prevAllowedOrigins;
+      }
+
+      // 3. Unauthorized roles blocked from server-info, settings, backup, and cash-operations
+      const mgrNoSettingsLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: 'mgr_scope_test', password: 'MgrPassword!99' },
+      });
+      assert.equal(mgrNoSettingsLogin.status, 200);
+      const repLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: 'rep_karim', password: 'RepPassword!123' },
+      });
+      assert.equal(repLogin.status, 200);
+
+      for (const unauthorizedToken of [tokenCustA, repLogin.json.accessToken, mgrNoSettingsLogin.json.accessToken]) {
+        const siForb = await req(baseUrl, 'GET', '/api/admin/server-info', { token: unauthorizedToken });
+        assert.equal(siForb.status, 403, 'Unauthorized role must get 403 on /api/admin/server-info');
+        const setForb = await req(baseUrl, 'PUT', '/api/admin/settings', {
+          token: unauthorizedToken,
+          body: { extraSettings: { connectionConfig: { activeMode: 'free_remote' } } },
+        });
+        assert.equal(setForb.status, 403, 'Unauthorized role must get 403 on PUT /api/admin/settings');
+        const bakForb = await req(baseUrl, 'GET', '/api/admin/backup/export', { token: unauthorizedToken });
+        assert.equal(bakForb.status, 403, 'Unauthorized role must get 403 on /api/admin/backup/export');
+      }
+
+      // 4. Admin /api/admin/server-info returns port, lanUrls, databaseMode, zero secrets
+      const srvInfoRes = await req(baseUrl, 'GET', '/api/admin/server-info', {
+        token: adminToken,
+        headers: { 'X-Forwarded-Proto': 'https' },
+      });
+      assert.equal(srvInfoRes.status, 200);
+      assert.equal(srvInfoRes.json.ok, true);
+      assert.ok(typeof srvInfoRes.json.port === 'number');
+      assert.ok(Array.isArray(srvInfoRes.json.lanUrls));
+      assert.equal(srvInfoRes.json.httpsActive, true);
+      assert.equal(srvInfoRes.json.databaseMode, 'local-json-ledger');
+      assertNoSensitiveFields(srvInfoRes.json, 'server-info');
+
+      // 5. Capture DB snapshot metrics before mode switches (Single DB guarantee)
+      const snapBefore = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const beforeInvoicesCount = snapBefore.invoices.length;
+      const beforeCustomersCount = snapBefore.customers.length;
+      const beforeCashboxSum = snapBefore.cashboxes.reduce((s, c) => s + Number(c.currentBalance || 0), 0);
+
+      // Reject plain HTTP for remote modes
+      const badHttpRemote = await req(baseUrl, 'PUT', '/api/admin/settings', {
+        token: adminToken,
+        body: {
+          extraSettings: {
+            connectionConfig: {
+              activeMode: 'free_remote',
+              freeRemote: { tunnelUrl: 'http://insecure-demo.trycloudflare.com' },
+            },
+          },
+        },
+      });
+      assert.equal(badHttpRemote.status, 400);
+      assert.equal(badHttpRemote.json.code, 'HTTPS_REQUIRED_FOR_REMOTE');
+
+      // Save all 4 profiles with extraneous secret keys -> secrets MUST be stripped
+      const saveAll4 = await req(baseUrl, 'PUT', '/api/admin/settings', {
+        token: adminToken,
+        body: {
+          extraSettings: {
+            connectionConfig: {
+              activeMode: 'pro_remote',
+              localNetwork: { ip: '192.168.1.120', port: 3000, hostname: 'awlad-main-pc', adminSecret: 'MUST_STRIP' },
+              freeRemote: { tunnelUrl: 'https://awlad-test.trycloudflare.com', tunnelToken: 'SECRET_TOKEN' },
+              proRemote: { domainUrl: 'https://erp.awladselim.com', cloudflareApiKey: 'CF_SECRET' },
+              cloudVps: { vpsUrl: 'https://vps.awladselim.com', notes: 'مستقبلي', sshPassword: 'ROOT_PASSWORD' },
+              enforceHttpsForRemote: true,
+            },
+          },
+        },
+      });
+      assert.equal(saveAll4.status, 200);
+      const savedCfg = saveAll4.json.settings.extraSettings.connectionConfig;
+      assert.equal(savedCfg.activeMode, 'pro_remote');
+      assert.equal(savedCfg.localNetwork.ip, '192.168.1.120');
+      assert.equal(savedCfg.freeRemote.tunnelUrl, 'https://awlad-test.trycloudflare.com');
+      assert.equal(savedCfg.proRemote.domainUrl, 'https://erp.awladselim.com');
+      assert.equal(savedCfg.cloudVps.vpsUrl, 'https://vps.awladselim.com');
+      const cfgSerialized = JSON.stringify(savedCfg);
+      assert.ok(!cfgSerialized.includes('SECRET_TOKEN') && !cfgSerialized.includes('CF_SECRET') && !cfgSerialized.includes('ROOT_PASSWORD') && !cfgSerialized.includes('MUST_STRIP'));
+
+      // Switch between all 4 modes + verify single DB & token continuity across proxy headers
+      for (const nextMode of ['cloud_vps', 'free_remote', 'local_network']) {
+        const sw = await req(baseUrl, 'PUT', '/api/admin/settings', {
+          token: adminToken,
+          headers: { 'X-Forwarded-Proto': 'https', 'X-Forwarded-Host': 'erp.awladselim.com' },
+          body: { extraSettings: { connectionConfig: { activeMode: nextMode } } },
+        });
+        assert.equal(sw.status, 200);
+        assert.equal(sw.json.settings.extraSettings.connectionConfig.activeMode, nextMode);
+        assert.equal(sw.json.settings.extraSettings.connectionConfig.proRemote.domainUrl, 'https://erp.awladselim.com');
+      }
+
+      const snapAfter = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      assert.equal(snapAfter.invoices.length, beforeInvoicesCount);
+      assert.equal(snapAfter.customers.length, beforeCustomersCount);
+      assert.equal(
+        snapAfter.cashboxes.reduce((s, c) => s + Number(c.currentBalance || 0), 0),
+        beforeCashboxSum
+      );
+    });
+
+    await test('39. Customer & Rep Orders section: rep orders, strict RBAC isolation, approve does NOT auto-invoice, reject reason & separate convert', async () => {
+      const boot0 = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const wh0 = boot0.warehouses[0];
+      const cb0 = boot0.cashboxes[0];
+      const custABefore = boot0.customers.find((c) => c.id === custA.id);
+      const prodBefore = boot0.products.find((p) => p.id === prod1.id);
+      const invCountBefore = boot0.invoices.length;
+      const stockBefore = Number(prodBefore.stockPerWarehouse[wh0.id] || 0);
+      const balBefore = Number(custABefore.currentBalance || 0);
+
+      // 1. Rep submits an order for assigned custA
+      const repOrdRes = await req(baseUrl, 'POST', '/api/orders', {
+        token: tokenRep,
+        headers: { 'Idempotency-Key': 'rep-ord-39-1' },
+        body: {
+          customerId: custA.id,
+          items: [{ productId: prod1.id, unit: 'قطعة', quantity: 2.5 }],
+          notes: 'طلب مندوب تجريبي',
+        },
+      });
+      assert.equal(repOrdRes.status, 201);
+      const repOrd = repOrdRes.json.order;
+      assert.equal(repOrd.requesterType, 'representative');
+      assert.equal(repOrd.representativeId, repProfileId);
+      assert.ok(Number(repOrd.totalAmount) > 0);
+      assert.equal(repOrd.status, 'pending');
+
+      // Rep cannot submit order for unassigned custB -> 403
+      const repBlockedCustB = await req(baseUrl, 'POST', '/api/orders', {
+        token: tokenRep,
+        body: {
+          customerId: custB.id,
+          items: [{ productId: prod1.id, unit: 'قطعة', quantity: 1 }],
+        },
+      });
+      assert.equal(repBlockedCustB.status, 403);
+
+      // 2. Customer B creates a direct order; Rep must NOT see Customer B order in GET /api/orders and gets 403 on GET /api/orders/:id
+      const custBOrdRes = await req(baseUrl, 'POST', '/api/orders', {
+        token: tokenCustB,
+        body: {
+          items: [{ productId: prod1.id, unit: 'قطعة', quantity: 1 }],
+          notes: 'طلب مباشر من العميل ب',
+        },
+      });
+      assert.equal(custBOrdRes.status, 201);
+      const custBOrd = custBOrdRes.json.order;
+      assert.equal(custBOrd.requesterType, 'customer');
+
+      const repListRes = await req(baseUrl, 'GET', '/api/orders', { token: tokenRep });
+      assert.equal(repListRes.status, 200);
+      assert.ok(repListRes.json.orders.some((o) => o.id === repOrd.id));
+      assert.equal(repListRes.json.orders.some((o) => o.id === custBOrd.id), false, 'Rep MUST NOT see direct customer orders');
+      assert.equal((await req(baseUrl, 'GET', `/api/orders/${custBOrd.id}`, { token: tokenRep })).status, 403);
+
+      // Non-sales employee (e.g. warehouse staff without canManageSales) receives empty list / 403 on detail & review actions
+      const nonSalesRes = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'أمين مخزن اختبار',
+          username: 'wh_no_orders',
+          password: 'WhPassword!123',
+          role: 'warehouse',
+          permissions: { canView: true, canManageInventory: true },
+        },
+      });
+      assert.equal(nonSalesRes.status, 201);
+      const nonSalesToken = (await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: 'wh_no_orders', password: 'WhPassword!123' },
+      })).json.accessToken;
+
+      const staffOrdList = await req(baseUrl, 'GET', '/api/orders', { token: nonSalesToken });
+      assert.equal(staffOrdList.status, 200);
+      assert.equal(staffOrdList.json.orders.length, 0);
+      assert.equal((await req(baseUrl, 'GET', `/api/orders/${repOrd.id}`, { token: nonSalesToken })).status, 403);
+      assert.equal((await req(baseUrl, 'POST', `/api/orders/${repOrd.id}/approve`, { token: nonSalesToken, body: {} })).status, 403);
+
+      // 3. Review -> Approve lifecycle: must NOT auto-create invoice or touch stock/balances!
+      const revRes = await req(baseUrl, 'POST', `/api/orders/${repOrd.id}/review`, {
+        token: adminToken,
+        body: { notes: 'جاري المراجعة' },
+      });
+      assert.equal(revRes.status, 200);
+      assert.equal(revRes.json.order.status, 'under_review');
+
+      const appRes = await req(baseUrl, 'POST', `/api/orders/${repOrd.id}/approve`, {
+        token: adminToken,
+        body: {},
+      });
+      assert.equal(appRes.status, 200);
+      assert.equal(appRes.json.order.status, 'approved');
+      assert.ok(appRes.json.order.reviewedBy);
+      assert.ok(appRes.json.order.reviewedAt);
+
+      // Duplicate approve blocked with 409
+      const dupAppRes = await req(baseUrl, 'POST', `/api/orders/${repOrd.id}/approve`, {
+        token: adminToken,
+        body: {},
+      });
+      assert.equal(dupAppRes.status, 409);
+
+      // Verify ZERO change to invoices, stock, or customer balance upon approval
+      const bootAfterApprove = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      assert.equal(bootAfterApprove.invoices.length, invCountBefore, 'Approving order MUST NOT auto-create an invoice');
+      assert.equal(Number(bootAfterApprove.products.find((p) => p.id === prod1.id).stockPerWarehouse[wh0.id] || 0), stockBefore);
+      assert.equal(Number(bootAfterApprove.customers.find((c) => c.id === custA.id).currentBalance || 0), balBefore);
+
+      // Separate convert-to-invoice works & transitions order -> invoiced
+      const convRes = await req(baseUrl, 'POST', `/api/orders/${repOrd.id}/convert-to-invoice`, {
+        token: adminToken,
+        body: {
+          warehouseId: wh0.id,
+          warehouseName: wh0.name,
+          cashboxId: cb0.id,
+          status: 'confirmed',
+          paymentType: 'credit',
+          paidAmount: 0,
+          items: [{ productId: prod1.id, productName: prod1.name, unit: 'قطعة', unitFactor: 1, quantity: 2.5, unitPrice: 20 }],
+        },
+      });
+      assert.equal(convRes.status, 201);
+      assert.equal(convRes.json.order.status, 'invoiced');
+
+      // 4. Reject requires written reason & updates mobile state + notification
+      const emptyRej = await req(baseUrl, 'POST', `/api/orders/${custBOrd.id}/reject`, {
+        token: adminToken,
+        body: { reason: '   ' },
+      });
+      assert.equal(emptyRej.status, 400);
+
+      const okRej = await req(baseUrl, 'POST', `/api/orders/${custBOrd.id}/reject`, {
+        token: adminToken,
+        body: { reason: 'الكمية غير متوفرة مؤقتًا' },
+      });
+      assert.equal(okRej.status, 200);
+      assert.equal(okRej.json.order.status, 'rejected');
+      assert.equal(okRej.json.order.rejectionReason, 'الكمية غير متوفرة مؤقتًا');
+
+      const custBOrdersAfter = await req(baseUrl, 'GET', '/api/orders', { token: tokenCustB });
+      assert.equal(custBOrdersAfter.status, 200);
+      const rejectedForB = custBOrdersAfter.json.orders.find((o) => o.id === custBOrd.id);
+      assert.equal(rejectedForB.status, 'rejected');
+      assert.equal(rejectedForB.rejectionReason, 'الكمية غير متوفرة مؤقتًا');
+    });
+
+    await test('40. Customer user creation auto-links 1:1 profile, prevents duplicate linking & repairs legacy unlinked users', async () => {
+      // 1. Creating role='customer' user without linkedCustomerId auto-creates & links customer profile
+      const autoUserRes = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'متجر الأمل الجديد',
+          username: 'cust_amal_auto',
+          password: 'AmalPassword!123',
+          phone: '01077776666',
+          address: 'المنصورة',
+          role: 'customer',
+        },
+      });
+      assert.equal(autoUserRes.status, 201);
+      assert.ok(autoUserRes.json.user.linkedCustomerId, 'Expected auto-created linkedCustomerId');
+
+      const amalLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: 'cust_amal_auto', password: 'AmalPassword!123' },
+      });
+      assert.equal(amalLogin.status, 200);
+      const amalToken = amalLogin.json.accessToken;
+
+      const amalMe = await req(baseUrl, 'GET', '/api/customers/me', { token: amalToken });
+      assert.equal(amalMe.status, 200);
+      assert.equal(amalMe.json.customer.id, autoUserRes.json.user.linkedCustomerId);
+      assert.equal(amalMe.json.linkWarning, null);
+
+      const bootAuto = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const prodAny = bootAuto.products[0];
+      const amalOrd = await req(baseUrl, 'POST', '/api/orders', {
+        token: amalToken,
+        body: { items: [{ productId: prodAny.id, unit: prodAny.baseUnit, quantity: 1 }] },
+      });
+      assert.equal(amalOrd.status, 201);
+
+      // Attempting to link another user to an already-linked customer -> 409
+      const dupLinkRes = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'عميل متضارب',
+          username: 'cust_conflict_try',
+          password: 'Password!123',
+          role: 'customer',
+          linkedCustomerId: autoUserRes.json.user.linkedCustomerId,
+        },
+      });
+      assert.equal(dupLinkRes.status, 409);
+
+      // 2. Unlinked customer user created with autoCreateCustomerProfile: false gets repaired in one click
+      const unlinkedRes = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'عميل قديم غير مربوط',
+          username: 'cust_legacy_unlinked',
+          password: 'LegacyPassword!123',
+          phone: '01088887777',
+          role: 'customer',
+          autoCreateCustomerProfile: false,
+        },
+      });
+      assert.equal(unlinkedRes.status, 201);
+      assert.equal(unlinkedRes.json.user.linkedCustomerId, undefined);
+
+      const fixRes = await req(baseUrl, 'POST', '/api/customers/conflicts/fix-unlinked', { token: adminToken });
+      assert.equal(fixRes.status, 200);
+      assert.ok(fixRes.json.repairedCount >= 1);
+      assert.ok(fixRes.json.repaired.some((r) => r.userId === unlinkedRes.json.user.id));
+    });
+
+    await test('41. Backup & legacy migration artifact cleanup verified on repository tree and packaging config', async () => {
+      const rootDir = process.cwd();
+      assert.equal(fs.existsSync(path.join(rootDir, 'AWLAD_SELIM_BACKUP')), false, 'AWLAD_SELIM_BACKUP must be removed');
+      assert.equal(fs.existsSync(path.join(rootDir, 'server/data/migration_logs.json')), false, 'Sample migration_logs.json must be removed');
+      assert.equal(
+        fs.existsSync(path.join(rootDir, 'server/data/migration_snapshot_MIG-MWCM65VG-TPOP.json')),
+        false,
+        'Sample migration snapshot must be removed'
+      );
+      const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
+      assert.equal(pkg.build?.extraResources, undefined, 'package.json must not bundle server/data via extraResources');
+      assert.ok(Array.isArray(pkg.build?.files) && pkg.build.files.includes('!server/data/**/*'));
+    });
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -2200,11 +2579,12 @@ async function runSuiteB_PostgresPgMem() {
       assert.equal(cpPg2.status, 200);
       assert.equal(cpPg2.json.deduplicated, true);
 
+      const pgInvDate = new Date().toISOString().split('T')[0];
       const salePg = await req(baseUrlPg, 'POST', '/api/invoices/sales', {
         token: pgAdminToken,
         headers: { 'Idempotency-Key': 'pg-idem-sale-36' },
         body: {
-          date: '2026-11-18',
+          date: pgInvDate,
           customerId: cust.id,
           warehouseId: wh1,
           cashboxId: cb1,
@@ -2219,7 +2599,7 @@ async function runSuiteB_PostgresPgMem() {
         token: pgAdminToken,
         headers: { 'Idempotency-Key': 'pg-idem-sale-36' },
         body: {
-          date: '2026-11-18',
+          date: pgInvDate,
           customerId: cust.id,
           warehouseId: wh1,
           cashboxId: cb1,
@@ -2236,7 +2616,7 @@ async function runSuiteB_PostgresPgMem() {
       assert.equal(pgPh.status, 200);
       const pgLast = (pgPh.json.priceHistory[prod.id] || []).slice(-1)[0];
       assert.equal(pgLast.price, 88);
-      assert.equal(pgLast.date, '2026-11-18');
+      assert.equal(pgLast.date, pgInvDate);
 
       // Supplier advance payment + zero-cashbox settle-advance in PG
       await req(baseUrlPg, 'POST', '/api/admin/suppliers/payment', {
@@ -2268,6 +2648,174 @@ async function runSuiteB_PostgresPgMem() {
 
       const bootEnd = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
       assert.equal(bootEnd.cashboxes.find((c) => c.id === cb1).currentBalance, cbBefore + 15 - 400);
+    });
+
+    await test('38. Dual/Multi-Connection System (PostgreSQL pg-mem): preserves single DB, enforces HTTPS & strips secrets', async () => {
+      const adminLogin = await req(baseUrlPg, 'POST', '/api/auth/login', {
+        body: { username: 'owner_tarek', password: 'OwnerStrongPassword!99' },
+      });
+      const pgAdminToken = adminLogin.json.accessToken;
+
+      const pgMgrLogin = await req(baseUrlPg, 'POST', '/api/auth/login', {
+        body: { username: 'mgr_scope_test', password: 'MgrPassword!99' },
+      });
+      assert.equal(pgMgrLogin.status, 200);
+      assert.equal((await req(baseUrlPg, 'GET', '/api/admin/server-info', { token: pgMgrLogin.json.accessToken })).status, 403);
+      assert.equal(
+        (
+          await req(baseUrlPg, 'PUT', '/api/admin/settings', {
+            token: pgMgrLogin.json.accessToken,
+            body: { extraSettings: { connectionConfig: { activeMode: 'cloud_vps' } } },
+          })
+        ).status,
+        403
+      );
+
+      const srvPg = await req(baseUrlPg, 'GET', '/api/admin/server-info', { token: pgAdminToken });
+      assert.equal(srvPg.status, 200);
+      assert.equal(srvPg.json.databaseMode, 'postgresql-enterprise');
+
+      const bootBefore = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      const beforeInvoices = bootBefore.invoices.length;
+
+      // Enforce HTTPS on PG settings update
+      const badPgRemote = await req(baseUrlPg, 'PUT', '/api/admin/settings', {
+        token: pgAdminToken,
+        body: {
+          extraSettings: {
+            connectionConfig: {
+              activeMode: 'cloud_vps',
+              cloudVps: { vpsUrl: 'http://unencrypted-vps.example.com' },
+            },
+          },
+        },
+      });
+      assert.equal(badPgRemote.status, 400);
+      assert.equal(badPgRemote.json.code, 'HTTPS_REQUIRED_FOR_REMOTE');
+
+      const savePg = await req(baseUrlPg, 'PUT', '/api/admin/settings', {
+        token: pgAdminToken,
+        body: {
+          extraSettings: {
+            connectionConfig: {
+              activeMode: 'free_remote',
+              localNetwork: { ip: '192.168.1.200', port: 3000, hostname: 'pg-central' },
+              freeRemote: { tunnelUrl: 'https://pg-shop.trycloudflare.com', tunnelToken: 'NO_LEAK' },
+              proRemote: { domainUrl: 'https://pg-erp.awladselim.com' },
+              cloudVps: { vpsUrl: 'https://pg-vps.awladselim.com', notes: 'PG Cloud' },
+            },
+          },
+        },
+      });
+      assert.equal(savePg.status, 200);
+      const pgCfg = savePg.json.settings.extraSettings.connectionConfig;
+      assert.equal(pgCfg.activeMode, 'free_remote');
+      assert.ok(!JSON.stringify(pgCfg).includes('NO_LEAK'));
+
+      const bootAfter = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      assert.equal(bootAfter.invoices.length, beforeInvoices);
+      assert.equal(bootAfter.settings.extraSettings.connectionConfig.proRemote.domainUrl, 'https://pg-erp.awladselim.com');
+    });
+
+    await test('42. Live PostgreSQL HTTP API verifies Rep Orders, Review->Approve isolation & Auto 1:1 Customer User Linking + Repair', async () => {
+      const pgAdminToken = (
+        await req(baseUrlPg, 'POST', '/api/auth/login', {
+          body: { username: 'owner_tarek', password: 'OwnerStrongPassword!99' },
+        })
+      ).json.accessToken;
+      const pgRepToken = (
+        await req(baseUrlPg, 'POST', '/api/auth/login', {
+          body: { username: 'rep_karim', password: 'RepPassword!123' },
+        })
+      ).json.accessToken;
+      const pgCustBToken = (
+        await req(baseUrlPg, 'POST', '/api/auth/login', {
+          body: { username: 'cust_salam', password: 'CustomerPassword!2' },
+        })
+      ).json.accessToken;
+
+      const boot0 = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      const repCustomers = (await req(baseUrlPg, 'GET', '/api/customers', { token: pgRepToken })).json.customers;
+      assert.ok(repCustomers.length >= 1);
+      const assignedCust = repCustomers[0];
+      const prod = boot0.products.find((p) => p.code === 'P-100') || boot0.products[0];
+      const invBefore = boot0.invoices.length;
+
+      // Rep submits order on PG
+      const repOrd = await req(baseUrlPg, 'POST', '/api/orders', {
+        token: pgRepToken,
+        body: {
+          customerId: assignedCust.id,
+          items: [{ productId: prod.id, unit: prod.baseUnit, quantity: 1.5 }],
+          notes: 'طلب مندوب PG',
+        },
+      });
+      assert.equal(repOrd.status, 201);
+      assert.equal(repOrd.json.order.requesterType, 'representative');
+      assert.ok(Number(repOrd.json.order.totalAmount) > 0);
+
+      // Customer B creates own order on PG -> hidden from Rep
+      const custBOrd = await req(baseUrlPg, 'POST', '/api/orders', {
+        token: pgCustBToken,
+        body: { items: [{ productId: prod.id, unit: prod.baseUnit, quantity: 1 }] },
+      });
+      assert.equal(custBOrd.status, 201);
+      const repOrdersPg = (await req(baseUrlPg, 'GET', '/api/orders', { token: pgRepToken })).json.orders;
+      assert.ok(repOrdersPg.some((o) => o.id === repOrd.json.order.id));
+      assert.equal(repOrdersPg.some((o) => o.id === custBOrd.json.order.id), false);
+
+      // Review & Approve on PG do NOT create invoice; duplicate approve -> 409
+      assert.equal((await req(baseUrlPg, 'POST', `/api/orders/${repOrd.json.order.id}/review`, { token: pgAdminToken, body: {} })).status, 200);
+      assert.equal((await req(baseUrlPg, 'POST', `/api/orders/${repOrd.json.order.id}/approve`, { token: pgAdminToken, body: {} })).status, 200);
+      assert.equal((await req(baseUrlPg, 'POST', `/api/orders/${repOrd.json.order.id}/approve`, { token: pgAdminToken, body: {} })).status, 409);
+
+      const bootAfterApp = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      assert.equal(bootAfterApp.invoices.length, invBefore);
+
+      // Reject requires reason on PG
+      assert.equal((await req(baseUrlPg, 'POST', `/api/orders/${custBOrd.json.order.id}/reject`, { token: pgAdminToken, body: { reason: '' } })).status, 400);
+      assert.equal((await req(baseUrlPg, 'POST', `/api/orders/${custBOrd.json.order.id}/reject`, { token: pgAdminToken, body: { reason: 'غير متوفر' } })).status, 200);
+
+      // Auto 1:1 customer link + duplicate 409 + fix-unlinked on PG
+      const pgAutoUser = await req(baseUrlPg, 'POST', '/api/admin/users', {
+        token: pgAdminToken,
+        body: {
+          fullName: 'عميل PG التلقائي',
+          username: 'pg_cust_auto',
+          password: 'PgPassword!123',
+          phone: '01066665555',
+          role: 'customer',
+        },
+      });
+      assert.equal(pgAutoUser.status, 201);
+      assert.ok(pgAutoUser.json.user.linkedCustomerId);
+
+      const pgDupLink = await req(baseUrlPg, 'POST', '/api/admin/users', {
+        token: pgAdminToken,
+        body: {
+          fullName: 'تضارب PG',
+          username: 'pg_cust_conflict',
+          password: 'PgPassword!123',
+          role: 'customer',
+          linkedCustomerId: pgAutoUser.json.user.linkedCustomerId,
+        },
+      });
+      assert.equal(pgDupLink.status, 409);
+
+      const pgUnlinked = await req(baseUrlPg, 'POST', '/api/admin/users', {
+        token: pgAdminToken,
+        body: {
+          fullName: 'عميل PG بدون ربط',
+          username: 'pg_cust_unlinked',
+          password: 'PgPassword!123',
+          role: 'customer',
+          autoCreateCustomerProfile: false,
+        },
+      });
+      assert.equal(pgUnlinked.status, 201);
+      const pgFix = await req(baseUrlPg, 'POST', '/api/customers/conflicts/fix-unlinked', { token: pgAdminToken });
+      assert.equal(pgFix.status, 200);
+      assert.ok(pgFix.json.repaired.some((r) => r.userId === pgUnlinked.json.user.id));
     });
   } finally {
     setInjectedPool(null);

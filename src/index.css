@@ -1,54 +1,37 @@
 @import "tailwindcss";
+@import "./styles/design-system.css";
 
 @theme {
-  --font-sans: 'Cairo', 'Tajawal', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-}
-
-:root {
-  color-scheme: light only;
-  --awlad-font-sans: 'Cairo', 'Tajawal', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  --awlad-primary: #1e3a8a;
-  --awlad-primary-dark: #172554;
-  --awlad-primary-accent: #2563eb;
-  --awlad-sidebar-bg: #0f172a;
-  --awlad-sidebar-header: #020617;
-  --awlad-bg: #f8fafc;
-  --awlad-surface: #ffffff;
-  --awlad-border: #e2e8f0;
-  --awlad-safe-top: env(safe-area-inset-top, 0px);
-  --awlad-safe-bottom: env(safe-area-inset-bottom, 0px);
-  --awlad-safe-left: env(safe-area-inset-left, 0px);
-  --awlad-safe-right: env(safe-area-inset-right, 0px);
+  --font-sans: 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 @layer base {
   html {
-    font-family: var(--awlad-font-sans);
-    direction: rtl;
-    text-align: right;
+    font-size: 16px;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
-    color-scheme: light only;
-    overscroll-behavior-y: contain;
+    color-scheme: light;
+    direction: rtl;
   }
 
   body {
     font-family: var(--awlad-font-sans);
     direction: rtl;
     text-align: right;
-    background-color: var(--awlad-bg);
-    color: #1e293b;
+    background-color: #f8fafc;
+    color: var(--awlad-text-body);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
+    overscroll-behavior-y: contain;
     overflow-x: hidden;
   }
 
+  input,
   button,
-  a,
-  [role="button"] {
-    touch-action: manipulation;
+  select,
+  textarea {
+    font-family: inherit;
   }
 
   input[type="number"]::-webkit-inner-spin-button,
@@ -58,7 +41,7 @@
   }
 }
 
-/* Custom scrollbar (consistent across Windows Electron & WebViews) */
+/* Custom scrollbar (consistent across Windows Electron & Chromium) */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -72,40 +55,6 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
-}
-
-/* Safe-Area Helpers (0px on desktop/preview, native insets on Android/iOS notch & bars) */
-.pt-safe {
-  padding-top: var(--awlad-safe-top);
-}
-
-.pb-safe {
-  padding-bottom: var(--awlad-safe-bottom);
-}
-
-.ps-safe {
-  padding-inline-start: var(--awlad-safe-right);
-}
-
-.pe-safe {
-  padding-inline-end: var(--awlad-safe-left);
-}
-
-.px-safe {
-  padding-left: max(0.75rem, var(--awlad-safe-left));
-  padding-right: max(0.75rem, var(--awlad-safe-right));
-}
-
-@media (min-width: 640px) {
-  .px-safe {
-    padding-left: max(1.5rem, var(--awlad-safe-left));
-    padding-right: max(1.5rem, var(--awlad-safe-right));
-  }
-}
-
-.awlad-table-scroll {
-  -webkit-overflow-scrolling: touch;
-  scrollbar-gutter: stable;
 }
 
 /* Print specific styles */
