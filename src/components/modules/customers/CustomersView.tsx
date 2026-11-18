@@ -1617,7 +1617,7 @@ export const CustomersView: React.FC = () => {
                             : order.status === 'approved'
                             ? 'مقبول — جاهز لتحويله لفاتورة'
                             : order.status === 'rep_assigned'
-                            ? `معين للمندوب (${order.assignedDeliveryRepName || ''})`
+                            ? `معين للمندوب (${order.deliveryRepName || order.assignedDeliveryRepName || ''})`
                             : order.status === 'out_for_delivery'
                             ? 'جاري التوصيل'
                             : order.status === 'delivered'

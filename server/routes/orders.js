@@ -45,7 +45,8 @@ router.post(
   '/',
   asyncHandler(async (req, res) => {
     const isCustomer = req.auth.user.role === 'customer';
-    if (!isCustomer && req.auth.user.role !== 'admin' && !req.auth.user.permissions?.canManageSales && !req.auth.user.permissions?.canAdd) {
+    const isRep = req.auth.user.role === 'representative';
+    if (!isCustomer && !isRep && req.auth.user.role !== 'admin' && !req.auth.user.permissions?.canManageSales && !req.auth.user.permissions?.canAdd) {
       return res.status(403).json({ ok: false, code: 'FORBIDDEN', error: 'ليس لديك صلاحية إنشاء طلبات عملاء' });
     }
     const idempotencyKey = req.get('Idempotency-Key') || req.body?.idempotencyKey;

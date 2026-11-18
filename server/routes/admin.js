@@ -35,6 +35,20 @@ import { checkPostgresHealth, initializeSchema } from '../db/postgres.js';
 import { runDataMigration, rollbackMigration, readMigrationLogs } from '../db/migrator.js';
 import { readJsonDatabase, getDataPaths } from '../db/jsonLedger.js';
 import {
+  listPairingTokens,
+  createPairingToken,
+  revokePairingToken,
+  listPairedDevices,
+  approvePairedDevice,
+  rejectPairedDevice,
+  disconnectPairedDevice,
+  revokePairedDevice,
+  parseValidAndroidSha256Fingerprints,
+  getTunnelRuntimeStatus,
+  pushConnectionConfigUpdate,
+  testConnectionEndpointReachability,
+} from '../db/stores/connectionPairingStore.js';
+import {
   requireAuth,
   requireStaff,
   requireAdmin,
@@ -60,21 +74,42 @@ router.get(
     const port = Number(process.env.AWLAD_ACTIVE_PORT || process.env.PORT || process.env.API_PORT || 3000);
     const nets = os.networkInterfaces();
     const lanUrls = [];
+    const lanIps = [];
     for (const list of Object.values(nets)) {
       if (!Array.isArray(list)) continue;
       for (const iface of list) {
         if (iface && iface.family === 'IPv4' && !iface.internal) {
+          lanIps.push(iface.address);
           lanUrls.push({ ip: iface.address, url: `http://${iface.address}:${port}` });
         }
       }
     }
     const { dataDir } = getDataPaths();
+    const packageName = String(process.env.ANDROID_APP_ID || 'com.awladselim.erp').trim();
+    const appLinkHost = String(process.env.ANDROID_APP_LINK_HOST || '').trim().toLowerCase();
+    const fingerprints = parseValidAndroidSha256Fingerprints(process.env.ANDROID_APP_SHA256_FINGERPRINTS || '');
+    const androidConfigured = fingerprints.length > 0 && Boolean(appLinkHost) && appLinkHost !== 'awladselim.app';
+    const iosConfigured = Boolean(String(process.env.APPLE_TEAM_ID || '').trim());
+
     res.json({
       ok: true,
+      hostname: os.hostname(),
       port,
       dataDir,
+      lanIps,
       lanUrls,
       isElectron: process.env.AWLAD_ELECTRON === 'true',
+      electronDesktop: process.env.AWLAD_ELECTRON === 'true',
+      tunnelStatus: getTunnelRuntimeStatus(),
+      appLinksConfigured: {
+        android: androidConfigured,
+        ios: iosConfigured,
+        androidDetails: {
+          packageName,
+          appLinkHost: appLinkHost || null,
+          fingerprintsCount: fingerprints.length,
+        },
+      },
     });
   })
 );
@@ -266,28 +301,123 @@ router.post('/migration/rollback', requireAdmin, asyncHandler(async (req, res) =
   res.json({ ok: true, ...result });
 }));
 
-router.get('/server-info', asyncHandler(async (_req, res) => {
-  const { networkInterfaces, hostname } = await import('node:os');
-  const { getDataPaths } = await import('../db/jsonLedger.js');
-  const nets = networkInterfaces();
-  const lanIps = [];
-  for (const name of Object.keys(nets)) {
-    for (const net of nets[name] || []) {
-      if (net && net.family === 'IPv4' && !net.internal) {
-        lanIps.push(net.address);
-      }
+// Device Pairing & Connected Devices Administration (Admin Only)
+router.get(
+  '/pairing/tokens',
+  requireAdmin,
+  asyncHandler(async (_req, res) => {
+    const tokens = await listPairingTokens();
+    res.json({ ok: true, tokens });
+  })
+);
+
+router.post(
+  '/pairing/tokens',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const result = await createPairingToken(req.body || {}, req.auth.user, req);
+    res.status(201).json({ ok: true, ...result });
+  })
+);
+
+router.post(
+  '/pairing/tokens/:id/revoke',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    await revokePairingToken(req.params.id, req.auth.user);
+    res.json({ ok: true });
+  })
+);
+
+router.get(
+  '/devices',
+  requireAdmin,
+  asyncHandler(async (_req, res) => {
+    const out = await listPairedDevices();
+    res.json({ ok: true, ...out });
+  })
+);
+
+router.post(
+  '/devices/:id/approve',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const device = await approvePairedDevice(req.params.id, req.auth.user);
+    res.json({ ok: true, device });
+  })
+);
+
+router.post(
+  '/devices/:id/reject',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const device = await rejectPairedDevice(req.params.id, req.body?.reason || '', req.auth.user);
+    res.json({ ok: true, device });
+  })
+);
+
+router.post(
+  '/devices/:id/disconnect',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const device = await disconnectPairedDevice(req.params.id, req.auth.user);
+    res.json({ ok: true, device });
+  })
+);
+
+router.post(
+  '/devices/:id/revoke',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const device = await revokePairedDevice(req.params.id, req.auth.user);
+    res.json({ ok: true, device });
+  })
+);
+
+router.post(
+  '/devices/:id/resend-link',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const { devices } = await listPairedDevices();
+    const dev = devices.find((d) => d.deviceId === req.params.id);
+    if (!dev) {
+      return res.status(404).json({ ok: false, code: 'DEVICE_NOT_FOUND', error: 'الجهاز غير موجود' });
     }
-  }
-  const activePort = Number(process.env.AWLAD_ACTIVE_PORT || process.env.PORT || process.env.API_PORT || 3000);
-  res.json({
-    ok: true,
-    hostname: hostname(),
-    port: activePort,
-    lanIps,
-    lanUrls: lanIps.map((ip) => `http://${ip}:${activePort}`),
-    dataDir: getDataPaths().dataDir,
-    electronDesktop: process.env.AWLAD_ELECTRON === 'true',
-  });
-}));
+    const result = await createPairingToken(
+      {
+        targetUserId: dev.linkedUserId,
+        targetDeviceType: ['windows', 'android', 'ios'].includes(dev.deviceType) ? dev.deviceType : 'any',
+        connectionMode: req.body?.connectionMode || dev.connectionMode || 'auto',
+        serverBaseUrl: req.body?.serverBaseUrl,
+        notes: `إعادة إرسال رابط ربط (${dev.deviceName})`,
+      },
+      req.auth.user,
+      req
+    );
+    res.status(201).json({ ok: true, ...result });
+  })
+);
+
+router.post(
+  '/connection/test-endpoint',
+  requirePermission('canManageSettings'),
+  asyncHandler(async (req, res) => {
+    const result = await testConnectionEndpointReachability(
+      req.body?.mode || 'local_network',
+      req.body?.url || '',
+      req.body?.enforceHttps !== false
+    );
+    res.json(result);
+  })
+);
+
+router.post(
+  '/connection/broadcast-update',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const connectionConfig = await pushConnectionConfigUpdate(req.auth.user);
+    res.json({ ok: true, connectionConfig });
+  })
+);
 
 export default router;

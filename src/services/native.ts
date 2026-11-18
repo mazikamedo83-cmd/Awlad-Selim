@@ -306,3 +306,135 @@ export function registerAndroidBackButton(handler: () => boolean | void): () => 
     }
   };
 }
+
+const PERSISTENT_DEVICE_ID_KEY = 'awlad_selim_persistent_device_id';
+let memoryFallbackDeviceId = '';
+
+export function getOrCreatePersistentDeviceId(): string {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const existing = localStorage.getItem(PERSISTENT_DEVICE_ID_KEY)?.trim();
+      if (existing) return existing;
+    }
+  } catch {
+    // ignore storage read error
+  }
+  if (memoryFallbackDeviceId) return memoryFallbackDeviceId;
+
+  const rnd =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID().replace(/-/g, '').slice(0, 16)
+      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+  const platformPrefix = getNativePlatform() === 'android' ? 'AND' : getNativePlatform() === 'ios' ? 'IOS' : 'DEV';
+  const generated = `${platformPrefix}-${rnd.toUpperCase()}`;
+  memoryFallbackDeviceId = generated;
+
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(PERSISTENT_DEVICE_ID_KEY, generated);
+    }
+  } catch {
+    // ignore
+  }
+  if (isNativeCapacitor()) {
+    Preferences.set({ key: PERSISTENT_DEVICE_ID_KEY, value: generated }).catch(() => {});
+  }
+  return generated;
+}
+
+export function getClientDeviceDescriptor(): {
+  deviceId: string;
+  deviceName: string;
+  deviceType: 'windows' | 'android' | 'ios' | 'web';
+  osVersion: string;
+  appVersion: string;
+} {
+  const deviceId = getOrCreatePersistentDeviceId();
+  const nativePlat = getNativePlatform();
+  const ua = typeof navigator !== 'undefined' ? String(navigator.userAgent || '') : '';
+  const isElectron =
+    typeof window !== 'undefined' && Boolean((window as any)?.awladDesktop?.isElectron);
+
+  let deviceType: 'windows' | 'android' | 'ios' | 'web' = 'web';
+  if (nativePlat === 'android') deviceType = 'android';
+  else if (nativePlat === 'ios') deviceType = 'ios';
+  else if (isElectron || /windows/i.test(ua)) deviceType = 'windows';
+  else if (/android/i.test(ua)) deviceType = 'android';
+  else if (/iphone|ipad|ipod/i.test(ua)) deviceType = 'ios';
+
+  const deviceName =
+    deviceType === 'windows'
+      ? 'AWLAD SELIM Windows Desktop'
+      : deviceType === 'android'
+      ? 'AWLAD SELIM Android'
+      : deviceType === 'ios'
+      ? 'AWLAD SELIM iPhone / iPad'
+      : 'AWLAD SELIM Web Browser';
+
+  return {
+    deviceId,
+    deviceName,
+    deviceType,
+    osVersion: ua.slice(0, 80),
+    appVersion: '3.0.0',
+  };
+}
+
+export function hasCameraMediaSupport(): boolean {
+  try {
+    return typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  } catch {
+    return false;
+  }
+}
+
+export async function getInitialAppLaunchUrl(): Promise<string | null> {
+  if (isNativeCapacitor()) {
+    try {
+      const launch = await CapacitorApp.getLaunchUrl();
+      if (launch?.url) return launch.url;
+    } catch {
+      // ignore if unsupported
+    }
+  }
+  if (typeof window !== 'undefined' && window.location?.href) {
+    const href = window.location.href;
+    if (
+      /[?&](pair_token|token)=/i.test(href) ||
+      /\/(?:pair|invite)\//i.test(window.location.pathname) ||
+      /^awladselim:\/\//i.test(href)
+    ) {
+      return href;
+    }
+  }
+  return null;
+}
+
+export function subscribeAppUrlOpen(onUrl: (url: string) => void): () => void {
+  if (!isNativeCapacitor()) {
+    return () => {};
+  }
+  let active = true;
+  let handle: { remove: () => Promise<void> } | null = null;
+  CapacitorApp.addListener('appUrlOpen', (event) => {
+    if (active && event?.url) {
+      onUrl(event.url);
+    }
+  })
+    .then((h) => {
+      if (!active) {
+        h.remove().catch(() => {});
+      } else {
+        handle = h;
+      }
+    })
+    .catch(() => {});
+
+  return () => {
+    active = false;
+    if (handle) {
+      handle.remove().catch(() => {});
+    }
+  };
+}
+

@@ -1350,12 +1350,12 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
 
       if (status === 'received') {
         await client.query(
-          `UPDATE rep_item_transfers SET status = 'received', notes = COALESCE(NULLIF($1, ''), notes), received_by = $2, received_at = $3 WHERE id = $4`,
+          `UPDATE rep_item_transfers SET status = 'received', notes = CASE WHEN COALESCE($1, '') <> '' THEN $1 ELSE notes END, received_by = $2, received_at = $3 WHERE id = $4`,
           [notes || '', actor.fullName, now, requestId]
         );
       } else {
         await client.query(
-          `UPDATE rep_item_transfers SET status = $1, notes = COALESCE(NULLIF($2, ''), notes), reviewed_by = $3, reviewed_at = $4, executed_at = CASE WHEN $1 = 'executed' THEN $4 ELSE executed_at END WHERE id = $5`,
+          `UPDATE rep_item_transfers SET status = $1, notes = CASE WHEN COALESCE($2, '') <> '' THEN $2 ELSE notes END, reviewed_by = $3, reviewed_at = $4, executed_at = CASE WHEN $1 = 'executed' THEN $4 ELSE executed_at END WHERE id = $5`,
           [status, notes || '', actor.fullName, now, requestId]
         );
       }
@@ -3576,6 +3576,97 @@ export async function renameCategoryGlobal(categoryId, newName, actor) {
   return out;
 }
 
+export function sanitizeConnectionConfig(rawCfg = {}, prevCfg = {}) {
+  const allowedModes = new Set(['local_network', 'free_remote', 'pro_remote', 'cloud_vps']);
+  const allowedHosting = new Set(['laptop_windows', 'cloud_vps', 'local_server']);
+  const allowedDomains = new Set(['none', 'trycloudflare', 'custom_domain']);
+  const allowedPlans = new Set(['free', 'pro', 'enterprise_vps', 'self_hosted']);
+  const allowedSubStatus = new Set(['none', 'active', 'trial', 'paused']);
+
+  const src = rawCfg && typeof rawCfg === 'object' ? rawCfg : {};
+  const prev = prevCfg && typeof prevCfg === 'object' ? prevCfg : {};
+  const cleanUrl = (v) => String(v || '').trim().replace(/\/+$/, '');
+  const cleanHttpUrl = (v) => {
+    const u = cleanUrl(v);
+    if (!u) return '';
+    try {
+      const parsed = new URL(u);
+      return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? u : '';
+    } catch {
+      return '';
+    }
+  };
+  const activeMode = allowedModes.has(src.activeMode)
+    ? src.activeMode
+    : allowedModes.has(prev.activeMode)
+    ? prev.activeMode
+    : 'local_network';
+
+  const rawDeploy = src.deploymentProfile && typeof src.deploymentProfile === 'object' ? src.deploymentProfile : {};
+  const prevDeploy = prev.deploymentProfile && typeof prev.deploymentProfile === 'object' ? prev.deploymentProfile : {};
+  const defaultHosting = activeMode === 'cloud_vps' ? 'cloud_vps' : 'laptop_windows';
+  const defaultDomain = activeMode === 'free_remote' ? 'trycloudflare' : activeMode === 'pro_remote' || activeMode === 'cloud_vps' ? 'custom_domain' : 'none';
+  const defaultPlan = activeMode === 'cloud_vps' ? 'enterprise_vps' : activeMode === 'pro_remote' ? 'pro' : 'free';
+
+  const rawDl = src.appDownloadUrls && typeof src.appDownloadUrls === 'object' ? src.appDownloadUrls : {};
+  const prevDl = prev.appDownloadUrls && typeof prev.appDownloadUrls === 'object' ? prev.appDownloadUrls : {};
+
+  return {
+    activeMode,
+    configVersion: Math.max(1, Number(src.configVersion || prev.configVersion || 1) || 1),
+    localNetwork: {
+      ip: String(src.localNetwork?.ip ?? prev.localNetwork?.ip ?? '192.168.1.100').trim(),
+      port: Number(src.localNetwork?.port ?? prev.localNetwork?.port ?? 3000) || 3000,
+      hostname: String(src.localNetwork?.hostname ?? prev.localNetwork?.hostname ?? 'awlad-selim-server').trim(),
+    },
+    freeRemote: {
+      tunnelUrl: cleanUrl(src.freeRemote?.tunnelUrl ?? prev.freeRemote?.tunnelUrl ?? ''),
+      autoDetect: src.freeRemote?.autoDetect !== undefined ? Boolean(src.freeRemote.autoDetect) : prev.freeRemote?.autoDetect !== false,
+    },
+    proRemote: {
+      domainUrl: cleanUrl(src.proRemote?.domainUrl ?? prev.proRemote?.domainUrl ?? ''),
+      provider: String(src.proRemote?.provider ?? prev.proRemote?.provider ?? 'cloudflare_named_tunnel').trim(),
+    },
+    cloudVps: {
+      vpsUrl: cleanUrl(src.cloudVps?.vpsUrl ?? prev.cloudVps?.vpsUrl ?? ''),
+      notes: String(src.cloudVps?.notes ?? prev.cloudVps?.notes ?? '').trim().slice(0, 200),
+    },
+    deploymentProfile: {
+      hostingLocation: allowedHosting.has(rawDeploy.hostingLocation)
+        ? rawDeploy.hostingLocation
+        : allowedHosting.has(prevDeploy.hostingLocation)
+        ? prevDeploy.hostingLocation
+        : defaultHosting,
+      domainType: allowedDomains.has(rawDeploy.domainType)
+        ? rawDeploy.domainType
+        : allowedDomains.has(prevDeploy.domainType)
+        ? prevDeploy.domainType
+        : defaultDomain,
+      planTier: allowedPlans.has(rawDeploy.planTier)
+        ? rawDeploy.planTier
+        : allowedPlans.has(prevDeploy.planTier)
+        ? prevDeploy.planTier
+        : defaultPlan,
+      subscriptionStatus: allowedSubStatus.has(rawDeploy.subscriptionStatus)
+        ? rawDeploy.subscriptionStatus
+        : allowedSubStatus.has(prevDeploy.subscriptionStatus)
+        ? prevDeploy.subscriptionStatus
+        : 'none',
+      subscriptionNote: String(rawDeploy.subscriptionNote ?? prevDeploy.subscriptionNote ?? '').trim().slice(0, 200),
+    },
+    appDownloadUrls: {
+      androidApkUrl: cleanHttpUrl(rawDl.androidApkUrl ?? prevDl.androidApkUrl ?? ''),
+      iosStoreUrl: cleanHttpUrl(rawDl.iosStoreUrl ?? prevDl.iosStoreUrl ?? ''),
+      windowsUrl: cleanHttpUrl(rawDl.windowsUrl ?? prevDl.windowsUrl ?? ''),
+    },
+    enforceHttpsForRemote:
+      src.enforceHttpsForRemote !== undefined
+        ? Boolean(src.enforceHttpsForRemote)
+        : prev.enforceHttpsForRemote !== false,
+    updatedAt: nowIso(),
+  };
+}
+
 export async function updateSystemSettings(updates, actor) {
   const now = nowIso();
   if (await isPgMode()) {
@@ -3588,6 +3679,12 @@ export async function updateSystemSettings(updates, actor) {
           ...prevExtra,
           ...(updates.extraSettings || {}),
         };
+        if (updates.extraSettings?.connectionConfig !== undefined) {
+          mergedExtra.connectionConfig = sanitizeConnectionConfig(
+            updates.extraSettings.connectionConfig,
+            prevExtra.connectionConfig || {}
+          );
+        }
         if (updates.mobileConfig !== undefined || updates.extraSettings?.mobileConfig !== undefined) {
           mergedExtra.mobileConfig = {
             ...(prevExtra.mobileConfig || {}),
@@ -3617,6 +3714,9 @@ export async function updateSystemSettings(updates, actor) {
         return { ...updates, extraSettings: mergedExtra, mobileConfig: mergedExtra.mobileConfig };
       } else {
         const extraSettings = { ...(updates.extraSettings || {}) };
+        if (extraSettings.connectionConfig !== undefined) {
+          extraSettings.connectionConfig = sanitizeConnectionConfig(extraSettings.connectionConfig, {});
+        }
         if (updates.mobileConfig) {
           extraSettings.mobileConfig = { ...(extraSettings.mobileConfig || {}), ...(updates.mobileConfig || {}) };
         }
@@ -3652,6 +3752,12 @@ export async function updateSystemSettings(updates, actor) {
       ...prevExtra,
       ...(updates.extraSettings || {}),
     };
+    if (updates.extraSettings?.connectionConfig !== undefined) {
+      mergedExtra.connectionConfig = sanitizeConnectionConfig(
+        updates.extraSettings.connectionConfig,
+        prevExtra.connectionConfig || {}
+      );
+    }
     if (updates.mobileConfig !== undefined || updates.extraSettings?.mobileConfig !== undefined) {
       mergedExtra.mobileConfig = {
         ...(prevExtra.mobileConfig || {}),

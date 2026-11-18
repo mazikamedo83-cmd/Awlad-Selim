@@ -122,6 +122,7 @@ export interface User {
   lastLogin?: string;
   permissions: UserPermissions;
   shortcuts?: UserShortcutItem[];
+  linkedCustomerId?: string;
   createdAt: string;
 }
 
@@ -613,6 +614,7 @@ export interface ExtraSettingsConfig {
     syncIntervalSeconds: number;
     cloudEndpointUrl?: string;
   };
+  connectionConfig?: ConnectionProfilesConfig;
   shortcuts?: Array<{ keyCombo: string; actionLabel: string; targetPage: string }>;
   servicesConfig?: {
     enableBarcodeScanner: boolean;
@@ -717,6 +719,7 @@ export interface CustomerItemOrderRequest {
     productId: string;
     productCode?: string;
     productName: string;
+    productImage?: string;
     unit: string;
     unitFactor?: number;
     quantity: number;
@@ -733,6 +736,8 @@ export interface CustomerItemOrderRequest {
   reviewedBy?: string;
   deliveryRepId?: string;
   deliveryRepName?: string;
+  assignedDeliveryRepId?: string;
+  assignedDeliveryRepName?: string;
   assignedAt?: string;
   deliveredAt?: string;
   collectedAmount?: number;
@@ -744,6 +749,7 @@ export interface CustomerItemOrderRequest {
   originDeviceId?: string;
   version?: number;
   isLocalQueued?: boolean;
+  syncStatus?: SyncQueueStatus;
   statusHistory?: CustomerOrderStatusHistoryEntry[];
 }
 
@@ -1119,6 +1125,126 @@ export interface CustomerStatementResponse {
   };
   entries: CustomerStatementEntry[];
 }
+
+export type ConnectionMode = 'local_network' | 'free_remote' | 'pro_remote' | 'cloud_vps';
+
+export interface ConnectionProfilesConfig {
+  activeMode?: ConnectionMode;
+  configVersion?: number;
+  localNetwork?: {
+    ip: string;
+    port: number;
+    hostname?: string;
+  };
+  freeRemote?: {
+    tunnelUrl: string;
+    autoDetect?: boolean;
+  };
+  proRemote?: {
+    domainUrl: string;
+    provider?: string;
+  };
+  cloudVps?: {
+    vpsUrl: string;
+    notes?: string;
+  };
+  deploymentProfile?: {
+    hostingLocation?: 'laptop_windows' | 'cloud_vps' | 'local_server';
+    domainType?: 'none' | 'trycloudflare' | 'custom_domain';
+    planTier?: 'free' | 'pro' | 'enterprise_vps' | 'self_hosted';
+    subscriptionStatus?: 'none' | 'active' | 'trial' | 'paused';
+    subscriptionNote?: string;
+  };
+  appDownloadUrls?: {
+    androidApkUrl?: string;
+    iosStoreUrl?: string;
+    windowsUrl?: string;
+  };
+  enforceHttpsForRemote?: boolean;
+  updatedAt?: string | null;
+}
+
+export interface ConnectionDiscoveryResponse {
+  ok: boolean;
+  service: string;
+  version: string;
+  timestamp?: string;
+  companyName?: string;
+  activeMode: ConnectionMode;
+  configVersion?: number;
+  supportedModes?: ConnectionMode[];
+  port?: number;
+  httpsActive?: boolean;
+  activeEndpoint?: string;
+  currentHostUrl?: string;
+  lanUrls?: string[];
+  profiles?: ConnectionProfilesConfig;
+  fallbackEndpoints?: Array<{ mode: ConnectionMode; url: string; label: string }>;
+  tunnelStatus?: Record<string, any>;
+}
+
+export interface PairedDevice {
+  deviceId: string;
+  deviceName: string;
+  deviceType: 'windows' | 'android' | 'ios' | 'web' | string;
+  osVersion?: string;
+  appVersion?: string;
+  linkedUserId?: string;
+  linkedUserName?: string;
+  connectionMode: ConnectionMode | string;
+  serverUrlUsed?: string;
+  ipAddress?: string;
+  status: 'active' | 'pending_approval' | 'rejected' | 'disconnected' | 'revoked';
+  pairingTokenId?: string;
+  configVersion?: number;
+  pairedAt: string;
+  lastSeenAt: string;
+  revokedAt?: string;
+  notes?: string;
+  isRecentlyOnline?: boolean;
+}
+
+export interface PairedDevicesSummary {
+  total: number;
+  active: number;
+  pendingApproval: number;
+  rejected?: number;
+  disconnected?: number;
+  revoked: number;
+  onlineNow: number;
+}
+
+export interface PairingTokenRecord {
+  id: string;
+  tokenPreview: string;
+  createdByUserId?: string;
+  createdByName: string;
+  targetUserId?: string;
+  targetUserName?: string;
+  targetRole?: string;
+  targetDeviceType: 'any' | 'windows' | 'android' | 'ios';
+  connectionMode: 'auto' | ConnectionMode;
+  expiresAt: string;
+  singleUse: boolean;
+  usedCount: number;
+  lastUsedAt?: string;
+  requireAdminApproval: boolean;
+  revokedAt?: string;
+  notes?: string;
+  createdAt: string;
+  status: 'active' | 'used' | 'revoked' | 'expired' | 'invalid';
+}
+
+export interface PairingCreateResponse {
+  ok?: boolean;
+  tokenRecord: PairingTokenRecord;
+  rawToken: string;
+  serverBaseUrl: string;
+  directInviteUrl: string;
+  deepLinkUrl: string;
+  qrPayload: string;
+}
+
 
 
 

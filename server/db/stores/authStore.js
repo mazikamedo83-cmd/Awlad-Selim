@@ -303,7 +303,7 @@ function resolveLinkedProfilesJson(db, user) {
   return { customerProfile, representativeProfile, linkWarning };
 }
 
-export async function loginUser({ username, password, deviceInfo = '', ipAddress = '' }) {
+export async function loginUser({ username, password, deviceInfo = '', ipAddress = '', deviceId = '' }) {
   const cleanUsername = String(username || '').trim().toLowerCase();
   const cleanPassword = String(password || '');
   if (!cleanUsername || !cleanPassword) {
@@ -346,9 +346,9 @@ export async function loginUser({ username, password, deviceInfo = '', ipAddress
       }
 
       await client.query(
-        `INSERT INTO user_sessions (id, user_id, refresh_token_hash, device_info, ip_address, expires_at, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [sessionId, row.id, refreshHash, deviceInfo || '', ipAddress || '', expiresDate, now]
+        `INSERT INTO user_sessions (id, user_id, refresh_token_hash, device_info, device_id, ip_address, expires_at, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [sessionId, row.id, refreshHash, deviceInfo || '', String(deviceId || '').slice(0, 64), ipAddress || '', expiresDate, now]
       );
 
       const userObj = mapPgUserRow(row);
@@ -421,6 +421,7 @@ export async function loginUser({ username, password, deviceInfo = '', ipAddress
       userId: found.user.id,
       refreshTokenHash: refreshHash,
       deviceInfo: deviceInfo || '',
+      deviceId: String(deviceId || '').slice(0, 64),
       ipAddress: ipAddress || '',
       expiresAt: expiresDate,
       revokedAt: null,
@@ -461,7 +462,7 @@ export async function loginUser({ username, password, deviceInfo = '', ipAddress
   };
 }
 
-export async function refreshUserSession({ refreshToken, deviceInfo = '', ipAddress = '' }) {
+export async function refreshUserSession({ refreshToken, deviceInfo = '', ipAddress = '', deviceId = '' }) {
   if (!refreshToken) {
     throw new AppError(401, 'رمز التحديث مفقود', 'MISSING_REFRESH_TOKEN');
   }
@@ -488,8 +489,14 @@ export async function refreshUserSession({ refreshToken, deviceInfo = '', ipAddr
       }
 
       await client.query(
-        `UPDATE user_sessions SET refresh_token_hash = $1, expires_at = $2, device_info = COALESCE(NULLIF($3, ''), device_info), ip_address = COALESCE(NULLIF($4, ''), ip_address) WHERE id = $5`,
-        [newRefreshHash, newExpires, deviceInfo, ipAddress, ses.id]
+        `UPDATE user_sessions SET
+           refresh_token_hash = $1,
+           expires_at = $2,
+           device_info = CASE WHEN COALESCE($3, '') <> '' THEN $3 ELSE device_info END,
+           ip_address = CASE WHEN COALESCE($4, '') <> '' THEN $4 ELSE ip_address END,
+           device_id = CASE WHEN COALESCE($5, '') <> '' THEN $5 ELSE device_id END
+         WHERE id = $6`,
+        [newRefreshHash, newExpires, deviceInfo || '', ipAddress || '', String(deviceId || '').slice(0, 64), ses.id]
       );
 
       const user = mapPgUserRow(userRow);
@@ -535,6 +542,7 @@ export async function refreshUserSession({ refreshToken, deviceInfo = '', ipAddr
     }
     sessions[idx].refreshTokenHash = newRefreshHash;
     sessions[idx].expiresAt = newExpires;
+    if (deviceId) sessions[idx].deviceId = String(deviceId).slice(0, 64);
     writeJsonSessions(sessions);
     const profiles = resolveLinkedProfilesJson(db, user);
     return { sessionId: sessions[idx].id, user, ...profiles };
@@ -863,4 +871,29 @@ export async function revokeAllUserSessions(userId) {
     if (changed) writeJsonSessions(sessions);
   });
 }
+
+export async function revokeSessionsByDeviceId(deviceId) {
+  const cleanId = String(deviceId || '').trim();
+  if (!cleanId) return;
+  const now = nowIso();
+  if (await isPgMode()) {
+    await getPool().query(
+      'UPDATE user_sessions SET revoked_at = $1 WHERE device_id = $2 AND revoked_at IS NULL',
+      [now, cleanId]
+    );
+    return;
+  }
+  await withJsonMutex(() => {
+    const sessions = readJsonSessions();
+    let changed = false;
+    for (const s of sessions) {
+      if (s.deviceId === cleanId && !s.revokedAt) {
+        s.revokedAt = now;
+        changed = true;
+      }
+    }
+    if (changed) writeJsonSessions(sessions);
+  });
+}
+
 

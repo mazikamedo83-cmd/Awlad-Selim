@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 function sha256Buffer(buf) {
@@ -263,7 +264,114 @@ function prepareElectronDataDirectory({
   };
 }
 
+function isPidAlive(pid) {
+  if (!pid || !Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err && err.code === 'EPERM';
+  }
+}
+
+function acquireDatabaseLock(targetDataDir) {
+  if (!targetDataDir) {
+    throw new Error('targetDataDir is required for database lock.');
+  }
+  fs.mkdirSync(targetDataDir, { recursive: true });
+  const lockPath = path.join(targetDataDir, 'server.lock');
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const payload = JSON.stringify(
+        {
+          pid: process.pid,
+          startedAt: new Date().toISOString(),
+          hostname: os.hostname(),
+        },
+        null,
+        2
+      );
+      fs.writeFileSync(lockPath, payload, { encoding: 'utf8', flag: 'wx' });
+      return lockPath;
+    } catch (err) {
+      if (err && err.code !== 'EEXIST') throw err;
+      let existing = null;
+      try {
+        existing = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+      } catch {
+        existing = null;
+      }
+      const existingPid = Number(existing?.pid);
+      if (existingPid && existingPid !== process.pid && isPidAlive(existingPid)) {
+        throw new Error(
+          `توجد نسخة أخرى من خادم AWLAD SELIM قيد التشغيل بالفعل على نفس مجلد البيانات (${targetDataDir}) برقم عملية PID=${existingPid}. تم إيقاف التشغيل لمنع تضارب قاعدة البيانات.`
+        );
+      }
+      // Stale lock from crashed process — safely clean and retry
+      try {
+        fs.unlinkSync(lockPath);
+      } catch {
+        // ignore race
+      }
+    }
+  }
+  throw new Error(`تعذر حجز قفل التشغيل الحصري لقاعدة البيانات في (${lockPath}).`);
+}
+
+function releaseDatabaseLock(lockPath) {
+  if (!lockPath || !fs.existsSync(lockPath)) return;
+  try {
+    const raw = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+    if (Number(raw?.pid) === process.pid) {
+      fs.unlinkSync(lockPath);
+    }
+  } catch {
+    // Do not force delete unreadable foreign lock
+  }
+}
+
+function readTunnelAutoStartConfig(targetDataDir) {
+  const defaultCfg = { enabled: false, mode: 'free_remote', token: '', domainUrl: '' };
+  if (!targetDataDir) return defaultCfg;
+  const filePath = path.join(targetDataDir, 'tunnel-autostart.json');
+  if (!fs.existsSync(filePath)) return defaultCfg;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    return {
+      enabled: Boolean(parsed?.enabled),
+      mode: parsed?.mode === 'pro_remote' ? 'pro_remote' : 'free_remote',
+      token: String(parsed?.token || '').trim(),
+      domainUrl: String(parsed?.domainUrl || '').trim(),
+    };
+  } catch {
+    return defaultCfg;
+  }
+}
+
+function writeTunnelAutoStartConfig(targetDataDir, nextCfg = {}) {
+  if (!targetDataDir) {
+    throw new Error('targetDataDir is required to save tunnel auto-start config.');
+  }
+  fs.mkdirSync(targetDataDir, { recursive: true });
+  const existing = readTunnelAutoStartConfig(targetDataDir);
+  const resolved = {
+    enabled: nextCfg.enabled !== undefined ? Boolean(nextCfg.enabled) : existing.enabled,
+    mode: nextCfg.mode === 'pro_remote' ? 'pro_remote' : nextCfg.mode === 'free_remote' ? 'free_remote' : existing.mode,
+    token: nextCfg.token !== undefined ? String(nextCfg.token || '').trim() : existing.token,
+    domainUrl: nextCfg.domainUrl !== undefined ? String(nextCfg.domainUrl || '').trim() : existing.domainUrl,
+    updatedAt: new Date().toISOString(),
+  };
+  const filePath = path.join(targetDataDir, 'tunnel-autostart.json');
+  fs.writeFileSync(filePath, JSON.stringify(resolved, null, 2), { encoding: 'utf8', mode: 0o600 });
+  return resolved;
+}
+
 module.exports = {
   inspectDatabaseFile,
   prepareElectronDataDirectory,
+  acquireDatabaseLock,
+  releaseDatabaseLock,
+  readTunnelAutoStartConfig,
+  writeTunnelAutoStartConfig,
 };

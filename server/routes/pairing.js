@@ -7,6 +7,7 @@ import {
   updateTunnelRuntimeStatus,
   parseValidAndroidSha256Fingerprints,
 } from '../db/stores/connectionPairingStore.js';
+import { getSystemSettingsSafe } from '../db/stores/catalogStore.js';
 import { validateActiveSession } from '../db/stores/authStore.js';
 import { verifyJwt } from '../utils/crypto.js';
 import { asyncHandler, checkPairingRateLimit, getClientIp } from '../middleware/auth.js';
@@ -177,7 +178,9 @@ pairingPublicPagesRouter.get('/.well-known/apple-app-site-association', (_req, r
       details: [
         {
           appID: appId,
+          appIDs: [appId],
           paths: ['/pair/*', '/invite/*'],
+          components: [{ '/': '/pair/*' }, { '/': '/invite/*' }],
         },
       ],
     },
@@ -189,7 +192,10 @@ async function handleInviteLandingPage(req, res) {
   const wantJson = req.query.format === 'json' || (!req.accepts('html') && req.accepts('json'));
 
   try {
-    const info = await resolvePairingToken(rawToken, req);
+    const [info, sys] = await Promise.all([
+      resolvePairingToken(rawToken, req),
+      getSystemSettingsSafe().catch(() => null),
+    ]);
     if (wantJson) {
       return res.json(info);
     }
@@ -204,11 +210,12 @@ async function handleInviteLandingPage(req, res) {
         ? 'Windows Desktop'
         : 'المتصفح';
 
+    const dlCfg = sys?.extraSettings?.connectionConfig?.appDownloadUrls || {};
     const deepLink = `awladselim://pair?token=${encodeURIComponent(rawToken)}&server=${encodeURIComponent(info.endpointUrl)}`;
     const webAppLink = `/?pair_token=${encodeURIComponent(rawToken)}`;
-    const androidApkUrl = String(process.env.ANDROID_APK_URL || '').trim();
-    const iosStoreUrl = String(process.env.IOS_TESTFLIGHT_URL || process.env.IOS_APP_STORE_URL || '').trim();
-    const windowsUrl = String(process.env.WINDOWS_DOWNLOAD_URL || '').trim();
+    const androidApkUrl = String(dlCfg.androidApkUrl || process.env.ANDROID_APK_URL || '').trim();
+    const iosStoreUrl = String(dlCfg.iosStoreUrl || process.env.IOS_TESTFLIGHT_URL || process.env.IOS_APP_STORE_URL || '').trim();
+    const windowsUrl = String(dlCfg.windowsUrl || process.env.WINDOWS_DOWNLOAD_URL || '').trim();
 
     let downloadBlockHtml = '';
     if (platform === 'android') {

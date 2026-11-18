@@ -1673,7 +1673,7 @@ async function runSuiteA_JsonLedgerHttp() {
       assert.equal(boot1.cashboxes.find((c) => c.id === cb0.id).currentBalance, cbBalBefore + 25);
 
       // Sales invoice stores dated priceHistory object and respects Idempotency-Key
-      const invDate = '2026-11-17';
+      const invDate = new Date().toISOString().split('T')[0];
       const si1 = await req(baseUrl, 'POST', '/api/invoices/sales', {
         token: adminToken,
         headers: { 'Idempotency-Key': 'idem-sale-35' },

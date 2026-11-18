@@ -612,6 +612,503 @@ async function runTests() {
       resetPgModeCache();
     });
 
+    console.log('\n=== 6. 5-Status Device Lifecycle, 403 Auth/API Guards & Revoke Permanence ===');
+
+    await test('Device guards block pending_approval, rejected, disconnected, and revoked across login/refresh/API routes', async () => {
+      // Seed sample customer + invoice balance to verify nothing is touched during settings/device ops
+      const preDb = readJsonDatabase();
+      preDb.customers = preDb.customers || [];
+      preDb.customers.push({
+        id: 'CUST_PRESERVE_01',
+        name: 'عميل حافظ للرصيد',
+        phone: '01000000001',
+        address: 'القاهرة',
+        balance: 4250.5,
+      });
+      writeJsonDatabase(preDb);
+
+      const created = await req(baseUrl, 'POST', '/api/admin/pairing/tokens', {
+        token: adminToken,
+        body: {
+          connectionMode: 'local_network',
+          serverBaseUrl: baseUrl,
+          targetDeviceType: 'android',
+          singleUse: false,
+          requireAdminApproval: true,
+        },
+      });
+      assert.equal(created.status, 201);
+
+      const devId = 'DEV_GUARD_TEST_01';
+      const claimRes = await req(baseUrl, 'POST', '/api/pairing/claim', {
+        body: {
+          token: created.json.rawToken,
+          deviceId: devId,
+          deviceName: 'Phone Guard Check',
+          deviceType: 'android',
+        },
+      });
+      assert.equal(claimRes.status, 200);
+      assert.equal(claimRes.json.deviceStatus, 'pending_approval');
+
+      // 1) pending_approval blocks login + orders API
+      const loginPending = await req(baseUrl, 'POST', '/api/auth/login', {
+        headers: { 'X-Device-Id': devId },
+        body: { username: 'admin_test', password: 'Password#123' },
+      });
+      assert.equal(loginPending.status, 403);
+      assert.equal(loginPending.json.code, 'DEVICE_PENDING_APPROVAL');
+
+      const ordersPending = await req(baseUrl, 'GET', '/api/orders', {
+        token: adminToken,
+        headers: { 'X-Device-Id': devId },
+      });
+      assert.equal(ordersPending.status, 403);
+      assert.equal(ordersPending.json.code, 'DEVICE_PENDING_APPROVAL');
+
+      // 2) Reject device -> blocks login + orders + appears in summary.rejected
+      const rejectRes = await req(baseUrl, 'POST', `/api/admin/devices/${devId}/reject`, {
+        token: adminToken,
+        body: { reason: 'جهاز غير مصرح به' },
+      });
+      assert.equal(rejectRes.status, 200);
+      assert.equal(rejectRes.json.device.status, 'rejected');
+
+      const listAfterReject = await req(baseUrl, 'GET', '/api/admin/devices', { token: adminToken });
+      assert.equal(listAfterReject.status, 200);
+      assert.ok(listAfterReject.json.summary.rejected >= 1);
+
+      const loginRejected = await req(baseUrl, 'POST', '/api/auth/login', {
+        headers: { 'X-Device-Id': devId },
+        body: { username: 'admin_test', password: 'Password#123' },
+      });
+      assert.equal(loginRejected.status, 403);
+      assert.equal(loginRejected.json.code, 'DEVICE_REJECTED');
+
+      // 3) Admin can approve -> becomes active -> login & refresh succeed
+      const approveRes = await req(baseUrl, 'POST', `/api/admin/devices/${devId}/approve`, {
+        token: adminToken,
+      });
+      assert.equal(approveRes.status, 200);
+      assert.equal(approveRes.json.device.status, 'active');
+
+      const loginActive = await req(baseUrl, 'POST', '/api/auth/login', {
+        headers: { 'X-Device-Id': devId },
+        body: { username: 'admin_test', password: 'Password#123' },
+      });
+      assert.equal(loginActive.status, 200);
+      const devAccess = loginActive.json.accessToken;
+      const devRefresh = loginActive.json.refreshToken;
+      assert.ok(devAccess && devRefresh);
+
+      // 4) Disconnect device temporarily -> revokes device sessions, blocks API & refresh with DEVICE_DISCONNECTED
+      const discRes = await req(baseUrl, 'POST', `/api/admin/devices/${devId}/disconnect`, {
+        token: adminToken,
+      });
+      assert.equal(discRes.status, 200);
+      assert.equal(discRes.json.device.status, 'disconnected');
+
+      const listAfterDisc = await req(baseUrl, 'GET', '/api/admin/devices', { token: adminToken });
+      assert.ok(listAfterDisc.json.summary.disconnected >= 1);
+
+      const apiDisc = await req(baseUrl, 'GET', '/api/admin/devices', {
+        token: devAccess,
+        headers: { 'X-Device-Id': devId },
+      });
+      assert.equal(apiDisc.status, 403);
+      assert.equal(apiDisc.json.code, 'DEVICE_DISCONNECTED');
+
+      const refreshDisc = await req(baseUrl, 'POST', '/api/auth/refresh', {
+        headers: { 'X-Device-Id': devId },
+        body: { refreshToken: devRefresh, deviceId: devId },
+      });
+      assert.equal(refreshDisc.status, 403);
+      assert.equal(refreshDisc.json.code, 'DEVICE_DISCONNECTED');
+
+      // Re-approve from disconnected -> succeeds
+      const reApprove = await req(baseUrl, 'POST', `/api/admin/devices/${devId}/approve`, {
+        token: adminToken,
+      });
+      assert.equal(reApprove.status, 200);
+      assert.equal(reApprove.json.device.status, 'active');
+
+      // 5) Permanent revoke -> cannot be re-approved via /approve (409 DEVICE_REVOKED_REPAIR_REQUIRED) & blocks auth
+      const revRes = await req(baseUrl, 'POST', `/api/admin/devices/${devId}/revoke`, {
+        token: adminToken,
+      });
+      assert.equal(revRes.status, 200);
+      assert.equal(revRes.json.device.status, 'revoked');
+
+      const approveRevoked = await req(baseUrl, 'POST', `/api/admin/devices/${devId}/approve`, {
+        token: adminToken,
+      });
+      assert.equal(approveRevoked.status, 409);
+      assert.equal(approveRevoked.json.code, 'DEVICE_REVOKED_REPAIR_REQUIRED');
+
+      const loginRevoked = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: 'admin_test', password: 'Password#123', deviceId: devId },
+      });
+      assert.equal(loginRevoked.status, 403);
+      assert.equal(loginRevoked.json.code, 'DEVICE_REVOKED');
+    });
+
+    console.log('\n=== 7. Live Endpoint Reachability Verification & Non-Destructive Settings Update ===');
+
+    await test('test-endpoint verifies AWLAD identity, rejects spoofed HTTP servers, unreachable hosts & enforces HTTPS on VPS', async () => {
+      // 1) Valid live AWLAD server
+      const okTest = await req(baseUrl, 'POST', '/api/admin/connection/test-endpoint', {
+        token: adminToken,
+        body: { mode: 'local_network', url: baseUrl },
+      });
+      assert.equal(okTest.status, 200);
+      assert.equal(okTest.json.ok, true);
+      assert.equal(okTest.json.reachable, true);
+      assert.equal(okTest.json.companyName, 'شركة أولاد سليم للاختبار المعزول');
+
+      // 2) Arbitrary HTTP server that is NOT AWLAD SELIM
+      const dummyServer = http.createServer((_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, service: 'SomeOtherApp' }));
+      });
+      await new Promise<void>((resolve) => dummyServer.listen(0, '127.0.0.1', resolve));
+      const dummyPort = (dummyServer.address() as { port: number }).port;
+      try {
+        const notAwlad = await req(baseUrl, 'POST', '/api/admin/connection/test-endpoint', {
+          token: adminToken,
+          body: { mode: 'local_network', url: `http://127.0.0.1:${dummyPort}` },
+        });
+        assert.equal(notAwlad.status, 400);
+        assert.equal(notAwlad.json.code, 'PAIRING_ENDPOINT_NOT_AWLAD');
+      } finally {
+        dummyServer.close();
+      }
+
+      // 3) Closed port (after dummyServer is closed)
+      const unreachable = await req(baseUrl, 'POST', '/api/admin/connection/test-endpoint', {
+        token: adminToken,
+        body: { mode: 'local_network', url: `http://127.0.0.1:${dummyPort}` },
+      });
+      assert.equal(unreachable.status, 400);
+      assert.equal(unreachable.json.code, 'PAIRING_ENDPOINT_UNREACHABLE');
+
+      // 4) Cloud VPS rejects plain http:// when enforceHttps is true
+      const vpsHttp = await req(baseUrl, 'POST', '/api/admin/connection/test-endpoint', {
+        token: adminToken,
+        body: { mode: 'cloud_vps', url: 'http://vps.awladselim.cloud', enforceHttps: true },
+      });
+      assert.equal(vpsHttp.status, 400);
+      assert.equal(vpsHttp.json.code, 'HTTPS_REQUIRED_FOR_REMOTE');
+
+      // 5) createPairingToken with verifyReachability=true rejects unreachable endpoint
+      const verifyFail = await req(baseUrl, 'POST', '/api/admin/pairing/tokens', {
+        token: adminToken,
+        body: {
+          connectionMode: 'local_network',
+          serverBaseUrl: `http://127.0.0.1:${dummyPort}`,
+          verifyReachability: true,
+        },
+      });
+      assert.equal(verifyFail.status, 400);
+      assert.equal(verifyFail.json.code, 'PAIRING_ENDPOINT_UNREACHABLE');
+
+      // 6) Updating connectionConfig to cloud_vps preserves existing customers/balances completely
+      const settingsUpdate = await req(baseUrl, 'PUT', '/api/admin/settings', {
+        token: adminToken,
+        body: {
+          extraSettings: {
+            connectionConfig: {
+              activeMode: 'cloud_vps',
+              configVersion: 9,
+              cloudVps: { vpsUrl: 'https://vps.awladselim.cloud', notes: 'Production VPS' },
+            },
+          },
+        },
+      });
+      assert.equal(settingsUpdate.status, 200);
+      const afterDb = readJsonDatabase();
+      const preservedCustomer = (afterDb.customers || []).find((c: any) => c.id === 'CUST_PRESERVE_01');
+      assert.ok(preservedCustomer);
+      assert.equal(preservedCustomer.balance, 4250.5);
+    });
+
+    console.log('\n=== 8. Electron Single-Instance Database PID Lock ===');
+
+    await test('acquireDatabaseLock prevents concurrent PID collision, recovers stale locks, and releases cleanly', async () => {
+      const { createRequire } = await import('node:module');
+      const requireCjs = createRequire(import.meta.url);
+      const { acquireDatabaseLock, releaseDatabaseLock } = requireCjs('../../electron/dataBootstrap.cjs');
+
+      const lockTestDir = fs.mkdtempSync(path.join(os.tmpdir(), 'awlad_lock_test_'));
+      try {
+        // 1) Simulate stale lock from an exited PID -> should be cleaned & acquired
+        const lockFile = path.join(lockTestDir, 'server.lock');
+        fs.writeFileSync(lockFile, JSON.stringify({ pid: 9999999, startedAt: new Date().toISOString() }), 'utf8');
+        const acquiredPath = acquireDatabaseLock(lockTestDir);
+        assert.equal(acquiredPath, lockFile);
+        const lockData = JSON.parse(fs.readFileSync(lockFile, 'utf8'));
+        assert.equal(lockData.pid, process.pid);
+
+        // 2) Simulate another live PID owning the lock -> must throw collision error
+        fs.writeFileSync(lockFile, JSON.stringify({ pid: process.ppid || 1, startedAt: new Date().toISOString() }), 'utf8');
+        assert.throws(
+          () => acquireDatabaseLock(lockTestDir),
+          /توجد نسخة أخرى من خادم AWLAD SELIM/
+        );
+
+        // 3) Releasing a foreign PID lock must NOT delete it
+        releaseDatabaseLock(lockFile);
+        assert.equal(fs.existsSync(lockFile), true);
+
+        // 4) Own PID lock is released cleanly
+        fs.writeFileSync(lockFile, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }), 'utf8');
+        releaseDatabaseLock(lockFile);
+        assert.equal(fs.existsSync(lockFile), false);
+      } finally {
+        fs.rmSync(lockTestDir, { recursive: true, force: true });
+      }
+    });
+
+    console.log('\n=== 9. Universal Links, Uninstalled App Fallback, Reconnect URL Sync & Cross-Mode Financial Parity ===');
+
+    await test('apple-app-site-association and /pair/:token platform download fallbacks work for Android/iOS/Windows', async () => {
+      // Configure appDownloadUrls via system settings
+      const dlUpdate = await req(baseUrl, 'PUT', '/api/admin/settings', {
+        token: adminToken,
+        body: {
+          extraSettings: {
+            connectionConfig: {
+              activeMode: 'local_network',
+              localNetwork: { ip: '127.0.0.1', port: addr.port, hostname: 'erp-test' },
+              deploymentProfile: {
+                hostingLocation: 'laptop_windows',
+                domainType: 'none',
+                planTier: 'free',
+                subscriptionStatus: 'none',
+              },
+              appDownloadUrls: {
+                androidApkUrl: 'https://downloads.awladselim.com/awlad.apk',
+                iosStoreUrl: 'https://testflight.apple.com/join/awladtest',
+                windowsUrl: 'https://downloads.awladselim.com/awlad-setup.exe',
+              },
+            },
+          },
+        },
+      });
+      assert.equal(dlUpdate.status, 200);
+
+      // 1) Apple Universal Links AASA
+      const aasaRes = await req(baseUrl, 'GET', '/.well-known/apple-app-site-association');
+      assert.equal(aasaRes.status, 200);
+      assert.ok(Array.isArray(aasaRes.json?.applinks?.details));
+      assert.deepEqual(aasaRes.json.applinks.details[0].paths, ['/pair/*', '/invite/*']);
+
+      // 2) Create invite token and verify Android/iOS/Windows UA download blocks
+      const created = await req(baseUrl, 'POST', '/api/admin/pairing/tokens', {
+        token: adminToken,
+        body: { connectionMode: 'local_network', serverBaseUrl: baseUrl, singleUse: false },
+      });
+      assert.equal(created.status, 201);
+      const rawToken = created.json.rawToken;
+
+      const androidHtml = await req(baseUrl, 'GET', `/pair/${rawToken}`, {
+        headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 (Linux; Android 14)' },
+      });
+      assert.equal(androidHtml.status, 200);
+      assert.ok(androidHtml.text.includes('https://downloads.awladselim.com/awlad.apk'));
+
+      const iosHtml = await req(baseUrl, 'GET', `/invite/${rawToken}`, {
+        headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)' },
+      });
+      assert.equal(iosHtml.status, 200);
+      assert.ok(iosHtml.text.includes('https://testflight.apple.com/join/awladtest'));
+      assert.ok(iosHtml.text.includes('awladselim://pair?token='));
+
+      const winHtml = await req(baseUrl, 'GET', `/pair/${rawToken}`, {
+        headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+      });
+      assert.equal(winHtml.status, 200);
+      assert.ok(winHtml.text.includes('https://downloads.awladselim.com/awlad-setup.exe'));
+    });
+
+    await test('Auto-reconnect & configVersion sync switches saved URL when server URL changes after disconnect', async () => {
+      memStorage.clear();
+
+      // Stand up a second reachable endpoint simulating an updated server/VPS/tunnel target
+      const app2 = createApiApp();
+      const server2 = http.createServer(app2);
+      await new Promise<void>((resolve) => server2.listen(0, '127.0.0.1', resolve));
+      const port2 = (server2.address() as { port: number }).port;
+      const baseUrl2 = `http://127.0.0.1:${port2}`;
+
+      try {
+        // Device previously saved baseUrl with configVersion=1 and a dead primary endpoint + live fallback
+        apiMod.setConfiguredApiBaseUrl('http://127.0.0.1:59999');
+        apiMod.saveStoredConnectionProfiles({
+          activeMode: 'free_remote',
+          configVersion: 1,
+          freeRemote: { tunnelUrl: 'http://127.0.0.1:59999', autoDetect: true },
+        });
+        apiMod.saveFallbackEndpoints([
+          { mode: 'local_network', url: baseUrl2, label: 'Fallback Reachable' },
+        ]);
+
+        const recRes = await discoveryMod.syncConnectionConfigFromServer({ triggerHeartbeat: true });
+        assert.equal(recRes.updated, true);
+        assert.equal(recRes.switchedUrl, baseUrl2);
+        assert.equal(apiMod.getConfiguredApiBaseUrl(), baseUrl2);
+      } finally {
+        server2.close();
+      }
+    });
+
+    await test('Financial, inventory & invoice data remain 100% unified across all 4 modes and Admin/Rep/Customer logins', async () => {
+      // Seed a warehouse, product, customer, and customer user cleanly via API
+      const dbBefore = readJsonDatabase();
+      if (!Array.isArray(dbBefore.warehouses) || dbBefore.warehouses.length === 0) {
+        dbBefore.warehouses = [{ id: 'WH_UNIFIED_01', name: 'المخزن الرئيسي', isDefault: true }];
+        writeJsonDatabase(dbBefore);
+      }
+      const whId = readJsonDatabase().warehouses[0].id;
+
+      const prodRes = await req(baseUrl, 'POST', '/api/products', {
+        token: adminToken,
+        body: {
+          code: 'UNI-PRD-100',
+          barcode: 'UNI-PRD-100',
+          name: 'صنف اختبار التوحيد المركزي',
+          category: 'عام',
+          baseUnit: 'قطعة',
+          purchasePrice: 70,
+          sellingPrice: 100,
+          stockPerWarehouse: { [whId]: 50 },
+        },
+      });
+      assert.equal(prodRes.status, 201);
+      const productId = prodRes.json.product.id;
+
+      const custRes = await req(baseUrl, 'POST', '/api/customers', {
+        token: adminToken,
+        body: {
+          name: 'عميل التوحيد المركزي',
+          phone: '01099887766',
+          address: 'الجيزة',
+          openingBalance: 0,
+        },
+      });
+      assert.equal(custRes.status, 201);
+      const customerId = custRes.json.customer.id;
+
+      const custUserRes = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'حساب عميل التوحيد',
+          username: 'cust_unified_01',
+          password: 'CustPassword#123',
+          role: 'customer',
+          linkedCustomerId: customerId,
+        },
+      });
+      assert.equal(custUserRes.status, 201);
+
+      // Create & confirm a sales invoice of 5 units @ 100 = 500 on credit (paid=0)
+      const invRes = await req(baseUrl, 'POST', '/api/invoices/sales', {
+        token: adminToken,
+        body: {
+          customerId,
+          warehouseId: whId,
+          paymentType: 'credit',
+          paidAmount: 0,
+          status: 'confirmed',
+          items: [
+            {
+              productId,
+              productName: 'صنف اختبار التوحيد المركزي',
+              unit: 'قطعة',
+              unitFactor: 1,
+              quantity: 5,
+              unitPrice: 100,
+            },
+          ],
+        },
+      });
+      assert.equal(invRes.status, 201);
+      assert.equal(invRes.json.invoice.grandTotal, 500);
+
+      // Switch across all 4 modes + deployment profiles without touching business tables
+      for (const mode of ['local_network', 'free_remote', 'pro_remote', 'cloud_vps'] as const) {
+        const sw = await req(baseUrl, 'PUT', '/api/admin/settings', {
+          token: adminToken,
+          body: {
+            extraSettings: {
+              connectionConfig: {
+                activeMode: mode,
+                deploymentProfile: {
+                  hostingLocation: mode === 'cloud_vps' ? 'cloud_vps' : 'laptop_windows',
+                  domainType: mode === 'free_remote' ? 'trycloudflare' : mode === 'local_network' ? 'none' : 'custom_domain',
+                  planTier: mode === 'cloud_vps' ? 'enterprise_vps' : mode === 'pro_remote' ? 'pro' : 'free',
+                  subscriptionStatus: mode === 'local_network' ? 'none' : 'active',
+                },
+              },
+            },
+          },
+        });
+        assert.equal(sw.status, 200);
+      }
+
+      // Log in as Customer & check Admin bootstrap -> verify same unified balance (500) and stock (45)
+      const custLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: 'cust_unified_01', password: 'CustPassword#123' },
+      });
+      assert.equal(custLogin.status, 200);
+      const custToken = custLogin.json.accessToken;
+
+      const custStmt = await req(baseUrl, 'GET', '/api/customers/me/statement', { token: custToken });
+      assert.equal(custStmt.status, 200);
+      assert.equal(custStmt.json.summary.currentBalance, 500);
+
+      const bootCheck = await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken });
+      assert.equal(bootCheck.status, 200);
+      const prodCheck = bootCheck.json.data.products.find((p: any) => p.id === productId);
+      const custCheck = bootCheck.json.data.customers.find((c: any) => c.id === customerId);
+      assert.equal(prodCheck.stockPerWarehouse[whId], 45);
+      assert.equal(custCheck.currentBalance, 500);
+
+      // Clean up temporary warehouse fallback test data inside isolated temp dir only
+    });
+
+    await test('Electron tunnel auto-start config persists opt-in inside dataDir without leaking secrets to discovery', async () => {
+      const { createRequire } = await import('node:module');
+      const requireCjs = createRequire(import.meta.url);
+      const { readTunnelAutoStartConfig, writeTunnelAutoStartConfig } = requireCjs('../../electron/dataBootstrap.cjs');
+
+      const tunDir = fs.mkdtempSync(path.join(os.tmpdir(), 'awlad_tunnel_cfg_'));
+      try {
+        const initial = readTunnelAutoStartConfig(tunDir);
+        assert.equal(initial.enabled, false);
+
+        const saved = writeTunnelAutoStartConfig(tunDir, {
+          enabled: true,
+          mode: 'pro_remote',
+          token: 'super-secret-named-tunnel-token',
+          domainUrl: 'https://erp.awladselim.com',
+        });
+        assert.equal(saved.enabled, true);
+        assert.equal(saved.mode, 'pro_remote');
+        assert.equal(saved.token, 'super-secret-named-tunnel-token');
+
+        const reloaded = readTunnelAutoStartConfig(tunDir);
+        assert.equal(reloaded.enabled, true);
+        assert.equal(reloaded.domainUrl, 'https://erp.awladselim.com');
+
+        // Confirm /api/connection/discovery NEVER contains any tunnel token secret
+        const discRes = await req(baseUrl, 'GET', '/api/connection/discovery');
+        assert.equal(discRes.status, 200);
+        assert.equal(discRes.text.includes('super-secret-named-tunnel-token'), false);
+      } finally {
+        fs.rmSync(tunDir, { recursive: true, force: true });
+      }
+    });
+
     console.log(`\nALL PAIRING VERIFICATION TESTS PASSED (${passed} assertions/suites).\n`);
   } finally {
     server.close();

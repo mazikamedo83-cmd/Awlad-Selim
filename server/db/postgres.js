@@ -228,6 +228,9 @@ export async function initializeSchema(customPool = null) {
       "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS origin_device_id VARCHAR(128)",
       "ALTER TABLE customer_item_orders DROP CONSTRAINT IF EXISTS customer_item_orders_status_check",
       "ALTER TABLE customer_item_orders ADD CONSTRAINT customer_item_orders_status_check CHECK (status IN ('pending', 'under_review', 'approved', 'rejected', 'rep_assigned', 'out_for_delivery', 'delivered', 'needs_review', 'invoiced', 'cancelled'))",
+      "ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS device_id VARCHAR(64) DEFAULT ''",
+      "ALTER TABLE paired_devices DROP CONSTRAINT IF EXISTS paired_devices_status_check",
+      "ALTER TABLE paired_devices ADD CONSTRAINT paired_devices_status_check CHECK (status IN ('active', 'pending_approval', 'rejected', 'disconnected', 'revoked'))",
     ];
     for (const stmt of alterStatements) {
       try {
@@ -268,6 +271,24 @@ export async function initializeSchema(customPool = null) {
     if (!hasV41Tables) {
       const v41Marker = '-- 40. دفعات الطلبات المقدمة';
       const idx = sql.indexOf(v41Marker);
+      if (idx !== -1) {
+        await currentPool.query(sql.slice(idx));
+      }
+    }
+
+    // Ensure v4.2 device pairing tables exist on upgraded PG DBs
+    let hasV42Tables = false;
+    try {
+      const v42Check = await currentPool.query(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'pairing_tokens'"
+      );
+      hasV42Tables = Boolean(v42Check.rows && v42Check.rows.length > 0);
+    } catch {
+      hasV42Tables = false;
+    }
+    if (!hasV42Tables) {
+      const v42Marker = '-- 43. رموز ربط الأجهزة';
+      const idx = sql.indexOf(v42Marker);
       if (idx !== -1) {
         await currentPool.query(sql.slice(idx));
       }

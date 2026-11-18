@@ -383,7 +383,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({ activeTab, onTabChange }) 
   const myAssignedDeliveries = useMemo(() => {
     return (data.customerItemOrders || [])
       .filter((o) =>
-        rep && (o.assignedDeliveryRepId === rep.id || o.representativeId === rep.id)
+        rep && (o.deliveryRepId === rep.id || o.assignedDeliveryRepId === rep.id || o.representativeId === rep.id)
       )
       .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   }, [data.customerItemOrders, rep]);
@@ -419,7 +419,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({ activeTab, onTabChange }) 
     setBusyDeliveryOrderId(order.id);
     setFeedback(null);
     try {
-      const res = await data.updateOrderDeliveryStatus(order.id, status, reason);
+      const res = await data.updateOrderDeliveryStatus(order.id, { status, deliveryNotes: reason });
       if (res.success) {
         setDeliveryReviewId(null);
         setDeliveryReviewNote('');

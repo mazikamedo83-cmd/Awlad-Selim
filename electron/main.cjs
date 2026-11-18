@@ -3,10 +3,21 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { pathToFileURL } = require('node:url');
-const { prepareElectronDataDirectory } = require('./dataBootstrap.cjs');
+const {
+  prepareElectronDataDirectory,
+  acquireDatabaseLock,
+  releaseDatabaseLock,
+  readTunnelAutoStartConfig,
+  writeTunnelAutoStartConfig,
+} = require('./dataBootstrap.cjs');
+const { createTunnelSupervisor } = require('./tunnelSupervisor.cjs');
 
 let mainWindow = null;
 let serverInstance = null;
+let dbLockPath = null;
+const tunnelSupervisor = createTunnelSupervisor({
+  getPort: () => desktopState.port || 3000,
+});
 let desktopState = {
   isElectron: true,
   platform: process.platform,
@@ -15,6 +26,7 @@ let desktopState = {
   envFilePath: null,
   port: 3000,
   lanUrls: [],
+  serverStatus: 'online',
   databaseState: null,
 };
 let isShuttingDown = false;
@@ -188,6 +200,77 @@ function registerIpcHandlers() {
     return { ok: true };
   });
 
+  ipcMain.handle('awlad:get-auto-start', () => {
+    const supported = process.platform === 'win32' || process.platform === 'darwin';
+    if (!supported) return { ok: true, openAtLogin: false, supported: false };
+    try {
+      const settings = app.getLoginItemSettings();
+      return { ok: true, openAtLogin: Boolean(settings.openAtLogin), supported: true };
+    } catch {
+      return { ok: false, openAtLogin: false, supported };
+    }
+  });
+
+  ipcMain.handle('awlad:set-auto-start', (_event, enabled) => {
+    const supported = process.platform === 'win32' || process.platform === 'darwin';
+    if (!supported) {
+      return { ok: false, openAtLogin: false, supported: false, error: 'التشغيل التلقائي مدعوم على Windows و macOS فقط.' };
+    }
+    try {
+      app.setLoginItemSettings({
+        openAtLogin: Boolean(enabled),
+        args: ['--minimized'],
+      });
+      const settings = app.getLoginItemSettings();
+      return { ok: true, openAtLogin: Boolean(settings.openAtLogin), supported: true };
+    } catch (err) {
+      return { ok: false, openAtLogin: false, supported: true, error: err?.message || 'تعذر حفظ إعداد التشغيل التلقائي' };
+    }
+  });
+
+  ipcMain.handle('awlad:get-tunnel-status', () => ({
+    ok: true,
+    status: tunnelSupervisor.getStatus(),
+  }));
+
+  ipcMain.handle('awlad:start-tunnel', (_event, opts) => tunnelSupervisor.start(opts || {}));
+
+  ipcMain.handle('awlad:stop-tunnel', () => tunnelSupervisor.stop());
+
+  ipcMain.handle('awlad:get-tunnel-auto-start', () => {
+    const cfg = readTunnelAutoStartConfig(desktopState.dataDir);
+    return {
+      ok: true,
+      config: {
+        enabled: cfg.enabled,
+        mode: cfg.mode,
+        domainUrl: cfg.domainUrl,
+        hasToken: Boolean(cfg.token),
+      },
+    };
+  });
+
+  ipcMain.handle('awlad:set-tunnel-auto-start', (_event, opts = {}) => {
+    try {
+      const saved = writeTunnelAutoStartConfig(desktopState.dataDir, opts || {});
+      return {
+        ok: true,
+        config: {
+          enabled: saved.enabled,
+          mode: saved.mode,
+          domainUrl: saved.domainUrl,
+          hasToken: Boolean(saved.token),
+        },
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err?.message || 'تعذر حفظ إعداد التشغيل التلقائي للنفق',
+        config: { enabled: false, mode: 'free_remote', domainUrl: '', hasToken: false },
+      };
+    }
+  });
+
   // Encrypted local offline vault (AES-256-GCM) inside active desktop dataDir
   const getVaultDir = () => {
     const baseDir = desktopState.dataDir || app.getPath('userData');
@@ -316,9 +399,14 @@ async function createMainWindow(startUrl, appRoot) {
     }
   });
 
+  const launchMinimized = process.argv.includes('--minimized');
   mainWindow.once('ready-to-show', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.maximize();
+      if (launchMinimized) {
+        mainWindow.minimize();
+      } else {
+        mainWindow.maximize();
+      }
       mainWindow.show();
     }
   });
@@ -342,12 +430,23 @@ async function shutdownGracefully() {
   if (isShuttingDown) return;
   isShuttingDown = true;
 
+  try {
+    await tunnelSupervisor.stop();
+  } catch (err) {
+    console.error('[Electron Tunnel Shutdown Error]:', err);
+  }
+
   if (serverInstance && typeof serverInstance.close === 'function') {
     try {
       await serverInstance.close();
     } catch (err) {
       console.error('[Electron Server Shutdown Error]:', err);
     }
+  }
+
+  if (dbLockPath) {
+    releaseDatabaseLock(dbLockPath);
+    dbLockPath = null;
   }
 }
 
@@ -383,6 +482,17 @@ async function bootstrapApplication() {
   desktopState.envFilePath = prepResult.envFilePath;
   desktopState.databaseState = prepResult.databaseState;
 
+  try {
+    dbLockPath = acquireDatabaseLock(prepResult.targetDataDir);
+  } catch (err) {
+    dialog.showErrorBox(
+      'خادم AWLAD SELIM يعمل بالفعل',
+      err?.message || 'توجد نسخة أخرى قيد التشغيل على نفس قاعدة البيانات.'
+    );
+    app.exit(1);
+    return;
+  }
+
   const devStartUrl = (process.env.ELECTRON_START_URL || '').trim();
   let startUrl = devStartUrl;
 
@@ -396,7 +506,7 @@ async function bootstrapApplication() {
         port: Number(process.env.PORT || process.env.API_PORT || 3000),
         distDir: path.join(appRoot, 'dist'),
         envFiles: prepResult.envFilePath ? [prepResult.envFilePath] : [],
-        allowPortFallback: process.env.AWLAD_ALLOW_PORT_FALLBACK === 'true',
+        allowPortFallback: false,
       });
     } catch (err) {
       dialog.showErrorBox(
@@ -409,7 +519,27 @@ async function bootstrapApplication() {
 
     desktopState.port = serverInstance.port;
     desktopState.lanUrls = serverInstance.lanUrls || [];
+    desktopState.serverStatus = 'online';
+    if (serverInstance.httpServer) {
+      serverInstance.httpServer.on('error', (err) => {
+        console.error('[Electron Embedded Server Error]:', err);
+        desktopState.serverStatus = 'error';
+      });
+    }
     startUrl = serverInstance.localUrl;
+
+    const autoTunnelCfg = readTunnelAutoStartConfig(prepResult.targetDataDir);
+    if (autoTunnelCfg.enabled) {
+      try {
+        tunnelSupervisor.start({
+          mode: autoTunnelCfg.mode,
+          token: autoTunnelCfg.token,
+          domainUrl: autoTunnelCfg.domainUrl,
+        });
+      } catch (tunErr) {
+        console.warn('[Electron Auto-Tunnel Warning]:', tunErr?.message || tunErr);
+      }
+    }
   }
 
   registerIpcHandlers();

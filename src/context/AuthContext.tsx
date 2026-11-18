@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { Customer, MobileConfig, Representative, User, UserRole, UserShortcutItem } from '../types';
 import {
   apiRequest,
   getConfiguredApiBaseUrl,
+  getConnectionModeLabel,
   getStoredTokens,
   hydrateServerUrlFromNative,
   saveStoredTokens,
@@ -17,6 +18,12 @@ import {
   clearLastVerifiedOfflineSession,
   revokeOfflineUser,
 } from '../services/offlineAuth';
+import {
+  claimPairingInvitation,
+  parsePairingInput,
+  syncConnectionConfigFromServer,
+} from '../services/discovery';
+import { getInitialAppLaunchUrl, subscribeAppUrlOpen } from '../services/native';
 
 const DEFAULT_MOBILE_CONFIG: MobileConfig = {
   enableCustomerApp: true,
@@ -25,6 +32,11 @@ const DEFAULT_MOBILE_CONFIG: MobileConfig = {
   requireOrderApproval: true,
 };
 
+export interface PairingNotice {
+  type: 'success' | 'info' | 'warning' | 'error';
+  text: string;
+}
+
 interface AuthContextType {
   currentUser: User | null;
   customerProfile: Customer | null;
@@ -32,6 +44,7 @@ interface AuthContextType {
   mobileConfig: MobileConfig;
   linkWarning: string | null;
   sessionExpiredMessage: string | null;
+  pairingNotice: PairingNotice | null;
   needsAdminSetup: boolean;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -45,6 +58,8 @@ interface AuthContextType {
   updateUserShortcuts: (shortcuts: UserShortcutItem[]) => Promise<{ success: boolean; shortcuts?: UserShortcutItem[]; error?: string }>;
   refreshAuthContext: () => Promise<void>;
   handleCentralAuthRevoked: (reason?: string) => Promise<void>;
+  processDeepLinkOrPairingInput: (rawInput: string) => Promise<{ ok: boolean; error?: string; requiresAdminApproval?: boolean }>;
+  clearPairingNotice: () => void;
   hasPermission: (permissionKey: keyof User['permissions']) => boolean;
   hasRole: (roles: UserRole[]) => boolean;
   clearSessionExpiredMessage: () => void;
@@ -69,11 +84,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [mobileConfig, setMobileConfig] = useState<MobileConfig>(DEFAULT_MOBILE_CONFIG);
   const [linkWarning, setLinkWarning] = useState<string | null>(null);
   const [sessionExpiredMessage, setSessionExpiredMessage] = useState<string | null>(null);
+  const [pairingNotice, setPairingNotice] = useState<PairingNotice | null>(null);
   const [needsAdminSetup, setNeedsAdminSetup] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isOfflineSession, setIsOfflineSession] = useState(false);
   const [permissionsMayBeStale, setPermissionsMayBeStale] = useState(false);
   const [lastVerifiedAt, setLastVerifiedAt] = useState<string | null>(null);
+
+  const processedPairingTokensRef = useRef<Set<string>>(new Set());
+  const inFlightPairingTokensRef = useRef<Set<string>>(new Set());
 
   const handleCentralAuthRevoked = useCallback(async (reason?: string) => {
     const uid = currentUser?.id;
@@ -161,7 +180,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         representativeProfile: me.representativeProfile || null,
       }).catch(() => {});
     } catch (err: any) {
-      if (err?.status === 401 || err?.code === 'ACCOUNT_DEACTIVATED' || err?.code === 'DEVICE_REVOKED') {
+      if (
+        err?.status === 401 ||
+        err?.code === 'ACCOUNT_DEACTIVATED' ||
+        err?.code === 'DEVICE_REVOKED' ||
+        err?.code === 'DEVICE_REJECTED' ||
+        err?.code === 'DEVICE_DISCONNECTED' ||
+        err?.code === 'DEVICE_PENDING_APPROVAL'
+      ) {
         await revokeOfflineUser(currentUser?.id || '').catch(() => {});
         await clearLastVerifiedOfflineSession().catch(() => {});
         saveStoredTokens(null);
@@ -191,6 +217,79 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [currentUser?.id]);
 
+  const processDeepLinkOrPairingInput = useCallback(
+    async (
+      rawInput: string
+    ): Promise<{ ok: boolean; error?: string; requiresAdminApproval?: boolean }> => {
+      const parsed = parsePairingInput(rawInput);
+      const tokenKey = parsed?.token ? `${parsed.serverUrl || ''}::${parsed.token}` : '';
+      if (tokenKey && (processedPairingTokensRef.current.has(tokenKey) || inFlightPairingTokensRef.current.has(tokenKey))) {
+        return { ok: true };
+      }
+      if (tokenKey) {
+        inFlightPairingTokensRef.current.add(tokenKey);
+      }
+
+      try {
+        const res = await claimPairingInvitation(rawInput, { clearExistingAuth: true });
+        if (!res.ok) {
+          setPairingNotice({ type: 'error', text: res.error || 'تعذر إتمام ربط الجهاز.' });
+          return { ok: false, error: res.error };
+        }
+
+        if (tokenKey) {
+          processedPairingTokensRef.current.add(tokenKey);
+        }
+
+        // Clean browser query/path token so reload never replays single-use pairing URL
+        if (typeof window !== 'undefined' && window.history?.replaceState) {
+          try {
+            const urlObj = new URL(window.location.href);
+            if (urlObj.searchParams.has('pair_token') || /^\/(?:pair|invite)\//i.test(urlObj.pathname)) {
+              urlObj.searchParams.delete('pair_token');
+              if (/^\/(?:pair|invite)\//i.test(urlObj.pathname)) {
+                urlObj.pathname = '/';
+              }
+              window.history.replaceState({}, '', urlObj.pathname + urlObj.search);
+            }
+          } catch {
+            // ignore history error
+          }
+        }
+
+        // Ensure current session state reflects cleared pre-pairing auth before user logs in manually
+        await clearLastVerifiedOfflineSession().catch(() => {});
+        setCurrentUser(null);
+        setCustomerProfile(null);
+        setRepresentativeProfile(null);
+        setLinkWarning(null);
+        setIsOfflineSession(false);
+        setPermissionsMayBeStale(false);
+
+        const modeText = getConnectionModeLabel(res.activeMode);
+        if (res.requiresAdminApproval) {
+          setPairingNotice({
+            type: 'warning',
+            text: `تم ربط الجهاز بسيرفر (${res.companyName || 'أولاد سليم'}) عبر ${modeText} وهو الآن بانتظار موافقة مدير النظام في لوحة إدارة الأجهزة قبل تسجيل الدخول.`,
+          });
+        } else {
+          setPairingNotice({
+            type: 'success',
+            text: `تم ربط الجهاز بنجاح بسيرفر (${res.companyName || 'أولاد سليم'}) عبر ${modeText}. يمكنك الآن تسجيل الدخول بحسابك المعتاد.`,
+          });
+        }
+
+        await checkStatusAndSession().catch(() => {});
+        return { ok: true, requiresAdminApproval: res.requiresAdminApproval };
+      } finally {
+        if (tokenKey) {
+          inFlightPairingTokensRef.current.delete(tokenKey);
+        }
+      }
+    },
+    [checkStatusAndSession]
+  );
+
   useEffect(() => {
     setAuthExpiredHandler((message) => {
       revokeOfflineUser(currentUser?.id || '').catch(() => {});
@@ -202,20 +301,59 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setPermissionsMayBeStale(false);
       setSessionExpiredMessage(message || 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً.');
     });
-    checkStatusAndSession();
+
+    (async () => {
+      await hydrateServerUrlFromNative();
+      const initialDeepLink = await getInitialAppLaunchUrl().catch(() => null);
+      if (initialDeepLink && parsePairingInput(initialDeepLink)?.token) {
+        await processDeepLinkOrPairingInput(initialDeepLink).catch(() => {});
+      } else {
+        await checkStatusAndSession();
+      }
+    })();
+
+    const unsubDeepLink = subscribeAppUrlOpen((openedUrl) => {
+      if (openedUrl && parsePairingInput(openedUrl)?.token) {
+        processDeepLinkOrPairingInput(openedUrl).catch(() => {});
+      }
+    });
 
     const handleOnline = () => {
+      syncConnectionConfigFromServer({ triggerHeartbeat: Boolean(getStoredTokens()?.accessToken) })
+        .then((syncRes) => {
+          if (syncRes.quickTunnelChangedWarning) {
+            setPairingNotice({ type: 'info', text: syncRes.quickTunnelChangedWarning });
+          } else if (syncRes.switchedUrl) {
+            setPairingNotice({ type: 'info', text: `تم تحديث مسار السيرفر تلقائياً إلى: ${syncRes.switchedUrl}` });
+          }
+        })
+        .catch(() => {});
       if (getStoredTokens()?.accessToken || currentUser) {
         checkStatusAndSession().catch(() => {});
       }
     };
     window.addEventListener('online', handleOnline);
 
+    const heartbeatTimer = setInterval(() => {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+      const hasToken = Boolean(getStoredTokens()?.accessToken);
+      if (!hasToken && !getConfiguredApiBaseUrl()) return;
+      syncConnectionConfigFromServer({ triggerHeartbeat: hasToken })
+        .then((syncRes) => {
+          if (syncRes.quickTunnelChangedWarning) {
+            setPairingNotice({ type: 'info', text: syncRes.quickTunnelChangedWarning });
+          }
+        })
+        .catch(() => {});
+    }, 60000);
+
     return () => {
+      unsubDeepLink();
       window.removeEventListener('online', handleOnline);
+      clearInterval(heartbeatTimer);
       setAuthExpiredHandler(null);
     };
-  }, [checkStatusAndSession]);
+  }, [checkStatusAndSession, processDeepLinkOrPairingInput]);
 
   const login = async (
     username: string,
@@ -411,6 +549,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         mobileConfig,
         linkWarning,
         sessionExpiredMessage,
+        pairingNotice,
         needsAdminSetup,
         isAuthenticated: Boolean(currentUser),
         isLoading,
@@ -424,6 +563,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateUserShortcuts,
         refreshAuthContext: checkStatusAndSession,
         handleCentralAuthRevoked,
+        processDeepLinkOrPairingInput,
+        clearPairingNotice: () => setPairingNotice(null),
         hasPermission,
         hasRole,
         clearSessionExpiredMessage: () => setSessionExpiredMessage(null),

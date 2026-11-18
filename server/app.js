@@ -13,6 +13,7 @@ import stockCountsRoutes from './routes/stockCounts.js';
 import stockTransfersRoutes from './routes/stockTransfers.js';
 import mobileRoutes from './routes/mobile.js';
 import syncRoutes from './routes/sync.js';
+import { pairingApiRouter, pairingPublicPagesRouter } from './routes/pairing.js';
 import { checkPostgresHealth, initializeSchema } from './db/postgres.js';
 import { getAuthStatus, bootstrapAdmin } from './db/stores/authStore.js';
 import { runCustomerLinkConsistencyMigration } from './db/stores/catalogStore.js';
@@ -105,7 +106,7 @@ export function createApiApp() {
         return cb(new Error('Origin not allowed by CORS'));
       },
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Device-Info'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Device-Info', 'X-Device-Id'],
       credentials: true,
     })
   );
@@ -177,6 +178,7 @@ export function createApiApp() {
   app.use('/api/stock-transfers', stockTransfersRoutes);
   app.use('/api/mobile', mobileRoutes);
   app.use('/api/sync', syncRoutes);
+  app.use('/api', pairingApiRouter);
 
   // Legacy full-database endpoints strictly locked to Admin only (401 unauth, 403 non-admin)
   app.get(
@@ -213,6 +215,9 @@ export function createApiApp() {
   app.use('/api', (_req, res) => {
     res.status(404).json({ ok: false, code: 'NOT_FOUND', error: 'نقطة الاتصال غير موجودة' });
   });
+
+  // Public invite landing pages (/pair/:token, /invite/:token) & .well-known App Links
+  app.use('/', pairingPublicPagesRouter);
 
   app.use(errorMiddleware);
   return app;

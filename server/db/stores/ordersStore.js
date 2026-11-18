@@ -262,7 +262,8 @@ export async function createCustomerOrder(payload, authContext) {
         };
         const unitName = String(item.unit || prod.base_unit);
         const unitFactor = getUnitFactor(prodObj, unitName);
-        const referenceUnitPrice = round2(item.unitPrice ?? getUnitSellingPrice(prodObj, unitName));
+        const catalogPrice = round2(getUnitSellingPrice(prodObj, unitName));
+        const referenceUnitPrice = (isCustomer || isRep) ? catalogPrice : round2(item.unitPrice ?? catalogPrice);
         totalAmount = round2(totalAmount + qty * referenceUnitPrice);
 
         resolvedItems.push({
@@ -378,7 +379,8 @@ export async function createCustomerOrder(payload, authContext) {
         throw new AppError(404, `الصنف غير متاح أو غير نشط (${item.productName || item.productId})`, 'PRODUCT_UNAVAILABLE');
       }
       const unitName = String(item.unit || prod.baseUnit);
-      const unitPrice = round2(item.unitPrice ?? getUnitSellingPrice(prod, unitName));
+      const catalogPrice = round2(getUnitSellingPrice(prod, unitName));
+      const unitPrice = (isCustomer || isRep) ? catalogPrice : round2(item.unitPrice ?? catalogPrice);
       totalAmount = round2(totalAmount + qty * unitPrice);
       resolvedItems.push({
         productId: prod.id,
@@ -698,7 +700,7 @@ export async function assignOrderDeliveryRep(orderId, payload = {}, actor) {
 
       const prevStatus = row.status;
       await client.query(
-        `UPDATE customer_item_orders SET status = 'rep_assigned', delivery_rep_id = $1, delivery_rep_name = $2, assigned_at = $3, delivery_notes = COALESCE(NULLIF($4, ''), delivery_notes), reviewed_by = COALESCE(reviewed_by, $5), reviewed_by_user_id = COALESCE(reviewed_by_user_id, $6), reviewed_at = COALESCE(reviewed_at, $3), version = COALESCE(version, 1) + 1, updated_at = $3 WHERE id = $7`,
+        `UPDATE customer_item_orders SET status = 'rep_assigned', delivery_rep_id = $1, delivery_rep_name = $2, assigned_at = $3, delivery_notes = CASE WHEN COALESCE($4, '') <> '' THEN $4 ELSE delivery_notes END, reviewed_by = COALESCE(reviewed_by, $5), reviewed_by_user_id = COALESCE(reviewed_by_user_id, $6), reviewed_at = COALESCE(reviewed_at, $3), version = COALESCE(version, 1) + 1, updated_at = $3 WHERE id = $7`,
         [rep.id, rep.name, now, String(notes || '').trim(), actor.fullName, actor.id, orderId]
       );
       await client.query(
@@ -812,7 +814,7 @@ export async function updateOrderDeliveryStatus(orderId, payload = {}, actorOrAu
       const nextCollected = collectedAmount !== null ? collectedAmount : Number(row.collected_amount || 0);
 
       await client.query(
-        `UPDATE customer_item_orders SET status = $1, delivered_at = $2, collected_amount = $3, delivery_notes = COALESCE(NULLIF($4, ''), delivery_notes), delivery_proof = COALESCE(NULLIF($5, ''), delivery_proof), version = COALESCE(version, 1) + 1, updated_at = $6 WHERE id = $7`,
+        `UPDATE customer_item_orders SET status = $1, delivered_at = $2, collected_amount = $3, delivery_notes = CASE WHEN COALESCE($4, '') <> '' THEN $4 ELSE delivery_notes END, delivery_proof = CASE WHEN COALESCE($5, '') <> '' THEN $5 ELSE delivery_proof END, version = COALESCE(version, 1) + 1, updated_at = $6 WHERE id = $7`,
         [targetStatus, deliveredAt, nextCollected, deliveryNotes, deliveryProof, now, orderId]
       );
       await client.query(

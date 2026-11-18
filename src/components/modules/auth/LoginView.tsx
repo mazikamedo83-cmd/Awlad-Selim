@@ -1,15 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Lock, User, Eye, EyeOff, ShieldCheck, AlertCircle, Server, UserPlus, CheckCircle2, Wifi
+  Lock, User, Eye, EyeOff, ShieldCheck, AlertCircle, Server, UserPlus, CheckCircle2, Wifi, QrCode, Link2, RefreshCw, Search, Loader2
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import {
   getConfiguredApiBaseUrl,
+  getConnectionModeLabel,
   hasConfiguredServerUrl,
   setConfiguredApiBaseUrl,
   testServerHealth,
 } from '../../../services/api';
+import {
+  autoDiscoverBestServer,
+  discoverServerCandidates,
+  DiscoveredServerCandidate,
+} from '../../../services/discovery';
 import { isNativeCapacitor } from '../../../services/native';
+import { QrScannerModal } from '../../common/QrScannerModal';
 
 export const LoginView: React.FC = () => {
   const {
@@ -19,6 +26,9 @@ export const LoginView: React.FC = () => {
     refreshAuthContext,
     sessionExpiredMessage,
     clearSessionExpiredMessage,
+    pairingNotice,
+    clearPairingNotice,
+    processDeepLinkOrPairingInput,
   } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -30,6 +40,9 @@ export const LoginView: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [showServerModal, setShowServerModal] = useState(false);
+  const [showQrScanner, setShowQrScanner] = useState(false);
+  const [claimingInvite, setClaimingInvite] = useState(false);
+
   const [serverUrlInput, setServerUrlInput] = useState(() => getConfiguredApiBaseUrl());
   const [serverTestState, setServerTestState] = useState<{
     testing: boolean;
@@ -38,12 +51,123 @@ export const LoginView: React.FC = () => {
     latencyMs?: number;
   }>({ testing: false });
 
+  const [discoveryState, setDiscoveryState] = useState<{
+    checking: boolean;
+    online: boolean | null;
+    companyName?: string;
+    activeMode?: string;
+    latencyMs?: number;
+    error?: string;
+  }>({ checking: true, online: null });
+  const [discoveredCandidates, setDiscoveredCandidates] = useState<DiscoveredServerCandidate[]>([]);
+  const [scanningLan, setScanningLan] = useState(false);
+
   const nativeApp = isNativeCapacitor();
+  const configuredUrl = getConfiguredApiBaseUrl();
   const serverMissing = nativeApp && !hasConfiguredServerUrl();
+
+  const verifyCurrentServerConnection = useCallback(async (runLanFallback = false) => {
+    setDiscoveryState((prev) => ({ ...prev, checking: true, error: undefined }));
+    const curUrl = getConfiguredApiBaseUrl();
+
+    if (curUrl || !isNativeCapacitor()) {
+      const check = await testServerHealth(curUrl);
+      if (check.ok) {
+        setDiscoveryState({
+          checking: false,
+          online: true,
+          companyName: check.companyName || 'أولاد سليم',
+          activeMode: check.activeMode || check.mode,
+          latencyMs: check.latencyMs,
+        });
+        return;
+      }
+      if (!runLanFallback) {
+        setDiscoveryState({
+          checking: false,
+          online: false,
+          error: check.error || 'تعذر الوصول إلى السيرفر المركزي.',
+        });
+        return;
+      }
+    }
+
+    // Attempt automatic LAN/saved fallback discovery
+    const auto = await autoDiscoverBestServer();
+    setDiscoveredCandidates(auto.candidates);
+    if (auto.found && auto.best) {
+      setDiscoveryState({
+        checking: false,
+        online: true,
+        companyName: auto.best.companyName || 'أولاد سليم',
+        activeMode: auto.best.activeMode,
+        latencyMs: auto.best.latencyMs,
+      });
+      setServerUrlInput(auto.best.url);
+    } else {
+      setDiscoveryState({
+        checking: false,
+        online: false,
+        error: curUrl
+          ? 'السيرفر المحفوظ غير متاح حالياً. تأكد من تشغيل البرنامج على اللابتوب أو أعد اكتشاف السيرفر / امسح QR.'
+          : 'لم يتم ربط هذا الجهاز بالسيرفر المركزي بعد.',
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    verifyCurrentServerConnection(nativeApp);
+  }, [nativeApp, verifyCurrentServerConnection]);
 
   useEffect(() => {
     setServerUrlInput(getConfiguredApiBaseUrl());
   }, [showServerModal]);
+
+  const handleDiscoverServers = async () => {
+    setScanningLan(true);
+    setError(null);
+    try {
+      const list = await discoverServerCandidates();
+      setDiscoveredCandidates(list);
+      if (list.length > 0) {
+        setServerUrlInput(list[0].url);
+        setConfiguredApiBaseUrl(list[0].url);
+        setDiscoveryState({
+          checking: false,
+          online: true,
+          companyName: list[0].companyName || 'أولاد سليم',
+          activeMode: list[0].activeMode,
+          latencyMs: list[0].latencyMs,
+        });
+        await refreshAuthContext();
+      } else {
+        setDiscoveryState({
+          checking: false,
+          online: false,
+          error: 'لم يتم العثور على سيرفر متاح تلقائياً على الشبكة الحالية. يمكنك مسح رمز QR أو لصق رابط الدعوة.',
+        });
+      }
+    } finally {
+      setScanningLan(false);
+    }
+  };
+
+  const handleQrOrLinkDetected = async (rawValue: string) => {
+    setShowQrScanner(false);
+    setError(null);
+    setClaimingInvite(true);
+    try {
+      const res = await processDeepLinkOrPairingInput(rawValue);
+      if (res.ok) {
+        setServerUrlInput(getConfiguredApiBaseUrl());
+        await verifyCurrentServerConnection(false);
+      } else if (res.error) {
+        setError(res.error);
+      }
+    } finally {
+      setClaimingInvite(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,7 +175,7 @@ export const LoginView: React.FC = () => {
     clearSessionExpiredMessage();
 
     if (nativeApp && !hasConfiguredServerUrl()) {
-      setError('يرجى ضبط عنوان السيرفر المركزي (لابتوب المحل) أولاً من زر "إعداد السيرفر" بالأعلى.');
+      setError('يرجى ربط التطبيق بسيرفر المحل أولاً عبر مسح QR Code أو لصق رابط الدعوة أو الاكتشاف التلقائي.');
       setShowServerModal(true);
       return;
     }
@@ -91,7 +215,7 @@ export const LoginView: React.FC = () => {
         testing: false,
         ok: true,
         latencyMs: res.latencyMs,
-        message: `تم الاتصال بنجاح (${res.latencyMs}ms)${res.version ? ` — الإصدار ${res.version}` : ''}`,
+        message: `تم الاتصال بنجاح (${res.companyName || 'أولاد سليم'} • ${res.latencyMs}ms)${res.version ? ` — الإصدار ${res.version}` : ''}`,
       });
     } else {
       setServerTestState({
@@ -108,6 +232,7 @@ export const LoginView: React.FC = () => {
     setShowServerModal(false);
     setError(null);
     await refreshAuthContext();
+    await verifyCurrentServerConnection(false);
   };
 
   return (
@@ -118,18 +243,29 @@ export const LoginView: React.FC = () => {
       <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden relative z-10 text-right animate-in fade-in duration-300">
         {/* Header / Logo banner */}
         <div className="bg-gradient-to-b from-blue-950 to-slate-900 p-8 text-center text-white relative">
-          <button
-            type="button"
-            onClick={() => {
-              setServerTestState({ testing: false });
-              setShowServerModal(true);
-            }}
-            className="absolute top-4 left-4 p-2 rounded-xl bg-white/10 hover:bg-white/20 text-blue-100 text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-            title="إعدادات عنوان السيرفر (للشبكة أو التطبيق)"
-          >
-            <Server className="w-3.5 h-3.5" />
-            <span>{serverMissing ? 'إعداد السيرفر' : 'السيرفر'}</span>
-          </button>
+          <div className="absolute top-4 left-4 flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setShowQrScanner(true)}
+              className="p-2 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+              title="مسح رمز QR أو لصق رابط الدعوة"
+            >
+              <QrCode className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">مسح QR / رابط</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setServerTestState({ testing: false });
+                setShowServerModal(true);
+              }}
+              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-blue-100 text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="إعدادات عنوان السيرفر (للشبكة أو التطبيق)"
+            >
+              <Server className="w-3.5 h-3.5" />
+              <span>{serverMissing ? 'إعداد السيرفر' : 'السيرفر'}</span>
+            </button>
+          </div>
 
           <img
             src="/awlad-selim-logo.png"
@@ -147,22 +283,155 @@ export const LoginView: React.FC = () => {
         </div>
 
         {/* Form Body */}
-        <div className="p-6 sm:p-8 space-y-5">
-          {serverMissing && (
-            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-900 space-y-2">
-              <div className="font-black flex items-center gap-2">
-                <Server className="w-4 h-4 text-amber-700 shrink-0" />
-                <span>الخطوة الأولى: ربط التطبيق بسيرفر المحل (اللابتوب)</span>
+        <div className="p-6 sm:p-8 space-y-4">
+          {/* Smart Server Discovery / Status Box */}
+          <div
+            className={`p-3.5 rounded-2xl border text-xs space-y-2.5 ${
+              discoveryState.online === true
+                ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+                : discoveryState.online === false
+                ? 'bg-amber-50 border-amber-300 text-amber-950'
+                : 'bg-slate-50 border-slate-200 text-slate-800'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 font-black min-w-0">
+                {discoveryState.checking || scanningLan || claimingInvite ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-800 shrink-0" />
+                ) : discoveryState.online ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <Server className="w-4 h-4 text-amber-700 shrink-0" />
+                )}
+                <span className="truncate">
+                  {claimingInvite
+                    ? 'جاري ربط الجهاز والتحقق من الدعوة...'
+                    : discoveryState.checking || scanningLan
+                    ? 'جاري التحقق من السيرفر المركزي...'
+                    : discoveryState.online
+                    ? `السيرفر متصل: ${discoveryState.companyName || 'أولاد سليم'}`
+                    : serverMissing
+                    ? 'الجهاز غير مرتبط بسيرفر المحل بعد'
+                    : 'تعذر الوصول إلى السيرفر المركزي'}
+                </span>
               </div>
-              <p className="leading-relaxed">
-                أدخل عنوان IP اللابتوب على الشبكة المحلية (مثل <span className="font-mono" dir="ltr">http://192.168.1.100:3000</span>) أو رابط HTTPS الخاص بالسيرفر المركزي.
-              </p>
+              {discoveryState.online && discoveryState.latencyMs !== undefined && (
+                <span className="px-2 py-0.5 rounded-lg bg-white border border-emerald-200 text-emerald-800 font-mono text-[10px] font-bold shrink-0">
+                  {discoveryState.latencyMs}ms
+                </span>
+              )}
+            </div>
+
+            {discoveryState.online ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-emerald-800">
+                <span>
+                  الوضع: <strong>{getConnectionModeLabel(discoveryState.activeMode)}</strong>
+                </span>
+                {configuredUrl && (
+                  <span dir="ltr" className="font-mono text-[10px] truncate max-w-[220px]">
+                    {configuredUrl}
+                  </span>
+                )}
+              </div>
+            ) : (
+              !discoveryState.checking && (
+                <p className="text-[11px] leading-relaxed text-amber-900">
+                  {discoveryState.error ||
+                    'امسح رمز QR من شاشة الإدارة في اللابتوب أو الصق رابط الدعوة أو اضغط إعادة اكتشاف السيرفر.'}
+                </p>
+              )
+            )}
+
+            {(discoveryState.online === false || nativeApp) && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => verifyCurrentServerConnection(false)}
+                  disabled={discoveryState.checking}
+                  className="px-2.5 py-1.5 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <RefreshCw className={`w-3 h-3 ${discoveryState.checking ? 'animate-spin' : ''}`} />
+                  <span>إعادة المحاولة</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDiscoverServers}
+                  disabled={scanningLan}
+                  className="px-2.5 py-1.5 rounded-xl bg-white border border-blue-200 hover:bg-blue-50 text-blue-900 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <Search className="w-3 h-3" />
+                  <span>{scanningLan ? 'جاري البحث...' : 'إعادة اكتشاف السيرفر'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowQrScanner(true)}
+                  className="px-2.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <QrCode className="w-3 h-3" />
+                  <span>مسح QR Code</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowQrScanner(true)}
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <Link2 className="w-3 h-3" />
+                  <span>لصق رابط الدعوة</span>
+                </button>
+              </div>
+            )}
+
+            {discoveredCandidates.length > 0 && discoveryState.online === false && (
+              <div className="pt-2 border-t border-amber-200/80 space-y-1.5">
+                <span className="text-[11px] font-bold block">سيرفرات مكتشفة متاحة للربط السريع:</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {discoveredCandidates.map((cand) => (
+                    <button
+                      key={cand.url}
+                      type="button"
+                      onClick={async () => {
+                        setConfiguredApiBaseUrl(cand.url);
+                        setServerUrlInput(cand.url);
+                        await refreshAuthContext();
+                        await verifyCurrentServerConnection(false);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-white border border-emerald-300 text-emerald-900 text-[11px] font-mono font-bold hover:bg-emerald-50 cursor-pointer"
+                      dir="ltr"
+                    >
+                      {cand.url} ({cand.latencyMs}ms)
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {pairingNotice && (
+            <div
+              className={`flex items-start justify-between gap-2 p-3.5 rounded-xl border text-xs font-bold ${
+                pairingNotice.type === 'success'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : pairingNotice.type === 'warning'
+                  ? 'bg-amber-50 border-amber-200 text-amber-900'
+                  : pairingNotice.type === 'error'
+                  ? 'bg-red-50 border-red-200 text-red-700'
+                  : 'bg-sky-50 border-sky-200 text-sky-900'
+              }`}
+            >
+              <div className="flex items-start gap-2">
+                {pairingNotice.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                )}
+                <span>{pairingNotice.text}</span>
+              </div>
               <button
                 type="button"
-                onClick={() => setShowServerModal(true)}
-                className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs cursor-pointer"
+                onClick={clearPairingNotice}
+                className="text-[11px] underline shrink-0 cursor-pointer"
               >
-                إعداد عنوان السيرفر الآن
+                إخفاء
               </button>
             </div>
           )}
@@ -344,7 +613,7 @@ export const LoginView: React.FC = () => {
             </div>
             <p className="text-xs text-slate-500 leading-relaxed">
               {nativeApp
-                ? 'أدخل عنوان خادم أولاد سليم العامل على لابتوب المحل (على شبكة الواي فاي المحلية أو عبر رابط HTTPS الخارجي).'
+                ? 'أدخل عنوان خادم أولاد سليم العامل على لابتوب المحل، أو امسح رمز QR / الصق رابط الدعوة للإعداد التلقائي.'
                 : 'اترك الحقل فارغاً للاتصال التلقائي بنفس الخادم الحالي، أو أدخل رابط السيرفر المركزي.'}
             </p>
             <input
@@ -361,17 +630,42 @@ export const LoginView: React.FC = () => {
             <div className="flex flex-wrap gap-1.5">
               <button
                 type="button"
-                onClick={() => setServerUrlInput('http://192.168.1.100:3000')}
-                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-mono cursor-pointer"
+                onClick={async () => {
+                  setScanningLan(true);
+                  const found = await discoverServerCandidates();
+                  setScanningLan(false);
+                  setDiscoveredCandidates(found);
+                  if (found[0]) {
+                    setServerUrlInput(found[0].url);
+                    setServerTestState({
+                      testing: false,
+                      ok: true,
+                      message: `تم اكتشاف السيرفر (${found[0].companyName || 'أولاد سليم'} • ${found[0].latencyMs}ms)`,
+                    });
+                  } else {
+                    setServerTestState({
+                      testing: false,
+                      ok: false,
+                      message: 'لم يتم العثور على سيرفر متاح تلقائياً على الشبكة المحلية.',
+                    });
+                  }
+                }}
+                disabled={scanningLan}
+                className="px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-900 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
               >
-                http://192.168.1.100:3000
+                <Search className="w-3 h-3" />
+                <span>{scanningLan ? 'جاري البحث...' : 'اكتشاف تلقائي'}</span>
               </button>
               <button
                 type="button"
-                onClick={() => setServerUrlInput('http://10.0.2.2:3000')}
-                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-mono cursor-pointer"
+                onClick={() => {
+                  setShowServerModal(false);
+                  setShowQrScanner(true);
+                }}
+                className="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
               >
-                http://10.0.2.2:3000
+                <QrCode className="w-3 h-3" />
+                <span>مسح QR / لصق دعوة</span>
               </button>
               {!nativeApp && (
                 <button
@@ -428,6 +722,12 @@ export const LoginView: React.FC = () => {
           </form>
         </div>
       )}
+
+      <QrScannerModal
+        isOpen={showQrScanner}
+        onClose={() => setShowQrScanner(false)}
+        onDetected={handleQrOrLinkDetected}
+      />
     </div>
   );
 };

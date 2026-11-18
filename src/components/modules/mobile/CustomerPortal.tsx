@@ -857,11 +857,11 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                     </span>
                   </div>
 
-                  {(ord.assignedDeliveryRepName || (allowPriceView && Number(ord.advancePaidAmount || 0) > 0)) && (
+                  {(ord.deliveryRepName || ord.assignedDeliveryRepName || (allowPriceView && Number(ord.advancePaidAmount || 0) > 0)) && (
                     <div className="flex flex-wrap gap-2 text-[11px]">
-                      {ord.assignedDeliveryRepName && (
+                      {(ord.deliveryRepName || ord.assignedDeliveryRepName) && (
                         <span className="px-2.5 py-1 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-900 font-bold">
-                          مندوب التوصيل: {ord.assignedDeliveryRepName}
+                          مندوب التوصيل: {ord.deliveryRepName || ord.assignedDeliveryRepName}
                         </span>
                       )}
                       {allowPriceView && Number(ord.advancePaidAmount || 0) > 0 && (

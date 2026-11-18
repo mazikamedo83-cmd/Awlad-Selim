@@ -675,7 +675,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         await apiRequest(`/api/sync/conflicts/${conflictId}/resolve`, {
           method: 'POST',
-          body: { resolution, resolutionNotes: notes },
+          body: { action: resolution, resolution, resolutionNotes: notes },
         });
         await triggerSync(false);
         return { success: true };
@@ -962,7 +962,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           entityType: 'customer',
           entityId: id,
           summaryAr: `تعديل عميل: ${existing?.name || id}`,
-          payload: { customerId: id, updates, expectedVersion: existing?.version },
+          payload: { customerId: id, updates, baseVersion: existing?.version, expectedVersion: existing?.version },
         });
         await refreshQueueAndConflictsFromLocal(currentUser.id);
         const nextDb = {
@@ -1255,7 +1255,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           entityType: 'invoice',
           entityId: invoiceId,
           summaryAr: `دفعة ${paymentData.amount} على فاتورة ${inv?.invoiceNumber || invoiceId}`,
-          payload: { invoiceId, ...paymentData, expectedVersion: inv?.version, idempotencyKey },
+          payload: { invoiceId, ...paymentData, baseVersion: inv?.version, expectedVersion: inv?.version, idempotencyKey },
         });
         await refreshQueueAndConflictsFromLocal(currentUser.id);
         setNetworkStatus('pending');
@@ -1282,7 +1282,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           entityType: 'invoice',
           entityId: invoiceId,
           summaryAr: `تعديل فاتورة ${inv?.invoiceNumber || invoiceId}`,
-          payload: { invoiceId, ...updates, expectedVersion: inv?.version },
+          payload: { invoiceId, ...updates, baseVersion: inv?.version, expectedVersion: inv?.version },
         });
         await refreshQueueAndConflictsFromLocal(currentUser.id);
         setNetworkStatus('pending');
@@ -1621,7 +1621,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const nextDb = {
           ...dataRef.current,
           customerItemOrders: (dataRef.current.customerItemOrders || []).map((o) =>
-            o.id === id ? { ...o, status: payload.status as any, deliveryNotes: payload.deliveryNotes ?? o.deliveryNotes, isLocalQueued: true } : o
+            o.id === id
+              ? {
+                  ...o,
+                  status: payload.status as any,
+                  deliveryNotes: payload.deliveryNotes ?? o.deliveryNotes,
+                  collectedAmount: payload.collectedAmount !== undefined ? payload.collectedAmount : o.collectedAmount,
+                  isLocalQueued: true,
+                }
+              : o
           ),
         };
         setData(nextDb);
