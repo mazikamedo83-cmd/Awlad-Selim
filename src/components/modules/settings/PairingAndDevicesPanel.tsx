@@ -728,11 +728,11 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
             ? `هل أنت متأكد من فصل الجهاز (${deviceToRevoke.deviceName})؟ سيتم إنهاء جميع جلساته النشطة ومنعه من الوصول للسيرفر حتى إعادة ربطه من جديد.`
             : ''
         }
-        confirmText="نعم، فصل الجهاز فوراً"
-        cancelText="تراجع"
+        confirmLabel="نعم، فصل الجهاز فوراً"
+        cancelLabel="تراجع"
         variant="danger"
         onConfirm={handleConfirmRevokeDevice}
-        onCancel={() => setDeviceToRevoke(null)}
+        onClose={() => setDeviceToRevoke(null)}
       />
     </div>
   );
