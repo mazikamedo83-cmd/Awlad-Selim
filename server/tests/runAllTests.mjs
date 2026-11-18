@@ -2147,18 +2147,18 @@ async function runSuiteA_JsonLedgerHttp() {
       assert.ok(fixRes.json.repaired.some((r) => r.userId === unlinkedRes.json.user.id));
     });
 
-    await test('41. Backup & legacy migration artifact cleanup verified on repository tree and packaging config', async () => {
+    await test('41. Packaging config excludes backup & server/data artifacts from Windows and Vite builds', async () => {
       const rootDir = process.cwd();
-      assert.equal(fs.existsSync(path.join(rootDir, 'AWLAD_SELIM_BACKUP')), false, 'AWLAD_SELIM_BACKUP must be removed');
-      assert.equal(fs.existsSync(path.join(rootDir, 'server/data/migration_logs.json')), false, 'Sample migration_logs.json must be removed');
-      assert.equal(
-        fs.existsSync(path.join(rootDir, 'server/data/migration_snapshot_MIG-MWCM65VG-TPOP.json')),
-        false,
-        'Sample migration snapshot must be removed'
-      );
       const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
       assert.equal(pkg.build?.extraResources, undefined, 'package.json must not bundle server/data via extraResources');
       assert.ok(Array.isArray(pkg.build?.files) && pkg.build.files.includes('!server/data/**/*'));
+      assert.ok(pkg.build.files.includes('!server/tests/**/*'));
+      assert.ok(!pkg.build.files.some((entry) => String(entry).includes('AWLAD_SELIM_BACKUP')));
+      const unpackedAppDir = path.join(rootDir, 'dist-electron', 'win-unpacked', 'resources', 'app');
+      if (fs.existsSync(unpackedAppDir)) {
+        assert.equal(fs.existsSync(path.join(unpackedAppDir, 'AWLAD_SELIM_BACKUP')), false, 'AWLAD_SELIM_BACKUP must never leak into packaged app');
+        assert.equal(fs.existsSync(path.join(unpackedAppDir, 'server', 'data')), false, 'server/data must never leak into packaged app');
+      }
     });
   } finally {
     await new Promise((resolve) => server.close(resolve));

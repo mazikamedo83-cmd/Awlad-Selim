@@ -22,6 +22,8 @@ jobs:
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.4'
 
       - name: Install dependencies with Bun
         shell: pwsh
@@ -29,7 +31,7 @@ jobs:
 
       - name: Generate Windows icons
         shell: pwsh
-        run: npm run electron:icons
+        run: bun run electron:icons
 
       - name: Run TypeScript check and backend tests
         shell: pwsh
@@ -38,10 +40,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node server/tests/runAllTests.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx tsx server/tests/pairingVerificationTests.mts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build Windows Desktop Installer (EXE)
         shell: pwsh
-        run: npm run electron:dist
+        run: bun run electron:dist
 
       - name: Verify EXE output and packaged UI in dist-electron
         shell: pwsh

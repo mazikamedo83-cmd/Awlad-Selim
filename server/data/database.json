@@ -114,7 +114,7 @@
       "status": "active",
       "configVersion": 1,
       "pairedAt": "2026-11-18T18:39:54.234Z",
-      "lastSeenAt": "2026-11-18T18:45:57.031Z"
+      "lastSeenAt": "2026-11-18T19:23:15.693Z"
     }
   ],
   "orderAdvancePayments": [],
@@ -151,6 +151,6 @@
     "cashOpNo": 0,
     "orderAdvanceNo": 0
   },
-  "lastSavedAt": "2026-11-18T18:45:57.032Z",
+  "lastSavedAt": "2026-11-18T19:23:15.693Z",
   "version": "3.0.0"
 }

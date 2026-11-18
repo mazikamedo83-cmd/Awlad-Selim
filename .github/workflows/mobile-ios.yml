@@ -1,0 +1,74 @@
+name: Build AWLAD SELIM iOS Production Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  ios-release:
+    name: Build & Sign iOS IPA (macOS)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.4'
+
+      - name: Install dependencies with Bun
+        run: bun install --frozen-lockfile
+
+      - name: Run TypeScript check
+        run: bun run lint
+
+      - name: Build production web bundle
+        run: bun run build
+
+      - name: Sync Capacitor iOS project
+        run: npx cap sync ios
+
+      - name: Validate Apple Signing Secrets
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          IOS_DIST_CERT_BASE64: ${{ secrets.IOS_DIST_CERT_BASE64 }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          if [ -z "$APPLE_TEAM_ID" ] || [ -z "$IOS_DIST_CERT_BASE64" ] || [ -z "$IOS_PROVISIONING_PROFILE_BASE64" ]; then
+            echo "ERROR: Missing iOS production signing secrets (APPLE_TEAM_ID, IOS_DIST_CERT_BASE64, IOS_PROVISIONING_PROFILE_BASE64)."
+            exit 1
+          fi
+
+      - name: Archive & Export Signed iOS App
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath build-ios/AWLAD-SELIM.xcarchive \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            archive
+          codesign --verify --deep --strict --verbose=2 build-ios/AWLAD-SELIM.xcarchive/Products/Applications/App.app
+
+      - name: Upload iOS Archive Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: AWLAD-SELIM-iOS-Archive
+          path: build-ios/AWLAD-SELIM.xcarchive
+          if-no-files-found: error
+          retention-days: 30
