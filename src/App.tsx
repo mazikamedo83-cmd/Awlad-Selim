@@ -125,8 +125,7 @@ const MainAppContent: React.FC = () => {
     clearPairingBanner,
   } = useAuth();
   const [currentPage, setCurrentPage] = useState<NavItemKey>('dashboard');
-  const [isSidebarOpenMobile, setIsSidebarOpenMobile] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSectionsOpen, setIsSectionsOpen] = useState(false);
   const [cashOpModal, setCashOpModal] = useState<{ open: boolean; mode: CashOperationType }>({
     open: false,
     mode: 'cash_deposit',
@@ -266,8 +265,8 @@ const MainAppContent: React.FC = () => {
         setCashOpModal((prev) => ({ ...prev, open: false }));
         return true;
       }
-      if (isSidebarOpenMobile) {
-        setIsSidebarOpenMobile(false);
+      if (isSectionsOpen) {
+        setIsSectionsOpen(false);
         return true;
       }
       if (currentPage !== 'dashboard') {
@@ -276,14 +275,10 @@ const MainAppContent: React.FC = () => {
       }
       return false;
     });
-  }, [isAuthenticated, currentUser?.role, cashOpModal.open, isSidebarOpenMobile, currentPage]);
+  }, [isAuthenticated, currentUser?.role, cashOpModal.open, isSectionsOpen, currentPage]);
 
   useEffect(() => {
-    if (isLoading || !isAuthenticated || currentUser?.role === 'customer' || currentUser?.role === 'representative') {
-      syncNativeStatusBarStyle('dark-header');
-    } else {
-      syncNativeStatusBarStyle('light-header');
-    }
+    syncNativeStatusBarStyle('dark-header');
   }, [isLoading, isAuthenticated, currentUser?.role]);
 
   if (isLoading) {
@@ -537,27 +532,21 @@ const MainAppContent: React.FC = () => {
         <Sidebar
           currentPage={currentPage}
           onNavigate={(page) => setCurrentPage(page)}
-          isOpenMobile={isSidebarOpenMobile}
-          onCloseMobile={() => setIsSidebarOpenMobile(false)}
-          isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          isOpen={isSectionsOpen}
+          onClose={() => setIsSectionsOpen(false)}
+          onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })}
         />
 
         <div
           className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${
-            isSidebarCollapsed ? 'lg:mr-20' : 'lg:mr-72'
+            isSectionsOpen ? 'lg:mr-80' : ''
           }`}
         >
           <Header
-            onToggleSidebar={() => {
-              if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
-                setIsSidebarCollapsed((prev) => !prev);
-              } else {
-                setIsSidebarOpenMobile((prev) => !prev);
-              }
-            }}
+            currentPage={currentPage}
+            isSidebarOpen={isSectionsOpen}
+            onToggleSidebar={() => setIsSectionsOpen((prev) => !prev)}
             onNavigate={(page) => setCurrentPage(page)}
-            onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })}
             onNavigateToTransfers={() => setCurrentPage('rep-transfers')}
           />
 

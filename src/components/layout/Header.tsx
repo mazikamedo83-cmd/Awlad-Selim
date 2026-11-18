@@ -1,29 +1,71 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  LogOut, Menu, Maximize, Minimize, Bell, ArrowLeftRight,
-  AlertTriangle, ChevronDown, Wallet, FileText, Sliders,
-  ArrowDownCircle, ArrowUpCircle, TrendingDown, TrendingUp, Users, GitBranch,
-  Tag, Ruler, Barcode, Printer, Smartphone, Wifi, Wrench, Trash2, Boxes, Server
+import React, { useState } from 'react';
+import {
+  LogOut,
+  LayoutGrid,
+  LayoutDashboard,
+  Boxes,
+  Wallet,
+  ShoppingCart,
+  Maximize,
+  Minimize,
+  Bell,
+  ArrowLeftRight,
+  AlertTriangle,
+  Server,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { OfflineIndicator } from './OfflineIndicator';
 import { NavItemKey } from './Sidebar';
-import { CashOperationType, MobileNotificationItem, UserPermissions } from '../../types';
+import { MobileNotificationItem, UserPermissions } from '../../types';
 import { MobileNotificationsSheet } from '../modules/mobile/MobileNotificationsSheet';
 import { MobileServerModal } from '../modules/mobile/MobileServerModal';
 
 interface HeaderProps {
+  currentPage: NavItemKey;
+  isSidebarOpen: boolean;
   onToggleSidebar: () => void;
-  onNavigate?: (page: NavItemKey) => void;
-  onOpenCashOp?: (mode: CashOperationType) => void;
+  onNavigate: (page: NavItemKey) => void;
   onNavigateToTransfers?: () => void;
 }
 
+const INVENTORY_KEYS: NavItemKey[] = [
+  'products',
+  'product-categories',
+  'units-settings',
+  'warehouses',
+  'stock-transfers',
+  'stock-transfers-orders',
+  'stock-adjustments',
+  'stock-counts',
+  'damaged-stock',
+  'stock-movements',
+  'abu-selim-import',
+];
+
+const FINANCE_KEYS: NavItemKey[] = [
+  'cashboxes',
+  'cashbox-transfer',
+  'expenses',
+  'personal-accounts',
+  'cheques',
+  'installments',
+];
+
+const SALES_KEYS: NavItemKey[] = [
+  'sales-invoices',
+  'new-sale',
+  'customers',
+  'sales-returns',
+  'deleted-invoices',
+  'customer-orders',
+];
+
 export const Header: React.FC<HeaderProps> = ({
+  currentPage,
+  isSidebarOpen,
   onToggleSidebar,
   onNavigate,
-  onOpenCashOp,
   onNavigateToTransfers,
 }) => {
   const { currentUser, logout, hasPermission, refreshAuthContext } = useAuth();
@@ -37,27 +79,8 @@ export const Header: React.FC<HeaderProps> = ({
   } = useData();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [openMenu, setOpenMenu] = useState<'cash' | 'invoices' | 'control' | null>(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
-  const menuContainerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuContainerRef.current && !menuContainerRef.current.contains(e.target as Node)) {
-        setOpenMenu(null);
-      }
-    };
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpenMenu(null);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleEscape);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, []);
 
   const canPerm = (perm?: keyof UserPermissions | Array<keyof UserPermissions>) => {
     if (!perm) return true;
@@ -66,48 +89,64 @@ export const Header: React.FC<HeaderProps> = ({
     return hasPermission(perm);
   };
 
-  type CashMenuItem = { label: string; icon: React.ElementType; action: () => void; perm?: keyof UserPermissions; cls?: string; shortcutAction?: string };
-  type NavMenuItem = { label: string; icon: React.ElementType; page: NavItemKey; perm?: keyof UserPermissions | Array<keyof UserPermissions>; cls?: string; shortcutAction?: string };
-
-  const cashMenuItemsRaw: CashMenuItem[] = [
-    { label: 'سحب نقدي', icon: ArrowUpCircle, action: () => onOpenCashOp?.('cash_withdrawal'), perm: 'canManageCashboxes', cls: 'text-rose-700', shortcutAction: 'action:cash_withdrawal' },
-    { label: 'إيداع نقدي', icon: ArrowDownCircle, action: () => onOpenCashOp?.('cash_deposit'), perm: 'canManageCashboxes', cls: 'text-emerald-700', shortcutAction: 'action:cash_deposit' },
-    { label: 'ترحيل بين الخزائن', icon: ArrowLeftRight, action: () => onOpenCashOp?.('cashbox_transfer'), perm: 'canManageCashboxes', cls: 'text-blue-900' },
-    { label: 'مصروفات', icon: TrendingDown, action: () => onOpenCashOp?.('expense'), perm: 'canManageCashboxes', cls: 'text-orange-700' },
-    { label: 'إيداع ربحي', icon: TrendingUp, action: () => onOpenCashOp?.('profit_deposit'), perm: 'canManageCashboxes', cls: 'text-teal-700' },
-    { label: 'الحسابات الشخصية للملاك', icon: Wallet, action: () => onNavigate?.('personal-accounts'), perm: 'canViewPersonalAccounts', cls: 'text-indigo-900' },
+  // Exact 5 primary navigation buttons in exact requested order:
+  // 1. الأقسام  2. الرئيسية  3. المخزون  4. المالية  5. المبيعات
+  const primaryNavButtons: Array<{
+    key: string;
+    label: string;
+    icon: React.ElementType;
+    active: boolean;
+    onClick: () => void;
+    controlsDrawer?: boolean;
+  }> = [
+    {
+      key: 'sections',
+      label: 'الأقسام',
+      icon: LayoutGrid,
+      active: isSidebarOpen,
+      onClick: onToggleSidebar,
+      controlsDrawer: true,
+    },
+    {
+      key: 'dashboard',
+      label: 'الرئيسية',
+      icon: LayoutDashboard,
+      active: currentPage === 'dashboard',
+      onClick: () => onNavigate('dashboard'),
+    },
+    {
+      key: 'inventory',
+      label: 'المخزون',
+      icon: Boxes,
+      active: INVENTORY_KEYS.includes(currentPage),
+      onClick: () =>
+        onNavigate(
+          canPerm('canManageInventory')
+            ? 'products'
+            : canPerm('canManageWarehouses')
+            ? 'warehouses'
+            : 'stock-counts'
+        ),
+    },
+    {
+      key: 'finance',
+      label: 'المالية',
+      icon: Wallet,
+      active: FINANCE_KEYS.includes(currentPage),
+      onClick: () => onNavigate(canPerm('canManageCashboxes') ? 'cashboxes' : 'cheques'),
+    },
+    {
+      key: 'sales',
+      label: 'المبيعات',
+      icon: ShoppingCart,
+      active: SALES_KEYS.includes(currentPage),
+      onClick: () => onNavigate('sales-invoices'),
+    },
   ];
-  const cashMenuItems = cashMenuItemsRaw.filter((it) => canPerm(it.perm));
-
-  const invoiceMenuItemsRaw: NavMenuItem[] = [
-    { label: 'طلبات العملاء والمندوبين', icon: Bell, page: 'customer-orders', perm: 'canManageSales', cls: 'text-amber-700' },
-    { label: 'فواتير البيع', icon: FileText, page: 'sales-invoices', perm: 'canManageSales', cls: 'text-blue-900', shortcutAction: 'nav:sales' },
-    { label: 'فواتير الشراء', icon: FileText, page: 'purchase-invoices', perm: 'canManagePurchases', cls: 'text-indigo-800', shortcutAction: 'nav:purchases' },
-    { label: 'فواتير مرتجع البيع', icon: FileText, page: 'sales-returns', perm: 'canManageSales', cls: 'text-amber-700', shortcutAction: 'nav:returns' },
-    { label: 'فواتير مرتجع الشراء', icon: FileText, page: 'purchase-returns', perm: 'canManagePurchases', cls: 'text-purple-700' },
-    { label: 'تالف', icon: Trash2, page: 'damaged-stock', perm: 'canManageInventory', cls: 'text-red-700' },
-    { label: 'تحويل', icon: Boxes, page: 'stock-transfers-orders', perm: ['canCreateStockTransfer', 'canApproveStockTransfer', 'canExecuteStockTransfer', 'canManageInventory'], cls: 'text-blue-700', shortcutAction: 'nav:stock-transfers' },
-    { label: 'الفواتير المحذوفة', icon: Trash2, page: 'deleted-invoices', perm: 'canViewDeletedInvoices', cls: 'text-rose-700' },
-  ];
-  const invoiceMenuItems = invoiceMenuItemsRaw.filter((it) => canPerm(it.perm));
-
-  const controlMenuItemsRaw: NavMenuItem[] = [
-    { label: 'المستخدمون', icon: Users, page: 'users', perm: 'canManageUsers' },
-    { label: 'الفروع', icon: GitBranch, page: 'branches-settings', perm: 'canManageSettings' },
-    { label: 'تغيير اسم التصنيفات', icon: Tag, page: 'product-categories', perm: 'canManageInventory' },
-    { label: 'الوحدات', icon: Ruler, page: 'units-settings', perm: ['canManageInventory', 'canManageSettings'] },
-    { label: 'إعدادات الباركود', icon: Barcode, page: 'barcode-settings', perm: 'canManageSettings' },
-    { label: 'الطابعات المتعددة', icon: Printer, page: 'printers-settings', perm: 'canManageSettings' },
-    { label: 'إعدادات الفاتورة', icon: FileText, page: 'invoice-settings', perm: 'canManageSettings' },
-    { label: 'إعدادات الموبايل', icon: Smartphone, page: 'mobile-settings', perm: 'canManageSettings' },
-    { label: 'مزامنة أونلاين', icon: Wifi, page: 'online-sync-settings', perm: 'canManageSettings' },
-    { label: 'الخدمات', icon: Wrench, page: 'services-settings', perm: 'canManageSettings' },
-  ];
-  const controlMenuItems = controlMenuItemsRaw.filter((it) => canPerm(it.perm));
 
   // Check pending transfers & new customer/rep orders
-  const pendingTransfersCount = repTransfers.filter(t => t.status === 'awaiting_receipt').length;
-  const pendingOrdersCount = customerItemOrders.filter(o => o.status === 'pending').length;
+  const pendingTransfersCount = repTransfers.filter((t) => t.status === 'awaiting_receipt').length;
+  const pendingOrdersCount = customerItemOrders.filter((o) => o.status === 'pending').length;
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -133,302 +172,192 @@ export const Header: React.FC<HeaderProps> = ({
       'cashboxes',
     ];
     if (item.targetTab && allowedTargets.includes(item.targetTab as NavItemKey)) {
-      onNavigate?.(item.targetTab as NavItemKey);
+      onNavigate(item.targetTab as NavItemKey);
     } else {
-      onNavigate?.('dashboard');
+      onNavigate('dashboard');
     }
   };
 
-  const getRoleBadge = (role: string) => {
+  const getRoleLabel = (role: string) => {
     switch (role) {
       case 'admin':
-        return <span className="bg-red-100 text-red-700 text-[11px] font-bold px-2 py-0.5 rounded-full border border-red-200">مالك / مدير عام</span>;
+        return 'مالك / مدير عام';
       case 'manager':
-        return <span className="bg-blue-100 text-blue-700 text-[11px] font-bold px-2 py-0.5 rounded-full border border-blue-200">مدير فرع</span>;
+        return 'مدير فرع';
       case 'accountant':
-        return <span className="bg-emerald-100 text-emerald-700 text-[11px] font-bold px-2 py-0.5 rounded-full border border-emerald-200">محاسب مالي</span>;
-      case 'customer':
-        return <span className="bg-cyan-100 text-cyan-800 text-[11px] font-bold px-2 py-0.5 rounded-full border border-cyan-200">عميل</span>;
-      case 'representative':
-        return <span className="bg-amber-100 text-amber-800 text-[11px] font-bold px-2 py-0.5 rounded-full border border-amber-200">مندوب مبيعات</span>;
+        return 'محاسب مالي';
       case 'warehouse':
-        return <span className="bg-purple-100 text-purple-700 text-[11px] font-bold px-2 py-0.5 rounded-full border border-purple-200">أمين مستودع</span>;
+        return 'أمين مستودع';
+      case 'sales':
+        return 'موظف مبيعات';
       default:
-        return <span className="bg-slate-100 text-slate-700 text-[11px] font-bold px-2 py-0.5 rounded-full">موظف</span>;
+        return 'موظف';
     }
   };
 
   return (
     <>
-      <header className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-xs px-3 sm:px-6 pt-safe no-print">
-        <div className="py-2.5 flex flex-wrap items-center justify-between gap-2">
-          {/* Right (RTL Start): Hamburger & Brand Title & Top Menus */}
-          <div className="flex items-center gap-2 sm:gap-3 flex-wrap min-w-0">
-            <button
-              type="button"
-              onClick={onToggleSidebar}
-              className="p-2 rounded-xl text-slate-600 hover:text-blue-900 hover:bg-slate-100 transition-colors focus:outline-hidden cursor-pointer shrink-0"
-              title="تبديل القائمة الجانبية"
-              aria-label="تبديل القائمة الجانبية"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-              <img 
-                src="/awlad-selim-logo.png" 
-                alt="أولاد سليم" 
-                className="h-8 sm:h-10 w-auto object-contain"
+      {/* Top Blue Rectangle Header */}
+      <header className="sticky top-0 z-30 bg-gradient-to-l from-blue-950 via-blue-900 to-blue-950 text-white shadow-md border-b border-blue-800/80 pt-safe no-print">
+        <div className="max-w-7xl mx-auto px-2.5 sm:px-5">
+          {/* Top Row: Brand Identity + (Desktop 5 Primary Buttons) + Utility Controls */}
+          <div className="h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-3">
+            {/* Brand Logo & Name */}
+            <div className="flex items-center gap-2.5 min-w-0 shrink-0">
+              <img
+                src="/awlad-selim-logo.png"
+                alt="AWLAD SELIM"
+                className="h-9 w-9 sm:h-10 sm:w-10 object-contain bg-white rounded-xl p-1 shadow-xs shrink-0"
               />
-              <div className="hidden xl:block">
-                <h1 className="text-sm font-black text-blue-950 leading-tight">
-                  أولاد سليم – AWLAD SELIM
+              <div className="min-w-0">
+                <h1 className="text-xs sm:text-sm font-black text-white leading-tight truncate">
+                  AWLAD SELIM
                 </h1>
-                <p className="text-[11px] text-slate-500 font-medium">
-                  نظام المحاسبة وإدارة الأعمال لتجارة المواد الغذائية
+                <p className="text-[10px] text-blue-200 font-semibold truncate">
+                  {currentUser ? `${currentUser.fullName} · ${getRoleLabel(currentUser.role)}` : 'أولاد سليم'}
                 </p>
               </div>
             </div>
 
-            {/* 3 Top Dropdown Menus */}
-            <div ref={menuContainerRef} className="flex items-center flex-wrap gap-1.5 sm:mr-1">
-              {/* 1. التعاملات النقدية */}
-              {cashMenuItems.length > 0 && (
-                <div className="relative">
+            {/* Desktop Center: Exact 5 Navigation Buttons inside the Top Blue Rectangle */}
+            <nav
+              aria-label="التنقل الرئيسي"
+              className="hidden lg:flex items-center justify-center gap-1.5 flex-1 min-w-0"
+            >
+              {primaryNavButtons.map((btn) => {
+                const Icon = btn.icon;
+                return (
                   <button
+                    key={btn.key}
                     type="button"
-                    onClick={() => setOpenMenu((prev) => (prev === 'cash' ? null : 'cash'))}
-                    className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-black border transition-all cursor-pointer whitespace-nowrap ${
-                      openMenu === 'cash'
-                        ? 'bg-blue-900 text-white border-blue-900 shadow-sm'
-                        : 'bg-slate-50 hover:bg-blue-50 text-blue-950 border-slate-200'
+                    onClick={btn.onClick}
+                    aria-expanded={btn.controlsDrawer ? isSidebarOpen : undefined}
+                    aria-controls={btn.controlsDrawer ? 'system-sections-drawer' : undefined}
+                    aria-current={!btn.controlsDrawer && btn.active ? 'page' : undefined}
+                    className={`min-h-[40px] px-3.5 xl:px-4 py-1.5 rounded-xl text-xs flex items-center gap-2 whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                      btn.active
+                        ? 'bg-white text-blue-950 font-black shadow-sm'
+                        : 'bg-white/10 text-blue-50 border border-white/15 hover:bg-white/20 hover:text-white font-bold'
                     }`}
                   >
-                    <Wallet className="w-3.5 h-3.5 shrink-0" />
-                    <span>التعاملات النقدية</span>
-                    <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${openMenu === 'cash' ? 'rotate-180' : ''}`} />
+                    <Icon className="w-4 h-4 shrink-0" />
+                    <span>{btn.label}</span>
                   </button>
-                  {openMenu === 'cash' && (
-                    <div className="fixed inset-x-3 top-[calc(var(--awlad-safe-top)+6.5rem)] sm:inset-auto sm:absolute sm:right-0 sm:mt-2 sm:w-60 rounded-2xl bg-white border border-slate-200 shadow-2xl py-1.5 z-50 max-h-[70vh] overflow-y-auto">
-                      {cashMenuItems.map((item) => {
-                        const ItemIcon = item.icon;
-                        return (
-                          <button
-                            key={item.label}
-                            type="button"
-                            onClick={() => {
-                              setOpenMenu(null);
-                              item.action();
-                            }}
-                            className="w-full flex items-center justify-between gap-2 px-3.5 py-2 text-right text-xs font-bold text-slate-800 hover:bg-blue-50 transition-colors cursor-pointer"
-                          >
-                            <div className="flex items-center gap-2.5">
-                              <ItemIcon className={`w-4 h-4 shrink-0 ${item.cls || 'text-blue-900'}`} />
-                              <span>{item.label}</span>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                );
+              })}
+            </nav>
+
+            {/* Left (RTL End): Alerts, Status, Notifications, Server, Fullscreen, Logout */}
+            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+              <OfflineIndicator variant="dark" />
+
+              {pendingOrdersCount > 0 && canPerm('canManageSales') && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate('customer-orders')}
+                  title={`يوجد ${pendingOrdersCount} طلب شراء جديد بانتظار المراجعة`}
+                  className="hidden sm:flex items-center gap-1 px-2 py-1.5 rounded-xl bg-sky-400/20 text-sky-100 border border-sky-300/35 text-[11px] font-black hover:bg-sky-400/30 transition-all cursor-pointer whitespace-nowrap"
+                >
+                  <Bell className="w-3.5 h-3.5 shrink-0" />
+                  <span className="hidden xl:inline">طلبات جديدة</span>
+                  <span className="px-1.5 py-0.5 rounded-full bg-white text-blue-950 text-[10px] font-mono">
+                    {pendingOrdersCount}
+                  </span>
+                </button>
               )}
 
-              {/* 2. الفواتير */}
-              {invoiceMenuItems.length > 0 && (
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setOpenMenu((prev) => (prev === 'invoices' ? null : 'invoices'))}
-                    className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-black border transition-all cursor-pointer whitespace-nowrap ${
-                      openMenu === 'invoices'
-                        ? 'bg-blue-900 text-white border-blue-900 shadow-sm'
-                        : 'bg-slate-50 hover:bg-blue-50 text-blue-950 border-slate-200'
-                    }`}
-                  >
-                    <FileText className="w-3.5 h-3.5 shrink-0" />
-                    <span>الفواتير</span>
-                    <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${openMenu === 'invoices' ? 'rotate-180' : ''}`} />
-                  </button>
-                  {openMenu === 'invoices' && (
-                    <div className="fixed inset-x-3 top-[calc(var(--awlad-safe-top)+6.5rem)] sm:inset-auto sm:absolute sm:right-0 sm:mt-2 sm:w-60 rounded-2xl bg-white border border-slate-200 shadow-2xl py-1.5 z-50 max-h-[70vh] overflow-y-auto">
-                      {invoiceMenuItems.map((item) => {
-                        const ItemIcon = item.icon;
-                        return (
-                          <button
-                            key={item.label}
-                            type="button"
-                            onClick={() => {
-                              setOpenMenu(null);
-                              onNavigate?.(item.page);
-                            }}
-                            className="w-full flex items-center justify-between gap-2 px-3.5 py-2 text-right text-xs font-bold text-slate-800 hover:bg-blue-50 transition-colors cursor-pointer"
-                          >
-                            <div className="flex items-center gap-2.5">
-                              <ItemIcon className={`w-4 h-4 shrink-0 ${item.cls || 'text-blue-900'}`} />
-                              <span>{item.label}</span>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+              {pendingTransfersCount > 0 && onNavigateToTransfers && (
+                <button
+                  type="button"
+                  onClick={onNavigateToTransfers}
+                  title={`يوجد ${pendingTransfersCount} طلب تحويل بالنصف معلق`}
+                  className="hidden sm:flex items-center gap-1 px-2 py-1.5 rounded-xl bg-amber-400/20 text-amber-100 border border-amber-300/40 text-[11px] font-bold hover:bg-amber-400/30 transition-all cursor-pointer whitespace-nowrap"
+                >
+                  <ArrowLeftRight className="w-3.5 h-3.5 shrink-0" />
+                  <span className="px-1.5 py-0.5 rounded-full bg-amber-300 text-amber-950 text-[10px] font-mono">
+                    {pendingTransfersCount}
+                  </span>
+                </button>
               )}
 
-              {/* 3. لوحة التحكم */}
-              {controlMenuItems.length > 0 && (
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setOpenMenu((prev) => (prev === 'control' ? null : 'control'))}
-                    className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-black border transition-all cursor-pointer whitespace-nowrap ${
-                      openMenu === 'control'
-                        ? 'bg-blue-900 text-white border-blue-900 shadow-sm'
-                        : 'bg-slate-50 hover:bg-blue-50 text-blue-950 border-slate-200'
-                    }`}
-                  >
-                    <Sliders className="w-3.5 h-3.5 shrink-0" />
-                    <span>لوحة التحكم</span>
-                    <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${openMenu === 'control' ? 'rotate-180' : ''}`} />
-                  </button>
-                  {openMenu === 'control' && (
-                    <div className="fixed inset-x-3 top-[calc(var(--awlad-safe-top)+6.5rem)] sm:inset-auto sm:absolute sm:right-0 sm:mt-2 sm:w-60 rounded-2xl bg-white border border-slate-200 shadow-2xl py-1.5 z-50 max-h-[70vh] overflow-y-auto">
-                      {controlMenuItems.map((item) => {
-                        const ItemIcon = item.icon;
-                        return (
-                          <button
-                            key={item.label}
-                            type="button"
-                            onClick={() => {
-                              setOpenMenu(null);
-                              onNavigate?.(item.page);
-                            }}
-                            className="w-full flex items-center justify-between gap-2 px-3.5 py-2 text-right text-xs font-bold text-slate-800 hover:bg-blue-50 transition-colors cursor-pointer"
-                          >
-                            <div className="flex items-center gap-2.5">
-                              <ItemIcon className="w-4 h-4 shrink-0 text-blue-900" />
-                              <span>{item.label}</span>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsNotificationsOpen(true);
+                  markNotificationsRead();
+                }}
+                className="relative min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer"
+                title="التنبيهات والإشعارات"
+                aria-label="التنبيهات والإشعارات"
+              >
+                <Bell className="w-4 h-4" />
+                {unreadNotificationCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 rounded-full bg-red-600 text-white text-[9px] font-black flex items-center justify-center">
+                    {unreadNotificationCount}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsServerModalOpen(true)}
+                className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer"
+                title="عنوان وإعدادات السيرفر المركزي"
+                aria-label="إعدادات السيرفر"
+              >
+                <Server className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                className="hidden md:flex min-h-[38px] min-w-[38px] items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer"
+                title="ملء الشاشة"
+                aria-label="ملء الشاشة"
+              >
+                {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowLogoutModal(true)}
+                className="min-h-[38px] px-2.5 sm:px-3 flex items-center justify-center gap-1.5 rounded-xl bg-red-600/90 hover:bg-red-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer whitespace-nowrap"
+                title="تسجيل الخروج من النظام"
+                aria-label="تسجيل الخروج"
+              >
+                <LogOut className="w-4 h-4 shrink-0" />
+                <span className="hidden sm:inline">خروج</span>
+              </button>
             </div>
           </div>
 
-          {/* Left (RTL End): Status, Alerts, User Profile & Logout */}
-          <div className="flex items-center gap-1.5 sm:gap-2.5 flex-wrap">
-            {/* Offline/Online Status Indicator */}
-            <OfflineIndicator />
-
-            {/* New Customer & Rep Orders Alert Button */}
-            {pendingOrdersCount > 0 && canPerm('canManageSales') && onNavigate && (
-              <button
-                type="button"
-                onClick={() => onNavigate('customer-orders')}
-                title={`يوجد ${pendingOrdersCount} طلب شراء جديد من تطبيق الموبايل بانتظار المراجعة`}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-blue-50 text-blue-950 border border-blue-300 text-xs font-black hover:bg-blue-100 transition-all animate-pulse cursor-pointer"
-              >
-                <Bell className="w-3.5 h-3.5 text-blue-700 shrink-0" />
-                <span className="hidden sm:inline">طلبات العملاء والمندوبين</span>
-                <span className="w-5 h-5 rounded-full bg-blue-900 text-white text-[10px] flex items-center justify-center font-mono">
-                  {pendingOrdersCount}
-                </span>
-              </button>
-            )}
-
-            {/* Pending Transfer Alert Button */}
-            {pendingTransfersCount > 0 && onNavigateToTransfers && (
-              <button
-                type="button"
-                onClick={onNavigateToTransfers}
-                title={`يوجد ${pendingTransfersCount} طلب تحويل بالنصف معلق يحتاج تأكيد`}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-300 text-xs font-bold hover:bg-amber-100 transition-all animate-pulse cursor-pointer"
-              >
-                <ArrowLeftRight className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                <span className="hidden sm:inline">طلب تحويل بالنصف</span>
-                <span className="w-4 h-4 rounded-full bg-amber-600 text-white text-[10px] flex items-center justify-center font-mono">
-                  {pendingTransfersCount}
-                </span>
-              </button>
-            )}
-
-            {/* Notifications Center Button */}
-            <button
-              type="button"
-              onClick={() => {
-                setIsNotificationsOpen(true);
-                markNotificationsRead();
-              }}
-              className="relative p-2 rounded-xl text-slate-500 hover:text-blue-900 hover:bg-slate-100 transition-colors cursor-pointer"
-              title="التنبيهات والإشعارات"
-              aria-label="التنبيهات والإشعارات"
-            >
-              <Bell className="w-4 h-4" />
-              {unreadNotificationCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 rounded-full bg-red-600 text-white text-[9px] font-black flex items-center justify-center">
-                  {unreadNotificationCount}
-                </span>
-              )}
-            </button>
-
-            {/* Server Connection Modal Button */}
-            <button
-              type="button"
-              onClick={() => setIsServerModalOpen(true)}
-              className="p-2 rounded-xl text-slate-500 hover:text-blue-900 hover:bg-slate-100 transition-colors cursor-pointer"
-              title="أوضاع الاتصال بالسيرفر المركزي"
-              aria-label="أوضاع الاتصال بالسيرفر المركزي"
-            >
-              <Server className="w-4 h-4" />
-            </button>
-
-            {/* Fullscreen Button */}
-            <button
-              type="button"
-              onClick={toggleFullscreen}
-              className="hidden md:flex p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
-              title="ملء الشاشة"
-              aria-label="ملء الشاشة"
-            >
-              {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
-            </button>
-
-            <div className="h-6 w-px bg-slate-200 hidden sm:block"></div>
-
-            {/* User Info */}
-            {currentUser && (
-              <div className="flex items-center gap-2.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5">
-                <div className="w-8 h-8 rounded-lg bg-blue-900 text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0">
-                  {currentUser.fullName.slice(0, 2)}
-                </div>
-                <div className="hidden lg:block text-right">
-                  <span className="block text-xs font-bold text-slate-900 leading-tight">
-                    {currentUser.fullName}
-                  </span>
-                  <div className="mt-0.5">
-                    {getRoleBadge(currentUser.role)}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Logout Button */}
-            <button
-              type="button"
-              onClick={() => setShowLogoutModal(true)}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-red-600 hover:text-white hover:bg-red-600 border border-red-200 hover:border-red-600 transition-all text-xs font-bold shadow-xs active:scale-95 cursor-pointer"
-              title="تسجيل الخروج من النظام"
-              aria-label="تسجيل الخروج"
-            >
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline">خروج</span>
-            </button>
-          </div>
+          {/* Mobile & Tablet (< lg): Exact 5 Primary Navigation Buttons Inside Top Blue Rectangle */}
+          <nav
+            aria-label="التنقل الرئيسي للجوال"
+            className="lg:hidden border-t border-white/15 py-1.5 grid grid-cols-5 gap-1"
+          >
+            {primaryNavButtons.map((btn) => {
+              const Icon = btn.icon;
+              return (
+                <button
+                  key={btn.key}
+                  type="button"
+                  onClick={btn.onClick}
+                  aria-expanded={btn.controlsDrawer ? isSidebarOpen : undefined}
+                  aria-controls={btn.controlsDrawer ? 'system-sections-drawer' : undefined}
+                  aria-current={!btn.controlsDrawer && btn.active ? 'page' : undefined}
+                  className={`min-h-[44px] px-1 py-1.5 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 text-[11px] sm:text-xs whitespace-nowrap transition-all cursor-pointer ${
+                    btn.active
+                      ? 'bg-white text-blue-950 font-black shadow-sm'
+                      : 'bg-white/10 text-blue-50 hover:bg-white/20 font-bold'
+                  }`}
+                >
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span className="leading-none truncate max-w-full">{btn.label}</span>
+                </button>
+              );
+            })}
+          </nav>
         </div>
       </header>
 

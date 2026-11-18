@@ -1,1221 +1,847 @@
 import React, { useMemo, useState } from 'react';
 import {
-  ShoppingBag,
-  Search,
-  RefreshCw,
-  Check,
-  X,
-  Clock,
-  Eye,
-  ShoppingCart,
-  Phone,
-  MapPin,
-  ExternalLink,
-  History,
-  UserCheck,
-  Store,
-  UserSquare2,
-  Package,
-  AlertCircle,
   CheckCircle2,
-  Filter,
+  ClipboardList,
+  Clock,
+  DollarSign,
+  Eye,
+  FileText,
+  MapPin,
+  RefreshCw,
+  Search,
   Truck,
-  Wallet,
-  CloudOff,
-  CloudCheck,
+  UserCheck,
+  XCircle,
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
-import { CustomerItemOrderRequest, CustomerItemOrderStatus } from '../../../types';
+import { CustomerItemOrderRequest } from '../../../types';
 import { Modal } from '../../common/Modal';
-import { NewSaleInvoiceModal } from '../sales/NewSaleInvoiceModal';
 
-type FilterStatus =
-  | 'all'
-  | 'pending'
-  | 'under_review'
-  | 'approved'
-  | 'rep_assigned'
-  | 'out_for_delivery'
-  | 'delivered'
-  | 'needs_review'
-  | 'rejected'
-  | 'invoiced';
-type FilterAccountType = 'all' | 'customer' | 'representative';
-
-const STATUS_META: Record<
-  CustomerItemOrderStatus,
-  { label: string; badgeClass: string }
-> = {
-  pending: {
-    label: 'جديد',
-    badgeClass: 'bg-amber-100 text-amber-900 border border-amber-300',
-  },
-  under_review: {
-    label: 'قيد المراجعة',
-    badgeClass: 'bg-sky-100 text-sky-900 border border-sky-300',
-  },
-  approved: {
-    label: 'مقبول (بانتظار الفوترة)',
-    badgeClass: 'bg-emerald-100 text-emerald-900 border border-emerald-300',
-  },
-  rep_assigned: {
-    label: 'تم تعيين مندوب',
-    badgeClass: 'bg-indigo-100 text-indigo-900 border border-indigo-300',
-  },
-  out_for_delivery: {
-    label: 'جاري التوصيل',
-    badgeClass: 'bg-purple-100 text-purple-900 border border-purple-300',
-  },
-  delivered: {
-    label: 'تم التسليم',
-    badgeClass: 'bg-teal-100 text-teal-900 border border-teal-300',
-  },
-  needs_review: {
-    label: 'يحتاج مراجعة',
-    badgeClass: 'bg-rose-100 text-rose-900 border border-rose-300',
-  },
-  rejected: {
-    label: 'مرفوض',
-    badgeClass: 'bg-red-100 text-red-900 border border-red-300',
-  },
-  invoiced: {
-    label: 'تم التحويل لفاتورة',
-    badgeClass: 'bg-blue-100 text-blue-950 border border-blue-300',
-  },
-  cancelled: {
-    label: 'ملغى',
-    badgeClass: 'bg-slate-200 text-slate-700 border border-slate-300',
-  },
+const STATUS_META: Record<string, { label: string; cls: string }> = {
+  pending: { label: 'طلب جديد', cls: 'bg-amber-50 text-amber-800 border-amber-200' },
+  under_review: { label: 'قيد المراجعة', cls: 'bg-blue-50 text-blue-800 border-blue-200' },
+  approved: { label: 'معتمد', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+  rep_assigned: { label: 'مُسند لمندوب', cls: 'bg-indigo-50 text-indigo-800 border-indigo-200' },
+  out_for_delivery: { label: 'خرج للتوصيل', cls: 'bg-purple-50 text-purple-800 border-purple-200' },
+  delivered: { label: 'تم التسليم', cls: 'bg-teal-50 text-teal-800 border-teal-200' },
+  invoiced: { label: 'تمت الفوترة', cls: 'bg-slate-100 text-slate-800 border-slate-300' },
+  rejected: { label: 'مرفوض', cls: 'bg-red-50 text-red-700 border-red-200' },
+  cancelled: { label: 'ملغي', cls: 'bg-slate-100 text-slate-500 border-slate-200' },
+  needs_review: { label: 'يحتاج مراجعة', cls: 'bg-orange-50 text-orange-800 border-orange-200' },
 };
 
 export const CustomerRepOrdersView: React.FC = () => {
   const {
     customerItemOrders = [],
-    orderAdvancePayments = [],
-    products = [],
-    representatives = [],
-    cashboxes = [],
-    cachedMediaMap = {},
+    representatives,
+    warehouses,
+    cashboxes,
     settings,
+    triggerManualSync,
     reviewCustomerItemOrder,
     approveCustomerItemOrder,
     rejectCustomerItemOrder,
     assignOrderDeliveryRep,
+    updateOrderDeliveryStatus,
     recordOrderAdvancePayment,
-    refreshData,
+    convertOrderToInvoice,
   } = useData();
-  const { currentUser, hasPermission } = useAuth();
+  const { hasPermission } = useAuth();
+  const canManageSales = hasPermission('canManageSales');
 
-  const canActOnOrders =
-    currentUser?.role === 'admin' || hasPermission('canManageSales');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [requesterFilter, setRequesterFilter] = useState<'all' | 'customer' | 'representative'>('all');
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
-  const [accountTypeFilter, setAccountTypeFilter] = useState<FilterAccountType>('all');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [isRefreshing, setIsRefreshing] = useState(false);
-
-  const [busyOrderId, setBusyOrderId] = useState<string | null>(null);
-  const [banner, setBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  const [rejectingOrder, setRejectingOrder] = useState<CustomerItemOrderRequest | null>(null);
+  // Action sub-modals
+  const [rejectModalOrder, setRejectModalOrder] = useState<CustomerItemOrderRequest | null>(null);
   const [rejectReason, setRejectReason] = useState('');
-  const [rejectError, setRejectError] = useState<string | null>(null);
 
-  // Assign Delivery Rep Modal
-  const [assigningOrder, setAssigningOrder] = useState<CustomerItemOrderRequest | null>(null);
+  const [assignModalOrder, setAssignModalOrder] = useState<CustomerItemOrderRequest | null>(null);
   const [assignRepId, setAssignRepId] = useState('');
   const [assignNotes, setAssignNotes] = useState('');
-  const [assignError, setAssignError] = useState<string | null>(null);
 
-  // Record Advance Payment Modal
-  const [advanceOrder, setAdvanceOrder] = useState<CustomerItemOrderRequest | null>(null);
+  const [advanceModalOrder, setAdvanceModalOrder] = useState<CustomerItemOrderRequest | null>(null);
   const [advanceAmount, setAdvanceAmount] = useState<number>(0);
-  const [advanceCashboxId, setAdvanceCashboxId] = useState<string>(cashboxes[0]?.id || 'CASH-01');
+  const [advanceCashboxId, setAdvanceCashboxId] = useState<string>(() => cashboxes[0]?.id || 'cb-main');
   const [advanceMethod, setAdvanceMethod] = useState<'cash' | 'bank' | 'cheque'>('cash');
   const [advanceNotes, setAdvanceNotes] = useState('');
-  const [advanceError, setAdvanceError] = useState<string | null>(null);
 
-  const [convertingOrder, setConvertingOrder] = useState<CustomerItemOrderRequest | null>(null);
-  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
+  const [convertModalOrder, setConvertModalOrder] = useState<CustomerItemOrderRequest | null>(null);
+  const [convertWarehouseId, setConvertWarehouseId] = useState<string>(() => warehouses[0]?.id || 'wh-main');
+  const [convertCashboxId, setConvertCashboxId] = useState<string>(() => cashboxes[0]?.id || 'cb-main');
+  const [convertPaid, setConvertPaid] = useState<number>(0);
+  const [convertDiscount, setConvertDiscount] = useState<number>(0);
+  const [convertPaymentType, setConvertPaymentType] = useState<'cash' | 'credit' | 'partial'>('cash');
+  const [convertNotes, setConvertNotes] = useState('');
 
-  const productImageById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const p of products) {
-      const img = cachedMediaMap[p.id] || p.image;
-      if (p.id && img) map.set(p.id, img);
-    }
-    return map;
-  }, [products, cachedMediaMap]);
+  const filteredOrders = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return customerItemOrders
+      .filter((o) => {
+        if (statusFilter !== 'all' && o.status !== statusFilter) return false;
+        const reqType = o.requesterType || (o.representativeId ? 'representative' : 'customer');
+        if (requesterFilter !== 'all' && reqType !== requesterFilter) return false;
+        if (!q) return true;
+        return [
+          o.requestNumber,
+          o.customerName,
+          o.shopName,
+          o.customerPhone,
+          o.submittedByName,
+          o.representativeName,
+          o.deliveryRepName,
+        ]
+          .filter(Boolean)
+          .some((val) => String(val).toLowerCase().includes(q));
+      })
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  }, [customerItemOrders, search, statusFilter, requesterFilter]);
 
-  const counts = useMemo(() => {
-    let pending = 0;
-    let underReview = 0;
-    let approved = 0;
-    let delivery = 0;
-    let rejected = 0;
-    let invoiced = 0;
-    for (const ord of customerItemOrders) {
-      if (ord.status === 'pending') pending += 1;
-      else if (ord.status === 'under_review') underReview += 1;
-      else if (ord.status === 'approved') approved += 1;
-      else if (ord.status === 'rep_assigned' || ord.status === 'out_for_delivery' || ord.status === 'delivered') delivery += 1;
-      else if (ord.status === 'rejected') rejected += 1;
-      else if (ord.status === 'invoiced') invoiced += 1;
-    }
+  const selectedOrder = useMemo(
+    () => customerItemOrders.find((o) => o.id === selectedOrderId) || null,
+    [customerItemOrders, selectedOrderId]
+  );
+
+  const stats = useMemo(() => {
     return {
-      total: customerItemOrders.length,
-      pending,
-      underReview,
-      approved,
-      delivery,
-      rejected,
-      invoiced,
+      pending: customerItemOrders.filter((o) => o.status === 'pending').length,
+      inProgress: customerItemOrders.filter((o) => ['under_review', 'approved'].includes(o.status)).length,
+      delivery: customerItemOrders.filter((o) => ['rep_assigned', 'out_for_delivery'].includes(o.status)).length,
+      done: customerItemOrders.filter((o) => ['delivered', 'invoiced'].includes(o.status)).length,
     };
   }, [customerItemOrders]);
 
-  const getOrderAccountType = (ord: CustomerItemOrderRequest): 'customer' | 'representative' => {
-    if (ord.requesterType === 'representative' || ord.representativeId) {
-      return 'representative';
+  const runAction = async (fn: () => Promise<{ success: boolean; error?: string }>, okText: string) => {
+    setBusy(true);
+    setFeedback(null);
+    const res = await fn();
+    setBusy(false);
+    if (res.success) {
+      setFeedback({ type: 'ok', text: okText });
+    } else {
+      setFeedback({ type: 'err', text: res.error || 'تعذر تنفيذ العملية' });
     }
-    return 'customer';
+    return res.success;
   };
 
-  const getOrderTotal = (ord: CustomerItemOrderRequest): number => {
-    if (typeof ord.totalAmount === 'number' && Number.isFinite(ord.totalAmount) && ord.totalAmount > 0) {
-      return ord.totalAmount;
-    }
+  const getOrderTotal = (ord: CustomerItemOrderRequest) => {
+    if (Number(ord.totalAmount || 0) > 0) return Number(ord.totalAmount);
+    if (Number(ord.totalEstimatedAmount || 0) > 0) return Number(ord.totalEstimatedAmount);
     return (ord.items || []).reduce(
-      (sum, it) => sum + Number(it.quantity || 0) * Number(it.unitPrice || 0),
+      (s, it) => s + Number(it.unitPrice ?? 0) * Number(it.quantity || 0),
       0
     );
   };
 
-  const filteredOrders = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
-    return [...customerItemOrders]
-      .filter((ord) => {
-        if (statusFilter !== 'all' && ord.status !== statusFilter) return false;
-        const accType = getOrderAccountType(ord);
-        if (accountTypeFilter !== 'all' && accType !== accountTypeFilter) return false;
-
-        if (dateFrom) {
-          const ordDate = String(ord.createdAt || '').slice(0, 10);
-          if (ordDate && ordDate < dateFrom) return false;
-        }
-        if (dateTo) {
-          const ordDate = String(ord.createdAt || '').slice(0, 10);
-          if (ordDate && ordDate > dateTo) return false;
-        }
-
-        if (q) {
-          const hay = [
-            ord.requestNumber,
-            ord.customerName,
-            ord.shopName,
-            ord.submittedByName,
-            ord.representativeName,
-            ord.customerPhone,
-            ...(ord.items || []).map((it) => it.productName),
-          ]
-            .filter(Boolean)
-            .join(' ')
-            .toLowerCase();
-          if (!hay.includes(q)) return false;
-        }
-        return true;
-      })
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [customerItemOrders, statusFilter, accountTypeFilter, dateFrom, dateTo, searchTerm]);
-
-  const handleManualRefresh = async () => {
-    setIsRefreshing(true);
-    try {
-      await refreshData();
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  const handleStartReview = async (ord: CustomerItemOrderRequest) => {
-    if (busyOrderId || !canActOnOrders) return;
-    setBusyOrderId(ord.id);
-    setBanner(null);
-    try {
-      const res = await reviewCustomerItemOrder(ord.id);
-      if (res.success) {
-        setBanner({
-          type: 'success',
-          text: `تم وضع الطلب (${ord.requestNumber}) قيد المراجعة.`,
-        });
-      } else {
-        setBanner({ type: 'error', text: res.error || 'تعذر بدء مراجعة الطلب' });
-      }
-    } finally {
-      setBusyOrderId(null);
-    }
-  };
-
-  const handleApprove = async (ord: CustomerItemOrderRequest) => {
-    if (busyOrderId || !canActOnOrders) return;
-    setBusyOrderId(ord.id);
-    setBanner(null);
-    try {
-      const res = await approveCustomerItemOrder(ord.id);
-      if (res.success) {
-        setBanner({
-          type: 'success',
-          text: `تم قبول الطلب (${ord.requestNumber}) وتسجيل الاعتماد. لم يتم إنشاء فاتورة تلقائياً — يمكنك الآن استكمال إجراءات التحويل إلى فاتورة من زر «تحويل إلى فاتورة مبيعات».`,
-        });
-      } else {
-        setBanner({ type: 'error', text: res.error || 'تعذر قبول الطلب' });
-      }
-    } finally {
-      setBusyOrderId(null);
-    }
-  };
-
-  const handleOpenRejectModal = (ord: CustomerItemOrderRequest) => {
-    setRejectingOrder(ord);
-    setRejectReason('');
-    setRejectError(null);
-  };
-
-  const handleConfirmReject = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!rejectingOrder || busyOrderId || !canActOnOrders) return;
-    const trimmed = rejectReason.trim();
-    if (!trimmed) {
-      setRejectError('يرجى كتابة سبب الرفض ليظهر بوضوح لصاحب الطلب في تطبيق الموبايل.');
-      return;
-    }
-    setBusyOrderId(rejectingOrder.id);
-    setRejectError(null);
-    try {
-      const res = await rejectCustomerItemOrder(rejectingOrder.id, trimmed);
-      if (res.success) {
-        setBanner({
-          type: 'success',
-          text: `تم رفض الطلب (${rejectingOrder.requestNumber}) وإرسال سبب الرفض لصاحب الطلب.`,
-        });
-        setRejectingOrder(null);
-        setRejectReason('');
-      } else {
-        setRejectError(res.error || 'تعذر رفض الطلب');
-      }
-    } finally {
-      setBusyOrderId(null);
-    }
-  };
-
-  const handleOpenAssignRep = (ord: CustomerItemOrderRequest) => {
-    setAssigningOrder(ord);
-    setAssignRepId(ord.deliveryRepId || representatives[0]?.id || '');
-    setAssignNotes('');
-    setAssignError(null);
-  };
-
-  const handleConfirmAssignRep = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!assigningOrder || busyOrderId || !canActOnOrders) return;
-    if (!assignRepId) {
-      setAssignError('يرجى اختيار المندوب المكلف بالتوصيل.');
-      return;
-    }
-    setBusyOrderId(assigningOrder.id);
-    setAssignError(null);
-    try {
-      const res = await assignOrderDeliveryRep(assigningOrder.id, assignRepId, assignNotes.trim() || undefined);
-      if (res.success) {
-        setBanner({
-          type: 'success',
-          text: `تم تعيين المندوب للطلب (${assigningOrder.requestNumber}) بنجاح.`,
-        });
-        setAssigningOrder(null);
-      } else {
-        setAssignError(res.error || 'تعذر تعيين مندوب التوصيل');
-      }
-    } finally {
-      setBusyOrderId(null);
-    }
-  };
-
-  const handleOpenAdvanceModal = (ord: CustomerItemOrderRequest) => {
-    setAdvanceOrder(ord);
-    setAdvanceAmount(0);
-    setAdvanceCashboxId(cashboxes[0]?.id || 'CASH-01');
-    setAdvanceMethod('cash');
-    setAdvanceNotes('');
-    setAdvanceError(null);
-  };
-
-  const handleConfirmAdvancePayment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!advanceOrder || busyOrderId || !canActOnOrders) return;
-    if (!advanceAmount || advanceAmount <= 0) {
-      setAdvanceError('يرجى إدخال مبلغ الدفعة المقدمة أكبر من صفر.');
-      return;
-    }
-    if (!advanceCashboxId) {
-      setAdvanceError('يرجى اختيار الخزينة.');
-      return;
-    }
-    setBusyOrderId(advanceOrder.id);
-    setAdvanceError(null);
-    try {
-      const res = await recordOrderAdvancePayment(advanceOrder.id, {
-        amount: Number(advanceAmount),
-        cashboxId: advanceCashboxId,
-        paymentMethod: advanceMethod,
-        notes: advanceNotes.trim() || undefined,
-      });
-      if (res.success) {
-        setBanner({
-          type: 'success',
-          text: res.queuedOffline
-            ? `تم حفظ الدفعة المقدمة (${advanceAmount.toLocaleString()} ${settings.currency}) للطلب ${advanceOrder.requestNumber} محلياً في طابور المزامنة.`
-            : `تم تسجيل دفعة مقدمة بقيمة ${advanceAmount.toLocaleString()} ${settings.currency} للطلب (${advanceOrder.requestNumber}) بنجاح دون احتساب إيراد مبيعات قبل الفوترة.`,
-        });
-        setAdvanceOrder(null);
-      } else {
-        setAdvanceError(res.error || 'تعذر تسجيل الدفعة المقدمة');
-      }
-    } finally {
-      setBusyOrderId(null);
-    }
-  };
-
-  const resetFilters = () => {
-    setSearchTerm('');
-    setStatusFilter('all');
-    setAccountTypeFilter('all');
-    setDateFrom('');
-    setDateTo('');
-  };
-
   return (
-    <div className="space-y-5 text-right">
-      {/* Header Card */}
-      <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-xs flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div className="space-y-1">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-blue-900 text-white flex items-center justify-center shadow-xs">
-              <ShoppingBag className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-xl font-black text-slate-900">طلبات العملاء والمندوبين</h2>
-                {counts.pending > 0 && (
-                  <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-white text-xs font-black animate-pulse">
-                    {counts.pending} طلب جديد
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-slate-500">
-                استقبال ومراجعة طلبات الشراء الواردة من تطبيق الموبايل للعملاء والمناديب — قبول الطلب لا ينشئ فاتورة تلقائياً ولا يؤثر على المخزون أو الحسابات إلا عند الاعتماد المنفصل.
-              </p>
-            </div>
-          </div>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-black text-slate-900">طلبات العملاء والمندوبين</h1>
+          <p className="text-xs text-slate-500">
+            مراجعة واعتماد طلبات الأصناف، إسناد مناديب التوصيل، الدفعات المقدمة، والتحويل لفواتير مبيعات
+          </p>
         </div>
-
         <button
           type="button"
-          onClick={handleManualRefresh}
-          disabled={isRefreshing}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-950 border border-blue-200 text-xs font-black cursor-pointer disabled:opacity-60 self-start lg:self-auto"
+          onClick={() => triggerManualSync()}
+          className="px-4 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-xs font-bold text-slate-700 flex items-center gap-2 cursor-pointer"
         >
-          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          <RefreshCw className="w-4 h-4" />
           <span>تحديث الطلبات</span>
         </button>
       </div>
 
-      {/* KPI Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {[
-          { key: 'all' as FilterStatus, label: 'إجمالي الطلبات', count: counts.total, cls: 'bg-white border-slate-200 text-slate-900' },
-          { key: 'pending' as FilterStatus, label: 'جديد', count: counts.pending, cls: 'bg-amber-50 border-amber-200 text-amber-950' },
-          { key: 'under_review' as FilterStatus, label: 'قيد المراجعة', count: counts.underReview, cls: 'bg-sky-50 border-sky-200 text-sky-950' },
-          { key: 'approved' as FilterStatus, label: 'مقبول', count: counts.approved, cls: 'bg-emerald-50 border-emerald-200 text-emerald-950' },
-          { key: 'rep_assigned' as FilterStatus, label: 'مراحل التوصيل', count: counts.delivery, cls: 'bg-indigo-50 border-indigo-200 text-indigo-950' },
-          { key: 'invoiced' as FilterStatus, label: 'مفوتر', count: counts.invoiced, cls: 'bg-blue-50 border-blue-200 text-blue-950' },
-        ].map((card) => (
-          <button
-            key={card.key}
-            type="button"
-            onClick={() => setStatusFilter(card.key)}
-            className={`p-3.5 rounded-2xl border text-right transition-all cursor-pointer ${card.cls} ${
-              statusFilter === card.key ? 'ring-2 ring-blue-700 shadow-sm' : 'hover:shadow-xs'
-            }`}
-          >
-            <div className="text-[11px] font-bold opacity-80">{card.label}</div>
-            <div className="text-2xl font-black font-mono mt-1">{card.count}</div>
-          </button>
-        ))}
-      </div>
-
-      {/* Status Action Banner */}
-      {banner && (
+      {feedback && (
         <div
-          className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between gap-2 ${
-            banner.type === 'success'
-              ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
-              : 'bg-red-50 border-red-300 text-red-900'
+          className={`p-3 rounded-xl border text-xs font-bold ${
+            feedback.type === 'ok'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-red-50 border-red-200 text-red-800'
           }`}
         >
-          <div className="flex items-center gap-2">
-            {banner.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
-            ) : (
-              <AlertCircle className="w-4 h-4 text-red-700 shrink-0" />
-            )}
-            <span>{banner.text}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setBanner(null)}
-            className="underline cursor-pointer shrink-0"
-          >
-            إغلاق
-          </button>
+          {feedback.text}
         </div>
       )}
 
-      {/* Search & Filters Bar */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-2xs text-xs">
-        <div className="flex items-center gap-2 font-black text-slate-700">
-          <Filter className="w-4 h-4 text-blue-900" />
-          <span>البحث والتصفية</span>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="bg-white p-4 rounded-2xl border border-amber-200 shadow-xs">
+          <p className="text-xs text-amber-800 font-bold flex items-center gap-1.5">
+            <Clock className="w-4 h-4" /> طلبات جديدة
+          </p>
+          <p className="text-2xl font-black text-amber-950 mt-1 font-mono">{stats.pending}</p>
         </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          <div className="lg:col-span-2 relative">
-            <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="بحث برقم الطلب، اسم العميل/المحل، اسم المندوب، أو الصنف..."
-              className="w-full pr-9 pl-3 py-2.5 rounded-xl border border-slate-300 bg-white font-semibold outline-hidden focus:border-blue-600"
-            />
-          </div>
-
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as FilterStatus)}
-            aria-label="تصفية حسب حالة الطلب"
-            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 font-bold outline-hidden focus:border-blue-600"
-          >
-            <option value="all">جميع الحالات</option>
-            <option value="pending">جديد</option>
-            <option value="under_review">قيد المراجعة</option>
-            <option value="approved">مقبول</option>
-            <option value="rep_assigned">تم تعيين مندوب</option>
-            <option value="out_for_delivery">جاري التوصيل</option>
-            <option value="delivered">تم التسليم</option>
-            <option value="needs_review">يحتاج مراجعة</option>
-            <option value="invoiced">تم التحويل لفاتورة</option>
-            <option value="rejected">مرفوض</option>
-          </select>
-
-          <select
-            value={accountTypeFilter}
-            onChange={(e) => setAccountTypeFilter(e.target.value as FilterAccountType)}
-            aria-label="تصفية حسب نوع الحساب"
-            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 font-bold outline-hidden focus:border-blue-600"
-          >
-            <option value="all">كل أنواع الحسابات (عميل + مندوب)</option>
-            <option value="customer">طلبات العملاء فقط</option>
-            <option value="representative">طلبات المناديب فقط</option>
-          </select>
-
-          <div className="flex items-center gap-2">
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              aria-label="من تاريخ"
-              className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-2 font-mono font-bold outline-hidden focus:border-blue-600"
-            />
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              aria-label="إلى تاريخ"
-              className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-2 font-mono font-bold outline-hidden focus:border-blue-600"
-            />
-          </div>
+        <div className="bg-white p-4 rounded-2xl border border-blue-200 shadow-xs">
+          <p className="text-xs text-blue-800 font-bold flex items-center gap-1.5">
+            <ClipboardList className="w-4 h-4" /> مراجعة واعتماد
+          </p>
+          <p className="text-2xl font-black text-blue-950 mt-1 font-mono">{stats.inProgress}</p>
         </div>
-
-        {(searchTerm || statusFilter !== 'all' || accountTypeFilter !== 'all' || dateFrom || dateTo) && (
-          <div className="flex items-center justify-between pt-1 text-[11px]">
-            <span className="text-slate-500 font-bold">
-              عدد النتائج المطابقة: <strong className="text-slate-900">{filteredOrders.length}</strong>
-            </span>
-            <button
-              type="button"
-              onClick={resetFilters}
-              className="text-blue-800 hover:underline font-bold cursor-pointer"
-            >
-              إعادة ضبط الفلاتر
-            </button>
-          </div>
-        )}
+        <div className="bg-white p-4 rounded-2xl border border-indigo-200 shadow-xs">
+          <p className="text-xs text-indigo-800 font-bold flex items-center gap-1.5">
+            <Truck className="w-4 h-4" /> قيد التوصيل
+          </p>
+          <p className="text-2xl font-black text-indigo-950 mt-1 font-mono">{stats.delivery}</p>
+        </div>
+        <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-xs">
+          <p className="text-xs text-emerald-800 font-bold flex items-center gap-1.5">
+            <CheckCircle2 className="w-4 h-4" /> مسلمة / مفوترة
+          </p>
+          <p className="text-2xl font-black text-emerald-950 mt-1 font-mono">{stats.done}</p>
+        </div>
       </div>
 
-      {/* Orders List */}
-      {filteredOrders.length === 0 ? (
-        <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center space-y-2 shadow-2xs">
-          <ShoppingBag className="w-10 h-10 text-slate-300 mx-auto" />
-          <h3 className="text-sm font-black text-slate-700">لا توجد طلبات مطابقة للعرض حالياً</h3>
-          <p className="text-xs text-slate-400">
-            ستظهر هنا تلقائياً أي طلبات جديدة يرسلها العملاء أو المناديب من تطبيق الموبايل.
-          </p>
+      {/* Filters */}
+      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center gap-3 text-xs">
+        <div className="relative flex-1 min-w-[220px]">
+          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="بحث برقم الطلب، العميل، المحل، أو المندوب..."
+            className="w-full pr-9 pl-3 py-2 rounded-xl border border-slate-300 outline-hidden focus:border-blue-700"
+          />
         </div>
-      ) : (
-        <div className="space-y-4">
-          {filteredOrders.map((order) => {
-            const accountType = getOrderAccountType(order);
-            const isRepOrder = accountType === 'representative';
-            const statusMeta = STATUS_META[order.status] || {
-              label: order.status,
-              badgeClass: 'bg-slate-100 text-slate-700',
-            };
-            const orderTotal = getOrderTotal(order);
-            const isBusy = busyOrderId === order.id;
-            const isExpanded = expandedHistoryId === order.id;
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="py-2 px-3 rounded-xl border border-slate-300 font-bold bg-slate-50"
+        >
+          <option value="all">كل الحالات</option>
+          {Object.entries(STATUS_META).map(([key, meta]) => (
+            <option key={key} value={key}>
+              {meta.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={requesterFilter}
+          onChange={(e) => setRequesterFilter(e.target.value as any)}
+          className="py-2 px-3 rounded-xl border border-slate-300 font-bold bg-slate-50"
+        >
+          <option value="all">كل المصادر</option>
+          <option value="customer">طلبات العملاء</option>
+          <option value="representative">طلبات المناديب</option>
+        </select>
+      </div>
 
-            const mapQuery = order.geoCoordinates?.trim() || order.deliveryAddress?.trim() || '';
-            const mapHref =
-              mapQuery.startsWith('http://') || mapQuery.startsWith('https://')
-                ? mapQuery
-                : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
+      {/* Orders Table */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden awlad-table-scroll">
+        <table className="w-full text-right text-xs">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold">
+              <th className="p-3">رقم الطلب</th>
+              <th className="p-3">العميل / المحل</th>
+              <th className="p-3">المصدر</th>
+              <th className="p-3 text-center">الأصناف</th>
+              <th className="p-3 text-center">الإجمالي</th>
+              <th className="p-3 text-center">المدفوع مقدماً</th>
+              <th className="p-3 text-center">الحالة</th>
+              <th className="p-3 text-center">الإجراءات</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {filteredOrders.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="p-8 text-center text-slate-400">
+                  لا توجد طلبات مطابقة لخيارات البحث الحالية.
+                </td>
+              </tr>
+            ) : (
+              filteredOrders.map((ord) => {
+                const statusInfo = STATUS_META[ord.status] || {
+                  label: ord.status,
+                  cls: 'bg-slate-100 text-slate-700 border-slate-200',
+                };
+                const total = getOrderTotal(ord);
+                const advance = Number(ord.advancePaidAmount || 0);
+                const isRepReq = ord.requesterType === 'representative' || Boolean(ord.representativeId);
 
-            return (
-              <article
-                key={order.id}
-                className="bg-white rounded-3xl border border-slate-200 p-5 shadow-xs space-y-4 text-xs"
-              >
-                {/* Top Order Header */}
-                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-3">
-                  <div className="space-y-1.5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono font-black text-blue-950 bg-blue-50 border border-blue-200 px-3 py-1 rounded-xl">
-                        {order.requestNumber}
+                return (
+                  <tr key={ord.id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="p-3 font-mono font-bold text-slate-900">
+                      <div>{ord.requestNumber}</div>
+                      <div className="text-[10px] text-slate-400">
+                        {new Date(ord.createdAt).toLocaleDateString('ar-EG')}
+                      </div>
+                    </td>
+                    <td className="p-3">
+                      <p className="font-bold text-slate-900">{ord.customerName}</p>
+                      {(ord.shopName || ord.customerPhone) && (
+                        <p className="text-[11px] text-slate-500">
+                          {[ord.shopName, ord.customerPhone].filter(Boolean).join(' · ')}
+                        </p>
+                      )}
+                    </td>
+                    <td className="p-3">
+                      <span className="text-[11px] font-bold text-slate-700">
+                        {isRepReq ? `مندوب: ${ord.representativeName || ord.submittedByName || ''}` : 'تطبيق العميل'}
                       </span>
+                    </td>
+                    <td className="p-3 text-center font-mono font-bold">{ord.items?.length || 0}</td>
+                    <td className="p-3 text-center font-mono font-black text-blue-950">
+                      {total.toLocaleString()} {settings.currency}
+                    </td>
+                    <td className="p-3 text-center font-mono font-bold text-emerald-700">
+                      {advance > 0 ? `${advance.toLocaleString()} ${settings.currency}` : '-'}
+                    </td>
+                    <td className="p-3 text-center">
+                      <span className={`inline-block px-2.5 py-1 rounded-lg border text-[11px] font-bold ${statusInfo.cls}`}>
+                        {statusInfo.label}
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <div className="flex items-center justify-center gap-1 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedOrderId(ord.id)}
+                          className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+                          title="عرض التفاصيل"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
 
-                      <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black ${
-                          isRepOrder
-                            ? 'bg-indigo-100 text-indigo-900 border border-indigo-200'
-                            : 'bg-cyan-100 text-cyan-900 border border-cyan-200'
-                        }`}
-                      >
-                        {isRepOrder ? (
-                          <UserSquare2 className="w-3.5 h-3.5" />
-                        ) : (
-                          <Store className="w-3.5 h-3.5" />
+                        {canManageSales && ord.status === 'pending' && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() =>
+                              runAction(() => reviewCustomerItemOrder(ord.id), 'تم بدء مراجعة الطلب')
+                            }
+                            className="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold cursor-pointer"
+                          >
+                            مراجعة
+                          </button>
                         )}
-                        <span>{isRepOrder ? 'مندوب' : 'عميل'}</span>
-                      </span>
 
-                      <span className={`px-2.5 py-1 rounded-full text-[11px] font-black ${statusMeta.badgeClass}`}>
-                        {statusMeta.label}
-                      </span>
+                        {canManageSales && ['pending', 'under_review'].includes(ord.status) && (
+                          <>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() =>
+                                runAction(() => approveCustomerItemOrder(ord.id), 'تم اعتماد الطلب')
+                              }
+                              className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer"
+                            >
+                              اعتماد
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => {
+                                setRejectModalOrder(ord);
+                                setRejectReason('');
+                              }}
+                              className="px-2 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 font-bold cursor-pointer"
+                            >
+                              رفض
+                            </button>
+                          </>
+                        )}
 
-                      {order.syncStatus && order.syncStatus !== 'synced' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-amber-50 text-amber-800 border border-amber-300">
-                          <CloudOff className="w-3 h-3" />
-                          <span>محلي بانتظار المزامنة</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                          <CloudCheck className="w-3 h-3" />
-                          <span>معتمد مركزيًا</span>
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-700">
-                      <span>
-                        <strong>صاحب الطلب:</strong>{' '}
-                        <span className="text-slate-900 font-black">
-                          {order.submittedByName || (isRepOrder ? order.representativeName : order.customerName) || order.customerName}
-                        </span>
-                      </span>
-
-                      {isRepOrder && (
-                        <span>
-                          <strong>العميل المطلوب له الطلب:</strong>{' '}
-                          <span className="font-bold text-blue-900">
-                            {order.customerName}
-                            {order.shopName ? ` (${order.shopName})` : ''}
-                          </span>
-                        </span>
-                      )}
-
-                      {!isRepOrder && order.shopName && (
-                        <span>
-                          <strong>المحل:</strong> <span className="font-bold">{order.shopName}</span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="text-left sm:text-right space-y-1">
-                    <div className="inline-flex items-center gap-1.5 text-[11px] font-mono text-slate-600 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg">
-                      <Clock className="w-3.5 h-3.5 text-slate-400" />
-                      <span>{new Date(order.createdAt).toLocaleString('ar-EG')}</span>
-                    </div>
-                    <div className="text-sm font-black text-blue-950 font-mono">
-                      إجمالي الطلب: {orderTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {settings.currency}
-                    </div>
-                    {Number(order.advancePaidAmount || 0) > 0 && (
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono font-black">
-                        <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200">
-                          دفعة مقدمة: {Number(order.advancePaidAmount).toLocaleString('en-US', { minimumFractionDigits: 2 })} {settings.currency}
-                        </span>
-                        <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200">
-                          المتبقي: {Math.max(0, orderTotal - Number(order.advancePaidAmount || 0)).toLocaleString('en-US', { minimumFractionDigits: 2 })} {settings.currency}
-                        </span>
+                        {canManageSales &&
+                          ['approved', 'rep_assigned', 'out_for_delivery', 'delivered'].includes(ord.status) && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAssignModalOrder(ord);
+                                  setAssignRepId(ord.deliveryRepId || representatives[0]?.id || '');
+                                  setAssignNotes('');
+                                }}
+                                className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 cursor-pointer"
+                                title="تعيين مندوب توصيل"
+                              >
+                                <UserCheck className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAdvanceModalOrder(ord);
+                                  setAdvanceAmount(0);
+                                  setAdvanceCashboxId(cashboxes[0]?.id || 'cb-main');
+                                  setAdvanceNotes('');
+                                }}
+                                className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 cursor-pointer"
+                                title="تسجيل دفعة مقدمة"
+                              >
+                                <DollarSign className="w-4 h-4" />
+                              </button>
+                              {!ord.invoiceId && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setConvertModalOrder(ord);
+                                    setConvertWarehouseId(warehouses[0]?.id || 'wh-main');
+                                    setConvertCashboxId(cashboxes[0]?.id || 'cb-main');
+                                    setConvertPaid(0);
+                                    setConvertDiscount(0);
+                                    setConvertPaymentType('cash');
+                                    setConvertNotes(ord.notes || '');
+                                  }}
+                                  className="px-2 py-1 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-bold flex items-center gap-1 cursor-pointer"
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                  <span>تحويل لفاتورة</span>
+                                </button>
+                              )}
+                            </>
+                          )}
                       </div>
-                    )}
-                  </div>
-                </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
 
-                {/* Contact & Delivery Snapshot */}
-                {(order.customerPhone || order.deliveryAddress) && (
-                  <div className="flex flex-wrap items-center gap-2.5 text-[11px]">
-                    {order.customerPhone && (
-                      <a
-                        href={`tel:${order.customerPhone}`}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono font-bold hover:bg-emerald-100"
-                      >
-                        <Phone className="w-3.5 h-3.5" />
-                        <span>{order.customerPhone}</span>
-                      </a>
-                    )}
-                    {order.deliveryAddress && (
-                      <a
-                        href={mapHref}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 text-slate-800 border border-slate-200 hover:bg-blue-50"
-                      >
-                        <MapPin className="w-3.5 h-3.5 text-red-600" />
-                        <span>{order.deliveryAddress}</span>
-                        <ExternalLink className="w-3 h-3 text-blue-700" />
-                      </a>
-                    )}
-                  </div>
+      {/* Order Detail Modal */}
+      <Modal
+        isOpen={Boolean(selectedOrder)}
+        onClose={() => setSelectedOrderId(null)}
+        title={selectedOrder ? `تفاصيل الطلب ${selectedOrder.requestNumber}` : ''}
+        subtitle={selectedOrder ? `${selectedOrder.customerName} · ${STATUS_META[selectedOrder.status]?.label || selectedOrder.status}` : ''}
+        maxWidth="4xl"
+      >
+        {selectedOrder && (
+          <div className="space-y-4 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200">
+              <div>
+                <p className="text-slate-500">العميل:</p>
+                <p className="font-bold text-slate-900">{selectedOrder.customerName}</p>
+                {selectedOrder.shopName && <p className="text-slate-600">{selectedOrder.shopName}</p>}
+                {selectedOrder.customerPhone && <p className="font-mono text-slate-600">{selectedOrder.customerPhone}</p>}
+              </div>
+              <div>
+                <p className="text-slate-500">التوصيل والملاحظات:</p>
+                <p className="font-bold text-slate-800">{selectedOrder.deliveryAddress || 'غير محدد'}</p>
+                {selectedOrder.geoCoordinates && (
+                  <a
+                    href={`https://maps.google.com/?q=${encodeURIComponent(selectedOrder.geoCoordinates)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-blue-700 font-bold mt-1"
+                  >
+                    <MapPin className="w-3.5 h-3.5" /> عرض الموقع الجغرافي
+                  </a>
                 )}
-
-                {/* Items List with Product Images, Quantities, Prices & Line Totals */}
-                <div className="rounded-2xl border border-slate-200 overflow-hidden bg-slate-50/70">
-                  <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-slate-100 text-[11px] font-black text-slate-600 border-b border-slate-200">
-                    <div className="col-span-6 sm:col-span-5">الصنف</div>
-                    <div className="col-span-2 text-center">الكمية</div>
-                    <div className="col-span-2 text-center">السعر</div>
-                    <div className="col-span-2 sm:col-span-3 text-left">الإجمالي</div>
-                  </div>
-                  <div className="divide-y divide-slate-200/70">
-                    {(order.items || []).map((it, idx) => {
-                      const imgSrc = it.productImage || productImageById.get(it.productId) || '';
-                      const unitPrice = Number(it.unitPrice || 0);
-                      const lineTotal = Number(it.quantity || 0) * unitPrice;
-                      return (
-                        <div
-                          key={`${it.productId}-${idx}`}
-                          className="grid grid-cols-12 gap-2 items-center px-3 py-2.5 bg-white"
-                        >
-                          <div className="col-span-6 sm:col-span-5 flex items-center gap-2.5 min-w-0">
-                            {imgSrc ? (
-                              <img
-                                src={imgSrc}
-                                alt={it.productName}
-                                className="w-10 h-10 rounded-xl object-cover border border-slate-200 bg-slate-50 shrink-0"
-                              />
-                            ) : (
-                              <div className="w-10 h-10 rounded-xl border border-slate-200 bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
-                                <Package className="w-4 h-4" />
-                              </div>
-                            )}
-                            <div className="min-w-0">
-                              <div className="font-bold text-slate-900 truncate">{it.productName}</div>
-                              <div className="text-[11px] text-slate-500">
-                                {it.unit}
-                                {it.productCode ? ` · ${it.productCode}` : ''}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="col-span-2 text-center font-mono font-black text-slate-800">
-                            {it.quantity}
-                          </div>
-
-                          <div className="col-span-2 text-center font-mono font-bold text-slate-700">
-                            {unitPrice > 0 ? unitPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
-                          </div>
-
-                          <div className="col-span-2 sm:col-span-3 text-left font-mono font-black text-blue-950">
-                            {lineTotal > 0
-                              ? `${lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${settings.currency}`
-                              : '—'}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Notes, Reviewer Metadata & Rejection Reason */}
-                {order.notes && (
-                  <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200 text-amber-950">
-                    <strong>الملاحظات:</strong> {order.notes}
-                  </div>
+                {selectedOrder.deliveryRepName && (
+                  <p className="text-indigo-800 font-bold mt-1">مندوب التوصيل: {selectedOrder.deliveryRepName}</p>
                 )}
+              </div>
+            </div>
 
-                {order.reviewedBy && (
-                  <div className="flex flex-wrap items-center gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-700">
-                    <UserCheck className="w-4 h-4 text-blue-800 shrink-0" />
-                    <span>
-                      <strong>المسؤول عن القرار / المراجعة:</strong> {order.reviewedBy}
-                    </span>
-                    {order.reviewedAt && (
-                      <span className="font-mono text-slate-500">
-                        ({new Date(order.reviewedAt).toLocaleString('ar-EG')})
-                      </span>
-                    )}
-                    {order.invoiceNumber && (
-                      <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-950 font-mono font-black">
-                        فاتورة رقم: {order.invoiceNumber}
-                      </span>
-                    )}
-                  </div>
-                )}
+            <div className="border border-slate-200 rounded-xl overflow-hidden awlad-table-scroll">
+              <table className="w-full text-right">
+                <thead>
+                  <tr className="bg-slate-100 border-b text-slate-700 font-bold">
+                    <th className="p-2.5">الصنف</th>
+                    <th className="p-2.5 text-center">الوحدة</th>
+                    <th className="p-2.5 text-center">الكمية</th>
+                    <th className="p-2.5 text-center">السعر المرجعي</th>
+                    <th className="p-2.5 text-center">الإجمالي</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {(selectedOrder.items || []).map((it, idx) => {
+                    const price = Number(it.unitPrice ?? 0);
+                    return (
+                      <tr key={idx}>
+                        <td className="p-2.5 font-bold">{it.productName}</td>
+                        <td className="p-2.5 text-center">{it.unit}</td>
+                        <td className="p-2.5 text-center font-mono font-bold">{it.quantity}</td>
+                        <td className="p-2.5 text-center font-mono">
+                          {price.toLocaleString()} {settings.currency}
+                        </td>
+                        <td className="p-2.5 text-center font-mono font-black text-blue-950">
+                          {(price * Number(it.quantity || 0)).toLocaleString()} {settings.currency}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-                {order.status === 'rejected' && order.rejectionReason && (
-                  <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-900 font-bold">
-                    سبب الرفض المرسل لصاحب الطلب: {order.rejectionReason}
-                  </div>
-                )}
+            {selectedOrder.notes && (
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">
+                <strong>ملاحظات:</strong> {selectedOrder.notes}
+              </div>
+            )}
 
-                {/* Delivery Rep & Advance Payments Snapshot */}
-                {(order.deliveryRepName || order.deliveryNotes || order.collectedAmount || order.deliveryProof) && (
-                  <div className="p-3 rounded-xl bg-indigo-50/70 border border-indigo-200 space-y-1.5 text-[11px] text-indigo-950">
-                    <div className="flex flex-wrap items-center gap-3 font-bold">
-                      <span className="inline-flex items-center gap-1">
-                        <Truck className="w-3.5 h-3.5 text-indigo-700" />
-                        <span>مندوب التوصيل: {order.deliveryRepName || '—'}</span>
-                      </span>
-                      {order.deliveredAt && (
-                        <span className="font-mono text-slate-600">
-                          وقت التسليم: {new Date(order.deliveredAt).toLocaleString('ar-EG')}
-                        </span>
-                      )}
-                      {Number(order.collectedAmount || 0) > 0 && (
-                        <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 font-mono font-black">
-                          محصل عند التسليم: {Number(order.collectedAmount).toLocaleString()} {settings.currency}
-                        </span>
-                      )}
-                    </div>
-                    {order.deliveryNotes && <p className="text-slate-700">ملاحظات التسليم: {order.deliveryNotes}</p>}
-                    {order.deliveryProof && order.deliveryProof.startsWith('data:image') && (
-                      <div className="pt-1">
-                        <img
-                          src={order.deliveryProof}
-                          alt="إثبات التسليم"
-                          className="w-24 h-24 rounded-xl object-cover border border-indigo-200 bg-white"
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {(() => {
-                  const orderAdvances = orderAdvancePayments.filter((a) => a.orderId === order.id);
-                  if (orderAdvances.length === 0) return null;
-                  return (
-                    <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-1 text-[11px]">
-                      <div className="font-black text-emerald-950 flex items-center gap-1.5">
-                        <Wallet className="w-3.5 h-3.5 text-emerald-700" />
-                        <span>سجل الدفعات المقدمة على هذا الطلب ({orderAdvances.length}):</span>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {orderAdvances.map((adv) => (
-                          <span key={adv.id} className="px-2.5 py-1 rounded-lg bg-white border border-emerald-200 font-mono font-bold text-emerald-900">
-                            {adv.paymentNumber} · {adv.amount.toLocaleString()} {settings.currency} ({adv.status === 'applied' ? 'مطبقة على فاتورة' : 'متاحة بالخزينة'})
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* Decision, Delivery Rep, Advance Payment & Conversion Controls */}
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {canActOnOrders && order.status === 'pending' && (
-                      <>
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => handleStartReview(order)}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-700 hover:bg-sky-800 text-white font-bold cursor-pointer disabled:opacity-50"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>بدء المراجعة</span>
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => handleApprove(order)}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
-                        >
-                          <Check className="w-3.5 h-3.5" />
-                          <span>قبول الطلب</span>
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => handleOpenRejectModal(order)}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-700 hover:bg-red-800 text-white font-black cursor-pointer disabled:opacity-50"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                          <span>رفض الطلب</span>
-                        </button>
-                      </>
-                    )}
-
-                    {canActOnOrders && order.status === 'under_review' && (
-                      <>
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => handleApprove(order)}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
-                        >
-                          <Check className="w-3.5 h-3.5" />
-                          <span>قبول الطلب</span>
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => handleOpenRejectModal(order)}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-700 hover:bg-red-800 text-white font-black cursor-pointer disabled:opacity-50"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                          <span>رفض الطلب</span>
-                        </button>
-                      </>
-                    )}
-
-                    {canActOnOrders &&
-                      (order.status === 'pending' ||
-                        order.status === 'under_review' ||
-                        order.status === 'approved' ||
-                        order.status === 'rep_assigned') && (
-                        <button
-                          type="button"
-                          disabled={isBusy || representatives.length === 0}
-                          onClick={() => handleOpenAssignRep(order)}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-700 hover:bg-indigo-800 text-white font-bold cursor-pointer disabled:opacity-50"
-                        >
-                          <Truck className="w-3.5 h-3.5" />
-                          <span>تعيين مندوب للتوصيل</span>
-                        </button>
-                      )}
-
-                    {canActOnOrders &&
-                      order.status !== 'rejected' &&
-                      order.status !== 'cancelled' &&
-                      order.status !== 'invoiced' && (
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => handleOpenAdvanceModal(order)}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold cursor-pointer disabled:opacity-50"
-                        >
-                          <Wallet className="w-3.5 h-3.5" />
-                          <span>تسجيل دفعة مقدمة</span>
-                        </button>
-                      )}
-
-                    {canActOnOrders &&
-                      (order.status === 'approved' ||
-                        order.status === 'rep_assigned' ||
-                        order.status === 'out_for_delivery' ||
-                        order.status === 'delivered' ||
-                        order.status === 'needs_review') && (
-                        <button
-                          type="button"
-                          onClick={() => setConvertingOrder(order)}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black shadow-xs cursor-pointer"
-                        >
-                          <ShoppingCart className="w-3.5 h-3.5" />
-                          <span>تحويل الطلب إلى فاتورة</span>
-                        </button>
-                      )}
-                  </div>
-
-                  {order.statusHistory && order.statusHistory.length > 0 && (
+            {canManageSales &&
+              ['rep_assigned', 'out_for_delivery', 'approved'].includes(selectedOrder.status) && (
+                <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-200">
+                  {selectedOrder.status !== 'out_for_delivery' && (
                     <button
                       type="button"
-                      onClick={() => setExpandedHistoryId(isExpanded ? null : order.id)}
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-600 hover:text-blue-900 cursor-pointer"
+                      disabled={busy}
+                      onClick={() =>
+                        runAction(
+                          () =>
+                            updateOrderDeliveryStatus(selectedOrder.id, {
+                              status: 'out_for_delivery',
+                            }),
+                          'تم تحديث الحالة إلى خرج للتوصيل'
+                        )
+                      }
+                      className="px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold cursor-pointer"
                     >
-                      <History className="w-3.5 h-3.5" />
-                      <span>{isExpanded ? 'إخفاء سجل الحالات' : `سجل الحالات (${order.statusHistory.length})`}</span>
+                      بدء التوصيل
                     </button>
                   )}
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      runAction(
+                        () => updateOrderDeliveryStatus(selectedOrder.id, { status: 'delivered' }),
+                        'تم تأكيد تسليم الطلب'
+                      )
+                    }
+                    className="px-3 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer"
+                  >
+                    تأكيد التسليم
+                  </button>
                 </div>
+              )}
+          </div>
+        )}
+      </Modal>
 
-                {isExpanded && order.statusHistory && (
-                  <div className="pt-2 border-t border-slate-100 space-y-1.5 text-[11px] text-slate-600">
-                    {order.statusHistory.map((h) => {
-                      const mapped = STATUS_META[h.toStatus as CustomerItemOrderStatus];
-                      return (
-                        <div key={h.id} className="flex flex-wrap items-center justify-between gap-2">
-                          <span>
-                            <strong>{mapped ? mapped.label : h.toStatus}</strong> — بواسطة: {h.changedByName}
-                            {h.reason ? ` (${h.reason})` : ''}
-                          </span>
-                          <span className="font-mono text-[10px] text-slate-400">
-                            {new Date(h.changedAt).toLocaleString('ar-EG')}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </article>
+      {/* Reject Modal */}
+      <Modal
+        isOpen={Boolean(rejectModalOrder)}
+        onClose={() => setRejectModalOrder(null)}
+        title="رفض الطلب"
+        maxWidth="md"
+      >
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!rejectModalOrder) return;
+            const ok = await runAction(
+              () => rejectCustomerItemOrder(rejectModalOrder.id, rejectReason.trim() || 'مرفوض من الإدارة'),
+              'تم رفض الطلب'
             );
-          })}
-        </div>
-      )}
-
-      {/* Reject Reason Modal */}
-      {rejectingOrder && (
-        <Modal
-          isOpen={!!rejectingOrder}
-          onClose={() => setRejectingOrder(null)}
-          title={`رفض الطلب: ${rejectingOrder.requestNumber}`}
-          subtitle={`${rejectingOrder.submittedByName || rejectingOrder.customerName}`}
-          maxWidth="md"
+            if (ok) setRejectModalOrder(null);
+          }}
+          className="space-y-3 text-xs"
         >
-          <form onSubmit={handleConfirmReject} className="space-y-4 text-xs">
-            {rejectError && (
-              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">
-                {rejectError}
-              </div>
-            )}
-            <div>
-              <label className="block font-bold text-slate-800 mb-1.5">
-                سبب الرفض (سيتم إرساله لصاحب الطلب في تطبيق الموبايل): <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                rows={4}
-                required
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                placeholder="مثال: الصنف غير متوفر حالياً بالمستودع، أو يرجى مراجعة الكمية..."
-                className="w-full rounded-xl border border-slate-300 p-3 outline-hidden focus:border-red-600"
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setRejectingOrder(null)}
-                className="px-4 py-2 rounded-xl border border-slate-300 font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
-              >
-                إلغاء
-              </button>
-              <button
-                type="submit"
-                disabled={busyOrderId === rejectingOrder.id}
-                className="px-5 py-2 rounded-xl bg-red-700 hover:bg-red-800 text-white font-black cursor-pointer disabled:opacity-50"
-              >
-                {busyOrderId === rejectingOrder.id ? 'جاري التنفيذ...' : 'تأكيد الرفض وإرسال السبب'}
-              </button>
-            </div>
-          </form>
-        </Modal>
-      )}
+          <label className="block font-bold text-slate-700">سبب الرفض:</label>
+          <textarea
+            required
+            rows={3}
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            className="w-full p-2.5 rounded-xl border border-slate-300"
+            placeholder="اكتب سبب الرفض ليظهر للعميل أو المندوب..."
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setRejectModalOrder(null)}
+              className="px-4 py-2 rounded-xl bg-slate-100 font-bold cursor-pointer"
+            >
+              إلغاء
+            </button>
+            <button
+              type="submit"
+              disabled={busy}
+              className="px-4 py-2 rounded-xl bg-red-600 text-white font-bold flex items-center gap-1 cursor-pointer"
+            >
+              <XCircle className="w-4 h-4" /> تأكيد الرفض
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Assign Delivery Rep Modal */}
-      {assigningOrder && (
-        <Modal
-          isOpen={!!assigningOrder}
-          onClose={() => setAssigningOrder(null)}
-          title={`تعيين مندوب للتوصيل — ${assigningOrder.requestNumber}`}
-          subtitle={assigningOrder.customerName}
-          maxWidth="md"
+      <Modal
+        isOpen={Boolean(assignModalOrder)}
+        onClose={() => setAssignModalOrder(null)}
+        title="إسناد مندوب توصيل"
+        maxWidth="md"
+      >
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!assignModalOrder || !assignRepId) return;
+            const ok = await runAction(
+              () => assignOrderDeliveryRep(assignModalOrder.id, assignRepId, assignNotes),
+              'تم إسناد المندوب للتوصيل بنجاح'
+            );
+            if (ok) setAssignModalOrder(null);
+          }}
+          className="space-y-3 text-xs"
         >
-          <form onSubmit={handleConfirmAssignRep} className="space-y-4 text-xs">
-            {assignError && (
-              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">
-                {assignError}
-              </div>
-            )}
-            <div>
-              <label className="block font-bold text-slate-800 mb-1.5">المندوب المكلف بالتوصيل:</label>
-              <select
-                required
-                value={assignRepId}
-                onChange={(e) => setAssignRepId(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 font-bold outline-hidden focus:border-indigo-600"
-              >
-                <option value="">-- اختر المندوب --</option>
-                {representatives.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name} {r.vehicleNumber ? `(${r.vehicleNumber})` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block font-bold text-slate-800 mb-1.5">ملاحظات للمندوب (اختياري):</label>
-              <textarea
-                rows={3}
-                value={assignNotes}
-                onChange={(e) => setAssignNotes(e.target.value)}
-                placeholder="تعليمات التسليم أو التحصيل..."
-                className="w-full rounded-xl border border-slate-300 p-2.5 outline-hidden focus:border-indigo-600"
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setAssigningOrder(null)}
-                className="px-4 py-2 rounded-xl border border-slate-300 font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
-              >
-                إلغاء
-              </button>
-              <button
-                type="submit"
-                disabled={busyOrderId === assigningOrder.id}
-                className="px-5 py-2 rounded-xl bg-indigo-700 hover:bg-indigo-800 text-white font-black cursor-pointer disabled:opacity-50"
-              >
-                {busyOrderId === assigningOrder.id ? 'جاري التعيين...' : 'تأكيد تعيين المندوب'}
-              </button>
-            </div>
-          </form>
-        </Modal>
-      )}
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">اختر المندوب:</label>
+            <select
+              required
+              value={assignRepId}
+              onChange={(e) => setAssignRepId(e.target.value)}
+              className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+            >
+              <option value="">-- اختر مندوباً --</option>
+              {representatives.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">ملاحظات التوصيل:</label>
+            <input
+              type="text"
+              value={assignNotes}
+              onChange={(e) => setAssignNotes(e.target.value)}
+              className="w-full p-2.5 rounded-xl border border-slate-300"
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setAssignModalOrder(null)}
+              className="px-4 py-2 rounded-xl bg-slate-100 font-bold cursor-pointer"
+            >
+              إلغاء
+            </button>
+            <button
+              type="submit"
+              disabled={busy || !assignRepId}
+              className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold cursor-pointer"
+            >
+              حفظ الإسناد
+            </button>
+          </div>
+        </form>
+      </Modal>
 
-      {/* Record Order Advance Payment Modal */}
-      {advanceOrder && (
-        <Modal
-          isOpen={!!advanceOrder}
-          onClose={() => setAdvanceOrder(null)}
-          title={`تسجيل دفعة مقدمة على الطلب — ${advanceOrder.requestNumber}`}
-          subtitle={`${advanceOrder.customerName} | إجمالي الطلب: ${getOrderTotal(advanceOrder).toLocaleString()} ${settings.currency}`}
-          maxWidth="md"
+      {/* Advance Payment Modal */}
+      <Modal
+        isOpen={Boolean(advanceModalOrder)}
+        onClose={() => setAdvanceModalOrder(null)}
+        title="تسجيل دفعة مقدمة على الطلب"
+        maxWidth="md"
+      >
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!advanceModalOrder || advanceAmount <= 0) return;
+            const ok = await runAction(
+              () =>
+                recordOrderAdvancePayment(advanceModalOrder.id, {
+                  amount: advanceAmount,
+                  cashboxId: advanceCashboxId,
+                  paymentMethod: advanceMethod,
+                  notes: advanceNotes,
+                }),
+              'تم تسجيل الدفعة المقدمة بنجاح'
+            );
+            if (ok) setAdvanceModalOrder(null);
+          }}
+          className="space-y-3 text-xs"
         >
-          <form onSubmit={handleConfirmAdvancePayment} className="space-y-4 text-xs">
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-950 leading-relaxed">
-              تسجَّل الدفعة المقدمة كرصيد دائن للعميل وتُودع بالخزينة مباشرة دون احتساب إيراد مبيعات؛ ويتم تطبيقها تلقائياً عند «تحويل الطلب إلى فاتورة».
-            </div>
-            {advanceError && (
-              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">
-                {advanceError}
-              </div>
-            )}
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">المبلغ ({settings.currency}):</label>
+            <input
+              type="number"
+              min={0.01}
+              step="0.01"
+              required
+              value={advanceAmount}
+              onChange={(e) => setAdvanceAmount(Number(e.target.value))}
+              className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block font-bold text-slate-800 mb-1">المبلغ ({settings.currency}):</label>
-              <input
-                type="number"
-                min="1"
-                step="0.01"
-                required
-                value={advanceAmount || ''}
-                onChange={(e) => setAdvanceAmount(Number(e.target.value))}
-                className="w-full rounded-xl border border-slate-300 bg-slate-50 p-3 text-lg font-black text-center font-mono text-emerald-800 outline-hidden focus:border-emerald-600"
-              />
-            </div>
-            <div>
-              <label className="block font-bold text-slate-800 mb-1">الخزينة:</label>
+              <label className="block font-bold text-slate-700 mb-1">الخزينة:</label>
               <select
                 value={advanceCashboxId}
                 onChange={(e) => setAdvanceCashboxId(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 font-bold outline-hidden"
+                className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
               >
                 {cashboxes.map((cb) => (
                   <option key={cb.id} value={cb.id}>
-                    {cb.name} ({cb.currentBalance.toLocaleString()} {settings.currency})
+                    {cb.name}
                   </option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block font-bold text-slate-800 mb-1">طريقة الدفع:</label>
-              <div className="grid grid-cols-3 gap-2 font-bold">
-                {[
-                  { id: 'cash' as const, label: 'نقدي' },
-                  { id: 'bank' as const, label: 'تحويل بنكي' },
-                  { id: 'cheque' as const, label: 'شيك' },
-                ].map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => setAdvanceMethod(m.id)}
-                    className={`p-2 rounded-xl border cursor-pointer ${
-                      advanceMethod === m.id
-                        ? 'bg-blue-900 text-white border-blue-900'
-                        : 'bg-white text-slate-700 border-slate-300'
-                    }`}
-                  >
-                    {m.label}
-                  </button>
+              <label className="block font-bold text-slate-700 mb-1">الطريقة:</label>
+              <select
+                value={advanceMethod}
+                onChange={(e) => setAdvanceMethod(e.target.value as any)}
+                className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+              >
+                <option value="cash">نقدي</option>
+                <option value="bank">تحويل بنكي</option>
+                <option value="cheque">شيك</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">ملاحظات:</label>
+            <input
+              type="text"
+              value={advanceNotes}
+              onChange={(e) => setAdvanceNotes(e.target.value)}
+              className="w-full p-2.5 rounded-xl border border-slate-300"
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setAdvanceModalOrder(null)}
+              className="px-4 py-2 rounded-xl bg-slate-100 font-bold cursor-pointer"
+            >
+              إلغاء
+            </button>
+            <button
+              type="submit"
+              disabled={busy || advanceAmount <= 0}
+              className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold cursor-pointer"
+            >
+              تسجيل الدفعة
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Convert Order to Sales Invoice Modal */}
+      <Modal
+        isOpen={Boolean(convertModalOrder)}
+        onClose={() => setConvertModalOrder(null)}
+        title={convertModalOrder ? `تحويل الطلب ${convertModalOrder.requestNumber} إلى فاتورة` : ''}
+        maxWidth="md"
+      >
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!convertModalOrder) return;
+            const ok = await runAction(
+              () =>
+                convertOrderToInvoice(convertModalOrder.id, {
+                  warehouseId: convertWarehouseId,
+                  cashboxId: convertCashboxId,
+                  paymentType: convertPaymentType,
+                  paidAtInvoice: convertPaid,
+                  discountTotal: convertDiscount,
+                  notes: convertNotes,
+                }),
+              'تم تحويل الطلب إلى فاتورة مبيعات معتمدة بنجاح'
+            );
+            if (ok) setConvertModalOrder(null);
+          }}
+          className="space-y-3 text-xs"
+        >
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">مستودع الصرف:</label>
+              <select
+                value={convertWarehouseId}
+                onChange={(e) => setConvertWarehouseId(e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+              >
+                {warehouses.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
                 ))}
-              </div>
+              </select>
             </div>
             <div>
-              <label className="block font-bold text-slate-800 mb-1">ملاحظات:</label>
+              <label className="block font-bold text-slate-700 mb-1">الخزينة:</label>
+              <select
+                value={convertCashboxId}
+                onChange={(e) => setConvertCashboxId(e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+              >
+                {cashboxes.map((cb) => (
+                  <option key={cb.id} value={cb.id}>
+                    {cb.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">نوع الدفع:</label>
+              <select
+                value={convertPaymentType}
+                onChange={(e) => setConvertPaymentType(e.target.value as any)}
+                className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+              >
+                <option value="cash">نقدي</option>
+                <option value="partial">جزئي</option>
+                <option value="credit">آجل</option>
+              </select>
+            </div>
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">المدفوع عند الفاتورة:</label>
               <input
-                type="text"
-                value={advanceNotes}
-                onChange={(e) => setAdvanceNotes(e.target.value)}
-                placeholder="عربون حجز بضاعة / دفعة تحت الحساب..."
-                className="w-full rounded-xl border border-slate-300 p-2.5 outline-hidden"
+                type="number"
+                min={0}
+                step="0.01"
+                value={convertPaid}
+                onChange={(e) => setConvertPaid(Number(e.target.value))}
+                className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
               />
             </div>
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setAdvanceOrder(null)}
-                className="px-4 py-2 rounded-xl border border-slate-300 font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
-              >
-                إلغاء
-              </button>
-              <button
-                type="submit"
-                disabled={busyOrderId === advanceOrder.id}
-                className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
-              >
-                {busyOrderId === advanceOrder.id ? 'جاري التسجيل...' : 'تأكيد تسجيل الدفعة المقدمة'}
-              </button>
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">الخصم:</label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={convertDiscount}
+                onChange={(e) => setConvertDiscount(Number(e.target.value))}
+                className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
+              />
             </div>
-          </form>
-        </Modal>
-      )}
-
-      {/* Separate Sales Invoice Conversion Modal */}
-      <NewSaleInvoiceModal
-        isOpen={!!convertingOrder}
-        onClose={() => setConvertingOrder(null)}
-        sourceOrder={convertingOrder}
-        onInvoiceCreated={(_, shouldPrint) => {
-          setConvertingOrder(null);
-          setBanner({
-            type: 'success',
-            text: shouldPrint
-              ? 'تم تحويل الطلب إلى فاتورة مبيعات مع تطبيق الدفعة المقدمة وقواعد المخزون والحسابات.'
-              : 'تم تحويل الطلب إلى فاتورة مبيعات بنجاح.',
-          });
-        }}
-      />
+          </div>
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">ملاحظات الفاتورة:</label>
+            <input
+              type="text"
+              value={convertNotes}
+              onChange={(e) => setConvertNotes(e.target.value)}
+              className="w-full p-2.5 rounded-xl border border-slate-300"
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setConvertModalOrder(null)}
+              className="px-4 py-2 rounded-xl bg-slate-100 font-bold cursor-pointer"
+            >
+              إلغاء
+            </button>
+            <button
+              type="submit"
+              disabled={busy}
+              className="px-4 py-2 rounded-xl bg-blue-900 text-white font-bold cursor-pointer"
+            >
+              اعتماد وتحويل لفاتورة
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };

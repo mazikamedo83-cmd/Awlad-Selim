@@ -1,13 +1,32 @@
-import { apiRequest, testServerHealth, getConfiguredApiBaseUrl } from './api';
+import type { SyncConflictRecord, SyncOperationType, SyncQueueItem } from '../types';
+import { apiRequest } from './api';
 import { localDb } from './localDb';
 import { getOrCreatePersistentDeviceId } from './native';
-import type {
-  SyncConflictRecord,
-  SyncOperationType,
-  SyncQueueItem,
-} from '../types';
 
-export interface EnqueueOperationParams {
+export interface SyncCycleOutcome {
+  ok: boolean;
+  serverReachable: boolean;
+  authRevoked?: boolean;
+  revokeReason?: string;
+  pushedCount: number;
+  syncedCount: number;
+  failedCount: number;
+  conflictCount: number;
+  pullData?: any;
+  error?: string;
+}
+
+const activeLocks = new Map<string, Promise<SyncCycleOutcome>>();
+
+function buildOperationId(): string {
+  const rand =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID().slice(0, 8).toUpperCase()
+      : Math.random().toString(36).slice(2, 10).toUpperCase();
+  return `OP-${Date.now().toString(36).toUpperCase()}-${rand}`;
+}
+
+export async function enqueueSyncOperation(params: {
   userId: string;
   operationType: SyncOperationType;
   entityType: string;
@@ -15,54 +34,10 @@ export interface EnqueueOperationParams {
   localId?: string;
   summaryAr: string;
   payload: Record<string, any>;
-  initialStatus?: 'local' | 'pending';
-}
-
-export interface SyncRunOutcome {
-  ok: boolean;
-  serverReachable: boolean;
-  pushedCount: number;
-  syncedCount: number;
-  conflictCount: number;
-  failedCount: number;
-  authRevoked?: boolean;
-  revokeReason?: string;
-  pullData?: any;
-  conflicts?: SyncConflictRecord[];
-  error?: string;
-}
-
-export function generateOperationId(prefix = 'OP'): string {
-  const rand =
-    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-      ? crypto.randomUUID()
-      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-  return `${prefix}-${rand}`.toUpperCase();
-}
-
-function sanitizeSyncPayloadAttachments(payload: Record<string, any>): Record<string, any> {
-  const next = { ...(payload || {}) };
-  if (typeof next.deliveryProof === 'string' && next.deliveryProof.trim()) {
-    const proof = next.deliveryProof.trim();
-    const valid =
-      (/^data:image\/(png|jpe?g|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(proof) ||
-        /^https?:\/\/\S+$/i.test(proof) ||
-        proof.startsWith('/product-images/')) &&
-      proof.length <= 2_500_000;
-    if (!valid) {
-      delete next.deliveryProof;
-      const warn = '[تم استبعاد صورة مرفقة غير صالحة أو كبيرة الحجم مع الحفاظ على بيانات العملية]';
-      next.deliveryNotes = next.deliveryNotes ? `${next.deliveryNotes} ${warn}` : warn;
-    }
-  }
-  return next;
-}
-
-export async function enqueueSyncOperation(params: EnqueueOperationParams): Promise<SyncQueueItem> {
-  const now = new Date().toISOString();
-  const safePayload = sanitizeSyncPayloadAttachments(params.payload);
+}): Promise<SyncQueueItem> {
+  const nowIso = new Date().toISOString();
   const item: SyncQueueItem = {
-    operationId: generateOperationId('OP'),
+    operationId: buildOperationId(),
     userId: params.userId,
     deviceId: getOrCreatePersistentDeviceId(),
     operationType: params.operationType,
@@ -70,253 +45,222 @@ export async function enqueueSyncOperation(params: EnqueueOperationParams): Prom
     entityId: params.entityId,
     localId: params.localId,
     summaryAr: params.summaryAr,
-    payload: {
-      ...safePayload,
-      originDeviceId: getOrCreatePersistentDeviceId(),
-    },
-    status: params.initialStatus || 'local',
+    payload: params.payload || {},
+    status: 'pending',
     attempts: 0,
-    createdAt: now,
-    updatedAt: now,
+    createdAt: nowIso,
+    updatedAt: nowIso,
   };
-  await localDb.upsertSyncQueueItem(item);
+  await localDb.putSyncOperation(item);
   return item;
 }
 
-let activeSyncPromise: Promise<SyncRunOutcome> | null = null;
+function isAuthRevokedError(err: any): boolean {
+  const code = String(err?.code || '');
+  return (
+    err?.status === 401 ||
+    code === 'DEVICE_REVOKED' ||
+    code === 'ACCOUNT_DEACTIVATED' ||
+    code === 'SESSION_REVOKED' ||
+    code === 'INVALID_TOKEN' ||
+    code === 'UNAUTHORIZED'
+  );
+}
 
-export async function runSyncCycle(options: {
+function isUnreachableError(err: any): boolean {
+  return err?.status === 0 || (typeof navigator !== 'undefined' && navigator.onLine === false);
+}
+
+async function executeSyncCycle(params: {
   userId: string;
   forceAll?: boolean;
-}): Promise<SyncRunOutcome> {
-  if (activeSyncPromise) return activeSyncPromise;
+}): Promise<SyncCycleOutcome> {
+  const { userId, forceAll = false } = params;
+  const nowMs = Date.now();
+  const queue = await localDb.listSyncQueue(userId);
 
-  activeSyncPromise = (async (): Promise<SyncRunOutcome> => {
-    const baseUrl = getConfiguredApiBaseUrl();
-    const health = await testServerHealth(baseUrl);
-    if (!health.ok) {
-      return {
-        ok: false,
-        serverReachable: false,
-        pushedCount: 0,
-        syncedCount: 0,
-        conflictCount: 0,
-        failedCount: 0,
-        error: health.error || 'السيرفر المركزي غير متاح حالياً',
-      };
+  const dueOperations = queue.filter((item) => {
+    if (item.status === 'pending' || item.status === 'local') return true;
+    if (item.status === 'syncing') return true;
+    if (item.status === 'failed') {
+      if (forceAll) return true;
+      return !item.nextRetryAt || nowMs >= item.nextRetryAt;
     }
+    return false;
+  });
 
-    const nowMs = Date.now();
-    const queue = await localDb.listSyncQueue(options.userId);
-    const eligible = queue.filter((item) => {
-      if (item.status === 'synced' || item.status === 'needs_review') return false;
-      if (!options.forceAll && item.nextRetryAt && item.nextRetryAt > nowMs) return false;
-      return true;
-    });
+  let pushedCount = 0;
+  let syncedCount = 0;
+  let failedCount = queue.filter((q) => q.status === 'failed').length;
+  let conflictCount = queue.filter((q) => q.status === 'needs_review').length;
 
-    // Promote queued local/failed items into explicit 'pending' state before batching
-    for (const item of eligible) {
-      if (item.status === 'local' || item.status === 'failed') {
-        await localDb.upsertSyncQueueItem({
-          ...item,
-          status: 'pending',
-          updatedAt: new Date().toISOString(),
-        });
-      }
-    }
+  // 1. Push pending local operations first (FIFO order)
+  if (dueOperations.length > 0) {
+    const orderedOps = [...dueOperations].sort((a, b) =>
+      String(a.createdAt).localeCompare(String(b.createdAt))
+    );
 
-    let pushedCount = 0;
-    let syncedCount = 0;
-    let conflictCount = 0;
-    let failedCount = 0;
-    let authRevoked = false;
-    let revokeReason = '';
-
-    // Push in chunks of 15 preserving exact creation order
-    for (let i = 0; i < eligible.length; i += 15) {
-      const chunk = eligible.slice(i, i + 15);
-      for (const item of chunk) {
-        await localDb.upsertSyncQueueItem({
-          ...item,
-          status: 'syncing',
-          updatedAt: new Date().toISOString(),
-        });
-      }
-
-      try {
-        const res = await apiRequest<{
-          ok: boolean;
-          stoppedDueToAuthRevoke?: boolean;
-          results: Array<{
-            operationId: string;
-            status: 'synced' | 'needs_review' | 'failed';
-            entityId?: string;
-            error?: string;
-            code?: string;
-            conflict?: SyncConflictRecord;
-          }>;
-          conflicts?: SyncConflictRecord[];
-        }>('/api/sync/push', {
-          method: 'POST',
-          body: {
-            deviceId: getOrCreatePersistentDeviceId(),
-            operations: chunk.map((c) => ({
-              operationId: c.operationId,
-              operationType: c.operationType,
-              payload: c.payload,
-              createdAt: c.createdAt,
-            })),
-          },
-          timeoutMs: 30000,
-        });
-
-        pushedCount += chunk.length;
-        if (res.stoppedDueToAuthRevoke) {
-          authRevoked = true;
-          revokeReason = 'تم إيقاف الحساب أو سحب الصلاحية مركزيًا';
-        }
-
-        const resultMap = new Map((res.results || []).map((r) => [r.operationId, r]));
-        for (const item of chunk) {
-          const r = resultMap.get(item.operationId);
-          if (!r) {
-            failedCount += 1;
-            const attempts = item.attempts + 1;
-            const backoffMs = Math.min(120000, 5000 * Math.pow(2, attempts - 1));
-            await localDb.upsertSyncQueueItem({
-              ...item,
-              status: 'failed',
-              attempts,
-              lastError: 'لم يرد تأكيد من السيرفر لهذه العملية',
-              nextRetryAt: Date.now() + backoffMs,
-              updatedAt: new Date().toISOString(),
-            });
-            continue;
-          }
-
-          if (r.status === 'synced') {
-            syncedCount += 1;
-            await localDb.upsertSyncQueueItem({
-              ...item,
-              status: 'synced',
-              entityId: r.entityId || item.entityId,
-              lastError: undefined,
-              nextRetryAt: undefined,
-              updatedAt: new Date().toISOString(),
-            });
-          } else if (r.status === 'needs_review') {
-            conflictCount += 1;
-            if (r.conflict) {
-              await localDb.saveConflicts([r.conflict]);
-            }
-            await localDb.upsertSyncQueueItem({
-              ...item,
-              status: 'needs_review',
-              conflictId: r.conflict?.id,
-              lastError: r.error || 'تعارض يحتاج مراجعة',
-              updatedAt: new Date().toISOString(),
-            });
-          } else {
-            failedCount += 1;
-            const attempts = item.attempts + 1;
-            const backoffMs = Math.min(120000, 5000 * Math.pow(2, attempts - 1));
-            await localDb.upsertSyncQueueItem({
-              ...item,
-              status: 'failed',
-              attempts,
-              lastError: r.error || 'فشل المزامنة',
-              nextRetryAt: Date.now() + backoffMs,
-              updatedAt: new Date().toISOString(),
-            });
-          }
-        }
-      } catch (err: any) {
-        const isRevoked = err?.status === 401 || err?.code === 'ACCOUNT_DEACTIVATED' || err?.code === 'DEVICE_REVOKED';
-        if (isRevoked) {
-          authRevoked = true;
-          revokeReason = err.message;
-        }
-        for (const item of chunk) {
-          if (isRevoked) {
-            conflictCount += 1;
-          } else {
-            failedCount += 1;
-          }
-          const attempts = item.attempts + 1;
-          const backoffMs = Math.min(120000, 5000 * Math.pow(2, attempts - 1));
-          await localDb.upsertSyncQueueItem({
-            ...item,
-            status: isRevoked ? 'needs_review' : err?.status === 0 ? 'pending' : 'failed',
-            attempts,
-            lastError: err?.message || 'تعذر إرسال دفعة المزامنة',
-            nextRetryAt: isRevoked ? undefined : Date.now() + backoffMs,
-            updatedAt: new Date().toISOString(),
-          });
-        }
-        break;
-      }
-    }
-
-    if (authRevoked) {
-      return {
-        ok: false,
-        serverReachable: true,
-        pushedCount,
-        syncedCount,
-        conflictCount,
-        failedCount,
-        authRevoked: true,
-        revokeReason,
-      };
-    }
-
-    // Pull authoritative server state after push
     try {
-      const pullRes = await apiRequest<any>('/api/sync/pull', { timeoutMs: 30000 });
-      if (Array.isArray(pullRes.syncConflicts)) {
-        await localDb.replaceServerConflicts(pullRes.syncConflicts);
-      }
-      await localDb.pruneSyncedQueueItems(options.userId, 50);
-      await localDb.setMeta('last_sync_at', pullRes.serverTime || new Date().toISOString());
+      const pushRes = await apiRequest<{
+        ok: boolean;
+        results: Array<{
+          operationId: string;
+          status: 'synced' | 'failed' | 'needs_review';
+          error?: string;
+          conflict?: SyncConflictRecord;
+          conflictId?: string;
+        }>;
+      }>('/api/sync/push', {
+        method: 'POST',
+        body: { operations: orderedOps },
+      });
 
-      return {
-        ok: true,
-        serverReachable: true,
-        pushedCount,
-        syncedCount,
-        conflictCount,
-        failedCount,
-        pullData: pullRes,
-        conflicts: Array.isArray(pullRes.syncConflicts) ? pullRes.syncConflicts : undefined,
-      };
+      const resultMap = new Map(
+        (Array.isArray(pushRes?.results) ? pushRes.results : []).map((r) => [r.operationId, r])
+      );
+
+      const updatedQueue = [...queue];
+      const newConflicts: SyncConflictRecord[] = [];
+      const updateTimestamp = new Date().toISOString();
+
+      for (let i = 0; i < updatedQueue.length; i += 1) {
+        const item = updatedQueue[i];
+        const res = resultMap.get(item.operationId);
+        if (!res) continue;
+
+        pushedCount += 1;
+        if (res.status === 'synced') {
+          syncedCount += 1;
+          updatedQueue[i] = {
+            ...item,
+            status: 'synced',
+            lastError: undefined,
+            nextRetryAt: undefined,
+            updatedAt: updateTimestamp,
+          };
+        } else if (res.status === 'needs_review') {
+          if (res.conflict) newConflicts.push(res.conflict);
+          updatedQueue[i] = {
+            ...item,
+            status: 'needs_review',
+            attempts: (item.attempts || 0) + 1,
+            lastError: res.error || res.conflict?.conflictReason || 'تعارض يحتاج مراجعة يدوية',
+            conflictId: res.conflictId || res.conflict?.id || item.conflictId,
+            nextRetryAt: undefined,
+            updatedAt: updateTimestamp,
+          };
+        } else {
+          const attempts = (item.attempts || 0) + 1;
+          const backoffMs = Math.min(300000, Math.pow(2, Math.min(attempts, 6)) * 5000);
+          updatedQueue[i] = {
+            ...item,
+            status: 'failed',
+            attempts,
+            lastError: res.error || 'تعذر تنفيذ العملية على السيرفر',
+            nextRetryAt: Date.now() + backoffMs,
+            updatedAt: updateTimestamp,
+          };
+        }
+      }
+
+      await localDb.saveSyncQueue(userId, updatedQueue);
+      if (newConflicts.length > 0) {
+        const existingConflicts = await localDb.listConflicts(userId);
+        const merged = [...newConflicts];
+        for (const oldCf of existingConflicts) {
+          if (!merged.some((c) => c.id === oldCf.id)) merged.push(oldCf);
+        }
+        await localDb.saveConflicts(userId, merged);
+      }
+
+      failedCount = updatedQueue.filter((q) => q.status === 'failed').length;
+      conflictCount = updatedQueue.filter((q) => q.status === 'needs_review').length;
     } catch (err: any) {
-      if (err?.status === 401 || err?.code === 'ACCOUNT_DEACTIVATED' || err?.code === 'DEVICE_REVOKED') {
+      if (isAuthRevokedError(err)) {
         return {
           ok: false,
           serverReachable: true,
-          pushedCount,
-          syncedCount,
-          conflictCount,
-          failedCount,
           authRevoked: true,
-          revokeReason: err.message,
+          revokeReason: err?.message,
+          pushedCount: 0,
+          syncedCount: 0,
+          failedCount,
+          conflictCount,
+          error: err?.message,
         };
       }
+      if (isUnreachableError(err)) {
+        return {
+          ok: false,
+          serverReachable: false,
+          pushedCount: 0,
+          syncedCount: 0,
+          failedCount,
+          conflictCount,
+          error: err?.message || 'الخادم غير متاح حالياً',
+        };
+      }
+    }
+  }
+
+  // 2. Pull fresh authoritative state from server
+  try {
+    const pullData = await apiRequest<any>('/api/sync/pull');
+    const nowTime = pullData?.serverTime || new Date().toISOString();
+    await localDb.setMeta('last_sync_at', nowTime);
+
+    const serverConflicts: SyncConflictRecord[] = Array.isArray(pullData?.syncConflicts)
+      ? pullData.syncConflicts
+      : [];
+    await localDb.saveConflicts(userId, serverConflicts);
+
+    const unresolvedConflicts = serverConflicts.filter((c) => c.status === 'needs_review').length;
+
+    return {
+      ok: true,
+      serverReachable: true,
+      pushedCount,
+      syncedCount,
+      failedCount,
+      conflictCount: Math.max(conflictCount, unresolvedConflicts),
+      pullData,
+    };
+  } catch (err: any) {
+    if (isAuthRevokedError(err)) {
       return {
         ok: false,
         serverReachable: true,
+        authRevoked: true,
+        revokeReason: err?.message,
         pushedCount,
         syncedCount,
-        conflictCount,
         failedCount,
-        error: err?.message || 'فشل سحب التحديثات من السيرفر',
+        conflictCount,
+        error: err?.message,
       };
     }
-  })();
-
-  try {
-    return await activeSyncPromise;
-  } finally {
-    activeSyncPromise = null;
+    return {
+      ok: false,
+      serverReachable: !isUnreachableError(err),
+      pushedCount,
+      syncedCount,
+      failedCount,
+      conflictCount,
+      error: err?.message || 'تعذر سحب أحدث بيانات من السيرفر',
+    };
   }
+}
+
+export function runSyncCycle(params: {
+  userId: string;
+  forceAll?: boolean;
+}): Promise<SyncCycleOutcome> {
+  const existing = activeLocks.get(params.userId);
+  if (existing) return existing;
+
+  const job = executeSyncCycle(params).finally(() => {
+    activeLocks.delete(params.userId);
+  });
+  activeLocks.set(params.userId, job);
+  return job;
 }

@@ -1,111 +1,93 @@
-import { localDb } from './localDb';
-import { sha256Hex } from './offlineCrypto';
-import { getConfiguredApiBaseUrl } from './api';
 import type { Product } from '../types';
+import { getConfiguredApiBaseUrl } from './api';
+import { localDb } from './localDb';
 
-function computeMediaKey(productId: string, sourceUrl: string): string {
-  const hash = sha256Hex(sourceUrl).slice(0, 16);
-  return `PRD-${productId}-${hash}`;
+const MAX_CACHEABLE_BYTES = 2 * 1024 * 1024;
+
+function hashString(input: string): string {
+  let hash = 5381;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = ((hash << 5) + hash) ^ input.charCodeAt(i);
+  }
+  return (hash >>> 0).toString(36);
 }
 
-function resolveFetchUrl(rawUrl: string): string {
+function getMediaCacheKey(product: Product): string {
+  return `prod_${product.id}_${hashString(String(product.image || ''))}`;
+}
+
+function resolveMediaFetchUrl(rawUrl: string): string {
   const clean = String(rawUrl || '').trim();
   if (!clean) return '';
-  if (clean.startsWith('data:') || /^https?:\/\//i.test(clean)) return clean;
-  const base = getConfiguredApiBaseUrl();
+  if (/^(?:data:|blob:|https?:\/\/)/i.test(clean)) return clean;
+  const base = getConfiguredApiBaseUrl().replace(/\/+$/, '');
   if (!base) return clean;
-  return `${base}${clean.startsWith('/') ? clean : `/${clean}`}`;
+  return clean.startsWith('/') ? `${base}${clean}` : `${base}/${clean}`;
 }
 
-async function blobToDataUrl(blob: Blob): Promise<string> {
+function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(new Error('Failed to read image blob'));
+    reader.onerror = () => reject(new Error('Failed to read media blob'));
     reader.readAsDataURL(blob);
   });
 }
 
-let inFlightWarm = false;
+export async function getCachedProductImageMap(products: Product[]): Promise<Record<string, string>> {
+  const map: Record<string, string> = {};
+  if (!Array.isArray(products) || products.length === 0) return map;
+
+  await Promise.all(
+    products.map(async (prod) => {
+      if (!prod?.id || !prod.image) return;
+      if (prod.image.startsWith('data:')) {
+        map[prod.id] = prod.image;
+        return;
+      }
+      const cached = await localDb.readMedia(getMediaCacheKey(prod)).catch(() => null);
+      if (cached) {
+        map[prod.id] = cached;
+      }
+    })
+  );
+
+  return map;
+}
 
 export async function warmProductMediaCache(
   products: Product[],
-  onCached?: (productId: string, dataUrl: string) => void
+  onItemCached?: (productId: string, dataUrl: string) => void
 ): Promise<void> {
-  if (inFlightWarm || !Array.isArray(products) || products.length === 0) return;
-  inFlightWarm = true;
-  try {
-    for (const prod of products) {
-      if (!prod?.id || !prod?.image) continue;
-      const src = String(prod.image).trim();
-      if (!src) continue;
+  if (!Array.isArray(products) || products.length === 0) return;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
 
-      const mediaKey = computeMediaKey(prod.id, src);
-      const existing = await localDb.getMedia(mediaKey);
-      if (existing?.dataUrl) {
-        onCached?.(prod.id, existing.dataUrl);
-        continue;
-      }
-
-      if (src.startsWith('data:')) {
-        await localDb.saveMedia({
-          mediaKey,
-          productId: prod.id,
-          sourceUrlHash: mediaKey,
-          mimeType: src.split(';')[0]?.replace('data:', '') || 'image/png',
-          dataUrl: src,
-          cachedAt: new Date().toISOString(),
-        });
-        onCached?.(prod.id, src);
-        continue;
-      }
-
-      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-        continue;
-      }
-
-      try {
-        const targetUrl = resolveFetchUrl(src);
-        if (!targetUrl) continue;
-        const res = await fetch(targetUrl, { method: 'GET' });
-        if (!res.ok) continue;
-        const blob = await res.blob();
-        if (blob.size > 3 * 1024 * 1024) continue; // cap single asset cache at 3MB
-        const dataUrl = await blobToDataUrl(blob);
-        if (!dataUrl.startsWith('data:')) continue;
-        await localDb.saveMedia({
-          mediaKey,
-          productId: prod.id,
-          sourceUrlHash: mediaKey,
-          mimeType: blob.type || 'image/png',
-          dataUrl,
-          cachedAt: new Date().toISOString(),
-        });
-        onCached?.(prod.id, dataUrl);
-      } catch {
-        // Ignore offline/network image failures silently so warm-up never breaks app flow
-      }
-    }
-  } finally {
-    inFlightWarm = false;
-  }
-}
-
-export async function getCachedProductImageMap(products: Product[]): Promise<Record<string, string>> {
-  const result: Record<string, string> = {};
-  for (const prod of products || []) {
-    if (!prod?.id || !prod?.image) continue;
-    const src = String(prod.image).trim();
-    if (!src) continue;
-    if (src.startsWith('data:')) {
-      result[prod.id] = src;
+  for (const prod of products) {
+    if (!prod?.id || !prod.image) continue;
+    if (prod.image.startsWith('data:')) {
+      await localDb.writeMedia(getMediaCacheKey(prod), prod.image).catch(() => {});
+      onItemCached?.(prod.id, prod.image);
       continue;
     }
-    const mediaKey = computeMediaKey(prod.id, src);
-    const cached = await localDb.getMedia(mediaKey);
-    if (cached?.dataUrl) {
-      result[prod.id] = cached.dataUrl;
+
+    const key = getMediaCacheKey(prod);
+    const existing = await localDb.readMedia(key).catch(() => null);
+    if (existing) continue;
+
+    const url = resolveMediaFetchUrl(prod.image);
+    if (!url) continue;
+
+    try {
+      const res = await fetch(url, { mode: 'cors', cache: 'force-cache' });
+      if (!res.ok) continue;
+      const blob = await res.blob();
+      if (!blob || blob.size === 0 || blob.size > MAX_CACHEABLE_BYTES) continue;
+      const dataUrl = await blobToDataUrl(blob);
+      if (!dataUrl.startsWith('data:')) continue;
+      await localDb.writeMedia(key, dataUrl);
+      onItemCached?.(prod.id, dataUrl);
+    } catch {
+      // ignore unreachable remote media during warming
     }
   }
-  return result;
 }

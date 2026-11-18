@@ -1,5 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, CloudOff, LogOut, RefreshCw, Server, ShieldAlert, WifiOff } from 'lucide-react';
+import {
+  Bell,
+  CloudOff,
+  LogOut,
+  RefreshCw,
+  Server,
+  ShieldAlert,
+  WifiOff,
+  LayoutGrid,
+  Home,
+  Package,
+  ShoppingCart,
+  ClipboardList,
+  Receipt,
+  Users,
+  FilePlus2,
+  FileText,
+  ArrowLeftRight,
+  X,
+  ChevronLeft,
+} from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
 import { getStoredTokens } from '../../../services/api';
@@ -18,13 +38,14 @@ export const MobilePortal: React.FC = () => {
 
   const [customerTab, setCustomerTab] = useState<CustomerTabKey>('home');
   const [repTab, setRepTab] = useState<RepTabKey>('home');
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
   const [isSyncCenterOpen, setIsSyncCenterOpen] = useState(false);
 
   const syncBadgeCount = data.pendingSyncCount + data.conflictsCount;
 
-  // Android hardware back button handling: close modals first, else return to home tab
+  // Android hardware back button handling: close modals/drawer first, else return to home tab
   useEffect(() => {
     return registerAndroidBackButton(() => {
       if (isSyncCenterOpen) {
@@ -39,6 +60,10 @@ export const MobilePortal: React.FC = () => {
         setIsServerModalOpen(false);
         return true;
       }
+      if (isDrawerOpen) {
+        setIsDrawerOpen(false);
+        return true;
+      }
       if (isRep && repTab !== 'home') {
         setRepTab('home');
         return true;
@@ -49,7 +74,16 @@ export const MobilePortal: React.FC = () => {
       }
       return false;
     });
-  }, [isSyncCenterOpen, isNotificationsOpen, isServerModalOpen, isRep, repTab, customerTab]);
+  }, [isSyncCenterOpen, isNotificationsOpen, isServerModalOpen, isDrawerOpen, isRep, repTab, customerTab]);
+
+  useEffect(() => {
+    if (!isDrawerOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsDrawerOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isDrawerOpen]);
 
   const handleSelectNotification = (item: MobileNotificationItem) => {
     if (isRep) {
@@ -73,11 +107,188 @@ export const MobilePortal: React.FC = () => {
     }
   };
 
+  // Top Blue Bar navigation items + Drawer full destinations (zero bottom navigation bar)
+  const topQuickButtons = isRep
+    ? [
+        { key: 'home' as const, label: 'الرئيسية', icon: Home, active: repTab === 'home', onSelect: () => setRepTab('home') },
+        { key: 'custody' as const, label: 'العهدة', icon: ArrowLeftRight, active: repTab === 'custody', onSelect: () => setRepTab('custody') },
+        { key: 'invoices' as const, label: 'الفواتير', icon: FileText, active: repTab === 'invoices', onSelect: () => setRepTab('invoices') },
+        { key: 'new-invoice' as const, label: 'المبيعات', icon: FilePlus2, active: repTab === 'new-invoice', onSelect: () => setRepTab('new-invoice') },
+      ]
+    : [
+        { key: 'home' as const, label: 'الرئيسية', icon: Home, active: customerTab === 'home', onSelect: () => setCustomerTab('home') },
+        { key: 'catalog' as const, label: 'الكتالوج', icon: Package, active: customerTab === 'catalog', onSelect: () => setCustomerTab('catalog') },
+        { key: 'account' as const, label: 'فواتيري', icon: Receipt, active: customerTab === 'account', onSelect: () => setCustomerTab('account') },
+        { key: 'cart' as const, label: 'الطلبات', icon: ShoppingCart, active: customerTab === 'cart' || customerTab === 'orders', onSelect: () => setCustomerTab('orders') },
+      ];
+
+  const allPortalDestinations = isRep
+    ? [
+        { key: 'home', label: 'الرئيسية', icon: Home, active: repTab === 'home', onSelect: () => setRepTab('home') },
+        { key: 'customers', label: 'دليل العملاء', icon: Users, active: repTab === 'customers', onSelect: () => setRepTab('customers') },
+        { key: 'new-invoice', label: 'إصدار فاتورة بيع', icon: FilePlus2, active: repTab === 'new-invoice', onSelect: () => setRepTab('new-invoice') },
+        { key: 'orders', label: 'الطلبات والتسليمات', icon: ClipboardList, active: repTab === 'orders', onSelect: () => setRepTab('orders') },
+        { key: 'invoices', label: 'سجل الفواتير', icon: FileText, active: repTab === 'invoices', onSelect: () => setRepTab('invoices') },
+        { key: 'custody', label: 'العهدة والتحويلات', icon: ArrowLeftRight, active: repTab === 'custody', onSelect: () => setRepTab('custody') },
+      ]
+    : [
+        { key: 'home', label: 'الرئيسية', icon: Home, active: customerTab === 'home', onSelect: () => setCustomerTab('home') },
+        { key: 'catalog', label: 'كتالوج المنتجات', icon: Package, active: customerTab === 'catalog', onSelect: () => setCustomerTab('catalog') },
+        { key: 'cart', label: 'سلة الطلبات', icon: ShoppingCart, active: customerTab === 'cart', onSelect: () => setCustomerTab('cart') },
+        { key: 'orders', label: 'طلباتي الحالية', icon: ClipboardList, active: customerTab === 'orders', onSelect: () => setCustomerTab('orders') },
+        { key: 'account', label: 'فواتيري وكشف الحساب', icon: Receipt, active: customerTab === 'account', onSelect: () => setCustomerTab('account') },
+      ];
+
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-800 font-sans antialiased pb-[calc(6rem+env(safe-area-inset-bottom,0px))]">
-      {/* Slim Top App Header (strictly compact mobile chrome) */}
-      <header className="sticky top-0 z-30 bg-blue-950 text-white shadow-sm pt-safe">
-        <div className="max-w-5xl mx-auto px-3.5 h-14 flex items-center justify-between gap-2">
+    <div className="min-h-screen bg-slate-100 text-slate-800 font-sans antialiased pb-6 pb-safe">
+      {/* Top Blue Rectangle Header with Unified Navigation (Zero Bottom Nav Bar) */}
+      <header className="sticky top-0 z-30 bg-gradient-to-l from-blue-950 via-blue-900 to-blue-950 text-white shadow-md border-b border-blue-800/80 pt-safe">
+        <div className="max-w-5xl mx-auto px-3 sm:px-5">
+          <div className="h-14 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <img
+                src="/awlad-selim-logo.png"
+                alt="AWLAD SELIM"
+                className="h-9 w-9 object-contain bg-white rounded-xl p-1 shrink-0"
+              />
+              <div className="min-w-0">
+                <h1 className="text-sm font-black truncate leading-tight">AWLAD SELIM</h1>
+                <p className="text-[10px] text-blue-200 truncate">
+                  {isRep ? 'بوابة المندوب' : 'بوابة العميل'} · {currentUser?.fullName}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsSyncCenterOpen(true)}
+                className={`relative min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl text-white cursor-pointer ${
+                  data.conflictsCount > 0
+                    ? 'bg-orange-600 hover:bg-orange-700'
+                    : data.pendingSyncCount > 0
+                    ? 'bg-amber-600 hover:bg-amber-700'
+                    : 'bg-white/10 hover:bg-white/20'
+                }`}
+                title="مركز المزامنة"
+                aria-label="مركز المزامنة"
+              >
+                <CloudOff className="w-4 h-4" />
+                {syncBadgeCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 rounded-full bg-slate-900 text-white text-[10px] font-black flex items-center justify-center">
+                    {syncBadgeCount}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsNotificationsOpen(true);
+                  data.markNotificationsRead();
+                }}
+                className="relative min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+                title="الإشعارات"
+                aria-label="الإشعارات"
+              >
+                <Bell className="w-4 h-4" />
+                {data.unreadNotificationCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 rounded-full bg-red-600 text-white text-[10px] font-black flex items-center justify-center">
+                    {data.unreadNotificationCount}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsServerModalOpen(true)}
+                className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+                title="عنوان السيرفر المركزي"
+                aria-label="إعدادات السيرفر"
+              >
+                <Server className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => data.triggerManualSync()}
+                className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+                title="تحديث ومزامنة"
+                aria-label="تحديث ومزامنة"
+              >
+                <RefreshCw className={`w-4 h-4 ${data.networkStatus === 'synchronizing' ? 'animate-spin' : ''}`} />
+              </button>
+
+              <button
+                type="button"
+                onClick={logout}
+                className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-red-600/90 hover:bg-red-700 text-white cursor-pointer"
+                title="تسجيل الخروج"
+                aria-label="تسجيل الخروج"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* 5-Button Top Blue Navigation Strip (Ordered Right-to-Left) */}
+          <nav
+            aria-label="التنقل الرئيسي"
+            className="border-t border-white/15 py-1.5 grid grid-cols-5 gap-1"
+          >
+            <button
+              type="button"
+              onClick={() => setIsDrawerOpen((prev) => !prev)}
+              aria-expanded={isDrawerOpen}
+              className={`min-h-[42px] px-1 py-1.5 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 text-[11px] sm:text-xs whitespace-nowrap transition-all cursor-pointer ${
+                isDrawerOpen
+                  ? 'bg-white text-blue-950 font-black shadow-sm'
+                  : 'bg-white/10 text-blue-50 hover:bg-white/20 font-bold'
+              }`}
+            >
+              <LayoutGrid className="w-4 h-4 shrink-0" />
+              <span className="leading-none truncate max-w-full">الأقسام</span>
+            </button>
+
+            {topQuickButtons.map((btn) => {
+              const Icon = btn.icon;
+              return (
+                <button
+                  key={btn.key}
+                  type="button"
+                  onClick={btn.onSelect}
+                  aria-current={btn.active ? 'page' : undefined}
+                  className={`min-h-[42px] px-1 py-1.5 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 text-[11px] sm:text-xs whitespace-nowrap transition-all cursor-pointer ${
+                    btn.active
+                      ? 'bg-white text-blue-950 font-black shadow-sm'
+                      : 'bg-white/10 text-blue-50 hover:bg-white/20 font-bold'
+                  }`}
+                >
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span className="leading-none truncate max-w-full">{btn.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+      </header>
+
+      {/* Soft-Gradient Sliding Sections Drawer */}
+      {isDrawerOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-[2px] transition-opacity"
+          onClick={() => setIsDrawerOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+      <aside
+        aria-label="قائمة أقسام البوابة"
+        aria-hidden={!isDrawerOpen}
+        className={`fixed top-0 bottom-0 right-0 z-50 w-[82vw] max-w-[320px] bg-gradient-to-b from-white via-sky-50/60 to-indigo-50/75 text-slate-800 border-l border-blue-200/80 shadow-2xl transition-transform duration-300 ease-out flex flex-col pt-safe pb-safe ${
+          isDrawerOpen ? 'translate-x-0 pointer-events-auto' : 'translate-x-full pointer-events-none'
+        }`}
+      >
+        <div className="h-16 flex items-center justify-between px-4 bg-gradient-to-l from-blue-950 via-blue-900 to-indigo-900 text-white border-b border-blue-800/60 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
             <img
               src="/awlad-selim-logo.png"
@@ -85,85 +296,49 @@ export const MobilePortal: React.FC = () => {
               className="h-9 w-9 object-contain bg-white rounded-xl p-1 shrink-0"
             />
             <div className="min-w-0">
-              <h1 className="text-sm font-black truncate leading-tight">AWLAD SELIM</h1>
-              <p className="text-[10px] text-blue-200 truncate">
+              <span className="block text-sm font-black truncate">أقسام البوابة</span>
+              <span className="block text-[10px] text-blue-200 truncate">
                 {isRep ? 'بوابة المندوب' : 'بوابة العميل'} · {currentUser?.fullName}
-              </p>
+              </span>
             </div>
           </div>
-
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              type="button"
-              onClick={() => setIsSyncCenterOpen(true)}
-              className={`relative min-h-[42px] min-w-[42px] flex items-center justify-center rounded-xl text-white cursor-pointer ${
-                data.conflictsCount > 0
-                  ? 'bg-orange-600 hover:bg-orange-700'
-                  : data.pendingSyncCount > 0
-                  ? 'bg-amber-600 hover:bg-amber-700'
-                  : 'bg-white/10 hover:bg-white/20'
-              }`}
-              title="مركز المزامنة"
-              aria-label="مركز المزامنة"
-            >
-              <CloudOff className="w-4 h-4" />
-              {syncBadgeCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-slate-900 text-white text-[10px] font-black flex items-center justify-center">
-                  {syncBadgeCount}
-                </span>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setIsNotificationsOpen(true);
-                data.markNotificationsRead();
-              }}
-              className="relative min-h-[42px] min-w-[42px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer"
-              title="الإشعارات"
-              aria-label="الإشعارات"
-            >
-              <Bell className="w-4 h-4" />
-              {data.unreadNotificationCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-black flex items-center justify-center">
-                  {data.unreadNotificationCount}
-                </span>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setIsServerModalOpen(true)}
-              className="min-h-[42px] min-w-[42px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer"
-              title="عنوان السيرفر المركزي"
-              aria-label="إعدادات السيرفر"
-            >
-              <Server className="w-4 h-4" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => data.triggerManualSync()}
-              className="min-h-[42px] min-w-[42px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer"
-              title="تحديث ومزامنة"
-              aria-label="تحديث ومزامنة"
-            >
-              <RefreshCw className={`w-4 h-4 ${data.networkStatus === 'synchronizing' ? 'animate-spin' : ''}`} />
-            </button>
-
-            <button
-              type="button"
-              onClick={logout}
-              className="min-h-[42px] min-w-[42px] flex items-center justify-center rounded-xl bg-red-600/90 hover:bg-red-700 text-white cursor-pointer"
-              title="تسجيل الخروج"
-              aria-label="تسجيل الخروج"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setIsDrawerOpen(false)}
+            className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-white/15 hover:bg-white/25 text-white cursor-pointer shrink-0"
+            aria-label="إغلاق القائمة الجانبية"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
-      </header>
+
+        <div className="flex-1 overflow-y-auto p-3.5 space-y-2">
+          {allPortalDestinations.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => {
+                  item.onSelect();
+                  setIsDrawerOpen(false);
+                }}
+                className={`w-full min-h-[46px] px-3.5 py-2.5 rounded-2xl flex items-center justify-between gap-2 text-xs border transition-all cursor-pointer ${
+                  item.active
+                    ? 'bg-gradient-to-l from-blue-600 to-indigo-600 text-white border-blue-600 font-black shadow-sm'
+                    : 'bg-white/90 text-slate-800 border-blue-100 hover:bg-blue-50/70 font-bold'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span>{item.label}</span>
+                </div>
+                <ChevronLeft className={`w-4 h-4 shrink-0 ${item.active ? 'text-blue-100' : 'text-slate-400'}`} />
+              </button>
+            );
+          })}
+        </div>
+      </aside>
 
       <main className="max-w-5xl mx-auto p-3.5 space-y-3.5">
         {linkWarning && (

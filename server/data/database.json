@@ -1,12 +1,12 @@
 {
   "users": [
     {
-      "id": "USR-MWLNWTN7-90067A",
-      "fullName": "123456",
-      "username": "123456",
-      "passwordHash": "$2b$10$IYHSFh7WwjQpoh26biVea.1RpKvZD8nDsAEQ6fpUNl0kpNFDLDO1W",
+      "id": "USR-MWMGUFAA-0F6DDC",
+      "fullName": "Ahmed Farouk",
+      "username": "Ahmed Farouk",
+      "passwordHash": "$2b$10$06vzv8Cl5DBu0VLPSsohb.kCylE8Kx0MtNNRwbfxPsqzN4RlyBK3e",
       "passwordAlgo": "bcrypt",
-      "phone": "",
+      "phone": "01286737811",
       "role": "admin",
       "jobTitle": "المدير العام",
       "department": "الإدارة",
@@ -44,8 +44,8 @@
         "canExecuteStockTransfer": true,
         "canViewDeletedInvoices": true
       },
-      "createdAt": "2026-11-18T05:09:57.140Z",
-      "lastLogin": "2026-11-18T05:43:57.393Z"
+      "createdAt": "2026-11-18T18:39:54.082Z",
+      "lastLogin": "2026-11-18T18:39:54.234Z"
     }
   ],
   "warehouses": [
@@ -63,7 +63,7 @@
       "id": "cat-1",
       "name": "مواد غذائية عامة",
       "status": "active",
-      "createdAt": "2026-11-18T05:09:57.140Z"
+      "createdAt": "2026-11-18T18:39:54.082Z"
     }
   ],
   "products": [],
@@ -101,36 +101,20 @@
   "pairingTokens": [],
   "pairedDevices": [
     {
-      "deviceId": "DEV-8ce8bb5a-e05c-446d-bcd9-208523c27d7c",
+      "deviceId": "DEV-caccbc1f-944f-4aa9-bf19-fa45c03e778e",
       "deviceName": "هاتف Android",
       "deviceType": "android",
       "osVersion": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) C",
       "appVersion": "3.0.0",
-      "linkedUserId": "USR-MWLNWTN7-90067A",
-      "linkedUserName": "123456",
+      "linkedUserId": "USR-MWMGUFAA-0F6DDC",
+      "linkedUserName": "Ahmed Farouk",
       "connectionMode": "pro_remote",
-      "serverUrlUsed": "https://ais-dev-yuleva65jxz4a2yg7ovybz-215920715895.europe-west1.run.app",
-      "ipAddress": "45.110.53.198",
+      "serverUrlUsed": "https://ais-dev-2agbg27e4hmjidpyq76376-725917913807.europe-west1.run.app",
+      "ipAddress": "154.136.12.206",
       "status": "active",
       "configVersion": 1,
-      "pairedAt": "2026-11-18T05:42:08.718Z",
-      "lastSeenAt": "2026-11-18T05:56:46.145Z"
-    },
-    {
-      "deviceId": "DEV-89bbe555-c8e0-457b-8fc1-6dbb8b737d64",
-      "deviceName": "هاتف Android",
-      "deviceType": "android",
-      "osVersion": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) C",
-      "appVersion": "3.0.0",
-      "linkedUserId": "USR-MWLNWTN7-90067A",
-      "linkedUserName": "123456",
-      "connectionMode": "pro_remote",
-      "serverUrlUsed": "https://ais-dev-umgjohq4zbitt6p2gtc3we-679503179490.europe-west2.run.app",
-      "ipAddress": "45.110.53.198",
-      "status": "active",
-      "configVersion": 1,
-      "pairedAt": "2026-11-18T05:09:57.310Z",
-      "lastSeenAt": "2026-11-18T05:21:47.543Z"
+      "pairedAt": "2026-11-18T18:39:54.234Z",
+      "lastSeenAt": "2026-11-18T18:45:57.031Z"
     }
   ],
   "orderAdvancePayments": [],
@@ -167,6 +151,6 @@
     "cashOpNo": 0,
     "orderAdvanceNo": 0
   },
-  "lastSavedAt": "2026-11-18T05:56:46.145Z",
+  "lastSavedAt": "2026-11-18T18:45:57.032Z",
   "version": "3.0.0"
 }

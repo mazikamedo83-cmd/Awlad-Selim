@@ -1,63 +1,607 @@
 import { Router } from 'express';
+import { getPool } from '../db/postgres.js';
+import { readJsonDatabase, withJsonTransaction } from '../db/jsonLedger.js';
+import { isPgMode, isoTimestamp } from '../db/stores/mode.js';
+import { generateServerId } from '../utils/crypto.js';
+import { AppError, nowIso, sanitizeUser } from '../utils/errors.js';
+import { requireAuth, asyncHandler } from '../middleware/auth.js';
+import { recordAuditLog } from '../db/stores/authStore.js';
 import {
-  getSyncPullPayload,
-  pushSyncBatch,
-  listSyncConflicts,
-  resolveSyncConflict,
-} from '../db/stores/syncStore.js';
-import { requireAuth, requireStaff, asyncHandler } from '../middleware/auth.js';
+  createCustomer,
+  updateCustomer,
+  getCustomerById,
+  recordCustomerPayment,
+  getRepresentativeByUserId,
+  isCustomerAllowedForRep,
+  listCategories,
+  listProducts,
+  getCustomerStatementData,
+  getSystemSettingsSafe,
+} from '../db/stores/catalogStore.js';
+import {
+  createSalesInvoice,
+  createPurchaseInvoice,
+  editSalesInvoice,
+  addInvoicePayment,
+  createInvoiceReturn,
+  listInvoices,
+} from '../db/stores/invoicesStore.js';
+import {
+  listOrders,
+  createCustomerOrder,
+  updateOrderDeliveryStatus,
+  recordOrderAdvancePayment,
+} from '../db/stores/ordersStore.js';
+import { getStaffBootstrapData, executeCashOperation } from '../db/stores/inventoryAdminStore.js';
 
 const router = Router();
-
 router.use(requireAuth);
+
+function canManageConflictsGlobally(user) {
+  return (
+    user.role === 'admin' ||
+    Boolean(user.permissions?.canManageSales) ||
+    Boolean(user.permissions?.canManageAccounts)
+  );
+}
+
+function mapPgConflictRow(r) {
+  return {
+    id: r.id,
+    operationId: r.operation_id,
+    operationType: r.operation_type,
+    entityType: r.entity_type,
+    entityId: r.entity_id || undefined,
+    deviceId: r.device_id || undefined,
+    userId: r.user_id || undefined,
+    userName: r.user_name || '',
+    conflictReason: r.conflict_reason,
+    localPayload: r.local_payload || {},
+    serverSnapshot: r.server_snapshot || {},
+    status: r.status,
+    resolutionNotes: r.resolution_notes || '',
+    resolvedBy: r.resolved_by || undefined,
+    resolvedAt: r.resolved_at ? isoTimestamp(r.resolved_at) : undefined,
+    createdAt: isoTimestamp(r.created_at),
+  };
+}
+
+async function listUserScopedConflicts(user) {
+  const global = canManageConflictsGlobally(user);
+  if (await isPgMode()) {
+    const pool = getPool();
+    const res = global
+      ? await pool.query(`SELECT * FROM sync_conflicts ORDER BY created_at DESC LIMIT 300`)
+      : await pool.query(
+          `SELECT * FROM sync_conflicts WHERE user_id = $1 ORDER BY created_at DESC LIMIT 150`,
+          [user.id]
+        );
+    return res.rows.map(mapPgConflictRow);
+  }
+  const db = readJsonDatabase();
+  const list = db.syncConflicts || [];
+  return global ? list : list.filter((c) => c.userId === user.id);
+}
+
+async function findSyncOpDeduplication(userId, operationId) {
+  if (!userId || !operationId) return null;
+  if (await isPgMode()) {
+    const pool = getPool();
+    const res = await pool.query(
+      `SELECT * FROM sync_operation_logs WHERE user_id = $1 AND operation_id = $2 LIMIT 1`,
+      [userId, operationId]
+    );
+    return res.rows[0] || null;
+  }
+  const db = readJsonDatabase();
+  return (db.syncOperationLogs || []).find(
+    (entry) => entry.userId === userId && entry.operationId === operationId
+  ) || null;
+}
+
+async function recordSyncOpLog(entry) {
+  const id = generateServerId('SYNL');
+  const now = nowIso();
+  if (await isPgMode()) {
+    const pool = getPool();
+    await pool.query(
+      `INSERT INTO sync_operation_logs (id, operation_id, user_id, device_id, operation_type, entity_type, entity_id, status, response_json, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       ON CONFLICT (user_id, operation_id) DO NOTHING`,
+      [
+        id,
+        entry.operationId,
+        entry.userId,
+        entry.deviceId || null,
+        entry.operationType,
+        entry.entityType,
+        entry.entityId || null,
+        entry.status,
+        JSON.stringify(entry.responseJson || {}),
+        now,
+      ]
+    );
+    return;
+  }
+  await withJsonTransaction((db) => {
+    const exists = (db.syncOperationLogs || []).some(
+      (l) => l.userId === entry.userId && l.operationId === entry.operationId
+    );
+    if (!exists) {
+      db.syncOperationLogs.unshift({
+        id,
+        ...entry,
+        createdAt: now,
+      });
+      if (db.syncOperationLogs.length > 5000) db.syncOperationLogs.length = 5000;
+    }
+  });
+}
+
+async function createConflictRecord({ op, user, conflictReason, serverSnapshot }) {
+  const conflict = {
+    id: generateServerId('CONF'),
+    operationId: op.operationId,
+    operationType: op.operationType,
+    entityType: op.entityType || 'unknown',
+    entityId: op.entityId || undefined,
+    deviceId: op.deviceId || undefined,
+    userId: user.id,
+    userName: user.fullName || user.username,
+    conflictReason,
+    localPayload: op.payload || {},
+    serverSnapshot: serverSnapshot || {},
+    status: 'needs_review',
+    resolutionNotes: '',
+    createdAt: nowIso(),
+  };
+
+  if (await isPgMode()) {
+    const pool = getPool();
+    await pool.query(
+      `INSERT INTO sync_conflicts (id, operation_id, operation_type, entity_type, entity_id, device_id, user_id, user_name, conflict_reason, local_payload, server_snapshot, status, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      [
+        conflict.id,
+        conflict.operationId,
+        conflict.operationType,
+        conflict.entityType,
+        conflict.entityId || null,
+        conflict.deviceId || null,
+        conflict.userId,
+        conflict.userName,
+        conflict.conflictReason,
+        JSON.stringify(conflict.localPayload),
+        JSON.stringify(conflict.serverSnapshot),
+        conflict.status,
+        conflict.createdAt,
+      ]
+    );
+    return conflict;
+  }
+
+  await withJsonTransaction((db) => {
+    db.syncConflicts.unshift(conflict);
+  });
+  return conflict;
+}
+
+function assertStaffPermission(user, permKey) {
+  if (user.role === 'customer') {
+    throw new AppError(403, 'هذه العملية مخصصة لموظفي وإدارة الشركة فقط', 'FORBIDDEN_STAFF_ONLY');
+  }
+  if (user.role !== 'admin' && permKey && user.permissions?.[permKey] !== true) {
+    throw new AppError(403, `ليس لديك الصلاحية المطلوبة (${permKey})`, 'FORBIDDEN_PERMISSION');
+  }
+}
+
+async function applySingleOperation(op, authContext, { ignoreVersionCheck = false } = {}) {
+  const user = authContext.user;
+  const payload = op.payload || {};
+  const opId = op.operationId;
+  const opType = op.operationType;
+
+  if (opType === 'create_order') {
+    const isCustomer = user.role === 'customer';
+    const isRep = user.role === 'representative';
+    if (
+      !isCustomer &&
+      !isRep &&
+      user.role !== 'admin' &&
+      !user.permissions?.canManageSales &&
+      !user.permissions?.canAdd
+    ) {
+      throw new AppError(403, 'ليس لديك صلاحية إنشاء طلبات عملاء أو مندوبين', 'FORBIDDEN');
+    }
+    return createCustomerOrder(
+      {
+        ...payload,
+        idempotencyKey: opId,
+        originDeviceId: op.deviceId || authContext.deviceId,
+      },
+      authContext
+    );
+  }
+
+  if (opType === 'create_sales_invoice') {
+    assertStaffPermission(user, 'canManageSales');
+    return createSalesInvoice(
+      { ...payload, originDeviceId: op.deviceId || authContext.deviceId },
+      user,
+      opId
+    );
+  }
+
+  if (opType === 'create_purchase_invoice') {
+    assertStaffPermission(user, 'canManagePurchases');
+    return createPurchaseInvoice(
+      { ...payload, originDeviceId: op.deviceId || authContext.deviceId },
+      user,
+      opId
+    );
+  }
+
+  if (opType === 'edit_sales_invoice') {
+    assertStaffPermission(user, 'canEdit');
+    const invoiceId = payload.invoiceId || op.entityId;
+    const invoices = await listInvoices(user);
+    const serverInv = invoices.find((i) => i.id === invoiceId);
+    if (!serverInv) {
+      throw new AppError(404, 'الفاتورة غير موجودة على السيرفر', 'INVOICE_NOT_FOUND');
+    }
+    if (serverInv.status === 'cancelled') {
+      throw new AppError(409, 'تم إلغاء الفاتورة على السيرفر قبل المزامنة', 'INVOICE_CANCELLED', {
+        serverSnapshot: serverInv,
+      });
+    }
+    if (
+      !ignoreVersionCheck &&
+      payload.baseVersion !== undefined &&
+      Number(serverInv.version || 1) > Number(payload.baseVersion)
+    ) {
+      throw new AppError(
+        409,
+        `تم تعديل الفاتورة (${serverInv.invoiceNumber}) على السيرفر لإصدار أحدث (${serverInv.version}) قبل مزامنة هذا الجهاز.`,
+        'VERSION_CONFLICT',
+        { serverSnapshot: serverInv }
+      );
+    }
+    return editSalesInvoice(invoiceId, payload, user);
+  }
+
+  if (opType === 'create_invoice_return') {
+    assertStaffPermission(user, 'canManageSales');
+    return createInvoiceReturn(payload, user, opId);
+  }
+
+  if (opType === 'add_invoice_payment') {
+    assertStaffPermission(user, 'canManageAccounts');
+    return addInvoicePayment(payload.invoiceId || op.entityId, payload, user, opId);
+  }
+
+  if (opType === 'record_customer_payment') {
+    assertStaffPermission(user, 'canManageAccounts');
+    const customerId = payload.customerId || op.entityId;
+    if (user.role === 'representative') {
+      const cust = await getCustomerById(customerId);
+      const rep = authContext.representativeProfile || (await getRepresentativeByUserId(user.id));
+      if (!cust || !rep || !isCustomerAllowedForRep(cust, rep.id)) {
+        throw new AppError(403, 'غير مصرح لك بتحصيل مبالغ من عميل غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
+      }
+    }
+    return recordCustomerPayment({ ...payload, customerId }, user, opId);
+  }
+
+  if (opType === 'record_order_advance') {
+    if (
+      user.role !== 'admin' &&
+      user.role !== 'representative' &&
+      !user.permissions?.canManageAccounts &&
+      !user.permissions?.canManageSales
+    ) {
+      throw new AppError(403, 'ليس لديك صلاحية تسجيل دفعات مقدمة', 'FORBIDDEN');
+    }
+    return recordOrderAdvancePayment(payload.orderId || op.entityId, payload, user, opId);
+  }
+
+  if (opType === 'update_order_delivery') {
+    if (user.role !== 'admin' && user.role !== 'representative' && !user.permissions?.canManageSales) {
+      throw new AppError(403, 'ليس لديك صلاحية تحديث حالة التوصيل', 'FORBIDDEN');
+    }
+    return updateOrderDeliveryStatus(
+      payload.orderId || op.entityId,
+      { ...payload, idempotencyKey: opId },
+      authContext
+    );
+  }
+
+  if (opType === 'execute_cash_operation') {
+    assertStaffPermission(user, 'canManageAccounts');
+    return executeCashOperation(payload, user, opId);
+  }
+
+  if (opType === 'create_customer') {
+    assertStaffPermission(user, 'canAdd');
+    return createCustomer(payload, user);
+  }
+
+  if (opType === 'update_customer') {
+    assertStaffPermission(user, 'canEdit');
+    const customerId = payload.customerId || op.entityId;
+    const serverCust = await getCustomerById(customerId);
+    if (!serverCust) {
+      throw new AppError(404, 'العميل غير موجود على السيرفر', 'CUSTOMER_NOT_FOUND');
+    }
+    if (
+      !ignoreVersionCheck &&
+      payload.baseVersion !== undefined &&
+      Number(serverCust.version || 1) > Number(payload.baseVersion)
+    ) {
+      throw new AppError(
+        409,
+        `تم تعديل بيانات العميل (${serverCust.name}) على السيرفر (إصدار ${serverCust.version}) قبل مزامنة هذا التعديل.`,
+        'VERSION_CONFLICT',
+        { serverSnapshot: serverCust }
+      );
+    }
+    return updateCustomer(customerId, payload, user);
+  }
+
+  throw new AppError(400, `نوع عملية المزامنة غير مدعوم (${opType})`, 'UNSUPPORTED_SYNC_OPERATION');
+}
+
+function isConflictError(err) {
+  const code = String(err?.code || '');
+  return (
+    err?.status === 409 ||
+    code === 'VERSION_CONFLICT' ||
+    code === 'INSUFFICIENT_STOCK' ||
+    code === 'INVOICE_CANCELLED' ||
+    code === 'ORDER_ALREADY_INVOICED'
+  );
+}
 
 router.get(
   '/pull',
   asyncHandler(async (req, res) => {
-    const since = typeof req.query.since === 'string' ? req.query.since : null;
-    const payload = await getSyncPullPayload(req.auth, { since });
-    res.json({ ok: true, ...payload });
+    const user = req.auth.user;
+    const settings = await getSystemSettingsSafe();
+    const serverTime = nowIso();
+
+    if (user.role === 'customer') {
+      if (settings.mobileConfig?.enableCustomerApp === false) {
+        throw new AppError(403, 'تطبيق العملاء متوقف حاليًا من إعدادات الإدارة', 'CUSTOMER_APP_DISABLED');
+      }
+      const allowPriceView = Boolean(settings.mobileConfig?.allowCustomerPriceView);
+      const cust = req.auth.customerProfile || null;
+      const sanitizedCustomer = cust
+        ? {
+            ...cust,
+            priceHistory: allowPriceView ? cust.priceHistory : {},
+          }
+        : null;
+
+      const [products, categories, customerItemOrders, statement, syncConflicts] = await Promise.all([
+        listProducts({ forCustomer: true, allowCustomerPriceView: allowPriceView }),
+        listCategories(),
+        listOrders(req.auth),
+        cust ? getCustomerStatementData(cust.id, { allowPriceView }) : Promise.resolve(null),
+        listUserScopedConflicts(user),
+      ]);
+
+      return res.json({
+        ok: true,
+        scope: 'customer',
+        serverTime,
+        user: sanitizeUser(user),
+        customerProfile: sanitizedCustomer,
+        mobileConfig: settings.mobileConfig,
+        products,
+        categories,
+        customerItemOrders,
+        orderAdvancePayments: statement?.advancePayments || [],
+        invoices: statement?.invoices || [],
+        invoiceReturns: statement?.returns || [],
+        statement,
+        syncConflicts,
+        settings: {
+          companyName: settings.companyName,
+          companySubtitle: settings.companySubtitle,
+          phone1: settings.phone1,
+          phone2: settings.phone2,
+          address: settings.address,
+          currency: settings.currency,
+          defaultPrintMode: settings.defaultPrintMode,
+          invoiceNotes: settings.invoiceNotes,
+        },
+      });
+    }
+
+    const [staffData, repProfile] = await Promise.all([
+      getStaffBootstrapData(user),
+      user.role === 'representative'
+        ? Promise.resolve(req.auth.representativeProfile || getRepresentativeByUserId(user.id))
+        : Promise.resolve(null),
+    ]);
+
+    res.json({
+      ok: true,
+      scope: user.role === 'representative' ? 'representative' : 'staff',
+      serverTime,
+      user: sanitizeUser(user),
+      representativeProfile: repProfile || null,
+      mobileConfig: settings.mobileConfig,
+      ...staffData,
+    });
   })
 );
 
 router.post(
   '/push',
   asyncHandler(async (req, res) => {
-    const deviceId = req.get('x-device-id') || req.body?.deviceId || req.auth.deviceId || '';
-    const result = await pushSyncBatch(
-      {
-        operations: req.body?.operations || [],
-        deviceId,
-      },
-      req.auth
-    );
-    res.json({ ok: true, ...result });
+    const operations = Array.isArray(req.body?.operations) ? req.body.operations : [];
+    const user = req.auth.user;
+    const results = [];
+
+    for (const op of operations) {
+      if (!op?.operationId || !op?.operationType) {
+        results.push({
+          operationId: op?.operationId || 'unknown',
+          status: 'failed',
+          error: 'بيانات عملية المزامنة غير مكتملة',
+        });
+        continue;
+      }
+
+      const existing = await findSyncOpDeduplication(user.id, op.operationId);
+      if (existing && (existing.status === 'synced' || existing.status === 'deduplicated')) {
+        results.push({
+          operationId: op.operationId,
+          status: 'synced',
+          deduplicated: true,
+        });
+        continue;
+      }
+
+      try {
+        const result = await applySingleOperation(op, req.auth);
+        await recordSyncOpLog({
+          operationId: op.operationId,
+          userId: user.id,
+          deviceId: op.deviceId || req.auth.deviceId,
+          operationType: op.operationType,
+          entityType: op.entityType || 'unknown',
+          entityId: op.entityId || result?.id || result?.order?.id || result?.invoice?.id,
+          status: 'synced',
+          responseJson: result || {},
+        });
+        results.push({
+          operationId: op.operationId,
+          status: 'synced',
+          result,
+        });
+      } catch (err) {
+        if (isConflictError(err)) {
+          const conflict = await createConflictRecord({
+            op,
+            user,
+            conflictReason: err.message,
+            serverSnapshot: err.details?.serverSnapshot || {},
+          });
+          results.push({
+            operationId: op.operationId,
+            status: 'needs_review',
+            conflictId: conflict.id,
+            conflict,
+            error: err.message,
+          });
+        } else {
+          results.push({
+            operationId: op.operationId,
+            status: 'failed',
+            code: err?.code || 'SYNC_OP_FAILED',
+            error: err?.message || 'تعذر تنفيذ العملية على السيرفر',
+          });
+        }
+      }
+    }
+
+    res.json({ ok: true, results });
   })
 );
 
 router.get(
   '/conflicts',
   asyncHandler(async (req, res) => {
-    const status = typeof req.query.status === 'string' ? req.query.status : null;
-    const conflicts = await listSyncConflicts(req.auth, { status });
+    const conflicts = await listUserScopedConflicts(req.auth.user);
     res.json({ ok: true, conflicts });
   })
 );
 
 router.post(
-  '/conflicts/:id/resolve',
-  requireStaff,
+  '/conflicts/:conflictId/resolve',
   asyncHandler(async (req, res) => {
-    const u = req.auth.user;
-    if (u.role !== 'admin' && !u.permissions?.canManageSales && !u.permissions?.canManageAccounts) {
-      return res.status(403).json({
-        ok: false,
-        code: 'FORBIDDEN_CONFLICT_RESOLUTION',
-        error: 'ليس لديك صلاحية معالجة تعارضات المزامنة',
+    const { conflictId } = req.params;
+    const action = String(req.body?.action || '').trim();
+    const resolutionNotes = String(req.body?.resolutionNotes || '').trim();
+    const user = req.auth.user;
+
+    if (!['keep_server', 'apply_local', 'dismiss'].includes(action)) {
+      throw new AppError(400, 'إجراء معالجة التعارض غير صالح', 'INVALID_CONFLICT_ACTION');
+    }
+
+    let conflict = null;
+    if (await isPgMode()) {
+      const pool = getPool();
+      const cRes = await pool.query(`SELECT * FROM sync_conflicts WHERE id = $1 LIMIT 1`, [conflictId]);
+      if (cRes.rows[0]) conflict = mapPgConflictRow(cRes.rows[0]);
+    } else {
+      const db = readJsonDatabase();
+      conflict = (db.syncConflicts || []).find((c) => c.id === conflictId) || null;
+    }
+
+    if (!conflict) {
+      throw new AppError(404, 'سجل التعارض غير موجود', 'CONFLICT_NOT_FOUND');
+    }
+
+    if (!canManageConflictsGlobally(user) && conflict.userId !== user.id) {
+      throw new AppError(403, 'غير مصرح لك بمعالجة تعارض مستخدم آخر', 'FORBIDDEN_CONFLICT_ACCESS');
+    }
+
+    if (action === 'apply_local') {
+      await applySingleOperation(
+        {
+          operationId: conflict.operationId,
+          operationType: conflict.operationType,
+          entityType: conflict.entityType,
+          entityId: conflict.entityId,
+          deviceId: conflict.deviceId,
+          payload: conflict.localPayload || {},
+        },
+        req.auth,
+        { ignoreVersionCheck: true }
+      );
+    }
+
+    const nextStatus =
+      action === 'apply_local'
+        ? 'resolved_apply_local'
+        : action === 'keep_server'
+        ? 'resolved_keep_server'
+        : 'dismissed';
+    const resolvedAt = nowIso();
+
+    if (await isPgMode()) {
+      const pool = getPool();
+      await pool.query(
+        `UPDATE sync_conflicts SET status = $1, resolution_notes = $2, resolved_by = $3, resolved_at = $4 WHERE id = $5`,
+        [nextStatus, resolutionNotes, user.fullName || user.username, resolvedAt, conflictId]
+      );
+    } else {
+      await withJsonTransaction((db) => {
+        const idx = (db.syncConflicts || []).findIndex((c) => c.id === conflictId);
+        if (idx >= 0) {
+          db.syncConflicts[idx] = {
+            ...db.syncConflicts[idx],
+            status: nextStatus,
+            resolutionNotes,
+            resolvedBy: user.fullName || user.username,
+            resolvedAt,
+          };
+        }
       });
     }
-    const result = await resolveSyncConflict(req.params.id, req.body || {}, u);
-    res.json({ ok: true, ...result });
+
+    await recordAuditLog({
+      userId: user.id,
+      userName: user.fullName,
+      action: `معالجة تعارض مزامنة (${action}) للعملية ${conflict.operationId}`,
+      module: 'المزامنة',
+      recordId: conflictId,
+      notes: resolutionNotes,
+    });
+
+    res.json({ ok: true, status: nextStatus });
   })
 );
 

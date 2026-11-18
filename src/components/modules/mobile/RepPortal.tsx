@@ -2095,36 +2095,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({ activeTab, onTabChange }) 
           </div>
         </div>
       )}
-
-      {/* Fixed Bottom Navigation Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 pb-safe">
-        <div className="max-w-2xl mx-auto grid grid-cols-6 h-16 items-center">
-          {[
-            { key: 'home' as const, label: 'الرئيسية', icon: Home },
-            { key: 'customers' as const, label: 'عملائي', icon: Users },
-            { key: 'new-invoice' as const, label: 'فاتورة بيع', icon: FilePlus2 },
-            { key: 'orders' as const, label: 'الطلبات', icon: ClipboardList },
-            { key: 'invoices' as const, label: 'الفواتير', icon: FileText },
-            { key: 'custody' as const, label: 'العهدة', icon: ArrowLeftRight },
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.key;
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => onTabChange(tab.key)}
-                className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors ${
-                  active ? 'text-blue-900 font-black' : 'text-slate-500 font-medium'
-                }`}
-              >
-                <Icon className="w-5 h-5" />
-                <span className="text-[10px] whitespace-nowrap">{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </nav>
     </div>
   );
 };
