@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Bell, CloudOff, LogOut, RefreshCw, Server, ShieldAlert, WifiOff } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
+import { getStoredTokens } from '../../../services/api';
 import { registerAndroidBackButton } from '../../../services/native';
 import { MobileNotificationItem } from '../../../types';
 import { CustomerPortal, CustomerTabKey } from './CustomerPortal';
@@ -246,7 +247,9 @@ export const MobilePortal: React.FC = () => {
         onClose={() => setIsServerModalOpen(false)}
         onSaved={async () => {
           await refreshAuthContext();
-          await data.triggerManualSync();
+          if (getStoredTokens()?.accessToken) {
+            await data.triggerManualSync();
+          }
         }}
       />
 

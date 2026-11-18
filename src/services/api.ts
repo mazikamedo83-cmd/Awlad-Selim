@@ -301,17 +301,63 @@ export function resolvePairingEndpointForMode(options: {
   profiles?: ConnectionProfilesConfig;
   activeEndpoint?: string;
 }): { effectiveMode: ConnectionMode; endpointUrl: string } {
-  const effectiveMode: ConnectionMode =
-    options.selectedMode === 'auto' ? options.activeMode : options.selectedMode;
-  const profileUrl = options.profiles
-    ? resolveModeEndpointUrl(effectiveMode, options.profiles)
+  const enforceHttps = options.profiles?.enforceHttpsForRemote !== false;
+
+  if (options.selectedMode !== 'auto') {
+    const effectiveMode: ConnectionMode = options.selectedMode;
+    const profileUrl = options.profiles
+      ? resolveModeEndpointUrl(effectiveMode, options.profiles)
+      : '';
+    return {
+      effectiveMode,
+      endpointUrl: normalizeServerUrl(profileUrl),
+    };
+  }
+
+  // Auto mode: prefer activeMode's configured URL (or activeEndpoint if valid for activeMode),
+  // then fall back to any other valid configured profile in priority order.
+  const activeProfileUrl = options.profiles
+    ? resolveModeEndpointUrl(options.activeMode, options.profiles)
     : '';
-  const endpointUrl =
-    profileUrl ||
-    (options.selectedMode === 'auto' || effectiveMode === options.activeMode
-      ? normalizeServerUrl(options.activeEndpoint || '')
-      : '');
-  return { effectiveMode, endpointUrl };
+  const activeFallbackUrl = normalizeServerUrl(options.activeEndpoint || '');
+
+  if (activeProfileUrl) {
+    const check = validateConnectionUrl(options.activeMode, activeProfileUrl, enforceHttps);
+    if (check.valid) {
+      return { effectiveMode: options.activeMode, endpointUrl: check.normalizedUrl };
+    }
+  }
+  if (activeFallbackUrl) {
+    const check = validateConnectionUrl(options.activeMode, activeFallbackUrl, enforceHttps);
+    if (check.valid) {
+      return { effectiveMode: options.activeMode, endpointUrl: check.normalizedUrl };
+    }
+  }
+
+  if (options.profiles) {
+    const priorityOrder: ConnectionMode[] = ['pro_remote', 'cloud_vps', 'free_remote', 'local_network'];
+    for (const candidateMode of priorityOrder) {
+      const candidateUrl = resolveModeEndpointUrl(candidateMode, options.profiles);
+      if (!candidateUrl) continue;
+      const check = validateConnectionUrl(candidateMode, candidateUrl, enforceHttps);
+      if (check.valid) {
+        return { effectiveMode: candidateMode, endpointUrl: check.normalizedUrl };
+      }
+    }
+  }
+
+  if (activeFallbackUrl) {
+    const inferredMode = detectModeFromUrl(activeFallbackUrl, options.profiles);
+    const check = validateConnectionUrl(inferredMode, activeFallbackUrl, enforceHttps);
+    if (check.valid) {
+      return { effectiveMode: inferredMode, endpointUrl: check.normalizedUrl };
+    }
+  }
+
+  return {
+    effectiveMode: options.activeMode,
+    endpointUrl: activeProfileUrl || activeFallbackUrl || '',
+  };
 }
 
 export function getConnectionModeLabel(mode?: string): string {

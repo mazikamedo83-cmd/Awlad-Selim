@@ -9,6 +9,7 @@ import {
   getConnectionModeLabel,
   getStoredConnectionProfiles,
   hasConfiguredServerUrl,
+  saveFallbackEndpoints,
   saveStoredConnectionProfiles,
   setConfiguredApiBaseUrl,
 } from '../../../services/api';
@@ -59,6 +60,7 @@ export const LoginView: React.FC = () => {
       if (results.length === 1) {
         const srv = results[0];
         if (srv.profiles) saveStoredConnectionProfiles(srv.profiles);
+        if (Array.isArray(srv.fallbackEndpoints)) saveFallbackEndpoints(srv.fallbackEndpoints);
         setConfiguredApiBaseUrl(srv.url);
         setPairingBanner({
           type: 'success',

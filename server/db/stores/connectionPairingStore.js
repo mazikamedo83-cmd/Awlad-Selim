@@ -234,7 +234,7 @@ export async function updateTunnelRuntimeStatus(payload = {}, actor = null) {
   };
 
   let configUpdated = false;
-  if (validTunnelUrl) {
+  if (validTunnelUrl && tunnelRuntimeState.provider !== 'cloudflared_named') {
     const sys = await getSystemSettingsSafe();
     const prevCfg = sys?.extraSettings?.connectionConfig || {};
     const prevUrl = String(prevCfg?.freeRemote?.tunnelUrl || '').trim();
@@ -308,6 +308,7 @@ function mapPgPairingTokenRow(r) {
     targetRole: r.target_role || '',
     targetDeviceType: r.target_device_type || 'any',
     connectionMode: r.connection_mode || 'auto',
+    serverBaseUrl: r.server_base_url || '',
     expiresAt: isoTimestamp(r.expires_at),
     singleUse: Boolean(r.single_use),
     usedCount: Number(r.used_count || 0),
@@ -398,9 +399,30 @@ export async function createPairingToken(payload = {}, actor, req = null) {
   const sys = await getSystemSettingsSafe();
   const { port, entries } = getLanUrlsForDiscovery();
   const profiles = resolveSafeConnectionProfiles(sys, entries, port);
-  const effectiveMode = connectionMode === 'auto' ? profiles.activeMode : connectionMode;
+  const enforceHttps = profiles.enforceHttpsForRemote !== false;
   const explicitBaseUrl = String(payload.serverBaseUrl || '').trim();
-  const modeEndpoint = resolveEndpointForMode(effectiveMode, profiles);
+
+  let effectiveMode = connectionMode === 'auto' ? profiles.activeMode : connectionMode;
+  let modeEndpoint = resolveEndpointForMode(effectiveMode, profiles);
+
+  if (connectionMode === 'auto' && !explicitBaseUrl && !modeEndpoint) {
+    const fallbackOrder = ['pro_remote', 'cloud_vps', 'free_remote', 'local_network'];
+    for (const candidateMode of fallbackOrder) {
+      const candidateUrl =
+        resolveEndpointForMode(candidateMode, profiles) ||
+        (candidateMode === 'local_network' ? entries[0]?.url || resolveRequestPublicBaseUrl(req) || '' : '');
+      if (!candidateUrl) continue;
+      try {
+        validatePairingServerUrl(candidateUrl, candidateMode, enforceHttps);
+        effectiveMode = candidateMode;
+        modeEndpoint = candidateUrl;
+        break;
+      } catch {
+        // try next fallback mode
+      }
+    }
+  }
+
   const rawCandidateUrl =
     explicitBaseUrl ||
     modeEndpoint ||
@@ -410,7 +432,7 @@ export async function createPairingToken(payload = {}, actor, req = null) {
   const serverBaseUrl = validatePairingServerUrl(
     rawCandidateUrl,
     effectiveMode,
-    profiles.enforceHttpsForRemote !== false
+    enforceHttps
   );
 
   const rawToken = crypto.randomBytes(18).toString('base64url');
@@ -442,8 +464,8 @@ export async function createPairingToken(payload = {}, actor, req = null) {
 
   if (await isPgMode()) {
     await getPool().query(
-      `INSERT INTO pairing_tokens (id, token_hash, token_preview, created_by_user_id, created_by_name, target_user_id, target_user_name, target_role, target_device_type, connection_mode, expires_at, single_use, used_count, require_admin_approval, notes, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,0,$13,$14,$15)`,
+      `INSERT INTO pairing_tokens (id, token_hash, token_preview, created_by_user_id, created_by_name, target_user_id, target_user_name, target_role, target_device_type, connection_mode, server_base_url, expires_at, single_use, used_count, require_admin_approval, notes, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,0,$14,$15,$16)`,
       [
         record.id,
         tokenHash,
@@ -455,6 +477,7 @@ export async function createPairingToken(payload = {}, actor, req = null) {
         record.targetRole,
         record.targetDeviceType,
         record.connectionMode,
+        serverBaseUrl,
         record.expiresAt,
         record.singleUse,
         record.requireAdminApproval,
@@ -560,8 +583,8 @@ export async function resolvePairingToken(rawToken, req = null) {
   const profiles = resolveSafeConnectionProfiles(sys, entries, port);
   const effectiveMode = tok.connectionMode === 'auto' ? profiles.activeMode : tok.connectionMode;
   const endpointUrl =
-    resolveEndpointForMode(effectiveMode, profiles) ||
     tok.serverBaseUrl ||
+    resolveEndpointForMode(effectiveMode, profiles) ||
     resolveRequestPublicBaseUrl(req) ||
     entries[0]?.url ||
     `http://127.0.0.1:${port}`;
@@ -629,6 +652,7 @@ export async function claimPairingToken(payload = {}, req = null) {
 
       const effectiveMode = tok.connectionMode === 'auto' ? profiles.activeMode : tok.connectionMode;
       const endpointUrl =
+        tok.serverBaseUrl ||
         resolveEndpointForMode(effectiveMode, profiles) ||
         resolveRequestPublicBaseUrl(req) ||
         entries[0]?.url ||
@@ -692,8 +716,8 @@ export async function claimPairingToken(payload = {}, req = null) {
 
       const effectiveMode = tok.connectionMode === 'auto' ? profiles.activeMode : tok.connectionMode;
       const endpointUrl =
-        resolveEndpointForMode(effectiveMode, profiles) ||
         tok.serverBaseUrl ||
+        resolveEndpointForMode(effectiveMode, profiles) ||
         resolveRequestPublicBaseUrl(req) ||
         entries[0]?.url ||
         `http://127.0.0.1:${port}`;

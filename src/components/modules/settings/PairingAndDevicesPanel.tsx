@@ -125,6 +125,12 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
   }, [loadAll]);
 
   const effectiveProfiles = profiles || getStoredConnectionProfiles();
+  const autoPairingTarget = resolvePairingEndpointForMode({
+    selectedMode: 'auto',
+    activeMode,
+    profiles: effectiveProfiles,
+    activeEndpoint,
+  });
   const pairingTarget = resolvePairingEndpointForMode({
     selectedMode: connectionMode,
     activeMode,
@@ -154,7 +160,7 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
         body: {
           targetUserId: targetUserId || undefined,
           targetDeviceType,
-          connectionMode,
+          connectionMode: pairingTarget.effectiveMode,
           ttlMinutes,
           singleUse,
           requireAdminApproval,
@@ -217,11 +223,13 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
 
   const handleResendDeviceLink = async (device: PairedDevice) => {
     const validModes: ConnectionMode[] = ['local_network', 'free_remote', 'pro_remote', 'cloud_vps'];
-    const deviceMode: ConnectionMode = validModes.includes(device.connectionMode as ConnectionMode)
-      ? (device.connectionMode as ConnectionMode)
-      : activeMode;
+    const hasValidDeviceMode = validModes.includes(device.connectionMode as ConnectionMode);
     const resendSelectedMode: 'auto' | ConnectionMode =
-      connectionMode === 'auto' ? deviceMode : connectionMode;
+      connectionMode !== 'auto'
+        ? connectionMode
+        : hasValidDeviceMode
+        ? (device.connectionMode as ConnectionMode)
+        : 'auto';
     const resendTarget = resolvePairingEndpointForMode({
       selectedMode: resendSelectedMode,
       activeMode,
@@ -387,7 +395,9 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
               onChange={(e) => setConnectionMode(e.target.value as any)}
               className="w-full border border-slate-300 rounded-xl p-2.5 bg-white font-bold text-slate-800"
             >
-              <option value="auto">الوضع النشط ({getConnectionModeLabel(activeMode)})</option>
+              <option value="auto">
+                تلقائي (Auto — {getConnectionModeLabel(autoPairingTarget.effectiveMode)})
+              </option>
               <option value="local_network">الشبكة المحلية (Local Network)</option>
               <option value="free_remote">النفق المجاني (Quick Tunnel)</option>
               <option value="pro_remote">دومين احترافي (Pro Remote)</option>
@@ -456,7 +466,7 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
                   <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
                 )}
                 <span>
-                  عنوان السيرفر الذي سيستخدمه الرابط ({getConnectionModeLabel(pairingTarget.effectiveMode)}):
+                  معاينة السيرفر قبل إنشاء الدعوة ({connectionMode === 'auto' ? `تلقائي ← ${getConnectionModeLabel(pairingTarget.effectiveMode)}` : getConnectionModeLabel(pairingTarget.effectiveMode)}):
                 </span>
               </div>
               <div
@@ -504,6 +514,13 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
                 </h4>
                 <span className="px-2.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-[11px]">
                   {getConnectionModeLabel(createdInvite.tokenRecord.connectionMode)}
+                </span>
+              </div>
+
+              <div className="px-3 py-2 rounded-xl bg-emerald-50/70 border border-emerald-200 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                <span className="font-bold text-emerald-950">عنوان السيرفر المُضمَّن في الدعوة:</span>
+                <span dir="ltr" className="font-mono font-bold text-emerald-800 break-all">
+                  {createdInvite.serverBaseUrl}
                 </span>
               </div>
 

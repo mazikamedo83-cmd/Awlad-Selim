@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { Customer, MobileConfig, Representative, User, UserRole, UserShortcutItem } from '../types';
 import {
   apiRequest,
@@ -77,9 +77,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [lastVerifiedAt, setLastVerifiedAt] = useState<string | null>(null);
   const [permissionsMayBeStale, setPermissionsMayBeStale] = useState(false);
 
+  const currentUserIdRef = useRef<string | null>(null);
+  currentUserIdRef.current = currentUser?.id || null;
+  const checkSeqRef = useRef(0);
+
   const checkStatusAndSession = useCallback(async () => {
+    const seq = ++checkSeqRef.current;
     purgeLegacyLocalDatabaseCache();
     await hydrateServerUrlFromNative();
+    if (seq !== checkSeqRef.current) return;
     const baseUrl = getConfiguredApiBaseUrl();
     let serverUnreachable = false;
 
@@ -148,8 +154,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         representativeProfile: me.representativeProfile || null,
       }).catch(() => {});
     } catch (err: any) {
+      if (seq !== checkSeqRef.current) return;
       if (err?.status === 401 || err?.code === 'DEVICE_REVOKED' || err?.code === 'ACCOUNT_DEACTIVATED') {
-        const prevUid = currentUser?.id;
+        const prevUid = currentUserIdRef.current;
         if (prevUid) {
           revokeOfflineUser(prevUid).catch(() => {});
         } else {
@@ -168,6 +175,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } else if (err?.status === 0 || serverUnreachable) {
         const restored = await restoreLastVerifiedOfflineSession(baseUrl).catch(() => null);
+        if (seq !== checkSeqRef.current) return;
         if (restored) {
           setCurrentUser(restored.user);
           setCustomerProfile(restored.customerProfile);
@@ -179,9 +187,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
     } finally {
-      setIsLoading(false);
+      if (seq === checkSeqRef.current) {
+        setIsLoading(false);
+      }
     }
-  }, [currentUser?.id]);
+  }, []);
 
   useEffect(() => {
     setAuthExpiredHandler((message) => {
@@ -328,27 +338,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLastVerifiedAt(null);
   };
 
-  const handleServerAuthRevoked = useCallback(
-    async (reason?: string) => {
-      if (currentUser?.id) {
-        await revokeOfflineUser(currentUser.id).catch(() => {});
-      } else {
-        await clearLastVerifiedOfflineSession().catch(() => {});
-      }
-      saveStoredTokens(null);
-      clearReadCache();
-      setCurrentUser(null);
-      setCustomerProfile(null);
-      setRepresentativeProfile(null);
-      setMobileConfig(DEFAULT_MOBILE_CONFIG);
-      setLinkWarning(null);
-      setIsOfflineSession(false);
-      setPermissionsMayBeStale(false);
-      setLastVerifiedAt(null);
-      setSessionExpiredMessage(reason || 'تم إيقاف الحساب أو سحب الصلاحية من السيرفر المركزي.');
-    },
-    [currentUser?.id]
-  );
+  const handleServerAuthRevoked = useCallback(async (reason?: string) => {
+    const uid = currentUserIdRef.current;
+    if (uid) {
+      await revokeOfflineUser(uid).catch(() => {});
+    } else {
+      await clearLastVerifiedOfflineSession().catch(() => {});
+    }
+    saveStoredTokens(null);
+    clearReadCache();
+    setCurrentUser(null);
+    setCustomerProfile(null);
+    setRepresentativeProfile(null);
+    setMobileConfig(DEFAULT_MOBILE_CONFIG);
+    setLinkWarning(null);
+    setIsOfflineSession(false);
+    setPermissionsMayBeStale(false);
+    setLastVerifiedAt(null);
+    setSessionExpiredMessage(reason || 'تم إيقاف الحساب أو سحب الصلاحية من السيرفر المركزي.');
+  }, []);
 
   const updatePassword = async (
     newPassword: string,

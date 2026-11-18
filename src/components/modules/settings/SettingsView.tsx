@@ -261,6 +261,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
       if (res.connectionConfig) {
         setConnProfiles(res.connectionConfig);
       }
+      await loadLiveServerInfo();
       showSavedBanner(
         `تم تعميم تحديث عنوان الاتصال (الإصدار v${res.connectionConfig?.configVersion || (connProfiles.configVersion || 1) + 1}) لتسحبه جميع الأجهزة تلقائياً عند الاتصال`
       );
@@ -475,8 +476,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
         port: Number(connProfiles.localNetwork.port || 3000) || 3000,
         hostname: (connProfiles.localNetwork.hostname || 'awlad-selim-server').trim(),
       },
-      freeRemote: { tunnelUrl: (connProfiles.freeRemote.tunnelUrl || '').trim() },
-      proRemote: { domainUrl: (connProfiles.proRemote.domainUrl || '').trim() },
+      freeRemote: {
+        tunnelUrl: (connProfiles.freeRemote.tunnelUrl || '').trim(),
+        autoDetect: connProfiles.freeRemote.autoDetect !== false,
+      },
+      proRemote: {
+        domainUrl: (connProfiles.proRemote.domainUrl || '').trim(),
+        provider: connProfiles.proRemote.provider || 'cloudflare_named_tunnel',
+      },
       cloudVps: {
         vpsUrl: (connProfiles.cloudVps.vpsUrl || '').trim(),
         notes: (connProfiles.cloudVps.notes || '').trim(),
@@ -533,6 +540,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
       return;
     }
     setConnProfiles(cleanedProfiles);
+    await loadLiveServerInfo();
     showSavedBanner(
       applyActiveToThisDevice
         ? `تم حفظ إعدادات الاتصال وتفعيل وضع (${getConnectionModeLabel(cleanedProfiles.activeMode)}) على هذا الجهاز`
@@ -1147,7 +1155,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 </div>
               )}
 
-              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 pt-4 border-t border-slate-800 text-[11px]">
+              <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 pt-4 border-t border-slate-800 text-[11px]">
                 <div className="p-3 rounded-xl bg-slate-800/70">
                   <span className="text-slate-400 block text-[10px]">نوع الاتصال النشط:</span>
                   <strong className="text-emerald-400 font-bold block mt-0.5">{getConnectionModeLabel(connProfiles.activeMode)}</strong>
@@ -1159,9 +1167,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   </strong>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-800/70">
+                  <span className="text-slate-400 block text-[10px]">حالة الإنترنت والنفق:</span>
+                  <strong className={`font-bold block mt-0.5 ${typeof navigator !== 'undefined' && navigator.onLine === false ? 'text-amber-300' : 'text-emerald-300'}`}>
+                    {typeof navigator !== 'undefined' && navigator.onLine === false ? 'بدون إنترنت (LAN متاح)' : 'الإنترنت متصل'}
+                    {serverInfo?.tunnelStatus?.status === 'online' ? ' • النفق نشط' : ''}
+                  </strong>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-800/70">
                   <span className="text-slate-400 block text-[10px]">بروتوكول الاتصال:</span>
                   <strong className={`font-bold block mt-0.5 ${(serverInfo?.httpsActive || /^https:\/\//i.test(activeEndpoint)) ? 'text-sky-400' : 'text-amber-300'}`}>
-                    {serverInfo?.httpsActive ? 'HTTPS (مشفر نشط)' : 'HTTP محلي (LAN)'}
+                    {serverInfo?.httpsActive || /^https:\/\//i.test(activeEndpoint) ? 'HTTPS (مشفر نشط)' : 'HTTP محلي (LAN)'}
                   </strong>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-800/70">
@@ -1435,22 +1450,47 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                       onChange={(e) =>
                         setConnProfiles((prev) => ({
                           ...prev,
-                          freeRemote: { tunnelUrl: e.target.value },
+                          freeRemote: { ...prev.freeRemote, tunnelUrl: e.target.value },
                         }))
                       }
                       className="w-full border rounded-xl p-2.5 font-mono text-sky-900 font-bold text-left"
                     />
                     <span className="text-[10px] text-slate-500 mt-1 block">
-                      يعمل فوراً بدون دومين أو اشتراك مدفوع؛ انسخ رابط <span className="font-mono" dir="ltr">trycloudflare.com</span> الناتج عن تشغيل النفق على اللابتوب.
+                      يعمل فوراً بدون دومين أو اشتراك مدفوع؛ يلتقطه السيرفر تلقائياً من <span className="font-mono" dir="ltr">scripts/start-free-tunnel.bat</span> أو يمكنك لصقه يدوياً.
+                    </span>
+                  </div>
+
+                  <label className="flex items-start gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={connProfiles.freeRemote.autoDetect !== false}
+                      onChange={(e) =>
+                        setConnProfiles((prev) => ({
+                          ...prev,
+                          freeRemote: { ...prev.freeRemote, autoDetect: e.target.checked },
+                        }))
+                      }
+                      className="w-4 h-4 mt-0.5 rounded text-sky-700"
+                    />
+                    <div>
+                      <span className="font-bold text-slate-800 block">تحديث رابط النفق تلقائياً عند تشغيل/تغيير النفق على اللابتوب</span>
+                      <span className="text-[10px] text-slate-500">يستقبل الرابط الجديد ويرفع إصدار الاتصال لتقوم الأجهزة المتصلة بالتحديث تلقائياً.</span>
+                    </div>
+                  </label>
+
+                  <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 font-bold flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <span>
+                      تنبيه هام: رابط Quick Tunnel المجاني (<span className="font-mono" dir="ltr">trycloudflare.com</span>) مؤقت وقد يتغير عند إعادة تشغيل النفق أو اللابتوب — وعند تغيّره يمكنك إعادة ربط أي جهاز بسهولة عبر رابط الدعوة أو مسح QR جديد.
                     </span>
                   </div>
 
                   <div className="p-3 rounded-xl bg-sky-50/70 border border-sky-200 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-sky-900 text-[11px]">أمر تشغيل النفق المجاني على ويندوز:</span>
+                      <span className="font-bold text-sky-900 text-[11px]">تشغيل النفق المجاني مع الالتقاط التلقائي للرابط:</span>
                       <button
                         type="button"
-                        onClick={() => copyCommandOrUrl(`cloudflared tunnel --url http://127.0.0.1:${activePort}`, 'أمر النفق المجاني')}
+                        onClick={() => copyCommandOrUrl(`node scripts/tunnel-supervisor.mjs --mode=quick --port=${activePort}`, 'أمر مراقب النفق المجاني')}
                         className="px-2 py-1 rounded-lg bg-white border border-sky-300 text-sky-800 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
                       >
                         <Copy className="w-3 h-3" />
@@ -1458,10 +1498,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                       </button>
                     </div>
                     <code className="block p-2 rounded-lg bg-slate-900 text-sky-300 font-mono text-[10px] overflow-x-auto" dir="ltr">
-                      cloudflared tunnel --url http://127.0.0.1:{activePort}
+                      node scripts/tunnel-supervisor.mjs --mode=quick --port={activePort}
                     </code>
                     <p className="text-[10px] text-slate-600">
-                      أو شغّل الملف الجاهز <span className="font-mono font-bold" dir="ltr">scripts/start-free-tunnel.bat</span> من مجلد المشروع.
+                      أو افتح الملف الجاهز <span className="font-mono font-bold" dir="ltr">scripts/start-free-tunnel.bat</span> (يدعم أيضاً التشغيل التلقائي مع Windows via <span className="font-mono" dir="ltr">install-windows-tunnel-task.ps1</span>).
                     </p>
                   </div>
                 </div>
@@ -1483,24 +1523,43 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     </button>
                   </div>
 
-                  <div>
-                    <label className="block font-bold mb-1">الدومين الثابت المشفر (HTTPS):</label>
-                    <input
-                      type="url"
-                      dir="ltr"
-                      placeholder="https://erp.yourdomain.com"
-                      value={connProfiles.proRemote.domainUrl}
-                      onChange={(e) =>
-                        setConnProfiles((prev) => ({
-                          ...prev,
-                          proRemote: { domainUrl: e.target.value },
-                        }))
-                      }
-                      className="w-full border rounded-xl p-2.5 font-mono text-indigo-900 font-bold text-left"
-                    />
-                    <span className="text-[10px] text-slate-500 mt-1 block">
-                      عنوان ثابت لا يتغير مع Cloudflare Named Tunnel أو Nginx Reverse Proxy مع شهادة SSL/TLS.
-                    </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="block font-bold mb-1">الدومين الثابت المشفر (HTTPS):</label>
+                      <input
+                        type="url"
+                        dir="ltr"
+                        placeholder="https://erp.yourdomain.com"
+                        value={connProfiles.proRemote.domainUrl}
+                        onChange={(e) =>
+                          setConnProfiles((prev) => ({
+                            ...prev,
+                            proRemote: { ...prev.proRemote, domainUrl: e.target.value },
+                          }))
+                        }
+                        className="w-full border rounded-xl p-2.5 font-mono text-indigo-900 font-bold text-left"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block font-bold mb-1">مزود البوابة الاحترافية:</label>
+                      <select
+                        value={connProfiles.proRemote.provider || 'cloudflare_named_tunnel'}
+                        onChange={(e) =>
+                          setConnProfiles((prev) => ({
+                            ...prev,
+                            proRemote: { ...prev.proRemote, provider: e.target.value },
+                          }))
+                        }
+                        className="w-full border rounded-xl p-2.5 bg-white font-bold text-slate-800"
+                      >
+                        <option value="cloudflare_named_tunnel">Cloudflare Named Tunnel (دومين العميل بدون فتح بورتات الراوتر)</option>
+                        <option value="nginx_reverse_proxy">Nginx Reverse Proxy + SSL (شهادة Let's Encrypt أو مملوكة للعميل)</option>
+                        <option value="custom">مزود أو بوابة HTTPS مخصصة حسب باقة العميل</option>
+                      </select>
+                      <span className="text-[10px] text-slate-500 mt-1 block">
+                        يدعم أي دومين مملوك للعميل دون فرض شراء دومين أو اشتراك محدد، ويعمل مع <span className="font-mono" dir="ltr">scripts/start-pro-tunnel.bat</span> أو <span className="font-mono" dir="ltr">scripts/reverse-proxy-nginx.conf</span>.
+                      </span>
+                    </div>
                   </div>
 
                   <div className="p-3 rounded-xl bg-indigo-50/70 border border-indigo-200 text-[11px] text-slate-700 space-y-1">
@@ -1509,7 +1568,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                       <span>أمان الأسرار والتوكنات:</span>
                     </div>
                     <p>
-                      يتم حفظ التوكن الخاص بـ Cloudflare Tunnel أو شهادات SSL على السيرفر/نظام التشغيل فقط — ولا تُعرض أو تُحفظ أي مفاتيح سرية داخل قاعدة البيانات أو الواجهة.
+                      يتم حفظ التوكن الخاص بـ Cloudflare Named Tunnel (<span className="font-mono" dir="ltr">CLOUDFLARE_TUNNEL_TOKEN</span>) أو شهادات SSL في ملف <span className="font-mono" dir="ltr">.env</span> على السيرفر فقط — ولا تُعرض أو تُحفظ أي مفاتيح سرية داخل قاعدة البيانات أو الواجهة.
                     </p>
                   </div>
                 </div>

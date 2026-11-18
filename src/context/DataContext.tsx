@@ -1169,9 +1169,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     refreshMobileNotifications();
 
+    let lastReconnectCheckAt = 0;
+    const runReconnectConfigSync = () => {
+      const now = Date.now();
+      if (now - lastReconnectCheckAt < 10000) return;
+      lastReconnectCheckAt = now;
+      syncConnectionConfigFromServer({ triggerHeartbeat: true, allowLanDiscoveryOnFailure: true })
+        .then((res) => {
+          if (res.switchedUrl) {
+            loadRoleScopedData();
+            triggerSync(true).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    };
+
     const unsubscribeNet = subscribeNetworkStatus((connected) => {
       setIsServerReachable(connected);
       if (connected) {
+        runReconnectConfigSync();
         triggerSync(true).catch(() => {});
         refreshMobileNotifications();
       } else {
@@ -1181,6 +1197,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const unsubscribeFg = subscribeAppForeground(() => {
       if (navigator.onLine !== false) {
+        runReconnectConfigSync();
         triggerSync(true).catch(() => {});
       }
     });

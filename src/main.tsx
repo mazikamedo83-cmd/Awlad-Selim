@@ -8,5 +8,8 @@ import '@fontsource/cairo/800.css';
 import '@fontsource/cairo/900.css';
 import App from './App.tsx';
 import './index.css';
+import { initDeepLinkCapture } from './services/native';
+
+initDeepLinkCapture();
 
 createRoot(document.getElementById('root')!).render(<App />);

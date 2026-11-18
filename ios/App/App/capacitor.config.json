@@ -18,6 +18,11 @@
 		"LocalNotifications": {
 			"smallIcon": "ic_stat_icon_config_sample",
 			"iconColor": "#1e3a8a"
+		},
+		"SystemBars": {
+			"insetsHandling": "css",
+			"initialViewportFitValueHint": "cover",
+			"style": "DARK"
 		}
 	},
 	"packageClassList": [

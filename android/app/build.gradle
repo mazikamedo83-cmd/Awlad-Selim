@@ -1,6 +1,7 @@
 apply plugin: 'com.android.application'
 
-def configuredAppLinkHost = (project.findProperty('AWLAD_APP_LINK_HOST') ?: System.getenv('AWLAD_APP_LINK_HOST') ?: '').toString().trim().toLowerCase()
+def rawAppLinkHost = (project.findProperty('AWLAD_APP_LINK_HOST') ?: System.getenv('AWLAD_APP_LINK_HOST') ?: '').toString().trim().toLowerCase()
+def configuredAppLinkHost = rawAppLinkHost.replaceFirst('^https?://', '').split('/')[0].split(':')[0].trim()
 def enableVerifiedAppLinks = !configuredAppLinkHost.isEmpty() && configuredAppLinkHost != 'awladselim.app'
 
 android {

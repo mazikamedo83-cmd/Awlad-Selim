@@ -216,6 +216,7 @@ export async function initializeSchema(customPool = null) {
       "ALTER TABLE invoices ALTER COLUMN payment_method TYPE VARCHAR(32)",
       "ALTER TABLE invoice_payments ALTER COLUMN payment_method TYPE VARCHAR(32)",
       "ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS device_id VARCHAR(64)",
+      "ALTER TABLE pairing_tokens ADD COLUMN IF NOT EXISTS server_base_url TEXT DEFAULT ''",
       "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS requester_type VARCHAR(24) NOT NULL DEFAULT 'customer'",
       "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS submitted_by_name TEXT DEFAULT ''",
       "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS representative_id VARCHAR(64)",

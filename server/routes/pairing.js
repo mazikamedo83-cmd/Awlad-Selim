@@ -177,7 +177,12 @@ pairingPublicPagesRouter.get('/.well-known/apple-app-site-association', (_req, r
       details: [
         {
           appID: appId,
+          appIDs: [appId],
           paths: ['/pair/*', '/invite/*'],
+          components: [
+            { '/': '/pair/*', comment: 'AWLAD SELIM Direct Pairing Links' },
+            { '/': '/invite/*', comment: 'AWLAD SELIM Invite Links' },
+          ],
         },
       ],
     },
@@ -275,18 +280,37 @@ async function handleInviteLandingPage(req, res) {
     <a id="open-app-btn" class="btn btn-primary" href="${escapeHtml(deepLink)}">فتح تطبيق AWLAD SELIM وإعداد الاتصال تلقائيًا</a>
     <a class="btn btn-web" href="${escapeHtml(webAppLink)}">متابعة الربط والدخول عبر المتصفح مباشرة</a>
     ${downloadBlockHtml}
+    <button id="copy-link-btn" type="button" class="btn btn-secondary">نسخ رابط الربط التلقائي</button>
+    <p id="copy-status" class="hint" style="display:none;color:#6ee7b7;border-color:#059669;"></p>
 
-    <p class="hint">في حال استخدام التطبيق يدويًا، افتح شاشة <strong>"إعداد السيرفر"</strong> واختر <strong>"لصق رابط الدعوة"</strong> أو امسح رمز QR.</p>
+    <p class="hint">في حال استخدام التطبيق يدويًا، افتح شاشة <strong>"إعداد السيرفر"</strong> واختر <strong>"لصق رابط الدعوة"</strong> أو امسح رمز QR. لا يتم تجاوز تسجيل الدخول في أي حالة.</p>
   </div>
-  ${
-    platform === 'android' || platform === 'ios'
-      ? `<script>
-    setTimeout(function () {
-      try { window.location.href = ${JSON.stringify(deepLink)}; } catch (e) {}
-    }, 350);
-  </script>`
-      : ''
-  }
+  <script>
+    (function () {
+      var copyBtn = document.getElementById('copy-link-btn');
+      var copyStatus = document.getElementById('copy-status');
+      if (copyBtn) {
+        copyBtn.addEventListener('click', function () {
+          var val = window.location.href;
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(val).then(function () {
+              if (copyStatus) {
+                copyStatus.textContent = 'تم نسخ رابط الربط التلقائي بنجاح. الصقه داخل شاشة إعداد السيرفر في التطبيق.';
+                copyStatus.style.display = 'block';
+              }
+            }).catch(function () {});
+          }
+        });
+      }
+      ${
+        platform === 'android' || platform === 'ios'
+          ? `setTimeout(function () {
+        try { window.location.href = ${JSON.stringify(deepLink)}; } catch (e) {}
+      }, 350);`
+          : ''
+      }
+    })();
+  </script>
 </body>
 </html>`;
 

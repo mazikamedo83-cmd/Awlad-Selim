@@ -16,15 +16,19 @@
 
 ### أ. تثبيت الإعدادات تلقائياً (Windows Firewall + التشغيل التلقائي)
 1. افتح **PowerShell كمسؤول (Run as Administrator)** داخل مجلد المشروع.
-2. نفّذ الأمر:
+2. نفّذ الأمر لتسجيل مهمة السيرفر وفتح الجدار الناري:
    ```powershell
    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
    .\scripts\install-windows-server-task.ps1 -Port 3000
    ```
    سيقوم السكربت تلقائياً بـ:
    - فتح منفذ `TCP 3000` في جدار حماية Windows لشبكة المحل (`Private/Domain`).
-   - تسجيل مهمة تشغيل تلقائي في Windows Task Scheduler عند فتح الويندوز.
+   - تسجيل مهمة تشغيل تلقائي في Windows Task Scheduler عند فتح الويندوز (مع فحص عدم تكرار التشغيل على المنفذ 3000).
    - عرض روابط الشبكة المحلية مثل: `http://192.168.1.100:3000`.
+3. (اختياري) لتسجيل التشغيل التلقائي لنفق Cloudflare مع الويندوز:
+   ```powershell
+   .\scripts\install-windows-tunnel-task.ps1 -Mode quick -Port 3000
+   ```
 
 ### ب. التشغيل اليدوي المباشر للسيرفر فقط (بدون فتح واجهة سطح المكتب)
 اضغط مرتين على:
@@ -39,21 +43,27 @@ npm run server:start
 ## 3. طرق ربط تطبيق الموبايل بسيرفر اللابتوب (نظام الاتصال المتعدد - 4 أوضاع)
 
 ### الوضع 1: الشبكة المحلية داخل المحل (`Local Network`)
-1. تأكد من ثبات IP اللابتوب من إعدادات الراوتر (DHCP Reservation مثلاً `192.168.1.100`).
-2. في تطبيق الموبايل أو شاشة الإدارة **Server & Connection Settings**، اختر **الشبكة المحلية** وأدخل:
-   `http://192.168.1.100:3000`
-3. اضغط **"اختبار الاتصال"** للتأكد من استجابة السيرفر.
+1. يكتشف التطبيق السيرفر تلقائياً عند الاتصال بنفس شبكة الواي فاي عند الإمكان عبر `GET /api/connection/discovery`.
+2. لضمان ثبات IP اللابتوب يفضل تثبيته من إعدادات الراوتر (DHCP Reservation مثلاً `192.168.1.100`).
+3. يمكن تعديل الإعداد من **Server & Connection Settings** عبر `http://192.168.1.100:3000`.
 
 ### الوضع 2: الاتصال الخارجي المجاني (`Free Remote Connection — trycloudflare.com`)
-1. على لابتوب السيرفر، ثبّت `cloudflared` وشغّل `scripts\start-free-tunnel.bat` (أو الأمر `cloudflared tunnel --url http://127.0.0.1:3000`).
-2. انسخ الرابط المؤقت الآمن `https://xxxx.trycloudflare.com` وضعه في وضع **Free Remote Connection** (يعمل مجاناً بدون دومين أو اشتراك).
+1. على لابتوب السيرفر، ثبّت `cloudflared` وشغّل `scripts\start-free-tunnel.bat`.
+2. يقوم `scripts\tunnel-supervisor.mjs` بالتقاط رابط `https://xxxx.trycloudflare.com` تلقائياً وإرساله إلى `/api/internal/tunnel-status` لتحديث إعدادات السيرفر وتعميم الإصدار للأجهزة المتصلة عند تفعيل خيار الالتقاط التلقائي.
+3. **تنبيه مهم**: رابط Quick Tunnel مؤقت وقد يتغير عند إعادة تشغيل النفق؛ وعند تغيّره أعد ربط الأجهزة بسهولة عبر رابط الدعوة أو QR Code أو التزامن التلقائي.
 
 ### الوضع 3: الاتصال الخارجي الاحترافي (`Professional Remote Connection`)
-1. **Cloudflare Named Tunnel مع دومين ثابت** أو **Nginx Reverse Proxy SSL** (`scripts\reverse-proxy-nginx.conf` مع `TRUST_PROXY=1`).
-2. أدخل الدومين الثابت المشفر مثل `https://erp.yourdomain.com` في وضع **Professional Remote Connection**.
+1. **Cloudflare Named Tunnel مع دومين ثابت مملوك للعميل**: ضع `CLOUDFLARE_TUNNEL_TOKEN` في ملف `.env` على السيرفر فقط ثم شغّل `scripts\start-pro-tunnel.bat` — لا يُفرض شراء دومين أو باقة محددة.
+2. **أو Nginx Reverse Proxy + SSL**: استخدم `scripts\reverse-proxy-nginx.conf` مع `TRUST_PROXY=1`.
+3. أدخل الدومين الثابت المشفر مثل `https://erp.yourdomain.com` في وضع **Professional Remote Connection**.
+4. لتفعيل Android App Links و iOS Universal Links على الدومين الثابت، اضبط متغيرات `.env`: `ANDROID_APP_LINK_HOST`، `ANDROID_APP_SHA256_FINGERPRINTS`، و`APPLE_TEAM_ID`.
 
 ### الوضع 4: السيرفر السحابي الدائم مستقبلاً (`Cloud VPS Connection`)
-- عند الرغبة لاحقاً في تشغيل السيرفر على VPS على مدار 24 ساعة، أضف عنوانه المشفر (`https://...`) في وضع **Cloud VPS Connection**، وانقل نفس قاعدة البيانات (النسخة الاحتياطية أو PostgreSQL) يدوياً بموافقة الإدارة دون إنشاء قاعدة منفصلة.
+- عند الرغبة لاحقاً في تشغيل السيرفر على VPS على مدار 24 ساعة، أضف عنوانه المشفر (`https://...`) في وضع **Cloud VPS Connection**، وانقل نفس قاعدة البيانات (النسخة الاحتياطية أو PostgreSQL) يدوياً بموافقة الإدارة دون إنشاء قاعدة منفصلة أو إعادة بناء التطبيقات.
+
+### الربط الذكي عبر الرابط المباشر أو QR Code
+- من **الإعدادات ← Server & Connection Settings ← الربط الذكي للأجهزة** ينشئ المسؤول رابطاً مباشراً (`/pair/:token`) ورمز **QR Code** قابلين للمشاركة عبر WhatsApp.
+- لا يحتوي الرابط أو الـ QR على أي كلمات مرور أو JWT؛ يقوم فقط بإعداد عنوان السيرفر تلقائياً ثم يفرض شاشة **تسجيل الدخول المعتادة**.
 
 ---
 

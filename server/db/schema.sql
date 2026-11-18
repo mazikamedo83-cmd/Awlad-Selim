@@ -839,6 +839,7 @@ CREATE TABLE IF NOT EXISTS pairing_tokens (
   target_role VARCHAR(32) DEFAULT '',
   target_device_type VARCHAR(24) NOT NULL DEFAULT 'any',
   connection_mode VARCHAR(32) NOT NULL DEFAULT 'auto',
+  server_base_url TEXT DEFAULT '',
   expires_at TIMESTAMPTZ NOT NULL,
   single_use BOOLEAN NOT NULL DEFAULT TRUE,
   used_count INT NOT NULL DEFAULT 0,

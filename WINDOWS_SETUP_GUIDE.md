@@ -21,8 +21,13 @@
 
 ## 3. ربط أجهزة المندوبين وتطبيق العملاء (الشبكة المحلية والاتصال الخارجي)
 - يستمع الخادم المدمج داخل Electron تلقائيًا على `0.0.0.0:3000`.
-- يمكنك معرفة عناوين الشبكة المحلية وإعداد أوضاع الاتصال الأربعة (**Local Network** / **Free Remote Quick Tunnel** / **Pro Remote Named Tunnel** / **Cloud VPS**) من **الإعدادات ← Server & Connection Settings**.
-- للاتصال الخارجي المجاني بدون دومين، شغّل `scripts\start-free-tunnel.bat` على لابتوب السيرفر بعد تثبيت `cloudflared`.
+- عند تشغيل الخادم المستقل via `scripts\start-central-server.bat`، يتحقق السكربت أولاً من `/api/health` على المنفذ `3000` لتفادي تشغيل نسختين متعارضتين إذا كان برنامج سطح المكتب مفتوحًا.
+- يمكنك معرفة عناوين الشبكة المحلية وإعداد أوضاع الاتصال الأربعة (**Local Network** / **Free Remote Quick Tunnel** / **Pro Remote Named Tunnel** / **Cloud VPS**) وتوليد روابط الربط ورمز QR من **الإعدادات ← Server & Connection Settings** (للمسؤولين فقط).
+- **للاتصال الخارجي المجاني بدون دومين**: شغّل `scripts\start-free-tunnel.bat` على لابتوب السيرفر بعد تثبيت `cloudflared` (يعتمد على `scripts\tunnel-supervisor.mjs` لالتقاط رابط `trycloudflare.com` وتحديثه تلقائياً في السيرفر وتعميمه للأجهزة؛ مع ملاحظة أن رابط Quick Tunnel مؤقت ويتغير عند إعادة التشغيل).
+- **للاتصال الخارجي الاحترافي بدومين ثابت (Named Tunnel)**: ضع `CLOUDFLARE_TUNNEL_TOKEN` في `%APPDATA%\AWLAD SELIM\.env` أو `.env` (لا يُحفظ في قاعدة البيانات)، ثم شغّل `scripts\start-pro-tunnel.bat`.
+- **لتسجيل التشغيل التلقائي للنفق عند إقلاع الويندوز**:
+  `powershell -ExecutionPolicy Bypass -File scripts\install-windows-tunnel-task.ps1 -Mode quick -Port 3000`
+  (أو `-Mode named` للنفق الاحترافي).
 - في جدار حماية Windows (Windows Defender Firewall)، اسمح للبرنامج أو للمنفذ `TCP 3000` داخل الشبكة الخاصة (Private Network) حتى تتصل أجهزة المندوبين والعملاء عبر `http://<IP-الجهاز>:3000`.
 
 ## 4. أوامر البناء والتشغيل

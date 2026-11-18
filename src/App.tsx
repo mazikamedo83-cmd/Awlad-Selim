@@ -44,6 +44,7 @@ import {
 import {
   hasConfiguredServerUrl,
   hydrateServerUrlFromNative,
+  saveFallbackEndpoints,
   saveStoredConnectionProfiles,
   setConfiguredApiBaseUrl,
 } from './services/api';
@@ -133,6 +134,7 @@ const MainAppContent: React.FC = () => {
 
   const inFlightPairingUrlsRef = useRef<Set<string>>(new Set());
   const recentPairingUrlsRef = useRef<Map<string, number>>(new Map());
+  const didBootstrapLaunchRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -159,6 +161,8 @@ const MainAppContent: React.FC = () => {
 
       inFlightPairingUrlsRef.current.add(dedupeKey);
       try {
+        await hydrateServerUrlFromNative();
+        if (!active) return;
         const res = await claimPairingInvitation(cleanUrl, { clearExistingAuth: true });
         if (!active) return;
         if (res.ok) {
@@ -195,6 +199,9 @@ const MainAppContent: React.FC = () => {
     );
 
     const bootstrapLinksAndDiscovery = async () => {
+      if (didBootstrapLaunchRef.current) return;
+      didBootstrapLaunchRef.current = true;
+
       await hydrateServerUrlFromNative();
       if (!active) return;
 
@@ -227,6 +234,7 @@ const MainAppContent: React.FC = () => {
           if (!active || found.length === 0 || hasConfiguredServerUrl()) return;
           const first = found[0];
           if (first.profiles) saveStoredConnectionProfiles(first.profiles);
+          if (Array.isArray(first.fallbackEndpoints)) saveFallbackEndpoints(first.fallbackEndpoints);
           setConfiguredApiBaseUrl(first.url);
           setPairingBanner({
             type: 'success',

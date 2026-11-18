@@ -30,6 +30,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="awladselim" android:host="pair" />
+                <data android:scheme="awladselim" android:host="invite" />
             </intent-filter>
 
         </activity>

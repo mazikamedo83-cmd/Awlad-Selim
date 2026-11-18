@@ -1,13 +1,24 @@
 @echo off
-title AWLAD SELIM - Free Remote Connection (Cloudflare Quick Tunnel)
+title AWLAD SELIM - Free Remote Connection (Auto Cloudflare Quick Tunnel)
 chcp 65001 >nul
 echo ============================================================
 echo   AWLAD SELIM - Free Remote Connection (Quick Tunnel)
-echo   تشغيل الاتصال الخارجي المجاني عبر Cloudflare Quick Tunnel
+echo   تشغيل الاتصال الخارجي المجاني مع التحديث التلقائي للرابط
 echo ============================================================
 echo.
+cd /d "%~dp0.."
+
 set TARGET_PORT=%1
-if "%TARGET_PORT%"=="" set TARGET_PORT=3000
+if "%TARGET_PORT%"=="" (
+  if "%PORT%"=="" (set TARGET_PORT=3000) else (set TARGET_PORT=%PORT%)
+)
+
+where node >nul 2>nul
+if errorlevel 1 (
+  echo [!] Node.js غير مثبت أو غير مضاف إلى PATH.
+  pause
+  exit /b 1
+)
 
 where cloudflared >nul 2>nul
 if errorlevel 1 (
@@ -21,10 +32,14 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo [*] جاري فتح نفق HTTPS مجاني إلى السيرفر المحلي http://127.0.0.1:%TARGET_PORT% ...
-echo [*] عند ظهور رابط https://xxxx.trycloudflare.com انسخه وضعه في:
-echo     الإعدادات ^> Server ^& Connection Settings ^> Free Remote Connection
+echo [*] جاري تشغيل مراقب النفق المجاني التلقائي إلى http://127.0.0.1:%TARGET_PORT% ...
+echo [*] سيتم التقاط رابط https://xxxx.trycloudflare.com وتحديثه في السيرفر تلقائياً عند ظهوره أو تغيّره.
+echo [*] تنبيه: رابط Quick Tunnel مؤقت وقد يتغير عند إعادة تشغيل النفق.
 echo [*] لإيقاف النفق اضغط Ctrl+C
 echo.
-cloudflared tunnel --url http://127.0.0.1:%TARGET_PORT%
-pause
+node scripts\tunnel-supervisor.mjs --mode=quick --port=%TARGET_PORT%
+if errorlevel 1 (
+  echo.
+  echo [Error] توقف مراقب النفق المجاني.
+  pause
+)

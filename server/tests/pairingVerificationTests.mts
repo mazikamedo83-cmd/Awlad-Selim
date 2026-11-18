@@ -4,6 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import crypto from 'node:crypto';
+import QRCode from 'qrcode';
+import jsQR from 'jsqr';
 import { newDb } from 'pg-mem';
 
 // 1) Isolate test database BEFORE importing any server or client modules
@@ -41,6 +43,7 @@ const { parseValidAndroidSha256Fingerprints } = await import('../db/stores/conne
 
 const apiMod = await import('../../src/services/api.ts');
 const discoveryMod = await import('../../src/services/discovery.ts');
+const supervisorMod = await import('../../scripts/tunnel-supervisor.mjs');
 
 let passed = 0;
 async function test(name: string, fn: () => Promise<void> | void) {
@@ -192,6 +195,41 @@ async function runTests() {
       assert.equal(rUnconfigured.effectiveMode, 'pro_remote');
       assert.equal(rUnconfigured.endpointUrl, '');
       assert.equal(apiMod.validateConnectionUrl('pro_remote', rUnconfigured.endpointUrl, true).valid, false);
+
+      // When selected mode matches activeMode AND its profile URL is empty, activeEndpoint STILL must NOT leak!
+      const rSameAsActiveEmpty = apiMod.resolvePairingEndpointForMode({
+        selectedMode: 'pro_remote',
+        activeMode: 'pro_remote',
+        profiles: unconfiguredProfiles,
+        activeEndpoint: 'http://192.168.10.50:3000',
+      });
+      assert.equal(rSameAsActiveEmpty.effectiveMode, 'pro_remote');
+      assert.equal(rSameAsActiveEmpty.endpointUrl, '');
+      assert.equal(apiMod.validateConnectionUrl('pro_remote', rSameAsActiveEmpty.endpointUrl, true).valid, false);
+
+      // Auto mode picks activeMode when valid, or falls back across valid configured profiles
+      const rAutoActive = apiMod.resolvePairingEndpointForMode({
+        selectedMode: 'auto',
+        activeMode: 'free_remote',
+        profiles,
+        activeEndpoint: 'http://192.168.10.50:3000',
+      });
+      assert.equal(rAutoActive.effectiveMode, 'free_remote');
+      assert.equal(rAutoActive.endpointUrl, 'https://awlad-test-tunnel.trycloudflare.com');
+
+      const rAutoFallback = apiMod.resolvePairingEndpointForMode({
+        selectedMode: 'auto',
+        activeMode: 'free_remote',
+        profiles: {
+          ...profiles,
+          activeMode: 'free_remote',
+          freeRemote: { tunnelUrl: '' },
+          proRemote: { domainUrl: '' },
+        },
+        activeEndpoint: '',
+      });
+      assert.equal(rAutoFallback.effectiveMode, 'cloud_vps');
+      assert.equal(rAutoFallback.endpointUrl, 'https://vps.awladselim.cloud');
     });
 
     await test('validateConnectionUrl rejects invalid IPs, spaces, invalid ports, localhost/HTTP on remote modes', () => {
@@ -206,12 +244,34 @@ async function runTests() {
       assert.equal(apiMod.validateConnectionUrl('cloud_vps', 'https://vps.awladselim.cloud', true).valid, true);
     });
 
-    await test('parsePairingInput parses custom scheme, App Links /pair/ & /invite/, query pair_token, JSON, and raw token', () => {
+    await test('parsePairingInput parses custom scheme, invite variants, triple-slash scheme, App Links /pair/ & /invite/, query pair_token, JSON, and raw token', () => {
       const p1 = discoveryMod.parsePairingInput(
         'awladselim://pair?token=tok_abc12345&server=https%3A%2F%2Ferp.awladselim.com'
       );
       assert.equal(p1?.token, 'tok_abc12345');
       assert.equal(p1?.serverUrl, 'https://erp.awladselim.com');
+
+      const pInviteScheme = discoveryMod.parsePairingInput(
+        'awladselim://invite?token=tok_inv_scheme1&server=https%3A%2F%2Ferp.awladselim.com'
+      );
+      assert.equal(pInviteScheme?.token, 'tok_inv_scheme1');
+      assert.equal(pInviteScheme?.serverUrl, 'https://erp.awladselim.com');
+
+      const pTriplePair = discoveryMod.parsePairingInput(
+        'awladselim:///pair/tok_triple_99?server=https%3A%2F%2Ferp.awladselim.com'
+      );
+      assert.equal(pTriplePair?.token, 'tok_triple_99');
+      assert.equal(pTriplePair?.serverUrl, 'https://erp.awladselim.com');
+
+      const pTripleInvite = discoveryMod.parsePairingInput(
+        'awladselim:///invite/tok_triple_77?server=https%3A%2F%2Fvps.awladselim.cloud'
+      );
+      assert.equal(pTripleInvite?.token, 'tok_triple_77');
+      assert.equal(pTripleInvite?.serverUrl, 'https://vps.awladselim.cloud');
+
+      // Missing token after awladselim://pair must return null (must NOT treat "pair" as token)
+      assert.equal(discoveryMod.parsePairingInput('awladselim://pair'), null);
+      assert.equal(discoveryMod.parsePairingInput('awladselim://invite'), null);
 
       const p2 = discoveryMod.parsePairingInput('https://erp.awladselim.com/pair/tok_pair9876');
       assert.equal(p2?.token, 'tok_pair9876');
@@ -311,12 +371,24 @@ async function runTests() {
         assert.equal(res.json.serverBaseUrl, expectedUrl);
         assert.equal(res.json.directInviteUrl, `${expectedUrl}/pair/${res.json.rawToken}`);
         assert.equal(res.json.qrPayload, res.json.directInviteUrl);
+        // QR payload must NEVER contain JWTs (eyJ...), passwords, or token hashes
+        assert.ok(!/eyJ[A-Za-z0-9_-]+\./.test(res.json.qrPayload), 'QR must not contain JWT');
+        assert.ok(!/password|secret|tokenHash|refreshToken/i.test(res.json.qrPayload), 'QR must not contain secrets');
         assert.ok(
           res.json.deepLinkUrl.startsWith(
             `awladselim://pair?token=${encodeURIComponent(res.json.rawToken)}&server=${encodeURIComponent(expectedUrl)}`
           )
         );
       }
+
+      // Auto mode on backend selects activeMode endpoint cleanly
+      const autoRes = await req(baseUrl, 'POST', '/api/admin/pairing/tokens', {
+        token: adminToken,
+        body: { connectionMode: 'auto', targetDeviceType: 'android' },
+      });
+      assert.equal(autoRes.status, 201);
+      assert.equal(autoRes.json.tokenRecord.connectionMode, 'local_network');
+      assert.equal(autoRes.json.serverBaseUrl, 'http://192.168.10.50:3000');
 
       // Reject HTTP or invalid hostname for remote mode
       const badRemote = await req(baseUrl, 'POST', '/api/admin/pairing/tokens', {
@@ -395,6 +467,44 @@ async function runTests() {
       // Auth tokens MUST be cleared so user is forced to log in normally (never bypasses login)
       assert.equal(apiMod.getStoredTokens(), null);
       assert.equal(apiMod.getConfiguredApiBaseUrl(), baseUrl);
+
+      // Verify QR matrix encode -> jsQR decode -> parsePairingInput -> claimPairingInvitation round-trip for /invite/ link
+      const createdInvite = await req(baseUrl, 'POST', '/api/admin/pairing/tokens', {
+        token: adminToken,
+        body: {
+          connectionMode: 'local_network',
+          serverBaseUrl: baseUrl,
+          targetDeviceType: 'android',
+          singleUse: true,
+        },
+      });
+      assert.equal(createdInvite.status, 201);
+      const inviteUrl = `${baseUrl}/invite/${createdInvite.json.rawToken}`;
+      const qrObj = QRCode.create(inviteUrl, { errorCorrectionLevel: 'M' });
+      const modules = qrObj.modules;
+      const scale = 4;
+      const margin = 4;
+      const dim = (modules.size + margin * 2) * scale;
+      const rgba = new Uint8ClampedArray(dim * dim * 4);
+      for (let y = 0; y < dim; y++) {
+        for (let x = 0; x < dim; x++) {
+          const mr = Math.floor(y / scale) - margin;
+          const mc = Math.floor(x / scale) - margin;
+          const dark = mr >= 0 && mr < modules.size && mc >= 0 && mc < modules.size ? modules.get(mr, mc) : false;
+          const val = dark ? 0 : 255;
+          const off = (y * dim + x) * 4;
+          rgba[off] = val;
+          rgba[off + 1] = val;
+          rgba[off + 2] = val;
+          rgba[off + 3] = 255;
+        }
+      }
+      const decodedQr = jsQR(rgba, dim, dim);
+      assert.equal(decodedQr?.data, inviteUrl);
+      const inviteClaim = await discoveryMod.claimPairingInvitation(decodedQr!.data, { clearExistingAuth: true });
+      assert.equal(inviteClaim.ok, true);
+      assert.equal(inviteClaim.endpointUrl, baseUrl);
+      assert.equal(apiMod.getStoredTokens(), null);
 
       // Second use of single-use token must fail with 409 and NOT issue anything
       const replay = await req(baseUrl, 'POST', '/api/pairing/claim', {
@@ -608,8 +718,265 @@ async function runTests() {
       });
       assert.equal(pgReplay.status, 409);
 
+      // PG mode preserves explicit serverBaseUrl distinct from saved profiles across resolve & claim
+      const pgExplicit = await req(baseUrl, 'POST', '/api/admin/pairing/tokens', {
+        token: pgAdminToken,
+        body: {
+          connectionMode: 'pro_remote',
+          serverBaseUrl: 'https://explicit-branch.awladselim.com',
+          targetDeviceType: 'android',
+        },
+      });
+      assert.equal(pgExplicit.status, 201);
+      assert.equal(pgExplicit.json.serverBaseUrl, 'https://explicit-branch.awladselim.com');
+
+      const pgExplicitResolve = await req(baseUrl, 'GET', `/api/pairing/resolve/${pgExplicit.json.rawToken}`);
+      assert.equal(pgExplicitResolve.status, 200);
+      assert.equal(pgExplicitResolve.json.endpointUrl, 'https://explicit-branch.awladselim.com');
+
+      const pgExplicitClaim = await req(baseUrl, 'POST', '/api/pairing/claim', {
+        body: { token: pgExplicit.json.rawToken, deviceId: 'PG_DEV_03', deviceType: 'android' },
+      });
+      assert.equal(pgExplicitClaim.status, 200);
+      assert.equal(pgExplicitClaim.json.endpointUrl, 'https://explicit-branch.awladselim.com');
+      assert.equal(pgExplicitClaim.json.requiresLogin, true);
+
+      // PG mode revoke blocks subsequent resolve/claim with 410
+      const pgRevCreate = await req(baseUrl, 'POST', '/api/admin/pairing/tokens', {
+        token: pgAdminToken,
+        body: { connectionMode: 'local_network', targetDeviceType: 'any' },
+      });
+      assert.equal(pgRevCreate.status, 201);
+      const pgRevRes = await req(baseUrl, 'POST', `/api/admin/pairing/tokens/${pgRevCreate.json.tokenRecord.id}/revoke`, {
+        token: pgAdminToken,
+      });
+      assert.equal(pgRevRes.status, 200);
+      const pgRevClaim = await req(baseUrl, 'POST', '/api/pairing/claim', {
+        body: { token: pgRevCreate.json.rawToken, deviceId: 'PG_DEV_04', deviceType: 'android' },
+      });
+      assert.equal(pgRevClaim.status, 410);
+      assert.equal(pgRevClaim.json.code, 'PAIRING_TOKEN_REVOKED');
+
       setInjectedPool(null);
       resetPgModeCache();
+    });
+
+    console.log('\n=== 6. Auto Tunnel Supervisor, /api/internal/tunnel-status & AASA Universal Links ===');
+
+    await test('tunnel-supervisor extracts trycloudflare.com URLs and builds valid payloads', () => {
+      const sampleLog = '2026-11-18T10:00:00Z INF |  https://awlad-shop-demo-123.trycloudflare.com  |';
+      assert.equal(supervisorMod.extractQuickTunnelUrl(sampleLog), 'https://awlad-shop-demo-123.trycloudflare.com');
+      assert.equal(supervisorMod.extractQuickTunnelUrl('no tunnel here'), '');
+
+      const pQuick = supervisorMod.buildTunnelStatusPayload({
+        mode: 'quick',
+        status: 'online',
+        tunnelUrl: 'https://awlad-shop-demo-123.trycloudflare.com/',
+        localPort: 3000,
+      });
+      assert.equal(pQuick.provider, 'cloudflared_quick');
+      assert.equal(pQuick.tunnelUrl, 'https://awlad-shop-demo-123.trycloudflare.com');
+
+      const pNamed = supervisorMod.buildTunnelStatusPayload({
+        mode: 'named',
+        status: 'online',
+        localPort: 3000,
+      });
+      assert.equal(pNamed.provider, 'cloudflared_named');
+    });
+
+    await test('POST /api/internal/tunnel-status rejects non-loopback unauthorized callers and auto-updates Quick Tunnel configVersion', async () => {
+      const blockedAnon = await req(baseUrl, 'POST', '/api/internal/tunnel-status', {
+        headers: { 'X-Forwarded-For': '203.0.113.20' },
+        body: { status: 'online', tunnelUrl: 'https://rogue.trycloudflare.com' },
+      });
+      assert.equal(blockedAnon.status, 403);
+      assert.equal(blockedAnon.json.code, 'FORBIDDEN_TUNNEL_UPDATE');
+
+      const blockedRep = await req(baseUrl, 'POST', '/api/internal/tunnel-status', {
+        token: repToken,
+        headers: { 'X-Forwarded-For': '203.0.113.20' },
+        body: { status: 'online', tunnelUrl: 'https://rogue.trycloudflare.com' },
+      });
+      assert.equal(blockedRep.status, 403);
+
+      const beforeDiscovery = await req(baseUrl, 'GET', '/api/connection/discovery');
+      const prevVer = Number(beforeDiscovery.json.configVersion || 1);
+
+      const updateRes = await req(baseUrl, 'POST', '/api/internal/tunnel-status', {
+        body: {
+          status: 'online',
+          provider: 'cloudflared_quick',
+          tunnelUrl: 'https://awlad-auto-999.trycloudflare.com',
+          localPort: addr.port,
+        },
+      });
+      assert.equal(updateRes.status, 200);
+      assert.equal(updateRes.json.configUpdated, true);
+      assert.equal(updateRes.json.tunnelStatus.status, 'online');
+
+      const afterDiscovery = await req(baseUrl, 'GET', '/api/connection/discovery');
+      assert.equal(afterDiscovery.json.profiles.freeRemote.tunnelUrl, 'https://awlad-auto-999.trycloudflare.com');
+      assert.equal(afterDiscovery.json.profiles.freeRemote.autoDetect, true);
+      assert.ok(Number(afterDiscovery.json.configVersion) > prevVer);
+
+      // cloudflared_named must NOT overwrite freeRemote.tunnelUrl
+      const namedRes = await req(baseUrl, 'POST', '/api/internal/tunnel-status', {
+        body: {
+          status: 'online',
+          provider: 'cloudflared_named',
+          tunnelUrl: 'https://erp.awladselim.com',
+          localPort: addr.port,
+        },
+      });
+      assert.equal(namedRes.status, 200);
+      assert.equal(namedRes.json.configUpdated, false);
+      const afterNamed = await req(baseUrl, 'GET', '/api/connection/discovery');
+      assert.equal(afterNamed.json.profiles.freeRemote.tunnelUrl, 'https://awlad-auto-999.trycloudflare.com');
+    });
+
+    await test('apple-app-site-association and /pair/:token Windows/iOS/Android views serve expected deep/fallback links', async () => {
+      process.env.APPLE_TEAM_ID = 'TEAM12345';
+      process.env.IOS_BUNDLE_ID = 'com.awladselim.erp';
+      const aasa = await req(baseUrl, 'GET', '/.well-known/apple-app-site-association');
+      assert.equal(aasa.status, 200);
+      assert.equal(aasa.json.applinks.details[0].appID, 'TEAM12345.com.awladselim.erp');
+      assert.deepEqual(aasa.json.applinks.details[0].appIDs, ['TEAM12345.com.awladselim.erp']);
+      assert.ok(aasa.json.applinks.details[0].paths.includes('/pair/*'));
+      assert.ok(Array.isArray(aasa.json.applinks.details[0].components));
+      delete process.env.APPLE_TEAM_ID;
+      delete process.env.IOS_BUNDLE_ID;
+
+      const created = await req(baseUrl, 'POST', '/api/admin/pairing/tokens', {
+        token: adminToken,
+        body: { connectionMode: 'local_network', serverBaseUrl: baseUrl, targetDeviceType: 'any' },
+      });
+      assert.equal(created.status, 201);
+
+      const iosPage = await req(baseUrl, 'GET', `/pair/${created.json.rawToken}`, {
+        headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)' },
+      });
+      assert.equal(iosPage.status, 200);
+      assert.ok(iosPage.text.includes('iPhone / iPad (iOS)'));
+      assert.ok(iosPage.text.includes('copy-link-btn'));
+
+      const winPage = await req(baseUrl, 'GET', `/pair/${created.json.rawToken}`, {
+        headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+      });
+      assert.equal(winPage.status, 200);
+      assert.ok(winPage.text.includes('Windows Desktop'));
+    });
+
+    console.log('\n=== 7. Client Auto-Failover, Revoked Device API/Login Blocking & Unified Central DB ===');
+
+    await test('syncConnectionConfigFromServer recovers from dead endpoint onto reachable fallback URL', async () => {
+      memStorage.clear();
+      // Configure dead primary URL + reachable fallback pointing to local test server
+      apiMod.setConfiguredApiBaseUrl('http://127.0.0.1:59998');
+      apiMod.saveFallbackEndpoints([{ mode: 'local_network', url: baseUrl, label: 'LAN Fallback' }]);
+
+      const syncRes = await discoveryMod.syncConnectionConfigFromServer({ triggerHeartbeat: false });
+      assert.equal(syncRes.updated, true);
+      assert.equal(syncRes.switchedUrl, baseUrl);
+      assert.equal(apiMod.getConfiguredApiBaseUrl(), baseUrl);
+    });
+
+    await test('Revoked device is blocked across login, authenticated API calls, and resend-link restores manual login', async () => {
+      // Login rep with DEV_REP_LOCK -> auto-registers active device
+      const loginOk = await req(baseUrl, 'POST', '/api/auth/login', {
+        headers: { 'X-Device-Id': 'DEV_REP_LOCK' },
+        body: { username: 'rep_test', password: 'RepPassword#123', deviceId: 'DEV_REP_LOCK', deviceName: 'Rep Phone', deviceType: 'android' },
+      });
+      assert.equal(loginOk.status, 200);
+      const repSessionToken = loginOk.json.accessToken;
+
+      const productsOk = await req(baseUrl, 'GET', '/api/products', {
+        token: repSessionToken,
+        headers: { 'X-Device-Id': 'DEV_REP_LOCK' },
+      });
+      assert.equal(productsOk.status, 200);
+
+      // Admin revokes DEV_REP_LOCK
+      const rev = await req(baseUrl, 'POST', '/api/admin/devices/DEV_REP_LOCK/revoke', { token: adminToken });
+      assert.equal(rev.status, 200);
+
+      // Existing token MUST be rejected (401/403)
+      const blockedApi = await req(baseUrl, 'GET', '/api/products', {
+        token: repSessionToken,
+        headers: { 'X-Device-Id': 'DEV_REP_LOCK' },
+      });
+      assert.ok(blockedApi.status === 401 || blockedApi.status === 403);
+
+      // Fresh login from revoked device MUST be rejected with 403 DEVICE_REVOKED
+      const blockedLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        headers: { 'X-Device-Id': 'DEV_REP_LOCK' },
+        body: { username: 'rep_test', password: 'RepPassword#123', deviceId: 'DEV_REP_LOCK', deviceType: 'android' },
+      });
+      assert.equal(blockedLogin.status, 403);
+      assert.equal(blockedLogin.json.code, 'DEVICE_REVOKED');
+
+      // Admin re-sends link -> device claims token (no auto-login!) -> manual login succeeds again
+      const resend = await req(baseUrl, 'POST', '/api/admin/devices/DEV_REP_LOCK/resend-link', {
+        token: adminToken,
+        body: { connectionMode: 'local_network', serverBaseUrl: baseUrl },
+      });
+      assert.equal(resend.status, 201);
+
+      const reClaim = await req(baseUrl, 'POST', '/api/pairing/claim', {
+        body: { token: resend.json.rawToken, deviceId: 'DEV_REP_LOCK', deviceType: 'android', deviceName: 'Rep Phone' },
+      });
+      assert.equal(reClaim.status, 200);
+      assert.equal(reClaim.json.requiresLogin, true);
+      assert.equal(reClaim.json.accessToken, undefined);
+
+      const loginRestored = await req(baseUrl, 'POST', '/api/auth/login', {
+        headers: { 'X-Device-Id': 'DEV_REP_LOCK' },
+        body: { username: 'rep_test', password: 'RepPassword#123', deviceId: 'DEV_REP_LOCK', deviceType: 'android' },
+      });
+      assert.equal(loginRestored.status, 200);
+    });
+
+    await test('Single unified central database serves Admin, Representative, and Customer accounts consistently', async () => {
+      // Admin creates a product in central DB
+      const createdProd = await req(baseUrl, 'POST', '/api/products', {
+        token: adminToken,
+        body: { code: 'UNIFIED-01', name: 'منتج موحد مركزي', baseUnit: 'كرتونة', purchasePrice: 90, sellingPrice: 110 },
+      });
+      assert.equal(createdProd.status, 201);
+
+      // Rep sees exact same product from central DB
+      const repProds = await req(baseUrl, 'GET', '/api/products', { token: repToken });
+      assert.equal(repProds.status, 200);
+      assert.ok(repProds.json.products.some((p: any) => p.code === 'UNIFIED-01'));
+
+      // Admin creates customer + linked customer user and checks catalog & statement read from same DB
+      const custRes = await req(baseUrl, 'POST', '/api/customers', {
+        token: adminToken,
+        body: { code: 'C-UNI-1', name: 'عميل موحد', phone: '01000001111', customerType: 'app', openingBalance: 0 },
+      });
+      assert.equal(custRes.status, 201);
+
+      const custUserRes = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'حساب عميل موحد',
+          username: 'cust_unified',
+          password: 'CustPassword#123',
+          role: 'customer',
+          linkedCustomerId: custRes.json.customer.id,
+          permissions: { canView: true },
+        },
+      });
+      assert.equal(custUserRes.status, 201);
+
+      const custLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: 'cust_unified', password: 'CustPassword#123' },
+      });
+      assert.equal(custLogin.status, 200);
+
+      const custCatalog = await req(baseUrl, 'GET', '/api/products', { token: custLogin.json.accessToken });
+      assert.equal(custCatalog.status, 200);
+      assert.ok(custCatalog.json.products.some((p: any) => p.code === 'UNIFIED-01'));
     });
 
     console.log(`\nALL PAIRING VERIFICATION TESTS PASSED (${passed} assertions/suites).\n`);

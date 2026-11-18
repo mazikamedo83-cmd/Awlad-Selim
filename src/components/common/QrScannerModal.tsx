@@ -58,6 +58,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   useEffect(() => {
     if (!isOpen) {
       stopCamera();
+      setTab('camera');
       setManualInput('');
       setCameraError(null);
       setFileError(null);
@@ -82,10 +83,23 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
         return;
       }
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
-          audio: false,
-        });
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: 'environment' } },
+            audio: false,
+          });
+        } catch (constraintErr: any) {
+          const errName = String(constraintErr?.name || '');
+          if (errName === 'OverconstrainedError' || errName === 'ConstraintNotSatisfiedError') {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: false,
+            });
+          } else {
+            throw constraintErr;
+          }
+        }
         if (cancelled) {
           stream.getTracks().forEach((t) => t.stop());
           return;

@@ -446,6 +446,32 @@ export async function getLaunchDeepLinkUrl(): Promise<string | null> {
   }
 }
 
+const pendingDeepLinkUrls: string[] = [];
+let earlyDeepLinkListenerStarted = false;
+let activeDeepLinkDispatcher: ((url: string) => void) | null = null;
+
+export function initDeepLinkCapture(): void {
+  ensureEarlyNativeDeepLinkBuffer();
+}
+
+function ensureEarlyNativeDeepLinkBuffer(): void {
+  if (earlyDeepLinkListenerStarted || !isNativeCapacitor()) return;
+  earlyDeepLinkListenerStarted = true;
+  try {
+    CapacitorApp.addListener('appUrlOpen', (event) => {
+      const clean = String(event?.url || '').trim();
+      if (!clean) return;
+      if (activeDeepLinkDispatcher) {
+        activeDeepLinkDispatcher(clean);
+      } else {
+        pendingDeepLinkUrls.push(clean);
+      }
+    }).catch(() => {});
+  } catch {
+    // ignore in non-native environments
+  }
+}
+
 export function subscribeDeepLinks(
   onUrl: (url: string) => void,
   options?: { skipInitialLaunchUrl?: boolean }
@@ -453,8 +479,9 @@ export function subscribeDeepLinks(
   if (!isNativeCapacitor()) {
     return () => {};
   }
+  ensureEarlyNativeDeepLinkBuffer();
+
   let active = true;
-  let handle: { remove: () => Promise<void> } | null = null;
   let lastUrl = '';
   let lastSeenAt = 0;
 
@@ -468,29 +495,25 @@ export function subscribeDeepLinks(
     onUrl(clean);
   };
 
+  activeDeepLinkDispatcher = dispatchUrl;
+
+  while (pendingDeepLinkUrls.length > 0) {
+    const queued = pendingDeepLinkUrls.shift();
+    if (queued) dispatchUrl(queued);
+  }
+
   if (!options?.skipInitialLaunchUrl) {
     getLaunchDeepLinkUrl()
       .then((url) => dispatchUrl(url))
       .catch(() => {});
   }
 
-  CapacitorApp.addListener('appUrlOpen', (event) => {
-    dispatchUrl(event?.url);
-  })
-    .then((h) => {
-      if (!active) {
-        h.remove().catch(() => {});
-      } else {
-        handle = h;
-      }
-    })
-    .catch(() => {});
-
   return () => {
     active = false;
-    if (handle) {
-      handle.remove().catch(() => {});
+    if (activeDeepLinkDispatcher === dispatchUrl) {
+      activeDeepLinkDispatcher = null;
     }
   };
 }
+
 

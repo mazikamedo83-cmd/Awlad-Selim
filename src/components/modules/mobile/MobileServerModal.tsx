@@ -19,6 +19,7 @@ import {
   getConnectionModeLabel,
   getStoredConnectionProfiles,
   resolveModeEndpointUrl,
+  saveFallbackEndpoints,
   saveStoredConnectionProfiles,
   setConfiguredApiBaseUrl,
   testServerHealth,
@@ -29,6 +30,7 @@ import {
   discoverServerCandidates,
   type DiscoveredServerCandidate,
 } from '../../../services/discovery';
+import { useAuth } from '../../../context/AuthContext';
 import { isNativeCapacitor } from '../../../services/native';
 import { QrScannerModal } from '../../common/QrScannerModal';
 import type { ConnectionMode, ConnectionProfilesConfig } from '../../../types';
@@ -86,6 +88,7 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
   onClose,
   onSaved,
 }) => {
+  const { setPairingBanner } = useAuth();
   const [profiles, setProfiles] = useState<ConnectionProfilesConfig>(() =>
     getStoredConnectionProfiles()
   );
@@ -147,6 +150,9 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
       saveStoredConnectionProfiles(candidate.profiles);
       setProfiles(candidate.profiles);
     }
+    if (Array.isArray(candidate.fallbackEndpoints)) {
+      saveFallbackEndpoints(candidate.fallbackEndpoints);
+    }
     const mode = detectModeFromUrl(candidate.url, candidate.profiles || profiles);
     setSelectedMode(mode);
     setUseSameOrigin(false);
@@ -159,12 +165,18 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
     setShowQrScanner(false);
     setFormError(null);
     setClaimingQr(true);
-    const res = await claimPairingInvitation(rawText);
+    const res = await claimPairingInvitation(rawText, { clearExistingAuth: true });
     setClaimingQr(false);
     if (!res.ok) {
       setFormError(res.error || 'تعذر ربط الجهاز عبر الرمز المدخل');
       return;
     }
+    setPairingBanner({
+      type: res.requiresAdminApproval ? 'warning' : 'success',
+      message: res.requiresAdminApproval
+        ? `تم إعداد السيرفر (${res.companyName || ''}). هذا الجهاز بانتظار موافقة مدير النظام، وبعدها يمكنك تسجيل الدخول بحسابك.`
+        : `تم ربط الجهاز بسيرفر (${res.companyName || ''}) بنجاح (${res.endpointUrl}). أدخل اسم المستخدم وكلمة المرور للدخول.`,
+    });
     onClose();
     await onSaved();
   };
@@ -241,11 +253,11 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
       activeMode: selectedMode,
       freeRemote:
         selectedMode === 'free_remote'
-          ? { tunnelUrl: check.normalizedUrl }
+          ? { ...profiles.freeRemote, tunnelUrl: check.normalizedUrl }
           : profiles.freeRemote,
       proRemote:
         selectedMode === 'pro_remote'
-          ? { domainUrl: check.normalizedUrl }
+          ? { ...profiles.proRemote, domainUrl: check.normalizedUrl }
           : profiles.proRemote,
       cloudVps:
         selectedMode === 'cloud_vps'
@@ -480,9 +492,13 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
                     setProfiles((prev) => ({
                       ...prev,
                       freeRemote:
-                        selectedMode === 'free_remote' ? { tunnelUrl: val } : prev.freeRemote,
+                        selectedMode === 'free_remote'
+                          ? { ...prev.freeRemote, tunnelUrl: val }
+                          : prev.freeRemote,
                       proRemote:
-                        selectedMode === 'pro_remote' ? { domainUrl: val } : prev.proRemote,
+                        selectedMode === 'pro_remote'
+                          ? { ...prev.proRemote, domainUrl: val }
+                          : prev.proRemote,
                       cloudVps:
                         selectedMode === 'cloud_vps'
                           ? { ...prev.cloudVps, vpsUrl: val }
@@ -494,6 +510,11 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
                   placeholder={activeModeMeta.placeholder}
                   className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-mono text-left focus:border-blue-600 outline-hidden"
                 />
+                {selectedMode === 'free_remote' && (
+                  <p className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 font-bold">
+                    تنبيه: رابط Quick Tunnel المجاني مؤقت وقد يتغير عند إعادة تشغيل النفق على اللابتوب؛ يمكنك إعادة الربط فوراً بالـ QR أو الرابط الجديد.
+                  </p>
+                )}
                 <div className="flex items-center gap-1.5 text-[10px] text-slate-600">
                   <Lock className="w-3 h-3 text-emerald-700 shrink-0" />
                   <span>يُشترط HTTPS لحماية جلسة الدخول والتوكنات عند الاتصال من خارج المحل.</span>
