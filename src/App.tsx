@@ -123,6 +123,8 @@ const MainAppContent: React.FC = () => {
     pairingBanner,
     setPairingBanner,
     clearPairingBanner,
+    isDatabaseUnavailable,
+    databaseUnavailableMessage,
   } = useAuth();
   const { networkStatus, lastError, triggerSync, isSyncing } = useData();
   const [currentPage, setCurrentPage] = useState<NavItemKey>('dashboard');
@@ -552,16 +554,23 @@ const MainAppContent: React.FC = () => {
           />
 
           <main className="flex-1 p-3 sm:p-4 lg:p-6 max-w-7xl w-full mx-auto min-w-0">
-            {networkStatus === 'error' && lastError && (
+            {(isDatabaseUnavailable || (networkStatus === 'error' && lastError)) && (
               <div className="mb-4 p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-800 text-xs font-bold flex flex-wrap items-center justify-between gap-2 shadow-xs">
                 <div className="flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
-                  <span>{lastError}</span>
+                  <span>
+                    {isDatabaseUnavailable
+                      ? databaseUnavailableMessage || lastError
+                      : lastError}
+                  </span>
                 </div>
                 <button
                   type="button"
                   disabled={isSyncing}
-                  onClick={() => triggerSync(false)}
+                  onClick={() => {
+                    refreshAuthContext().catch(() => {});
+                    triggerSync(false);
+                  }}
                   className="px-3 py-1.5 rounded-xl bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors cursor-pointer"
                 >
                   {isSyncing ? 'جاري الفحص...' : 'إعادة المحاولة'}

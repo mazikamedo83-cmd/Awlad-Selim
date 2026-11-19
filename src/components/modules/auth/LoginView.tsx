@@ -26,6 +26,8 @@ export const LoginView: React.FC = () => {
     refreshAuthContext,
     sessionExpiredMessage,
     clearSessionExpiredMessage,
+    isDatabaseUnavailable,
+    databaseUnavailableMessage,
     pairingBanner,
     setPairingBanner,
     clearPairingBanner,
@@ -259,6 +261,13 @@ export const LoginView: React.FC = () => {
                   <span>بحث تلقائي</span>
                 </button>
               </div>
+            </div>
+          )}
+
+          {isDatabaseUnavailable && databaseUnavailableMessage && (
+            <div className="flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs font-bold text-red-800">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+              <span>{databaseUnavailableMessage}</span>
             </div>
           )}
 

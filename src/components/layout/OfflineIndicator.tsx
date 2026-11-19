@@ -9,7 +9,7 @@ interface OfflineIndicatorProps {
 }
 
 export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'light' }) => {
-  const { isOfflineSession, permissionsMayBeStale } = useAuth();
+  const { isOfflineSession, permissionsMayBeStale, isDatabaseUnavailable } = useAuth();
   const {
     networkStatus,
     pendingSyncCount,
@@ -82,7 +82,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
             ? 'text-rose-100 bg-rose-500/25 border-rose-300/40'
             : 'text-rose-600 bg-rose-500/10 border-rose-500/20',
           dot: 'bg-rose-400',
-          label: 'تعذر المزامنة مع السيرفر',
+          label: isDatabaseUnavailable ? 'قاعدة البيانات غير متاحة مؤقتًا' : 'تعذر المزامنة مع السيرفر',
         };
     }
   };
@@ -115,7 +115,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
           )}
         </button>
 
-        {(isOfflineSession || permissionsMayBeStale) && (
+        {!isDatabaseUnavailable && (isOfflineSession || permissionsMayBeStale) && (
           <button
             type="button"
             onClick={() => setIsSyncModalOpen(true)}

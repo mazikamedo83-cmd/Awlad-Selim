@@ -15,7 +15,7 @@ import {
   detectModeFromUrl,
   testServerHealth,
   getDefaultConnectionProfiles,
-  setServerDbStatusHandler,
+  subscribeServerDbStatus,
 } from '../services/api';
 import { syncConnectionConfigFromServer } from '../services/discovery';
 import { notifyLocal, subscribeAppForeground, subscribeNetworkStatus } from '../services/native';
@@ -284,8 +284,11 @@ export interface DataContextType extends DatabaseState {
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
-function isNetworkFailure(err: any): boolean {
+export function isNetworkFailure(err: any): boolean {
   if (err?.status === 503 || String(err?.code || '') === 'DATABASE_UNAVAILABLE') {
+    return false;
+  }
+  if (typeof err?.status === 'number' && err.status >= 400) {
     return false;
   }
   return err?.status === 0 || (typeof navigator !== 'undefined' && navigator.onLine === false);
@@ -783,7 +786,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isDbUnavailableRef = useRef<boolean>(false);
 
   useEffect(() => {
-    setServerDbStatusHandler((available, message) => {
+    return subscribeServerDbStatus((available, message) => {
       if (!available) {
         isDbUnavailableRef.current = true;
         setIsServerReachable(true);
@@ -798,7 +801,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setNetworkStatus((prev) => (prev === 'error' ? 'connected' : prev));
       }
     });
-    return () => setServerDbStatusHandler(null);
   }, []);
 
   const refreshQueueAndConflictsFromLocal = useCallback(async (uid?: string) => {
@@ -1064,8 +1066,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (outcome.error) setLastError(outcome.error);
       }
     } catch (err: any) {
-      setIsServerReachable(false);
-      setNetworkStatus(isNetworkFailure(err) ? 'disconnected' : 'error');
+      const networkDown = isNetworkFailure(err);
+      setIsServerReachable(!networkDown);
+      setNetworkStatus(networkDown ? 'disconnected' : 'error');
       setLastError(err?.message || 'تعذر مزامنة البيانات مع السيرفر');
     } finally {
       setIsSyncing(false);

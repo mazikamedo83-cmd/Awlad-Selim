@@ -19,6 +19,7 @@ import {
   ArrowLeftRight,
   X,
   ChevronLeft,
+  AlertCircle,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
@@ -32,7 +33,16 @@ import { MobileServerModal } from './MobileServerModal';
 import { SyncCenterModal } from '../../common/SyncCenterModal';
 
 export const MobilePortal: React.FC = () => {
-  const { currentUser, isOfflineSession, permissionsMayBeStale, linkWarning, logout, refreshAuthContext } = useAuth();
+  const {
+    currentUser,
+    isOfflineSession,
+    permissionsMayBeStale,
+    isDatabaseUnavailable,
+    databaseUnavailableMessage,
+    linkWarning,
+    logout,
+    refreshAuthContext,
+  } = useAuth();
   const data = useData();
   const isRep = currentUser?.role === 'representative';
 
@@ -347,7 +357,31 @@ export const MobilePortal: React.FC = () => {
           </div>
         )}
 
-        {(isOfflineSession || permissionsMayBeStale) && (
+        {(isDatabaseUnavailable || (data.networkStatus === 'error' && data.lastError)) && (
+          <div className="p-3 rounded-2xl bg-red-50 border border-red-200 text-xs font-bold text-red-800 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+              <span>
+                {isDatabaseUnavailable
+                  ? databaseUnavailableMessage || data.lastError
+                  : data.lastError}
+              </span>
+            </div>
+            <button
+              type="button"
+              disabled={data.isSyncing}
+              onClick={() => {
+                refreshAuthContext().catch(() => {});
+                data.triggerManualSync();
+              }}
+              className="px-3 py-1.5 rounded-xl bg-red-600 text-white text-[11px] font-bold shrink-0 disabled:opacity-50 cursor-pointer"
+            >
+              {data.isSyncing ? 'جاري الفحص...' : 'إعادة المحاولة'}
+            </button>
+          </div>
+        )}
+
+        {!isDatabaseUnavailable && (isOfflineSession || permissionsMayBeStale) && (
           <div className="p-3 rounded-2xl bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-center gap-2">
             <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0" />
             <span>
@@ -356,24 +390,26 @@ export const MobilePortal: React.FC = () => {
           </div>
         )}
 
-        {(data.isUsingOfflineCache || data.networkStatus === 'disconnected') && (
-          <div className="p-3 rounded-2xl bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <WifiOff className="w-4 h-4 text-amber-700 shrink-0" />
-              <span>
-                العمل دون اتصال — تُحفظ عملياتك في قاعدة البيانات المحلية وتُزامن تلقائياً فور عودة الشبكة
-                {data.lastServerSyncAt ? ` · آخر مزامنة: ${new Date(data.lastServerSyncAt).toLocaleTimeString('ar-EG')}` : ''}
-              </span>
+        {!isDatabaseUnavailable &&
+          data.networkStatus !== 'error' &&
+          (data.isUsingOfflineCache || data.networkStatus === 'disconnected') && (
+            <div className="p-3 rounded-2xl bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <WifiOff className="w-4 h-4 text-amber-700 shrink-0" />
+                <span>
+                  العمل دون اتصال — تُحفظ عملياتك في قاعدة البيانات المحلية وتُزامن تلقائياً فور عودة الشبكة
+                  {data.lastServerSyncAt ? ` · آخر مزامنة: ${new Date(data.lastServerSyncAt).toLocaleTimeString('ar-EG')}` : ''}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => data.triggerManualSync()}
+                className="px-3 py-1.5 rounded-xl bg-amber-600 text-white text-[11px] font-bold shrink-0 cursor-pointer"
+              >
+                إعادة المحاولة
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => data.triggerManualSync()}
-              className="px-3 py-1.5 rounded-xl bg-amber-600 text-white text-[11px] font-bold shrink-0 cursor-pointer"
-            >
-              إعادة المحاولة
-            </button>
-          </div>
-        )}
+          )}
 
         {(data.pendingSyncCount > 0 || data.conflictsCount > 0) && (
           <div className="p-3 rounded-2xl bg-blue-50 border border-blue-200 text-xs font-bold text-blue-900 flex items-center justify-between gap-2">

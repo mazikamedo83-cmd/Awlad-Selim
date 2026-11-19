@@ -39,11 +39,40 @@ export function triggerAuthExpired(message?: string): void {
   }
 }
 
+export const DEFAULT_DB_UNAVAILABLE_MESSAGE =
+  'قاعدة البيانات المركزية (PostgreSQL) غير متاحة مؤقتًا. تم إيقاف العمليات لحماية البيانات ومنع انقسامها.';
+
+export function isDatabaseUnavailableError(err: any): boolean {
+  const code = String(err?.code || '');
+  return err?.status === 503 || code === 'DATABASE_UNAVAILABLE';
+}
+
 type ServerDbStatusCallback = (available: boolean, message?: string) => void;
 let onServerDbStatusHandler: ServerDbStatusCallback | null = null;
+const serverDbStatusListeners = new Set<ServerDbStatusCallback>();
 
 export function setServerDbStatusHandler(cb: ServerDbStatusCallback | null): void {
   onServerDbStatusHandler = cb;
+}
+
+export function subscribeServerDbStatus(cb: ServerDbStatusCallback): () => void {
+  serverDbStatusListeners.add(cb);
+  return () => {
+    serverDbStatusListeners.delete(cb);
+  };
+}
+
+function notifyServerDbStatus(available: boolean, message?: string): void {
+  if (onServerDbStatusHandler) {
+    onServerDbStatusHandler(available, message);
+  }
+  for (const listener of serverDbStatusListeners) {
+    try {
+      listener(available, message);
+    } catch {
+      // ignore listener errors
+    }
+  }
 }
 
 export async function hydrateServerUrlFromNative(): Promise<void> {
@@ -637,16 +666,23 @@ export class ApiError extends Error {
   }
 }
 
-let refreshPromise: Promise<StoredTokens | null> | null = null;
+interface RefreshAttemptResult {
+  tokens: StoredTokens | null;
+  dbUnavailableError?: ApiError;
+  networkError?: ApiError;
+  authErrorMessage?: string;
+}
 
-async function refreshAccessToken(): Promise<StoredTokens | null> {
+let refreshPromise: Promise<RefreshAttemptResult> | null = null;
+
+async function refreshAccessToken(): Promise<RefreshAttemptResult> {
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
     const current = getStoredTokens();
-    if (!current?.refreshToken) return null;
+    if (!current?.refreshToken) return { tokens: null };
     try {
       const base = getConfiguredApiBaseUrl();
-      if (isNativeCapacitor() && !base) return null;
+      if (isNativeCapacitor() && !base) return { tokens: null };
       const res = await fetch(`${base}/api/auth/refresh`, {
         method: 'POST',
         headers: {
@@ -655,20 +691,31 @@ async function refreshAccessToken(): Promise<StoredTokens | null> {
         },
         body: JSON.stringify({ refreshToken: current.refreshToken }),
       });
+      const data = await res.json().catch(() => null);
+      if (res.status === 503 || data?.code === 'DATABASE_UNAVAILABLE') {
+        const message = data?.error || DEFAULT_DB_UNAVAILABLE_MESSAGE;
+        notifyServerDbStatus(false, message);
+        return {
+          tokens: null,
+          dbUnavailableError: new ApiError(503, message, 'DATABASE_UNAVAILABLE', data?.details),
+        };
+      }
       if (!res.ok) {
         saveStoredTokens(null);
-        return null;
+        return { tokens: null, authErrorMessage: data?.error };
       }
-      const data = await res.json();
       if (data?.ok && data.accessToken && data.refreshToken) {
         const nextTokens = { accessToken: data.accessToken, refreshToken: data.refreshToken };
         saveStoredTokens(nextTokens);
-        return nextTokens;
+        return { tokens: nextTokens };
       }
       saveStoredTokens(null);
-      return null;
+      return { tokens: null };
     } catch {
-      return null;
+      return {
+        tokens: null,
+        networkError: new ApiError(0, 'تعذر الاتصال بالسيرفر، تحقق من الشبكة أو تشغيل الخادم', 'NETWORK_ERROR'),
+      };
     } finally {
       refreshPromise = null;
     }
@@ -736,17 +783,28 @@ export async function apiRequest<T = any>(
   const tokens = getStoredTokens();
   let res = await executeFetch(tokens?.accessToken);
 
+  let refreshAuthErrorMessage: string | undefined;
   if (res.status === 401 && !options.skipAuth) {
     if (tokens?.refreshToken) {
-      const refreshed = await refreshAccessToken();
-      if (refreshed?.accessToken) {
-        res = await executeFetch(refreshed.accessToken);
+      const refreshOutcome = await refreshAccessToken();
+      if (refreshOutcome.dbUnavailableError) {
+        throw refreshOutcome.dbUnavailableError;
+      }
+      if (refreshOutcome.networkError) {
+        throw refreshOutcome.networkError;
+      }
+      if (refreshOutcome.tokens?.accessToken) {
+        res = await executeFetch(refreshOutcome.tokens.accessToken);
+      } else {
+        refreshAuthErrorMessage = refreshOutcome.authErrorMessage;
       }
     }
     if (res.status === 401) {
       saveStoredTokens(null);
       if (onAuthExpiredHandler) {
-        onAuthExpiredHandler('انتهت صلاحية جلسة الدخول، يرجى تسجيل الدخول مجدداً.');
+        onAuthExpiredHandler(
+          refreshAuthErrorMessage || 'انتهت صلاحية جلسة الدخول، يرجى تسجيل الدخول مجدداً.'
+        );
       }
     }
   }
@@ -758,7 +816,11 @@ export async function apiRequest<T = any>(
     json = null;
   }
 
-  if (res.status === 403 && json?.code === 'DEVICE_REVOKED' && !options.skipAuth) {
+  if (
+    res.status === 403 &&
+    (json?.code === 'DEVICE_REVOKED' || json?.code === 'ACCOUNT_DEACTIVATED') &&
+    !options.skipAuth
+  ) {
     saveStoredTokens(null);
     if (onAuthExpiredHandler) {
       onAuthExpiredHandler(json?.error || 'تم إلغاء ربط هذا الجهاز من قِبل الإدارة.');
@@ -768,15 +830,13 @@ export async function apiRequest<T = any>(
   if (!res.ok || (json && json.ok === false)) {
     const message = json?.error || `خطأ في الاستجابة (${res.status})`;
     const code = json?.code || `HTTP_${res.status}`;
-    if (res.status === 503 && code === 'DATABASE_UNAVAILABLE' && onServerDbStatusHandler) {
-      onServerDbStatusHandler(false, message);
+    if (res.status === 503 && code === 'DATABASE_UNAVAILABLE') {
+      notifyServerDbStatus(false, message);
     }
     throw new ApiError(res.status, message, code, json?.details);
   }
 
-  if (onServerDbStatusHandler) {
-    onServerDbStatusHandler(true);
-  }
+  notifyServerDbStatus(true);
 
   return (json ?? {}) as T;
 }
