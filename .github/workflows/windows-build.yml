@@ -94,9 +94,44 @@ jobs:
         shell: pwsh
         run: node server/tests/verifyElectronBootstrap.mjs
 
-      - name: Package Organized Customer Delivery ZIP
+      - name: Package & Verify Organized Customer Delivery ZIP
         shell: pwsh
-        run: bun run windows:customer-zip
+        run: |
+          $version = "${{ steps.meta.outputs.version }}"
+          bun run windows:customer-zip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $customerZip = "dist-electron/AWLAD-SELIM-Windows-Customer-$version.zip"
+          if (-not (Test-Path $customerZip)) {
+            Write-Error "Customer delivery ZIP was not created at expected path: $customerZip"
+            exit 1
+          }
+          $zipInfo = Get-Item $customerZip
+          if ($zipInfo.Length -le 0) {
+            Write-Error "Customer delivery ZIP is empty: $customerZip"
+            exit 1
+          }
+
+          node scripts/package-windows-customer-zip.mjs --verify-only --dist-dir=dist-electron --version=$version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $customerZip))
+          try {
+            $entryNames = @($archive.Entries | ForEach-Object { $_.FullName })
+            Write-Host "ZIP archive entries ($($entryNames.Count)):"
+            $entryNames | ForEach-Object { Write-Host "  - $_" }
+            if ($entryNames -notcontains "AWLAD-SELIM-Windows-Customer-$version/01-Installer/AWLAD-SELIM-Setup-$version.exe") {
+              Write-Error "Customer ZIP missing AWLAD-SELIM-Setup-$version.exe"
+              exit 1
+            }
+            if ($entryNames | Where-Object { $_ -match 'Portable|\.env|\.jwt_secret|database\.json|sessions\.json|AWLAD_SELIM_BACKUP|server/tests|node_modules' }) {
+              Write-Error "Customer ZIP contains forbidden Portable/secret/dev/data files"
+              exit 1
+            }
+          } finally {
+            $archive.Dispose()
+          }
 
       - name: Verify Windows Release EXEs, Hygiene & SHA-256
         shell: pwsh

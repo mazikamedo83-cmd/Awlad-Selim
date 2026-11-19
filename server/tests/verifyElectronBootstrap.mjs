@@ -331,5 +331,53 @@ assert.equal(runB.status, 0, `Company B isolation child failed:\n${runB.stderr}\
 assert.ok(runB.stdout.includes('COMP_B_ISOLATED_OK'), `Missing COMP_B_ISOLATED_OK: ${runB.stdout}`);
 console.log('  [PASS] 6. Cross-company JWT and refresh tokens rejected (401) across distinct installationIds');
 
+// 7. Windows Customer Delivery ZIP CLI packaging, Setup-only exclusion of Portable/secrets, & archive integrity
+const mockDistDir = path.join(sandbox, 'mock_dist_electron');
+fs.mkdirSync(mockDistDir, { recursive: true });
+fs.writeFileSync(path.join(mockDistDir, 'AWLAD-SELIM-Setup-3.0.0.exe'), Buffer.from('MZ-SETUP-INSTALLER-PAYLOAD-3.0.0'));
+fs.writeFileSync(path.join(mockDistDir, 'AWLAD-SELIM-Portable-3.0.0.exe'), Buffer.from('MZ-PORTABLE-SHOULD-BE-EXCLUDED'));
+fs.writeFileSync(path.join(mockDistDir, '.env'), 'JWT_SECRET=should_never_enter_zip');
+fs.writeFileSync(path.join(mockDistDir, 'database.json'), '{"users":[{"username":"owner"}]}');
+
+const cliPack = spawnSync(
+  process.execPath,
+  ['scripts/package-windows-customer-zip.mjs', `--dist-dir=${mockDistDir}`, '--version=3.0.0'],
+  { cwd: process.cwd(), encoding: 'utf8' }
+);
+assert.equal(cliPack.status, 0, `Customer ZIP CLI failed:\n${cliPack.stderr}\n${cliPack.stdout}`);
+const expectedZipPath = path.join(mockDistDir, 'AWLAD-SELIM-Windows-Customer-3.0.0.zip');
+assert.ok(fs.existsSync(expectedZipPath) && fs.statSync(expectedZipPath).size > 0, 'Customer ZIP file must exist and be non-empty');
+
+const cliVerify = spawnSync(
+  process.execPath,
+  ['scripts/package-windows-customer-zip.mjs', '--verify-only', `--dist-dir=${mockDistDir}`, '--version=3.0.0'],
+  { cwd: process.cwd(), encoding: 'utf8' }
+);
+assert.equal(cliVerify.status, 0, `Customer ZIP --verify-only failed:\n${cliVerify.stderr}\n${cliVerify.stdout}`);
+assert.ok(cliVerify.stdout.includes('01-Installer/AWLAD-SELIM-Setup-3.0.0.exe'));
+assert.ok(cliVerify.stdout.includes('02-Instructions/'));
+assert.ok(!cliVerify.stdout.includes('Portable'), 'Customer Setup ZIP must NOT include Portable EXE by default');
+
+const { isExecutedAsCli, verifyCustomerZipArchive } = await import('../../scripts/package-windows-customer-zip.mjs');
+const verifiedMeta = verifyCustomerZipArchive({
+  zipPath: expectedZipPath,
+  version: '3.0.0',
+  expectedSetupPath: path.join(mockDistDir, 'AWLAD-SELIM-Setup-3.0.0.exe'),
+  allowPortable: false,
+});
+assert.equal(verifiedMeta.entries.length, 4, 'Setup-only ZIP must contain exact 4 files: Setup EXE, 2 docs, SHA256SUMS.txt');
+assert.equal(
+  isExecutedAsCli(new URL('../../scripts/package-windows-customer-zip.mjs', import.meta.url).href, path.resolve('scripts/package-windows-customer-zip.mjs')),
+  true,
+  'isExecutedAsCli must return true across Windows/POSIX paths using fileURLToPath'
+);
+
+// Verify electron/main.cjs purges offline credentials & web storages on fresh customer install
+const electronMainSrc = fs.readFileSync(path.join(process.cwd(), 'electron/main.cjs'), 'utf8');
+assert.ok(electronMainSrc.includes('isFreshDatabase'));
+assert.ok(electronMainSrc.includes("'offline_auth_session', 'offline_auth_creds'"));
+assert.ok(electronMainSrc.includes("'localstorage', 'indexdb', 'cookies'"));
+console.log('  [PASS] 7. Windows Customer ZIP CLI creates verified Setup-only archive (no Portable/secrets) & fresh-install auth purge verified');
+
 fs.rmSync(sandbox, { recursive: true, force: true });
-console.log('ELECTRON VERIFICATION PASSED (6/6)');
+console.log('ELECTRON VERIFICATION PASSED (7/7)');

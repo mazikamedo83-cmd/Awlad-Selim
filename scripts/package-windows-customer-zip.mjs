@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
+import { fileURLToPath } from 'node:url';
 
 function parseArgs(argv) {
   const args = {};
@@ -29,7 +30,7 @@ const CRC_TABLE = (() => {
   return table;
 })();
 
-function crc32(buf) {
+export function crc32(buf) {
   let c = 0xffffffff;
   for (let i = 0; i < buf.length; i++) {
     c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
@@ -120,29 +121,58 @@ function createZipBuffer(entries) {
   return Buffer.concat([...localParts, centralDirBuf, eocd]);
 }
 
-function sha256(buf) {
+export function sha256(buf) {
   return crypto.createHash('sha256').update(buf).digest('hex');
 }
 
-function buildFirstTimeInstallDoc(version) {
-  return [
+export const CUSTOMER_ZIP_FORBIDDEN_PATTERNS = [
+  /\.env($|\.)/i,
+  /\.jwt_secret/i,
+  /database\.json/i,
+  /sessions\.json/i,
+  /audit_logs\.json/i,
+  /idempotency\.json/i,
+  /migration_logs\.json/i,
+  /AWLAD_SELIM_BACKUP/i,
+  /server\/data/i,
+  /server\/tests/i,
+  /node_modules/i,
+  /\.jks$/i,
+  /\.keystore$/i,
+  /keystore\.properties$/i,
+  /\.map$/i,
+  /\.pdb$/i,
+  /\.log$/i,
+  /\.sqlite/i,
+  /\.db$/i,
+];
+
+function buildFirstTimeInstallDoc(version, includePortable) {
+  const lines = [
     '====================================================================',
     `AWLAD SELIM ERP v${version} - دليل التثبيت والتشغيل لأول مرة (Windows)`,
     '====================================================================',
     '',
     'محتويات حزمة التسليم للعملاء:',
-    `  1. 01-Installer/AWLAD-SELIM-Setup-${version}.exe    (المثبت الرسمي للنظام)`,
-    `  2. 02-Portable/AWLAD-SELIM-Portable-${version}.exe  (نسخة محمولة عند الحاجة)`,
-    '  3. 03-Documentation/                               (أدلة التثبيت والترقية الآمنة)',
-    '  4. SHA256SUMS.txt                                  (بصمات التحقق الأمني للملفات)',
+    `  1. 01-Installer/AWLAD-SELIM-Setup-${version}.exe    (المثبت الرسمي للنظام على Windows)`,
+  ];
+  if (includePortable) {
+    lines.push(`  2. 03-Portable/AWLAD-SELIM-Portable-${version}.exe  (نسخة محمولة اختيارية)`);
+    lines.push('  3. 02-Instructions/                                (أدلة التثبيت والتحديث الآمن)');
+    lines.push('  4. SHA256SUMS.txt                                  (بصمات التحقق الأمني للملفات)');
+  } else {
+    lines.push('  2. 02-Instructions/                                (أدلة التثبيت والتحديث الآمن)');
+    lines.push('  3. SHA256SUMS.txt                                  (بصمات التحقق الأمني للملفات)');
+  }
+  lines.push(
     '',
     'خطوات التثبيت والتشغيل لأول مرة على جهاز عميل جديد:',
-    '1. شغّل ملف التثبيت 01-Installer\\AWLAD-SELIM-Setup-' + version + '.exe واتبع المعالج.',
-    '2. عند أول تشغيل، لا يفتح النظام أي حساب إداري تلقائياً ولا يحتوي على أي بيانات أو جلسات خاصة بأي شركة أخرى.',
+    `1. فك ضغط هذا الأرشيف ثم شغّل ملف التثبيت: 01-Installer\\AWLAD-SELIM-Setup-${version}.exe واتبع خطوات المعالج.`,
+    '2. عند أول تشغيل على جهاز جديد، لا يفتح النظام أي حساب إداري تلقائياً ولا يحتوي على أي بيانات أو جلسات تخص أي شركة أخرى.',
     '3. ستظهر شاشة تسجيل الدخول:',
     '   - إذا كان هذا هو الجهاز الرئيسي الجديد للشركة ولم يُسجل لها مدير بعد: اختر "إعداد حساب المدير الأول للشركة" وأنشئ اسم المستخدم وكلمة المرور الخاصة بكم.',
-    '   - بعد وجود حساب مدير للشركة على السيرفر، يُمنع إنشاء مدير أول جديد من هذه الشاشة نهائياً.',
-    '   - إذا كان هذا الجهاز فرعياً أو موظفاً يتصل بسيرفر الشركة: أدخل بيانات حسابك المسجل من قبل الإدارة فقط.',
+    '   - بمجرد وجود حساب مدير للشركة على السيرفر، يُمنع إنشاء مدير أول جديد من هذه الشاشة نهائياً.',
+    '   - إذا كان هذا الجهاز فرعياً أو لموظف يتصل بسيرفر الشركة: أدخل بيانات حسابك المسجل من قبل الإدارة فقط.',
     '4. لربط أجهزة المندوبين والعملاء (Android / iOS) بنفس سيرفر هذا الجهاز:',
     '   - اسمح للتطبيق أو لمنفذ TCP 3000 في جدار حماية Windows (Private Network).',
     '   - من داخل البرنامج (الإعدادات -> Server & Connection Settings) أنشئ رابط الربط أو QR Code.',
@@ -151,8 +181,9 @@ function buildFirstTimeInstallDoc(version) {
     '  %APPDATA%\\AWLAD SELIM\\data',
     '  %APPDATA%\\AWLAD SELIM\\backups',
     '====================================================================',
-    '',
-  ].join('\r\n');
+    ''
+  );
+  return lines.join('\r\n');
 }
 
 function buildMigrationDoc(version) {
@@ -162,7 +193,7 @@ function buildMigrationDoc(version) {
     '====================================================================',
     '',
     'أولاً: تحديث برنامج Windows للعملاء الحاليين:',
-    '1. يقوم المثبت Setup-' + version + '.exe بالترقية مع الحفاظ التلقائي على مجلد بيانات الشركة:',
+    `1. يقوم المثبت Setup-${version}.exe بالترقية مع الحفاظ التلقائي على مجلد بيانات الشركة:`,
     '   %APPDATA%\\AWLAD SELIM\\data',
     '2. لن يفتح النظام حساب Admin تلقائياً بعد التحديث؛ سيُطلب من كل مستخدم تسجيل الدخول بحسابه وكلمة مروره.',
     '3. تبقى جميع الفواتير والأصناف والعملاء والحسابات والصلاحيات كما هي دون فقدان.',
@@ -183,7 +214,143 @@ function buildMigrationDoc(version) {
   ].join('\r\n');
 }
 
-export function packageWindowsCustomerZip({ distDir, outPath, version }) {
+export function verifyCustomerZipArchive({
+  zipPath,
+  version,
+  expectedSetupPath = null,
+  allowPortable = false,
+}) {
+  const resolvedZip = path.resolve(zipPath);
+  if (!fs.existsSync(resolvedZip)) {
+    throw new Error(`Customer ZIP file does not exist: ${resolvedZip}`);
+  }
+  const buf = fs.readFileSync(resolvedZip);
+  if (buf.length < 22) {
+    throw new Error(`Customer ZIP file is corrupt/truncated (${buf.length} bytes): ${resolvedZip}`);
+  }
+
+  // Locate End of Central Directory (EOCD: 0x06054b50)
+  let eocdOffset = -1;
+  const searchMin = Math.max(0, buf.length - 65557);
+  for (let i = buf.length - 22; i >= searchMin; i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) {
+      eocdOffset = i;
+      break;
+    }
+  }
+  if (eocdOffset < 0) {
+    throw new Error(`Invalid ZIP archive (missing EOCD signature): ${resolvedZip}`);
+  }
+
+  const totalEntries = buf.readUInt16LE(eocdOffset + 10);
+  const centralDirSize = buf.readUInt32LE(eocdOffset + 12);
+  const centralDirOffset = buf.readUInt32LE(eocdOffset + 16);
+  if (totalEntries === 0 || centralDirOffset + centralDirSize > eocdOffset) {
+    throw new Error(`Corrupt ZIP central directory metadata in: ${resolvedZip}`);
+  }
+
+  const extractedEntries = [];
+  let ptr = centralDirOffset;
+  for (let idx = 0; idx < totalEntries; idx++) {
+    if (buf.readUInt32LE(ptr) !== 0x02014b50) {
+      throw new Error(`Corrupt ZIP central header at index ${idx} in: ${resolvedZip}`);
+    }
+    const method = buf.readUInt16LE(ptr + 10);
+    const expectedCrc = buf.readUInt32LE(ptr + 16);
+    const compressedSize = buf.readUInt32LE(ptr + 20);
+    const uncompressedSize = buf.readUInt32LE(ptr + 24);
+    const nameLen = buf.readUInt16LE(ptr + 28);
+    const extraLen = buf.readUInt16LE(ptr + 30);
+    const commentLen = buf.readUInt16LE(ptr + 32);
+    const localOffset = buf.readUInt32LE(ptr + 42);
+    const entryName = buf.subarray(ptr + 46, ptr + 46 + nameLen).toString('utf8');
+    ptr += 46 + nameLen + extraLen + commentLen;
+
+    if (buf.readUInt32LE(localOffset) !== 0x04034b50) {
+      throw new Error(`Corrupt ZIP local file header for entry "${entryName}"`);
+    }
+    const localNameLen = buf.readUInt16LE(localOffset + 26);
+    const localExtraLen = buf.readUInt16LE(localOffset + 28);
+    const dataStart = localOffset + 30 + localNameLen + localExtraLen;
+    const rawCompressed = buf.subarray(dataStart, dataStart + compressedSize);
+
+    let uncompressed;
+    if (method === 0) {
+      uncompressed = rawCompressed;
+    } else if (method === 8) {
+      uncompressed = zlib.inflateRawSync(rawCompressed);
+    } else {
+      throw new Error(`Unsupported compression method ${method} for entry "${entryName}"`);
+    }
+
+    if (uncompressed.length !== uncompressedSize) {
+      throw new Error(`Uncompressed size mismatch for "${entryName}": expected ${uncompressedSize}, got ${uncompressed.length}`);
+    }
+    const actualCrc = crc32(uncompressed);
+    if (actualCrc !== expectedCrc) {
+      throw new Error(`CRC-32 mismatch for "${entryName}": expected ${expectedCrc}, got ${actualCrc}`);
+    }
+
+    for (const pattern of CUSTOMER_ZIP_FORBIDDEN_PATTERNS) {
+      if (pattern.test(entryName)) {
+        throw new Error(`Forbidden file detected inside customer ZIP: ${entryName}`);
+      }
+    }
+    if (!allowPortable && /portable/i.test(entryName)) {
+      throw new Error(`Unexpected Portable EXE detected inside customer Setup ZIP: ${entryName}`);
+    }
+
+    extractedEntries.push({
+      name: entryName,
+      size: uncompressed.length,
+      sha256: sha256(uncompressed),
+      data: uncompressed,
+    });
+  }
+
+  const rootPrefix = `AWLAD-SELIM-Windows-Customer-${version}/`;
+  const setupEntryName = `${rootPrefix}01-Installer/AWLAD-SELIM-Setup-${version}.exe`;
+  const setupEntry = extractedEntries.find((e) => e.name === setupEntryName);
+  if (!setupEntry || setupEntry.size <= 0) {
+    throw new Error(`Customer ZIP missing required Windows Setup EXE: ${setupEntryName}`);
+  }
+
+  if (expectedSetupPath && fs.existsSync(expectedSetupPath)) {
+    const diskBuf = fs.readFileSync(expectedSetupPath);
+    const diskSha = sha256(diskBuf);
+    if (setupEntry.size !== diskBuf.length || setupEntry.sha256 !== diskSha) {
+      throw new Error(`Setup EXE checksum/size inside ZIP does not match disk file ${expectedSetupPath}`);
+    }
+  }
+
+  const sumsEntry = extractedEntries.find((e) => e.name === `${rootPrefix}SHA256SUMS.txt`);
+  if (!sumsEntry) {
+    throw new Error(`Customer ZIP missing SHA256SUMS.txt`);
+  }
+  const sumsText = sumsEntry.data.toString('utf8');
+  for (const entry of extractedEntries) {
+    if (entry.name === sumsEntry.name) continue;
+    const rel = entry.name.startsWith(rootPrefix) ? entry.name.slice(rootPrefix.length) : entry.name;
+    const expectedLine = `${entry.sha256}  ${rel}`;
+    if (!sumsText.includes(expectedLine)) {
+      throw new Error(`SHA256SUMS.txt missing or mismatched entry for: ${rel}`);
+    }
+  }
+
+  return {
+    zipPath: resolvedZip,
+    zipSize: buf.length,
+    zipSha256: sha256(buf),
+    entries: extractedEntries.map(({ name, size, sha256: hash }) => ({ name, size, sha256: hash })),
+  };
+}
+
+export function packageWindowsCustomerZip({
+  distDir,
+  outPath,
+  version,
+  includePortable = false,
+}) {
   if (!distDir) throw new Error('distDir is required');
   if (!version) throw new Error('version is required');
 
@@ -202,16 +369,22 @@ export function packageWindowsCustomerZip({ distDir, outPath, version }) {
     throw new Error(`Windows Setup installer is empty: ${setupPath}`);
   }
 
-  const portableName = `AWLAD-SELIM-Portable-${version}.exe`;
-  const portablePath = path.join(resolvedDist, portableName);
-  const hasPortable = fs.existsSync(portablePath) && fs.statSync(portablePath).size > 0;
-  const portableBytes = hasPortable ? fs.readFileSync(portablePath) : null;
+  let portableName = null;
+  let portableBytes = null;
+  if (includePortable) {
+    portableName = `AWLAD-SELIM-Portable-${version}.exe`;
+    const portablePath = path.join(resolvedDist, portableName);
+    if (!fs.existsSync(portablePath) || fs.statSync(portablePath).size === 0) {
+      throw new Error(`--include-portable was requested, but missing non-empty file: ${portablePath}`);
+    }
+    portableBytes = fs.readFileSync(portablePath);
+  }
 
   const rootFolder = `AWLAD-SELIM-Windows-Customer-${version}`;
-  const firstTimeDocName = '03-Documentation/دليل-التثبيت-والتشغيل-لأول-مرة.txt';
-  const migrationDocName = '03-Documentation/دليل-التحديث-والانتقال-الآمن.txt';
+  const firstTimeDocName = '02-Instructions/دليل-التثبيت-والتشغيل-لأول-مرة.txt';
+  const migrationDocName = '02-Instructions/دليل-التحديث-والانتقال-الآمن.txt';
 
-  const firstTimeDocBuf = Buffer.from(buildFirstTimeInstallDoc(version), 'utf8');
+  const firstTimeDocBuf = Buffer.from(buildFirstTimeInstallDoc(version, Boolean(portableBytes)), 'utf8');
   const migrationDocBuf = Buffer.from(buildMigrationDoc(version), 'utf8');
 
   const entries = [
@@ -220,17 +393,6 @@ export function packageWindowsCustomerZip({ distDir, outPath, version }) {
       data: setupBytes,
       checksumPath: `01-Installer/${setupName}`,
     },
-  ];
-
-  if (portableBytes) {
-    entries.push({
-      name: `${rootFolder}/02-Portable/${portableName}`,
-      data: portableBytes,
-      checksumPath: `02-Portable/${portableName}`,
-    });
-  }
-
-  entries.push(
     {
       name: `${rootFolder}/${firstTimeDocName}`,
       data: firstTimeDocBuf,
@@ -240,22 +402,19 @@ export function packageWindowsCustomerZip({ distDir, outPath, version }) {
       name: `${rootFolder}/${migrationDocName}`,
       data: migrationDocBuf,
       checksumPath: migrationDocName,
-    }
-  );
-
-  // Hygiene guard: ensure no forbidden secrets or internal company DB paths exist inside ZIP manifest
-  const forbiddenPatterns = [
-    /\.env($|\.)/i,
-    /\.jwt_secret/i,
-    /database\.json/i,
-    /sessions\.json/i,
-    /AWLAD_SELIM_BACKUP/i,
-    /\.jks$/i,
-    /\.keystore$/i,
-    /keystore\.properties$/i,
+    },
   ];
+
+  if (portableBytes && portableName) {
+    entries.push({
+      name: `${rootFolder}/03-Portable/${portableName}`,
+      data: portableBytes,
+      checksumPath: `03-Portable/${portableName}`,
+    });
+  }
+
   for (const item of entries) {
-    for (const pattern of forbiddenPatterns) {
+    for (const pattern of CUSTOMER_ZIP_FORBIDDEN_PATTERNS) {
       if (pattern.test(item.name)) {
         throw new Error(`Forbidden file matched customer ZIP hygiene policy: ${item.name}`);
       }
@@ -277,27 +436,62 @@ export function packageWindowsCustomerZip({ distDir, outPath, version }) {
   const zipBuffer = createZipBuffer(entries);
   fs.writeFileSync(zipPath, zipBuffer);
 
-  return {
+  // Self-verify written archive integrity, CRC-32, Setup EXE exact match, & hygiene before returning
+  const verified = verifyCustomerZipArchive({
     zipPath,
-    zipSize: zipBuffer.length,
-    zipSha256: sha256(zipBuffer),
-    entryNames: entries.map((e) => e.name),
+    version,
+    expectedSetupPath: setupPath,
+    allowPortable: Boolean(portableBytes),
+  });
+
+  return {
+    zipPath: verified.zipPath,
+    zipSize: verified.zipSize,
+    zipSha256: verified.zipSha256,
+    entryNames: verified.entries.map((e) => e.name),
+    entries: verified.entries,
   };
 }
 
-const isCliEntry = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname);
-if (isCliEntry) {
+export function isExecutedAsCli(metaUrl = import.meta.url, argv1 = process.argv[1]) {
+  if (!argv1) return false;
+  const scriptFile = path.resolve(fileURLToPath(metaUrl));
+  const invokedFile = path.resolve(argv1);
+  if (process.platform === 'win32') {
+    return scriptFile.toLowerCase() === invokedFile.toLowerCase();
+  }
+  return scriptFile === invokedFile;
+}
+
+if (isExecutedAsCli()) {
   const args = parseArgs(process.argv.slice(2));
   const pkg = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8'));
   const version = args.version || pkg.version;
   const distDir = args['dist-dir'] || 'dist-electron';
   const outPath = args.out || undefined;
+  const includePortable = args['include-portable'] === 'true';
 
-  const result = packageWindowsCustomerZip({ distDir, outPath, version });
-  console.log(`[OK] Customer ZIP packaged: ${result.zipPath}`);
-  console.log(`[OK] Size: ${(result.zipSize / (1024 * 1024)).toFixed(2)} MB | SHA-256: ${result.zipSha256}`);
-  console.log('[OK] Entries:');
-  for (const name of result.entryNames) {
-    console.log(`  - ${name}`);
+  if (args['verify-only'] === 'true') {
+    const zipPath = path.resolve(outPath || path.join(distDir, `AWLAD-SELIM-Windows-Customer-${version}.zip`));
+    const expectedSetupPath = path.resolve(distDir, `AWLAD-SELIM-Setup-${version}.exe`);
+    const verified = verifyCustomerZipArchive({
+      zipPath,
+      version,
+      expectedSetupPath,
+      allowPortable: includePortable,
+    });
+    console.log(`[OK] Verified Customer ZIP: ${verified.zipPath}`);
+    console.log(`[OK] Size: ${verified.zipSize} bytes | SHA-256: ${verified.zipSha256}`);
+    for (const item of verified.entries) {
+      console.log(`  - ${item.name} (${item.size} bytes, sha256=${item.sha256})`);
+    }
+  } else {
+    const result = packageWindowsCustomerZip({ distDir, outPath, version, includePortable });
+    console.log(`[OK] Customer ZIP packaged & verified: ${result.zipPath}`);
+    console.log(`[OK] Size: ${result.zipSize} bytes (${(result.zipSize / (1024 * 1024)).toFixed(2)} MB) | SHA-256: ${result.zipSha256}`);
+    console.log('[OK] Entries:');
+    for (const item of result.entries) {
+      console.log(`  - ${item.name} (${item.size} bytes)`);
+    }
   }
 }

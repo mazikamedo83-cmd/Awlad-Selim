@@ -48,8 +48,8 @@
 ### ب. مسار Windows Setup Production + ZIP منظم للعملاء (`.github/workflows/windows-build.yml`)
 - ينفذ الفحوصات ويصدر:
   - `AWLAD-SELIM-Setup-3.0.0.exe` (المثبت الرسمي)
-  - `AWLAD-SELIM-Portable-3.0.0.exe` (النسخة المحمولة)
-  - `AWLAD-SELIM-Windows-Customer-3.0.0.zip` (الحزمة المنظمة للتسليم للعملاء عبر `npm run windows:customer-zip`، وتحتوي `01-Installer/` و`02-Portable/` و`03-Documentation/` و`SHA256SUMS.txt` مع فحص صارم يمنع تسريب أي `.env` أو `database.json` أو `sessions.json`).
+  - `AWLAD-SELIM-Portable-3.0.0.exe` (نسخة محمولة منفصلة خارج حزمة ZIP الافتراضية للعميل)
+  - `AWLAD-SELIM-Windows-Customer-3.0.0.zip` (الحزمة المنظمة للتسليم للعملاء عبر `npm run windows:customer-zip`، وتحتوي `01-Installer/AWLAD-SELIM-Setup-3.0.0.exe` و`02-Instructions/` و`SHA256SUMS.txt` فقط، بدون نسخة Portable إلا عند الطلب الصريح وبدون أي `.env` أو `database.json` أو `sessions.json`).
 
 ---
 
