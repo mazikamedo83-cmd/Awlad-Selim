@@ -1,6 +1,121 @@
-import { getPool, checkPostgresHealth } from '../postgres.js';
+import {
+  getPool,
+  getPostgresConfig,
+  checkPostgresHealth,
+  initializeSchema,
+  isStrictPostgresMode,
+  setPgConnectionFailureListener,
+} from '../postgres.js';
+import { AppError } from '../../utils/errors.js';
+
+export { isStrictPostgresMode };
+
+export const DATABASE_UNAVAILABLE_CODE = 'DATABASE_UNAVAILABLE';
+export const DATABASE_UNAVAILABLE_MESSAGE =
+  'قاعدة البيانات المركزية (PostgreSQL) غير متاحة مؤقتًا. تم إيقاف العمليات لحماية البيانات ومنع انقسامها.';
 
 let pgActiveCache = null;
+let pgSchemaReady = false;
+let lastPgHealthCheckAt = 0;
+let lastPgFailureReason = null;
+let pendingStrictProbe = null;
+
+export function createDatabaseUnavailableError(
+  reason = 'connection_failed',
+  message = DATABASE_UNAVAILABLE_MESSAGE
+) {
+  return new AppError(503, message, DATABASE_UNAVAILABLE_CODE, {
+    strictMode: true,
+    reason,
+  });
+}
+
+export function markPgUnavailable(reason = 'connection_failed') {
+  pgActiveCache = false;
+  lastPgFailureReason = String(reason || 'connection_failed');
+  lastPgHealthCheckAt = 0;
+}
+
+setPgConnectionFailureListener((reason) => {
+  if (isStrictPostgresMode()) {
+    markPgUnavailable(reason);
+  }
+});
+
+export function markPgAvailable({ schemaReady } = {}) {
+  pgActiveCache = true;
+  lastPgFailureReason = null;
+  lastPgHealthCheckAt = Date.now();
+  if (typeof schemaReady === 'boolean') {
+    pgSchemaReady = schemaReady;
+  }
+}
+
+export function isPgSchemaReady() {
+  return pgSchemaReady;
+}
+
+export function getLastPgFailureReason() {
+  return lastPgFailureReason;
+}
+
+function getStrictHealthCacheTtlMs() {
+  const raw = process.env.AWLAD_STRICT_HEALTH_TTL_MS;
+  if (raw === undefined || raw === '') return 1000;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 1000;
+}
+
+export async function ensureStrictPgReady({ forceHealthCheck = false } = {}) {
+  if (!isStrictPostgresMode()) {
+    return null;
+  }
+
+  const config = getPostgresConfig();
+  const pool = getPool();
+  if (!config || !pool) {
+    markPgUnavailable('not_configured');
+    throw createDatabaseUnavailableError('not_configured');
+  }
+
+  const ttlMs = getStrictHealthCacheTtlMs();
+  if (
+    !forceHealthCheck &&
+    pgActiveCache === true &&
+    pgSchemaReady &&
+    ttlMs > 0 &&
+    Date.now() - lastPgHealthCheckAt < ttlMs
+  ) {
+    return true;
+  }
+
+  if (pendingStrictProbe) {
+    return pendingStrictProbe;
+  }
+
+  pendingStrictProbe = (async () => {
+    const health = await checkPostgresHealth();
+    if (health.status !== 'online') {
+      markPgUnavailable(health.status || 'connection_failed');
+      throw createDatabaseUnavailableError(health.status || 'connection_failed');
+    }
+
+    if (!pgSchemaReady) {
+      const schemaRes = await initializeSchema();
+      if (!schemaRes?.success) {
+        markPgUnavailable('schema_init_failed');
+        throw createDatabaseUnavailableError('schema_init_failed');
+      }
+    }
+
+    markPgAvailable({ schemaReady: true });
+    return true;
+  })().finally(() => {
+    pendingStrictProbe = null;
+  });
+
+  return pendingStrictProbe;
+}
 
 export const FULL_ADMIN_PERMISSIONS = {
   canView: true,
@@ -70,9 +185,18 @@ export const CUSTOMER_DEFAULT_PERMISSIONS = {
 
 export function setPgActive(val) {
   pgActiveCache = val === null ? null : Boolean(val);
+  if (val === true) {
+    lastPgFailureReason = null;
+    lastPgHealthCheckAt = Date.now();
+  }
 }
 
 export async function isPgMode() {
+  if (isStrictPostgresMode()) {
+    await ensureStrictPgReady();
+    return true;
+  }
+
   if (pgActiveCache !== null) return pgActiveCache;
   const pool = getPool();
   if (!pool) {
@@ -86,6 +210,9 @@ export async function isPgMode() {
 
 export function resetPgModeCache() {
   pgActiveCache = null;
+  pgSchemaReady = false;
+  lastPgHealthCheckAt = 0;
+  lastPgFailureReason = null;
 }
 
 export function isoDateOnly(val) {

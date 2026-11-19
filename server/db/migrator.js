@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getPool, withTransaction, initializeSchema, checkPostgresHealth } from './postgres.js';
+import { getPool, withTransaction, initializeSchema, checkPostgresHealth, isStrictPostgresMode } from './postgres.js';
 import { generateServerId } from '../utils/crypto.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -10,8 +10,6 @@ const dataDir = process.env.AWLAD_DATA_DIR
   : path.join(__dirname, '..', 'data');
 const migrationLogsFile = path.join(dataDir, 'migration_logs.json');
 const databaseFile = path.join(dataDir, 'database.json');
-
-fs.mkdirSync(dataDir, { recursive: true });
 
 export function readMigrationLogs() {
   if (!fs.existsSync(migrationLogsFile)) return [];
@@ -23,12 +21,14 @@ export function readMigrationLogs() {
 }
 
 export function saveMigrationLog(entry) {
+  fs.mkdirSync(dataDir, { recursive: true });
   const logs = readMigrationLogs();
   logs.unshift(entry);
   fs.writeFileSync(migrationLogsFile, JSON.stringify(logs, null, 2), 'utf8');
 }
 
 function createImmutablePreMigrationBackup(sourceData, migrationId) {
+  fs.mkdirSync(dataDir, { recursive: true });
   const backupFile = path.join(dataDir, `database.pre_migration.${migrationId}.readonly.bak.json`);
   const payload = fs.existsSync(databaseFile)
     ? fs.readFileSync(databaseFile, 'utf8')
@@ -1290,6 +1290,14 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
 }
 
 export async function rollbackMigration(migrationIdOrBackup, executedBy = 'مدير النظام', customPool = null) {
+  if (isStrictPostgresMode()) {
+    return {
+      success: false,
+      code: 'STRICT_MODE_DESTRUCTIVE_BLOCKED',
+      error:
+        'يُمنع التراجع إلى JSON أو مسح جداول PostgreSQL في وضع الإنتاج الصارم (Production Strict Mode) لحماية البيانات ومنع انقسامها.',
+    };
+  }
   const logs = readMigrationLogs();
   let target = migrationIdOrBackup
     ? logs.find((l) => l.id === migrationIdOrBackup || l.details?.backupFile === migrationIdOrBackup)

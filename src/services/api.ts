@@ -39,6 +39,13 @@ export function triggerAuthExpired(message?: string): void {
   }
 }
 
+type ServerDbStatusCallback = (available: boolean, message?: string) => void;
+let onServerDbStatusHandler: ServerDbStatusCallback | null = null;
+
+export function setServerDbStatusHandler(cb: ServerDbStatusCallback | null): void {
+  onServerDbStatusHandler = cb;
+}
+
 export async function hydrateServerUrlFromNative(): Promise<void> {
   await hydrateNativePreferences([
     SERVER_URL_KEY,
@@ -584,10 +591,15 @@ export async function testServerHealth(baseUrl: string): Promise<{
   try {
     const res = await fetchWithTimeout(`${effectiveBase}/api/health`, { method: 'GET' }, 7000);
     const latencyMs = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt);
-    if (!res.ok) {
-      return { ok: false, latencyMs, error: `السيرفر استجاب برمز خطأ (${res.status})` };
-    }
     const data = await res.json().catch(() => ({}));
+    if (!res.ok || data?.ok === false) {
+      return {
+        ok: false,
+        latencyMs,
+        mode: data?.mode,
+        error: data?.error || data?.postgres?.message || `السيرفر استجاب برمز خطأ (${res.status})`,
+      };
+    }
     return {
       ok: true,
       latencyMs,
@@ -756,7 +768,14 @@ export async function apiRequest<T = any>(
   if (!res.ok || (json && json.ok === false)) {
     const message = json?.error || `خطأ في الاستجابة (${res.status})`;
     const code = json?.code || `HTTP_${res.status}`;
+    if (res.status === 503 && code === 'DATABASE_UNAVAILABLE' && onServerDbStatusHandler) {
+      onServerDbStatusHandler(false, message);
+    }
     throw new ApiError(res.status, message, code, json?.details);
+  }
+
+  if (onServerDbStatusHandler) {
+    onServerDbStatusHandler(true);
   }
 
   return (json ?? {}) as T;

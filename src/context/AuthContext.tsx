@@ -141,6 +141,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (err: any) {
       if (err?.status === 0 || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
         serverUnreachable = true;
+      } else if (err?.status === 503 || err?.code === 'DATABASE_UNAVAILABLE') {
+        setSessionExpiredMessage(
+          err?.message || 'قاعدة البيانات المركزية (PostgreSQL) غير متاحة مؤقتًا. يرجى المحاولة بعد قليل.'
+        );
       }
     }
 
@@ -225,6 +229,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } else {
         // Desktop/Web or unreachable server without verified active online validation: force login screen
+        if (err?.status === 503 || err?.code === 'DATABASE_UNAVAILABLE') {
+          setSessionExpiredMessage(
+            err?.message || 'قاعدة البيانات المركزية (PostgreSQL) غير متاحة مؤقتًا. يرجى المحاولة بعد قليل.'
+          );
+        }
         setCurrentUser(null);
         setCustomerProfile(null);
         setRepresentativeProfile(null);

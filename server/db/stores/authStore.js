@@ -1,4 +1,4 @@
-import { getPool, withTransaction } from '../postgres.js';
+import { getPool, withTransaction, isPgConnectionError, sanitizePgErrorMessage } from '../postgres.js';
 import {
   withJsonTransaction,
   readJsonDatabase,
@@ -19,6 +19,9 @@ import {
 import { AppError, nowIso, sanitizeUser } from '../../utils/errors.js';
 import {
   isPgMode,
+  isStrictPostgresMode,
+  markPgUnavailable,
+  createDatabaseUnavailableError,
   FULL_ADMIN_PERMISSIONS,
   mapPgUserRow,
   mapPgCustomerRow,
@@ -69,7 +72,11 @@ export async function recordAuditLog({
           ]
         );
       } catch (err) {
-        console.error('[AuditLog PG Error]:', err.message);
+        if (isStrictPostgresMode() && isPgConnectionError(err)) {
+          markPgUnavailable('audit_log_connection_error');
+          throw createDatabaseUnavailableError('audit_log_connection_error');
+        }
+        console.error('[AuditLog PG Error]:', sanitizePgErrorMessage(err?.message));
       }
     }
   } else {

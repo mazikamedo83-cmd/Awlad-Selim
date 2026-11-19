@@ -15,6 +15,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
     pendingSyncCount,
     conflictsCount,
     lastSyncTime,
+    lastError,
     hasTentativeLocalBalances,
     triggerSync,
   } = useData();
@@ -96,7 +97,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
         <button
           type="button"
           onClick={() => setIsSyncModalOpen(true)}
-          title={`مركز المزامنة: ${config.label} | آخر فحص: ${lastSyncTime}${
+          title={`مركز المزامنة: ${config.label}${lastError ? ` | ${lastError}` : ''} | آخر فحص: ${lastSyncTime}${
             hasTentativeLocalBalances ? ' | توجد عمليات غير متزامنة (أرصدة محلية مبدئية)' : ''
           }`}
           className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold ${config.color} transition-all cursor-pointer hover:opacity-90 whitespace-nowrap`}

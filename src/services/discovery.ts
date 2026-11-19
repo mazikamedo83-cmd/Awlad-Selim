@@ -455,6 +455,9 @@ export async function syncConnectionConfigFromServer(options?: {
         triggerAuthExpired(data?.error || 'تم فصل هذا الجهاز من الإدارة.');
         return { updated: false, revoked: true };
       }
+      if (res.status === 503 && data?.code === 'DATABASE_UNAVAILABLE') {
+        return { updated: false };
+      }
       if (!data) continue;
 
       if (data.profiles) {

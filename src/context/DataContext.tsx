@@ -15,6 +15,7 @@ import {
   detectModeFromUrl,
   testServerHealth,
   getDefaultConnectionProfiles,
+  setServerDbStatusHandler,
 } from '../services/api';
 import { syncConnectionConfigFromServer } from '../services/discovery';
 import { notifyLocal, subscribeAppForeground, subscribeNetworkStatus } from '../services/native';
@@ -284,6 +285,9 @@ export interface DataContextType extends DatabaseState {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 function isNetworkFailure(err: any): boolean {
+  if (err?.status === 503 || String(err?.code || '') === 'DATABASE_UNAVAILABLE') {
+    return false;
+  }
   return err?.status === 0 || (typeof navigator !== 'undefined' && navigator.onLine === false);
 }
 
@@ -776,6 +780,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
 
   const hydratedUserRef = useRef<string | null>(null);
+  const isDbUnavailableRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    setServerDbStatusHandler((available, message) => {
+      if (!available) {
+        isDbUnavailableRef.current = true;
+        setIsServerReachable(true);
+        setNetworkStatus('error');
+        setLastError(
+          message ||
+            'قاعدة البيانات المركزية (PostgreSQL) غير متاحة مؤقتًا. تم إيقاف العمليات لحماية البيانات ومنع انقسامها.'
+        );
+      } else if (isDbUnavailableRef.current) {
+        isDbUnavailableRef.current = false;
+        setLastError(null);
+        setNetworkStatus((prev) => (prev === 'error' ? 'connected' : prev));
+      }
+    });
+    return () => setServerDbStatusHandler(null);
+  }, []);
 
   const refreshQueueAndConflictsFromLocal = useCallback(async (uid?: string) => {
     const targetUid = uid || currentUser?.id;
@@ -1227,8 +1251,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (outcome.ok && outcome.pullData) {
               await applyServerPullPayload(outcome.pullData, currentUser);
               setNetworkStatus(outcome.conflictCount > 0 || outcome.failedCount > 0 ? 'pending' : 'connected');
+              setLastError(null);
             } else if (!outcome.serverReachable) {
               setNetworkStatus('disconnected');
+              if (outcome.error) setLastError(outcome.error);
+            } else {
+              setNetworkStatus('error');
+              if (outcome.error) setLastError(outcome.error);
             }
           })
           .catch(() => {});
@@ -1763,7 +1792,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Invoices
   const createSalesInvoice = async (invoiceData: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'>) => {
-    const idempotencyKey = generateId('IDEMP');
+    const idempotencyKey = (invoiceData as any)?.idempotencyKey || generateId('IDEMP');
     try {
       const res = await apiRequest<{ ok: boolean; invoice: Invoice }>('/api/invoices/sales', {
         method: 'POST',
@@ -1835,7 +1864,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await apiRequest<{ ok: boolean; invoice: Invoice }>('/api/invoices/purchase', {
         method: 'POST',
         body: invoiceData,
-        idempotencyKey: generateId('IDEMP'),
+        idempotencyKey: (invoiceData as any)?.idempotencyKey || generateId('IDEMP'),
       });
       await loadRoleScopedData();
       return { success: true, invoice: res.invoice };
@@ -1920,7 +1949,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await apiRequest(`/api/invoices/${invoiceId}/payments`, {
         method: 'POST',
         body: paymentData,
-        idempotencyKey: generateId('IDEMP'),
+        idempotencyKey: (paymentData as any)?.idempotencyKey || generateId('IDEMP'),
       });
       await loadRoleScopedData();
       return { success: true };

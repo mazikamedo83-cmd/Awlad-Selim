@@ -1,6 +1,12 @@
 import { verifyJwt } from '../utils/crypto.js';
 import { validateActiveSession, recordAuditLog, checkDeviceAuthGuard } from '../db/stores/authStore.js';
 import { AppError } from '../utils/errors.js';
+import { isPgConnectionError, isStrictPostgresMode, sanitizePgErrorMessage } from '../db/postgres.js';
+import {
+  DATABASE_UNAVAILABLE_CODE,
+  DATABASE_UNAVAILABLE_MESSAGE,
+  markPgUnavailable,
+} from '../db/stores/mode.js';
 
 const RATE_WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILED_ATTEMPTS = 10;
@@ -192,10 +198,21 @@ export function errorMiddleware(err, _req, res, _next) {
       details: err.details,
     });
   }
-  console.error('[API Error]:', err);
+  if (isStrictPostgresMode() && isPgConnectionError(err)) {
+    markPgUnavailable(err?.code || 'connection_error');
+    const safeMsg = sanitizePgErrorMessage(err?.message);
+    console.error('[PostgreSQL Unavailable - Strict Mode]:', safeMsg || err?.code || 'connection_error');
+    return res.status(503).json({
+      ok: false,
+      code: DATABASE_UNAVAILABLE_CODE,
+      error: DATABASE_UNAVAILABLE_MESSAGE,
+    });
+  }
+  const safeMsg = sanitizePgErrorMessage(err?.message);
+  console.error('[API Error]:', safeMsg || err?.name || 'INTERNAL_ERROR');
   return res.status(500).json({
     ok: false,
     code: 'INTERNAL_ERROR',
-    error: err?.message || 'حدث خطأ داخلي في الخادم',
+    error: safeMsg || 'حدث خطأ داخلي في الخادم',
   });
 }

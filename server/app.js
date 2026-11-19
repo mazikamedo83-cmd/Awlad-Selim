@@ -16,25 +16,65 @@ import syncRoutes from './routes/sync.js';
 import { pairingApiRouter, pairingPublicPagesRouter } from './routes/pairing.js';
 import { getTunnelRuntimeStatus } from './db/stores/connectionPairingStore.js';
 import { getSystemSettingsSafe } from './db/stores/catalogStore.js';
-import { checkPostgresHealth, initializeSchema } from './db/postgres.js';
+import {
+  checkPostgresHealth,
+  initializeSchema,
+  isPgConnectionError,
+  isStrictPostgresMode,
+  sanitizePgErrorMessage,
+} from './db/postgres.js';
 import { getAuthStatus, bootstrapAdmin } from './db/stores/authStore.js';
 import { exportFullBackup, restoreFullBackup } from './db/stores/inventoryAdminStore.js';
 import { requireAuth, requireAdmin, asyncHandler, errorMiddleware } from './middleware/auth.js';
 import { AppError } from './utils/errors.js';
-import { resetPgModeCache, isPgMode } from './db/stores/mode.js';
+import {
+  resetPgModeCache,
+  isPgMode,
+  ensureStrictPgReady,
+  markPgAvailable,
+  markPgUnavailable,
+  DATABASE_UNAVAILABLE_CODE,
+  DATABASE_UNAVAILABLE_MESSAGE,
+} from './db/stores/mode.js';
 
 export async function initializeServerRuntime() {
   resetPgModeCache();
+  const strict = isStrictPostgresMode();
   const health = await checkPostgresHealth();
-  if (health.status === 'online') {
-    await initializeSchema();
-    console.log(`[Database] متصل بقاعدة بيانات PostgreSQL (${health.databaseName || 'awlad_selim'}) بنجاح.`);
-  } else if (health.status === 'not_configured') {
-    console.log('[Database] لم يتم إعداد متغيرات اتصال PostgreSQL بعد (DATABASE_URL أو PGHOST). يعمل السيرفر بأمان على قاعدة السجلات المحلية المؤمنة دون حذف أو تصفير أي بيانات.');
+
+  if (strict) {
+    if (health.status !== 'online') {
+      const reasonDetail =
+        health.status === 'not_configured'
+          ? 'متغيرات اتصال PostgreSQL (DATABASE_URL أو PGHOST) غير مضبوطة.'
+          : `تعذر الاتصال بقاعدة بيانات PostgreSQL (${health.status}): ${sanitizePgErrorMessage(health.error || health.message)}`;
+      throw new Error(
+        `[Production Strict Mode] تم رفض تشغيل السيرفر المركزي لأن PostgreSQL غير متاحة: ${reasonDetail} يُمنع الرجوع إلى JSON Ledger لحماية البيانات ومنع انقسامها.`
+      );
+    }
+
+    const schemaRes = await initializeSchema();
+    if (!schemaRes?.success) {
+      throw new Error(
+        `[Production Strict Mode] فشل تهيئة/التحقق من جداول PostgreSQL: ${sanitizePgErrorMessage(schemaRes?.error || 'unknown_error')}`
+      );
+    }
+
+    markPgAvailable({ schemaReady: true });
+    console.log(
+      `[Database] Production Strict Mode مفعّل — متصل حصريًا بـ PostgreSQL (${health.databaseName || 'awlad_selim'}) دون أي رجوع إلى JSON.`
+    );
   } else {
-    console.warn(`[Database Warning] تعذر الاتصال بـ PostgreSQL (${health.status}). يعمل السيرفر بأمان على قاعدة السجلات المحلية المؤمنة دون حذف أو تصفير أي بيانات.`);
+    if (health.status === 'online') {
+      await initializeSchema();
+      console.log(`[Database] متصل بقاعدة بيانات PostgreSQL (${health.databaseName || 'awlad_selim'}) بنجاح.`);
+    } else if (health.status === 'not_configured') {
+      console.log('[Database] لم يتم إعداد متغيرات اتصال PostgreSQL بعد (DATABASE_URL أو PGHOST). يعمل السيرفر بأمان على قاعدة السجلات المحلية المؤمنة دون حذف أو تصفير أي بيانات.');
+    } else {
+      console.warn(`[Database Warning] تعذر الاتصال بـ PostgreSQL (${health.status}). يعمل السيرفر بأمان على قاعدة السجلات المحلية المؤمنة دون حذف أو تصفير أي بيانات.`);
+    }
+    await isPgMode();
   }
-  await isPgMode();
 
   // Optional automated initial admin creation ONLY in non-packaged server setups when explicitly configured AND zero users exist
   const isPackagedElectron = process.env.AWLAD_ELECTRON === 'true' && process.env.AWLAD_IS_PACKAGED === 'true';
@@ -52,7 +92,12 @@ export async function initializeServerRuntime() {
         console.log(`[Bootstrap] Created initial admin account from environment variables.`);
       }
     } catch (err) {
-      console.error('[Bootstrap Warning]:', err.message);
+      if (strict && (isPgConnectionError(err) || err?.code === DATABASE_UNAVAILABLE_CODE)) {
+        throw new Error(
+          `[Production Strict Mode] فشل التحقق من حساب المدير الأولي بسبب انقطاع PostgreSQL: ${sanitizePgErrorMessage(err?.message)}`
+        );
+      }
+      console.error('[Bootstrap Warning]:', sanitizePgErrorMessage(err?.message));
     }
   }
 }
@@ -163,8 +208,8 @@ export function createApiApp() {
   app.get(
     '/api/health',
     asyncHandler(async (req, res) => {
+      const strict = isStrictPostgresMode();
       const pgStatus = await checkPostgresHealth();
-      const authStatus = await getAuthStatus();
       const port = Number(process.env.AWLAD_ACTIVE_PORT || process.env.PORT || process.env.API_PORT || 3000);
       const ifaces = os.networkInterfaces();
       const lanIps = [];
@@ -181,15 +226,51 @@ export function createApiApp() {
         .trim()
         .toLowerCase();
       const httpsActive = forwardedProto === 'https' || Boolean(req.secure);
+      const tunnelState = getTunnelRuntimeStatus();
+
+      if (strict && pgStatus.status !== 'online') {
+        markPgUnavailable(pgStatus.status || 'connection_failed');
+        return res.status(503).json({
+          ok: false,
+          code: DATABASE_UNAVAILABLE_CODE,
+          error: DATABASE_UNAVAILABLE_MESSAGE,
+          service: 'AWLAD SELIM Enterprise Server',
+          version: '3.0.0',
+          timestamp: new Date().toISOString(),
+          strictMode: true,
+          databaseAvailable: false,
+          mode: 'postgresql-strict-unavailable',
+          activeMode: null,
+          tunnelStatus: { status: tunnelState.status, provider: tunnelState.provider },
+          port,
+          protocol: forwardedProto,
+          httpsActive,
+          connectionModesSupported: ['local_network', 'free_remote', 'pro_remote', 'cloud_vps'],
+          lanUrls: lanIps.map((ip) => `http://${ip}:${port}`),
+          postgres: {
+            configured: pgStatus.configured,
+            status: pgStatus.status,
+            latencyMs: pgStatus.latencyMs,
+            message: DATABASE_UNAVAILABLE_MESSAGE,
+          },
+        });
+      }
+
+      if (strict && pgStatus.status === 'online') {
+        await ensureStrictPgReady({ forceHealthCheck: false });
+      }
+
+      const authStatus = await getAuthStatus();
       const sysSettings = await getSystemSettingsSafe();
       const activeMode = sysSettings?.extraSettings?.connectionConfig?.activeMode || 'local_network';
-      const tunnelState = getTunnelRuntimeStatus();
 
       res.json({
         ok: true,
         service: 'AWLAD SELIM Enterprise Server',
         version: '3.0.0',
         timestamp: new Date().toISOString(),
+        strictMode: strict,
+        databaseAvailable: pgStatus.status === 'online',
         mode: pgStatus.status === 'online' ? 'postgresql-enterprise' : 'local-json-ledger',
         activeMode,
         tunnelStatus: { status: tunnelState.status, provider: tunnelState.provider },
@@ -212,6 +293,18 @@ export function createApiApp() {
               : 'تعذر الاتصال بـ PostgreSQL حاليًا. يعمل السيرفر بقاعدة السجلات المحلية المؤمنة دون حذف أو تصفير أي بيانات.',
         },
       });
+    })
+  );
+
+  // Enforce Production Strict Mode availability check across ALL DB-dependent /api routes
+  app.use(
+    '/api',
+    asyncHandler(async (req, _res, next) => {
+      if (req.method === 'OPTIONS' || req.path === '/health') {
+        return next();
+      }
+      await ensureStrictPgReady();
+      return next();
     })
   );
 

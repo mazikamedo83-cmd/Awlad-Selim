@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isStrictPostgresMode } from './postgres.js';
+import { AppError } from '../utils/errors.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = process.env.AWLAD_DATA_DIR
@@ -11,7 +13,20 @@ const sessionsFile = path.join(dataDir, 'sessions.json');
 const auditLogsFile = path.join(dataDir, 'audit_logs.json');
 const idempotencyFile = path.join(dataDir, 'idempotency.json');
 
-fs.mkdirSync(dataDir, { recursive: true });
+if (!isStrictPostgresMode()) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+
+export function assertJsonLedgerAllowed(operation = 'json_ledger_access') {
+  if (isStrictPostgresMode()) {
+    throw new AppError(
+      503,
+      'يُمنع الوصول إلى قاعدة JSON المحلية في وضع الإنتاج الصارم (Production Strict Mode). قاعدة البيانات المركزية هي PostgreSQL فقط.',
+      'DATABASE_UNAVAILABLE',
+      { strictMode: true, blockedJsonOperation: operation }
+    );
+  }
+}
 
 // Async mutex queue to serialize concurrent writes in JSON Ledger mode
 let mutexChain = Promise.resolve();
@@ -184,6 +199,7 @@ export function normalizeDbState(raw) {
 }
 
 export function readJsonDatabase() {
+  assertJsonLedgerAllowed('readJsonDatabase');
   const raw = readJsonFile(databaseFile, null);
   if (!raw) return createEmptyDatabaseState();
   return normalizeDbState(raw);
@@ -194,6 +210,7 @@ export function hasJsonDatabaseFile() {
 }
 
 export function writeJsonDatabase(db) {
+  assertJsonLedgerAllowed('writeJsonDatabase');
   const normalized = normalizeDbState(db);
   normalized.lastSavedAt = new Date().toISOString();
   normalized.version = '3.0.0';
@@ -202,7 +219,9 @@ export function writeJsonDatabase(db) {
 }
 
 export async function withJsonTransaction(callback) {
+  assertJsonLedgerAllowed('withJsonTransaction');
   return withJsonMutex(async () => {
+    assertJsonLedgerAllowed('withJsonTransaction_inner');
     const current = readJsonDatabase();
     const working = structuredClone(current);
     let committed = false;
@@ -219,22 +238,27 @@ export async function withJsonTransaction(callback) {
 
 // Sessions Store (stored separately from main accounting database)
 export function readJsonSessions() {
+  assertJsonLedgerAllowed('readJsonSessions');
   const arr = readJsonFile(sessionsFile, []);
   return Array.isArray(arr) ? arr : [];
 }
 
 export function writeJsonSessions(sessions) {
+  assertJsonLedgerAllowed('writeJsonSessions');
   atomicWriteJson(sessionsFile, sessions);
 }
 
 // Audit Logs Store
 export function readJsonAuditLogs() {
+  assertJsonLedgerAllowed('readJsonAuditLogs');
   const arr = readJsonFile(auditLogsFile, []);
   return Array.isArray(arr) ? arr : [];
 }
 
 export function appendJsonAuditLog(entry) {
+  assertJsonLedgerAllowed('appendJsonAuditLog');
   return withJsonMutex(() => {
+    assertJsonLedgerAllowed('appendJsonAuditLog_inner');
     const logs = readJsonAuditLogs();
     logs.unshift(entry);
     if (logs.length > 5000) logs.length = 5000;
@@ -245,11 +269,13 @@ export function appendJsonAuditLog(entry) {
 
 // Idempotency Store
 export function readJsonIdempotency() {
+  assertJsonLedgerAllowed('readJsonIdempotency');
   const obj = readJsonFile(idempotencyFile, {});
   return obj && typeof obj === 'object' ? obj : {};
 }
 
 export function writeJsonIdempotency(map) {
+  assertJsonLedgerAllowed('writeJsonIdempotency');
   atomicWriteJson(idempotencyFile, map);
 }
 

@@ -8,6 +8,104 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let pool = null;
 let injectedPool = null;
+let poolErrorNotifier = null;
+
+export function setPgConnectionFailureListener(listener) {
+  poolErrorNotifier = typeof listener === 'function' ? listener : null;
+}
+
+function notifyPgConnectionFailure(reason) {
+  if (poolErrorNotifier) {
+    try {
+      poolErrorNotifier(reason);
+    } catch {
+      // ignore listener errors
+    }
+  }
+}
+
+export function isStrictPostgresMode() {
+  if (process.env.AWLAD_REQUIRE_POSTGRES === 'true') return true;
+  if (process.env.AWLAD_ELECTRON === 'true') return false;
+  return process.env.NODE_ENV === 'production';
+}
+
+export function sanitizePgErrorMessage(rawMessage) {
+  const msg = String(rawMessage || '');
+  if (!msg) return '';
+  return msg
+    .replace(/postgres(?:ql)?:\/\/[^\s"'`]+/gi, 'postgresql://***:***@***')
+    .replace(/(password\s*[=:]\s*)([^\s,;]+)/gi, '$1***');
+}
+
+const PG_CONNECTION_ERROR_CODES = new Set([
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'ECONNRESET',
+  'ETIMEDOUT',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'EPIPE',
+  '08000',
+  '08001',
+  '08003',
+  '08004',
+  '08006',
+  '08007',
+  '08P01',
+  '57P01',
+  '57P02',
+  '57P03',
+  '57P04',
+  '53300',
+  'DATABASE_UNAVAILABLE',
+]);
+
+const PG_CONNECTION_ERROR_PATTERNS = [
+  'connection terminated',
+  'terminating connection',
+  'connect econnrefused',
+  'connection refused',
+  'timeout exceeded',
+  'client has encountered a connection error',
+  'cannot use a pool after calling end',
+  'pool is ending',
+  'remaining connection slots',
+  'server closed the connection unexpectedly',
+  'the database system is starting up',
+  'the database system is shutting down',
+  'getaddrinfo enotfound',
+  'socket hang up',
+  'قاعدة بيانات postgresql غير متصلة',
+];
+
+export function isPgConnectionError(err, seen = new Set()) {
+  if (!err || typeof err !== 'object' || seen.has(err)) return false;
+  seen.add(err);
+
+  const code = String(err.code || '').trim().toUpperCase();
+  if (code && PG_CONNECTION_ERROR_CODES.has(code)) {
+    return true;
+  }
+
+  const msg = String(err.message || '').toLowerCase();
+  if (msg && PG_CONNECTION_ERROR_PATTERNS.some((pat) => msg.includes(pat))) {
+    return true;
+  }
+
+  if (err.cause && isPgConnectionError(err.cause, seen)) {
+    return true;
+  }
+
+  if (Array.isArray(err.errors)) {
+    for (const inner of err.errors) {
+      if (isPgConnectionError(inner, seen)) return true;
+    }
+  }
+
+  return false;
+}
 
 export function setInjectedPool(customPool) {
   injectedPool = customPool || null;
@@ -18,19 +116,25 @@ export function getPostgresConfig() {
     return { injected: true };
   }
 
-  const connectionString = process.env.DATABASE_URL || process.env.PG_CONNECTION_STRING || '';
+  const connectionString = (process.env.DATABASE_URL || process.env.PG_CONNECTION_STRING || '').trim();
   if (connectionString) {
-    return { connectionString, ssl: process.env.PG_SSL === 'true' ? { rejectUnauthorized: false } : false };
+    return {
+      connectionString,
+      ssl: process.env.PG_SSL === 'true' ? { rejectUnauthorized: false } : false,
+      max: 20,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 5000,
+    };
   }
 
-  const host = process.env.PGHOST || process.env.DB_HOST || '';
+  const host = (process.env.PGHOST || process.env.DB_HOST || '').trim();
   if (host) {
     return {
       host,
       port: Number(process.env.PGPORT || process.env.DB_PORT || 5432),
-      user: process.env.PGUSER || process.env.DB_USER || 'postgres',
+      user: (process.env.PGUSER || process.env.DB_USER || 'postgres').trim(),
       password: process.env.PGPASSWORD || process.env.DB_PASSWORD || '',
-      database: process.env.PGDATABASE || process.env.DB_NAME || 'awlad_selim',
+      database: (process.env.PGDATABASE || process.env.DB_NAME || 'awlad_selim').trim(),
       max: 20,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
@@ -49,11 +153,13 @@ export function getPool() {
   try {
     pool = new Pool(config);
     pool.on('error', (err) => {
-      console.error('[PostgreSQL Pool Error]:', err.message);
+      notifyPgConnectionFailure(err?.code || 'pool_error');
+      console.error('[PostgreSQL Pool Error]:', sanitizePgErrorMessage(err?.message));
     });
     return pool;
   } catch (error) {
-    console.error('[PostgreSQL Init Error]:', error);
+    notifyPgConnectionFailure(error?.code || 'pool_init_error');
+    console.error('[PostgreSQL Init Error]:', sanitizePgErrorMessage(error?.message));
     return null;
   }
 }
@@ -64,7 +170,9 @@ export async function checkPostgresHealth() {
     return {
       configured: false,
       status: 'not_configured',
-      message: 'لم يتم ضبط إعدادات PostgreSQL بعد. يعمل الخادم بقاعدة السجلات التسلسلية المؤمنة.',
+      message: isStrictPostgresMode()
+        ? 'لم يتم ضبط إعدادات PostgreSQL المطلوبة لتشغيل وضع الإنتاج الصارم.'
+        : 'لم يتم ضبط إعدادات PostgreSQL بعد. يعمل الخادم بقاعدة السجلات التسلسلية المؤمنة.',
     };
   }
 
@@ -105,12 +213,13 @@ export async function checkPostgresHealth() {
       client.release();
     }
   } catch (err) {
+    const safeError = sanitizePgErrorMessage(err?.message);
     return {
       configured: true,
       status: 'connection_failed',
       latencyMs: Date.now() - start,
-      error: err.message,
-      message: `فشل الاتصال بـ PostgreSQL: ${err.message}`,
+      error: safeError,
+      message: `فشل الاتصال بـ PostgreSQL: ${safeError}`,
     };
   }
 }
@@ -118,16 +227,29 @@ export async function checkPostgresHealth() {
 export async function withTransaction(callback, customPool = null) {
   const currentPool = customPool || getPool();
   if (!currentPool) {
-    throw new Error('قاعدة بيانات PostgreSQL غير متصلة.');
+    const err = new Error('قاعدة بيانات PostgreSQL غير متصلة.');
+    err.code = 'DATABASE_UNAVAILABLE';
+    throw err;
   }
 
-  const client = await currentPool.connect();
+  let client;
+  try {
+    client = await currentPool.connect();
+  } catch (error) {
+    if (isPgConnectionError(error)) {
+      notifyPgConnectionFailure(error?.code || 'connect_error');
+    }
+    throw error;
+  }
   try {
     await client.query('BEGIN');
     const result = await callback(client);
     await client.query('COMMIT');
     return result;
   } catch (error) {
+    if (isPgConnectionError(error)) {
+      notifyPgConnectionFailure(error?.code || 'transaction_error');
+    }
     try {
       await client.query('ROLLBACK');
     } catch {

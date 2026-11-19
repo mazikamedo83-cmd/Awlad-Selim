@@ -68,6 +68,9 @@ function isAuthRevokedError(err: any): boolean {
 }
 
 function isUnreachableError(err: any): boolean {
+  if (err?.status === 503 || String(err?.code || '') === 'DATABASE_UNAVAILABLE') {
+    return false;
+  }
   return err?.status === 0 || (typeof navigator !== 'undefined' && navigator.onLine === false);
 }
 
@@ -200,6 +203,15 @@ async function executeSyncCycle(params: {
           error: err?.message || 'الخادم غير متاح حالياً',
         };
       }
+      return {
+        ok: false,
+        serverReachable: true,
+        pushedCount: 0,
+        syncedCount: 0,
+        failedCount,
+        conflictCount,
+        error: err?.message || 'تعذر مزامنة العمليات مع قاعدة البيانات المركزية',
+      };
     }
   }
 

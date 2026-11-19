@@ -1,7 +1,13 @@
 import { Router } from 'express';
-import { getPool } from '../db/postgres.js';
+import { getPool, isPgConnectionError } from '../db/postgres.js';
 import { readJsonDatabase, withJsonTransaction } from '../db/jsonLedger.js';
-import { isPgMode, isoTimestamp } from '../db/stores/mode.js';
+import {
+  isPgMode,
+  isStrictPostgresMode,
+  markPgUnavailable,
+  createDatabaseUnavailableError,
+  isoTimestamp,
+} from '../db/stores/mode.js';
 import { generateServerId } from '../utils/crypto.js';
 import { AppError, nowIso, sanitizeUser } from '../utils/errors.js';
 import { requireAuth, asyncHandler } from '../middleware/auth.js';
@@ -481,6 +487,10 @@ router.post(
           result,
         });
       } catch (err) {
+        if (isStrictPostgresMode() && (isPgConnectionError(err) || err?.code === 'DATABASE_UNAVAILABLE')) {
+          markPgUnavailable('sync_push_connection_error');
+          throw createDatabaseUnavailableError('sync_push_connection_error');
+        }
         if (isConflictError(err)) {
           const conflict = await createConflictRecord({
             op,

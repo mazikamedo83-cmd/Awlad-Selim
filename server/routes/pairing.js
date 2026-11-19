@@ -10,6 +10,13 @@ import {
 import { validateActiveSession } from '../db/stores/authStore.js';
 import { verifyJwt } from '../utils/crypto.js';
 import { asyncHandler, checkPairingRateLimit, getClientIp } from '../middleware/auth.js';
+import { isPgConnectionError, isStrictPostgresMode } from '../db/postgres.js';
+import {
+  DATABASE_UNAVAILABLE_CODE,
+  DATABASE_UNAVAILABLE_MESSAGE,
+  ensureStrictPgReady,
+  markPgUnavailable,
+} from '../db/stores/mode.js';
 
 function escapeHtml(raw) {
   return String(raw ?? '')
@@ -58,7 +65,10 @@ async function resolveOptionalAuthUser(req) {
     if (!payload?.sub || !payload?.sid || !payload?.iid) return null;
     const sessionCtx = await validateActiveSession(payload.sid, payload.sub, payload.iid);
     return sessionCtx?.user || null;
-  } catch {
+  } catch (err) {
+    if (isStrictPostgresMode() && (isPgConnectionError(err) || err?.code === 'DATABASE_UNAVAILABLE')) {
+      throw err;
+    }
     return null;
   }
 }
@@ -317,17 +327,29 @@ async function handleInviteLandingPage(req, res) {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     return res.send(html);
   } catch (err) {
+    const isStrictDbDown =
+      isStrictPostgresMode() && (isPgConnectionError(err) || err?.code === DATABASE_UNAVAILABLE_CODE);
+    if (isStrictDbDown) {
+      markPgUnavailable(err?.code || 'connection_error');
+    }
     if (wantJson) {
       throw err;
     }
-    const status = err?.status || 400;
-    const msg = err?.message || 'رابط الربط غير صالح أو منتهي الصلاحية.';
+    const status = isStrictDbDown ? 503 : err?.status || 400;
+    const title = isStrictDbDown ? 'قاعدة البيانات غير متاحة مؤقتًا — AWLAD SELIM' : 'رابط ربط غير صالح — AWLAD SELIM';
+    const heading = isStrictDbDown ? 'قاعدة البيانات المركزية غير متاحة مؤقتًا' : 'تعذر إتمام ربط الجهاز';
+    const msg = isStrictDbDown
+      ? DATABASE_UNAVAILABLE_MESSAGE
+      : err?.message || 'رابط الربط غير صالح أو منتهي الصلاحية.';
+    const subHint = isStrictDbDown
+      ? 'تم إيقاف عمليات الربط مؤقتًا لحماية البيانات. يرجى إعادة المحاولة بعد عودة PostgreSQL للعمل.'
+      : 'يرجى التواصل مع مسؤول النظام لإصدار رابط ربط أو رمز QR جديد.';
     const html = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>رابط ربط غير صالح — AWLAD SELIM</title>
+  <title>${escapeHtml(title)}</title>
   <style>
     body { margin: 0; min-height: 100vh; background: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, sans-serif; display: flex; align-items: center; justify-content: center; padding: 20px; }
     .card { max-width: 460px; width: 100%; background: #1e293b; border: 1px solid #7f1d1d; border-radius: 16px; padding: 26px; text-align: center; }
@@ -337,9 +359,9 @@ async function handleInviteLandingPage(req, res) {
 </head>
 <body>
   <div class="card">
-    <h1>تعذر إتمام ربط الجهاز</h1>
+    <h1>${escapeHtml(heading)}</h1>
     <p>${escapeHtml(msg)}</p>
-    <p>يرجى التواصل مع مسؤول النظام لإصدار رابط ربط أو رمز QR جديد.</p>
+    <p>${escapeHtml(subHint)}</p>
   </div>
 </body>
 </html>`;
@@ -347,5 +369,10 @@ async function handleInviteLandingPage(req, res) {
   }
 }
 
-pairingPublicPagesRouter.get('/pair/:token', asyncHandler(handleInviteLandingPage));
-pairingPublicPagesRouter.get('/invite/:token', asyncHandler(handleInviteLandingPage));
+const strictPairingPageGuard = asyncHandler(async (_req, _res, next) => {
+  await ensureStrictPgReady();
+  next();
+});
+
+pairingPublicPagesRouter.get('/pair/:token', strictPairingPageGuard, asyncHandler(handleInviteLandingPage));
+pairingPublicPagesRouter.get('/invite/:token', strictPairingPageGuard, asyncHandler(handleInviteLandingPage));

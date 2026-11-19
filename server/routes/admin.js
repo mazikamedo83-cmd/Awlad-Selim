@@ -45,9 +45,9 @@ import {
   resolveSafeConnectionProfiles,
   parseValidAndroidSha256Fingerprints,
 } from '../db/stores/connectionPairingStore.js';
-import { checkPostgresHealth, initializeSchema } from '../db/postgres.js';
+import { checkPostgresHealth, initializeSchema, isStrictPostgresMode } from '../db/postgres.js';
 import { runDataMigration, rollbackMigration, readMigrationLogs } from '../db/migrator.js';
-import { readJsonDatabase, getDataPaths } from '../db/jsonLedger.js';
+import { readJsonDatabase, hasJsonDatabaseFile, getDataPaths } from '../db/jsonLedger.js';
 import {
   requireAuth,
   requireStaff,
@@ -109,7 +109,14 @@ router.get(
       dataDir,
       isElectron: process.env.AWLAD_ELECTRON === 'true',
       electronDesktop: process.env.AWLAD_ELECTRON === 'true',
-      databaseMode: pgHealth.status === 'online' ? 'postgresql-enterprise' : 'local-json-ledger',
+      strictMode: isStrictPostgresMode(),
+      databaseAvailable: pgHealth.status === 'online',
+      databaseMode:
+        pgHealth.status === 'online'
+          ? 'postgresql-enterprise'
+          : isStrictPostgresMode()
+          ? 'postgresql-strict-unavailable'
+          : 'local-json-ledger',
       postgresStatus: pgHealth.status,
       protocol: forwardedProto,
       httpsActive: forwardedProto === 'https' || Boolean(req.secure),
@@ -402,14 +409,36 @@ router.post('/migration/run', requireAdmin, asyncHandler(async (req, res) => {
       error: 'لا يمكن تنفيذ الترحيل قبل إعداد متغيرات PostgreSQL وتشغيل خدمة قاعدة البيانات بنجاح. تم الاحتفاظ بجميع البيانات الحالية دون أي تغيير.',
     });
   }
+  if (!req.body?.database && isStrictPostgresMode()) {
+    return res.status(400).json({
+      ok: false,
+      code: 'MIGRATION_SOURCE_REQUIRED',
+      error: 'في وضع الإنتاج الصارم (Strict Mode)، يجب تمرير بيانات النسخة الاحتياطية صراحة في الطلب لتنفيذ الترحيل.',
+    });
+  }
+  if (!req.body?.database && !hasJsonDatabaseFile()) {
+    return res.status(400).json({
+      ok: false,
+      code: 'MIGRATION_SOURCE_NOT_FOUND',
+      error: 'لا توجد قاعدة بيانات JSON محلية للترحيل.',
+    });
+  }
   const source = req.body?.database || readJsonDatabase();
   const result = await runDataMigration(source, req.auth.user.fullName, { isTestRun: Boolean(req.body?.isTestRun) });
   if (!result.success) return res.status(500).json({ ok: false, error: result.error, log: result.log });
   res.json({ ok: true, log: result.log });
 }));
 router.post('/migration/rollback', requireAdmin, asyncHandler(async (req, res) => {
+  if (isStrictPostgresMode()) {
+    return res.status(403).json({
+      ok: false,
+      code: 'STRICT_MODE_DESTRUCTIVE_BLOCKED',
+      error:
+        'يُمنع التراجع إلى JSON أو مسح جداول PostgreSQL في وضع الإنتاج الصارم (Production Strict Mode) لحماية البيانات ومنع انقسامها.',
+    });
+  }
   const result = await rollbackMigration(req.body?.migrationId || req.body?.backupFile, req.auth.user.fullName);
-  if (!result.success) return res.status(400).json({ ok: false, error: result.error });
+  if (!result.success) return res.status(400).json({ ok: false, code: result.code, error: result.error });
   res.json({ ok: true, ...result });
 }));
 
