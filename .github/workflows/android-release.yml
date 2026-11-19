@@ -67,10 +67,14 @@ jobs:
         run: |
           node server/tests/runAllTests.mjs
           npx tsx server/tests/pairingVerificationTests.mts
-          node server/tests/verifyElectronBootstrap.mjs
+          node server/tests/strictPostgresModeTests.mjs
+          npx tsx server/tests/strictClientBehaviorTests.mts
 
       - name: Build production web bundle
         run: bun run build
+
+      - name: Run Electron bootstrap and offline dist verification
+        run: node server/tests/verifyElectronBootstrap.mjs
 
       - name: Sync Capacitor Android project
         run: npx cap sync android

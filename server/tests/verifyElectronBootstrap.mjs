@@ -70,6 +70,25 @@ assert.equal(res2.databaseState.counts.products, 2, 'Existing target database mu
 console.log('  [PASS] 2. Existing non-empty database in %APPDATA% preserved untouched against empty/older source');
 
 // 3. Test real embedded Express server startup, offline static dist serving, write persistence across restart & clean shutdown
+const distIndexPath = path.join(process.cwd(), 'dist', 'index.html');
+if (!fs.existsSync(distIndexPath)) {
+  const viteBin = path.join(process.cwd(), 'node_modules', 'vite', 'bin', 'vite.js');
+  if (!fs.existsSync(viteBin)) {
+    throw new Error(`Missing dist/index.html (${distIndexPath}) and Vite CLI (${viteBin}) to build it`);
+  }
+  console.log('  [INFO] dist/index.html not found; building production bundle via Vite before offline server check...');
+  const viteBuild = spawnSync(process.execPath, [viteBin, 'build'], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+  });
+  assert.equal(
+    viteBuild.status,
+    0,
+    `Vite production build failed before Electron bootstrap verification:\n${viteBuild.stderr}\n${viteBuild.stdout}`
+  );
+  assert.ok(fs.existsSync(distIndexPath), `Expected dist/index.html after Vite build at ${distIndexPath}`);
+}
+
 const appData2 = path.join(sandbox, 'AppData2', 'Roaming');
 const prep2 = prepareElectronDataDirectory({ appDataDir: appData2, legacySourceDirs: [] });
 
