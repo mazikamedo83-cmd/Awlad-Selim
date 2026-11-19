@@ -95,6 +95,7 @@ export function isAuthSecurityRejectionError(err: any): boolean {
     code === 'SESSION_REVOKED' ||
     code === 'DEVICE_REVOKED' ||
     code === 'ACCOUNT_DEACTIVATED' ||
+    code === 'ACCOUNT_SUSPENDED' ||
     code === 'INVALID_TOKEN' ||
     code === 'UNAUTHORIZED'
   );
@@ -113,9 +114,22 @@ export function createAuthExpiredCallback(
     | 'setIsDatabaseUnavailable'
     | 'setDatabaseUnavailableMessage'
     | 'setSessionExpiredMessage'
-  >
+  >,
+  cleanup?: {
+    getCurrentUserId?: () => string | null;
+    revokeOfflineUser?: typeof revokeOfflineUser;
+    clearLastVerifiedOfflineSession?: typeof clearLastVerifiedOfflineSession;
+    clearReadCache?: typeof clearReadCache;
+  }
 ) {
   return (message?: string) => {
+    const uid = cleanup?.getCurrentUserId?.();
+    if (uid && cleanup?.revokeOfflineUser) {
+      cleanup.revokeOfflineUser(uid).catch(() => {});
+    } else if (cleanup?.clearLastVerifiedOfflineSession) {
+      cleanup.clearLastVerifiedOfflineSession().catch(() => {});
+    }
+    cleanup?.clearReadCache?.();
     actions.setCurrentUser(null);
     actions.setCustomerProfile(null);
     actions.setRepresentativeProfile(null);
@@ -317,6 +331,7 @@ export async function executeAuthSessionCheck(params: {
         if (
           err?.code === 'DEVICE_REVOKED' ||
           err?.code === 'ACCOUNT_DEACTIVATED' ||
+          err?.code === 'ACCOUNT_SUSPENDED' ||
           err?.code === 'SESSION_REVOKED'
         ) {
           actions.setSessionExpiredMessage(err.message);
@@ -452,18 +467,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     setAuthExpiredHandler(
-      createAuthExpiredCallback({
-        setCurrentUser,
-        setCustomerProfile,
-        setRepresentativeProfile,
-        setLinkWarning,
-        setIsOfflineSession,
-        setPermissionsMayBeStale,
-        setLastVerifiedAt,
-        setIsDatabaseUnavailable,
-        setDatabaseUnavailableMessage,
-        setSessionExpiredMessage,
-      })
+      createAuthExpiredCallback(
+        {
+          setCurrentUser,
+          setCustomerProfile,
+          setRepresentativeProfile,
+          setLinkWarning,
+          setIsOfflineSession,
+          setPermissionsMayBeStale,
+          setLastVerifiedAt,
+          setIsDatabaseUnavailable,
+          setDatabaseUnavailableMessage,
+          setSessionExpiredMessage,
+        },
+        {
+          getCurrentUserId: () => currentUserIdRef.current,
+          revokeOfflineUser,
+          clearLastVerifiedOfflineSession,
+          clearReadCache,
+        }
+      )
     );
 
     const unsubscribeDbStatus = subscribeServerDbStatus((available, message) => {

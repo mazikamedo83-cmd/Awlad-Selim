@@ -219,6 +219,8 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
                   ? 'جاري المزامنة مع السيرفر...'
                   : networkStatus === 'disconnected'
                   ? 'وضع العمل المحلي دون اتصال'
+                  : networkStatus === 'error'
+                  ? 'قاعدة البيانات غير متاحة مؤقتاً أو تعذرت المزامنة'
                   : 'توجد عمليات معلقة أو تعارضات'}
               </p>
               <p className="text-[11px] text-slate-500 mt-0.5">

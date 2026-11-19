@@ -692,6 +692,138 @@ await saveAndRestoreEnv(async () => {
       assert.equal(Number(bootFinal.customers.find((c) => c.id === custId).currentBalance || 0), custBefore - 50);
       assertNoJsonLedgerFiles('after idempotent customer payment recovery');
     });
+
+    await test('12. Purchases, invoice payments, supplier payments & cash operations reject with 503 on outage and recover idempotently with ZERO duplicates', async () => {
+      // Prepare a supplier and a partial sales invoice while PG is online
+      const suppRes = await req(baseUrl, 'POST', '/api/admin/suppliers', {
+        token: adminToken,
+        body: { code: 'SUP-STRICT-1', name: 'مورد الاختبار الصارم', phone: '01055556666', openingBalance: 0 },
+      });
+      assert.equal(suppRes.status, 201);
+      const supplierId = suppRes.json.supplier.id;
+
+      const partialSaleRes = await req(baseUrl, 'POST', '/api/invoices/sales', {
+        token: adminToken,
+        headers: { 'Idempotency-Key': 'strict-partial-sale-1' },
+        body: {
+          customerId: custId,
+          warehouseId: whId,
+          cashboxId: cbId,
+          paymentType: 'partial',
+          paymentMethod: 'cash',
+          paidAmount: 40,
+          items: [{ productId: prodId, unit: 'قطعة', unitFactor: 1, quantity: 2, unitPrice: 80, discount: 0 }],
+        },
+      });
+      assert.equal(partialSaleRes.status, 201);
+      const partialInvId = partialSaleRes.json.invoice.id;
+
+      const bootPre = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const invCountPre = bootPre.invoices.length;
+      const cbPre = Number(bootPre.cashboxes.find((c) => c.id === cbId).currentBalance || 0);
+      const custPre = Number(bootPre.customers.find((c) => c.id === custId).currentBalance || 0);
+      const suppPre = Number(bootPre.suppliers.find((s) => s.id === supplierId).currentBalance || 0);
+
+      // Simulate PostgreSQL outage
+      togglePool.setOnline(false, { code: '57P01' });
+
+      const outageOps = [
+        [
+          'POST',
+          '/api/invoices/purchase',
+          {
+            token: adminToken,
+            headers: { 'Idempotency-Key': 'strict-purch-outage-1' },
+            body: {
+              supplierId,
+              warehouseId: whId,
+              cashboxId: cbId,
+              paymentType: 'credit',
+              paymentMethod: 'cash',
+              paidAmount: 0,
+              items: [{ productId: prodId, unit: 'قطعة', unitFactor: 1, quantity: 3, unitPrice: 50, discount: 0 }],
+            },
+          },
+        ],
+        [
+          'POST',
+          `/api/invoices/${partialInvId}/payments`,
+          {
+            token: adminToken,
+            headers: { 'Idempotency-Key': 'strict-invpay-outage-1' },
+            body: { amount: 60, cashboxId: cbId, paymentMethod: 'cash', notes: 'سداد فاتورة أثناء الانقطاع' },
+          },
+        ],
+        [
+          'POST',
+          '/api/admin/suppliers/payment',
+          {
+            token: adminToken,
+            headers: { 'Idempotency-Key': 'strict-suppay-outage-1' },
+            body: { supplierId, amount: 30, cashboxId: cbId, notes: 'سداد مورد أثناء الانقطاع' },
+          },
+        ],
+        [
+          'POST',
+          '/api/admin/cash-operations',
+          {
+            token: adminToken,
+            headers: { 'Idempotency-Key': 'strict-cashop-outage-1' },
+            body: { type: 'cash_deposit', amount: 25, cashboxId: cbId, notes: 'إيداع أثناء الانقطاع' },
+          },
+        ],
+      ];
+
+      for (const [method, urlPath, opts] of outageOps) {
+        const res = await req(baseUrl, method, urlPath, opts);
+        assert.equal(res.status, 503, `Expected 503 on ${method} ${urlPath} during PG outage, got ${res.status}`);
+        assert.equal(res.json.code, DATABASE_UNAVAILABLE_CODE);
+      }
+      assertNoJsonLedgerFiles('after financial write rejections during PG outage');
+
+      // Recover PostgreSQL and verify state was NOT mutated during outage
+      togglePool.setOnline(true);
+      const bootMid = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      assert.equal(bootMid.invoices.length, invCountPre);
+      assert.equal(Number(bootMid.cashboxes.find((c) => c.id === cbId).currentBalance || 0), cbPre);
+      assert.equal(Number(bootMid.customers.find((c) => c.id === custId).currentBalance || 0), custPre);
+      assert.equal(Number(bootMid.suppliers.find((s) => s.id === supplierId).currentBalance || 0), suppPre);
+
+      // Execute each operation twice with same Idempotency-Key -> zero duplicates
+      const p1 = await req(baseUrl, outageOps[0][0], outageOps[0][1], outageOps[0][2]);
+      const p2 = await req(baseUrl, outageOps[0][0], outageOps[0][1], outageOps[0][2]);
+      assert.equal(p1.status, 201);
+      assert.equal(p2.status, 201);
+      assert.equal(p2.json.invoice.id, p1.json.invoice.id);
+
+      const ip1 = await req(baseUrl, outageOps[1][0], outageOps[1][1], outageOps[1][2]);
+      const ip2 = await req(baseUrl, outageOps[1][0], outageOps[1][1], outageOps[1][2]);
+      assert.equal(ip1.status, 200);
+      assert.equal(ip2.status, 200);
+      assert.equal(ip2.json.invoice.paidAmount, ip1.json.invoice.paidAmount);
+
+      const sp1 = await req(baseUrl, outageOps[2][0], outageOps[2][1], outageOps[2][2]);
+      const sp2 = await req(baseUrl, outageOps[2][0], outageOps[2][1], outageOps[2][2]);
+      assert.equal(sp1.status, 200);
+      assert.equal(sp2.status, 200);
+      assert.equal(sp2.json.deduplicated, true);
+
+      const co1 = await req(baseUrl, outageOps[3][0], outageOps[3][1], outageOps[3][2]);
+      const co2 = await req(baseUrl, outageOps[3][0], outageOps[3][1], outageOps[3][2]);
+      assert.equal(co1.status, 201);
+      assert.equal(co2.status, 200);
+      assert.equal(co2.json.deduplicated, true);
+
+      const bootEnd = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      assert.equal(bootEnd.invoices.length, invCountPre + 1, 'Purchase replay must not create 2 invoices');
+      // Cashbox delta: +60 (invoice payment) -30 (supplier payment) +25 (cash deposit) = +55
+      assert.equal(Number(bootEnd.cashboxes.find((c) => c.id === cbId).currentBalance || 0), cbPre + 55);
+      // Customer delta: -60 (invoice payment)
+      assert.equal(Number(bootEnd.customers.find((c) => c.id === custId).currentBalance || 0), custPre - 60);
+      // Supplier delta: +150 (credit purchase 3*50) -30 (supplier payment) = +120
+      assert.equal(Number(bootEnd.suppliers.find((s) => s.id === supplierId).currentBalance || 0), suppPre + 120);
+      assertNoJsonLedgerFiles('after Test 12 recovery');
+    });
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

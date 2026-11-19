@@ -2918,9 +2918,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 <p className="leading-relaxed">{deleteErrorMessage}</p>
                 <div className="pt-2">
                   <button
-                    onClick={() => {
-                      updateCustomer(customerToDelete.id, { status: 'blocked' });
-                      setCustomerToDelete(null);
+                    onClick={async () => {
+                      try {
+                        await updateCustomer(customerToDelete.id, { status: 'blocked' });
+                        setCustomerToDelete(null);
+                      } catch (err: any) {
+                        setDeleteErrorMessage(err?.message || 'تعذر تغيير حالة العميل.');
+                      }
                     }}
                     className="w-full py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl"
                   >

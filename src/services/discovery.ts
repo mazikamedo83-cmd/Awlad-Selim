@@ -451,11 +451,16 @@ export async function syncConnectionConfigFromServer(options?: {
       }).finally(() => clearTimeout(timer));
 
       const data = await res.json().catch(() => null);
-      if (res.status === 403 && data?.code === 'DEVICE_REVOKED') {
+      if (
+        res.status === 403 &&
+        (data?.code === 'DEVICE_REVOKED' ||
+          data?.code === 'ACCOUNT_DEACTIVATED' ||
+          data?.code === 'ACCOUNT_SUSPENDED')
+      ) {
         triggerAuthExpired(data?.error || 'تم فصل هذا الجهاز من الإدارة.');
         return { updated: false, revoked: true };
       }
-      if (res.status === 503 && data?.code === 'DATABASE_UNAVAILABLE') {
+      if (res.status === 503 || data?.code === 'DATABASE_UNAVAILABLE') {
         return { updated: false };
       }
       if (!data) continue;

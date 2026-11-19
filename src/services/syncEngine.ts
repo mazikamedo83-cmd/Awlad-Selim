@@ -61,6 +61,7 @@ function isAuthRevokedError(err: any): boolean {
     err?.status === 401 ||
     code === 'DEVICE_REVOKED' ||
     code === 'ACCOUNT_DEACTIVATED' ||
+    code === 'ACCOUNT_SUSPENDED' ||
     code === 'SESSION_REVOKED' ||
     code === 'INVALID_TOKEN' ||
     code === 'UNAUTHORIZED'

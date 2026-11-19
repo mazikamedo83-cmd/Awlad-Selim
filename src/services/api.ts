@@ -670,6 +670,7 @@ interface RefreshAttemptResult {
   tokens: StoredTokens | null;
   dbUnavailableError?: ApiError;
   networkError?: ApiError;
+  transientError?: ApiError;
   authErrorMessage?: string;
 }
 
@@ -701,6 +702,17 @@ async function refreshAccessToken(): Promise<RefreshAttemptResult> {
         };
       }
       if (!res.ok) {
+        if (res.status >= 500) {
+          return {
+            tokens: null,
+            transientError: new ApiError(
+              res.status,
+              data?.error || `خطأ مؤقت في الخادم (${res.status})`,
+              data?.code || `HTTP_${res.status}`,
+              data?.details
+            ),
+          };
+        }
         saveStoredTokens(null);
         return { tokens: null, authErrorMessage: data?.error };
       }
@@ -793,6 +805,9 @@ export async function apiRequest<T = any>(
       if (refreshOutcome.networkError) {
         throw refreshOutcome.networkError;
       }
+      if (refreshOutcome.transientError) {
+        throw refreshOutcome.transientError;
+      }
       if (refreshOutcome.tokens?.accessToken) {
         res = await executeFetch(refreshOutcome.tokens.accessToken);
       } else {
@@ -818,7 +833,9 @@ export async function apiRequest<T = any>(
 
   if (
     res.status === 403 &&
-    (json?.code === 'DEVICE_REVOKED' || json?.code === 'ACCOUNT_DEACTIVATED') &&
+    (json?.code === 'DEVICE_REVOKED' ||
+      json?.code === 'ACCOUNT_DEACTIVATED' ||
+      json?.code === 'ACCOUNT_SUSPENDED') &&
     !options.skipAuth
   ) {
     saveStoredTokens(null);
@@ -828,9 +845,11 @@ export async function apiRequest<T = any>(
   }
 
   if (!res.ok || (json && json.ok === false)) {
-    const message = json?.error || `خطأ في الاستجابة (${res.status})`;
-    const code = json?.code || `HTTP_${res.status}`;
-    if (res.status === 503 && code === 'DATABASE_UNAVAILABLE') {
+    const isDb503 = res.status === 503 || json?.code === 'DATABASE_UNAVAILABLE';
+    const message =
+      json?.error || (isDb503 ? DEFAULT_DB_UNAVAILABLE_MESSAGE : `خطأ في الاستجابة (${res.status})`);
+    const code = json?.code || (isDb503 ? 'DATABASE_UNAVAILABLE' : `HTTP_${res.status}`);
+    if (isDb503) {
       notifyServerDbStatus(false, message);
     }
     throw new ApiError(res.status, message, code, json?.details);

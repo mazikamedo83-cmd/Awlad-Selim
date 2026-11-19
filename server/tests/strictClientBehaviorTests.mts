@@ -756,4 +756,170 @@ await test('12. isNetworkFailure rejects 503 DATABASE_UNAVAILABLE even when navi
   }
 });
 
+await test('13. Sales, purchases, collections, and payments rejected with 503 NEVER enter Offline Queue even if navigator.onLine is false', async () => {
+  const userId = 'USR-NO-QUEUE-503';
+  const prevNav = globalThis.navigator;
+  Object.defineProperty(globalThis, 'navigator', {
+    value: { onLine: false, userAgent: 'AwladSelimTestRunner/3.0' },
+    configurable: true,
+  });
+  const prevFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify(DATABASE_UNAVAILABLE_BODY), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' },
+    })) as any;
+
+  try {
+    const financialEndpoints = [
+      { path: '/api/invoices/sales', body: { customerId: 'C-1', items: [] } },
+      { path: '/api/invoices/purchase', body: { supplierId: 'S-1', items: [] } },
+      { path: '/api/customers/C-1/payment', body: { amount: 100, cashboxId: 'CB-1' } },
+      { path: '/api/invoices/INV-1/payments', body: { amount: 100, cashboxId: 'CB-1' } },
+      { path: '/api/admin/suppliers/payment', body: { supplierId: 'S-1', amount: 100, cashboxId: 'CB-1' } },
+    ];
+
+    for (const ep of financialEndpoints) {
+      let caughtErr: any = null;
+      try {
+        await apiRequest(ep.path, { method: 'POST', body: ep.body, idempotencyKey: `K-${ep.path}` });
+      } catch (err) {
+        caughtErr = err;
+      }
+      assert.ok(caughtErr instanceof ApiError, `Expected ApiError on ${ep.path}`);
+      assert.equal(caughtErr.status, 503);
+      assert.equal(caughtErr.code, 'DATABASE_UNAVAILABLE');
+      assert.equal(isNetworkFailure(caughtErr), false, `503 on ${ep.path} must NOT trigger offline queue`);
+    }
+
+    const queue = await localDb.listSyncQueue(userId);
+    assert.equal(queue.length, 0, 'Offline queue must stay strictly empty for 503-rejected financial ops');
+  } finally {
+    globalThis.fetch = prevFetch;
+    Object.defineProperty(globalThis, 'navigator', {
+      value: prevNav,
+      configurable: true,
+    });
+  }
+});
+
+await test('14. Plain proxy 503 (without JSON) and transient 502 on /api/auth/refresh preserve tokens without logging user out', async () => {
+  saveStoredTokens({ accessToken: 'keep-acc-502', refreshToken: 'keep-ref-502' });
+  let authExpiredCalled = false;
+  const dbEvents: boolean[] = [];
+  setAuthExpiredHandler(() => {
+    authExpiredCalled = true;
+  });
+  const unsub = subscribeServerDbStatus((available) => {
+    dbEvents.push(available);
+  });
+
+  const prevFetch = globalThis.fetch;
+  try {
+    // Case A: Non-JSON 503 proxy response
+    globalThis.fetch = (async () =>
+      new Response('<html><body>503 Service Unavailable</body></html>', {
+        status: 503,
+        headers: { 'Content-Type': 'text/html' },
+      })) as any;
+
+    await assert.rejects(
+      () => apiRequest('/api/customers'),
+      (err: any) => err instanceof ApiError && err.status === 503 && err.code === 'DATABASE_UNAVAILABLE'
+    );
+    assert.equal(authExpiredCalled, false);
+    assert.equal(getStoredTokens()?.refreshToken, 'keep-ref-502');
+    assert.ok(dbEvents.includes(false), 'Non-JSON 503 must notify DB unavailable');
+
+    // Case B: 401 followed by transient 502 on /api/auth/refresh
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/auth/refresh')) {
+        return new Response('Bad Gateway', { status: 502 });
+      }
+      return new Response(JSON.stringify({ ok: false, code: 'INVALID_TOKEN', error: 'expired' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }) as any;
+
+    await assert.rejects(
+      () => apiRequest('/api/invoices'),
+      (err: any) => err instanceof ApiError && err.status === 502
+    );
+    assert.equal(authExpiredCalled, false, 'Transient 502 during token refresh must NOT log user out');
+    assert.equal(getStoredTokens()?.accessToken, 'keep-acc-502');
+    assert.equal(getStoredTokens()?.refreshToken, 'keep-ref-502');
+  } finally {
+    unsub();
+    globalThis.fetch = prevFetch;
+    setAuthExpiredHandler(null);
+  }
+});
+
+await test('15. ACCOUNT_DEACTIVATED, ACCOUNT_SUSPENDED, DEVICE_REVOKED, and 401 SESSION_REVOKED via apiRequest revoke session, tokens & offline cache', async () => {
+  const { revokeOfflineUser, clearLastVerifiedOfflineSession } = await import('../../src/services/offlineAuth.ts');
+  const { clearReadCache } = await import('../../src/services/storage.ts');
+
+  const cases = [
+    { status: 403, code: 'ACCOUNT_DEACTIVATED', error: 'تم تعطيل هذا الحساب من الإدارة.' },
+    { status: 403, code: 'ACCOUNT_SUSPENDED', error: 'تم إيقاف هذا الحساب مؤقتاً من الإدارة.' },
+    { status: 403, code: 'DEVICE_REVOKED', error: 'تم فصل هذا الجهاز وإلغاء اعتماده من الإدارة.' },
+    { status: 401, code: 'SESSION_REVOKED', error: 'انتهت الجلسة أو تم تسجيل الخروج منها.' },
+  ];
+
+  for (const c of cases) {
+    await saveVerifiedOnlineCredentials({
+      serverUrl: 'https://erp.example.com',
+      installationId: 'INST-503',
+      username: SAMPLE_REP_USER.username,
+      password: 'SecretPassword123',
+      user: SAMPLE_REP_USER as any,
+      customerProfile: SAMPLE_CUSTOMER_PROFILE as any,
+      representativeProfile: SAMPLE_REP_PROFILE as any,
+    });
+    saveStoredTokens({ accessToken: `acc-${c.code}`, refreshToken: `ref-${c.code}` });
+
+    const { state, actions } = createAuthHarness({
+      currentUser: SAMPLE_REP_USER,
+      customerProfile: SAMPLE_CUSTOMER_PROFILE,
+      representativeProfile: SAMPLE_REP_PROFILE,
+    });
+
+    setAuthExpiredHandler(
+      createAuthExpiredCallback(actions, {
+        getCurrentUserId: () => state.currentUser?.id || null,
+        revokeOfflineUser,
+        clearLastVerifiedOfflineSession,
+        clearReadCache,
+      })
+    );
+
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ ok: false, code: c.code, error: c.error }), {
+        status: c.status,
+        headers: { 'Content-Type': 'application/json' },
+      })) as any;
+
+    try {
+      await assert.rejects(
+        () => apiRequest('/api/customers'),
+        (err: any) => err instanceof ApiError && err.status === c.status && err.code === c.code
+      );
+      // Allow fire-and-forget revokeOfflineUser promise to settle
+      await new Promise((r) => setTimeout(r, 15));
+
+      assert.equal(state.currentUser, null, `${c.code} must clear currentUser`);
+      assert.equal(getStoredTokens(), null, `${c.code} must wipe tokens`);
+      assert.equal(state.sessionExpiredMessage, c.error, `${c.code} must preserve server revocation message`);
+      const offlineAfter = await restoreLastVerifiedOfflineSession('https://erp.example.com', 'INST-503');
+      assert.equal(offlineAfter, null, `${c.code} must revoke cached offline credentials`);
+    } finally {
+      globalThis.fetch = prevFetch;
+      setAuthExpiredHandler(null);
+    }
+  }
+});
+
 console.log(`\nALL CLIENT 503 STRICT MODE TESTS PASSED (${passed} assertions groups)!`);

@@ -784,6 +784,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const hydratedUserRef = useRef<string | null>(null);
   const isDbUnavailableRef = useRef<boolean>(false);
+  const isSyncingRef = useRef<boolean>(false);
+  const loadRoleScopedDataRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     return subscribeServerDbStatus((available, message) => {
@@ -799,6 +801,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isDbUnavailableRef.current = false;
         setLastError(null);
         setNetworkStatus((prev) => (prev === 'error' ? 'connected' : prev));
+        if (!isSyncingRef.current && loadRoleScopedDataRef.current) {
+          loadRoleScopedDataRef.current().catch(() => {});
+        }
       }
     });
   }, []);
@@ -1031,6 +1036,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
+    isSyncingRef.current = true;
     setIsSyncing(true);
     try {
       const outcome = await runSyncCycle({ userId: currentUser.id, forceAll: false });
@@ -1071,15 +1077,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setNetworkStatus(networkDown ? 'disconnected' : 'error');
       setLastError(err?.message || 'تعذر مزامنة البيانات مع السيرفر');
     } finally {
+      isSyncingRef.current = false;
       setIsSyncing(false);
       setIsInitialLoaded(true);
     }
   }, [isAuthenticated, currentUser, applyServerPullPayload, refreshQueueAndConflictsFromLocal, handleServerAuthRevoked, refreshAuthContext]);
 
+  loadRoleScopedDataRef.current = loadRoleScopedData;
+
   const triggerSync = useCallback(
     async (forceAll = false) => {
       if (!isAuthenticated || !currentUser) return;
       setNetworkStatus('synchronizing');
+      isSyncingRef.current = true;
       setIsSyncing(true);
       try {
         await syncConnectionConfigFromServer({ triggerHeartbeat: true }).catch(() => {});
@@ -1100,7 +1110,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setNetworkStatus(outcome.serverReachable ? 'error' : 'disconnected');
           if (outcome.error) setLastError(outcome.error);
         }
+      } catch (err: any) {
+        const networkDown = isNetworkFailure(err);
+        setIsServerReachable(!networkDown);
+        setNetworkStatus(networkDown ? 'disconnected' : 'error');
+        setLastError(err?.message || 'تعذر مزامنة البيانات مع السيرفر');
       } finally {
+        isSyncingRef.current = false;
         setIsSyncing(false);
       }
     },
