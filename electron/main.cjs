@@ -314,7 +314,7 @@ function registerIpcHandlers() {
   });
 }
 
-async function createMainWindow(startUrl, appRoot) {
+async function createMainWindow(startUrl, appRoot, options = {}) {
   const iconPng = path.join(appRoot, 'build', 'icon.png');
   const iconIco = path.join(appRoot, 'build', 'icon.ico');
   const chosenIcon = process.platform === 'win32' && fs.existsSync(iconIco) ? iconIco : iconPng;
@@ -365,9 +365,13 @@ async function createMainWindow(startUrl, appRoot) {
 
   try {
     await session.defaultSession.clearCache();
+    const storagesToClear = ['serviceworkers', 'cachestorage'];
+    if (options.isFreshDatabase) {
+      storagesToClear.push('localstorage', 'indexdb', 'cookies');
+    }
     await session.defaultSession.clearStorageData({
       origin: startUrl,
-      storages: ['serviceworkers', 'cachestorage'],
+      storages: storagesToClear,
     });
   } catch (err) {
     console.warn('[Electron Cache Clear Warning]:', err?.message || err);
@@ -394,13 +398,14 @@ async function shutdownGracefully() {
 async function bootstrapApplication() {
   const appRoot = getAppRoot();
   const appDataBase = process.env.AWLAD_APP_DATA_ROOT || app.getPath('appData');
+  const allowLegacyImport = !app.isPackaged || process.env.AWLAD_ALLOW_LEGACY_IMPORT === 'true';
 
   let prepResult;
   try {
     prepResult = prepareElectronDataDirectory({
       appDataDir: appDataBase,
-      legacySourceDirs: getLegacySourceCandidates(appRoot),
-      envFileCandidates: getEnvFileCandidates(appRoot),
+      legacySourceDirs: allowLegacyImport ? getLegacySourceCandidates(appRoot) : [],
+      envFileCandidates: allowLegacyImport ? getEnvFileCandidates(appRoot) : [],
     });
   } catch (err) {
     dialog.showErrorBox(
@@ -413,15 +418,32 @@ async function bootstrapApplication() {
 
   // Always point embedded server at verified %APPDATA%\AWLAD SELIM\data before loading server modules
   process.env.AWLAD_ELECTRON = 'true';
+  process.env.AWLAD_IS_PACKAGED = app.isPackaged ? 'true' : 'false';
   process.env.AWLAD_DATA_DIR = prepResult.targetDataDir;
-  if (prepResult.envFilePath) {
+  if (prepResult.envFilePath && allowLegacyImport) {
     process.env.AWLAD_ENV_FILE = prepResult.envFilePath;
+  }
+
+  const offlineClientDir = path.join(path.dirname(prepResult.targetDataDir), 'offline_client');
+  const isFreshDatabase =
+    !prepResult.databaseState?.exists ||
+    Number(prepResult.databaseState?.counts?.users || 0) === 0;
+
+  // On a clean database with zero users, purge any leftover client auth/session vault from prior installs
+  if (isFreshDatabase) {
+    for (const staleFolder of ['offline_auth_session', 'offline_auth_creds']) {
+      try {
+        fs.rmSync(path.join(offlineClientDir, staleFolder), { recursive: true, force: true });
+      } catch {
+        // ignore cleanup failure
+      }
+    }
   }
 
   desktopState.dataDir = prepResult.targetDataDir;
   desktopState.backupsDir = prepResult.backupsDir;
-  desktopState.offlineClientDir = path.join(path.dirname(prepResult.targetDataDir), 'offline_client');
-  desktopState.envFilePath = prepResult.envFilePath;
+  desktopState.offlineClientDir = offlineClientDir;
+  desktopState.envFilePath = allowLegacyImport ? prepResult.envFilePath : null;
   desktopState.databaseState = prepResult.databaseState;
 
   const devStartUrl = !app.isPackaged ? (process.env.ELECTRON_START_URL || '').trim() : '';
@@ -450,7 +472,7 @@ async function bootstrapApplication() {
         host: '0.0.0.0',
         port: Number(process.env.PORT || process.env.API_PORT || 3000),
         distDir,
-        envFiles: prepResult.envFilePath ? [prepResult.envFilePath] : [],
+        envFiles: allowLegacyImport && prepResult.envFilePath ? [prepResult.envFilePath] : [],
         allowPortFallback: process.env.AWLAD_ALLOW_PORT_FALLBACK === 'true',
       });
     } catch (err) {
@@ -469,7 +491,7 @@ async function bootstrapApplication() {
 
   registerIpcHandlers();
   buildApplicationMenu();
-  await createMainWindow(startUrl, appRoot);
+  await createMainWindow(startUrl, appRoot, { isFreshDatabase });
 }
 
 if (gotSingleInstanceLock) {

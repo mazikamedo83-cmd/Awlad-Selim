@@ -68,10 +68,15 @@ jobs:
             Write-Host "Found EXE: $($f.Name) ($([Math]::Round($f.Length / 1MB, 2)) MB)"
           }
           node server/tests/verifyElectronBootstrap.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          bun run windows:customer-zip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload Windows Installer Artifact
         uses: actions/upload-artifact@v6
         with:
           name: AWLAD-SELIM-Windows-Installer
-          path: dist-electron/*.exe
+          path: |
+            dist-electron/*.exe
+            dist-electron/*.zip
           if-no-files-found: error

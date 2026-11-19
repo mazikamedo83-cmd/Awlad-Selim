@@ -18,6 +18,7 @@ import {
   getClientIp,
   requireAuth,
 } from '../middleware/auth.js';
+import { verifyJwt } from '../utils/crypto.js';
 
 const router = Router();
 
@@ -86,8 +87,15 @@ router.post(
 router.post(
   '/logout',
   asyncHandler(async (req, res) => {
-    let sessionId = null;
-    if (req.auth?.sessionId) sessionId = req.auth.sessionId;
+    let sessionId = req.auth?.sessionId || null;
+    if (!sessionId) {
+      const authHeader = req.get('authorization') || '';
+      const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+      if (token) {
+        const payload = verifyJwt(token);
+        if (payload?.sid) sessionId = payload.sid;
+      }
+    }
     await logoutSession({ sessionId, refreshToken: req.body?.refreshToken || null });
     res.json({ ok: true });
   })
@@ -100,6 +108,7 @@ router.get(
     const sysSettings = await getSystemSettingsSafe();
     res.json({
       ok: true,
+      installationId: req.auth.installationId || null,
       user: req.auth.user,
       customerProfile: req.auth.customerProfile,
       representativeProfile: req.auth.representativeProfile,

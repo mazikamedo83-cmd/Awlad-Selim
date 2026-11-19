@@ -122,22 +122,70 @@ export async function listAuditLogs(limit = 300) {
   return readJsonAuditLogs().slice(0, safeLimit);
 }
 
-export async function getAuthStatus() {
+export async function ensureInstallationId() {
   if (await isPgMode()) {
     const pool = getPool();
-    const res = await pool.query('SELECT COUNT(*)::int AS cnt FROM users');
+    const res = await pool.query('SELECT id, extra_settings FROM system_settings LIMIT 1');
+    const row = res.rows[0];
+    const existingId = String(row?.extra_settings?.installationId || '').trim();
+    if (existingId) return existingId;
+
+    const instId = generateServerId('INST');
+    if (row) {
+      const nextExtra = { ...(row.extra_settings || {}), installationId: instId };
+      await pool.query('UPDATE system_settings SET extra_settings = $1 WHERE id = $2', [
+        JSON.stringify(nextExtra),
+        row.id,
+      ]);
+    } else {
+      await pool.query(
+        `INSERT INTO system_settings (id, company_name, company_subtitle, currency, default_print_mode, invoice_notes, allow_negative_stock, extra_settings)
+         VALUES ('default', 'مؤسسة أولاد سليم للتجارة والتوزيع', 'نظام المحاسبة وإدارة الأعمال المتكامل', 'ج.م', 'a4', 'شكرًا لتعاملكم معنا', FALSE, $1)`,
+        [JSON.stringify({ installationId: instId })]
+      );
+    }
+    return instId;
+  }
+
+  const db = readJsonDatabase();
+  if (db.installationId && String(db.installationId).trim()) {
+    return String(db.installationId).trim();
+  }
+  return withJsonTransaction((working) => {
+    if (!working.installationId || !String(working.installationId).trim()) {
+      working.installationId = generateServerId('INST');
+    }
+    return working.installationId;
+  });
+}
+
+export async function getAuthStatus() {
+  const installationId = await ensureInstallationId();
+  if (await isPgMode()) {
+    const pool = getPool();
+    const res = await pool.query(
+      `SELECT COUNT(*)::int AS cnt, COUNT(*) FILTER (WHERE role = 'admin')::int AS admin_cnt FROM users`
+    );
     const count = Number(res.rows[0]?.cnt || 0);
+    const adminsCount = Number(res.rows[0]?.admin_cnt || 0);
     return {
-      needsAdminSetup: count === 0,
+      needsAdminSetup: count === 0 && adminsCount === 0,
       usersCount: count,
+      adminsCount,
+      installationId,
       mode: 'postgresql-enterprise',
     };
   }
   const db = readJsonDatabase();
   const count = Array.isArray(db.users) ? db.users.length : 0;
+  const adminsCount = Array.isArray(db.users)
+    ? db.users.filter((u) => u?.role === 'admin').length
+    : 0;
   return {
-    needsAdminSetup: count === 0,
+    needsAdminSetup: count === 0 && adminsCount === 0,
     usersCount: count,
+    adminsCount,
+    installationId,
     mode: 'local-json-ledger',
   };
 }
@@ -146,6 +194,7 @@ export async function bootstrapAdmin({ fullName, username, password, phone = '',
   const cleanUser = String(username || '').trim();
   const cleanName = String(fullName || '').trim();
   const cleanPass = String(password || '');
+  const cleanCompany = String(companyName || '').trim();
   if (!cleanUser || cleanUser.length < 3) {
     throw new AppError(400, 'اسم المستخدم يجب أن لا يقل عن 3 أحرف', 'INVALID_USERNAME');
   }
@@ -159,11 +208,14 @@ export async function bootstrapAdmin({ fullName, username, password, phone = '',
   const passwordHash = await hashPasswordBcrypt(cleanPass);
   const adminId = generateServerId('USR');
   const now = nowIso();
+  const ensuredInstallationId = await ensureInstallationId();
 
   if (await isPgMode()) {
     const created = await withTransaction(async (client) => {
-      const existing = await client.query('SELECT COUNT(*)::int AS cnt FROM users');
-      if (Number(existing.rows[0]?.cnt || 0) > 0) {
+      const existing = await client.query(
+        `SELECT COUNT(*)::int AS cnt, COUNT(*) FILTER (WHERE role = 'admin')::int AS admin_cnt FROM users`
+      );
+      if (Number(existing.rows[0]?.cnt || 0) > 0 || Number(existing.rows[0]?.admin_cnt || 0) > 0) {
         throw new AppError(403, 'تم تهيئة حساب المدير مسبقًا. استخدم تسجيل الدخول.', 'ALREADY_BOOTSTRAPPED');
       }
 
@@ -187,13 +239,30 @@ export async function bootstrapAdmin({ fullName, username, password, phone = '',
         );
       }
 
-      const stCheck = await client.query('SELECT COUNT(*)::int AS cnt FROM system_settings');
-      if (Number(stCheck.rows[0]?.cnt || 0) === 0) {
+      const stRes = await client.query('SELECT id, extra_settings FROM system_settings LIMIT 1');
+      if (!stRes.rows[0]) {
         await client.query(
-          `INSERT INTO system_settings (id, company_name, company_subtitle, currency, default_print_mode, invoice_notes, allow_negative_stock)
-           VALUES ('default', $1, 'نظام المحاسبة وإدارة الأعمال المتكامل', 'ج.م', 'a4', 'شكرًا لتعاملكم معنا', FALSE)`,
-          [companyName || 'مؤسسة أولاد سليم للتجارة والتوزيع']
+          `INSERT INTO system_settings (id, company_name, company_subtitle, currency, default_print_mode, invoice_notes, allow_negative_stock, extra_settings)
+           VALUES ('default', $1, 'نظام المحاسبة وإدارة الأعمال المتكامل', 'ج.م', 'a4', 'شكرًا لتعاملكم معنا', FALSE, $2)`,
+          [cleanCompany || 'مؤسسة أولاد سليم للتجارة والتوزيع', JSON.stringify({ installationId: ensuredInstallationId })]
         );
+      } else {
+        const curRow = stRes.rows[0];
+        const nextExtra = {
+          ...(curRow.extra_settings || {}),
+          installationId: curRow.extra_settings?.installationId || ensuredInstallationId,
+        };
+        if (cleanCompany) {
+          await client.query(
+            `UPDATE system_settings SET company_name = $1, extra_settings = $2 WHERE id = $3`,
+            [cleanCompany, JSON.stringify(nextExtra), curRow.id]
+          );
+        } else if (!curRow.extra_settings?.installationId) {
+          await client.query(`UPDATE system_settings SET extra_settings = $1 WHERE id = $2`, [
+            JSON.stringify(nextExtra),
+            curRow.id,
+          ]);
+        }
       }
 
       const uRes = await client.query('SELECT * FROM users WHERE id = $1', [adminId]);
@@ -214,8 +283,12 @@ export async function bootstrapAdmin({ fullName, username, password, phone = '',
   }
 
   const created = await withJsonTransaction(async (db) => {
-    if (db.users.length > 0) {
+    const hasAdmin = (db.users || []).some((u) => u?.role === 'admin');
+    if (db.users.length > 0 || hasAdmin) {
       throw new AppError(403, 'تم تهيئة حساب المدير مسبقًا. استخدم تسجيل الدخول.', 'ALREADY_BOOTSTRAPPED');
+    }
+    if (!db.installationId) {
+      db.installationId = ensuredInstallationId;
     }
     const adminUser = {
       id: adminId,
@@ -233,7 +306,7 @@ export async function bootstrapAdmin({ fullName, username, password, phone = '',
       createdAt: now,
     };
     db.users.push(adminUser);
-    if (companyName) db.settings.companyName = companyName;
+    if (cleanCompany) db.settings.companyName = cleanCompany;
     return adminUser;
   });
 
@@ -441,12 +514,14 @@ export async function loginUser({
       return { user: userObj, ...profiles };
     });
 
+    const installationId = await ensureInstallationId();
     const accessToken = signJwt(
       {
         sub: result.user.id,
         role: result.user.role,
         sid: sessionId,
         did: cleanDeviceId || null,
+        iid: installationId,
         cid: result.customerProfile?.id || null,
         rid: result.representativeProfile?.id || null,
       },
@@ -464,6 +539,7 @@ export async function loginUser({
     });
 
     return {
+      installationId,
       accessToken,
       refreshToken,
       expiresIn: ACCESS_TOKEN_TTL_SEC,
@@ -528,11 +604,14 @@ export async function loginUser({
     return { user: structuredClone(user), ...profiles };
   });
 
+  const installationId = await ensureInstallationId();
+
   await withJsonMutex(async () => {
     const sessions = readJsonSessions().filter((s) => !s.revokedAt && new Date(s.expiresAt).getTime() > Date.now());
     sessions.push({
       id: sessionId,
       userId: found.user.id,
+      installationId,
       refreshTokenHash: refreshHash,
       deviceInfo: deviceInfo || '',
       deviceId: cleanDeviceId || '',
@@ -550,6 +629,7 @@ export async function loginUser({
       role: found.user.role,
       sid: sessionId,
       did: cleanDeviceId || null,
+      iid: installationId,
       cid: found.customerProfile?.id || null,
       rid: found.representativeProfile?.id || null,
     },
@@ -567,6 +647,7 @@ export async function loginUser({
   });
 
   return {
+    installationId,
     accessToken,
     refreshToken,
     expiresIn: ACCESS_TOKEN_TTL_SEC,
@@ -619,12 +700,14 @@ export async function refreshUserSession({ refreshToken, deviceId = '', deviceIn
       return { sessionId: ses.id, effectiveDeviceId, user, ...profiles };
     });
 
+    const installationId = await ensureInstallationId();
     const accessToken = signJwt(
       {
         sub: result.user.id,
         role: result.user.role,
         sid: result.sessionId,
         did: result.effectiveDeviceId || null,
+        iid: installationId,
         cid: result.customerProfile?.id || null,
         rid: result.representativeProfile?.id || null,
       },
@@ -632,6 +715,7 @@ export async function refreshUserSession({ refreshToken, deviceId = '', deviceIn
     );
 
     return {
+      installationId,
       accessToken,
       refreshToken: newRefresh,
       expiresIn: ACCESS_TOKEN_TTL_SEC,
@@ -643,6 +727,7 @@ export async function refreshUserSession({ refreshToken, deviceId = '', deviceIn
   }
 
   // JSON Ledger mode
+  const installationId = await ensureInstallationId();
   const sesFound = await withJsonMutex(async () => {
     const sessions = readJsonSessions();
     const idx = sessions.findIndex(
@@ -650,6 +735,9 @@ export async function refreshUserSession({ refreshToken, deviceId = '', deviceIn
     );
     if (idx === -1) {
       throw new AppError(401, 'انتهت صلاحية الجلسة أو تم إلغاؤها', 'INVALID_SESSION');
+    }
+    if (sessions[idx].installationId && sessions[idx].installationId !== installationId) {
+      throw new AppError(401, 'الجلسة غير تابعة لهذا الخادم أو لهذه الشركة', 'INVALID_SESSION');
     }
     const effectiveDeviceId = cleanDeviceId || sessions[idx].deviceId || '';
     if (effectiveDeviceId) {
@@ -662,6 +750,7 @@ export async function refreshUserSession({ refreshToken, deviceId = '', deviceIn
     }
     sessions[idx].refreshTokenHash = newRefreshHash;
     sessions[idx].expiresAt = newExpires;
+    sessions[idx].installationId = installationId;
     if (effectiveDeviceId) sessions[idx].deviceId = effectiveDeviceId;
     writeJsonSessions(sessions);
     const profiles = resolveLinkedProfilesJson(db, user);
@@ -674,6 +763,7 @@ export async function refreshUserSession({ refreshToken, deviceId = '', deviceIn
       role: sesFound.user.role,
       sid: sesFound.sessionId,
       did: sesFound.effectiveDeviceId || null,
+      iid: installationId,
       cid: sesFound.customerProfile?.id || null,
       rid: sesFound.representativeProfile?.id || null,
     },
@@ -681,6 +771,7 @@ export async function refreshUserSession({ refreshToken, deviceId = '', deviceIn
   );
 
   return {
+    installationId,
     accessToken,
     refreshToken: newRefresh,
     expiresIn: ACCESS_TOKEN_TTL_SEC,
@@ -719,7 +810,12 @@ export async function logoutSession({ sessionId = null, refreshToken = null }) {
   return { ok: true };
 }
 
-export async function validateActiveSession(sessionId, userId) {
+export async function validateActiveSession(sessionId, userId, tokenInstallationId = null) {
+  const installationId = await ensureInstallationId();
+  if (!tokenInstallationId || tokenInstallationId !== installationId) {
+    return null;
+  }
+
   if (await isPgMode()) {
     const pool = getPool();
     const res = await pool.query(
@@ -735,6 +831,7 @@ export async function validateActiveSession(sessionId, userId) {
     const user = mapPgUserRow(row);
     const profiles = await resolveLinkedProfilesPg(pool, user);
     return {
+      installationId,
       user: sanitizeUser(user),
       rawUser: user,
       deviceId: row.session_device_id || '',
@@ -746,7 +843,12 @@ export async function validateActiveSession(sessionId, userId) {
 
   const sessions = readJsonSessions();
   const ses = sessions.find(
-    (s) => s.id === sessionId && s.userId === userId && !s.revokedAt && new Date(s.expiresAt).getTime() > Date.now()
+    (s) =>
+      s.id === sessionId &&
+      s.userId === userId &&
+      !s.revokedAt &&
+      new Date(s.expiresAt).getTime() > Date.now() &&
+      (!s.installationId || s.installationId === installationId)
   );
   if (!ses) return null;
   const db = readJsonDatabase();
@@ -754,6 +856,7 @@ export async function validateActiveSession(sessionId, userId) {
   if (!user || !user.isActive) return null;
   const profiles = resolveLinkedProfilesJson(db, user);
   return {
+    installationId,
     user: sanitizeUser(user),
     rawUser: user,
     deviceId: ses.deviceId || '',

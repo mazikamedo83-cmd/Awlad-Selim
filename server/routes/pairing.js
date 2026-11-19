@@ -55,8 +55,8 @@ async function resolveOptionalAuthUser(req) {
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
     if (!token) return null;
     const payload = verifyJwt(token);
-    if (!payload?.sub || !payload?.sid) return null;
-    const sessionCtx = await validateActiveSession(payload.sid, payload.sub);
+    if (!payload?.sub || !payload?.sid || !payload?.iid) return null;
+    const sessionCtx = await validateActiveSession(payload.sid, payload.sub, payload.iid);
     return sessionCtx?.user || null;
   } catch {
     return null;

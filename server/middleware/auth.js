@@ -100,11 +100,11 @@ export async function requireAuth(req, res, next) {
     }
 
     const payload = verifyJwt(token);
-    if (!payload || !payload.sub || !payload.sid) {
+    if (!payload || !payload.sub || !payload.sid || !payload.iid) {
       return res.status(401).json({ ok: false, code: 'INVALID_TOKEN', error: 'انتهت صلاحية الجلسة أو رمز الدخول غير صالح' });
     }
 
-    const sessionCtx = await validateActiveSession(payload.sid, payload.sub);
+    const sessionCtx = await validateActiveSession(payload.sid, payload.sub, payload.iid);
     if (!sessionCtx) {
       return res.status(401).json({ ok: false, code: 'SESSION_REVOKED', error: 'الجلسة غير نشطة أو تم تسجيل الخروج منها' });
     }
@@ -117,6 +117,7 @@ export async function requireAuth(req, res, next) {
     req.auth = {
       sessionId: payload.sid,
       deviceId: effectiveDeviceId,
+      installationId: sessionCtx.installationId,
       user: sessionCtx.user,
       customerProfile: sessionCtx.customerProfile,
       representativeProfile: sessionCtx.representativeProfile,

@@ -3801,6 +3801,9 @@ export async function updateSystemSettings(updates, actor) {
           ...prevExtra,
           ...(updates.extraSettings || {}),
         };
+        if (prevExtra.installationId) {
+          mergedExtra.installationId = prevExtra.installationId;
+        }
         if (updates.extraSettings?.connectionConfig !== undefined) {
           mergedExtra.connectionConfig = sanitizeConnectionConfig(
             updates.extraSettings.connectionConfig,
@@ -3874,6 +3877,9 @@ export async function updateSystemSettings(updates, actor) {
       ...prevExtra,
       ...(updates.extraSettings || {}),
     };
+    if (prevExtra.installationId) {
+      mergedExtra.installationId = prevExtra.installationId;
+    }
     if (updates.extraSettings?.connectionConfig !== undefined) {
       mergedExtra.connectionConfig = sanitizeConnectionConfig(
         updates.extraSettings.connectionConfig,

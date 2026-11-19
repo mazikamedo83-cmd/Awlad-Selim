@@ -1,16 +1,25 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  Download,
   RefreshCw,
   Server,
+  ShieldCheck,
+  Upload,
   Wifi,
   WifiOff,
   XCircle,
 } from 'lucide-react';
 import { Modal } from './Modal';
 import { useData } from '../../context/DataContext';
+import { useAuth } from '../../context/AuthContext';
+import { getConfiguredApiBaseUrl, getStoredInstallationId } from '../../services/api';
+import { localDb } from '../../services/localDb';
+import { saveAndShareDocument } from '../../services/native';
+import { normalizeServerOrigin } from '../../services/offlineAuth';
+import type { SyncQueueItem } from '../../types';
 
 interface SyncCenterModalProps {
   isOpen: boolean;
@@ -18,6 +27,7 @@ interface SyncCenterModalProps {
 }
 
 export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClose }) => {
+  const { currentUser } = useAuth();
   const {
     networkStatus,
     isSyncing,
@@ -38,9 +48,119 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
   const [notesByConflict, setNotesByConflict] = useState<Record<string, string>>({});
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [busyTransfer, setBusyTransfer] = useState(false);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const unresolvedConflicts = syncConflicts.filter((c) => c.status === 'needs_review');
   const resolvedConflicts = syncConflicts.filter((c) => c.status !== 'needs_review');
+  const unsyncedOperations = syncQueue.filter((q) => q.status !== 'synced');
+  const hasUnsyncedData = pendingSyncCount > 0 || failedSyncCount > 0 || conflictsCount > 0;
+
+  const handleExportPendingOperations = async () => {
+    if (!currentUser) return;
+    setBusyTransfer(true);
+    setActionMessage(null);
+    try {
+      const payload = {
+        format: 'awlad_selim_pending_sync_v1',
+        exportedAt: new Date().toISOString(),
+        userId: currentUser.id,
+        username: currentUser.username,
+        serverOrigin: normalizeServerOrigin(getConfiguredApiBaseUrl()),
+        installationId: getStoredInstallationId() || undefined,
+        operations: unsyncedOperations,
+        conflicts: unresolvedConflicts,
+      };
+      const stamp = new Date().toISOString().slice(0, 10);
+      const res = await saveAndShareDocument({
+        filename: `awlad-selim-pending-sync-${stamp}.json`,
+        content: JSON.stringify(payload, null, 2),
+        mimeType: 'application/json;charset=utf-8',
+        title: 'نسخة احتياطية للعمليات المحلية غير المتزامنة - AWLAD SELIM',
+      });
+      if (res.ok) {
+        setActionMessage({
+          type: 'ok',
+          text: `تم تصدير (${unsyncedOperations.length}) عملية محلية احتياطياً. يمكنك استيرادها بعد التحديث إذا تعذرت المزامنة قبل حذف النسخة القديمة.`,
+        });
+      } else {
+        setActionMessage({ type: 'err', text: res.error || 'تعذر تصدير النسخة الاحتياطية.' });
+      }
+    } finally {
+      setBusyTransfer(false);
+    }
+  };
+
+  const handleImportPendingOperations = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !currentUser) return;
+
+    setBusyTransfer(true);
+    setActionMessage(null);
+    try {
+      const raw = await file.text();
+      const parsed = JSON.parse(raw);
+      if (parsed?.format !== 'awlad_selim_pending_sync_v1' || !Array.isArray(parsed.operations)) {
+        setActionMessage({ type: 'err', text: 'صيغة ملف العمليات المعلقة غير صالحة.' });
+        return;
+      }
+
+      const currentIid = getStoredInstallationId();
+      if (parsed.installationId && currentIid && parsed.installationId !== currentIid) {
+        setActionMessage({
+          type: 'err',
+          text: 'هذا الملف يخص قاعدة بيانات شركة أخرى ولا يمكن استيراده هنا.',
+        });
+        return;
+      }
+
+      const sameOwner =
+        parsed.userId === currentUser.id ||
+        (parsed.username &&
+          String(parsed.username).trim().toLowerCase() ===
+            String(currentUser.username || '').trim().toLowerCase());
+      if (!sameOwner) {
+        setActionMessage({
+          type: 'err',
+          text: 'هذا الملف يخص حساب مستخدم آخر. يرجى تسجيل الدخول بنفس الحساب الأصلي أولاً.',
+        });
+        return;
+      }
+
+      const existing = await localDb.listSyncQueue(currentUser.id);
+      const existingIds = new Set(existing.map((op) => op.operationId));
+      let importedCount = 0;
+
+      for (const rawOp of parsed.operations as SyncQueueItem[]) {
+        if (!rawOp?.operationId || !rawOp?.operationType || existingIds.has(rawOp.operationId)) {
+          continue;
+        }
+        await localDb.putSyncOperation({
+          ...rawOp,
+          userId: currentUser.id,
+          status: 'pending',
+          nextRetryAt: undefined,
+          updatedAt: new Date().toISOString(),
+        });
+        existingIds.add(rawOp.operationId);
+        importedCount += 1;
+      }
+
+      await triggerManualSync();
+      setActionMessage({
+        type: 'ok',
+        text:
+          importedCount > 0
+            ? `تم استيراد (${importedCount}) عملية محلية بأمان وبدء مزامنتها مع السيرفر المركزي.`
+            : 'جميع العمليات الموجودة في الملف مسجلة أو متزامنة بالفعل.',
+      });
+    } catch {
+      setActionMessage({ type: 'err', text: 'تعذر قراءة ملف العمليات الاحتياطي.' });
+    } finally {
+      setBusyTransfer(false);
+    }
+  };
 
   const handleResolve = async (
     conflictId: string,
@@ -117,6 +237,65 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
             <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
             <span>{isSyncing ? 'جاري المزامنة...' : 'مزامنة الآن'}</span>
           </button>
+        </div>
+
+        {/* Pre-Upgrade / Pre-Uninstall Readiness & Safe Transfer */}
+        <div
+          className={`p-3 rounded-2xl border flex flex-wrap items-center justify-between gap-2.5 ${
+            hasUnsyncedData
+              ? 'bg-amber-50 border-amber-300 text-amber-950'
+              : 'bg-emerald-50 border-emerald-200 text-emerald-950'
+          }`}
+        >
+          <div className="flex items-start gap-2 min-w-0 flex-1">
+            {hasUnsyncedData ? (
+              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-700 mt-0.5" />
+            ) : (
+              <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-700 mt-0.5" />
+            )}
+            <div className="space-y-0.5">
+              <p className="font-black">
+                {hasUnsyncedData
+                  ? `لا تحذف التطبيق الآن: توجد (${unsyncedOperations.length + unresolvedConflicts.length}) عملية محلية غير متزامنة`
+                  : 'الحالة آمنة للترقية: جميع العمليات متزامنة مع السيرفر المركزي'}
+              </p>
+              <p className="text-[11px] opacity-85">
+                {hasUnsyncedData
+                  ? 'اضغط "مزامنة الآن" لرفعها للسيرفر، أو صدّر نسخة احتياطية آمنة قبل حذف النسخة القديمة ثم استوردها بعد تثبيت الإصدار الجديد.'
+                  : 'حسابك وبيانات شركتك محفوظة بالكامل على السيرفر المركزي ويمكنك تسجيل الدخول مباشرة بعد التحديث.'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            {unsyncedOperations.length > 0 && (
+              <button
+                type="button"
+                disabled={busyTransfer}
+                onClick={handleExportPendingOperations}
+                className="min-h-[36px] px-3 rounded-xl bg-amber-700 hover:bg-amber-800 text-white font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>تصدير المعلق</span>
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={busyTransfer}
+              onClick={() => importInputRef.current?.click()}
+              className="min-h-[36px] px-3 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              <span>استيراد نسخة معلقة</span>
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json,application/json"
+              onChange={handleImportPendingOperations}
+              className="hidden"
+            />
+          </div>
         </div>
 
         {lastError && (

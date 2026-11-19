@@ -33,6 +33,7 @@ export const LoginView: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [companyName, setCompanyName] = useState('');
   const [phone, setPhone] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -118,7 +119,13 @@ export const LoginView: React.FC = () => {
         return;
       }
       setIsLoading(true);
-      const res = await bootstrapAdmin({ fullName, username, password, phone });
+      const res = await bootstrapAdmin({
+        fullName,
+        username,
+        password,
+        phone,
+        ...(companyName.trim() ? { companyName: companyName.trim() } : {}),
+      });
       setIsLoading(false);
       if (!res.success) {
         setError(res.error || 'تعذر تهيئة حساب المدير العام');
@@ -289,6 +296,18 @@ export const LoginView: React.FC = () => {
               <>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    اسم الشركة / النشاط (اختياري):
+                  </label>
+                  <input
+                    type="text"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    placeholder="أدخل اسم الشركة أو المؤسسة"
+                    className="w-full rounded-xl border border-slate-300 py-3 px-4 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
                     الاسم الكامل للمالك / المدير:
                   </label>
                   <input
@@ -296,7 +315,7 @@ export const LoginView: React.FC = () => {
                     required
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    placeholder="مثال: الحاج سليم / أحمد سليم"
+                    placeholder="أدخل الاسم الكامل للمالك أو المدير العام"
                     className="w-full rounded-xl border border-slate-300 py-3 px-4 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
                   />
                 </div>

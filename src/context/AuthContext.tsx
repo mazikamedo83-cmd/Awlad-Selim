@@ -5,12 +5,14 @@ import {
   detectModeFromUrl,
   getConfiguredApiBaseUrl,
   getStoredConnectionProfiles,
+  getStoredInstallationId,
   getStoredTokens,
   hydrateServerUrlFromNative,
   saveStoredTokens,
   setAuthExpiredHandler,
+  setStoredInstallationIdAsync,
 } from '../services/api';
-import { getClientDeviceDescriptor } from '../services/native';
+import { getClientDeviceDescriptor, isNativeCapacitor } from '../services/native';
 import { clearReadCache, purgeLegacyLocalDatabaseCache } from '../services/storage';
 import {
   clearLastVerifiedOfflineSession,
@@ -87,13 +89,55 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await hydrateServerUrlFromNative();
     if (seq !== checkSeqRef.current) return;
     const baseUrl = getConfiguredApiBaseUrl();
+    const prevInstallationId = getStoredInstallationId();
+    let serverInstallationId = '';
     let serverUnreachable = false;
 
+    const resetToUnauthenticated = (setupNeeded: boolean) => {
+      setCurrentUser(null);
+      setCustomerProfile(null);
+      setRepresentativeProfile(null);
+      setLinkWarning(null);
+      setIsOfflineSession(false);
+      setPermissionsMayBeStale(false);
+      setLastVerifiedAt(null);
+      setNeedsAdminSetup(setupNeeded);
+      setIsLoading(false);
+    };
+
     try {
-      const statusRes = await apiRequest<{ ok: boolean; needsAdminSetup: boolean }>('/api/auth/status', {
+      const statusRes = await apiRequest<{
+        ok: boolean;
+        needsAdminSetup: boolean;
+        installationId?: string;
+      }>('/api/auth/status', {
         skipAuth: true,
       });
-      setNeedsAdminSetup(Boolean(statusRes.needsAdminSetup));
+      if (seq !== checkSeqRef.current) return;
+      serverInstallationId = String(statusRes.installationId || '').trim();
+      const setupNeeded = Boolean(statusRes.needsAdminSetup);
+      setNeedsAdminSetup(setupNeeded);
+
+      if (setupNeeded) {
+        saveStoredTokens(null);
+        await clearLastVerifiedOfflineSession().catch(() => {});
+        clearReadCache();
+        if (serverInstallationId) {
+          await setStoredInstallationIdAsync(serverInstallationId).catch(() => {});
+        }
+        resetToUnauthenticated(true);
+        return;
+      }
+
+      if (prevInstallationId && serverInstallationId && prevInstallationId !== serverInstallationId) {
+        // Different company database or clean reinstall on same host: wipe previous client session
+        saveStoredTokens(null);
+        await clearLastVerifiedOfflineSession().catch(() => {});
+        clearReadCache();
+        await setStoredInstallationIdAsync(serverInstallationId).catch(() => {});
+        resetToUnauthenticated(false);
+        return;
+      }
     } catch (err: any) {
       if (err?.status === 0 || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
         serverUnreachable = true;
@@ -102,40 +146,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const tokens = getStoredTokens();
     if (!tokens?.accessToken) {
-      if (serverUnreachable) {
-        const restored = await restoreLastVerifiedOfflineSession(baseUrl).catch(() => null);
-        if (restored) {
-          setCurrentUser(restored.user);
-          setCustomerProfile(restored.customerProfile);
-          setRepresentativeProfile(restored.representativeProfile);
-          setIsOfflineSession(true);
-          setPermissionsMayBeStale(true);
-          setLastVerifiedAt(restored.lastVerifiedAt);
-          setNeedsAdminSetup(false);
-          setIsLoading(false);
-          return;
-        }
+      if (serverInstallationId && !prevInstallationId) {
+        await setStoredInstallationIdAsync(serverInstallationId).catch(() => {});
       }
-      setCurrentUser(null);
-      setCustomerProfile(null);
-      setRepresentativeProfile(null);
-      setLinkWarning(null);
-      setIsOfflineSession(false);
-      setPermissionsMayBeStale(false);
-      setLastVerifiedAt(null);
-      setIsLoading(false);
+      resetToUnauthenticated(false);
       return;
     }
 
     try {
       const me = await apiRequest<{
         ok: boolean;
+        installationId?: string;
         user: User;
         customerProfile: Customer | null;
         representativeProfile: Representative | null;
         mobileConfig?: MobileConfig;
         linkWarning: string | null;
       }>('/api/auth/me');
+      if (seq !== checkSeqRef.current) return;
+      const resolvedInstallationId = String(me.installationId || serverInstallationId || prevInstallationId || '').trim();
+      if (resolvedInstallationId) {
+        await setStoredInstallationIdAsync(resolvedInstallationId).catch(() => {});
+      }
       setCurrentUser(me.user);
       setCustomerProfile(me.customerProfile || null);
       setRepresentativeProfile(me.representativeProfile || null);
@@ -149,6 +181,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLastVerifiedAt(nowIso);
       refreshCachedUserAuthorization({
         serverUrl: baseUrl,
+        installationId: resolvedInstallationId,
         user: me.user,
         customerProfile: me.customerProfile || null,
         representativeProfile: me.representativeProfile || null,
@@ -173,8 +206,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (err?.code === 'DEVICE_REVOKED' || err?.code === 'ACCOUNT_DEACTIVATED') {
           setSessionExpiredMessage(err.message);
         }
-      } else if (err?.status === 0 || serverUnreachable) {
-        const restored = await restoreLastVerifiedOfflineSession(baseUrl).catch(() => null);
+      } else if ((err?.status === 0 || serverUnreachable) && isNativeCapacitor() && Boolean(tokens?.refreshToken)) {
+        const restored = await restoreLastVerifiedOfflineSession(
+          baseUrl,
+          serverInstallationId || prevInstallationId
+        ).catch(() => null);
         if (seq !== checkSeqRef.current) return;
         if (restored) {
           setCurrentUser(restored.user);
@@ -184,7 +220,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setPermissionsMayBeStale(true);
           setLastVerifiedAt(restored.lastVerifiedAt);
           setNeedsAdminSetup(false);
+        } else {
+          resetToUnauthenticated(false);
         }
+      } else {
+        // Desktop/Web or unreachable server without verified active online validation: force login screen
+        setCurrentUser(null);
+        setCustomerProfile(null);
+        setRepresentativeProfile(null);
+        setLinkWarning(null);
+        setIsOfflineSession(false);
+        setPermissionsMayBeStale(false);
+        setLastVerifiedAt(null);
       }
     } finally {
       if (seq === checkSeqRef.current) {
@@ -219,6 +266,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const res = await apiRequest<{
         ok: boolean;
+        installationId?: string;
         accessToken: string;
         refreshToken: string;
         user: User;
@@ -238,9 +286,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         skipAuth: true,
       });
 
+      const resolvedInstallationId = String(res.installationId || getStoredInstallationId() || '').trim();
+      if (resolvedInstallationId) {
+        await setStoredInstallationIdAsync(resolvedInstallationId).catch(() => {});
+      }
       saveStoredTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });
       await saveVerifiedOnlineCredentials({
         serverUrl: baseUrl,
+        installationId: resolvedInstallationId,
         username: username.trim(),
         password,
         user: res.user,
@@ -267,6 +320,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (err?.status === 0) {
         const offlineRes = await verifyOfflineLogin({
           serverUrl: baseUrl,
+          installationId: getStoredInstallationId(),
           username: username.trim(),
           password,
         });
@@ -372,6 +426,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCurrentUser(updatedUser);
       await saveVerifiedOnlineCredentials({
         serverUrl: getConfiguredApiBaseUrl(),
+        installationId: getStoredInstallationId(),
         username: updatedUser.username,
         password: newPassword,
         user: updatedUser,

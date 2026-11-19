@@ -67,6 +67,7 @@ jobs:
         run: |
           node server/tests/runAllTests.mjs
           npx tsx server/tests/pairingVerificationTests.mts
+          node server/tests/verifyElectronBootstrap.mjs
 
       - name: Build production web bundle
         run: bun run build
@@ -83,8 +84,12 @@ jobs:
         run: |
           if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
             echo "ERROR: Production Android signing secrets are missing."
-            echo "Configure GitHub Secrets: ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS (awlad-selim), ANDROID_KEY_PASSWORD."
+            echo "Configure GitHub Secrets: ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS (AWLAD-SELIM), ANDROID_KEY_PASSWORD."
             echo "Refusing to fall back to debug signing for a Production Release."
+            exit 1
+          fi
+          if [ "${KEY_ALIAS,,}" = "androiddebugkey" ]; then
+            echo "ERROR: Refusing to sign Android Release with androiddebugkey."
             exit 1
           fi
           printf '%s' "$KEYSTORE_B64" | tr -d '[:space:]' | base64 -d > "${{ runner.temp }}/AWLAD-SELIM-Release.jks"
@@ -132,7 +137,12 @@ jobs:
             exit 1
           fi
 
-          "$AAPT2" dump badging "$APK_PATH" | head -n 10
+          BADGING=$("$AAPT2" dump badging "$APK_PATH")
+          echo "$BADGING" | head -n 10
+          if ! echo "$BADGING" | grep -q "package: name='com.awladselim.erp'"; then
+            echo "ERROR: Unexpected package ID in release APK! Expected com.awladselim.erp"
+            exit 1
+          fi
           jarsigner -verify -verbose -certs "$APK_PATH"
           jarsigner -verify -verbose -certs "$AAB_PATH"
 

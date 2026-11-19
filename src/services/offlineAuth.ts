@@ -10,6 +10,7 @@ interface StoredOfflineCredential {
   userId: string;
   usernameLower: string;
   serverOrigin: string;
+  installationId?: string;
   saltHex: string;
   verifierHex: string;
   user: User;
@@ -23,6 +24,7 @@ interface StoredLastVerifiedSession {
   userId: string;
   usernameLower: string;
   serverOrigin: string;
+  installationId?: string;
   lastVerifiedAt: string;
 }
 
@@ -115,8 +117,9 @@ async function deriveVerifierHex(password: string, saltHex: string): Promise<str
   return fallbackDeriveHex(password, saltHex);
 }
 
-function credKey(serverOrigin: string, usernameLower: string): string {
-  return `${serverOrigin}::${usernameLower}`;
+function credKey(serverOrigin: string, usernameLower: string, installationId = ''): string {
+  const cleanIid = String(installationId || '').trim();
+  return cleanIid ? `${serverOrigin}::${cleanIid}::${usernameLower}` : `${serverOrigin}::${usernameLower}`;
 }
 
 function userIndexKey(userId: string): string {
@@ -125,6 +128,7 @@ function userIndexKey(userId: string): string {
 
 export async function saveVerifiedOnlineCredentials(params: {
   serverUrl: string;
+  installationId?: string;
   username: string;
   password: string;
   user: User;
@@ -135,6 +139,7 @@ export async function saveVerifiedOnlineCredentials(params: {
   if (!usernameLower || !params.password || !params.user?.id) return;
 
   const serverOrigin = normalizeServerOrigin(params.serverUrl);
+  const installationId = String(params.installationId || '').trim();
   const saltHex = randomSaltHex(16);
   const verifierHex = await deriveVerifierHex(params.password, saltHex);
   const nowIso = new Date().toISOString();
@@ -143,6 +148,7 @@ export async function saveVerifiedOnlineCredentials(params: {
     userId: params.user.id,
     usernameLower,
     serverOrigin,
+    installationId: installationId || undefined,
     saltHex,
     verifierHex,
     user: params.user,
@@ -152,29 +158,32 @@ export async function saveVerifiedOnlineCredentials(params: {
     revoked: false,
   };
 
-  const cKey = credKey(serverOrigin, usernameLower);
+  const cKey = credKey(serverOrigin, usernameLower, installationId);
   await setKV(CRED_NAMESPACE, cKey, record);
   await setKV(CRED_NAMESPACE, userIndexKey(params.user.id), cKey);
   await setKV<StoredLastVerifiedSession>(SESSION_NAMESPACE, ACTIVE_SESSION_KEY, {
     userId: params.user.id,
     usernameLower,
     serverOrigin,
+    installationId: installationId || undefined,
     lastVerifiedAt: nowIso,
   });
 }
 
 export async function refreshCachedUserAuthorization(params: {
   serverUrl: string;
+  installationId?: string;
   user: User;
   customerProfile: Customer | null;
   representativeProfile: Representative | null;
 }): Promise<void> {
   if (!params.user?.id) return;
   const serverOrigin = normalizeServerOrigin(params.serverUrl);
+  const installationId = String(params.installationId || '').trim();
   const usernameLower = String(params.user.username || '').trim().toLowerCase();
   const cKey =
     (await getKV<string>(CRED_NAMESPACE, userIndexKey(params.user.id))) ||
-    (usernameLower ? credKey(serverOrigin, usernameLower) : '');
+    (usernameLower ? credKey(serverOrigin, usernameLower, installationId) : '');
   const nowIso = new Date().toISOString();
 
   if (cKey) {
@@ -182,6 +191,7 @@ export async function refreshCachedUserAuthorization(params: {
     if (existing) {
       await setKV(CRED_NAMESPACE, cKey, {
         ...existing,
+        installationId: installationId || existing.installationId,
         user: params.user,
         customerProfile: params.customerProfile || null,
         representativeProfile: params.representativeProfile || null,
@@ -196,6 +206,7 @@ export async function refreshCachedUserAuthorization(params: {
       userId: params.user.id,
       usernameLower,
       serverOrigin,
+      installationId: installationId || undefined,
       lastVerifiedAt: nowIso,
     });
   }
@@ -203,6 +214,7 @@ export async function refreshCachedUserAuthorization(params: {
 
 export async function verifyOfflineLogin(params: {
   serverUrl: string;
+  installationId?: string;
   username: string;
   password: string;
 }): Promise<
@@ -217,15 +229,35 @@ export async function verifyOfflineLogin(params: {
 > {
   const usernameLower = String(params.username || '').trim().toLowerCase();
   const serverOrigin = normalizeServerOrigin(params.serverUrl);
+  const installationId = String(params.installationId || '').trim();
   if (!usernameLower || !params.password) {
     return { ok: false, error: 'يرجى إدخال اسم المستخدم وكلمة المرور.' };
   }
 
-  const record = await getKV<StoredOfflineCredential>(CRED_NAMESPACE, credKey(serverOrigin, usernameLower));
+  let record = installationId
+    ? await getKV<StoredOfflineCredential>(CRED_NAMESPACE, credKey(serverOrigin, usernameLower, installationId))
+    : null;
+  if (!record && !installationId) {
+    record = await getKV<StoredOfflineCredential>(CRED_NAMESPACE, credKey(serverOrigin, usernameLower));
+  }
   if (!record) {
     return {
       ok: false,
       error: 'لا توجد بيانات دخول محلية موثقة لهذا الحساب بدون إنترنت. يجب تسجيل الدخول مرة واحدة على الأقل أثناء الاتصال بالسيرفر.',
+    };
+  }
+
+  if (record.serverOrigin !== serverOrigin) {
+    return {
+      ok: false,
+      error: 'بيانات الدخول المحلية لا تطابق السيرفر الحالي.',
+    };
+  }
+
+  if (installationId && record.installationId && record.installationId !== installationId) {
+    return {
+      ok: false,
+      error: 'بيانات الدخول المحلية تابعة لقاعدة بيانات شركة أخرى.',
     };
   }
 
@@ -259,6 +291,7 @@ export async function verifyOfflineLogin(params: {
     userId: record.user.id,
     usernameLower,
     serverOrigin: record.serverOrigin,
+    installationId: record.installationId,
     lastVerifiedAt: record.lastVerifiedAt,
   });
 
@@ -271,7 +304,10 @@ export async function verifyOfflineLogin(params: {
   };
 }
 
-export async function restoreLastVerifiedOfflineSession(serverUrl: string): Promise<{
+export async function restoreLastVerifiedOfflineSession(
+  serverUrl: string,
+  installationId = ''
+): Promise<{
   user: User;
   customerProfile: Customer | null;
   representativeProfile: Representative | null;
@@ -280,12 +316,28 @@ export async function restoreLastVerifiedOfflineSession(serverUrl: string): Prom
   const session = await getKV<StoredLastVerifiedSession>(SESSION_NAMESPACE, ACTIVE_SESSION_KEY);
   if (!session?.userId || !session.usernameLower) return null;
 
-  const targetOrigin = session.serverOrigin || normalizeServerOrigin(serverUrl);
-  const record = await getKV<StoredOfflineCredential>(
-    CRED_NAMESPACE,
-    credKey(targetOrigin, session.usernameLower)
-  );
+  const expectedOrigin = normalizeServerOrigin(serverUrl);
+  if (session.serverOrigin && session.serverOrigin !== expectedOrigin) {
+    return null;
+  }
+
+  const cleanIid = String(installationId || '').trim();
+  if (cleanIid && session.installationId && session.installationId !== cleanIid) {
+    return null;
+  }
+
+  const record =
+    (await getKV<StoredOfflineCredential>(
+      CRED_NAMESPACE,
+      credKey(expectedOrigin, session.usernameLower, cleanIid || session.installationId || '')
+    )) ||
+    (!cleanIid && !session.installationId
+      ? await getKV<StoredOfflineCredential>(CRED_NAMESPACE, credKey(expectedOrigin, session.usernameLower))
+      : null);
+
   if (!record || record.revoked || record.user?.isActive === false) return null;
+  if (record.serverOrigin !== expectedOrigin) return null;
+  if (cleanIid && record.installationId && record.installationId !== cleanIid) return null;
 
   const verifiedAtMs = Date.parse(record.lastVerifiedAt || '');
   if (Number.isFinite(verifiedAtMs) && Date.now() - verifiedAtMs > OFFLINE_SESSION_MAX_AGE_MS) {

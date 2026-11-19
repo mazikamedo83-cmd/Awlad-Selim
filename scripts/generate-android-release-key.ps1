@@ -6,10 +6,16 @@ param(
   [string]$OutputDir = "",
   [string]$BackupDir = "",
   [string]$Alias = "AWLAD-SELIM",
-  [int]$ValidityDays = 10000
+  [int]$ValidityDays = 10000,
+  [switch]$Rotate
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($Alias.Trim().Equals("androiddebugkey", [System.StringComparison]::OrdinalIgnoreCase)) {
+  Write-Error "Refusing to use androiddebugkey for Production Release signing."
+  exit 1
+}
 
 $UserHome = if ($env:USERPROFILE) { $env:USERPROFILE } else { [Environment]::GetFolderPath("UserProfile") }
 if ([string]::IsNullOrWhiteSpace($UserHome)) {
@@ -94,9 +100,16 @@ New-Item -ItemType Directory -Force -Path $ResolvedOutputDir | Out-Null
 New-Item -ItemType Directory -Force -Path $ResolvedBackupDir | Out-Null
 
 $KeystorePath = Join-Path $ResolvedOutputDir "AWLAD-SELIM-Release.jks"
+$Stamp = Get-Date -Format "yyyyMMdd_HHmmss"
 if (Test-Path $KeystorePath) {
-  Write-Error "Refusing to overwrite existing production keystore at: $KeystorePath. Back it up or move it intentionally if rotating."
-  exit 1
+  if ($Rotate) {
+    $ArchivedOldPath = Join-Path $ResolvedBackupDir "AWLAD-SELIM-OLD-ARCHIVED-$Stamp.jks"
+    Move-Item -Path $KeystorePath -Destination $ArchivedOldPath -Force
+    Write-Host "[OK] Archived previous keystore to: $ArchivedOldPath" -ForegroundColor Yellow
+  } else {
+    Write-Error "Refusing to overwrite existing production keystore at: $KeystorePath. Pass -Rotate to archive the old key and create a brand-new independent production key."
+    exit 1
+  }
 }
 
 function New-StrongPassword {
@@ -125,9 +138,9 @@ Write-Host "Keystore Path : $KeystorePath"
 Write-Host "Key Alias     : $Alias"
 
 $Sha256 = "(unavailable)"
-$Stamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $BackupPath = Join-Path $ResolvedBackupDir "AWLAD-SELIM-Release-$Stamp.jks"
 $Base64Path = Join-Path $ResolvedOutputDir "ANDROID_KEYSTORE_BASE64.txt"
+$LocalPropsPath = Join-Path $ResolvedOutputDir "keystore.properties"
 $SecretsNotePath = Join-Path $ResolvedOutputDir "GITHUB_SECRETS_REFERENCE.txt"
 
 $env:AWLAD_TMP_KEYSTORE_PASS = $StorePassword
@@ -183,12 +196,22 @@ try {
     $Sha256 = $Sha256Match.Groups[1].Value
   }
 
+  $EscapedStoreFile = $KeystorePath.Replace('\', '/')
+  $LocalPropsContent = @"
+storeFile=$EscapedStoreFile
+storePassword=$StorePassword
+keyAlias=$Alias
+keyPassword=$KeyPassword
+"@
+  [System.IO.File]::WriteAllText($LocalPropsPath, $LocalPropsContent, $Utf8NoBom)
+
   $SecretsContent = @"
 AWLAD SELIM - Android Production Release Secrets (KEEP STRICTLY OUTSIDE GIT / GITHUB REPO)
 =========================================================================================
 Keystore File        : $KeystorePath
 External Backup      : $BackupPath
 Base64 Export File   : $Base64Path
+Local Gradle Props   : $LocalPropsPath
 Certificate SHA-256  : $Sha256
 
 GitHub Actions Repository Secrets to configure manually in Settings -> Secrets and variables -> Actions:
@@ -198,14 +221,16 @@ GitHub Actions Repository Secrets to configure manually in Settings -> Secrets a
 4. ANDROID_KEY_PASSWORD       = $KeyPassword
 
 IMPORTANT:
-- NEVER upload this file, $KeystorePath, or *.keystore/*.jks/*.p12 to GitHub.
-- Previous Debug/old-key APK installs CANNOT be upgraded in-place; uninstall the old APK once before installing the new production-signed APK.
+- Keep $KeystorePath and $BackupPath safe for ALL future updates!
+- NEVER upload this file, $KeystorePath, android/keystore.properties, or *.keystore/*.jks/*.p12 to GitHub.
+- Previous Debug/old-key APK installs CANNOT be upgraded in-place; users must sync pending operations, uninstall the old APK manually once, then install the new production-signed APK.
 "@
   [System.IO.File]::WriteAllText($SecretsNotePath, $SecretsContent, $Utf8NoBom)
 } finally {
   Remove-Item Env:AWLAD_TMP_KEYSTORE_PASS -ErrorAction SilentlyContinue
   $StorePassword = $null
   $KeyPassword = $null
+  $LocalPropsContent = $null
   $SecretsContent = $null
 }
 
@@ -213,5 +238,6 @@ Write-Host ""
 Write-Host "[OK] Production Keystore created outside project: $KeystorePath" -ForegroundColor Green
 Write-Host "[OK] Backup created outside project            : $BackupPath" -ForegroundColor Green
 Write-Host "[OK] Base64 saved outside project              : $Base64Path" -ForegroundColor Green
+Write-Host "[OK] Local Gradle properties saved             : $LocalPropsPath" -ForegroundColor Green
 Write-Host "[OK] Secrets & SHA-256 reference saved to      : $SecretsNotePath" -ForegroundColor Yellow
 Write-Host "Certificate SHA-256 Fingerprint: $Sha256" -ForegroundColor Cyan

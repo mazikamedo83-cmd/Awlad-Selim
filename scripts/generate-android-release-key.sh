@@ -5,12 +5,36 @@
 
 set -euo pipefail
 
-OUTPUT_DIR="${1:-$HOME/.awlad-selim-keys}"
+ROTATE_NEW=false
+OUTPUT_DIR=""
+for arg in "$@"; do
+  case "$arg" in
+    --rotate)
+      ROTATE_NEW=true
+      ;;
+    --help|-h)
+      echo "Usage: $0 [--rotate] [OUTPUT_DIR]"
+      exit 0
+      ;;
+    *)
+      if [ -z "$OUTPUT_DIR" ]; then
+        OUTPUT_DIR="$arg"
+      fi
+      ;;
+  esac
+done
+
+OUTPUT_DIR="${OUTPUT_DIR:-$HOME/.awlad-selim-keys}"
 BACKUP_DIR="$OUTPUT_DIR/backups"
 KEY_ALIAS="${ANDROID_KEY_ALIAS:-AWLAD-SELIM}"
 VALIDITY_DAYS=10000
 DNAME="/CN=AWLAD SELIM ERP/OU=Mobile Engineering/O=AWLAD SELIM/L=Cairo/ST=Cairo/C=EG"
 KEYTOOL_DNAME="CN=AWLAD SELIM ERP, OU=Mobile Engineering, O=AWLAD SELIM, L=Cairo, ST=Cairo, C=EG"
+
+if [ "${KEY_ALIAS,,}" = "androiddebugkey" ]; then
+  echo "ERROR: Refusing to use androiddebugkey for Production Release signing." >&2
+  exit 1
+fi
 
 case "$OUTPUT_DIR" in
   "$(pwd)"* )
@@ -23,16 +47,24 @@ mkdir -p "$OUTPUT_DIR" "$BACKUP_DIR"
 chmod 700 "$OUTPUT_DIR" "$BACKUP_DIR"
 
 KEYSTORE_PATH="$OUTPUT_DIR/AWLAD-SELIM-Release.jks"
+STAMP=$(date +%Y%m%d_%H%M%S)
 if [ -e "$KEYSTORE_PATH" ]; then
-  echo "ERROR: Refusing to overwrite existing keystore at $KEYSTORE_PATH" >&2
-  exit 1
+  if [ "$ROTATE_NEW" = "true" ]; then
+    ARCHIVED_OLD="$BACKUP_DIR/AWLAD-SELIM-OLD-ARCHIVED-$STAMP.jks"
+    mv "$KEYSTORE_PATH" "$ARCHIVED_OLD"
+    chmod 600 "$ARCHIVED_OLD"
+    echo "[OK] Archived previous keystore to: $ARCHIVED_OLD"
+  else
+    echo "ERROR: Refusing to overwrite existing keystore at $KEYSTORE_PATH (pass --rotate to archive the old key and create a brand-new independent production key)." >&2
+    exit 1
+  fi
 fi
 
 gen_pw() {
   if command -v openssl >/dev/null 2>&1; then
-    openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 24
+    openssl rand -base64 32 | tr -dc 'A-Za-z0-9' | head -c 28
   else
-    head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24
+    head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 28
   fi
 }
 
@@ -72,7 +104,6 @@ else
 fi
 
 chmod 600 "$KEYSTORE_PATH"
-STAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_PATH="$BACKUP_DIR/AWLAD-SELIM-Release-$STAMP.jks"
 cp "$KEYSTORE_PATH" "$BACKUP_PATH"
 chmod 600 "$BACKUP_PATH"
@@ -81,6 +112,15 @@ B64_PATH="$OUTPUT_DIR/ANDROID_KEYSTORE_BASE64.txt"
 base64 < "$KEYSTORE_PATH" | tr -d '\n' > "$B64_PATH"
 chmod 600 "$B64_PATH"
 
+LOCAL_PROPS_PATH="$OUTPUT_DIR/keystore.properties"
+cat > "$LOCAL_PROPS_PATH" <<EOF
+storeFile=$KEYSTORE_PATH
+storePassword=$STORE_PW
+keyAlias=$KEY_ALIAS
+keyPassword=$KEY_PW
+EOF
+chmod 600 "$LOCAL_PROPS_PATH"
+
 SECRETS_REF="$OUTPUT_DIR/GITHUB_SECRETS_REFERENCE.txt"
 cat > "$SECRETS_REF" <<EOF
 AWLAD SELIM - Android Production Release Secrets (KEEP OUTSIDE GIT / GITHUB)
@@ -88,6 +128,7 @@ AWLAD SELIM - Android Production Release Secrets (KEEP OUTSIDE GIT / GITHUB)
 Keystore File        : $KEYSTORE_PATH
 External Backup      : $BACKUP_PATH
 Base64 Export File   : $B64_PATH
+Local Gradle Props   : $LOCAL_PROPS_PATH
 Certificate SHA-256  : ${SHA256_FP:-unavailable}
 
 Configure these 4 GitHub Actions Secrets (Settings -> Secrets -> Actions):
@@ -96,14 +137,20 @@ Configure these 4 GitHub Actions Secrets (Settings -> Secrets -> Actions):
 3. ANDROID_KEY_ALIAS         = $KEY_ALIAS
 4. ANDROID_KEY_PASSWORD      = $KEY_PW
 
+Local Release Build (APK + AAB) without committing secrets:
+  cp "$LOCAL_PROPS_PATH" android/keystore.properties
+  (or export AWLAD_ANDROID_KEYSTORE_PATH, AWLAD_ANDROID_KEYSTORE_PASSWORD, AWLAD_ANDROID_KEY_ALIAS, AWLAD_ANDROID_KEY_PASSWORD)
+
 IMPORTANT:
-- Never upload this file, $KEYSTORE_PATH, or Base64 output to GitHub or any shared repo.
-- Previously installed Debug/old-key APKs cannot be upgraded in-place; uninstall old APK first.
+- Keep $KEYSTORE_PATH and $BACKUP_PATH safe for ALL future releases and updates.
+- Never upload this file, $KEYSTORE_PATH, android/keystore.properties, or Base64 output to GitHub or any shared repo.
+- Previously installed Debug/old-key APKs cannot be upgraded in-place; users must sync pending operations, uninstall old APK manually once, then install the new Production APK.
 EOF
 chmod 600 "$SECRETS_REF"
 
 echo "[OK] Keystore created outside project : $KEYSTORE_PATH"
 echo "[OK] Backup created outside project   : $BACKUP_PATH"
 echo "[OK] Base64 saved outside project     : $B64_PATH"
+echo "[OK] Local Gradle properties saved    : $LOCAL_PROPS_PATH"
 echo "[OK] Secrets & SHA-256 reference      : $SECRETS_REF"
 echo "Certificate SHA-256 Fingerprint       : ${SHA256_FP:-unavailable}"

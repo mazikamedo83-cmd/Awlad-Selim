@@ -36,10 +36,11 @@ export async function initializeServerRuntime() {
   }
   await isPgMode();
 
-  // Optional automated initial admin creation ONLY if server env vars are explicitly configured AND zero users exist
+  // Optional automated initial admin creation ONLY in non-packaged server setups when explicitly configured AND zero users exist
+  const isPackagedElectron = process.env.AWLAD_ELECTRON === 'true' && process.env.AWLAD_IS_PACKAGED === 'true';
   const initUser = process.env.ADMIN_INITIAL_USERNAME;
   const initPass = process.env.ADMIN_INITIAL_PASSWORD;
-  if (initUser && initPass) {
+  if (!isPackagedElectron && initUser && initPass) {
     try {
       const status = await getAuthStatus();
       if (status.needsAdminSetup) {
@@ -193,6 +194,7 @@ export function createApiApp() {
         activeMode,
         tunnelStatus: { status: tunnelState.status, provider: tunnelState.provider },
         needsAdminSetup: authStatus.needsAdminSetup,
+        installationId: authStatus.installationId,
         port,
         protocol: forwardedProto,
         httpsActive,

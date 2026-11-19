@@ -44,8 +44,23 @@ def releaseKeyPassword = (
     ''
 ).toString()
 
-def resolvedKeystoreFile = releaseKeystorePath ? file(releaseKeystorePath) : null
+def resolvedKeystoreFile = null
+if (releaseKeystorePath) {
+    def expandedKeystorePath = releaseKeystorePath.startsWith('~/')
+        ? (System.getProperty('user.home') + releaseKeystorePath.substring(1))
+        : releaseKeystorePath
+    def appRelativeKeystore = file(expandedKeystorePath)
+    def rootRelativeKeystore = rootProject.file(expandedKeystorePath)
+    resolvedKeystoreFile = appRelativeKeystore.exists() ? appRelativeKeystore : rootRelativeKeystore
+}
+
+def isDebugKeystoreAttempt = (
+    (releaseKeystorePath && releaseKeystorePath.toLowerCase().endsWith('debug.keystore')) ||
+    (releaseKeyAlias && releaseKeyAlias.equalsIgnoreCase('androiddebugkey'))
+)
+
 def hasValidReleaseSigning = (
+    !isDebugKeystoreAttempt &&
     resolvedKeystoreFile != null &&
     resolvedKeystoreFile.exists() &&
     !releaseKeystorePassword.isEmpty() &&
@@ -97,6 +112,8 @@ android {
     }
     buildTypes {
         release {
+            debuggable false
+            jniDebuggable false
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             if (hasValidReleaseSigning) {
@@ -110,9 +127,14 @@ gradle.taskGraph.whenReady { taskGraph ->
     def buildingRelease = taskGraph.allTasks.any {
         it.name.toLowerCase().contains('release') && (it.name.contains('assemble') || it.name.contains('bundle') || it.name.contains('package'))
     }
+    if (buildingRelease && isDebugKeystoreAttempt) {
+        throw new GradleException(
+            'Refusing to sign a Production Release with debug.keystore / androiddebugkey. Generate a dedicated production keystore instead.'
+        )
+    }
     if (buildingRelease && !hasValidReleaseSigning) {
         throw new GradleException(
-            'Production Release signing keystore is not configured. Provide android/keystore.properties or AWLAD_ANDROID_KEYSTORE_* environment variables (never use debug keystore for Release).'
+            'Production Release signing keystore is not configured. Provide android/keystore.properties or AWLAD_ANDROID_KEYSTORE_* environment variables (never use debug signing for Release).'
         )
     }
 }

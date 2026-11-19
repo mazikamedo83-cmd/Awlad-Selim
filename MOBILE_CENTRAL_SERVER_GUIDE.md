@@ -75,21 +75,21 @@ npm run server:start
   npm run cap:sync
   ```
 
-### بناء Android (`.apk` / `.aab`) ومفتاح الإنتاج:
-- **مفتاح التوقيع الإنتاجي النهائي (RSA 4096-bit)**:
-  - أنشئ مفتاح الإنتاج خارج مجلد المشروع تماماً عبر:
-    - على Windows: `powershell -ExecutionPolicy Bypass -File scripts\generate-android-release-key.ps1`
-    - على macOS / Linux: `bash scripts/generate-android-release-key.sh`
+### بناء Android (`.apk` / `.aab`) ومفتاح الإنتاج الجديد:
+- **مفتاح التوقيع الإنتاجي النهائي المستقل (RSA 4096-bit)**:
+  - أنشئ مفتاح إنتاج جديد تماماً خارج مجلد المشروع (أو قم بتدويره وأرشفة أي مفتاح قديم) عبر:
+    - على Windows: `powershell -ExecutionPolicy Bypass -File scripts\generate-android-release-key.ps1 -Rotate`
+    - على macOS / Linux: `bash scripts/generate-android-release-key.sh --rotate`
   - يُحفظ المفتاح والنسخة الاحتياطية وملف Base64 خارج المشروع (`~/.awlad-selim-keys/`) ولا يُرفع مطلقاً إلى GitHub.
   - أضف الأسرار الأربعة التالية في **GitHub Settings -> Secrets -> Actions**:
     - `ANDROID_KEYSTORE_BASE64`
     - `ANDROID_KEYSTORE_PASSWORD`
-    - `ANDROID_KEY_ALIAS`
+    - `ANDROID_KEY_ALIAS` (افتراضياً `AWLAD-SELIM`)
     - `ANDROID_KEY_PASSWORD`
-  - **تنبيه مهم**: لا يمكن تحديث نسخة قديمة موقعة بمفتاح Debug أو مفتاح سابق مباشرة فوق نفس التثبيت؛ يجب إلغاء تثبيت النسخة القديمة مرة واحدة قبل تثبيت APK الإنتاج الجديد.
+  - **تنبيه مهم للترقية الآمنة**: لا يمكن تحديث نسخة قديمة موقعة بمفتاح Debug أو مفتاح سابق مباشرة فوق نفس التثبيت؛ يجب أولاً مزامنة العمليات المعلقة (أو تصديرها من مركز المزامنة)، ثم إلغاء تثبيت النسخة القديمة مرة واحدة قبل تثبيت APK الإنتاج الجديد، وبعدها تسجيل الدخول بنفس الحساب القديم على السيرفر المركزي.
 - **آلياً عبر GitHub Actions**:
   - `.github/workflows/mobile-android.yml` يبني نسخة Debug تجريبية (`app-debug.apk`).
-  - `.github/workflows/android-release.yml` يبني النسخة الإنتاجية الموقعة (`AWLAD-SELIM-v3.0.0-release.apk` و`AWLAD-SELIM-v3.0.0-release.aab`) ويتحقق من التوقيع بـ `apksigner` و`jarsigner`.
+  - `.github/workflows/android-release.yml` يبني النسخة الإنتاجية الموقعة (`AWLAD-SELIM-3.0.0-Release.apk` و`AWLAD-SELIM-3.0.0-Release.aab`) ويتحقق من التوقيع بـ `apksigner` و`jarsigner` وهوية الحزمة `com.awladselim.erp`.
 - **محلياً (باستخدام Android Studio + JDK 21)**:
   ```bash
   npm run build

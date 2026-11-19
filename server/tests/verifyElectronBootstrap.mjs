@@ -177,5 +177,159 @@ assert.equal(run2.status, 0, `Child 2 failed:\n${run2.stderr}\n${run2.stdout}`);
 assert.ok(run2.stdout.includes('CHILD2_OK'), `Missing CHILD2_OK: ${run2.stdout}`);
 console.log('  [PASS] 4. Fresh restart loads persisted database from %APPDATA% path and authenticates saved user');
 
+// 5. Clean packaged Windows customer install: zero auto-admin even if env vars present, 401 on protected routes, single bootstrap, 403 on second bootstrap
+const appDataClean = path.join(sandbox, 'AppDataClean', 'Roaming');
+const prepClean = prepareElectronDataDirectory({ appDataDir: appDataClean, legacySourceDirs: [], envFileCandidates: [] });
+
+const childClean = `
+  process.env.AWLAD_DATA_DIR = ${JSON.stringify(prepClean.targetDataDir)};
+  process.env.AWLAD_ELECTRON = 'true';
+  process.env.AWLAD_IS_PACKAGED = 'true';
+  process.env.ADMIN_INITIAL_USERNAME = 'leaked_owner_env';
+  process.env.ADMIN_INITIAL_PASSWORD = 'OwnerSecretEnvPassword#1';
+  import('./server/index.js').then(async ({ startStandaloneServer }) => {
+    const srv = await startStandaloneServer({ port: 0, host: '127.0.0.1' });
+    const statusRes = await fetch(srv.localUrl + '/api/auth/status');
+    const statusJson = await statusRes.json();
+    if (!statusJson.ok || statusJson.needsAdminSetup !== true || statusJson.usersCount !== 0 || !statusJson.installationId) {
+      throw new Error('Clean packaged install must require admin setup and ignore env auto-admin: ' + JSON.stringify(statusJson));
+    }
+    const adminBlocked = await fetch(srv.localUrl + '/api/admin/bootstrap');
+    if (adminBlocked.status !== 401) throw new Error('Expected 401 on /api/admin/bootstrap before login, got ' + adminBlocked.status);
+    const dbBlocked = await fetch(srv.localUrl + '/api/database');
+    if (dbBlocked.status !== 401) throw new Error('Expected 401 on /api/database before login, got ' + dbBlocked.status);
+
+    // First-time customer admin creation must succeed and apply companyName
+    const boot1 = await fetch(srv.localUrl + '/api/auth/bootstrap-admin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        companyName: 'شركة النور المستقلة',
+        fullName: 'محمد محمود',
+        username: 'customer_admin_1',
+        password: 'CustomerStrong#2026',
+      })
+    });
+    if (boot1.status !== 201) throw new Error('Expected 201 on initial customer bootstrap-admin, got ' + boot1.status);
+    const boot2 = await fetch(srv.localUrl + '/api/auth/bootstrap-admin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fullName: 'Second Admin Attempt',
+        username: 'attacker_admin',
+        password: 'AttackerPassword#2026',
+      })
+    });
+    if (boot2.status !== 403) throw new Error('Expected 403 on second bootstrap-admin, got ' + boot2.status);
+
+    // Owner env user must NEVER exist
+    const envLogin = await fetch(srv.localUrl + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'leaked_owner_env', password: 'OwnerSecretEnvPassword#1' })
+    });
+    if (envLogin.status !== 401) throw new Error('Env auto-admin must not exist in packaged customer mode, got ' + envLogin.status);
+
+    const custLogin = await fetch(srv.localUrl + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'customer_admin_1', password: 'CustomerStrong#2026' })
+    });
+    const custJson = await custLogin.json();
+    if (!custJson.ok || !custJson.accessToken || custJson.installationId !== statusJson.installationId) {
+      throw new Error('Customer admin login failed or installationId mismatch: ' + JSON.stringify(custJson));
+    }
+    const meRes = await fetch(srv.localUrl + '/api/auth/me', {
+      headers: { Authorization: 'Bearer ' + custJson.accessToken }
+    });
+    const meJson = await meRes.json();
+    if (!meJson.ok || meJson.installationId !== statusJson.installationId) {
+      throw new Error('/api/auth/me did not verify installationId: ' + JSON.stringify(meJson));
+    }
+    await srv.close();
+    console.log('CHILD_CLEAN_OK:' + JSON.stringify({ installationId: statusJson.installationId, accessToken: custJson.accessToken }));
+  });
+`;
+
+const runClean = spawnSync(process.execPath, ['--input-type=module', '-e', childClean], {
+  cwd: process.cwd(),
+  encoding: 'utf8',
+});
+assert.equal(runClean.status, 0, `Clean customer child failed:\n${runClean.stderr}\n${runClean.stdout}`);
+const cleanMarker = runClean.stdout.split('\n').find((l) => l.startsWith('CHILD_CLEAN_OK:'));
+assert.ok(cleanMarker, `Missing CHILD_CLEAN_OK: ${runClean.stdout}`);
+const cleanPayload = JSON.parse(cleanMarker.slice('CHILD_CLEAN_OK:'.length));
+console.log('  [PASS] 5. Packaged customer clean install requires first-time Admin setup, ignores env auto-admin, and blocks repeat bootstrap');
+
+// 6. Cross-company isolation: Token issued for Company A (cleanPayload) must be rejected by Company B even if JWT_SECRET is shared
+const appDataCompanyB = path.join(sandbox, 'AppDataCompanyB', 'Roaming');
+const prepCompanyB = prepareElectronDataDirectory({ appDataDir: appDataCompanyB, legacySourceDirs: [], envFileCandidates: [] });
+const sharedJwtSecret = 'shared_test_jwt_secret_for_cross_company_isolation_check_2026';
+
+const childCompanyA = `
+  process.env.AWLAD_DATA_DIR = ${JSON.stringify(prepClean.targetDataDir)};
+  process.env.JWT_SECRET = ${JSON.stringify(sharedJwtSecret)};
+  import('./server/index.js').then(async ({ startStandaloneServer }) => {
+    const srv = await startStandaloneServer({ port: 0, host: '127.0.0.1' });
+    const loginRes = await fetch(srv.localUrl + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'customer_admin_1', password: 'CustomerStrong#2026' })
+    });
+    const loginJson = await loginRes.json();
+    await srv.close();
+    console.log('COMP_A_TOKEN:' + JSON.stringify({ iid: loginJson.installationId, token: loginJson.accessToken, refresh: loginJson.refreshToken }));
+  });
+`;
+const runA = spawnSync(process.execPath, ['--input-type=module', '-e', childCompanyA], {
+  cwd: process.cwd(),
+  encoding: 'utf8',
+});
+assert.equal(runA.status, 0, `Company A child failed:\n${runA.stderr}\n${runA.stdout}`);
+const compAMarker = runA.stdout.split('\n').find((l) => l.startsWith('COMP_A_TOKEN:'));
+assert.ok(compAMarker, 'Missing COMP_A_TOKEN');
+const compA = JSON.parse(compAMarker.slice('COMP_A_TOKEN:'.length));
+
+const childCompanyB = `
+  process.env.AWLAD_DATA_DIR = ${JSON.stringify(prepCompanyB.targetDataDir)};
+  process.env.JWT_SECRET = ${JSON.stringify(sharedJwtSecret)};
+  import('./server/index.js').then(async ({ startStandaloneServer }) => {
+    const srv = await startStandaloneServer({ port: 0, host: '127.0.0.1' });
+    const st = await (await fetch(srv.localUrl + '/api/auth/status')).json();
+    if (!st.installationId || st.installationId === ${JSON.stringify(compA.iid)}) {
+      throw new Error('Company B installationId collided with Company A');
+    }
+    const meCross = await fetch(srv.localUrl + '/api/auth/me', {
+      headers: { Authorization: 'Bearer ' + ${JSON.stringify(compA.token)} }
+    });
+    if (meCross.status !== 401) {
+      throw new Error('Expected 401 when using Company A token on Company B, got ' + meCross.status);
+    }
+    const dbCross = await fetch(srv.localUrl + '/api/database', {
+      headers: { Authorization: 'Bearer ' + ${JSON.stringify(compA.token)} }
+    });
+    if (dbCross.status !== 401) {
+      throw new Error('Expected 401 on /api/database across companies, got ' + dbCross.status);
+    }
+    const refCross = await fetch(srv.localUrl + '/api/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: ${JSON.stringify(compA.refresh)} })
+    });
+    if (refCross.status !== 401) {
+      throw new Error('Expected 401 when refreshing Company A session on Company B, got ' + refCross.status);
+    }
+    await srv.close();
+    console.log('COMP_B_ISOLATED_OK');
+  });
+`;
+const runB = spawnSync(process.execPath, ['--input-type=module', '-e', childCompanyB], {
+  cwd: process.cwd(),
+  encoding: 'utf8',
+});
+assert.equal(runB.status, 0, `Company B isolation child failed:\n${runB.stderr}\n${runB.stdout}`);
+assert.ok(runB.stdout.includes('COMP_B_ISOLATED_OK'), `Missing COMP_B_ISOLATED_OK: ${runB.stdout}`);
+console.log('  [PASS] 6. Cross-company JWT and refresh tokens rejected (401) across distinct installationIds');
+
 fs.rmSync(sandbox, { recursive: true, force: true });
-console.log('ELECTRON VERIFICATION PASSED (4/4)');
+console.log('ELECTRON VERIFICATION PASSED (6/6)');

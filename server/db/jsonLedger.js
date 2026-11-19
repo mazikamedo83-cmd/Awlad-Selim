@@ -28,6 +28,7 @@ export async function flushJsonWrites() {
 
 export function createEmptyDatabaseState() {
   return {
+    installationId: '',
     users: [],
     warehouses: [
       {
@@ -177,6 +178,7 @@ export function normalizeDbState(raw) {
   } else {
     db.settings = { ...base.settings, ...db.settings, extraSettings: db.settings.extraSettings || {} };
   }
+  db.installationId = typeof db.installationId === 'string' ? db.installationId.trim() : '';
   db.sequences = { ...base.sequences, ...(db.sequences || {}) };
   return db;
 }

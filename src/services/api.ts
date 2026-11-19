@@ -12,6 +12,7 @@ const TOKENS_KEY = 'awlad_selim_auth_tokens_v3';
 const SERVER_URL_KEY = 'awlad_selim_server_base_url';
 const CONNECTION_PROFILES_KEY = 'awlad_selim_connection_profiles_v1';
 const FALLBACK_ENDPOINTS_KEY = 'awlad_selim_fallback_endpoints_v1';
+const INSTALLATION_ID_KEY = 'awlad_selim_server_installation_id_v1';
 
 export interface StoredTokens {
   accessToken: string;
@@ -45,6 +46,7 @@ export async function hydrateServerUrlFromNative(): Promise<void> {
     FALLBACK_ENDPOINTS_KEY,
     TOKENS_KEY,
     DEVICE_ID_STORAGE_KEY,
+    INSTALLATION_ID_KEY,
   ]);
   getOrCreatePersistentDeviceId();
 }
@@ -496,6 +498,31 @@ export async function setConfiguredApiBaseUrlAsync(url: string): Promise<void> {
 
 export function setConfiguredApiBaseUrl(url: string): void {
   setConfiguredApiBaseUrlAsync(url).catch(() => {});
+}
+
+export function getStoredInstallationId(): string {
+  try {
+    return (localStorage.getItem(INSTALLATION_ID_KEY) || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+export async function setStoredInstallationIdAsync(installationId: string): Promise<void> {
+  const clean = String(installationId || '').trim();
+  try {
+    if (!clean) {
+      await removePref(INSTALLATION_ID_KEY);
+    } else {
+      await setPref(INSTALLATION_ID_KEY, clean);
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export function setStoredInstallationId(installationId: string): void {
+  setStoredInstallationIdAsync(installationId).catch(() => {});
 }
 
 export async function fetchWithTimeout(

@@ -1191,6 +1191,165 @@ async function runTests() {
       const winRelYml = fs.readFileSync(path.join(process.cwd(), '.github/workflows/windows-build.yml'), 'utf8');
       assert.ok(winRelYml.includes('AWLAD-SELIM-Setup-'));
       assert.ok(winRelYml.includes('AWLAD-SELIM-Portable-'));
+      assert.ok(winRelYml.includes('AWLAD-SELIM-Windows-Customer-'));
+      assert.ok(winRelYml.includes('windows:customer-zip'));
+    });
+
+    console.log('\n=== 8. Old-Account Re-login After Clean Reinstall, Idempotent Pending Sync Recovery & Production Hardening ===');
+
+    await test('Simulating APK uninstall/reinstall: wiped client requires manual login with old account and preserves company data & permissions', async () => {
+      // Simulate complete uninstall + reinstall wipe on client device
+      memStorage.clear();
+
+      // Reinstall connects to same Central Server, must NOT allow bootstrap-admin and must NOT receive any auto-session
+      const authStatusRes = await req(baseUrl, 'GET', '/api/auth/status');
+      assert.equal(authStatusRes.status, 200);
+      assert.equal(authStatusRes.json.needsAdminSetup, false, 'Existing company already has admin -> must NOT allow re-bootstrap');
+      assert.ok(authStatusRes.json.installationId, 'Central server must expose stable installationId');
+
+      const guestMe = await req(baseUrl, 'GET', '/api/auth/me');
+      assert.equal(guestMe.status, 401, 'Clean reinstall must never open as Admin without real login');
+
+      // Log in with exact OLD Admin account
+      const adminRelogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        headers: { 'X-Device-Id': 'ANDROID_NEW_KEY_PROD_01' },
+        body: {
+          username: 'admin_test',
+          password: 'Password#123',
+          deviceId: 'ANDROID_NEW_KEY_PROD_01',
+          deviceName: 'Pixel Production Reinstalled',
+          deviceType: 'android',
+        },
+      });
+      assert.equal(adminRelogin.status, 200);
+      assert.equal(adminRelogin.json.user.role, 'admin');
+      assert.equal(adminRelogin.json.user.username, 'admin_test');
+
+      const adminProdsAfter = await req(baseUrl, 'GET', '/api/products', {
+        token: adminRelogin.json.accessToken,
+        headers: { 'X-Device-Id': 'ANDROID_NEW_KEY_PROD_01' },
+      });
+      assert.equal(adminProdsAfter.status, 200);
+      assert.ok(adminProdsAfter.json.products.some((p: any) => p.code === 'UNIFIED-01'));
+
+      // Log in with exact OLD Customer account & verify linkedCustomerId + catalog + RBAC remain intact
+      const custRelogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        headers: { 'X-Device-Id': 'ANDROID_NEW_KEY_CUST_01' },
+        body: {
+          username: 'cust_unified',
+          password: 'CustPassword#123',
+          deviceId: 'ANDROID_NEW_KEY_CUST_01',
+          deviceName: 'Customer Phone Reinstalled',
+          deviceType: 'android',
+        },
+      });
+      assert.equal(custRelogin.status, 200);
+      assert.equal(custRelogin.json.user.role, 'customer');
+      assert.ok(custRelogin.json.customerProfile?.id, 'Customer profile link must remain intact after reinstall');
+
+      const custCatalogAfter = await req(baseUrl, 'GET', '/api/products', {
+        token: custRelogin.json.accessToken,
+        headers: { 'X-Device-Id': 'ANDROID_NEW_KEY_CUST_01' },
+      });
+      assert.equal(custCatalogAfter.status, 200);
+      assert.ok(custCatalogAfter.json.products.some((p: any) => p.code === 'UNIFIED-01'));
+    });
+
+    await test('Pre-uninstall exported pending sync operations push cleanly & deduplicate by operationId after reinstall', async () => {
+      // Login as existing admin (simulating freshly installed Production APK importing pending backup)
+      const relogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        headers: { 'X-Device-Id': 'ANDROID_NEW_KEY_SYNC_01' },
+        body: {
+          username: 'admin_test',
+          password: 'Password#123',
+          deviceId: 'ANDROID_NEW_KEY_SYNC_01',
+          deviceType: 'android',
+        },
+      });
+      assert.equal(relogin.status, 200);
+      const token = relogin.json.accessToken;
+
+      const exportedOpId = 'op_reinstall_migration_dedupe_001';
+      const pendingPayload = {
+        operations: [
+          {
+            operationId: exportedOpId,
+            operationType: 'create_customer',
+            entityType: 'customer',
+            deviceId: 'ANDROID_OLD_KEY_DEVICE',
+            payload: {
+              code: 'MIG-C-01',
+              name: 'عميل مستعاد من النسخة المعلقة',
+              phone: '01099887766',
+              customerType: 'app',
+              openingBalance: 0,
+            },
+          },
+        ],
+      };
+
+      // First push -> executes creation
+      const firstPush = await req(baseUrl, 'POST', '/api/sync/push', {
+        token,
+        headers: { 'X-Device-Id': 'ANDROID_NEW_KEY_SYNC_01' },
+        body: pendingPayload,
+      });
+      assert.equal(firstPush.status, 200);
+      assert.equal(firstPush.json.results[0].status, 'synced');
+
+      // Second push with same operationId (simulating accidental double import or retry) -> deduplicated cleanly
+      const secondPush = await req(baseUrl, 'POST', '/api/sync/push', {
+        token,
+        headers: { 'X-Device-Id': 'ANDROID_NEW_KEY_SYNC_01' },
+        body: pendingPayload,
+      });
+      assert.equal(secondPush.status, 200);
+      assert.equal(secondPush.json.results[0].status, 'synced');
+      assert.equal(secondPush.json.results[0].deduplicated, true);
+
+      const customersRes = await req(baseUrl, 'GET', '/api/customers', {
+        token,
+        headers: { 'X-Device-Id': 'ANDROID_NEW_KEY_SYNC_01' },
+      });
+      assert.equal(customersRes.status, 200);
+      const migratedMatches = customersRes.json.customers.filter((c: any) => c.code === 'MIG-C-01');
+      assert.equal(migratedMatches.length, 1, 'Pending sync import must create customer once with zero duplication');
+    });
+
+    await test('Android Production security contracts (allowBackup=false, no debuggable, synced assets) & SyncCenterModal pre-uninstall export', () => {
+      const manifestSrc = fs.readFileSync(path.join(process.cwd(), 'android/app/src/main/AndroidManifest.xml'), 'utf8');
+      assert.ok(manifestSrc.includes('android:allowBackup="false"'), 'AndroidManifest must disable allowBackup to prevent stale token restore');
+
+      const appGradle = fs.readFileSync(path.join(process.cwd(), 'android/app/build.gradle'), 'utf8');
+      assert.ok(appGradle.includes('applicationId "com.awladselim.erp"'));
+      assert.ok(appGradle.includes('debuggable false'));
+      assert.ok(appGradle.includes('jniDebuggable false'));
+      assert.ok(appGradle.includes('isDebugKeystoreAttempt'));
+      assert.ok(appGradle.includes('androiddebugkey'));
+
+      const genKeySh = fs.readFileSync(path.join(process.cwd(), 'scripts/generate-android-release-key.sh'), 'utf8');
+      assert.ok(genKeySh.includes('--rotate'));
+      assert.ok(genKeySh.includes('AWLAD-SELIM-OLD-ARCHIVED'));
+
+      const genKeyPs1 = fs.readFileSync(path.join(process.cwd(), 'scripts/generate-android-release-key.ps1'), 'utf8');
+      assert.ok(genKeyPs1.includes('[switch]$Rotate'));
+      assert.ok(genKeyPs1.includes('AWLAD-SELIM-OLD-ARCHIVED'));
+
+      const androidRelYml = fs.readFileSync(path.join(process.cwd(), '.github/workflows/android-release.yml'), 'utf8');
+      assert.ok(androidRelYml.includes("package: name='com.awladselim.erp'"));
+      assert.ok(androidRelYml.includes('verifyElectronBootstrap.mjs'));
+      assert.ok(!androidRelYml.includes('(awlad-selim)'));
+
+      const syncCenterSrc = fs.readFileSync(path.join(process.cwd(), 'src/components/common/SyncCenterModal.tsx'), 'utf8');
+      assert.ok(syncCenterSrc.includes('awlad_selim_pending_sync_v1'));
+      assert.ok(syncCenterSrc.includes('handleExportPendingOperations'));
+      assert.ok(syncCenterSrc.includes('handleImportPendingOperations'));
+
+      const androidPublicDir = path.join(process.cwd(), 'android/app/src/main/assets/public');
+      const androidIndex = fs.readFileSync(path.join(androidPublicDir, 'index.html'), 'utf8');
+      assert.ok(androidIndex.includes('AWLAD SELIM'), 'Android Capacitor index.html must be present');
+      const scriptMatch = androidIndex.match(/src="\/(assets\/index-[^"]+\.js)"/);
+      assert.ok(scriptMatch && fs.existsSync(path.join(androidPublicDir, scriptMatch[1])), 'Android Capacitor assets JS bundle referenced in index.html must exist');
     });
 
     console.log(`\nALL PAIRING VERIFICATION TESTS PASSED (${passed} assertions/suites).\n`);

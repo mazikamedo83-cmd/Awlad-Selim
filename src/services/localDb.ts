@@ -12,6 +12,7 @@ export interface LocalDbSnapshot {
   userId: string;
   scope: 'customer' | 'representative' | 'staff';
   serverOrigin: string;
+  installationId?: string;
   cachedAt: string;
   serverTime?: string;
   user: User;

@@ -14,6 +14,7 @@ import {
   saveStoredTokensAsync,
   setConfiguredApiBaseUrl,
   setConfiguredApiBaseUrlAsync,
+  setStoredInstallationIdAsync,
   testServerHealth,
   triggerAuthExpired,
   validateConnectionUrl,
@@ -375,6 +376,7 @@ export async function claimPairingInvitation(
       (prevUrl && normalizeServerUrl(prevUrl) !== normalizeServerUrl(finalBaseUrl))
     ) {
       await saveStoredTokensAsync(null);
+      await setStoredInstallationIdAsync('').catch(() => {});
       await clearLastVerifiedOfflineSession().catch(() => {});
       clearReadCache();
     }

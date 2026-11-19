@@ -9,6 +9,7 @@ import {
   getConfiguredApiBaseUrl,
   setConfiguredApiBaseUrl,
   getStoredConnectionProfiles,
+  getStoredInstallationId,
   saveStoredConnectionProfiles,
   resolveModeEndpointUrl,
   detectModeFromUrl,
@@ -890,10 +891,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLastSyncTime(new Date().toLocaleTimeString('ar-EG'));
 
       // Persist clean server baseline into multi-platform LocalDB (IndexedDB + Electron AES Vault / Capacitor Filesystem)
+      const currentInstallationId = getStoredInstallationId();
       await localDb.saveSnapshot({
         userId: activeUser.id,
         scope: pullData.scope || 'staff',
         serverOrigin: normalizeServerOrigin(getConfiguredApiBaseUrl()),
+        installationId: currentInstallationId || undefined,
         cachedAt: new Date().toISOString(),
         serverTime: nowServerTime,
         user: pullData.user || activeUser,
@@ -914,6 +917,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         await refreshCachedUserAuthorization({
           serverUrl: getConfiguredApiBaseUrl(),
+          installationId: currentInstallationId,
           user: pullData.user,
           customerProfile: pullData.customerProfile || null,
           representativeProfile: pullData.representativeProfile || null,
@@ -964,7 +968,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSyncConflicts(conflicts);
         if (lastSyncMeta) setLastServerSyncAt(lastSyncMeta);
 
-        if (snap?.data?.dbState) {
+        const expectedOrigin = normalizeServerOrigin(getConfiguredApiBaseUrl());
+        const expectedInstallationId = getStoredInstallationId();
+        const snapshotMatchesServer =
+          snap?.data?.dbState &&
+          (!snap.serverOrigin || snap.serverOrigin === expectedOrigin) &&
+          (!expectedInstallationId || !snap.installationId || snap.installationId === expectedInstallationId);
+
+        if (snapshotMatchesServer && snap?.data?.dbState) {
           const effective = overlayPendingQueueOnState(snap.data.dbState, queue);
           setData(effective);
           if (snap.data.customerStatement) {
