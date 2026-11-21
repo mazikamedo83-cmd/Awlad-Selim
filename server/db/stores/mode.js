@@ -148,6 +148,10 @@ export const FULL_ADMIN_PERMISSIONS = {
   canApproveStockTransfer: true,
   canExecuteStockTransfer: true,
   canViewDeletedInvoices: true,
+  canApprove: true,
+  canSend: true,
+  canReceive: true,
+  canReviewRepInvoices: true,
 };
 
 export const CUSTOMER_DEFAULT_PERMISSIONS = {
@@ -181,6 +185,10 @@ export const CUSTOMER_DEFAULT_PERMISSIONS = {
   canApproveStockTransfer: false,
   canExecuteStockTransfer: false,
   canViewDeletedInvoices: false,
+  canApprove: false,
+  canSend: false,
+  canReceive: false,
+  canReviewRepInvoices: false,
 };
 
 export function setPgActive(val) {
@@ -456,6 +464,15 @@ export function mapPgInvoiceRow(r, items = [], payments = []) {
     returnedQuantityByItem: r.returned_quantity_by_item || {},
     originDeviceId: r.origin_device_id || undefined,
     syncStatus: r.sync_status || 'synced',
+    reviewStatus: r.review_status || 'not_required',
+    reviewedBy: r.reviewed_by || undefined,
+    reviewedAt: r.reviewed_at ? isoTimestamp(r.reviewed_at) : undefined,
+    reviewNotes: r.review_notes || undefined,
+    editedBy: r.edited_by || undefined,
+    editedAt: r.edited_at ? isoTimestamp(r.edited_at) : undefined,
+    cancelledBy: r.cancelled_by || undefined,
+    cancelledAt: r.cancelled_at ? isoTimestamp(r.cancelled_at) : undefined,
+    cancelReason: r.cancel_reason || undefined,
     version: Number(r.version || 1),
     updatedAt: r.updated_at ? isoTimestamp(r.updated_at) : isoTimestamp(r.created_at),
     createdBy: r.created_by,

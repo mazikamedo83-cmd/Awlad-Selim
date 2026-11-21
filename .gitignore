@@ -36,3 +36,5 @@ server/data/*.json
 server/data/*.tmp
 server/data/*.bak.json
 AWLAD_SELIM_BACKUP/
+public/assets/aistudio/VID-20261120-WA0002_8a9c204d.mp4
+public/assets/aistudio/VID20261120212453_8031c58b.mp4

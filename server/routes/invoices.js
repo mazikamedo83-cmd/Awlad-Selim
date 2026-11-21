@@ -3,7 +3,10 @@ import {
   listInvoices,
   createSalesInvoice,
   createPurchaseInvoice,
+  createSalesQuote,
+  convertQuoteToInvoice,
   confirmDraftInvoice,
+  markInvoiceReviewed,
   editSalesInvoice,
   cancelInvoice,
   addInvoicePayment,
@@ -83,11 +86,46 @@ router.post(
 );
 
 router.post(
+  '/quotes',
+  requireStaff,
+  requirePermission('canManageSales'),
+  asyncHandler(async (req, res) => {
+    const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
+    const invoice = await createSalesQuote(req.body || {}, req.auth.user, idempotencyKey);
+    res.status(201).json({ ok: true, invoice });
+  })
+);
+
+router.post(
+  '/quotes/:id/convert',
+  requireStaff,
+  requirePermission('canManageSales'),
+  asyncHandler(async (req, res) => {
+    const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
+    const invoice = await convertQuoteToInvoice(req.params.id, req.body || {}, req.auth.user, idempotencyKey);
+    res.status(201).json({ ok: true, invoice });
+  })
+);
+
+router.post(
   '/:id/confirm',
   requireStaff,
   requirePermission('canManageSales'),
   asyncHandler(async (req, res) => {
     const invoice = await confirmDraftInvoice(req.params.id, req.auth.user);
+    res.json({ ok: true, invoice });
+  })
+);
+
+router.post(
+  '/:id/mark-reviewed',
+  requireStaff,
+  asyncHandler(async (req, res) => {
+    const u = req.auth.user;
+    if (u.role !== 'admin' && !u.permissions?.canManageSales && !u.permissions?.canReviewRepInvoices && !u.permissions?.canApprove) {
+      return res.status(403).json({ ok: false, code: 'FORBIDDEN_REVIEW', error: 'ليس لديك صلاحية تأكيد مراجعة فواتير المناديب' });
+    }
+    const invoice = await markInvoiceReviewed(req.params.id, req.body || {}, u);
     res.json({ ok: true, invoice });
   })
 );
@@ -126,10 +164,17 @@ router.post(
 router.post(
   '/returns',
   requireStaff,
-  requirePermission('canManageSales'),
   asyncHandler(async (req, res) => {
+    const u = req.auth.user;
+    const isPurchaseReturn = req.body?.type === 'purchase_return';
+    const allowed =
+      u.role === 'admin' ||
+      (isPurchaseReturn ? Boolean(u.permissions?.canManagePurchases) : Boolean(u.permissions?.canManageSales));
+    if (!allowed) {
+      return res.status(403).json({ ok: false, code: 'FORBIDDEN_PERMISSION', error: 'ليس لديك صلاحية تنفيذ هذا المرتجع' });
+    }
     const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
-    const ret = await createInvoiceReturn(req.body || {}, req.auth.user, idempotencyKey);
+    const ret = await createInvoiceReturn(req.body || {}, u, idempotencyKey);
     res.status(201).json({ ok: true, invoiceReturn: ret });
   })
 );

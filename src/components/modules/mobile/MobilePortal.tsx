@@ -52,12 +52,26 @@ export const MobilePortal: React.FC = () => {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
   const [isSyncCenterOpen, setIsSyncCenterOpen] = useState(false);
+  const [hasUnsavedRepInvoice, setHasUnsavedRepInvoice] = useState(false);
+  const [pendingRepTab, setPendingRepTab] = useState<RepTabKey | null>(null);
+
+  const requestRepTabChange = (nextTab: RepTabKey) => {
+    if (isRep && repTab === 'new-invoice' && hasUnsavedRepInvoice && nextTab !== 'new-invoice') {
+      setPendingRepTab(nextTab);
+      return;
+    }
+    setRepTab(nextTab);
+  };
 
   const syncBadgeCount = data.pendingSyncCount + data.conflictsCount;
 
   // Android hardware back button handling: close modals/drawer first, else return to home tab
   useEffect(() => {
     return registerAndroidBackButton(() => {
+      if (pendingRepTab) {
+        setPendingRepTab(null);
+        return true;
+      }
       if (isSyncCenterOpen) {
         setIsSyncCenterOpen(false);
         return true;
@@ -75,7 +89,7 @@ export const MobilePortal: React.FC = () => {
         return true;
       }
       if (isRep && repTab !== 'home') {
-        setRepTab('home');
+        requestRepTabChange('home');
         return true;
       }
       if (!isRep && customerTab !== 'home') {
@@ -84,7 +98,7 @@ export const MobilePortal: React.FC = () => {
       }
       return false;
     });
-  }, [isSyncCenterOpen, isNotificationsOpen, isServerModalOpen, isDrawerOpen, isRep, repTab, customerTab]);
+  }, [pendingRepTab, isSyncCenterOpen, isNotificationsOpen, isServerModalOpen, isDrawerOpen, isRep, repTab, customerTab, hasUnsavedRepInvoice]);
 
   useEffect(() => {
     if (!isDrawerOpen) return;
@@ -102,11 +116,13 @@ export const MobilePortal: React.FC = () => {
         item.targetTab === 'invoices' ||
         item.targetTab === 'customers' ||
         item.targetTab === 'new-invoice' ||
-        item.targetTab === 'orders'
+        item.targetTab === 'orders' ||
+        item.targetTab === 'refresh' ||
+        item.targetTab === 'cash'
       ) {
-        setRepTab(item.targetTab);
+        requestRepTabChange(item.targetTab as RepTabKey);
       } else {
-        setRepTab('home');
+        requestRepTabChange('home');
       }
     } else {
       if (item.targetTab === 'account' || item.targetTab === 'orders' || item.targetTab === 'catalog' || item.targetTab === 'cart') {
@@ -120,10 +136,10 @@ export const MobilePortal: React.FC = () => {
   // Top Blue Bar navigation items + Drawer full destinations (zero bottom navigation bar)
   const topQuickButtons = isRep
     ? [
-        { key: 'home' as const, label: 'الرئيسية', icon: Home, active: repTab === 'home', onSelect: () => setRepTab('home') },
-        { key: 'custody' as const, label: 'العهدة', icon: ArrowLeftRight, active: repTab === 'custody', onSelect: () => setRepTab('custody') },
-        { key: 'invoices' as const, label: 'الفواتير', icon: FileText, active: repTab === 'invoices', onSelect: () => setRepTab('invoices') },
-        { key: 'new-invoice' as const, label: 'المبيعات', icon: FilePlus2, active: repTab === 'new-invoice', onSelect: () => setRepTab('new-invoice') },
+        { key: 'home' as const, label: 'الرئيسية', icon: Home, active: repTab === 'home', onSelect: () => requestRepTabChange('home') },
+        { key: 'cash' as const, label: 'النقدية', icon: Receipt, active: repTab === 'cash', onSelect: () => requestRepTabChange('cash') },
+        { key: 'custody' as const, label: 'العهدة', icon: ArrowLeftRight, active: repTab === 'custody', onSelect: () => requestRepTabChange('custody') },
+        { key: 'more' as const, label: 'المزيد', icon: LayoutGrid, active: repTab === 'more', onSelect: () => requestRepTabChange('more') },
       ]
     : [
         { key: 'home' as const, label: 'الرئيسية', icon: Home, active: customerTab === 'home', onSelect: () => setCustomerTab('home') },
@@ -134,12 +150,16 @@ export const MobilePortal: React.FC = () => {
 
   const allPortalDestinations = isRep
     ? [
-        { key: 'home', label: 'الرئيسية', icon: Home, active: repTab === 'home', onSelect: () => setRepTab('home') },
-        { key: 'customers', label: 'دليل العملاء', icon: Users, active: repTab === 'customers', onSelect: () => setRepTab('customers') },
-        { key: 'new-invoice', label: 'إصدار فاتورة بيع', icon: FilePlus2, active: repTab === 'new-invoice', onSelect: () => setRepTab('new-invoice') },
-        { key: 'orders', label: 'الطلبات والتسليمات', icon: ClipboardList, active: repTab === 'orders', onSelect: () => setRepTab('orders') },
-        { key: 'invoices', label: 'سجل الفواتير', icon: FileText, active: repTab === 'invoices', onSelect: () => setRepTab('invoices') },
-        { key: 'custody', label: 'العهدة والتحويلات', icon: ArrowLeftRight, active: repTab === 'custody', onSelect: () => setRepTab('custody') },
+        { key: 'home', label: 'الرئيسية (الشبكة السريعة)', icon: Home, active: repTab === 'home', onSelect: () => requestRepTabChange('home') },
+        { key: 'cash', label: 'النقدية والعهدة المالية', icon: Receipt, active: repTab === 'cash', onSelect: () => requestRepTabChange('cash') },
+        { key: 'refresh', label: 'REFRESH · الإرسال والاستلام', icon: RefreshCw, active: repTab === 'refresh', onSelect: () => requestRepTabChange('refresh') },
+        { key: 'new-invoice', label: 'إصدار فاتورة بيع', icon: FilePlus2, active: repTab === 'new-invoice', onSelect: () => requestRepTabChange('new-invoice') },
+        { key: 'new-quote', label: 'عرض سعر', icon: FileText, active: repTab === 'new-quote', onSelect: () => requestRepTabChange('new-quote') },
+        { key: 'customers', label: 'دليل العملاء', icon: Users, active: repTab === 'customers', onSelect: () => requestRepTabChange('customers') },
+        { key: 'orders', label: 'الطلبات والتسليمات', icon: ClipboardList, active: repTab === 'orders', onSelect: () => requestRepTabChange('orders') },
+        { key: 'invoices', label: 'سجل فواتير المبيعات', icon: FileText, active: repTab === 'invoices', onSelect: () => requestRepTabChange('invoices') },
+        { key: 'custody', label: 'المخزن والعهدة والتحويلات', icon: ArrowLeftRight, active: repTab === 'custody', onSelect: () => requestRepTabChange('custody') },
+        { key: 'more', label: 'المزيد والإعدادات', icon: LayoutGrid, active: repTab === 'more', onSelect: () => requestRepTabChange('more') },
       ]
     : [
         { key: 'home', label: 'الرئيسية', icon: Home, active: customerTab === 'home', onSelect: () => setCustomerTab('home') },
@@ -438,11 +458,51 @@ export const MobilePortal: React.FC = () => {
         )}
 
         {isRep ? (
-          <RepPortal activeTab={repTab} onTabChange={setRepTab} />
+          <RepPortal
+            activeTab={repTab}
+            onTabChange={setRepTab}
+            onOpenServerModal={() => setIsServerModalOpen(true)}
+            onLogout={logout}
+            onUnsavedInvoiceChange={setHasUnsavedRepInvoice}
+          />
         ) : (
           <CustomerPortal activeTab={customerTab} onTabChange={setCustomerTab} />
         )}
       </main>
+
+      {pendingRepTab && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl border border-slate-200 space-y-3 text-xs">
+            <div className="flex items-center gap-2 font-black text-sm text-amber-800">
+              <AlertCircle className="w-5 h-5 shrink-0" />
+              <span>توجد أصناف غير محفوظة في الفاتورة</span>
+            </div>
+            <p className="text-slate-600 leading-relaxed">
+              توجد أصناف مضافة في شاشة فاتورة البيع لم تُحفظ بعد. هل تود البقاء لإكمال الفاتورة أم الانتقال مع الاحتفاظ بالبيانات مؤقتاً؟
+            </p>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setPendingRepTab(null)}
+                className="min-h-[44px] rounded-xl bg-blue-900 text-white font-black cursor-pointer"
+              >
+                البقاء في الفاتورة
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = pendingRepTab;
+                  setPendingRepTab(null);
+                  setRepTab(target);
+                }}
+                className="min-h-[44px] rounded-xl bg-slate-100 text-slate-800 font-bold cursor-pointer"
+              >
+                الانتقال مؤقتاً
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <MobileNotificationsSheet
         isOpen={isNotificationsOpen}

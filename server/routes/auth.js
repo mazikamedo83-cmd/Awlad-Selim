@@ -3,6 +3,7 @@ import {
   getAuthStatus,
   bootstrapAdmin,
   loginUser,
+  registerMobileAccount,
   refreshUserSession,
   logoutSession,
   changeOwnPassword,
@@ -68,6 +69,19 @@ router.post(
       }
       throw err;
     }
+  })
+);
+
+router.post(
+  '/register',
+  asyncHandler(async (req, res) => {
+    const result = await registerMobileAccount(req.body || {}, {
+      deviceId: req.get('x-device-id') || req.body?.deviceId || '',
+      ipAddress: getClientIp(req),
+      deviceInfo: req.get('user-agent') || '',
+    });
+    const sysSettings = await getSystemSettingsSafe();
+    res.status(201).json({ ok: true, ...result, mobileConfig: sysSettings.mobileConfig });
   })
 );
 

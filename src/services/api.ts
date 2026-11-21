@@ -859,3 +859,24 @@ export async function apiRequest<T = any>(
 
   return (json ?? {}) as T;
 }
+
+export async function fetchComprehensiveReport(params: Record<string, string | undefined>): Promise<import('../types').ComprehensiveReportResponse> {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== '' && v !== 'all') {
+      qs.set(k, v);
+    } else if (k === 'reportType' && v) {
+      qs.set(k, v);
+    }
+  }
+  const res = await apiRequest<{ ok: boolean; report: import('../types').ComprehensiveReportResponse }>(
+    `/api/reports/comprehensive?${qs.toString()}`
+  );
+  return res.report;
+}
+
+export async function fetchReportSourceDocument(docType: string, docId: string): Promise<import('../types').ReportSourceDocumentResponse> {
+  const qs = new URLSearchParams({ docType, docId });
+  return apiRequest<import('../types').ReportSourceDocumentResponse>(`/api/reports/source-document?${qs.toString()}`);
+}
+

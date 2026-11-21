@@ -28,6 +28,7 @@ export type NavItemKey =
   | 'dashboard'
   | 'customer-orders'
   | 'sales-invoices'
+  | 'quotes'
   | 'new-sale'
   | 'customers'
   | 'sales-returns'
@@ -46,6 +47,7 @@ export type NavItemKey =
   | 'stock-counts'
   | 'damaged-stock'
   | 'stock-movements'
+  | 'item-movement-report'
   | 'abu-selim-import'
   | 'cashboxes'
   | 'cashbox-transfer'
@@ -134,6 +136,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             badge: pendingOrdersCount > 0 ? `${pendingOrdersCount} جديد` : undefined,
           },
           { key: 'sales-invoices', label: 'فواتير المبيعات' },
+          { key: 'quotes', label: 'عروض الأسعار', badge: 'جديد' },
           { key: 'new-sale', label: 'فاتورة مبيعات جديدة (+)', badge: 'جديد' },
           { key: 'customers', label: 'العملاء والأرصدة' },
           { key: 'sales-returns', label: 'مرتجع المبيعات' },
@@ -187,6 +190,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           { key: 'stock-adjustments', label: 'تسوية سريعة للمخزون' },
           { key: 'damaged-stock', label: 'بضاعة تالفة ومنتهية' },
           { key: 'stock-movements', label: 'سجل حركة الأصناف' },
+          {
+            key: 'item-movement-report',
+            label: 'تقرير حركة الصنف المفصل',
+            badge: 'مفصل',
+            permission: ['canManageInventory', 'canViewReports'],
+          },
         ],
       },
       {
@@ -264,7 +273,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         headerGradient: 'bg-gradient-to-l from-blue-50/85 via-indigo-50/65 to-white text-blue-950 border-blue-100',
         iconAccent: 'bg-blue-100/80 text-blue-800',
         permission: 'canViewReports',
-        items: [{ key: 'reports', label: 'جميع التقارير والأرباح' }],
+        items: [
+          { key: 'reports', label: 'جميع التقارير والأرباح' },
+          { key: 'item-movement-report', label: 'تقرير حركة الصنف المفصل', badge: 'جديد' },
+        ],
       },
       {
         id: 'management',

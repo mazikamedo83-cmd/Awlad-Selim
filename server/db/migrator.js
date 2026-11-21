@@ -585,13 +585,16 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
           const whId = warehouseIds.has(inv.warehouseId) ? inv.warehouseId : fallbackWarehouseId;
           const cbId = cashboxIds.has(inv.cashboxId) ? inv.cashboxId : fallbackCashboxId;
           await client.query(`
-            INSERT INTO invoices (id, invoice_number, type, date, customer_id, customer_name, supplier_id, supplier_name, representative_id, representative_name, warehouse_id, warehouse_name, subtotal, discount_total, tax_total, grand_total, paid_amount, applied_advance_amount, remaining_amount, payment_type, payment_method, cashbox_id, status, notes, linked_rep_transfer_id, linked_rep_transfer_number, linked_customer_order_id, returned_quantity_by_item, version, created_by, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
+            INSERT INTO invoices (id, invoice_number, type, date, customer_id, customer_name, supplier_id, supplier_name, representative_id, representative_name, warehouse_id, warehouse_name, subtotal, discount_total, tax_total, grand_total, paid_amount, applied_advance_amount, remaining_amount, payment_type, payment_method, cashbox_id, status, notes, linked_rep_transfer_id, linked_rep_transfer_number, linked_customer_order_id, returned_quantity_by_item, review_status, reviewed_by, reviewed_at, review_notes, edited_by, edited_at, cancelled_by, cancelled_at, cancel_reason, version, created_by, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40)
             ON CONFLICT (id) DO UPDATE SET
               paid_amount = EXCLUDED.paid_amount,
               applied_advance_amount = EXCLUDED.applied_advance_amount,
               remaining_amount = EXCLUDED.remaining_amount,
               status = EXCLUDED.status,
+              review_status = EXCLUDED.review_status,
+              reviewed_by = EXCLUDED.reviewed_by,
+              reviewed_at = EXCLUDED.reviewed_at,
               returned_quantity_by_item = EXCLUDED.returned_quantity_by_item;
           `, [
             inv.id,
@@ -622,6 +625,15 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             inv.linkedRepTransferNumber || null,
             inv.linkedCustomerOrderId || null,
             JSON.stringify(inv.returnedQuantityByItem || {}),
+            inv.reviewStatus || 'not_required',
+            inv.reviewedBy || null,
+            inv.reviewedAt || null,
+            inv.reviewNotes || '',
+            inv.editedBy || null,
+            inv.editedAt || null,
+            inv.cancelledBy || null,
+            inv.cancelledAt || null,
+            inv.cancelReason || '',
             Number(inv.version || 1),
             inv.createdBy || 'المدير العام',
             inv.createdAt || new Date().toISOString(),
@@ -775,9 +787,9 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
         for (const rit of repItemTransfers) {
           if (!representatives.some((r) => r.id === rit.representativeId)) continue;
           await client.query(`
-            INSERT INTO rep_item_transfers (id, request_number, date, representative_id, representative_name, invoice_id, invoice_number, source_warehouse_id, source_warehouse_name, target_warehouse_id, target_warehouse_name, status, rejection_reason, notes, created_by, created_at, reviewed_by, reviewed_at, executed_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-            ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, invoice_id = EXCLUDED.invoice_id, invoice_number = EXCLUDED.invoice_number;
+            INSERT INTO rep_item_transfers (id, request_number, date, representative_id, representative_name, invoice_id, invoice_number, source_warehouse_id, source_warehouse_name, target_warehouse_id, target_warehouse_name, status, transfer_mode, dispatched_by, dispatched_at, rejection_reason, notes, created_by, created_at, reviewed_by, reviewed_at, executed_at, received_by, received_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+            ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, invoice_id = EXCLUDED.invoice_id, invoice_number = EXCLUDED.invoice_number, received_by = EXCLUDED.received_by, received_at = EXCLUDED.received_at;
           `, [
             rit.id,
             rit.requestNumber,
@@ -791,6 +803,9 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             rit.targetWarehouseId,
             rit.targetWarehouseName,
             rit.status,
+            rit.transferMode || 'transfer',
+            rit.dispatchedBy || null,
+            rit.dispatchedAt || null,
             rit.rejectionReason || '',
             rit.notes || '',
             rit.createdBy || 'المندوب',
@@ -798,6 +813,8 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             rit.reviewedBy || null,
             rit.reviewedAt || null,
             rit.executedAt || null,
+            rit.receivedBy || null,
+            rit.receivedAt || null,
           ]);
           details.repItemTransfers++;
 
@@ -1150,6 +1167,38 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
           `, [scf.id, scf.operationId, scf.operationType, scf.entityType, scf.entityId || null, scf.deviceId || null, scf.userId || null, scf.userName || '', scf.conflictReason || '', JSON.stringify(scf.localPayload || {}), JSON.stringify(scf.serverSnapshot || {}), scf.status || 'needs_review', scf.resolutionNotes || '', scf.resolvedBy || null, scf.resolvedAt || null, scf.createdAt || new Date().toISOString()]);
         }
 
+        for (const rco of (sourceData.repCustodyOperations || [])) {
+          if (!representatives.some((r) => r.id === rco.representativeId) || !productMap.has(rco.productId)) continue;
+          await client.query(`
+            INSERT INTO rep_custody_operations (id, operation_number, date, representative_id, representative_name, operation_type, product_id, product_name, unit, unit_factor, quantity, base_quantity, warehouse_id, warehouse_name, customer_id, customer_name, invoice_id, invoice_number, notes, status, created_by, created_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+            ON CONFLICT (id) DO NOTHING;
+          `, [
+            rco.id,
+            rco.operationNumber,
+            rco.date,
+            rco.representativeId,
+            rco.representativeName,
+            rco.operationType,
+            rco.productId,
+            rco.productName,
+            rco.unit || 'قطعة',
+            Number(rco.unitFactor || 1),
+            Number(rco.quantity || 0),
+            Number(rco.baseQuantity || rco.quantity || 0),
+            rco.warehouseId || null,
+            rco.warehouseName || '',
+            rco.customerId || null,
+            rco.customerName || '',
+            rco.invoiceId || null,
+            rco.invoiceNumber || null,
+            rco.notes || '',
+            rco.status || 'approved',
+            rco.createdBy || 'النظام',
+            rco.createdAt || new Date().toISOString(),
+          ]);
+        }
+
         for (const al of auditLogs) {
           await client.query(`
             INSERT INTO audit_logs (id, timestamp, user_id, user_name, action, module, record_id, notes)
@@ -1163,6 +1212,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
         const maxOrderSeq = extractMaxSuffix(customerItemOrders, 'requestNumber', /^COR-(\d+)$/i);
         const maxSalesSeq = extractMaxSuffix(invoices.filter((i) => i.type === 'sales'), 'invoiceNumber', /-(\d+)$/);
         const maxPurSeq = extractMaxSuffix(invoices.filter((i) => i.type === 'purchase'), 'invoiceNumber', /-(\d+)$/);
+        const maxQuoteSeq = extractMaxSuffix(invoices.filter((i) => i.type === 'quote'), 'invoiceNumber', /-(\d+)$/);
         const maxSalesRetSeq = extractMaxSuffix(invoiceReturns.filter((r) => r.type === 'sales_return'), 'returnNumber', /-(\d+)$/);
         const maxPurRetSeq = extractMaxSuffix(invoiceReturns.filter((r) => r.type === 'purchase_return'), 'returnNumber', /-(\d+)$/);
         const maxOwnerTxSeq = extractMaxSuffix(ownerTransactions, 'txNumber', /^OTX-(\d+)$/i);
@@ -1170,10 +1220,12 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
         const maxStockTransferSeq = extractMaxSuffix(stockTransferRequests, 'transferNumber', /^STR-(\d+)$/i);
         const maxCashOpSeq = extractMaxSuffix(financialTransactions, 'transactionNumber', /^COP-(\d+)$/i);
         const maxOrderAdvSeq = extractMaxSuffix(orderAdvancePayments, 'paymentNumber', /^ADV-(\d+)$/i);
+        const maxRepCustodyOpSeq = extractMaxSuffix(sourceData.repCustodyOperations || [], 'operationNumber', /-(\d+)$/i);
         const seqUpdates = [
           ['seq_customer_order_no', maxOrderSeq],
           ['seq_sales_invoice_no', maxSalesSeq],
           ['seq_purchase_invoice_no', maxPurSeq],
+          ['seq_quote_no', maxQuoteSeq],
           ['seq_sales_return_no', maxSalesRetSeq],
           ['seq_purchase_return_no', maxPurRetSeq],
           ['seq_owner_tx_no', maxOwnerTxSeq],
@@ -1181,6 +1233,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
           ['seq_stock_transfer_no', maxStockTransferSeq],
           ['seq_cash_op_no', maxCashOpSeq],
           ['seq_order_advance_no', maxOrderAdvSeq],
+          ['seq_rep_custody_op_no', maxRepCustodyOpSeq],
         ];
         for (const [seqName, maxVal] of seqUpdates) {
           if (maxVal > 0) {
@@ -1323,13 +1376,14 @@ export async function rollbackMigration(migrationIdOrBackup, executedBy = 'مد�
     await withTransaction(async (client) => {
       // Truncate/clear operational PostgreSQL tables only if explicitly rolling back to pre-migration JSON snapshot
       const tables = [
+        'sync_operation_logs', 'sync_conflicts', 'idempotency_keys',
         'pairing_tokens', 'paired_devices',
         'owner_transactions', 'owner_accounts',
         'stock_count_items', 'stock_counts',
         'stock_transfer_request_items', 'stock_transfer_requests',
-        'order_status_history', 'customer_item_order_items', 'customer_item_orders',
+        'order_advance_payments', 'order_status_history', 'customer_item_order_items', 'customer_item_orders',
         'invoice_return_items', 'invoice_returns', 'invoice_payments', 'invoice_items', 'invoices',
-        'rep_item_transfer_items', 'rep_item_transfers', 'rep_transfers',
+        'rep_custody_operations', 'rep_item_transfer_items', 'rep_item_transfers', 'rep_transfers',
         'stock_movements', 'financial_transactions', 'cheques', 'installments',
         'advances_deductions', 'attendance', 'payrolls', 'expenses_incomes',
         'product_units', 'products', 'product_categories', 'customers', 'suppliers',

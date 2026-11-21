@@ -21,6 +21,7 @@ import { MobileServerModal } from '../mobile/MobileServerModal';
 export const LoginView: React.FC = () => {
   const {
     login,
+    registerAccount,
     bootstrapAdmin,
     needsAdminSetup,
     refreshAuthContext,
@@ -32,11 +33,16 @@ export const LoginView: React.FC = () => {
     setPairingBanner,
     clearPairingBanner,
   } = useAuth();
+  const [authMode, setAuthMode] = useState<'login' | 'register_customer' | 'register_rep'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [shopName, setShopName] = useState('');
+  const [area, setArea] = useState('');
+  const [vehicleNumber, setVehicleNumber] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -131,6 +137,46 @@ export const LoginView: React.FC = () => {
       setIsLoading(false);
       if (!res.success) {
         setError(res.error || 'تعذر تهيئة حساب المدير العام');
+      }
+      return;
+    }
+
+    if (!needsAdminSetup && (authMode === 'register_customer' || authMode === 'register_rep')) {
+      if (fullName.trim().length < 2) {
+        setError('يرجى إدخال الاسم الكامل (حرفين على الأقل)');
+        return;
+      }
+      if (!phone.trim()) {
+        setError('يرجى إدخال رقم الهاتف للتسجيل');
+        return;
+      }
+      if (username.trim().length < 3) {
+        setError('اسم المستخدم يجب أن لا يقل عن 3 أحرف');
+        return;
+      }
+      if (password.length < 6) {
+        setError('كلمة المرور يجب أن لا تقل عن 6 أحرف أو أرقام');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError('كلمتا المرور غير متطابقتين');
+        return;
+      }
+      setIsLoading(true);
+      const res = await registerAccount({
+        role: authMode === 'register_customer' ? 'customer' : 'representative',
+        fullName: fullName.trim(),
+        phone: phone.trim(),
+        username: username.trim(),
+        password,
+        address: address.trim(),
+        shopName: authMode === 'register_customer' ? shopName.trim() : undefined,
+        area: authMode === 'register_customer' ? area.trim() : undefined,
+        vehicleNumber: authMode === 'register_rep' ? vehicleNumber.trim() : undefined,
+      });
+      setIsLoading(false);
+      if (!res.success) {
+        setError(res.error || 'تعذر إنشاء الحساب الجديد');
       }
       return;
     }
@@ -300,6 +346,53 @@ export const LoginView: React.FC = () => {
             </div>
           )}
 
+          {!needsAdminSetup && (
+            <div className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-slate-100 border border-slate-200">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('login');
+                  setError(null);
+                }}
+                className={`min-h-[42px] px-2 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  authMode === 'login'
+                    ? 'bg-blue-900 text-white shadow-xs font-black'
+                    : 'text-slate-700 hover:bg-white'
+                }`}
+              >
+                تسجيل الدخول
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('register_customer');
+                  setError(null);
+                }}
+                className={`min-h-[42px] px-2 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  authMode === 'register_customer'
+                    ? 'bg-blue-900 text-white shadow-xs font-black'
+                    : 'text-slate-700 hover:bg-white'
+                }`}
+              >
+                تسجيل عميل جديد
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('register_rep');
+                  setError(null);
+                }}
+                className={`min-h-[42px] px-2 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  authMode === 'register_rep'
+                    ? 'bg-blue-900 text-white shadow-xs font-black'
+                    : 'text-slate-700 hover:bg-white'
+                }`}
+              >
+                تسجيل مندوب جديد
+              </button>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
             {needsAdminSetup && (
               <>
@@ -341,6 +434,85 @@ export const LoginView: React.FC = () => {
                   />
                 </div>
               </>
+            )}
+
+            {!needsAdminSetup && (authMode === 'register_customer' || authMode === 'register_rep') && (
+              <div className="space-y-3 p-3.5 rounded-2xl bg-blue-50/60 border border-blue-200/80">
+                <p className="text-xs font-black text-blue-950">
+                  {authMode === 'register_customer'
+                    ? 'بيانات العميل الجديد (تُفعّل مباشرة للدخول والطلب)'
+                    : 'بيانات المندوب الجديد (تُفعّل مباشرة مع مخزن سيارة خاص)'}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">الاسم الكامل *</label>
+                    <input
+                      type="text"
+                      required
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder={authMode === 'register_customer' ? 'اسم العميل أو المسؤول' : 'اسم المندوب الثلاثي'}
+                      className="w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">رقم الهاتف *</label>
+                    <input
+                      type="tel"
+                      required
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="01xxxxxxxxx"
+                      className="w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                    />
+                  </div>
+                  {authMode === 'register_customer' ? (
+                    <>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">اسم المحل / النشاط</label>
+                        <input
+                          type="text"
+                          value={shopName}
+                          onChange={(e) => setShopName(e.target.value)}
+                          placeholder="مثال: سوبر ماركت النور"
+                          className="w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">المنطقة</label>
+                        <input
+                          type="text"
+                          value={area}
+                          onChange={(e) => setArea(e.target.value)}
+                          placeholder="مثال: الجيزة / شبرا"
+                          className="w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">رقم السيارة / الخط</label>
+                      <input
+                        type="text"
+                        value={vehicleNumber}
+                        onChange={(e) => setVehicleNumber(e.target.value)}
+                        placeholder="مثال: أ ب ج 1234"
+                        className="w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                      />
+                    </div>
+                  )}
+                  <div className={authMode === 'register_customer' ? 'sm:col-span-2' : ''}>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">العنوان</label>
+                    <input
+                      type="text"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      placeholder="العنوان التفصيلي"
+                      className="w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                    />
+                  </div>
+                </div>
+              </div>
             )}
 
             <div>
@@ -397,7 +569,7 @@ export const LoginView: React.FC = () => {
               </div>
             </div>
 
-            {needsAdminSetup && (
+            {(needsAdminSetup || authMode === 'register_customer' || authMode === 'register_rep') && (
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5">
                   تأكيد كلمة المرور:
@@ -418,12 +590,20 @@ export const LoginView: React.FC = () => {
               disabled={isLoading}
               className="w-full py-3.5 px-4 bg-blue-900 hover:bg-blue-950 text-white font-bold text-sm rounded-xl shadow-lg shadow-blue-900/25 transition-all active:scale-98 disabled:opacity-60 flex items-center justify-center gap-2 cursor-pointer min-h-[46px]"
             >
-              {needsAdminSetup ? <UserPlus className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
+              {needsAdminSetup || authMode !== 'login' ? (
+                <UserPlus className="w-4 h-4" />
+              ) : (
+                <ShieldCheck className="w-4 h-4" />
+              )}
               <span>
                 {isLoading
                   ? 'جاري التحقق والمصادقة...'
                   : needsAdminSetup
                   ? 'إنشاء حساب المدير العام والدخول'
+                  : authMode === 'register_customer'
+                  ? 'إنشاء حساب العميل والدخول'
+                  : authMode === 'register_rep'
+                  ? 'إنشاء حساب المندوب والدخول'
                   : 'دخول النظام'}
               </span>
             </button>

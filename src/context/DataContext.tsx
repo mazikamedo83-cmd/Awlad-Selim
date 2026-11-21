@@ -22,7 +22,7 @@ import { notifyLocal, subscribeAppForeground, subscribeNetworkStatus } from '../
 import { localDb } from '../services/localDb';
 import { normalizeServerOrigin, refreshCachedUserAuthorization } from '../services/offlineAuth';
 import { getCachedProductImageMap, warmProductMediaCache } from '../services/mediaCache';
-import { enqueueSyncOperation, runSyncCycle } from '../services/syncEngine';
+import { enqueueSyncOperation, getSyncRefreshStats, runSyncCycle, SyncRefreshSummary } from '../services/syncEngine';
 import {
   Product,
   Customer,
@@ -45,6 +45,9 @@ import {
   RepItemTransferRequest,
   RepItemTransferStatus,
   RepTransferItem,
+  RepCustodyOperation,
+  RepCustodyStatementResponse,
+  ItemMovementReportResponse,
   ServerConnectionSettings,
   ProductCategory,
   Warehouse,
@@ -96,6 +99,10 @@ export interface DataContextType extends DatabaseState {
   getCustomerPriceHistory: (customerId: string) => Promise<Record<string, CustomerPriceHistoryEntry[]>>;
   triggerSync: (forceAll?: boolean) => Promise<void>;
   triggerManualSync: () => Promise<void>;
+  lastSendSummary: SyncRefreshSummary | null;
+  lastReceiveSummary: SyncRefreshSummary | null;
+  syncSendOnly: () => Promise<{ ok: boolean; count: number; failedCount: number; conflictCount: number; error?: string }>;
+  syncReceiveOnly: () => Promise<{ ok: boolean; count: number; error?: string }>;
   resolveSyncConflict: (
     conflictId: string,
     action: 'keep_server' | 'apply_local' | 'dismiss',
@@ -143,9 +150,12 @@ export interface DataContextType extends DatabaseState {
   recordSupplierPayment: (supplierId: string, amount: number, cashboxId: string, notes: string) => Promise<{ success: boolean; error?: string }>;
   settleSupplierAdvance: (supplierId: string, payload: { invoiceId: string; amount: number; notes?: string; date?: string }) => Promise<{ success: boolean; availableAdvanceAfter?: number; settledAmount?: number; error?: string }>;
 
-  // Sales & Purchases
+  // Sales & Purchases & Quotes
   createSalesInvoice: (invoice: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'>) => Promise<{ success: boolean; error?: string; invoice?: Invoice; queuedOffline?: boolean }>;
   createPurchaseInvoice: (invoice: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'>) => Promise<{ success: boolean; error?: string; invoice?: Invoice; queuedOffline?: boolean }>;
+  createSalesQuote: (quoteData: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'>) => Promise<{ success: boolean; error?: string; invoice?: Invoice; queuedOffline?: boolean }>;
+  convertQuoteToInvoice: (quoteId: string, payload?: Partial<Invoice> & { paidAtInvoice?: number }) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
+  markInvoiceReviewed: (invoiceId: string, reviewNotes?: string) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
   confirmDraftInvoice: (invoiceId: string) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
   cancelInvoice: (invoiceId: string, reason: string) => Promise<{ success: boolean; error?: string }>;
   addInvoicePayment: (invoiceId: string, payment: { amount: number; date?: string; paymentMethod: 'cash' | 'bank' | 'cheque'; cashboxId: string; notes?: string }) => Promise<{ success: boolean; queuedOffline?: boolean; error?: string }>;
@@ -182,7 +192,13 @@ export interface DataContextType extends DatabaseState {
   confirmRepTransferReceipt: (transferId: string, note?: string) => Promise<{ success: boolean; error?: string }>;
   rejectRepTransfer: (transferId: string, reason: string) => Promise<{ success: boolean; error?: string }>;
   createRepItemTransfer: (transferData: Omit<RepItemTransferRequest, 'id' | 'requestNumber' | 'createdAt' | 'status' | 'createdBy'>) => Promise<{ success: boolean; request?: RepItemTransferRequest; error?: string }>;
-  updateRepItemTransferStatus: (requestId: string, newStatus: RepItemTransferStatus, approvedItems?: RepTransferItem[], notes?: string) => Promise<{ success: boolean; error?: string }>;
+  updateRepItemTransferStatus: (requestId: string, newStatus: RepItemTransferStatus, approvedItems?: RepTransferItem[], notes?: string) => Promise<{ success: boolean; queuedOffline?: boolean; error?: string }>;
+  repCustodyOperations: RepCustodyOperation[];
+  recordRepCustodyDelivery: (payload: { representativeId?: string; customerId?: string; customerName?: string; productId: string; quantity: number; unit?: string; unitFactor?: number; date?: string; notes?: string; idempotencyKey?: string }) => Promise<{ success: boolean; operation?: RepCustodyOperation; queuedOffline?: boolean; error?: string }>;
+  recordRepCustodyReturn: (payload: { representativeId?: string; targetWarehouseId?: string; productId: string; quantity: number; unit?: string; unitFactor?: number; date?: string; notes?: string; idempotencyKey?: string }) => Promise<{ success: boolean; operation?: RepCustodyOperation; queuedOffline?: boolean; error?: string }>;
+  recordRepCustodyAdjustment: (payload: { representativeId: string; productId: string; operationType: 'custody_damaged' | 'custody_shortage' | 'custody_adjustment'; quantity: number; unit?: string; unitFactor?: number; date?: string; notes?: string }) => Promise<{ success: boolean; operation?: RepCustodyOperation; error?: string }>;
+  getRepCustodyStatement: (repId?: string, filters?: { dateFrom?: string; dateTo?: string }) => Promise<{ success: boolean; statement?: RepCustodyStatementResponse; error?: string }>;
+  getItemMovementReport: (filters?: { productId?: string; warehouseId?: string; movementType?: string; representativeId?: string; dateFrom?: string; dateTo?: string; search?: string }) => Promise<{ success: boolean; report?: ItemMovementReportResponse; error?: string }>;
 
   // Customer & Representative Orders Lifecycle
   createCustomerItemOrder: (payload: Omit<CustomerItemOrderRequest, 'id' | 'requestNumber' | 'status' | 'createdAt'> & { idempotencyKey?: string }) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; queuedOffline?: boolean; error?: string }>;
@@ -201,6 +217,17 @@ export interface DataContextType extends DatabaseState {
       deliveryProof?: string;
     }
   ) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; queuedOffline?: boolean; error?: string }>;
+  advanceOrderStage: (
+    orderId: string,
+    payload: {
+      status: 'preparing' | 'out_for_delivery' | 'delivered' | 'collected' | 'closed';
+      collectedAmount?: number;
+      cashboxId?: string;
+      paymentMethod?: 'cash' | 'bank' | 'cheque';
+      deliveryNotes?: string;
+      notes?: string;
+    }
+  ) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; error?: string }>;
   recordOrderAdvancePayment: (
     orderId: string,
     payload: {
@@ -307,6 +334,7 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
     stockPerWarehouse: { ...(p.stockPerWarehouse || {}) },
   }));
   const customers = (base.customers || []).map((c) => ({ ...c }));
+  const representatives = (base.representatives || []).map((r) => ({ ...r }));
   const suppliers = (base.suppliers || []).map((s) => ({ ...s }));
   const cashboxes = (base.cashboxes || []).map((cb) => ({ ...cb }));
   const invoices = (base.invoices || []).map((inv) => ({
@@ -319,6 +347,8 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
   const returns = (base.invoiceReturns || []).map((r) => ({ ...r }));
   const financialTransactions = [...(base.financialTransactions || [])];
   const expenseIncomes = [...(base.expenseIncomes || [])];
+  const repItemTransfers = (base.repItemTransfers || []).map((t) => ({ ...t }));
+  const repCustodyOperations = [...(base.repCustodyOperations || [])];
 
   for (const op of pending) {
     const p = op.payload || {};
@@ -367,6 +397,9 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
           date: p.date || op.createdAt.slice(0, 10),
           customerId: p.customerId,
           customerName: p.customerName || cust?.name || 'عميل',
+          representativeId: p.representativeId,
+          representativeName: p.representativeName,
+          reviewStatus: p.status !== 'draft' && p.representativeId ? 'needs_review' : 'not_required',
           warehouseId: p.warehouseId,
           warehouseName: p.warehouseName || '',
           items: p.items || [],
@@ -393,6 +426,10 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
           if (cust) cust.currentBalance = Number(cust.currentBalance || 0) + remainingAmount;
           const cb = cashboxes.find((c) => c.id === p.cashboxId);
           if (cb && paidAmount > 0) cb.currentBalance = Number(cb.currentBalance || 0) + paidAmount;
+          if (p.representativeId && paidAmount > 0) {
+            const repTarget = representatives.find((r) => r.id === p.representativeId);
+            if (repTarget) repTarget.currentBalance = Number(repTarget.currentBalance || 0) + paidAmount;
+          }
           if (p.warehouseId) {
             for (const it of p.items || []) {
               const prod = products.find((pr) => pr.id === it.productId);
@@ -599,8 +636,17 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
           id: targetId,
           code: p.code || `LOC-${op.operationId.slice(-4)}`,
           name: p.name || '',
+          shopName: p.shopName || '',
           phone: p.phone || '',
           address: p.address || '',
+          area: p.area || '',
+          geoCoordinates: p.geoCoordinates || '',
+          assignedRepId: p.assignedRepId || undefined,
+          allowedRepIds: Array.isArray(p.allowedRepIds)
+            ? p.allowedRepIds
+            : p.assignedRepId
+            ? [p.assignedRepId]
+            : [],
           status: p.status || 'active',
           openingBalance: Number(p.openingBalance || 0),
           currentBalance: Number(p.openingBalance || 0),
@@ -743,6 +789,185 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
           });
         }
       }
+    } else if (op.operationType === 'create_supplier') {
+      const targetId = op.localId || op.operationId;
+      if (!suppliers.some((s) => s.id === targetId)) {
+        suppliers.unshift({
+          id: targetId,
+          code: p.code || `SUP-LOC-${op.operationId.slice(-4)}`,
+          name: p.name || '',
+          phone: p.phone || '',
+          address: p.address || '',
+          status: p.status || 'active',
+          openingBalance: Number(p.openingBalance || 0),
+          currentBalance: Number(p.openingBalance || 0),
+          notes: p.notes || '',
+          createdAt: op.createdAt,
+        });
+      }
+    } else if (op.operationType === 'create_sales_quote') {
+      const targetId = op.localId || op.entityId || op.operationId;
+      if (!invoices.some((i) => i.id === targetId || i.localId === targetId)) {
+        const cust = customers.find((c) => c.id === p.customerId);
+        const subtotal = (p.items || []).reduce((s: number, it: any) => s + Number(it.total || 0), 0);
+        const grandTotal = Math.max(0, subtotal - Number(p.discountTotal || 0));
+        invoices.unshift({
+          id: targetId,
+          invoiceNumber: `LOC-QUO-${op.operationId.slice(-5)}`,
+          type: 'quote',
+          status: 'draft',
+          date: p.date || op.createdAt.slice(0, 10),
+          customerId: p.customerId,
+          customerName: p.customerName || cust?.name || 'عميل',
+          warehouseId: p.warehouseId,
+          warehouseName: p.warehouseName || '',
+          items: p.items || [],
+          subtotal,
+          discountTotal: Number(p.discountTotal || 0),
+          taxTotal: Number(p.taxTotal || 0),
+          grandTotal,
+          paidAmount: 0,
+          remainingAmount: grandTotal,
+          paymentType: 'credit',
+          paymentMethod: 'cash',
+          cashboxId: p.cashboxId || '',
+          notes: p.notes || '',
+          createdBy: op.userId,
+          createdAt: op.createdAt,
+          payments: [],
+          localId: targetId,
+          operationId: op.operationId,
+          syncStatus: op.status,
+          originDeviceId: op.deviceId,
+        });
+      }
+    } else if (op.operationType === 'create_purchase_return') {
+      const targetId = op.localId || op.operationId;
+      if (!returns.some((r) => r.id === targetId)) {
+        const partyId = p.partyId || p.supplierId || '';
+        const partyName = p.partyName || p.supplierName || '';
+        const totalAmt = Number(p.grandTotal ?? p.totalAmount ?? 0);
+        returns.unshift({
+          id: targetId,
+          returnNumber: `LOC-PRET-${op.operationId.slice(-5)}`,
+          originalInvoiceId: p.originalInvoiceId || '',
+          originalInvoiceNumber: p.originalInvoiceNumber || '',
+          date: p.date || op.createdAt.slice(0, 10),
+          type: 'purchase_return',
+          partyId,
+          partyName,
+          warehouseId: p.warehouseId || '',
+          warehouseName: p.warehouseName || '',
+          items: p.items || [],
+          grandTotal: totalAmt,
+          refundType: p.refundType || 'balance',
+          cashboxId: p.cashboxId,
+          reason: p.reason || '',
+          createdBy: op.userId,
+          createdAt: op.createdAt,
+          syncStatus: op.status,
+        });
+        if (p.warehouseId) {
+          for (const it of p.items || []) {
+            const prod = products.find((pr) => pr.id === it.productId);
+            if (prod) {
+              const qtyBase = Number(it.quantity || 0) * Number(it.unitFactor || 1);
+              prod.stockPerWarehouse[p.warehouseId] = Number(prod.stockPerWarehouse[p.warehouseId] || 0) - qtyBase;
+            }
+          }
+        }
+        if (p.refundType === 'balance' && partyId) {
+          const supp = suppliers.find((s) => s.id === partyId);
+          if (supp) supp.currentBalance = Number(supp.currentBalance || 0) - totalAmt;
+        } else if (p.refundType === 'cash' && p.cashboxId) {
+          const cb = cashboxes.find((c) => c.id === p.cashboxId);
+          if (cb) cb.currentBalance = Number(cb.currentBalance || 0) + totalAmt;
+        }
+      }
+    } else if (op.operationType === 'confirm_custody_receipt') {
+      const reqId = p.requestId || op.entityId;
+      const req = repItemTransfers.find((r) => r.id === reqId);
+      if (req && req.status === 'executed') {
+        req.status = 'received';
+        req.receivedAt = op.createdAt;
+        if (req.transferMode === 'custody_dispatch' && req.targetWarehouseId) {
+          for (const it of req.items || []) {
+            const prod = products.find((pr) => pr.id === it.productId);
+            const qty = Number(it.executedQty ?? it.approvedQty ?? it.requestedQty ?? 0);
+            if (prod && qty > 0) {
+              prod.stockPerWarehouse[req.targetWarehouseId] = Number(prod.stockPerWarehouse[req.targetWarehouseId] || 0) + qty;
+            }
+          }
+        }
+      }
+    } else if (op.operationType === 'record_custody_delivery') {
+      const targetId = op.localId || op.operationId;
+      if (!repCustodyOperations.some((c) => c.id === targetId)) {
+        const bQty = Number(p.quantity || 0) * Number(p.unitFactor || 1);
+        const prod = products.find((pr) => pr.id === p.productId);
+        const whId = p.warehouseId || '';
+        if (prod && whId) {
+          prod.stockPerWarehouse[whId] = Math.max(0, Number(prod.stockPerWarehouse[whId] || 0) - bQty);
+        }
+        repCustodyOperations.unshift({
+          id: targetId,
+          operationNumber: `LOC-CDL-${op.operationId.slice(-5)}`,
+          representativeId: p.representativeId || '',
+          representativeName: p.representativeName || '',
+          warehouseId: whId,
+          warehouseName: p.warehouseName || '',
+          customerId: p.customerId,
+          customerName: p.customerName,
+          productId: p.productId,
+          productName: prod?.name || p.productName || '',
+          operationType: 'delivered_to_customer',
+          quantity: Number(p.quantity || 0),
+          unit: p.unit || prod?.baseUnit || 'قطعة',
+          unitFactor: Number(p.unitFactor || 1),
+          baseQuantity: bQty,
+          date: p.date || op.createdAt.slice(0, 10),
+          status: 'approved',
+          notes: p.notes || '',
+          createdBy: op.userId,
+          createdAt: op.createdAt,
+        });
+      }
+    } else if (op.operationType === 'record_custody_return') {
+      const targetId = op.localId || op.operationId;
+      if (!repCustodyOperations.some((c) => c.id === targetId)) {
+        const bQty = Number(p.quantity || 0) * Number(p.unitFactor || 1);
+        const prod = products.find((pr) => pr.id === p.productId);
+        const whId = p.warehouseId || '';
+        const targetWhId = p.targetWarehouseId || '';
+        if (prod && whId) {
+          prod.stockPerWarehouse[whId] = Math.max(0, Number(prod.stockPerWarehouse[whId] || 0) - bQty);
+        }
+        if (prod && targetWhId) {
+          prod.stockPerWarehouse[targetWhId] = Number(prod.stockPerWarehouse[targetWhId] || 0) + bQty;
+        }
+        repCustodyOperations.unshift({
+          id: targetId,
+          operationNumber: `LOC-CRET-${op.operationId.slice(-5)}`,
+          representativeId: p.representativeId || '',
+          representativeName: p.representativeName || '',
+          warehouseId: whId,
+          warehouseName: p.warehouseName || '',
+          targetWarehouseId: targetWhId || undefined,
+          targetWarehouseName: p.targetWarehouseName || undefined,
+          productId: p.productId,
+          productName: prod?.name || p.productName || '',
+          operationType: 'returned_to_warehouse',
+          quantity: Number(p.quantity || 0),
+          unit: p.unit || prod?.baseUnit || 'قطعة',
+          unitFactor: Number(p.unitFactor || 1),
+          baseQuantity: bQty,
+          date: p.date || op.createdAt.slice(0, 10),
+          status: 'approved',
+          notes: p.notes || '',
+          createdBy: op.userId,
+          createdAt: op.createdAt,
+        });
+      }
     }
   }
 
@@ -750,6 +975,7 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
     ...base,
     products,
     customers,
+    representatives,
     suppliers,
     cashboxes,
     invoices,
@@ -758,6 +984,8 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
     invoiceReturns: returns,
     financialTransactions,
     expenseIncomes,
+    repItemTransfers,
+    repCustodyOperations,
   };
 }
 
@@ -781,11 +1009,23 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [customerStatement, setCustomerStatement] = useState<CustomerStatementResponse | null>(null);
   const [mobileNotifications, setMobileNotifications] = useState<MobileNotificationItem[]>([]);
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
+  const [lastSendSummary, setLastSendSummary] = useState<SyncRefreshSummary | null>(null);
+  const [lastReceiveSummary, setLastReceiveSummary] = useState<SyncRefreshSummary | null>(null);
 
   const hydratedUserRef = useRef<string | null>(null);
   const isDbUnavailableRef = useRef<boolean>(false);
   const isSyncingRef = useRef<boolean>(false);
   const loadRoleScopedDataRef = useRef<(() => Promise<void>) | null>(null);
+
+  const refreshSyncStatsFromLocal = useCallback(async () => {
+    const stats = await getSyncRefreshStats().catch(() => ({ lastSendSummary: null, lastReceiveSummary: null }));
+    setLastSendSummary(stats.lastSendSummary);
+    setLastReceiveSummary(stats.lastReceiveSummary);
+  }, []);
+
+  useEffect(() => {
+    refreshSyncStatsFromLocal();
+  }, [refreshSyncStatsFromLocal]);
 
   useEffect(() => {
     return subscribeServerDbStatus((available, message) => {
@@ -901,6 +1141,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         nextStateBase = {
           ...empty,
           ...pullData,
+          repCustodyOperations: pullData.repCustodyOperations || [],
           serverSettings: hydratedServerSettings,
         };
       }
@@ -1124,6 +1365,75 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   const triggerManualSync = useCallback(() => triggerSync(true), [triggerSync]);
+
+  const syncSendOnly = useCallback(async () => {
+    if (!isAuthenticated || !currentUser) {
+      return { ok: false, count: 0, failedCount: 0, conflictCount: 0, error: 'المستخدم غير مسجل' };
+    }
+    setNetworkStatus('synchronizing');
+    isSyncingRef.current = true;
+    setIsSyncing(true);
+    try {
+      const outcome = await runSyncCycle({ userId: currentUser.id, forceAll: true, mode: 'send_only' });
+      await refreshQueueAndConflictsFromLocal(currentUser.id);
+      await refreshSyncStatsFromLocal();
+      if (outcome.authRevoked) {
+        await handleServerAuthRevoked(outcome.revokeReason);
+        return { ok: false, count: 0, failedCount: outcome.failedCount, conflictCount: outcome.conflictCount, error: outcome.revokeReason };
+      }
+      setIsServerReachable(outcome.serverReachable);
+      setNetworkStatus(
+        !outcome.serverReachable ? 'disconnected' : outcome.ok ? (outcome.failedCount > 0 || outcome.conflictCount > 0 ? 'pending' : 'connected') : 'error'
+      );
+      if (outcome.error) setLastError(outcome.error);
+      else setLastError(null);
+      return {
+        ok: outcome.ok,
+        count: outcome.syncedCount,
+        failedCount: outcome.failedCount,
+        conflictCount: outcome.conflictCount,
+        error: outcome.error,
+      };
+    } catch (err: any) {
+      return { ok: false, count: 0, failedCount: 0, conflictCount: 0, error: err?.message || 'فشل الإرسال' };
+    } finally {
+      isSyncingRef.current = false;
+      setIsSyncing(false);
+    }
+  }, [isAuthenticated, currentUser, refreshQueueAndConflictsFromLocal, refreshSyncStatsFromLocal, handleServerAuthRevoked]);
+
+  const syncReceiveOnly = useCallback(async () => {
+    if (!isAuthenticated || !currentUser) {
+      return { ok: false, count: 0, error: 'المستخدم غير مسجل' };
+    }
+    setNetworkStatus('synchronizing');
+    isSyncingRef.current = true;
+    setIsSyncing(true);
+    try {
+      const outcome = await runSyncCycle({ userId: currentUser.id, forceAll: true, mode: 'receive_only' });
+      await refreshQueueAndConflictsFromLocal(currentUser.id);
+      await refreshSyncStatsFromLocal();
+      if (outcome.authRevoked) {
+        await handleServerAuthRevoked(outcome.revokeReason);
+        return { ok: false, count: 0, error: outcome.revokeReason };
+      }
+      setIsServerReachable(outcome.serverReachable);
+      if (outcome.ok && outcome.pullData) {
+        await applyServerPullPayload(outcome.pullData, currentUser);
+        setNetworkStatus(outcome.conflictCount > 0 || outcome.failedCount > 0 ? 'pending' : 'connected');
+        setLastError(null);
+        return { ok: true, count: outcome.receivedCount || 0 };
+      }
+      setNetworkStatus(outcome.serverReachable ? 'error' : 'disconnected');
+      if (outcome.error) setLastError(outcome.error);
+      return { ok: false, count: 0, error: outcome.error || 'تعذر الاستلام من السيرفر' };
+    } catch (err: any) {
+      return { ok: false, count: 0, error: err?.message || 'تعذر الاستلام من السيرفر' };
+    } finally {
+      isSyncingRef.current = false;
+      setIsSyncing(false);
+    }
+  }, [isAuthenticated, currentUser, refreshQueueAndConflictsFromLocal, refreshSyncStatsFromLocal, handleServerAuthRevoked, applyServerPullPayload]);
 
   useEffect(() => {
     loadRoleScopedData();
@@ -1753,12 +2063,38 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const addSupplier = async (suppData: Omit<Supplier, 'id' | 'createdAt' | 'currentBalance'>): Promise<Supplier> => {
-    const res = await apiRequest<{ ok: boolean; supplier: Supplier }>('/api/admin/suppliers', {
-      method: 'POST',
-      body: suppData,
-    });
-    await loadRoleScopedData();
-    return res.supplier;
+    try {
+      const res = await apiRequest<{ ok: boolean; supplier: Supplier }>('/api/admin/suppliers', {
+        method: 'POST',
+        body: suppData,
+      });
+      await loadRoleScopedData();
+      return res.supplier;
+    } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const localId = generateId('SUP-LOC');
+        const op = await queueOfflineOp({
+          operationType: 'create_supplier',
+          entityType: 'supplier',
+          localId,
+          summaryAr: `إضافة مورد محليًا: ${suppData.name}`,
+          payload: { ...suppData, localId },
+        });
+        return {
+          id: localId,
+          code: suppData.code || `SUP-LOC-${op.operationId.slice(-4)}`,
+          name: suppData.name,
+          phone: suppData.phone,
+          address: suppData.address,
+          status: suppData.status || 'active',
+          openingBalance: suppData.openingBalance,
+          currentBalance: suppData.openingBalance,
+          notes: suppData.notes,
+          createdAt: op.createdAt,
+        };
+      }
+      throw err;
+    }
   };
 
   const updateSupplier = async (id: string, updates: Partial<Supplier>) => {
@@ -1932,6 +2268,88 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const createSalesQuote = async (quoteData: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'>) => {
+    const idempotencyKey = (quoteData as any)?.idempotencyKey || generateId('QUO');
+    try {
+      const res = await apiRequest<{ ok: boolean; invoice: Invoice }>('/api/invoices/quotes', {
+        method: 'POST',
+        body: quoteData,
+        idempotencyKey,
+      });
+      await loadRoleScopedData();
+      return { success: true, invoice: res.invoice };
+    } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const localId = generateId('QUO-LOC');
+        const op = await queueOfflineOp({
+          operationType: 'create_sales_quote',
+          entityType: 'quote',
+          localId,
+          summaryAr: `عرض سعر محلي (${quoteData.customerName || 'عميل'}) بمبلغ ${quoteData.grandTotal || 0} ج.م`,
+          payload: { ...quoteData, localId },
+        });
+        const cust = data.customers.find((c) => c.id === quoteData.customerId);
+        const optimisticQuote: Invoice = {
+          id: localId,
+          invoiceNumber: `LOC-QUO-${op.operationId.slice(-5)}`,
+          type: 'quote',
+          status: 'draft',
+          date: quoteData.date || op.createdAt.slice(0, 10),
+          customerId: quoteData.customerId,
+          customerName: quoteData.customerName || cust?.name,
+          warehouseId: quoteData.warehouseId,
+          warehouseName: quoteData.warehouseName || '',
+          items: quoteData.items || [],
+          subtotal: quoteData.subtotal || 0,
+          discountTotal: quoteData.discountTotal || 0,
+          taxTotal: quoteData.taxTotal || 0,
+          grandTotal: quoteData.grandTotal || 0,
+          paidAmount: 0,
+          remainingAmount: quoteData.grandTotal || 0,
+          paymentType: 'credit',
+          paymentMethod: 'cash',
+          cashboxId: quoteData.cashboxId || '',
+          notes: quoteData.notes,
+          createdBy: currentUser.id,
+          createdAt: op.createdAt,
+          payments: [],
+          localId,
+          operationId: op.operationId,
+          syncStatus: op.status,
+        };
+        return { success: true, invoice: optimisticQuote, queuedOffline: true };
+      }
+      return { success: false, error: err?.message || 'تعذر إنشاء عرض السعر' };
+    }
+  };
+
+  const convertQuoteToInvoice = async (quoteId: string, payload: Partial<Invoice> & { paidAtInvoice?: number } = {}) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; invoice: Invoice }>(`/api/invoices/quotes/${quoteId}/convert`, {
+        method: 'POST',
+        body: payload,
+        idempotencyKey: generateId('QCV'),
+      });
+      await loadRoleScopedData();
+      return { success: true, invoice: res.invoice };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تحويل عرض السعر إلى فاتورة بيع' };
+    }
+  };
+
+  const markInvoiceReviewed = async (invoiceId: string, reviewNotes = '') => {
+    try {
+      const res = await apiRequest<{ ok: boolean; invoice: Invoice }>(`/api/invoices/${invoiceId}/mark-reviewed`, {
+        method: 'POST',
+        body: { reviewNotes },
+      });
+      await loadRoleScopedData();
+      return { success: true, invoice: res.invoice };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تأكيد مراجعة الفاتورة' };
+    }
+  };
+
   const confirmDraftInvoice = async (invoiceId: string) => {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       return { success: false, error: 'اعتماد الفواتير يتطلب اتصالاً بالسيرفر المركزي لحسم المخزون والرصيد المعتمد.' };
@@ -2024,11 +2442,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (err: any) {
       if (isNetworkFailure(err) && currentUser) {
         const localId = generateId('RET-LOC');
+        const opType = returnData.type === 'purchase_return' ? 'create_purchase_return' : 'create_invoice_return';
         await queueOfflineOp({
-          operationType: 'create_invoice_return',
+          operationType: opType,
           entityType: 'invoice_return',
           localId,
-          summaryAr: `مرتجع محلي للفاتورة (${returnData.originalInvoiceNumber || returnData.originalInvoiceId})`,
+          summaryAr: `${returnData.type === 'purchase_return' ? 'مرتجع شراء محلي' : 'مرتجع بيع محلي'} (${returnData.originalInvoiceNumber || returnData.partyName || returnData.originalInvoiceId || ''})`,
           payload: { ...returnData, localId },
         });
         return { success: true, queuedOffline: true };
@@ -2189,9 +2608,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateRepItemTransferStatus = async (requestId: string, newStatus: RepItemTransferStatus, approvedItems?: RepTransferItem[], notes?: string) => {
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      return { success: false, error: 'تحديث حالة تحويل الأصناف يتطلب اتصالاً بالسيرفر المركزي.' };
-    }
     try {
       await apiRequest(`/api/inventory/rep-item-transfers/${requestId}/status`, {
         method: 'POST',
@@ -2200,7 +2616,176 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
+      if (newStatus === 'received' && isNetworkFailure(err) && currentUser) {
+        const req = (data.repItemTransfers || []).find((r) => r.id === requestId);
+        await queueOfflineOp({
+          operationType: 'confirm_custody_receipt',
+          entityType: 'rep_item_transfer',
+          entityId: requestId,
+          summaryAr: `تأكيد استلام عهدة محلياً (${req?.requestNumber || requestId})`,
+          payload: { requestId, notes },
+        });
+        return { success: true, queuedOffline: true };
+      }
       return { success: false, error: err?.message || 'تعذر تحديث طلب التحويل' };
+    }
+  };
+
+  const recordRepCustodyDelivery = async (payload: {
+    representativeId?: string;
+    customerId?: string;
+    customerName?: string;
+    productId: string;
+    quantity: number;
+    unit?: string;
+    unitFactor?: number;
+    date?: string;
+    notes?: string;
+    idempotencyKey?: string;
+  }) => {
+    const idempotencyKey = payload.idempotencyKey || generateId('CDLV');
+    try {
+      const res = await apiRequest<{ ok: boolean; operation: RepCustodyOperation }>('/api/inventory/rep-custody/deliver', {
+        method: 'POST',
+        body: payload,
+        idempotencyKey,
+      });
+      await loadRoleScopedData();
+      return { success: true, operation: res.operation };
+    } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const localId = generateId('CDL-LOC');
+        const prod = data.products.find((p) => p.id === payload.productId);
+        const rep = (data.representatives || []).find((r) => r.id === payload.representativeId || r.userId === currentUser.id);
+        await queueOfflineOp({
+          operationType: 'record_custody_delivery',
+          entityType: 'rep_custody_operation',
+          localId,
+          summaryAr: `تسليم من العهدة (${prod?.name || payload.productId}): ${payload.quantity}`,
+          payload: {
+            ...payload,
+            representativeId: rep?.id || payload.representativeId,
+            representativeName: rep?.name || currentUser.fullName,
+            warehouseId: rep?.warehouseId,
+            productName: prod?.name,
+          },
+        });
+        return { success: true, queuedOffline: true };
+      }
+      return { success: false, error: err?.message || 'تعذر تسجيل التسليم من العهدة' };
+    }
+  };
+
+  const recordRepCustodyReturn = async (payload: {
+    representativeId?: string;
+    targetWarehouseId?: string;
+    productId: string;
+    quantity: number;
+    unit?: string;
+    unitFactor?: number;
+    date?: string;
+    notes?: string;
+    idempotencyKey?: string;
+  }) => {
+    const idempotencyKey = payload.idempotencyKey || generateId('CRET');
+    try {
+      const res = await apiRequest<{ ok: boolean; operation: RepCustodyOperation }>('/api/inventory/rep-custody/return', {
+        method: 'POST',
+        body: payload,
+        idempotencyKey,
+      });
+      await loadRoleScopedData();
+      return { success: true, operation: res.operation };
+    } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const localId = generateId('CRET-LOC');
+        const prod = data.products.find((p) => p.id === payload.productId);
+        const rep = (data.representatives || []).find(
+          (r) => r.id === payload.representativeId || r.userId === currentUser.id
+        );
+        const targetWh = (data.warehouses || []).find((w) => w.id === payload.targetWarehouseId) || data.warehouses[0];
+        await queueOfflineOp({
+          operationType: 'record_custody_return',
+          entityType: 'rep_custody_operation',
+          localId,
+          summaryAr: `إرجاع عهدة للمخزن (${prod?.name || payload.productId}): ${payload.quantity}`,
+          payload: {
+            ...payload,
+            representativeId: rep?.id || payload.representativeId,
+            representativeName: rep?.name || currentUser.fullName,
+            warehouseId: rep?.warehouseId,
+            targetWarehouseId: targetWh?.id || payload.targetWarehouseId,
+            targetWarehouseName: targetWh?.name,
+            productName: prod?.name,
+          },
+        });
+        return { success: true, queuedOffline: true };
+      }
+      return { success: false, error: err?.message || 'تعذر إرجاع الصنف للمخزن' };
+    }
+  };
+
+  const recordRepCustodyAdjustment = async (payload: {
+    representativeId: string;
+    productId: string;
+    operationType: 'custody_damaged' | 'custody_shortage' | 'custody_adjustment';
+    quantity: number;
+    unit?: string;
+    unitFactor?: number;
+    date?: string;
+    notes?: string;
+  }) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; operation: RepCustodyOperation }>('/api/inventory/rep-custody/adjust', {
+        method: 'POST',
+        body: payload,
+      });
+      await loadRoleScopedData();
+      return { success: true, operation: res.operation };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تسجيل تسوية العهدة' };
+    }
+  };
+
+  const getRepCustodyStatement = async (repId?: string, filters?: { dateFrom?: string; dateTo?: string }) => {
+    try {
+      const qs = new URLSearchParams();
+      if (repId) qs.set('repId', repId);
+      if (filters?.dateFrom) qs.set('dateFrom', filters.dateFrom);
+      if (filters?.dateTo) qs.set('dateTo', filters.dateTo);
+      const res = await apiRequest<{ ok: boolean; statement: RepCustodyStatementResponse }>(
+        `/api/inventory/rep-custody/statement${qs.toString() ? `?${qs.toString()}` : ''}`
+      );
+      return { success: true, statement: res.statement };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تحميل كشف عهدة المندوب' };
+    }
+  };
+
+  const getItemMovementReport = async (filters: {
+    productId?: string;
+    warehouseId?: string;
+    movementType?: string;
+    representativeId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    search?: string;
+  } = {}) => {
+    try {
+      const qs = new URLSearchParams();
+      if (filters.productId) qs.set('productId', filters.productId);
+      if (filters.warehouseId) qs.set('warehouseId', filters.warehouseId);
+      if (filters.movementType) qs.set('movementType', filters.movementType);
+      if (filters.representativeId) qs.set('representativeId', filters.representativeId);
+      if (filters.dateFrom) qs.set('dateFrom', filters.dateFrom);
+      if (filters.dateTo) qs.set('dateTo', filters.dateTo);
+      if (filters.search) qs.set('search', filters.search);
+      const res = await apiRequest<{ ok: boolean; report: ItemMovementReportResponse }>(
+        `/api/inventory/item-movement-report${qs.toString() ? `?${qs.toString()}` : ''}`
+      );
+      return { success: true, report: res.report };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تحميل تقرير حركة الصنف' };
     }
   };
 
@@ -2356,6 +2941,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: true, queuedOffline: true };
       }
       return { success: false, error: err?.message || 'تعذر تحديث حالة التوصيل' };
+    }
+  };
+
+  const advanceOrderStage = async (
+    orderId: string,
+    payload: {
+      status: 'preparing' | 'out_for_delivery' | 'delivered' | 'collected' | 'closed';
+      collectedAmount?: number;
+      cashboxId?: string;
+      paymentMethod?: 'cash' | 'bank' | 'cheque';
+      deliveryNotes?: string;
+      notes?: string;
+    }
+  ) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; order: CustomerItemOrderRequest }>(`/api/orders/${orderId}/stage`, {
+        method: 'POST',
+        body: payload,
+        idempotencyKey: generateId('ORDSTG'),
+      });
+      await loadRoleScopedData();
+      return { success: true, order: res.order };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تحديث مرحلة الطلب' };
     }
   };
 
@@ -2963,6 +3572,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         getCustomerPriceHistory,
         triggerSync,
         triggerManualSync,
+        lastSendSummary,
+        lastReceiveSummary,
+        syncSendOnly,
+        syncReceiveOnly,
         resolveSyncConflict,
         exportBackup,
         importBackup,
@@ -2998,6 +3611,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         settleSupplierAdvance,
         createSalesInvoice,
         createPurchaseInvoice,
+        createSalesQuote,
+        convertQuoteToInvoice,
+        markInvoiceReviewed,
         confirmDraftInvoice,
         cancelInvoice,
         addInvoicePayment,
@@ -3018,12 +3634,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         rejectRepTransfer,
         createRepItemTransfer,
         updateRepItemTransferStatus,
+        repCustodyOperations: data.repCustodyOperations || [],
+        recordRepCustodyDelivery,
+        recordRepCustodyReturn,
+        recordRepCustodyAdjustment,
+        getRepCustodyStatement,
+        getItemMovementReport,
         createCustomerItemOrder,
         reviewCustomerItemOrder,
         approveCustomerItemOrder,
         rejectCustomerItemOrder,
         assignOrderDeliveryRep,
         updateOrderDeliveryStatus,
+        advanceOrderStage,
         recordOrderAdvancePayment,
         convertOrderToInvoice,
         updateCustomerItemOrder,

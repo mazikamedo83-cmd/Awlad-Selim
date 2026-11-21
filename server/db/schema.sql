@@ -16,6 +16,8 @@ CREATE SEQUENCE IF NOT EXISTS seq_stock_count_no;
 CREATE SEQUENCE IF NOT EXISTS seq_stock_transfer_no;
 CREATE SEQUENCE IF NOT EXISTS seq_cash_op_no;
 CREATE SEQUENCE IF NOT EXISTS seq_order_advance_no;
+CREATE SEQUENCE IF NOT EXISTS seq_quote_no;
+CREATE SEQUENCE IF NOT EXISTS seq_rep_custody_op_no;
 
 -- 1. المستخدمون والصلاحيات (Users & Roles)
 CREATE TABLE IF NOT EXISTS users (
@@ -216,6 +218,15 @@ CREATE TABLE IF NOT EXISTS invoices (
   idempotency_key VARCHAR(128),
   origin_device_id VARCHAR(64),
   sync_status VARCHAR(24) NOT NULL DEFAULT 'synced',
+  review_status VARCHAR(24) NOT NULL DEFAULT 'not_required',
+  reviewed_by VARCHAR(64),
+  reviewed_at TIMESTAMPTZ,
+  review_notes TEXT DEFAULT '',
+  edited_by VARCHAR(64),
+  edited_at TIMESTAMPTZ,
+  cancelled_by VARCHAR(64),
+  cancelled_at TIMESTAMPTZ,
+  cancel_reason TEXT DEFAULT '',
   version INT NOT NULL DEFAULT 1,
   created_by VARCHAR(64) NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -353,6 +364,9 @@ CREATE TABLE IF NOT EXISTS rep_item_transfers (
   notes TEXT,
   created_by VARCHAR(64) NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  transfer_mode VARCHAR(32) NOT NULL DEFAULT 'transfer',
+  dispatched_by TEXT,
+  dispatched_at TIMESTAMPTZ,
   reviewed_by VARCHAR(64),
   reviewed_at TIMESTAMPTZ,
   executed_at TIMESTAMPTZ,
@@ -599,7 +613,7 @@ CREATE TABLE IF NOT EXISTS customer_item_orders (
   total_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
   advance_paid_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
   remaining_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
-  status VARCHAR(24) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'under_review', 'approved', 'rejected', 'rep_assigned', 'out_for_delivery', 'delivered', 'needs_review', 'invoiced', 'cancelled')),
+  status VARCHAR(24) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'under_review', 'approved', 'rejected', 'preparing', 'rep_assigned', 'out_for_delivery', 'delivered', 'needs_review', 'invoiced', 'collected', 'closed', 'cancelled')),
   delivery_rep_id VARCHAR(64),
   delivery_rep_name TEXT DEFAULT '',
   delivered_at TIMESTAMPTZ,
@@ -933,4 +947,34 @@ CREATE INDEX IF NOT EXISTS idx_order_advances_order ON order_advance_payments(or
 CREATE INDEX IF NOT EXISTS idx_order_advances_customer ON order_advance_payments(customer_id);
 CREATE INDEX IF NOT EXISTS idx_sync_conflicts_status ON sync_conflicts(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sync_ops_user_op ON sync_operation_logs(user_id, operation_id);
+
+-- 44. سجل عمليات عهدة المندوب وتسليمها للعملاء والمرتجعات والتسويات (Representative Custody Operations)
+CREATE TABLE IF NOT EXISTS rep_custody_operations (
+  id VARCHAR(64) PRIMARY KEY,
+  operation_number VARCHAR(64) UNIQUE NOT NULL,
+  date DATE NOT NULL,
+  representative_id VARCHAR(64) NOT NULL REFERENCES representatives(id) ON DELETE RESTRICT,
+  representative_name TEXT NOT NULL,
+  operation_type VARCHAR(32) NOT NULL,
+  product_id VARCHAR(64) NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+  product_name TEXT NOT NULL,
+  unit VARCHAR(32) NOT NULL,
+  unit_factor NUMERIC(12, 3) NOT NULL DEFAULT 1.000,
+  quantity NUMERIC(12, 3) NOT NULL,
+  base_quantity NUMERIC(12, 3) NOT NULL,
+  warehouse_id VARCHAR(64),
+  warehouse_name TEXT DEFAULT '',
+  customer_id VARCHAR(64),
+  customer_name TEXT DEFAULT '',
+  invoice_id VARCHAR(64),
+  invoice_number VARCHAR(64),
+  notes TEXT DEFAULT '',
+  status VARCHAR(24) NOT NULL DEFAULT 'approved',
+  created_by VARCHAR(64) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_rep_custody_ops_rep ON rep_custody_operations(representative_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_rep_custody_ops_prod ON rep_custody_operations(product_id);
+
 

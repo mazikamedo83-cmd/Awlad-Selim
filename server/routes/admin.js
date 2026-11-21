@@ -311,13 +311,26 @@ router.post('/cashboxes/transfer', requirePermission('canManageCashboxes'), asyn
   await transferCashbox(req.body || {}, req.auth.user);
   res.json({ ok: true });
 }));
-router.post('/expenses', requirePermission('canManageCashboxes'), asyncHandler(async (req, res) => {
-  const record = await addExpenseOrIncome(req.body || {}, req.auth.user);
+router.post('/expenses', asyncHandler(async (req, res) => {
+  const u = req.auth.user;
+  if (u.role !== 'admin' && !u.permissions?.canManageCashboxes && !u.permissions?.canManageAccounts) {
+    return res.status(403).json({ ok: false, code: 'FORBIDDEN_PERMISSION', error: 'ليس لديك صلاحية تسجيل المصروفات أو الإيرادات' });
+  }
+  const record = await addExpenseOrIncome(req.body || {}, u);
   res.status(201).json({ ok: true, record });
 }));
-router.post('/cash-operations', requirePermission('canManageCashboxes'), asyncHandler(async (req, res) => {
+router.post('/cash-operations', asyncHandler(async (req, res) => {
+  const u = req.auth.user;
+  const isTransfer = req.body?.type === 'cashbox_transfer';
+  if (isTransfer) {
+    if (u.role !== 'admin' && !u.permissions?.canManageCashboxes) {
+      return res.status(403).json({ ok: false, code: 'FORBIDDEN_PERMISSION', error: 'ليس لديك صلاحية الترحيل بين الخزائن' });
+    }
+  } else if (u.role !== 'admin' && !u.permissions?.canManageCashboxes && !u.permissions?.canManageAccounts) {
+    return res.status(403).json({ ok: false, code: 'FORBIDDEN_PERMISSION', error: 'ليس لديك صلاحية تنفيذ العمليات النقدية' });
+  }
   const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
-  const result = await executeCashOperation(req.body || {}, req.auth.user, idempotencyKey);
+  const result = await executeCashOperation(req.body || {}, u, idempotencyKey);
   res.status(result.deduplicated ? 200 : 201).json({ ok: true, ...result });
 }));
 

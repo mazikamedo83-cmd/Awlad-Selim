@@ -161,7 +161,14 @@ export async function createCustomer(payload, actor) {
   const currentBalance = round2(payload.currentBalance ?? openingBalance);
   const now = nowIso();
   const userId = payload.userId || null;
-  const repAlloc = normalizeAllowedRepIds(payload.assignedRepId, payload.allowedRepIds);
+  let repAlloc = normalizeAllowedRepIds(payload.assignedRepId, payload.allowedRepIds);
+  if (actor?.role === 'representative') {
+    const repProfile = await getRepresentativeByUserId(actor.id);
+    if (repProfile?.id) {
+      const mergedAllowed = Array.from(new Set([...repAlloc.allowedRepIds, repProfile.id]));
+      repAlloc = normalizeAllowedRepIds(repAlloc.assignedRepId || repProfile.id, mergedAllowed);
+    }
+  }
 
   if (await isPgMode()) {
     const created = await withTransaction(async (client) => {

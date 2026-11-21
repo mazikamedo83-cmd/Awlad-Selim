@@ -97,6 +97,10 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
   if (!whRes.rows[0]) throw new AppError(404, 'المستودع غير موجود', 'WAREHOUSE_NOT_FOUND');
   const warehouseName = whRes.rows[0].name;
 
+  if (invoice.type === 'quote') {
+    return;
+  }
+
   if (invoice.type === 'sales') {
     for (const item of invoice.items) {
       const pRes = await client.query(`SELECT * FROM products WHERE id = $1 FOR UPDATE`, [item.productId]);
@@ -311,6 +315,10 @@ export function applyConfirmedEffectsJsonTx(db, invoice, actor) {
   const wh = db.warehouses.find((w) => w.id === invoice.warehouseId);
   if (!wh) throw new AppError(404, 'المستودع غير موجود', 'WAREHOUSE_NOT_FOUND');
 
+  if (invoice.type === 'quote') {
+    return;
+  }
+
   if (invoice.type === 'sales') {
     if (!allowNegative) {
       for (const item of invoice.items) {
@@ -335,8 +343,10 @@ export function applyConfirmedEffectsJsonTx(db, invoice, actor) {
       const nextQty = round3(curQty - baseQty);
       prod.stockPerWarehouse = { ...(prod.stockPerWarehouse || {}), [invoice.warehouseId]: nextQty };
 
+      const mvId = generateServerId('SM');
       db.stockMovements.unshift({
-        id: generateServerId('SM'),
+        id: mvId,
+        movementNumber: mvId,
         date: invoice.date,
         type: 'sale',
         productId: prod.id,
@@ -344,7 +354,10 @@ export function applyConfirmedEffectsJsonTx(db, invoice, actor) {
         warehouseId: invoice.warehouseId,
         warehouseName: wh.name,
         quantity: baseQty,
+        unit: item.unit || prod.baseUnit,
+        unitFactor: Number(item.unitFactor || 1),
         unitCost: item.purchasePriceAtTime || prod.purchasePrice || 0,
+        relatedDocType: 'sales',
         referenceId: invoice.id,
         referenceNumber: invoice.invoiceNumber,
         notes: `فاتورة مبيعات رقم ${invoice.invoiceNumber}`,
@@ -424,8 +437,10 @@ export function applyConfirmedEffectsJsonTx(db, invoice, actor) {
       const baseItemCost = round2(item.unitPrice / Math.max(0.001, item.unitFactor || 1)) || prod.purchasePrice;
       prod.purchasePrice = baseItemCost;
 
+      const mvId = generateServerId('SM');
       db.stockMovements.unshift({
-        id: generateServerId('SM'),
+        id: mvId,
+        movementNumber: mvId,
         date: invoice.date,
         type: 'purchase',
         productId: prod.id,
@@ -433,7 +448,10 @@ export function applyConfirmedEffectsJsonTx(db, invoice, actor) {
         warehouseId: invoice.warehouseId,
         warehouseName: wh.name,
         quantity: baseQty,
+        unit: item.unit || prod.baseUnit,
+        unitFactor: Number(item.unitFactor || 1),
         unitCost: baseItemCost,
+        relatedDocType: 'purchase',
         referenceId: invoice.id,
         referenceNumber: invoice.invoiceNumber,
         notes: `فاتورة مشتريات رقم ${invoice.invoiceNumber}`,
@@ -477,12 +495,23 @@ export async function createInvoiceInsidePgTx(client, type, payload, actor) {
   const now = nowIso();
   const status = payload.status === 'draft' ? 'draft' : 'confirmed';
   const totals = recomputeInvoiceTotals(payload);
-  const seqName = type === 'sales' ? 'seq_sales_invoice_no' : 'seq_purchase_invoice_no';
+  const seqName =
+    type === 'sales'
+      ? 'seq_sales_invoice_no'
+      : type === 'quote'
+      ? 'seq_quote_no'
+      : 'seq_purchase_invoice_no';
   const seqRes = await client.query(`SELECT nextval('${seqName}') AS n`);
   const num = Number(seqRes.rows[0]?.n || 1);
   const year = new Date().getFullYear();
-  const invoiceNumber = `${type === 'sales' ? 'INV' : 'PUR'}-${year}-${String(num).padStart(4, '0')}`;
-  const invoiceId = generateServerId(type === 'sales' ? 'INV' : 'PUR');
+  const prefix = type === 'sales' ? 'INV' : type === 'quote' ? 'QT' : 'PUR';
+  const invoiceNumber = `${prefix}-${year}-${String(num).padStart(4, '0')}`;
+  const invoiceId = generateServerId(prefix);
+  const reviewStatus =
+    payload.reviewStatus ||
+    (type === 'sales' && status === 'confirmed' && actor?.role === 'representative'
+      ? 'needs_review'
+      : 'not_required');
 
   let warehouseId = payload.warehouseId;
   if (!warehouseId) {
@@ -518,8 +547,8 @@ export async function createInvoiceInsidePgTx(client, type, payload, actor) {
   const invDate = payload.date || todayIso();
 
   await client.query(
-    `INSERT INTO invoices (id, invoice_number, type, date, customer_id, customer_name, supplier_id, supplier_name, representative_id, representative_name, warehouse_id, warehouse_name, subtotal, discount_total, tax_total, grand_total, paid_amount, applied_advance_amount, remaining_amount, payment_type, payment_method, cashbox_id, status, notes, linked_rep_transfer_id, linked_rep_transfer_number, linked_customer_order_id, returned_quantity_by_item, idempotency_key, origin_device_id, sync_status, version, created_by, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,'{}'::jsonb,$28,$29,$30,1,$31,$32)`,
+    `INSERT INTO invoices (id, invoice_number, type, date, customer_id, customer_name, supplier_id, supplier_name, representative_id, representative_name, warehouse_id, warehouse_name, subtotal, discount_total, tax_total, grand_total, paid_amount, applied_advance_amount, remaining_amount, payment_type, payment_method, cashbox_id, status, notes, linked_rep_transfer_id, linked_rep_transfer_number, linked_customer_order_id, returned_quantity_by_item, idempotency_key, origin_device_id, sync_status, review_status, version, created_by, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,'{}'::jsonb,$28,$29,$30,$31,1,$32,$33)`,
     [
       invoiceId,
       invoiceNumber,
@@ -551,6 +580,7 @@ export async function createInvoiceInsidePgTx(client, type, payload, actor) {
       payload.idempotencyKey || null,
       payload.originDeviceId || null,
       payload.syncStatus || 'synced',
+      reviewStatus,
       actor.fullName,
       now,
     ]
@@ -617,6 +647,7 @@ export async function createInvoiceInsidePgTx(client, type, payload, actor) {
     returnedQuantityByItem: {},
     originDeviceId: payload.originDeviceId || undefined,
     syncStatus: payload.syncStatus || 'synced',
+    reviewStatus,
     version: 1,
     createdBy: actor.fullName,
     createdAt: now,
@@ -633,12 +664,17 @@ export function createInvoiceInsideJsonTx(db, type, payload, actor) {
   const now = nowIso();
   const status = payload.status === 'draft' ? 'draft' : 'confirmed';
   const totals = recomputeInvoiceTotals(payload);
-  const seqKey = type === 'sales' ? 'salesInvoiceNo' : 'purchaseInvoiceNo';
-  const prefix = type === 'sales' ? 'INV' : 'PUR';
+  const seqKey = type === 'sales' ? 'salesInvoiceNo' : type === 'quote' ? 'quoteNo' : 'purchaseInvoiceNo';
+  const prefix = type === 'sales' ? 'INV' : type === 'quote' ? 'QT' : 'PUR';
   const num = nextJsonSequence(db, seqKey, db.invoices.filter((i) => i.type === type), 'invoiceNumber', /(\d+)$/);
   const year = new Date().getFullYear();
   const invoiceNumber = `${prefix}-${year}-${String(num).padStart(4, '0')}`;
   const invoiceId = generateServerId(prefix);
+  const reviewStatus =
+    payload.reviewStatus ||
+    (type === 'sales' && status === 'confirmed' && actor?.role === 'representative'
+      ? 'needs_review'
+      : 'not_required');
 
   const wh = (payload.warehouseId ? db.warehouses.find((w) => w.id === payload.warehouseId) : null) || db.warehouses.find((w) => w.isDefault) || db.warehouses[0];
   if (!wh) throw new AppError(400, 'لا يوجد مستودع متاح', 'WAREHOUSE_REQUIRED');
@@ -702,6 +738,7 @@ export function createInvoiceInsideJsonTx(db, type, payload, actor) {
     returnedQuantityByItem: {},
     originDeviceId: payload.originDeviceId || undefined,
     syncStatus: payload.syncStatus || 'synced',
+    reviewStatus,
     version: 1,
     createdBy: actor.fullName,
     createdAt: now,
@@ -804,6 +841,139 @@ export async function createPurchaseInvoice(payload, actor, idempotencyKey = '')
   return out.invoice;
 }
 
+export async function createSalesQuote(payload, actor, idempotencyKey = '') {
+  let enrichedPayload = { ...(payload || {}), status: 'confirmed', paymentType: 'credit', paidAmount: 0 };
+  if (actor?.role === 'representative') {
+    const rep = await getRepresentativeByUserId(actor.id);
+    if (!rep) throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
+    if (enrichedPayload.customerId) {
+      const cust = await getCustomerById(enrichedPayload.customerId);
+      if (!cust) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
+      if (!isCustomerAllowedForRep(cust, rep.id)) {
+        throw new AppError(403, 'غير مصرح لك بإصدار عرض سعر لعميل غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
+      }
+    }
+    enrichedPayload.representativeId = rep.id;
+    enrichedPayload.representativeName = rep.name;
+    if (!enrichedPayload.warehouseId && rep.warehouseId) enrichedPayload.warehouseId = rep.warehouseId;
+  }
+
+  const endpoint = 'POST /api/invoices/quotes';
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
+
+  const out = (await isPgMode())
+    ? await withTransaction(async (client) => {
+        const dup = await findPgIdempotency(client, scopedIdem);
+        if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice };
+        const quote = await createInvoiceInsidePgTx(client, 'quote', enrichedPayload, actor);
+        await savePgIdempotency(client, scopedIdem, actor, endpoint, { invoice: quote });
+        return { deduplicated: false, invoice: quote };
+      })
+    : await withJsonTransaction((db) => {
+        const dup = findJsonIdempotency(scopedIdem);
+        if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice };
+        const quote = createInvoiceInsideJsonTx(db, 'quote', enrichedPayload, actor);
+        saveJsonIdempotency(scopedIdem, { invoice: quote });
+        return { deduplicated: false, invoice: quote };
+      });
+
+  if (!out.deduplicated) {
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `إصدار عرض سعر (${out.invoice.invoiceNumber}) بدون تأثير على المخزون أو الحسابات`,
+      module: 'المبيعات',
+      recordId: out.invoice.id,
+    });
+  }
+  return out.invoice;
+}
+
+export async function convertQuoteToInvoice(quoteId, overrides = {}, actor, idempotencyKey = '') {
+  const endpoint = `POST /api/invoices/quotes/${quoteId}/convert`;
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
+  const now = nowIso();
+
+  const out = (await isPgMode())
+    ? await withTransaction(async (client) => {
+        const dup = await findPgIdempotency(client, scopedIdem);
+        if (dup?.invoice) return { deduplicated: true, ...dup };
+        const quote = await fetchFullInvoicePg(client, quoteId);
+        if (!quote) throw new AppError(404, 'عرض السعر غير موجود', 'QUOTE_NOT_FOUND');
+        if (quote.type !== 'quote') throw new AppError(400, 'المستند المحدد ليس عرض سعر', 'NOT_A_QUOTE');
+        if (quote.status === 'cancelled') throw new AppError(409, 'عرض السعر ملغى', 'QUOTE_CANCELLED');
+
+        const invoicePayload = {
+          customerId: overrides.customerId || quote.customerId,
+          customerName: overrides.customerName || quote.customerName,
+          representativeId: overrides.representativeId || quote.representativeId,
+          representativeName: overrides.representativeName || quote.representativeName,
+          warehouseId: overrides.warehouseId || quote.warehouseId,
+          cashboxId: overrides.cashboxId || quote.cashboxId,
+          paymentType: overrides.paymentType || 'credit',
+          paymentMethod: overrides.paymentMethod || 'cash',
+          paidAmount: overrides.paidAmount ?? 0,
+          discountTotal: overrides.discountTotal ?? quote.discountTotal,
+          taxTotal: overrides.taxTotal ?? quote.taxTotal,
+          date: overrides.date || todayIso(),
+          status: overrides.status === 'draft' ? 'draft' : 'confirmed',
+          items: overrides.items || quote.items,
+          notes: overrides.notes || `فاتورة محولة من عرض السعر رقم ${quote.invoiceNumber}`,
+        };
+        const invoice = await createInvoiceInsidePgTx(client, 'sales', invoicePayload, actor);
+        await client.query(
+          `UPDATE invoices SET notes = $1, updated_at = $2 WHERE id = $3`,
+          [`${quote.notes ? quote.notes + ' ' : ''}[تم التحويل للفاتورة ${invoice.invoiceNumber}]`.trim(), now, quoteId]
+        );
+        const resultPayload = { invoice, quoteId };
+        await savePgIdempotency(client, scopedIdem, actor, endpoint, resultPayload);
+        return { deduplicated: false, ...resultPayload };
+      })
+    : await withJsonTransaction((db) => {
+        const dup = findJsonIdempotency(scopedIdem);
+        if (dup?.invoice) return { deduplicated: true, ...dup };
+        const quote = db.invoices.find((i) => i.id === quoteId);
+        if (!quote) throw new AppError(404, 'عرض السعر غير موجود', 'QUOTE_NOT_FOUND');
+        if (quote.type !== 'quote') throw new AppError(400, 'المستند المحدد ليس عرض سعر', 'NOT_A_QUOTE');
+        if (quote.status === 'cancelled') throw new AppError(409, 'عرض السعر ملغى', 'QUOTE_CANCELLED');
+
+        const invoicePayload = {
+          customerId: overrides.customerId || quote.customerId,
+          customerName: overrides.customerName || quote.customerName,
+          representativeId: overrides.representativeId || quote.representativeId,
+          representativeName: overrides.representativeName || quote.representativeName,
+          warehouseId: overrides.warehouseId || quote.warehouseId,
+          cashboxId: overrides.cashboxId || quote.cashboxId,
+          paymentType: overrides.paymentType || 'credit',
+          paymentMethod: overrides.paymentMethod || 'cash',
+          paidAmount: overrides.paidAmount ?? 0,
+          discountTotal: overrides.discountTotal ?? quote.discountTotal,
+          taxTotal: overrides.taxTotal ?? quote.taxTotal,
+          date: overrides.date || todayIso(),
+          status: overrides.status === 'draft' ? 'draft' : 'confirmed',
+          items: overrides.items || quote.items,
+          notes: overrides.notes || `فاتورة محولة من عرض السعر رقم ${quote.invoiceNumber}`,
+        };
+        const invoice = createInvoiceInsideJsonTx(db, 'sales', invoicePayload, actor);
+        quote.notes = `${quote.notes ? quote.notes + ' ' : ''}[تم التحويل للفاتورة ${invoice.invoiceNumber}]`.trim();
+        quote.updatedAt = now;
+        const resultPayload = { invoice, quoteId };
+        saveJsonIdempotency(scopedIdem, resultPayload);
+        return { deduplicated: false, ...resultPayload };
+      });
+
+  if (!out.deduplicated) {
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `تحويل عرض السعر إلى فاتورة مبيعات (${out.invoice.invoiceNumber})`,
+      module: 'المبيعات',
+      recordId: out.invoice.id,
+    });
+  }
+  return out.invoice;
+}
+
 async function fetchFullInvoicePg(client, invoiceId) {
   const invRes = await client.query(`SELECT * FROM invoices WHERE id = $1 FOR UPDATE`, [invoiceId]);
   if (!invRes.rows[0]) return null;
@@ -853,7 +1023,11 @@ export async function confirmDraftInvoice(invoiceId, actor) {
       }
 
       await applyConfirmedEffectsPgTx(client, inv, actor);
-      await client.query(`UPDATE invoices SET status = 'confirmed', updated_at = $1 WHERE id = $2`, [now, invoiceId]);
+      const nextReviewStatus =
+        inv.type === 'sales' && actor?.role === 'representative'
+          ? 'needs_review'
+          : inv.reviewStatus || 'not_required';
+      await client.query(`UPDATE invoices SET status = 'confirmed', review_status = $1, updated_at = $2 WHERE id = $3`, [nextReviewStatus, now, invoiceId]);
       if (inv.linkedCustomerOrderId && Number(inv.appliedAdvanceAmount || 0) > 0) {
         await client.query(
           `UPDATE order_advance_payments SET status = 'applied', applied_invoice_id = $1 WHERE order_id = $2 AND status = 'active'`,
@@ -894,6 +1068,9 @@ export async function confirmDraftInvoice(invoiceId, actor) {
 
       applyConfirmedEffectsJsonTx(db, inv, actor);
       inv.status = 'confirmed';
+      if (inv.type === 'sales' && actor?.role === 'representative') {
+        inv.reviewStatus = 'needs_review';
+      }
       inv.updatedAt = now;
       if (inv.linkedCustomerOrderId && Number(inv.appliedAdvanceAmount || 0) > 0) {
         for (const adv of db.orderAdvancePayments || []) {
@@ -939,7 +1116,7 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
         inv.items
       );
 
-      if (inv.status === 'confirmed') {
+      if (inv.status === 'confirmed' && inv.type !== 'quote') {
         // 1. Revert old stock
         for (const oldItem of inv.items) {
           const pRes = await client.query(`SELECT * FROM products WHERE id = $1 FOR UPDATE`, [oldItem.productId]);
@@ -979,7 +1156,7 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
       }
 
       await client.query(
-        `UPDATE invoices SET date = $1, subtotal = $2, discount_total = $3, grand_total = $4, remaining_amount = $5, payment_type = $6, notes = $7, version = COALESCE(version, 1) + 1, updated_at = $8 WHERE id = $9`,
+        `UPDATE invoices SET date = $1, subtotal = $2, discount_total = $3, grand_total = $4, remaining_amount = $5, payment_type = $6, notes = $7, edited_by = $8, edited_at = $9, version = COALESCE(version, 1) + 1, updated_at = $9 WHERE id = $10`,
         [
           updates.date || inv.date,
           totals.subtotal,
@@ -988,6 +1165,7 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
           totals.remainingAmount,
           totals.paymentType,
           updates.notes !== undefined ? updates.notes : inv.notes,
+          actor.fullName,
           now,
           invoiceId,
         ]
@@ -1025,7 +1203,7 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
       inv.items
     );
 
-    if (inv.status === 'confirmed') {
+    if (inv.status === 'confirmed' && inv.type !== 'quote') {
       for (const oldItem of inv.items) {
         const prod = db.products.find((p) => p.id === oldItem.productId);
         if (prod) {
@@ -1057,6 +1235,8 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
     inv.grandTotal = totals.grandTotal;
     inv.remainingAmount = totals.remainingAmount;
     inv.paymentType = totals.paymentType;
+    inv.editedBy = actor.fullName;
+    inv.editedAt = now;
     inv.version = Number(inv.version || 1) + 1;
     inv.updatedAt = now;
     if (updates.notes !== undefined) inv.notes = updates.notes;
@@ -1077,7 +1257,7 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
       if (!cur) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
       if (cur.status === 'cancelled') throw new AppError(409, 'الفاتورة ملغاة بالفعل', 'ALREADY_CANCELLED');
 
-      if (cur.status === 'confirmed') {
+      if (cur.status === 'confirmed' && cur.type !== 'quote') {
         for (const item of cur.items) {
           const pRes = await client.query(`SELECT * FROM products WHERE id = $1 FOR UPDATE`, [item.productId]);
           if (pRes.rows[0]) {
@@ -1127,7 +1307,10 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
       }
 
       const nextNotes = `${cur.notes || ''} [تم الإلغاء: ${cleanReason}]`.trim();
-      await client.query(`UPDATE invoices SET status = 'cancelled', notes = $1, version = COALESCE(version, 1) + 1, updated_at = $2 WHERE id = $3`, [nextNotes, now, invoiceId]);
+      await client.query(
+        `UPDATE invoices SET status = 'cancelled', notes = $1, cancelled_by = $2, cancelled_at = $3, cancel_reason = $4, version = COALESCE(version, 1) + 1, updated_at = $3 WHERE id = $5`,
+        [nextNotes, actor.fullName, now, cleanReason, invoiceId]
+      );
       return fetchFullInvoicePg(client, invoiceId);
     });
 
@@ -1135,7 +1318,7 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
       userId: actor.id,
       userName: actor.fullName,
       action: `إلغاء فاتورة (${inv.invoiceNumber})`,
-      module: inv.type === 'sales' ? 'المبيعات' : 'المشتريات',
+      module: inv.type === 'sales' ? 'المبيعات' : inv.type === 'quote' ? 'عروض الأسعار' : 'المشتريات',
       recordId: invoiceId,
       notes: cleanReason,
     });
@@ -1147,7 +1330,7 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
     if (!cur) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
     if (cur.status === 'cancelled') throw new AppError(409, 'الفاتورة ملغاة بالفعل', 'ALREADY_CANCELLED');
 
-    if (cur.status === 'confirmed') {
+    if (cur.status === 'confirmed' && cur.type !== 'quote') {
       for (const item of cur.items) {
         const prod = db.products.find((p) => p.id === item.productId);
         if (prod) {
@@ -1185,6 +1368,9 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
       }
     }
     cur.status = 'cancelled';
+    cur.cancelledBy = actor.fullName;
+    cur.cancelledAt = now;
+    cur.cancelReason = cleanReason;
     cur.version = Number(cur.version || 1) + 1;
     cur.updatedAt = now;
     cur.notes = `${cur.notes || ''} [تم الإلغاء: ${cleanReason}]`.trim();
@@ -1195,11 +1381,56 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
     userId: actor.id,
     userName: actor.fullName,
     action: `إلغاء فاتورة (${inv.invoiceNumber})`,
-    module: inv.type === 'sales' ? 'المبيعات' : 'المشتريات',
+    module: inv.type === 'sales' ? 'المبيعات' : inv.type === 'quote' ? 'عروض الأسعار' : 'المشتريات',
     recordId: invoiceId,
     notes: cleanReason,
   });
   return inv;
+}
+
+export async function markInvoiceReviewed(invoiceId, { notes = '' } = {}, actor) {
+  if (actor?.role === 'representative' || actor?.role === 'customer') {
+    throw new AppError(403, 'غير مصرح للمندوب أو العميل بتأكيد مراجعة الفاتورة', 'FORBIDDEN_REVIEW');
+  }
+  const now = nowIso();
+  const cleanNotes = String(notes || '').trim();
+
+  const updated = (await isPgMode())
+    ? await withTransaction(async (client) => {
+        const cur = await fetchFullInvoicePg(client, invoiceId);
+        if (!cur) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
+        if (cur.reviewStatus === 'reviewed') {
+          return cur;
+        }
+        await client.query(
+          `UPDATE invoices SET review_status = 'reviewed', reviewed_by = $1, reviewed_at = $2, review_notes = $3, updated_at = $2 WHERE id = $4`,
+          [actor.fullName, now, cleanNotes, invoiceId]
+        );
+        return fetchFullInvoicePg(client, invoiceId);
+      })
+    : await withJsonTransaction((db) => {
+        const cur = db.invoices.find((i) => i.id === invoiceId);
+        if (!cur) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
+        if (cur.reviewStatus === 'reviewed') {
+          return cur;
+        }
+        cur.reviewStatus = 'reviewed';
+        cur.reviewedBy = actor.fullName;
+        cur.reviewedAt = now;
+        cur.reviewNotes = cleanNotes;
+        cur.updatedAt = now;
+        return cur;
+      });
+
+  await recordAuditLog({
+    userId: actor.id,
+    userName: actor.fullName,
+    action: `تأكيد مراجعة فاتورة المندوب (${updated.invoiceNumber}) دون إعادة تسجيل المبيعات`,
+    module: 'المبيعات',
+    recordId: invoiceId,
+    notes: cleanNotes,
+  });
+  return updated;
 }
 
 export async function addInvoicePayment(invoiceId, paymentData, actor, idempotencyKey = '') {
@@ -1646,8 +1877,10 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
         const curQty = Number(prod.stockPerWarehouse?.[whId] || 0);
         const baseQty = round3(it.quantity * it.unitFactor);
         prod.stockPerWarehouse[whId] = isSalesReturn ? round3(curQty + baseQty) : round3(curQty - baseQty);
+        const mvId = generateServerId('SM');
         db.stockMovements.unshift({
-          id: generateServerId('SM'),
+          id: mvId,
+          movementNumber: mvId,
           date: retDate,
           type: isSalesReturn ? 'sale_return' : 'purchase_return',
           productId: prod.id,
@@ -1655,7 +1888,10 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
           warehouseId: whId,
           warehouseName: whName,
           quantity: baseQty,
+          unit: it.unit || prod.baseUnit,
+          unitFactor: Number(it.unitFactor || 1),
           unitCost: it.unitPrice,
+          relatedDocType: isSalesReturn ? 'sales_return' : 'purchase_return',
           referenceId: retId,
           referenceNumber: returnNumber,
           notes: `سند مرتجع رقم ${returnNumber} - السبب: ${returnData.reason || ''}`,

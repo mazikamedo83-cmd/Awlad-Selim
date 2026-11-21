@@ -4,6 +4,7 @@ export type UserRole =
   | 'accountant'    // محاسب
   | 'sales'         // موظف مبيعات
   | 'warehouse'     // أمين مستودع
+  | 'purchases'     // موظف مشتريات
   | 'representative'
   | 'customer';// مندوب مبيعات / عميل
 
@@ -28,6 +29,10 @@ export interface UserPermissions {
   canManageUsers: boolean;
   canManageSettings: boolean;
   canAllowNegativeInventory: boolean;
+  canApprove?: boolean;
+  canSend?: boolean;
+  canReceive?: boolean;
+  canReviewRepInvoices?: boolean;
   canViewPersonalAccounts?: boolean;
   canCreatePersonalTx?: boolean;
   canEditPersonalTx?: boolean;
@@ -253,7 +258,7 @@ export interface InvoicePayment {
 export interface Invoice {
   id: string;
   invoiceNumber: string;
-  type: 'sales' | 'purchase';
+  type: 'sales' | 'purchase' | 'quote';
   date: string;
   customerId?: string;
   customerName?: string;
@@ -276,6 +281,17 @@ export interface Invoice {
   paymentMethod: 'cash' | 'bank' | 'cheque';
   cashboxId: string;
   status: 'draft' | 'confirmed' | 'cancelled';
+  reviewStatus?: 'not_required' | 'needs_review' | 'reviewed';
+  reviewedBy?: string;
+  reviewedAt?: string;
+  reviewNotes?: string;
+  editedBy?: string;
+  editedAt?: string;
+  cancelledBy?: string;
+  cancelledAt?: string;
+  cancelReason?: string;
+  convertedFromQuoteId?: string;
+  convertedFromQuoteNumber?: string;
   notes?: string;
   payments?: InvoicePayment[]; // دفعات متعددة مسجلة على نفس الفاتورة
   linkedRepTransferId?: string; // معرف طلب تحويل عهدة المندوب المرتبط
@@ -421,6 +437,7 @@ export interface Representative {
   phone: string;
   vehicleNumber?: string;
   userId?: string; // حساب الدخول المرتبط
+  warehouseId?: string;
   openingBalance: number;
   currentBalance: number;
   commissionRate?: number;
@@ -684,26 +701,117 @@ export interface RepItemTransferRequest {
   targetWarehouseName: string;
   items: RepTransferItem[];
   status: RepItemTransferStatus;
+  transferMode?: 'transfer' | 'custody_dispatch';
   rejectionReason?: string;
   notes?: string;
   createdBy: string;
   createdAt: string;
   reviewedBy?: string;
   reviewedAt?: string;
+  dispatchedBy?: string;
+  dispatchedAt?: string;
   executedAt?: string;
   receivedBy?: string;
   receivedAt?: string;
 }
 
+export interface RepCustodyOperation {
+  id: string;
+  operationNumber: string;
+  representativeId: string;
+  representativeName: string;
+  warehouseId: string;
+  warehouseName: string;
+  targetWarehouseId?: string;
+  targetWarehouseName?: string;
+  operationType:
+    | 'delivered_to_customer'
+    | 'returned_to_warehouse'
+    | 'custody_damaged'
+    | 'custody_shortage'
+    | 'custody_adjustment';
+  productId: string;
+  productName: string;
+  unit: string;
+  unitFactor: number;
+  quantity: number;
+  baseQuantity: number;
+  customerId?: string;
+  customerName?: string;
+  invoiceId?: string;
+  invoiceNumber?: string;
+  date: string;
+  reason?: string;
+  notes?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface RepCustodyStatementItem {
+  productId: string;
+  productName: string;
+  productCode: string;
+  baseUnit: string;
+  purchasePrice: number;
+  sellingPrice: number;
+  receivedQty: number;
+  pendingReceiveQty: number;
+  deliveredToCustomersQty: number;
+  invoicedSoldQty: number;
+  returnedToWarehouseQty: number;
+  approvedReductionsQty: number;
+  vanPhysicalStockQty: number;
+  remainingCustodyQty: number;
+  custodyValueAtCost: number;
+}
+
+export interface RepCustodyStatementResponse {
+  representative: Representative;
+  vanWarehouseId: string;
+  financialSummary: {
+    currentCashCustodyBalance: number;
+    totalSalesAmount: number;
+    totalSalesPaidAmount: number;
+    totalSalesRemainingAmount: number;
+  };
+  totals: {
+    totalReceivedQty: number;
+    totalPendingReceiveQty: number;
+    totalDeliveredQty: number;
+    totalReturnedQty: number;
+    totalReductionsQty: number;
+    totalRemainingCustodyQty: number;
+    totalVanPhysicalQty: number;
+    totalCustodyCostValue: number;
+  };
+  itemsSummary: RepCustodyStatementItem[];
+  ledger: Array<{
+    id: string;
+    date: string;
+    createdAt: string;
+    docType: string;
+    docNumber: string;
+    productId: string;
+    productName: string;
+    customerName?: string;
+    quantityIn: number;
+    quantityOut: number;
+    notes?: string;
+  }>;
+}
 
 export type CustomerItemOrderStatus =
   | 'pending'
   | 'under_review'
   | 'approved'
   | 'rejected'
+  | 'preparing'
   | 'rep_assigned'
   | 'out_for_delivery'
   | 'delivered'
+  | 'collected'
+  | 'closed'
   | 'needs_review'
   | 'invoiced'
   | 'cancelled';
@@ -715,6 +823,18 @@ export interface CustomerOrderStatusHistoryEntry {
   changedByName: string;
   reason?: string;
   changedAt: string;
+}
+
+export interface CustomerOrderPaymentHistoryEntry {
+  id: string;
+  source: 'advance' | 'invoice_payment';
+  paymentNumber: string;
+  amount: number;
+  paymentMethod: string;
+  cashboxName?: string;
+  date: string;
+  createdAt: string;
+  notes?: string;
 }
 
 export interface OrderAdvancePayment {
@@ -773,6 +893,11 @@ export interface CustomerItemOrderRequest {
   totalEstimatedAmount?: number;
   advancePaidAmount?: number;
   remainingAmount?: number;
+  invoiceTotal?: number;
+  invoicePaidAmount?: number;
+  invoiceRemainingAmount?: number;
+  paymentStatus?: 'unpaid' | 'partial' | 'paid';
+  paymentsHistory?: CustomerOrderPaymentHistoryEntry[];
   status: CustomerItemOrderStatus;
   sourcePlatform?: string;
   localId?: string;
@@ -1151,6 +1276,16 @@ export interface MobileNotificationItem {
     | 'order_invoiced'
     | 'order_status'
     | 'invoice_confirmed'
+    | 'rep_invoice_review'
+    | 'custody_dispatch'
+    | 'item_transfer'
+    | 'cash_transfer'
+    | 'invoice'
+    | 'balance'
+    | 'draft_ready'
+    | 'stock_count'
+    | 'stock_transfer'
+    | 'low_stock'
     | 'rep_item_transfer_executed'
     | 'rep_item_transfer_rejected'
     | 'rep_cash_awaiting_receipt'
@@ -1161,6 +1296,8 @@ export interface MobileNotificationItem {
   targetTab?: string;
   referenceId?: string;
   referenceNumber?: string;
+  relatedId?: string;
+  severity?: 'info' | 'warning' | 'success' | 'error';
 }
 
 export interface CustomerStatementEntry {
@@ -1201,16 +1338,22 @@ export type SyncQueueStatus = 'local' | 'pending' | 'syncing' | 'synced' | 'fail
 export type SyncOperationType =
   | 'create_order'
   | 'create_sales_invoice'
+  | 'create_sales_quote'
   | 'edit_sales_invoice'
   | 'create_purchase_invoice'
   | 'create_invoice_return'
+  | 'create_purchase_return'
   | 'add_invoice_payment'
   | 'record_customer_payment'
   | 'record_order_advance'
   | 'update_order_delivery'
   | 'execute_cash_operation'
   | 'create_customer'
-  | 'update_customer';
+  | 'update_customer'
+  | 'create_supplier'
+  | 'confirm_custody_receipt'
+  | 'record_custody_delivery'
+  | 'record_custody_return';
 
 export interface SyncQueueItem {
   operationId: string;
@@ -1250,5 +1393,370 @@ export interface SyncConflictRecord {
   createdAt: string;
 }
 
+export interface ItemMovementRow {
+  id: string;
+  date: string;
+  createdAt?: string;
+  docType: string;
+  docId: string;
+  docNumber: string;
+  productId: string;
+  productName: string;
+  warehouseId?: string;
+  warehouseName?: string;
+  targetWarehouseId?: string;
+  targetWarehouseName?: string;
+  partyId?: string;
+  partyName?: string;
+  representativeId?: string;
+  representativeName?: string;
+  unit: string;
+  quantity: number;
+  baseQuantity: number;
+  unitPrice: number;
+  costPrice: number;
+  totalValue: number;
+  costValue?: number;
+  profitValue: number;
+  direction: 'in' | 'out' | 'neutral';
+  notes?: string;
+  createdBy?: string;
+}
 
+export interface ItemMovementReportResponse {
+  product: Product | null;
+  filters: {
+    productId: string;
+    warehouseId: string;
+    movementType: string;
+    representativeId: string;
+    dateFrom: string | null;
+    dateTo: string | null;
+    search: string;
+  };
+  warehouseBreakdown: Array<{
+    warehouseId: string;
+    warehouseName: string;
+    code?: string;
+    quantity: number;
+    costValue: number;
+    sellingValue: number;
+  }>;
+  repCustodyBreakdown: Array<{
+    representativeId: string;
+    representativeName: string;
+    warehouseId: string;
+    warehouseName: string;
+    quantity: number;
+    costValue: number;
+    sellingValue: number;
+  }>;
+  sections: {
+    sales: ItemMovementRow[];
+    purchases: ItemMovementRow[];
+    sales_returns: ItemMovementRow[];
+    purchase_returns: ItemMovementRow[];
+    transfers: ItemMovementRow[];
+    custody_sent: ItemMovementRow[];
+    custody_received: ItemMovementRow[];
+    custody_deliveries: ItemMovementRow[];
+    adjustments: ItemMovementRow[];
+  };
+  totals: {
+    totalSalesQty: number;
+    totalSalesValue: number;
+    totalPurchaseQty: number;
+    totalPurchaseValue: number;
+    totalSalesReturnQty: number;
+    totalSalesReturnValue: number;
+    totalPurchaseReturnQty: number;
+    totalPurchaseReturnValue: number;
+    totalCostOfGoodsSold: number;
+    totalProfit: number;
+    totalQtyIn: number;
+    totalQtyOut: number;
+    currentBalance: number;
+    inventoryValuation: number;
+  };
+}
+
+export type ComprehensiveReportTypeKey =
+  | 'all'
+  | 'sales_items'
+  | 'sales_invoices'
+  | 'sales_items_by_unit'
+  | 'sales_items_grouped'
+  | 'sales_items_grouped_by_customer'
+  | 'sales_items_grouped_by_category'
+  | 'sales_items_grouped_by_category_class1'
+  | 'sales_return_items'
+  | 'sales_return_invoices'
+  | 'purchase_items'
+  | 'purchase_invoices'
+  | 'purchase_return_items'
+  | 'purchase_return_invoices'
+  | 'damaged_items'
+  | 'damaged_invoices'
+  | 'cash_payment'
+  | 'cash_payment_customer'
+  | 'cash_payment_supplier'
+  | 'cash_payment_employee'
+  | 'cash_withdrawal'
+  | 'cash_withdrawal_customer'
+  | 'cash_withdrawal_supplier';
+
+export interface ComprehensiveReportOption {
+  key: ComprehensiveReportTypeKey;
+  label: string;
+  group: number;
+}
+
+export interface ComprehensiveReportRow {
+  rowId: string;
+  docType: string;
+  docId: string;
+  txId?: string;
+  productId?: string;
+  productName?: string;
+  categoryName?: string;
+  class1?: string;
+  operationLabel: string;
+  quantity: number;
+  baseQuantity?: number;
+  unit: string;
+  priceOrTotal: number;
+  valueOrPaid: number;
+  movementOrRemaining: string | number;
+  employeeId?: string;
+  employeeName: string;
+  userName: string;
+  businessDate: string;
+  rawDate: string;
+  actualDateTime: string;
+  rawCreatedAt: string;
+  profit: number;
+  costValue?: number;
+  barcode: string;
+  displayId: string;
+  invoiceNumber: string;
+  branchName: string;
+  warehouseId?: string;
+  warehouseName?: string;
+  cashboxId?: string;
+  cashboxName: string;
+  notes: string;
+  discount: number;
+  profitPercent: number;
+  customerId?: string;
+  supplierId?: string;
+  partyName?: string;
+  representativeId?: string;
+  representativeName?: string;
+  rowTone?: 'default' | 'invoice_blue' | 'cash_green' | 'warning_rose';
+}
+
+export interface ComprehensiveReportSection {
+  key: string;
+  title: string;
+  theme: 'sage' | 'slate';
+  isInvoiceLayout: boolean;
+  cashHighlightCol?: boolean;
+  rows: ComprehensiveReportRow[];
+  totals: {
+    count: number;
+    quantity: number;
+    priceOrTotal: number | null;
+    valueOrPaid: number;
+    remaining: number | null;
+    profit: number;
+    costValue: number;
+    discount: number;
+    profitPercent: number;
+  };
+}
+
+export interface ItemHistoryTimelineEntry {
+  id: string;
+  sortTime: string;
+  date: string;
+  actualDateTime: string;
+  eventType: string;
+  eventLabel: string;
+  docType: string;
+  docId: string;
+  docNumber: string;
+  warehouseName: string;
+  partyName: string;
+  unit: string;
+  qty: number;
+  qtyIn: number;
+  qtyOut: number;
+  unitPrice: number;
+  unitCost: number;
+  totalValue: number;
+  runningBalance: number;
+  userName: string;
+  notes: string;
+}
+
+export interface ItemLifecyclePayload {
+  product: Product & { class1?: string; createdAtFormatted?: string };
+  lastPurchasePrice: number;
+  lastPurchaseDate: string | null;
+  lastSalePrice: number;
+  lastSaleDate: string | null;
+  currentStockTotal: number;
+  currentStockValueAtCost: number;
+  warehouseBalances: Array<{
+    warehouseId: string;
+    warehouseName: string;
+    branchName: string;
+    quantity: number;
+    costValue: number;
+    sellingValue: number;
+  }>;
+  timeline: ItemHistoryTimelineEntry[];
+  fullCount: number;
+}
+
+export interface ItemLossTransaction {
+  id: string;
+  date: string;
+  actualDateTime: string;
+  docType: string;
+  docId: string;
+  docNumber: string;
+  partyName: string;
+  quantity: number;
+  unit: string;
+  sellingPrice: number;
+  costPrice: number;
+  discount: number;
+  lossAmount: number;
+  reason: string;
+}
+
+export interface ItemPnlSummary {
+  productId: string;
+  code: string;
+  barcode: string;
+  productName: string;
+  category: string;
+  class1: string;
+  baseUnit: string;
+  totalPurchaseQty: number;
+  totalPurchaseValue: number;
+  purchaseReturnsQty: number;
+  purchaseReturnsValue: number;
+  netPurchaseQty: number;
+  netPurchaseValue: number;
+  totalSalesQty: number;
+  totalSalesValue: number;
+  salesReturnsQty: number;
+  salesReturnsValue: number;
+  netSalesQty: number;
+  netSalesValue: number;
+  cogs: number;
+  avgPurchasePrice: number;
+  minPurchasePrice: number;
+  maxPurchasePrice: number;
+  lastPurchasePrice: number;
+  lastPurchaseDate: string | null;
+  avgSalePrice: number;
+  minSalePrice: number;
+  maxSalePrice: number;
+  lastSalePrice: number;
+  lastSaleDate: string | null;
+  totalDiscounts: number;
+  damagedQty: number;
+  damagedLossValue: number;
+  shortageQty: number;
+  shortageLossValue: number;
+  allocatedExpenses: number;
+  grossProfit: number;
+  netProfit: number;
+  totalLoss: number;
+  profitPercentOnCost: number;
+  profitMarginOnSales: number;
+  currentStockQty: number;
+  currentStockValue: number;
+  lossTransactionsCount: number;
+  lossTransactions: ItemLossTransaction[];
+}
+
+export interface ComprehensiveReportResponse {
+  reportType: ComprehensiveReportTypeKey;
+  reportTypeLabel: string;
+  reportTypes: ComprehensiveReportOption[];
+  filters: Record<string, any>;
+  filterOptions: {
+    branches: BranchSettingItem[];
+    warehouses: Array<{ id: string; name: string; code?: string }>;
+    cashboxes: Array<{ id: string; name: string; type?: string; currentBalance?: number }>;
+    products: Array<{
+      id: string;
+      code: string;
+      barcode?: string;
+      name: string;
+      category: string;
+      baseUnit: string;
+      size?: string;
+      color?: string;
+    }>;
+    customers: Array<{ id: string; name: string; phone?: string }>;
+    suppliers: Array<{ id: string; name: string; phone?: string }>;
+    employees: Array<{ id: string; name: string; jobTitle?: string }>;
+    representatives: Array<{ id: string; name: string; warehouseId?: string }>;
+    users: Array<{ id: string; fullName: string; username: string; role: string }>;
+  };
+  sections: ComprehensiveReportSection[];
+  summary: {
+    drawerBalance: number;
+    reportBalance: number;
+    carriedFromYesterday: number;
+    reportProfit: number;
+    reportProfitPercent: number;
+    filteredSalesNet: number;
+    filteredPurchasesNet: number;
+    filteredCashIn: number;
+    filteredCashOut: number;
+    totalRows: number;
+  };
+  itemLifecycle: ItemLifecyclePayload | null;
+  itemPnl: {
+    selectedItem: ItemPnlSummary | null;
+    items: ItemPnlSummary[];
+    portfolioTotals: {
+      totalPurchaseValue: number;
+      totalSalesValue: number;
+      netSalesValue: number;
+      cogs: number;
+      totalDiscounts: number;
+      salesReturnsValue: number;
+      purchaseReturnsValue: number;
+      allocatedExpenses: number;
+      grossProfit: number;
+      netProfit: number;
+      totalLoss: number;
+      stockValuation: number;
+    };
+  };
+}
+
+export interface ReportSourceDocumentResponse {
+  ok: boolean;
+  docType: string;
+  title: string;
+  document: Record<string, any>;
+  auditTrail: Array<{
+    id: string;
+    timestamp: string;
+    userName: string;
+    action: string;
+    module: string;
+    oldValues?: Record<string, any> | null;
+    newValues?: Record<string, any> | null;
+    notes?: string;
+  }>;
+}
 

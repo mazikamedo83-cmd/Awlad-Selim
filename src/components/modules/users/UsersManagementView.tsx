@@ -63,6 +63,10 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
     canManageUsers: false,
     canManageSettings: false,
     canAllowNegativeInventory: false,
+    canApprove: false,
+    canSend: true,
+    canReceive: true,
+    canReviewRepInvoices: false,
     canViewPersonalAccounts: false,
     canCreatePersonalTx: false,
     canEditPersonalTx: false,
@@ -73,6 +77,96 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
     canApproveStockTransfer: false,
     canExecuteStockTransfer: false,
     canViewDeletedInvoices: false,
+  };
+
+  const ROLE_PERMISSION_PRESETS: Record<UserRole, { jobTitle: string; department: string; perms: Partial<UserPermissions> }> = {
+    admin: {
+      jobTitle: 'مالك / مدير عام',
+      department: 'الإدارة العامة',
+      perms: {
+        canView: true, canAdd: true, canEdit: true, canDelete: true, canPrint: true, canExport: true,
+        canViewReports: true, canManageSales: true, canManagePurchases: true, canManageInventory: true,
+        canManageWarehouses: true, canManageCashboxes: true, canManageAccounts: true, canManageReps: true,
+        canManageTransfers: true, canManageEmployees: true, canManageSalaries: true, canManageUsers: true,
+        canManageSettings: true, canApprove: true, canSend: true, canReceive: true, canReviewRepInvoices: true,
+        canViewPersonalAccounts: true, canCreatePersonalTx: true, canEditPersonalTx: true,
+        canApprovePersonalAdjustment: true, canCreateStockCount: true, canApproveStockCount: true,
+        canCreateStockTransfer: true, canApproveStockTransfer: true, canExecuteStockTransfer: true,
+        canViewDeletedInvoices: true,
+      },
+    },
+    manager: {
+      jobTitle: 'مدير فرع',
+      department: 'الإدارة',
+      perms: {
+        canView: true, canAdd: true, canEdit: true, canDelete: false, canPrint: true, canExport: true,
+        canViewReports: true, canManageSales: true, canManagePurchases: true, canManageInventory: true,
+        canManageWarehouses: true, canManageCashboxes: true, canManageAccounts: true, canManageReps: true,
+        canManageTransfers: true, canApprove: true, canSend: true, canReceive: true, canReviewRepInvoices: true,
+        canCreateStockCount: true, canApproveStockCount: true, canCreateStockTransfer: true,
+        canApproveStockTransfer: true, canExecuteStockTransfer: true, canViewDeletedInvoices: true,
+      },
+    },
+    accountant: {
+      jobTitle: 'محاسب مالي',
+      department: 'الحسابات والمالية',
+      perms: {
+        canView: true, canAdd: true, canEdit: true, canPrint: true, canExport: true, canViewReports: true,
+        canManageSales: true, canManagePurchases: true, canManageCashboxes: true, canManageAccounts: true,
+        canManageSalaries: true, canApprove: true, canSend: true, canReceive: true, canReviewRepInvoices: true,
+      },
+    },
+    sales: {
+      jobTitle: 'موظف مبيعات',
+      department: 'المبيعات',
+      perms: {
+        canView: true, canAdd: true, canPrint: true, canManageSales: true, canSend: true, canReceive: true,
+      },
+    },
+    purchases: {
+      jobTitle: 'موظف مشتريات',
+      department: 'المشتريات والموردين',
+      perms: {
+        canView: true, canAdd: true, canEdit: true, canPrint: true, canExport: true,
+        canManagePurchases: true, canManageInventory: true, canManageSales: false,
+        canManageCashboxes: false, canManageUsers: false, canSend: true, canReceive: true,
+      },
+    },
+    warehouse: {
+      jobTitle: 'أمين مستودع',
+      department: 'المخازن والمستودعات',
+      perms: {
+        canView: true, canAdd: true, canPrint: true, canManageInventory: true, canManageWarehouses: true,
+        canManageSales: false, canCreateStockCount: true, canCreateStockTransfer: true,
+        canExecuteStockTransfer: true, canSend: true, canReceive: true,
+      },
+    },
+    representative: {
+      jobTitle: 'مندوب مبيعات ميداني',
+      department: 'المبيعات الخارجية',
+      perms: {
+        canView: true, canAdd: true, canPrint: true, canManageSales: true, canManageTransfers: true,
+        canSend: true, canReceive: true,
+      },
+    },
+    customer: {
+      jobTitle: 'عميل بوابة الطلبات',
+      department: 'العملاء',
+      perms: {
+        canView: true, canAdd: true, canPrint: true, canManageSales: false, canSend: true, canReceive: true,
+      },
+    },
+  };
+
+  const buildPresetPermissions = (targetRole: UserRole): UserPermissions => {
+    const base: UserPermissions = Object.keys(DEFAULT_PERMISSIONS).reduce((acc, key) => {
+      (acc as any)[key] = false;
+      return acc;
+    }, {} as UserPermissions);
+    return {
+      ...base,
+      ...(ROLE_PERMISSION_PRESETS[targetRole]?.perms || {}),
+    };
   };
 
   const [permissions, setPermissions] = useState<UserPermissions>(DEFAULT_PERMISSIONS);
@@ -89,9 +183,9 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
     setPhone('');
     setRole('sales');
     setLinkedCustomerId('');
-    setJobTitle('موظف مبيعات');
-    setDepartment('المبيعات');
-    setPermissions(DEFAULT_PERMISSIONS);
+    setJobTitle(ROLE_PERMISSION_PRESETS.sales.jobTitle);
+    setDepartment(ROLE_PERMISSION_PRESETS.sales.department);
+    setPermissions(buildPresetPermissions('sales'));
     setMustChangePassword(false);
     setFormError(null);
     setEditingUser(null);
@@ -335,6 +429,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                           ? 'مدير'
                           : u.role === 'accountant'
                           ? 'محاسب'
+                          : u.role === 'purchases'
+                          ? 'موظف مشتريات'
                           : u.role === 'representative'
                           ? 'مندوب مبيعات'
                           : u.role === 'customer'
@@ -511,13 +607,22 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
               <label className="block font-bold mb-1">نوع الحساب / الدور:</label>
               <select
                 value={role}
-                onChange={(e) => setRole(e.target.value as UserRole)}
+                onChange={(e) => {
+                  const nextRole = e.target.value as UserRole;
+                  setRole(nextRole);
+                  if (!editingUser && ROLE_PERMISSION_PRESETS[nextRole]) {
+                    setJobTitle(ROLE_PERMISSION_PRESETS[nextRole].jobTitle);
+                    setDepartment(ROLE_PERMISSION_PRESETS[nextRole].department);
+                    setPermissions(buildPresetPermissions(nextRole));
+                  }
+                }}
                 className="w-full border rounded-xl p-2 font-bold"
               >
                 <option value="admin">مالك / مدير عام (كامل الصلاحيات)</option>
                 <option value="manager">مدير فرع</option>
                 <option value="accountant">محاسب مالي</option>
                 <option value="sales">موظف مبيعات</option>
+                <option value="purchases">موظف مشتريات</option>
                 <option value="warehouse">أمين مستودع</option>
                 <option value="representative">مندوب مبيعات خارجي</option>
                 <option value="customer">عميل - تطبيق العملاء</option>
@@ -610,6 +715,10 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 { key: 'canManageWarehouses', label: 'إدارة المستودعات والتحويلات' },
                 { key: 'canManageCashboxes', label: 'إدارة الخزائن والحسابات' },
                 { key: 'canManageTransfers', label: 'نظام طلب تحويل بالنصف' },
+                { key: 'canApprove', label: 'اعتماد العمليات والمستندات' },
+                { key: 'canReviewRepInvoices', label: 'مراجعة واعتماد فواتير المناديب' },
+                { key: 'canSend', label: 'صلاحية إرسال المزامنة Send' },
+                { key: 'canReceive', label: 'صلاحية استلام المزامنة Receive' },
                 { key: 'canManageEmployees', label: 'إدارة الموظفين والغياب' },
                 { key: 'canManageSalaries', label: 'إدارة وصرف الرواتب' },
                 { key: 'canManageUsers', label: 'إدارة حسابات المستخدمين' },

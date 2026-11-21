@@ -13,6 +13,7 @@ import stockCountsRoutes from './routes/stockCounts.js';
 import stockTransfersRoutes from './routes/stockTransfers.js';
 import mobileRoutes from './routes/mobile.js';
 import syncRoutes from './routes/sync.js';
+import reportsRoutes from './routes/reports.js';
 import { pairingApiRouter, pairingPublicPagesRouter } from './routes/pairing.js';
 import { getTunnelRuntimeStatus } from './db/stores/connectionPairingStore.js';
 import { getSystemSettingsSafe } from './db/stores/catalogStore.js';
@@ -325,6 +326,7 @@ export function createApiApp() {
   app.use('/api/stock-transfers', stockTransfersRoutes);
   app.use('/api/mobile', mobileRoutes);
   app.use('/api/sync', syncRoutes);
+  app.use('/api/reports', reportsRoutes);
 
   // Legacy full-database endpoints strictly locked to Admin only (401 unauth, 403 non-admin)
   app.get(

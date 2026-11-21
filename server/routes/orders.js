@@ -8,6 +8,7 @@ import {
   rejectCustomerOrder,
   assignOrderDeliveryRep,
   updateOrderDeliveryStatus,
+  advanceOrderStage,
   recordOrderAdvancePayment,
   convertOrderToInvoice,
 } from '../db/stores/ordersStore.js';
@@ -153,6 +154,30 @@ router.post(
     const idempotencyKey = req.get('Idempotency-Key') || req.body?.idempotencyKey || '';
     const result = await convertOrderToInvoice(req.params.id, req.body || {}, req.auth.user, idempotencyKey);
     res.status(result.deduplicated ? 200 : 201).json({ ok: true, ...result });
+  })
+);
+
+router.post(
+  '/:id/stage',
+  requireStaff,
+  asyncHandler(async (req, res) => {
+    const user = req.auth.user;
+    if (
+      user.role !== 'admin' &&
+      user.role !== 'representative' &&
+      !user.permissions?.canManageSales &&
+      !user.permissions?.canManageAccounts &&
+      !user.permissions?.canApprove
+    ) {
+      return res.status(403).json({ ok: false, code: 'FORBIDDEN', error: 'ليس لديك صلاحية تحديث مرحلة الطلب' });
+    }
+    const idempotencyKey = req.get('Idempotency-Key') || req.body?.idempotencyKey || '';
+    const result = await advanceOrderStage(
+      req.params.id,
+      { ...(req.body || {}), idempotencyKey },
+      req.auth
+    );
+    res.json({ ok: true, ...result });
   })
 );
 

@@ -95,6 +95,7 @@ export function createEmptyDatabaseState() {
     orderAdvancePayments: [],
     syncConflicts: [],
     syncOperationLogs: [],
+    repCustodyOperations: [],
     settings: {
       companyName: 'مؤسسة أولاد سليم للتجارة والتوزيع',
       companySubtitle: 'نظام المحاسبة وإدارة الأعمال المتكامل',
@@ -125,6 +126,8 @@ export function createEmptyDatabaseState() {
       stockTransferNo: 0,
       cashOpNo: 0,
       orderAdvanceNo: 0,
+      quoteNo: 0,
+      repCustodyOpNo: 0,
     },
     lastSavedAt: new Date().toISOString(),
     version: '3.0.0',
@@ -184,6 +187,7 @@ export function normalizeDbState(raw) {
     'orderAdvancePayments',
     'syncConflicts',
     'syncOperationLogs',
+    'repCustodyOperations',
   ];
   for (const key of arrayKeys) {
     if (!Array.isArray(db[key])) db[key] = [];

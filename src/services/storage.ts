@@ -31,6 +31,7 @@ import {
   StockTransferRequest,
   OrderAdvancePayment,
   SyncConflictRecord,
+  RepCustodyOperation,
 } from '../types';
 
 const OFFLINE_ORDERS_QUEUE_KEY = 'awlad_selim_offline_orders_queue_v3';
@@ -50,6 +51,7 @@ export interface DatabaseState {
   representatives: Representative[];
   repTransfers: RepTransfer[];
   repItemTransfers?: RepItemTransferRequest[];
+  repCustodyOperations?: RepCustodyOperation[];
   customerItemOrders?: CustomerItemOrderRequest[];
   orderAdvancePayments?: OrderAdvancePayment[];
   syncConflicts?: SyncConflictRecord[];
@@ -90,6 +92,7 @@ export function getEmptyClientDatabaseState(): DatabaseState {
     representatives: [],
     repTransfers: [],
     repItemTransfers: [],
+    repCustodyOperations: [],
     customerItemOrders: [],
     orderAdvancePayments: [],
     syncConflicts: [],

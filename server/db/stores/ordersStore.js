@@ -15,7 +15,7 @@ import {
 } from '../../utils/idempotency.js';
 import { isPgMode, mapPgOrderRow, mapPgCustomerRow, isoDateOnly, isoTimestamp } from './mode.js';
 import { recordAuditLog } from './authStore.js';
-import { createInvoiceInsidePgTx, createInvoiceInsideJsonTx } from './invoicesStore.js';
+import { createInvoiceInsidePgTx, createInvoiceInsideJsonTx, addInvoicePayment } from './invoicesStore.js';
 import {
   getRepresentativeByUserId,
   isCustomerAllowedForRep,
@@ -29,7 +29,7 @@ function normalizeStatusFilter(rawStatus) {
   return s;
 }
 
-function enrichOrderCollection(orders, productImageMap) {
+function enrichOrderCollection(orders, productImageMap, invoiceMap = new Map(), advPaymentsMap = new Map()) {
   return (orders || []).map((ord) => {
     const items = (ord.items || []).map((it) => ({
       ...it,
@@ -42,7 +42,53 @@ function enrichOrderCollection(orders, productImageMap) {
     const totalAmount =
       Number(ord.totalAmount || 0) > 0 ? round2(ord.totalAmount) : round2(computedTotal);
     const advancePaidAmount = round2(ord.advancePaidAmount || 0);
-    const remainingAmount = Math.max(0, round2(totalAmount - advancePaidAmount));
+    const linkedInv = ord.invoiceId ? invoiceMap.get(ord.invoiceId) : null;
+    const advList = advPaymentsMap.get(ord.id) || [];
+
+    const invoiceTotal = linkedInv ? round2(linkedInv.grandTotal || totalAmount) : totalAmount;
+    const invoicePaidAmount = linkedInv
+      ? round2(linkedInv.paidAmount || 0)
+      : round2(Math.max(advancePaidAmount, Number(ord.collectedAmount || 0)));
+    const invoiceRemainingAmount = linkedInv
+      ? round2(linkedInv.remainingAmount ?? Math.max(0, invoiceTotal - invoicePaidAmount))
+      : Math.max(0, round2(invoiceTotal - invoicePaidAmount));
+    const paymentStatus =
+      invoiceTotal > 0 && invoiceRemainingAmount <= 0.009
+        ? 'paid'
+        : invoicePaidAmount > 0.009
+        ? 'partial'
+        : 'unpaid';
+
+    const paymentsHistory = [
+      ...advList.map((a) => ({
+        id: a.id,
+        type: 'advance',
+        paymentNumber: a.paymentNumber || a.payment_number,
+        amount: round2(a.amount || 0),
+        date: String(a.date || '').split('T')[0],
+        paymentMethod: a.paymentMethod || a.payment_method || 'cash',
+        cashboxName: a.cashboxName || a.cashbox_name || '',
+        notes: a.notes || 'دفعة مقدمة على الطلب',
+        createdBy: a.createdBy || a.created_by || '',
+        createdAt: a.createdAt || a.created_at || '',
+      })),
+      ...((linkedInv?.payments || []).map((p) => ({
+        id: p.id,
+        type: 'invoice_payment',
+        paymentNumber: p.invoiceNumber || linkedInv.invoiceNumber,
+        amount: round2(p.amount || 0),
+        date: String(p.date || '').split('T')[0],
+        paymentMethod: p.paymentMethod || 'cash',
+        cashboxName: p.cashboxName || '',
+        notes: p.notes || 'دفعة مسجلة على الفاتورة',
+        createdBy: p.createdBy || '',
+        createdAt: p.createdAt || '',
+      }))),
+    ].sort((a, b) => String(a.createdAt || a.date || '').localeCompare(String(b.createdAt || b.date || '')));
+
+    const remainingAmount = linkedInv
+      ? invoiceRemainingAmount
+      : Math.max(0, round2(totalAmount - advancePaidAmount));
     const requesterType =
       ord.requesterType || (ord.representativeId ? 'representative' : 'customer');
     const submittedByName =
@@ -54,6 +100,11 @@ function enrichOrderCollection(orders, productImageMap) {
       totalAmount,
       advancePaidAmount,
       remainingAmount,
+      invoiceTotal,
+      invoicePaidAmount,
+      invoiceRemainingAmount,
+      paymentStatus,
+      paymentsHistory,
       items,
     };
   });
@@ -142,18 +193,66 @@ export async function listOrders(authContext, filters = {}) {
     if (ordRes.rows.length === 0) return [];
 
     const ordIds = ordRes.rows.map((r) => r.id);
-    const [itemsRes, histRes, prodImgRes] = await Promise.all([
+    const invIds = Array.from(new Set(ordRes.rows.map((r) => r.invoice_id).filter(Boolean)));
+    const [itemsRes, histRes, prodImgRes, advPayRes, invRes, invPayRes] = await Promise.all([
       pool.query(`SELECT * FROM customer_item_order_items WHERE order_id = ANY($1::varchar[])`, [ordIds]),
       pool.query(
         `SELECT * FROM order_status_history WHERE order_id = ANY($1::varchar[]) ORDER BY changed_at ASC`,
         [ordIds]
       ),
       pool.query(`SELECT id, image FROM products WHERE image IS NOT NULL AND image <> ''`),
+      pool.query(`SELECT * FROM order_advance_payments WHERE order_id = ANY($1::varchar[]) ORDER BY created_at ASC`, [ordIds]),
+      invIds.length
+        ? pool.query(`SELECT id, invoice_number, grand_total, paid_amount, remaining_amount FROM invoices WHERE id = ANY($1::varchar[])`, [invIds])
+        : Promise.resolve({ rows: [] }),
+      invIds.length
+        ? pool.query(`SELECT * FROM invoice_payments WHERE invoice_id = ANY($1::varchar[]) ORDER BY created_at ASC`, [invIds])
+        : Promise.resolve({ rows: [] }),
     ]);
 
     const productImageMap = new Map();
     for (const p of prodImgRes.rows) {
       if (p.image) productImageMap.set(p.id, p.image);
+    }
+
+    const invPaymentsMap = new Map();
+    for (const p of invPayRes.rows) {
+      const l = invPaymentsMap.get(p.invoice_id) || [];
+      l.push({
+        id: p.id,
+        invoiceNumber: p.invoice_number,
+        amount: Number(p.amount || 0),
+        date: isoDateOnly(p.date),
+        paymentMethod: p.payment_method,
+        cashboxName: p.cashbox_name,
+        notes: p.notes || '',
+        createdBy: p.created_by,
+        createdAt: isoTimestamp(p.created_at),
+      });
+      invPaymentsMap.set(p.invoice_id, l);
+    }
+
+    const invoiceMap = new Map();
+    for (const inv of invRes.rows) {
+      invoiceMap.set(inv.id, {
+        id: inv.id,
+        invoiceNumber: inv.invoice_number,
+        grandTotal: Number(inv.grand_total || 0),
+        paidAmount: Number(inv.paid_amount || 0),
+        remainingAmount: Number(inv.remaining_amount || 0),
+        payments: invPaymentsMap.get(inv.id) || [],
+      });
+    }
+
+    const advPaymentsMap = new Map();
+    for (const a of advPayRes.rows) {
+      const l = advPaymentsMap.get(a.order_id) || [];
+      l.push({
+        ...a,
+        date: isoDateOnly(a.date),
+        createdAt: isoTimestamp(a.created_at),
+      });
+      advPaymentsMap.set(a.order_id, l);
     }
 
     const itemsMap = new Map();
@@ -171,7 +270,9 @@ export async function listOrders(authContext, filters = {}) {
 
     const list = enrichOrderCollection(
       ordRes.rows.map((r) => mapPgOrderRow(r, itemsMap.get(r.id) || [], histMap.get(r.id) || [])),
-      productImageMap
+      productImageMap,
+      invoiceMap,
+      advPaymentsMap
     );
     return list.filter((o) => matchesOrderFilters(o, filters));
   }
@@ -180,6 +281,13 @@ export async function listOrders(authContext, filters = {}) {
   const productImageMap = new Map();
   for (const p of db.products || []) {
     if (p.image) productImageMap.set(p.id, p.image);
+  }
+  const invoiceMap = new Map((db.invoices || []).map((inv) => [inv.id, inv]));
+  const advPaymentsMap = new Map();
+  for (const a of db.orderAdvancePayments || []) {
+    const l = advPaymentsMap.get(a.orderId) || [];
+    l.push(a);
+    advPaymentsMap.set(a.orderId, l);
   }
 
   const scoped = (db.customerItemOrders || [])
@@ -195,7 +303,9 @@ export async function listOrders(authContext, filters = {}) {
     })
     .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
 
-  return enrichOrderCollection(scoped, productImageMap).filter((o) => matchesOrderFilters(o, filters));
+  return enrichOrderCollection(scoped, productImageMap, invoiceMap, advPaymentsMap).filter((o) =>
+    matchesOrderFilters(o, filters)
+  );
 }
 
 export async function getOrderById(orderId, authContext) {
@@ -227,13 +337,52 @@ export async function getOrderById(orderId, authContext) {
       }
     }
 
-    const [itemsRes, histRes, prodImgRes] = await Promise.all([
+    const [itemsRes, histRes, prodImgRes, advPayRes, invRes, invPayRes] = await Promise.all([
       pool.query(`SELECT * FROM customer_item_order_items WHERE order_id = $1`, [orderId]),
       pool.query(`SELECT * FROM order_status_history WHERE order_id = $1 ORDER BY changed_at ASC`, [orderId]),
       pool.query(`SELECT id, image FROM products WHERE image IS NOT NULL AND image <> ''`),
+      pool.query(`SELECT * FROM order_advance_payments WHERE order_id = $1 ORDER BY created_at ASC`, [orderId]),
+      row.invoice_id
+        ? pool.query(`SELECT id, invoice_number, grand_total, paid_amount, remaining_amount FROM invoices WHERE id = $1`, [row.invoice_id])
+        : Promise.resolve({ rows: [] }),
+      row.invoice_id
+        ? pool.query(`SELECT * FROM invoice_payments WHERE invoice_id = $1 ORDER BY created_at ASC`, [row.invoice_id])
+        : Promise.resolve({ rows: [] }),
     ]);
     const productImageMap = new Map(prodImgRes.rows.map((p) => [p.id, p.image]));
-    return enrichOrderCollection([mapPgOrderRow(row, itemsRes.rows, histRes.rows)], productImageMap)[0];
+    const invoiceMap = new Map();
+    if (invRes.rows[0]) {
+      const inv = invRes.rows[0];
+      invoiceMap.set(inv.id, {
+        id: inv.id,
+        invoiceNumber: inv.invoice_number,
+        grandTotal: Number(inv.grand_total || 0),
+        paidAmount: Number(inv.paid_amount || 0),
+        remainingAmount: Number(inv.remaining_amount || 0),
+        payments: invPayRes.rows.map((p) => ({
+          id: p.id,
+          invoiceNumber: p.invoice_number,
+          amount: Number(p.amount || 0),
+          date: isoDateOnly(p.date),
+          paymentMethod: p.payment_method,
+          cashboxName: p.cashbox_name,
+          notes: p.notes || '',
+          createdBy: p.created_by,
+          createdAt: isoTimestamp(p.created_at),
+        })),
+      });
+    }
+    const advPaymentsMap = new Map();
+    advPaymentsMap.set(
+      orderId,
+      advPayRes.rows.map((a) => ({ ...a, date: isoDateOnly(a.date), createdAt: isoTimestamp(a.created_at) }))
+    );
+    return enrichOrderCollection(
+      [mapPgOrderRow(row, itemsRes.rows, histRes.rows)],
+      productImageMap,
+      invoiceMap,
+      advPaymentsMap
+    )[0];
   }
 
   const db = readJsonDatabase();
@@ -254,7 +403,11 @@ export async function getOrderById(orderId, authContext) {
   const productImageMap = new Map(
     (db.products || []).filter((p) => p.image).map((p) => [p.id, p.image])
   );
-  return enrichOrderCollection([order], productImageMap)[0];
+  const invoiceMap = new Map((db.invoices || []).map((inv) => [inv.id, inv]));
+  const advPaymentsMap = new Map([
+    [orderId, (db.orderAdvancePayments || []).filter((a) => a.orderId === orderId)],
+  ]);
+  return enrichOrderCollection([order], productImageMap, invoiceMap, advPaymentsMap)[0];
 }
 
 export async function createCustomerOrder(payload, authContext) {
@@ -1519,3 +1672,215 @@ export async function convertOrderToInvoice(orderId, invoicePayload, actor, idem
   }
   return result;
 }
+
+const VALID_LIFECYCLE_STAGES = new Set([
+  'preparing',
+  'out_for_delivery',
+  'delivered',
+  'collected',
+  'closed',
+]);
+
+export async function advanceOrderStage(orderId, payload, authContext) {
+  const actor = authContext.user;
+  const targetStage = String(payload.stage || payload.status || '').trim();
+  if (!VALID_LIFECYCLE_STAGES.has(targetStage)) {
+    throw new AppError(400, 'المرحلة المحددة لدورة حياة الطلب غير صالحة', 'INVALID_ORDER_STAGE');
+  }
+
+  const isRep = actor.role === 'representative';
+  const rep = isRep ? authContext.representativeProfile || (await getRepresentativeByUserId(actor.id)) : null;
+  if (isRep) {
+    if (!rep) {
+      throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
+    }
+    if (!['out_for_delivery', 'delivered', 'collected'].includes(targetStage)) {
+      throw new AppError(403, 'صلاحية المندوب تقتصر على التوصيل والتسليم والتحصيل فقط', 'FORBIDDEN_STAGE_BY_REP');
+    }
+  }
+
+  const collectedAmount = round2(Math.max(0, Number(payload.collectedAmount || 0)));
+  const notes = String(payload.notes || payload.deliveryNotes || '').trim();
+  const idempotencyKey = payload.idempotencyKey ? String(payload.idempotencyKey).trim() : '';
+  const now = nowIso();
+
+  // Check current order and handle linked invoice payment before order transaction if needed
+  const currentOrder = await getOrderById(orderId, authContext);
+  if (['rejected', 'cancelled', 'closed'].includes(currentOrder.status)) {
+    throw new AppError(409, `لا يمكن تعديل مرحلة طلب بحالة (${currentOrder.status})`, 'INVALID_ORDER_TRANSITION');
+  }
+  if (isRep) {
+    const allowed =
+      currentOrder.deliveryRepId === rep.id ||
+      currentOrder.representativeId === rep.id ||
+      currentOrder.userId === actor.id;
+    if (!allowed) {
+      throw new AppError(403, 'غير مصرح لك بتحديث حالة أو تحصيل طلب غير مخصص لك', 'FORBIDDEN_ORDER_ACCESS');
+    }
+  }
+
+  let updatedInvoice = null;
+  let advancePayment = null;
+
+  if (collectedAmount > 0 && currentOrder.invoiceId) {
+    let cashboxId = payload.cashboxId;
+    if (!cashboxId) {
+      if (await isPgMode()) {
+        const defCb = await getPool().query(`SELECT id FROM cashboxes ORDER BY is_default DESC LIMIT 1`);
+        cashboxId = defCb.rows[0]?.id;
+      } else {
+        const db = readJsonDatabase();
+        cashboxId = (db.cashboxes.find((c) => c.isDefault) || db.cashboxes[0])?.id;
+      }
+    }
+    if (!cashboxId) throw new AppError(400, 'لا توجد خزينة متاحة لتسجيل التحصيل', 'CASHBOX_REQUIRED');
+    updatedInvoice = await addInvoicePayment(
+      currentOrder.invoiceId,
+      {
+        amount: collectedAmount,
+        cashboxId,
+        paymentMethod: payload.paymentMethod || 'cash',
+        date: payload.date || todayIso(),
+        notes: notes || `تحصيل على الطلب رقم ${currentOrder.requestNumber}`,
+      },
+      actor,
+      idempotencyKey ? `${idempotencyKey}-invpay` : ''
+    );
+  }
+
+  const stageLabelMap = {
+    preparing: 'بدء تجهيز الطلب',
+    out_for_delivery: 'الطلب خرج للتوصيل',
+    delivered: 'تم تسليم الطلب للعميل',
+    collected: collectedAmount > 0 ? `تم تسجيل تحصيل بمبلغ ${collectedAmount}` : 'تم تأكيد مرحلة التحصيل',
+    closed: 'تم إغلاق الطلب واستكمال كافة المراحل',
+  };
+  const reasonText = notes || stageLabelMap[targetStage] || `تحديث مرحلة الطلب إلى ${targetStage}`;
+
+  if (await isPgMode()) {
+    await withTransaction(async (client) => {
+      const ordRes = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1 FOR UPDATE`, [orderId]);
+      const row = ordRes.rows[0];
+      if (!row) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
+
+      if (collectedAmount > 0 && !row.invoice_id) {
+        const advRes = await recordOrderAdvancePaymentPgTx(
+          client,
+          orderId,
+          {
+            amount: collectedAmount,
+            cashboxId: payload.cashboxId,
+            paymentMethod: payload.paymentMethod || 'cash',
+            date: payload.date || todayIso(),
+            notes: reasonText,
+            originDeviceId: payload.originDeviceId,
+          },
+          actor,
+          idempotencyKey ? `${idempotencyKey}-adv` : ''
+        );
+        advancePayment = advRes?.advancePayment || null;
+      }
+
+      const freshOrd = (await client.query(`SELECT * FROM customer_item_orders WHERE id = $1`, [orderId])).rows[0];
+      const nextCollected = updatedInvoice
+        ? round2(updatedInvoice.paidAmount)
+        : round2(Number(freshOrd.collected_amount || 0) + (row.invoice_id ? 0 : collectedAmount));
+      const nextRemaining = updatedInvoice
+        ? round2(updatedInvoice.remainingAmount)
+        : Math.max(0, round2(Number(freshOrd.total_amount || 0) - Number(freshOrd.advance_paid_amount || 0)));
+
+      await client.query(
+        `UPDATE customer_item_orders
+         SET status = $1,
+             delivered_at = CASE WHEN $1 = 'delivered' THEN COALESCE(delivered_at, $2) ELSE delivered_at END,
+             delivery_rep_id = COALESCE(delivery_rep_id, $3),
+             delivery_rep_name = CASE WHEN COALESCE(delivery_rep_name, '') = '' THEN $4 ELSE delivery_rep_name END,
+             delivery_notes = CASE WHEN $5 <> '' THEN $5 ELSE delivery_notes END,
+             collected_amount = $6,
+             remaining_amount = $7,
+             version = COALESCE(version, 1) + 1,
+             updated_at = $2
+         WHERE id = $8`,
+        [
+          targetStage,
+          now,
+          rep?.id || payload.deliveryRepId || null,
+          rep?.name || payload.deliveryRepName || '',
+          notes,
+          nextCollected,
+          nextRemaining,
+          orderId,
+        ]
+      );
+
+      await client.query(
+        `INSERT INTO order_status_history (id, order_id, from_status, to_status, changed_by_user_id, changed_by_name, reason, changed_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [generateServerId('OSH'), orderId, freshOrd.status, targetStage, actor.id, actor.fullName, reasonText, now]
+      );
+    });
+  } else {
+    await withJsonTransaction(async (db) => {
+      const ord = db.customerItemOrders.find((o) => o.id === orderId);
+      if (!ord) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
+
+      if (collectedAmount > 0 && !ord.invoiceId) {
+        const advRes = recordOrderAdvancePaymentJsonTx(
+          db,
+          orderId,
+          {
+            amount: collectedAmount,
+            cashboxId: payload.cashboxId,
+            paymentMethod: payload.paymentMethod || 'cash',
+            date: payload.date || todayIso(),
+            notes: reasonText,
+            originDeviceId: payload.originDeviceId,
+          },
+          actor,
+          idempotencyKey ? `${idempotencyKey}-adv` : ''
+        );
+        advancePayment = advRes?.advancePayment || null;
+      }
+
+      const prevStatus = ord.status;
+      ord.status = targetStage;
+      if (targetStage === 'delivered' && !ord.deliveredAt) ord.deliveredAt = now;
+      if (!ord.deliveryRepId && (rep || payload.deliveryRepId)) {
+        ord.deliveryRepId = rep?.id || payload.deliveryRepId;
+        ord.deliveryRepName = rep?.name || payload.deliveryRepName || '';
+      }
+      if (notes) ord.deliveryNotes = notes;
+      if (updatedInvoice) {
+        ord.collectedAmount = round2(updatedInvoice.paidAmount);
+        ord.remainingAmount = round2(updatedInvoice.remainingAmount);
+      } else {
+        ord.collectedAmount = round2(Number(ord.collectedAmount || 0) + collectedAmount);
+        ord.remainingAmount = Math.max(0, round2(Number(ord.totalAmount || 0) - Number(ord.advancePaidAmount || 0)));
+      }
+      ord.version = Number(ord.version || 1) + 1;
+      ord.updatedAt = now;
+      ord.statusHistory = ord.statusHistory || [];
+      ord.statusHistory.push({
+        id: generateServerId('OSH'),
+        fromStatus: prevStatus,
+        toStatus: targetStage,
+        changedByName: actor.fullName,
+        reason: reasonText,
+        changedAt: now,
+      });
+    });
+  }
+
+  await recordAuditLog({
+    userId: actor.id,
+    userName: actor.fullName,
+    action: `تحديث مرحلة الطلب (${currentOrder.requestNumber}) إلى ${targetStage}`,
+    module: 'طلبات العملاء والمندوبين',
+    recordId: orderId,
+    notes: reasonText,
+  });
+
+  const enrichedOrder = await getOrderById(orderId, authContext);
+  return { order: enrichedOrder, invoice: updatedInvoice, advancePayment };
+}
+

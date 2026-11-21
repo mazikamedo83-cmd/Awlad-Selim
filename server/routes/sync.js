@@ -27,6 +27,7 @@ import {
 import {
   createSalesInvoice,
   createPurchaseInvoice,
+  createSalesQuote,
   editSalesInvoice,
   addInvoicePayment,
   createInvoiceReturn,
@@ -38,7 +39,14 @@ import {
   updateOrderDeliveryStatus,
   recordOrderAdvancePayment,
 } from '../db/stores/ordersStore.js';
-import { getStaffBootstrapData, executeCashOperation } from '../db/stores/inventoryAdminStore.js';
+import {
+  getStaffBootstrapData,
+  executeCashOperation,
+  updateRepItemTransferStatus,
+  recordRepCustodyDelivery,
+  recordRepCustodyReturn,
+  createSupplier,
+} from '../db/stores/inventoryAdminStore.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -322,13 +330,67 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
   }
 
   if (opType === 'execute_cash_operation') {
-    assertStaffPermission(user, 'canManageAccounts');
+    if (payload?.type === 'cashbox_transfer') {
+      assertStaffPermission(user, 'canManageCashboxes');
+    } else if (user.role !== 'admin' && !user.permissions?.canManageCashboxes && !user.permissions?.canManageAccounts) {
+      throw new AppError(403, 'ليس لديك صلاحية تنفيذ العمليات النقدية', 'FORBIDDEN');
+    }
     return executeCashOperation(payload, user, opId);
   }
 
   if (opType === 'create_customer') {
     assertStaffPermission(user, 'canAdd');
     return createCustomer(payload, user);
+  }
+
+  if (opType === 'create_supplier') {
+    assertStaffPermission(user, 'canManagePurchases');
+    return createSupplier(payload, user);
+  }
+
+  if (opType === 'create_sales_quote') {
+    assertStaffPermission(user, 'canManageSales');
+    return createSalesQuote(
+      { ...payload, originDeviceId: op.deviceId || authContext.deviceId },
+      user,
+      opId
+    );
+  }
+
+  if (opType === 'create_purchase_return') {
+    assertStaffPermission(user, 'canManagePurchases');
+    return createInvoiceReturn({ ...payload, type: 'purchase_return' }, user, opId);
+  }
+
+  if (opType === 'confirm_custody_receipt') {
+    if (user.role !== 'representative' && user.role !== 'admin' && !user.permissions?.canManageTransfers) {
+      throw new AppError(403, 'ليس لديك صلاحية تأكيد استلام العهدة', 'FORBIDDEN');
+    }
+    return updateRepItemTransferStatus(
+      payload.requestId || op.entityId,
+      { status: 'received', notes: payload.notes || '' },
+      user
+    );
+  }
+
+  if (opType === 'record_custody_delivery') {
+    if (user.role !== 'representative' && user.role !== 'admin' && !user.permissions?.canManageTransfers) {
+      throw new AppError(403, 'ليس لديك صلاحية تسجيل التسليم من العهدة', 'FORBIDDEN');
+    }
+    return recordRepCustodyDelivery(payload, user, opId);
+  }
+
+  if (opType === 'record_custody_return') {
+    if (
+      user.role !== 'representative' &&
+      user.role !== 'admin' &&
+      !user.permissions?.canManageTransfers &&
+      !user.permissions?.canManageReps &&
+      !user.permissions?.canManageInventory
+    ) {
+      throw new AppError(403, 'ليس لديك صلاحية إرجاع عهدة المندوب للمخزن', 'FORBIDDEN');
+    }
+    return recordRepCustodyReturn(payload, user, opId);
   }
 
   if (opType === 'update_customer') {

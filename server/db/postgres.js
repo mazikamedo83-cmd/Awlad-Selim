@@ -293,6 +293,8 @@ export async function initializeSchema(customPool = null) {
       "CREATE SEQUENCE IF NOT EXISTS seq_stock_transfer_no",
       "CREATE SEQUENCE IF NOT EXISTS seq_cash_op_no",
       "CREATE SEQUENCE IF NOT EXISTS seq_order_advance_no",
+      "CREATE SEQUENCE IF NOT EXISTS seq_quote_no",
+      "CREATE SEQUENCE IF NOT EXISTS seq_rep_custody_op_no",
       "ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS extra_settings JSONB NOT NULL DEFAULT '{}'::jsonb",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_algo VARCHAR(24) NOT NULL DEFAULT 'bcrypt'",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT DEFAULT ''",
@@ -356,8 +358,20 @@ export async function initializeSchema(customPool = null) {
       "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS origin_device_id VARCHAR(64)",
       "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS sync_status VARCHAR(24) NOT NULL DEFAULT 'synced'",
       "ALTER TABLE customer_item_order_items ADD COLUMN IF NOT EXISTS product_image TEXT",
+      "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS review_status VARCHAR(24) NOT NULL DEFAULT 'not_required'",
+      "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS reviewed_by VARCHAR(64)",
+      "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ",
+      "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS review_notes TEXT DEFAULT ''",
+      "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS edited_by VARCHAR(64)",
+      "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS edited_at TIMESTAMPTZ",
+      "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS cancelled_by VARCHAR(64)",
+      "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ",
+      "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS cancel_reason TEXT DEFAULT ''",
+      "ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS transfer_mode VARCHAR(32) NOT NULL DEFAULT 'transfer'",
+      "ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS dispatched_by TEXT",
+      "ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS dispatched_at TIMESTAMPTZ",
       "ALTER TABLE customer_item_orders DROP CONSTRAINT IF EXISTS customer_item_orders_status_check",
-      "ALTER TABLE customer_item_orders ADD CONSTRAINT customer_item_orders_status_check CHECK (status IN ('pending', 'under_review', 'approved', 'rejected', 'rep_assigned', 'out_for_delivery', 'delivered', 'needs_review', 'invoiced', 'cancelled'))",
+      "ALTER TABLE customer_item_orders ADD CONSTRAINT customer_item_orders_status_check CHECK (status IN ('pending', 'under_review', 'approved', 'rejected', 'preparing', 'rep_assigned', 'out_for_delivery', 'delivered', 'needs_review', 'invoiced', 'collected', 'closed', 'cancelled'))",
     ];
     for (const stmt of alterStatements) {
       try {
@@ -418,6 +432,24 @@ export async function initializeSchema(customPool = null) {
       const idx6 = sql.indexOf(v6Marker);
       if (idx6 !== -1) {
         await currentPool.query(sql.slice(idx6));
+      }
+    }
+
+    // Ensure v7 rep_custody_operations table exists on pre-existing PG DBs
+    let hasV7CustodyTable = false;
+    try {
+      const v7Check = await currentPool.query(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'rep_custody_operations'"
+      );
+      hasV7CustodyTable = Boolean(v7Check.rows && v7Check.rows.length > 0);
+    } catch {
+      hasV7CustodyTable = false;
+    }
+    if (!hasV7CustodyTable) {
+      const v7Marker = '-- 44. سجل عمليات عهدة المندوب';
+      const idx7 = sql.indexOf(v7Marker);
+      if (idx7 !== -1) {
+        await currentPool.query(sql.slice(idx7));
       }
     }
 

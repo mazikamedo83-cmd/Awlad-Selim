@@ -452,10 +452,12 @@ export const SuppliersView: React.FC = () => {
 
                 <div className="p-3 rounded-xl bg-slate-50 border space-y-1">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-600">مستحقات المورد:</span>
-                    <span className={`font-mono font-black text-sm ${supp.currentBalance < 0 ? 'text-emerald-700' : 'text-purple-800'}`}>
+                    <span className="font-bold text-slate-600">
+                      {supp.currentBalance < 0 ? 'دفعة مقدمة للمورد / رصيد لنا:' : 'مستحقات المورد:'}
+                    </span>
+                    <span className={`font-mono font-black text-sm tabular-nums ${supp.currentBalance < 0 ? 'text-emerald-700' : 'text-purple-800'}`}>
                       {supp.currentBalance < 0
-                        ? `لنا ${Math.abs(supp.currentBalance).toLocaleString()} ${settings.currency}`
+                        ? `دفعة مقدمة للمورد / رصيد لنا (${Math.abs(supp.currentBalance).toLocaleString()} ${settings.currency})`
                         : `${supp.currentBalance.toLocaleString()} ${settings.currency}`}
                     </span>
                   </div>
@@ -511,7 +513,11 @@ export const SuppliersView: React.FC = () => {
           isOpen={!!statementSupplier}
           onClose={() => setStatementSupplier(null)}
           title={`كشف حساب المورد: ${statementSupplier.name} (${statementSupplier.code})`}
-          subtitle={`الرصيد المستحق الحالي للمورد: ${statementSupplier.currentBalance.toLocaleString()} ${settings.currency}`}
+          subtitle={
+            statementSupplier.currentBalance < 0
+              ? `دفعة مقدمة للمورد / رصيد لنا: ${Math.abs(statementSupplier.currentBalance).toLocaleString()} ${settings.currency}`
+              : `الرصيد المستحق الحالي للمورد: ${statementSupplier.currentBalance.toLocaleString()} ${settings.currency}`
+          }
           maxWidth="4xl"
         >
           <div className="space-y-4 text-xs">

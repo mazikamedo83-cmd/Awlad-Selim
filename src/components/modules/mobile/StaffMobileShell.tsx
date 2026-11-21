@@ -132,8 +132,10 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         colorClass: 'bg-blue-50 text-blue-900 border-blue-200',
         permission: 'canManageSales',
         items: [
+          { key: 'customer-orders', label: 'طلبات العملاء والمندوبين' },
           { key: 'new-sale', label: 'فاتورة مبيعات جديدة (+)', badge: 'سريع' },
           { key: 'sales-invoices', label: 'فواتير المبيعات' },
+          { key: 'quotes', label: 'عروض الأسعار', badge: 'جديد' },
           { key: 'customers', label: 'دليل العملاء والأرصدة والتحصيل' },
           { key: 'sales-returns', label: 'مرتجع المبيعات' },
           { key: 'deleted-invoices', label: 'الفواتير المحذوفة والملغاة', permission: 'canViewDeletedInvoices' },
@@ -177,6 +179,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
           { key: 'stock-adjustments', label: 'تسوية سريعة للمخزون' },
           { key: 'damaged-stock', label: 'بضاعة تالفة ومنتهية' },
           { key: 'stock-movements', label: 'سجل حركة الأصناف' },
+          { key: 'item-movement-report', label: 'تقرير حركة الصنف المفصل', badge: 'مفصل', permission: ['canManageInventory', 'canViewReports'] },
           { key: 'abu-selim-import', label: 'استيراد الملفات' },
         ],
       },
@@ -236,6 +239,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         colorClass: 'bg-slate-100 text-slate-900 border-slate-300',
         items: [
           { key: 'reports', label: 'جميع التقارير والأرباح', permission: 'canViewReports' },
+          { key: 'item-movement-report', label: 'تقرير حركة الصنف المفصل', permission: ['canViewReports', 'canManageInventory'] },
           { key: 'users', label: 'إدارة المستخدمين والصلاحيات', permission: 'canManageUsers' },
           { key: 'audit-log', label: 'سجل العمليات (Audit)', permission: 'canManageUsers' },
         ],
@@ -292,6 +296,8 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         return 'موظف مبيعات';
       case 'warehouse':
         return 'أمين مستودع';
+      case 'purchases':
+        return 'موظف مشتريات';
       default:
         return 'موظف';
     }
@@ -299,6 +305,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
 
   const handleSelectNotification = (item: MobileNotificationItem) => {
     const allowedTargets: NavItemKey[] = [
+      'customer-orders',
       'customers',
       'rep-item-transfers',
       'rep-transfers',
@@ -306,8 +313,10 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
       'stock-transfers-orders',
       'products',
       'sales-invoices',
+      'quotes',
       'purchase-invoices',
       'cashboxes',
+      'item-movement-report',
     ];
     if (item.targetTab && allowedTargets.includes(item.targetTab as NavItemKey)) {
       onNavigate(item.targetTab as NavItemKey);

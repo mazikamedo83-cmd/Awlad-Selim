@@ -34,6 +34,7 @@ import { ReportsView } from './components/modules/reports/ReportsView';
 import { UsersManagementView } from './components/modules/users/UsersManagementView';
 import { SettingsView } from './components/modules/settings/SettingsView';
 import { MobilePortal } from './components/modules/mobile/MobilePortal';
+import { StaffMobileShell } from './components/modules/mobile/StaffMobileShell';
 import {
   getLaunchDeepLinkUrl,
   isNativeCapacitor,
@@ -53,6 +54,7 @@ import { claimPairingInvitation, discoverServerCandidates, parsePairingInput } f
 const PAGE_PERMISSIONS: Partial<Record<NavItemKey, keyof UserPermissions | Array<keyof UserPermissions>>> = {
   'customer-orders': 'canManageSales',
   'sales-invoices': 'canManageSales',
+  'quotes': 'canManageSales',
   'new-sale': 'canManageSales',
   'customers': 'canManageSales',
   'sales-returns': 'canManageSales',
@@ -72,6 +74,7 @@ const PAGE_PERMISSIONS: Partial<Record<NavItemKey, keyof UserPermissions | Array
   'stock-counts': ['canCreateStockCount', 'canApproveStockCount', 'canManageInventory'],
   'damaged-stock': 'canManageInventory',
   'stock-movements': 'canManageInventory',
+  'item-movement-report': ['canManageInventory', 'canViewReports'],
   'cashboxes': 'canManageCashboxes',
   'cashbox-transfer': 'canManageCashboxes',
   'expenses': 'canManageCashboxes',
@@ -128,11 +131,36 @@ const MainAppContent: React.FC = () => {
   } = useAuth();
   const { networkStatus, lastError, triggerSync, isSyncing } = useData();
   const [currentPage, setCurrentPage] = useState<NavItemKey>('dashboard');
-  const [isSectionsOpen, setIsSectionsOpen] = useState(false);
+  const [reportProductId, setReportProductId] = useState<string | undefined>(undefined);
+  const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 1024 || isNativeCapacitor() : false
+  );
+  const [isSectionsOpen, setIsSectionsOpen] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 1024 && !isNativeCapacitor() : true
+  );
   const [cashOpModal, setCashOpModal] = useState<{ open: boolean; mode: CashOperationType }>({
     open: false,
     mode: 'cash_deposit',
   });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleResize = () => {
+      const mobile = window.innerWidth < 1024 || isNativeCapacitor();
+      setIsMobileViewport(mobile);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Auto-open sections sidebar upon desktop login while keeping toggle control
+  useEffect(() => {
+    if (isAuthenticated && currentUser && currentUser.role !== 'customer' && currentUser.role !== 'representative') {
+      if (typeof window !== 'undefined' && window.innerWidth >= 1024 && !isNativeCapacitor()) {
+        setIsSectionsOpen(true);
+      }
+    }
+  }, [isAuthenticated, currentUser?.id]);
 
   const inFlightPairingUrlsRef = useRef<Set<string>>(new Set());
   const recentPairingUrlsRef = useRef<Map<string, number>>(new Map());
@@ -373,6 +401,9 @@ const MainAppContent: React.FC = () => {
       case 'sales-invoices':
         return <SalesInvoicesView />;
 
+      case 'quotes':
+        return <SalesInvoicesView initialTab="quotes" />;
+
       case 'new-sale':
         return <SalesInvoicesView initialOpenNew={true} />;
 
@@ -398,7 +429,15 @@ const MainAppContent: React.FC = () => {
         return <ReturnsView initialTypeFilter="purchase_return" />;
 
       case 'products':
-        return <InventoryView initialTab="products" />;
+        return (
+          <InventoryView
+            initialTab="products"
+            onOpenItemMovementReport={(productId) => {
+              setReportProductId(productId);
+              setCurrentPage('item-movement-report');
+            }}
+          />
+        );
 
       case 'product-categories':
         return <InventoryView initialTab="categories" />;
@@ -426,6 +465,9 @@ const MainAppContent: React.FC = () => {
 
       case 'stock-movements':
         return <InventoryView initialTab="movements" />;
+
+      case 'item-movement-report':
+        return <ReportsView initialTab="item_movement" initialProductId={reportProductId} />;
 
       case 'abu-selim-import':
         return <SettingsView initialTab="abu-selim" />;
@@ -518,6 +560,31 @@ const MainAppContent: React.FC = () => {
     }
   };
 
+  const renderDbOrSyncAlert = () =>
+    isDatabaseUnavailable || (networkStatus === 'error' && lastError) ? (
+      <div className="mb-4 p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-800 text-xs font-bold flex flex-wrap items-center justify-between gap-2 shadow-xs">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+          <span>
+            {isDatabaseUnavailable
+              ? databaseUnavailableMessage || lastError
+              : lastError}
+          </span>
+        </div>
+        <button
+          type="button"
+          disabled={isSyncing}
+          onClick={() => {
+            refreshAuthContext().catch(() => {});
+            triggerSync(false);
+          }}
+          className="px-3 py-1.5 rounded-xl bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors cursor-pointer"
+        >
+          {isSyncing ? 'جاري الفحص...' : 'إعادة المحاولة'}
+        </button>
+      </div>
+    ) : null;
+
   return (
     <ShortcutsProvider onNavigate={(page) => setCurrentPage(page as NavItemKey)}>
       <ShortcutGlobalActions onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })} />
@@ -531,56 +598,45 @@ const MainAppContent: React.FC = () => {
 
       {renderFloatingPairingBanner()}
 
-      <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col font-sans antialiased pb-safe">
-        <Sidebar
+      {isMobileViewport ? (
+        <StaffMobileShell
           currentPage={currentPage}
           onNavigate={(page) => setCurrentPage(page)}
-          isOpen={isSectionsOpen}
-          onClose={() => setIsSectionsOpen(false)}
           onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })}
-        />
-
-        <div
-          className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${
-            isSectionsOpen ? 'lg:mr-80' : ''
-          }`}
         >
-          <Header
+          {renderDbOrSyncAlert()}
+          {renderActivePage()}
+        </StaffMobileShell>
+      ) : (
+        <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col font-sans antialiased pb-safe">
+          <Sidebar
             currentPage={currentPage}
-            isSidebarOpen={isSectionsOpen}
-            onToggleSidebar={() => setIsSectionsOpen((prev) => !prev)}
             onNavigate={(page) => setCurrentPage(page)}
-            onNavigateToTransfers={() => setCurrentPage('rep-transfers')}
+            isOpen={isSectionsOpen}
+            onClose={() => setIsSectionsOpen(false)}
+            onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })}
           />
 
-          <main className="flex-1 p-3 sm:p-4 lg:p-6 max-w-7xl w-full mx-auto min-w-0">
-            {(isDatabaseUnavailable || (networkStatus === 'error' && lastError)) && (
-              <div className="mb-4 p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-800 text-xs font-bold flex flex-wrap items-center justify-between gap-2 shadow-xs">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
-                  <span>
-                    {isDatabaseUnavailable
-                      ? databaseUnavailableMessage || lastError
-                      : lastError}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  disabled={isSyncing}
-                  onClick={() => {
-                    refreshAuthContext().catch(() => {});
-                    triggerSync(false);
-                  }}
-                  className="px-3 py-1.5 rounded-xl bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors cursor-pointer"
-                >
-                  {isSyncing ? 'جاري الفحص...' : 'إعادة المحاولة'}
-                </button>
-              </div>
-            )}
-            {renderActivePage()}
-          </main>
+          <div
+            className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${
+              isSectionsOpen ? 'lg:mr-80' : ''
+            }`}
+          >
+            <Header
+              currentPage={currentPage}
+              isSidebarOpen={isSectionsOpen}
+              onToggleSidebar={() => setIsSectionsOpen((prev) => !prev)}
+              onNavigate={(page) => setCurrentPage(page)}
+              onNavigateToTransfers={() => setCurrentPage('rep-transfers')}
+            />
+
+            <main className="flex-1 p-3 sm:p-4 lg:p-6 max-w-7xl w-full mx-auto min-w-0">
+              {renderDbOrSyncAlert()}
+              {renderActivePage()}
+            </main>
+          </div>
         </div>
-      </div>
+      )}
     </ShortcutsProvider>
   );
 };

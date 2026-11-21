@@ -397,6 +397,18 @@ interface AuthContextType {
   lastVerifiedAt: string | null;
   permissionsMayBeStale: boolean;
   login: (username: string, password: string) => Promise<{ success: boolean; error?: string; requirePasswordChange?: boolean }>;
+  registerAccount: (payload: {
+    role: 'customer' | 'representative';
+    fullName: string;
+    username: string;
+    password: string;
+    phone: string;
+    address?: string;
+    shopName?: string;
+    area?: string;
+    vehicleNumber?: string;
+    geoCoordinates?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
   bootstrapAdmin: (payload: { fullName: string; username: string; password: string; phone?: string; companyName?: string }) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   handleServerAuthRevoked: (reason?: string) => Promise<void>;
@@ -616,6 +628,81 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const registerAccount = async (payload: {
+    role: 'customer' | 'representative';
+    fullName: string;
+    username: string;
+    password: string;
+    phone: string;
+    address?: string;
+    shopName?: string;
+    area?: string;
+    vehicleNumber?: string;
+    geoCoordinates?: string;
+  }): Promise<{ success: boolean; error?: string }> => {
+    const descriptor = getClientDeviceDescriptor();
+    const baseUrl = getConfiguredApiBaseUrl();
+    try {
+      const res = await apiRequest<{
+        ok: boolean;
+        installationId?: string;
+        accessToken: string;
+        refreshToken: string;
+        user: User;
+        customerProfile: Customer | null;
+        representativeProfile: Representative | null;
+        mobileConfig?: MobileConfig;
+        linkWarning: string | null;
+      }>('/api/auth/register', {
+        method: 'POST',
+        body: {
+          ...payload,
+          username: payload.username.trim(),
+          fullName: payload.fullName.trim(),
+          phone: payload.phone.trim(),
+          ...descriptor,
+        },
+        skipAuth: true,
+      });
+
+      const resolvedInstallationId = String(res.installationId || getStoredInstallationId() || '').trim();
+      if (resolvedInstallationId) {
+        await setStoredInstallationIdAsync(resolvedInstallationId).catch(() => {});
+      }
+      saveStoredTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });
+      await saveVerifiedOnlineCredentials({
+        serverUrl: baseUrl,
+        installationId: resolvedInstallationId,
+        username: payload.username.trim(),
+        password: payload.password,
+        user: res.user,
+        customerProfile: res.customerProfile || null,
+        representativeProfile: res.representativeProfile || null,
+      }).catch(() => {});
+
+      setCurrentUser(res.user);
+      setCustomerProfile(res.customerProfile || null);
+      setRepresentativeProfile(res.representativeProfile || null);
+      setMobileConfig(res.mobileConfig || DEFAULT_MOBILE_CONFIG);
+      setLinkWarning(res.linkWarning || null);
+      setSessionExpiredMessage(null);
+      setIsDatabaseUnavailable(false);
+      setDatabaseUnavailableMessage(null);
+      setNeedsAdminSetup(false);
+      setIsOfflineSession(false);
+      setPermissionsMayBeStale(false);
+      setLastVerifiedAt(new Date().toISOString());
+
+      return { success: true };
+    } catch (err: any) {
+      if (isDatabaseUnavailableError(err)) {
+        setIsDatabaseUnavailable(true);
+        setDatabaseUnavailableMessage(err?.message || DEFAULT_DB_UNAVAILABLE_MESSAGE);
+      }
+      return { success: false, error: err?.message || 'تعذر إنشاء الحساب الجديد' };
+    }
+  };
+
   const bootstrapAdmin = async (payload: {
     fullName: string;
     username: string;
@@ -765,6 +852,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         lastVerifiedAt,
         permissionsMayBeStale,
         login,
+        registerAccount,
         bootstrapAdmin,
         logout,
         handleServerAuthRevoked,

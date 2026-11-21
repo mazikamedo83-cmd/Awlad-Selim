@@ -23,17 +23,32 @@ interface CustomerPortalProps {
 }
 
 const CUSTOMER_ORDER_STATUS_LABELS: Record<string, string> = {
-  pending: 'جديد',
+  pending: 'طلب جديد',
   under_review: 'قيد المراجعة',
-  approved: 'مقبول',
-  rep_assigned: 'تم تعيين مندوب',
-  out_for_delivery: 'جاري التوصيل',
-  delivered: 'تم التسليم',
-  needs_review: 'يحتاج مراجعة',
+  approved: 'معتمد',
   invoiced: 'تم التحويل لفاتورة',
+  preparing: 'قيد التجهيز',
+  rep_assigned: 'تم تعيين مندوب',
+  out_for_delivery: 'خرج للتوصيل',
+  delivered: 'تم التسليم',
+  collected: 'تم التحصيل',
+  closed: 'مغلق',
+  needs_review: 'يحتاج مراجعة',
   rejected: 'مرفوض',
   cancelled: 'ملغى',
 };
+
+const NINE_STAGE_TIMELINE: Array<{ key: string; label: string }> = [
+  { key: 'pending', label: 'جديد' },
+  { key: 'under_review', label: 'مراجعة' },
+  { key: 'approved', label: 'معتمد' },
+  { key: 'invoiced', label: 'فوترة' },
+  { key: 'preparing', label: 'تجهيز' },
+  { key: 'out_for_delivery', label: 'توصيل' },
+  { key: 'delivered', label: 'تسليم' },
+  { key: 'collected', label: 'تحصيل' },
+  { key: 'closed', label: 'إغلاق' },
+];
 
 const createClientIdempotencyKey = () =>
   `ord-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -917,6 +932,36 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                     </div>
                   )}
 
+                  {/* 9-Stage Order Lifecycle Timeline */}
+                  {ord.status !== 'rejected' && ord.status !== 'cancelled' && (
+                    <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-200">
+                      <p className="text-[10px] font-bold text-slate-500 mb-2">مسار الطلب (9 مراحل):</p>
+                      <div className="grid grid-cols-9 gap-1 text-center">
+                        {NINE_STAGE_TIMELINE.map((st, idx) => {
+                          const effectiveStatus = ord.status === 'rep_assigned' ? 'preparing' : ord.status;
+                          const currentIdx = NINE_STAGE_TIMELINE.findIndex((s) => s.key === effectiveStatus);
+                          const reached = currentIdx >= idx;
+                          return (
+                            <div key={st.key} className="flex flex-col items-center gap-1">
+                              <div
+                                className={`w-full h-1.5 rounded-full ${
+                                  reached ? 'bg-blue-900' : 'bg-slate-200'
+                                }`}
+                              />
+                              <span
+                                className={`text-[9px] leading-tight truncate max-w-full ${
+                                  reached ? 'font-black text-blue-950' : 'text-slate-400'
+                                }`}
+                              >
+                                {st.label}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-1.5 bg-slate-50 rounded-xl p-2.5">
                     {(ord.items || []).map((it, i) => {
                       const itemImg = data.cachedMediaMap?.[it.productId] || it.productImage;
@@ -934,25 +979,69 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                         </div>
                       );
                     })}
-                    {allowPriceView && (ord.totalAmount || 0) > 0 && (
-                      <div className="pt-1.5 border-t border-slate-200 space-y-1 font-black text-blue-950">
+                    {allowPriceView && ((ord.invoiceTotal ?? ord.totalAmount ?? 0) > 0) && (
+                      <div className="pt-2 border-t border-slate-200 space-y-1 font-black text-blue-950">
                         <div className="flex items-center justify-between">
-                          <span>الإجمالي</span>
-                          <span className="font-mono">
-                            {Number(ord.totalAmount).toLocaleString()} {data.settings.currency}
+                          <span>{ord.invoiceId ? `إجمالي الفاتورة (${ord.invoiceNumber || ''})` : 'الإجمالي'}</span>
+                          <span className="font-mono tabular-nums">
+                            {Number(ord.invoiceTotal ?? ord.totalAmount ?? 0).toLocaleString()} {data.settings.currency}
                           </span>
                         </div>
                         {Number(ord.advancePaidAmount || 0) > 0 && (
                           <div className="flex items-center justify-between text-[11px] text-emerald-700">
                             <span className="inline-flex items-center gap-1"><Wallet className="w-3 h-3" /> دفعة مقدمة مسددة:</span>
-                            <span className="font-mono">
+                            <span className="font-mono tabular-nums">
                               {Number(ord.advancePaidAmount).toLocaleString()} {data.settings.currency}
                             </span>
                           </div>
                         )}
+                        {(ord.invoiceId || ord.invoicePaidAmount != null || ord.invoiceRemainingAmount != null) && (
+                          <>
+                            <div className="flex items-center justify-between text-[11px] text-emerald-800">
+                              <span>إجمالي المدفوع:</span>
+                              <span className="font-mono tabular-nums">
+                                {Number(ord.invoicePaidAmount ?? ord.advancePaidAmount ?? 0).toLocaleString()} {data.settings.currency}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-[11px] text-red-700">
+                              <span>المتبقي:</span>
+                              <span className="font-mono tabular-nums">
+                                {Number(ord.invoiceRemainingAmount ?? ord.remainingAmount ?? 0).toLocaleString()} {data.settings.currency}
+                              </span>
+                            </div>
+                            {ord.paymentStatus && (
+                              <div className="flex items-center justify-between text-[11px] text-slate-600">
+                                <span>حالة السداد:</span>
+                                <span className="font-black">
+                                  {ord.paymentStatus === 'paid'
+                                    ? 'مسدد بالكامل'
+                                    : ord.paymentStatus === 'partial'
+                                    ? 'سداد جزئي'
+                                    : 'غير مسدد'}
+                                </span>
+                              </div>
+                            )}
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
+
+                  {allowPriceView && ord.paymentsHistory && ord.paymentsHistory.length > 0 && (
+                    <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-2.5 space-y-1 text-[11px]">
+                      <p className="font-black text-emerald-950">سجل الدفعات المسددة ({ord.paymentsHistory.length}):</p>
+                      {ord.paymentsHistory.map((ph) => (
+                        <div key={ph.id} className="flex items-center justify-between gap-2 text-emerald-900">
+                          <span>
+                            {ph.paymentNumber} · {ph.date}
+                          </span>
+                          <strong className="font-mono tabular-nums">
+                            {ph.amount.toLocaleString()} {data.settings.currency}
+                          </strong>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   <div className="flex items-center justify-between gap-2 pt-1">
                     <button
