@@ -1264,7 +1264,9 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     className="w-full p-2.5 rounded-xl border border-slate-300 bg-white"
                   >
                     {cashboxes.map(c => (
-                      <option key={c.id} value={c.id}>{c.name} ({c.currentBalance.toLocaleString()} {settings.currency})</option>
+                      <option key={c.id} value={c.id}>
+                        {c.balanceHidden ? `${c.name} (رصيد محجوب)` : `${c.name} (${(c.currentBalance ?? 0).toLocaleString()} ${settings.currency})`}
+                      </option>
                     ))}
                   </select>
                 </div>

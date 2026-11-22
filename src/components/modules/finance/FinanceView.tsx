@@ -1327,7 +1327,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 <div className="pt-2 border-t flex justify-between items-center">
                   <span className="text-slate-500">الرصيد المتاح:</span>
                   <span className="font-mono text-base font-black text-blue-950 tabular-nums">
-                    {cb.currentBalance.toLocaleString()} {settings.currency}
+                    {cb.balanceHidden ? 'محجوب' : `${(cb.currentBalance ?? 0).toLocaleString()} ${settings.currency}`}
                   </span>
                 </div>
               </div>
@@ -2007,7 +2007,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               >
                 {cashboxes.map((cb) => (
                   <option key={cb.id} value={cb.id}>
-                    {cb.name} (رصيدها: {cb.currentBalance.toLocaleString()})
+                    {cb.balanceHidden ? `${cb.name} (رصيد محجوب)` : `${cb.name} (رصيدها: ${(cb.currentBalance ?? 0).toLocaleString()})`}
                   </option>
                 ))}
               </select>
@@ -2117,7 +2117,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               >
                 {cashboxes.map((cb) => (
                   <option key={cb.id} value={cb.id}>
-                    {cb.name} (رصيدها: {cb.currentBalance.toLocaleString()})
+                    {cb.balanceHidden ? `${cb.name} (رصيد محجوب)` : `${cb.name} (رصيدها: ${(cb.currentBalance ?? 0).toLocaleString()})`}
                   </option>
                 ))}
               </select>

@@ -216,6 +216,7 @@ async function runFullModeAudit(modeName) {
   let custUnassignedToRep1Id = '';
   let orderId = '';
   let seededInvNumber = '';
+  let seededInvId = '';
 
   try {
     await test(`[${modeName}] 3. Seed admin, warehouse, cashboxes, product, two reps & customer assigned to rep2`, async () => {
@@ -469,15 +470,43 @@ async function runFullModeAudit(modeName) {
         },
       });
       assert.equal(saleRes.status, 201);
+      seededInvId = saleRes.json.invoice.id;
       seededInvNumber = saleRes.json.invoice.invoiceNumber;
 
-      // Rep CANNOT execute administrative cash operations via HTTP or Sync Push
+      // Rep CANNOT execute administrative cash operations, cashbox creation/transfer, expenses, supplier payments, or cheques even with canManageAccounts
       const cashOpDenied = await req(baseUrl, 'POST', '/api/admin/cash-operations', {
         token: rep1Token,
         body: { type: 'cash_withdrawal', amount: 100, cashboxId, date: '2026-11-20' },
       });
       assert.equal(cashOpDenied.status, 403);
       assert.equal(cashOpDenied.json?.code, 'FORBIDDEN_REP_CASHBOX_OP');
+
+      const createCbDenied = await req(baseUrl, 'POST', '/api/admin/cashboxes', {
+        token: rep1Token,
+        body: { name: 'خزينة غير مصرح بها', type: 'cash', openingBalance: 0 },
+      });
+      assert.equal(createCbDenied.status, 403);
+
+      const expenseDenied = await req(baseUrl, 'POST', '/api/admin/expenses', {
+        token: rep1Token,
+        body: { type: 'expense', category: 'مصروف غير مصرح', amount: 50, cashboxId, date: '2026-11-20' },
+      });
+      assert.equal(expenseDenied.status, 403);
+      assert.equal(expenseDenied.json?.code, 'FORBIDDEN_REP_CASHBOX_OP');
+
+      const suppPayDenied = await req(baseUrl, 'POST', '/api/admin/suppliers/payment', {
+        token: rep1Token,
+        body: { supplierId: 'SUP-ANY', amount: 50, cashboxId },
+      });
+      assert.equal(suppPayDenied.status, 403);
+      assert.equal(suppPayDenied.json?.code, 'FORBIDDEN_REP_CASHBOX_OP');
+
+      const chequeDenied = await req(baseUrl, 'POST', '/api/admin/cheques', {
+        token: rep1Token,
+        body: { chequeNumber: '999', type: 'incoming', bankName: 'بنك', amount: 100, issueDate: '2026-11-20', dueDate: '2026-12-20', partyName: 'عميل' },
+      });
+      assert.equal(chequeDenied.status, 403);
+      assert.equal(chequeDenied.json?.code, 'FORBIDDEN_REP_CASHBOX_OP');
 
       const syncCashOpDenied = await req(baseUrl, 'POST', '/api/sync/push', {
         token: rep1Token,
@@ -768,9 +797,9 @@ async function runFullModeAudit(modeName) {
         assert.equal(hasFullRepScan, false, 'Must NOT run full-table representatives phone scan in PG');
 
         const usesNormPhoneIdxQuery = sqlQueries.some((q) =>
-          /normalized_phone\s*=\s*ANY\(\$1\)/i.test(q.sql)
+          /normalized_phone\s*=\s*\$\d+/i.test(q.sql)
         );
-        assert.equal(usesNormPhoneIdxQuery, true, 'Must use targeted normalized_phone = ANY($1) lookup');
+        assert.equal(usesNormPhoneIdxQuery, true, 'Must use targeted indexed normalized_phone = $N lookup');
       }
     });
 
@@ -875,14 +904,17 @@ async function runFullModeAudit(modeName) {
       assert.equal(page2.status, 200);
       const p2Rows = page2.json.report.sections.find((s) => s.key === 'sales_invoices')?.rows || [];
       assert.equal(p2Rows.length, 2);
-      assert.notEqual(p1Rows[0].id, p2Rows[0].id);
+      assert.ok(p1Rows[0].rowId);
+      assert.ok(p2Rows[0].rowId);
+      assert.notEqual(p1Rows[0].rowId, p2Rows[0].rowId);
+      assert.notEqual(p1Rows[0].docId, p2Rows[0].docId);
 
       // Representative comprehensive report redaction + admin-table query pruning in PG
       if (modeName === 'pg') sqlQueries.length = 0;
       const repRpt = await req(
         baseUrl,
         'GET',
-        '/api/reports/comprehensive?dateFrom=2026-11-20&dateTo=2026-11-20',
+        `/api/reports/comprehensive?dateFrom=2026-11-20&dateTo=2026-11-20&productId=${encodeURIComponent(productId)}`,
         { token: rep1Token }
       );
       assert.equal(repRpt.status, 200);
@@ -897,6 +929,12 @@ async function runFullModeAudit(modeName) {
       assert.equal(rpt.filterOptions.users.length, 0);
       assert.equal(rpt.itemPnl.portfolioTotals.cogs, 0);
       assert.equal(rpt.itemPnl.portfolioTotals.netProfit, 0);
+      if (rpt.itemLifecycle?.events) {
+        for (const ev of rpt.itemLifecycle.events) {
+          assert.equal(Number(ev.unitCost || 0), 0, 'Rep lifecycle event unitCost must be 0');
+          assert.equal(String(ev.notes || '').includes('سعر الشراء'), false, 'Rep lifecycle notes must not leak purchase price');
+        }
+      }
       for (const sec of rpt.sections) {
         for (const row of sec.rows || []) {
           assert.equal(Number(row.costValue || 0), 0, 'Rep report row costValue must be 0');
@@ -909,23 +947,122 @@ async function runFullModeAudit(modeName) {
         assert.equal(sqlQueries.some((q) => /FROM\s+expenses_incomes/i.test(q.sql)), false);
       }
 
+      // Representative source-document endpoint redacts purchasePriceAtTime
+      const repSrcDoc = await req(
+        baseUrl,
+        'GET',
+        `/api/reports/source-document?docType=sales_invoice&docId=${encodeURIComponent(seededInvId)}`,
+        { token: rep1Token }
+      );
+      assert.equal(repSrcDoc.status, 200);
+      for (const item of repSrcDoc.json.document?.items || []) {
+        assert.equal(Number(item.purchasePriceAtTime || 0), 0, 'Rep source-document must redact purchasePriceAtTime');
+      }
+
       // Representative item-movement-report redacts purchase cost & profit
       const repMovRes = await req(baseUrl, 'GET', '/api/inventory/item-movement-report', {
         token: rep1Token,
       });
       assert.equal(repMovRes.status, 200);
       assert.equal((repMovRes.json.report.sections.purchases || []).length, 0);
-      assert.equal(repMovRes.json.report.summary.totalCostOfGoodsSold, 0);
-      assert.equal(repMovRes.json.report.summary.totalProfit, 0);
-      assert.equal(repMovRes.json.report.summary.inventoryValuation, 0);
-      for (const sRow of repMovRes.json.report.sections.sales || []) {
-        assert.equal(sRow.costPrice, 0);
-        assert.equal(sRow.costValue, 0);
-        assert.equal(sRow.profitValue, 0);
+      assert.equal(repMovRes.json.report.totals.totalCostOfGoodsSold, 0);
+      assert.equal(repMovRes.json.report.totals.totalProfit, 0);
+      assert.equal(repMovRes.json.report.totals.inventoryValuation, 0);
+      for (const secList of [
+        repMovRes.json.report.sections.sales || [],
+        repMovRes.json.report.sections.sales_returns || [],
+        repMovRes.json.report.sections.transfers || [],
+        repMovRes.json.report.sections.adjustments || [],
+      ]) {
+        for (const sRow of secList) {
+          assert.equal(Number(sRow.costPrice || 0), 0);
+          assert.equal(Number(sRow.costValue || 0), 0);
+          assert.equal(Number(sRow.profitValue || 0), 0);
+        }
       }
 
       // Verify pagination metadata doesn't change unpaged total check
       assert.ok(Number.isFinite(totalUnpaged));
+    });
+
+    await test(`[${modeName}] 9. Strict customer-role cross-customer & staff-route isolation (JSON & PG)`, async () => {
+      // Customer 1 was auto-linked in step 7 (username: linked_cust_${modeName})
+      const cust1Login = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: `linked_cust_${modeName}`, password: 'CustPassword!2026' },
+      });
+      assert.equal(cust1Login.status, 200);
+      const cust1Token = cust1Login.json.accessToken;
+
+      // Seed Customer 2 + order + confirmed sales invoice exclusively for Customer 2
+      const cust2Create = await req(baseUrl, 'POST', '/api/customers', {
+        token: adminToken,
+        body: {
+          name: 'عميل ثاني معزول',
+          phone: '01077776666',
+          address: 'المعادي',
+          openingBalance: 450,
+        },
+      });
+      assert.equal(cust2Create.status, 201);
+      const cust2Id = cust2Create.json.customer.id;
+
+      const cust2Reg = await registerMobileAccount({
+        role: 'customer',
+        fullName: 'عميل ثاني معزول',
+        username: `cust2_${modeName}`,
+        phone: '01077776666',
+        password: 'Cust2Password!2026',
+      });
+      assert.equal(cust2Reg.customerProfile?.id, cust2Id);
+
+      const cust2Login = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: `cust2_${modeName}`, password: 'Cust2Password!2026' },
+      });
+      assert.equal(cust2Login.status, 200);
+      const cust2Token = cust2Login.json.accessToken;
+
+      const cust2OrderRes = await req(baseUrl, 'POST', '/api/orders', {
+        token: cust2Token,
+        headers: { 'Idempotency-Key': `CUST2-ORD-${modeName}` },
+        body: {
+          customerId: cust2Id,
+          items: [{ productId, quantity: 1, unitPrice: 60 }],
+          notes: 'طلب سري للعميل الثاني فقط',
+        },
+      });
+      assert.equal(cust2OrderRes.status, 201);
+      const cust2OrderId = cust2OrderRes.json.order.id;
+
+      // Customer 1 MUST be blocked (403) from staff/admin/reports/other-customer routes
+      for (const forbiddenReq of [
+        { method: 'GET', url: '/api/customers' },
+        { method: 'GET', url: `/api/customers/${cust2Id}` },
+        { method: 'GET', url: `/api/customers/${cust2Id}/statement` },
+        { method: 'GET', url: '/api/invoices' },
+        { method: 'GET', url: '/api/admin/bootstrap' },
+        { method: 'GET', url: '/api/reports/comprehensive' },
+        { method: 'GET', url: '/api/inventory/item-movement-report' },
+        { method: 'GET', url: `/api/orders/${cust2OrderId}` },
+      ]) {
+        const res = await req(baseUrl, forbiddenReq.method, forbiddenReq.url, { token: cust1Token });
+        assert.equal(res.status, 403, `Customer must receive 403 on ${forbiddenReq.method} ${forbiddenReq.url}`);
+      }
+
+      // Customer 1 self endpoints & /api/sync/pull ONLY return own records, never Customer 2 data
+      const myOrders = await req(baseUrl, 'GET', '/api/orders', { token: cust1Token });
+      assert.equal(myOrders.status, 200);
+      assert.equal((myOrders.json.orders || []).some((o) => o.id === cust2OrderId || o.customerId === cust2Id), false);
+
+      const myPull = await req(baseUrl, 'GET', '/api/sync/pull', { token: cust1Token });
+      assert.equal(myPull.status, 200);
+      assert.equal(myPull.text.includes('عميل ثاني معزول'), false, 'Customer sync/pull must never leak other customer names');
+      assert.equal(myPull.text.includes('01077776666'), false, 'Customer sync/pull must never leak other customer phones');
+      assert.equal((myPull.json.representatives || []).length, 0, 'Customer sync/pull must not list representatives');
+      assert.equal((myPull.json.cashboxes || []).length, 0, 'Customer sync/pull must not expose cashboxes');
+
+      const myStmt = await req(baseUrl, 'GET', '/api/customers/me/statement', { token: cust1Token });
+      assert.equal(myStmt.status, 200);
+      assert.equal(myStmt.json.customer?.id, custUnassignedToRep1Id);
     });
   } finally {
     await new Promise((resolve) => server.close(resolve));

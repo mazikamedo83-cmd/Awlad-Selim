@@ -1,6 +1,12 @@
 import { getPool } from '../postgres.js';
 import { readJsonDatabase } from '../jsonLedger.js';
-import { round2, round3, sanitizeCashboxForViewer } from '../../utils/errors.js';
+import {
+  round2,
+  round3,
+  sanitizeCashboxForViewer,
+  sanitizeProductForRepresentative,
+  sanitizeInvoiceForRepresentative,
+} from '../../utils/errors.js';
 import {
   isPgMode,
   isoDateOnly,
@@ -415,7 +421,10 @@ async function loadFullReportDataset(actor, filterHints = {}) {
       list.push(u);
       unitsByProd.set(u.product_id, list);
     }
-    const products = prodRes.rows.map((p) => mapPgProductRow(p, unitsByProd.get(p.id) || []));
+    const products = prodRes.rows.map((p) => {
+      const mapped = mapPgProductRow(p, unitsByProd.get(p.id) || []);
+      return isRep ? sanitizeProductForRepresentative(mapped) : mapped;
+    });
 
     const invItemsMap = new Map();
     for (const it of invItemRes.rows) {
@@ -433,9 +442,11 @@ async function loadFullReportDataset(actor, filterHints = {}) {
       .map((r) => mapPgInvoiceRow(r, invItemsMap.get(r.id) || [], invPaysMap.get(r.id) || []))
       .filter((inv) => {
         if (!isRep) return true;
+        if (inv.type === 'purchase') return false;
         if (repProfile && inv.representativeId === repProfile.id) return true;
         return inv.createdBy === actor.fullName;
-      });
+      })
+      .map((inv) => (isRep ? sanitizeInvoiceForRepresentative(inv) : inv));
 
     const retItemsMap = new Map();
     for (const it of retItemRes.rows) {
@@ -472,7 +483,7 @@ async function loadFullReportDataset(actor, filterHints = {}) {
         createdBy: r.created_by,
         createdAt: isoTimestamp(r.created_at),
       }))
-      .filter((r) => !isRep || r.createdBy === actor.fullName);
+      .filter((r) => !isRep || (r.type !== 'purchase_return' && r.createdBy === actor.fullName));
 
     const scItemsMap = new Map();
     for (const it of scItemRes.rows) {
@@ -758,12 +769,17 @@ async function loadFullReportDataset(actor, filterHints = {}) {
 
   // JSON Ledger Mode (100% untruncated)
   const db = readJsonDatabase();
-  const invoices = (db.invoices || []).filter((inv) => {
-    if (!isRep) return true;
-    if (repProfile && inv.representativeId === repProfile.id) return true;
-    return inv.createdBy === actor.fullName;
-  });
-  const invoiceReturns = (db.invoiceReturns || []).filter((r) => !isRep || r.createdBy === actor.fullName);
+  const invoices = (db.invoices || [])
+    .filter((inv) => {
+      if (!isRep) return true;
+      if (inv.type === 'purchase') return false;
+      if (repProfile && inv.representativeId === repProfile.id) return true;
+      return inv.createdBy === actor.fullName;
+    })
+    .map((inv) => (isRep ? sanitizeInvoiceForRepresentative(inv) : inv));
+  const invoiceReturns = (db.invoiceReturns || []).filter(
+    (r) => !isRep || (r.type !== 'purchase_return' && r.createdBy === actor.fullName)
+  );
   const financialTransactions = (db.financialTransactions || [])
     .filter(
       (f) =>
@@ -787,7 +803,7 @@ async function loadFullReportDataset(actor, filterHints = {}) {
     warehouses: db.warehouses || [],
     cashboxes: (db.cashboxes || []).map((c) => sanitizeCashboxForViewer(c, actor)),
     categories: db.categories || [],
-    products: db.products || [],
+    products: isRep ? (db.products || []).map(sanitizeProductForRepresentative) : (db.products || []),
     customers: db.customers || [],
     suppliers: isRep ? [] : (db.suppliers || []),
     representatives: isRep
@@ -2037,7 +2053,9 @@ export async function getComprehensiveReport(filters = {}, actor) {
   // ============================================================================
   // Optional Full Item Lifecycle + Per-Item P&L (when productId selected OR includeItemPnl=true)
   // ============================================================================
-  const itemLifecycle = productId ? buildProductLifecycleHistory(productId, data, resolvers, { dateFrom, dateTo, warehouseId }) : null;
+  const itemLifecycle = productId
+    ? buildProductLifecycleHistory(productId, data, resolvers, { dateFrom, dateTo, warehouseId, isRep: isRepActor })
+    : null;
   const rawItemPnlList = buildProductsPnlAnalysis(data, { dateFrom, dateTo, warehouseId, branchWarehouseId, productId, customerId, supplierId, userMatchKeys });
   const itemPnlList = isRepActor
     ? rawItemPnlList.map((it) => ({
@@ -2228,10 +2246,12 @@ function buildProductLifecycleHistory(productId, data, resolvers, filterOpts = {
     qtyIn: 0,
     qtyOut: 0,
     unitPrice: Number(prod.sellingPrice || 0),
-    unitCost: Number(prod.purchasePrice || 0),
+    unitCost: filterOpts.isRep ? 0 : Number(prod.purchasePrice || 0),
     totalValue: 0,
     userName: '-',
-    notes: `سعر الشراء الافتتاحي: ${prod.purchasePrice} | سعر البيع: ${prod.sellingPrice}`,
+    notes: filterOpts.isRep
+      ? `سعر البيع: ${prod.sellingPrice}`
+      : `سعر الشراء الافتتاحي: ${prod.purchasePrice} | سعر البيع: ${prod.sellingPrice}`,
   });
 
   // Track documented reference IDs to prevent double counting stockMovements with invoices/returns/transfers/counts
@@ -2350,7 +2370,7 @@ function buildProductLifecycleHistory(productId, data, resolvers, filterOpts = {
           qtyIn: 0,
           qtyOut: 0,
           unitPrice: baseUnitPrice,
-          unitCost: lastSalePriceSeen,
+          unitCost: filterOpts.isRep ? 0 : lastSalePriceSeen,
           totalValue: 0,
           userName: inv.createdBy,
           notes: `تغير سعر بيع الوحدة الأساسية من ${lastSalePriceSeen} إلى ${baseUnitPrice}`,
@@ -2375,7 +2395,7 @@ function buildProductLifecycleHistory(productId, data, resolvers, filterOpts = {
         qtyIn: isSales ? 0 : baseQty,
         qtyOut: isSales ? baseQty : 0,
         unitPrice: round2(it.unitPrice || 0),
-        unitCost: round2(it.purchasePriceAtTime || prod.purchasePrice || 0),
+        unitCost: filterOpts.isRep ? 0 : round2(it.purchasePriceAtTime || prod.purchasePrice || 0),
         totalValue: lineTotal,
         userName: inv.createdBy,
         notes: inv.notes || '',
@@ -2955,6 +2975,7 @@ function buildProductsPnlAnalysis(data, filterOpts = {}) {
 }
 
 export async function getSourceDocumentForReport(docType, docId, actor) {
+  const isRep = actor?.role === 'representative';
   const data = await loadFullReportDataset(actor, { includeAuditLogs: true });
   const { resolveBranchName, resolveCashboxName } = buildBranchResolvers(data);
   const cleanType = String(docType || '').trim();
@@ -2970,16 +2991,17 @@ export async function getSourceDocumentForReport(docType, docId, actor) {
         inv = (data.invoices || []).find((i) => i.id === smMatch.referenceId) || null;
       }
     }
-    if (!inv) return null;
-    const relatedAudits = (data.auditLogs || []).filter((a) => a.recordId === inv.id);
+    if (!inv || (isRep && inv.type === 'purchase')) return null;
+    const safeInv = isRep ? sanitizeInvoiceForRepresentative(inv) : inv;
+    const relatedAudits = isRep ? [] : (data.auditLogs || []).filter((a) => a.recordId === safeInv.id);
     return {
-      docType: inv.type === 'sales' ? 'sales_invoice' : 'purchase_invoice',
-      title: inv.type === 'sales' ? `فاتورة مبيعات رقم ${inv.invoiceNumber}` : `فاتورة مشتريات رقم ${inv.invoiceNumber}`,
+      docType: safeInv.type === 'sales' ? 'sales_invoice' : 'purchase_invoice',
+      title: safeInv.type === 'sales' ? `فاتورة مبيعات رقم ${safeInv.invoiceNumber}` : `فاتورة مشتريات رقم ${safeInv.invoiceNumber}`,
       document: {
-        ...inv,
-        branchName: resolveBranchName(inv.warehouseId, inv.cashboxId),
-        cashboxName: resolveCashboxName(inv.cashboxId),
-        actualDateTime: formatActualDateTimeAr(inv.createdAt, inv.date),
+        ...safeInv,
+        branchName: resolveBranchName(safeInv.warehouseId, safeInv.cashboxId),
+        cashboxName: resolveCashboxName(safeInv.cashboxId),
+        actualDateTime: formatActualDateTimeAr(safeInv.createdAt, safeInv.date),
       },
       auditTrail: relatedAudits,
     };
@@ -2987,7 +3009,7 @@ export async function getSourceDocumentForReport(docType, docId, actor) {
 
   if (cleanType === 'sales_return' || cleanType === 'purchase_return') {
     const ret = (data.invoiceReturns || []).find((r) => r.id === cleanId || r.returnNumber === cleanId);
-    if (!ret) return null;
+    if (!ret || (isRep && ret.type === 'purchase_return')) return null;
     return {
       docType: ret.type,
       title: ret.type === 'sales_return' ? `إشعار مرتجع مبيعات ${ret.returnNumber}` : `إشعار مرتجع مشتريات ${ret.returnNumber}`,
@@ -2997,7 +3019,7 @@ export async function getSourceDocumentForReport(docType, docId, actor) {
         cashboxName: resolveCashboxName(ret.cashboxId, 'رصيد الحساب'),
         actualDateTime: formatActualDateTimeAr(ret.createdAt, ret.date),
       },
-      auditTrail: (data.auditLogs || []).filter((a) => a.recordId === ret.id),
+      auditTrail: isRep ? [] : (data.auditLogs || []).filter((a) => a.recordId === ret.id),
     };
   }
 
@@ -3054,8 +3076,8 @@ export async function getSourceDocumentForReport(docType, docId, actor) {
           productName: m.productName,
           unit: m.unit || 'قطعة',
           quantity: m.quantity,
-          unitCost: m.unitCost,
-          totalLoss: round2(Number(m.quantity || 0) * Number(m.unitCost || 0)),
+          unitCost: isRep ? 0 : m.unitCost,
+          totalLoss: isRep ? 0 : round2(Number(m.quantity || 0) * Number(m.unitCost || 0)),
         })),
       },
       auditTrail: [],
@@ -3094,7 +3116,7 @@ export async function getSourceDocumentForReport(docType, docId, actor) {
             },
           ],
         },
-        auditTrail: (data.auditLogs || []).filter((a) => a.recordId === op.id || a.recordId === op.representativeId),
+        auditTrail: isRep ? [] : (data.auditLogs || []).filter((a) => a.recordId === op.id || a.recordId === op.representativeId),
       };
     }
   }
@@ -3102,16 +3124,17 @@ export async function getSourceDocumentForReport(docType, docId, actor) {
   // Cash transaction / Expense / Payroll / Custody / Stock Movement fallback
   const ft = (data.financialTransactions || []).find((f) => f.id === cleanId || f.relatedDocId === cleanId);
   if (ft) {
+    const { balanceAfter, ...ftWithoutBalance } = ft;
     return {
       docType: 'cash_tx',
       title: `سند مالي رقم ${ft.transactionNumber}`,
       document: {
-        ...ft,
+        ...(isRep ? ftWithoutBalance : ft),
         branchName: resolveBranchName(null, ft.cashboxId),
         cashboxName: resolveCashboxName(ft.cashboxId, ft.cashboxName),
         actualDateTime: formatActualDateTimeAr(ft.createdAt, ft.date),
       },
-      auditTrail: (data.auditLogs || []).filter((a) => a.recordId === ft.id || a.recordId === ft.relatedDocId),
+      auditTrail: isRep ? [] : (data.auditLogs || []).filter((a) => a.recordId === ft.id || a.recordId === ft.relatedDocId),
     };
   }
 
@@ -3119,16 +3142,18 @@ export async function getSourceDocumentForReport(docType, docId, actor) {
   if (sm) {
     const linkedInv = sm.referenceId ? (data.invoices || []).find((i) => i.id === sm.referenceId) : null;
     if (linkedInv) {
+      if (isRep && linkedInv.type === 'purchase') return null;
+      const safeLinkedInv = isRep ? sanitizeInvoiceForRepresentative(linkedInv) : linkedInv;
       return {
-        docType: linkedInv.type === 'sales' ? 'sales_invoice' : 'purchase_invoice',
-        title: linkedInv.type === 'sales' ? `فاتورة مبيعات رقم ${linkedInv.invoiceNumber}` : `فاتورة مشتريات رقم ${linkedInv.invoiceNumber}`,
+        docType: safeLinkedInv.type === 'sales' ? 'sales_invoice' : 'purchase_invoice',
+        title: safeLinkedInv.type === 'sales' ? `فاتورة مبيعات رقم ${safeLinkedInv.invoiceNumber}` : `فاتورة مشتريات رقم ${safeLinkedInv.invoiceNumber}`,
         document: {
-          ...linkedInv,
-          branchName: resolveBranchName(linkedInv.warehouseId, linkedInv.cashboxId),
-          cashboxName: resolveCashboxName(linkedInv.cashboxId),
-          actualDateTime: formatActualDateTimeAr(linkedInv.createdAt, linkedInv.date),
+          ...safeLinkedInv,
+          branchName: resolveBranchName(safeLinkedInv.warehouseId, safeLinkedInv.cashboxId),
+          cashboxName: resolveCashboxName(safeLinkedInv.cashboxId),
+          actualDateTime: formatActualDateTimeAr(safeLinkedInv.createdAt, safeLinkedInv.date),
         },
-        auditTrail: (data.auditLogs || []).filter((a) => a.recordId === linkedInv.id),
+        auditTrail: isRep ? [] : (data.auditLogs || []).filter((a) => a.recordId === safeLinkedInv.id),
       };
     }
     return {
@@ -3136,6 +3161,7 @@ export async function getSourceDocumentForReport(docType, docId, actor) {
       title: `حركة مخزون ${sm.movementNumber || sm.id}`,
       document: {
         ...sm,
+        unitCost: isRep ? 0 : sm.unitCost,
         branchName: resolveBranchName(sm.warehouseId, null),
         actualDateTime: formatActualDateTimeAr(sm.createdAt, sm.date),
       },

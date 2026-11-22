@@ -777,7 +777,9 @@ export const SuppliersView: React.FC = () => {
                 className="w-full border rounded-xl p-2.5 font-bold"
               >
                 {cashboxes.map(cb => (
-                  <option key={cb.id} value={cb.id}>{cb.name} (رصيدها: {cb.currentBalance.toLocaleString()})</option>
+                  <option key={cb.id} value={cb.id}>
+                    {cb.balanceHidden ? `${cb.name} (رصيد محجوب)` : `${cb.name} (رصيدها: ${(cb.currentBalance ?? 0).toLocaleString()})`}
+                  </option>
                 ))}
               </select>
             </div>

@@ -3165,7 +3165,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
               >
                 {cashboxes.map(cb => (
                   <option key={cb.id} value={cb.id}>
-                    {cb.name} (رصيدها: {cb.currentBalance.toLocaleString()} {settings.currency})
+                    {cb.balanceHidden ? `${cb.name} (رصيد محجوب)` : `${cb.name} (رصيدها: ${(cb.currentBalance ?? 0).toLocaleString()} ${settings.currency})`}
                   </option>
                 ))}
               </select>

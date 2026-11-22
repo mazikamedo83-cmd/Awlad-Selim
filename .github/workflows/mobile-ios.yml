@@ -54,6 +54,11 @@ jobs:
           npx tsx server/tests/pairingVerificationTests.mts
           node server/tests/strictPostgresModeTests.mjs
           npx tsx server/tests/strictClientBehaviorTests.mts
+          node server/tests/securityCompletionTests.mjs
+          npx tsx server/tests/clientSecurityCompletionTests.mts
+          node server/tests/fullCompletionSuite.mjs
+          node server/tests/finalSecurityAuditTests.mjs
+          npx tsx server/tests/diagnosticsTests.mts
 
       - name: Build production web bundle
         run: |

@@ -526,6 +526,7 @@ export interface Representative {
   warehouseId?: string;
   openingBalance?: number;
   currentBalance?: number;
+  balanceHidden?: boolean;
   commissionRate?: number;
   notes?: string;
   status: 'active' | 'inactive';

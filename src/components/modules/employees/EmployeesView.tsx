@@ -1035,7 +1035,9 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                 className="w-full border rounded-xl p-2.5 font-bold"
               >
                 {cashboxes.map(c => (
-                  <option key={c.id} value={c.id}>{c.name} (رصيد: {c.currentBalance.toLocaleString()} {settings.currency})</option>
+                  <option key={c.id} value={c.id}>
+                    {c.balanceHidden ? `${c.name} (رصيد محجوب)` : `${c.name} (رصيد: ${(c.currentBalance ?? 0).toLocaleString()} ${settings.currency})`}
+                  </option>
                 ))}
               </select>
             </div>
@@ -1159,7 +1161,9 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
               className="w-full border rounded-xl p-2.5 font-bold"
             >
               {cashboxes.map(c => (
-                <option key={c.id} value={c.id}>{c.name} (رصيد: {c.currentBalance.toLocaleString()} {settings.currency})</option>
+                <option key={c.id} value={c.id}>
+                  {c.balanceHidden ? `${c.name} (رصيد محجوب)` : `${c.name} (رصيد: ${(c.currentBalance ?? 0).toLocaleString()} ${settings.currency})`}
+                </option>
               ))}
             </select>
           </div>

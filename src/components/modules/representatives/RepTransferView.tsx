@@ -1142,7 +1142,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 <div className="p-2.5 bg-slate-50 rounded-xl">
                   <span className="text-[10px] text-slate-500 block">العهدة المالية الحالية:</span>
                   <strong className="text-emerald-700 font-black font-mono">
-                    {rep.currentBalance.toLocaleString()} {settings.currency}
+                    {rep.balanceHidden || rep.currentBalance === undefined ? 'محجوب' : `${rep.currentBalance.toLocaleString()} ${settings.currency}`}
                   </strong>
                 </div>
               </div>
@@ -1173,7 +1173,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     setRepName(rep.name);
                     setRepPhone(rep.phone);
                     setRepVehicle(rep.vehicleNumber || '');
-                    setRepOpening(rep.openingBalance);
+                    setRepOpening(rep.openingBalance ?? 0);
                     setIsAddRepModalOpen(true);
                   }}
                   className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 cursor-pointer"
@@ -1559,7 +1559,9 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   className="w-full p-2.5 rounded-xl border border-slate-300 bg-white"
                 >
                   {cashboxes.map(c => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.currentBalance.toLocaleString()} {settings.currency})</option>
+                    <option key={c.id} value={c.id}>
+                      {c.balanceHidden ? `${c.name} (رصيد محجوب)` : `${c.name} (${(c.currentBalance ?? 0).toLocaleString()} ${settings.currency})`}
+                    </option>
                   ))}
                 </select>
               </div>

@@ -218,7 +218,7 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
               >
                 {cashboxes.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name} ({c.currentBalance.toLocaleString()} {settings.currency})
+                    {c.balanceHidden ? `${c.name} (رصيد محجوب)` : `${c.name} (${(c.currentBalance ?? 0).toLocaleString()} ${settings.currency})`}
                   </option>
                 ))}
               </select>
@@ -235,7 +235,7 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
                 >
                   {cashboxes.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name} ({c.currentBalance.toLocaleString()} {settings.currency})
+                      {c.balanceHidden ? `${c.name} (رصيد محجوب)` : `${c.name} (${(c.currentBalance ?? 0).toLocaleString()} ${settings.currency})`}
                     </option>
                   ))}
                 </select>
@@ -272,7 +272,7 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
                   </strong>
                   {opType === 'cashbox_transfer' && targetCb && (
                     <span className="text-blue-800 font-mono font-bold">
-                      (الوجهة: {(targetCb.currentBalance + amount).toLocaleString()})
+                      (الوجهة: {targetCb.balanceHidden ? 'محجوب' : ((targetCb.currentBalance ?? 0) + amount).toLocaleString()})
                     </span>
                   )}
                 </div>

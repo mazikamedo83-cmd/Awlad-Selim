@@ -222,7 +222,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onView
   }, [confirmedSales, confirmedPurchases]);
 
   // Cashbox total
-  const totalCashAndBanks = cashboxes.reduce((acc, c) => acc + c.currentBalance, 0);
+  const totalCashAndBanks = cashboxes.reduce((acc, c) => acc + (c.currentBalance ?? 0), 0);
 
   // Debts
   const customerDebtsTotal = customers.reduce((acc, c) => acc + (c.currentBalance > 0 ? c.currentBalance : 0), 0);
@@ -623,7 +623,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onView
                   </span>
                 </div>
                 <div className="text-left font-black text-sm text-blue-950">
-                  {cb.currentBalance.toLocaleString()} <span className="text-[10px] font-normal text-slate-500">{settings.currency}</span>
+                  {cb.balanceHidden ? 'مخفي' : (cb.currentBalance ?? 0).toLocaleString()} <span className="text-[10px] font-normal text-slate-500">{settings.currency}</span>
                 </div>
               </div>
             ))}

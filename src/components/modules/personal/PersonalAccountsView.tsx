@@ -766,7 +766,7 @@ export const PersonalAccountsView: React.FC = () => {
                 <option value="">-- بدون ربط بخزينة النشاط (قيد شخصي خارجي مستقل) --</option>
                 {cashboxes.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name} ({c.currentBalance.toLocaleString()} {settings.currency})
+                    {c.balanceHidden ? `${c.name} (رصيد محجوب)` : `${c.name} (${(c.currentBalance ?? 0).toLocaleString()} ${settings.currency})`}
                   </option>
                 ))}
               </select>

@@ -3141,6 +3141,9 @@ export async function deleteSupplier(id, actor) {
 }
 
 export async function recordSupplierPayment({ supplierId, amount, cashboxId, notes = '', date }, actor, idempotencyKey = '') {
+  if (actor?.role === 'representative' || actor?.role === 'customer') {
+    throw new AppError(403, 'العمليات الإدارية للخزائن والموردين غير متاحة للمندوبين', 'FORBIDDEN_REP_CASHBOX_OP');
+  }
   const payAmount = round2(amount);
   if (!Number.isFinite(payAmount) || payAmount <= 0) throw new AppError(400, 'المبلغ يجب أن يكون أكبر من صفر', 'INVALID_AMOUNT');
   const canApproveOverpayment =
@@ -3260,6 +3263,9 @@ export async function recordSupplierPayment({ supplierId, amount, cashboxId, not
 }
 
 export async function settleSupplierAdvance({ supplierId, invoiceId, amount, notes = '', date }, actor, idempotencyKey = '') {
+  if (actor?.role === 'representative' || actor?.role === 'customer') {
+    throw new AppError(403, 'العمليات الإدارية للخزائن والموردين غير متاحة للمندوبين', 'FORBIDDEN_REP_CASHBOX_OP');
+  }
   const settleAmount = round2(amount);
   if (!Number.isFinite(settleAmount) || settleAmount <= 0) {
     throw new AppError(400, 'مبلغ التسوية يجب أن يكون أكبر من الصفر', 'INVALID_AMOUNT');
@@ -3701,6 +3707,9 @@ export async function getSupplierStatementData(supplierId) {
 }
 
 export async function createCashbox(payload, actor) {
+  if (actor?.role === 'representative' || actor?.role === 'customer') {
+    throw new AppError(403, 'العمليات الإدارية للخزائن غير متاحة للمندوبين', 'FORBIDDEN_REP_CASHBOX_OP');
+  }
   const id = generateServerId(payload.type === 'bank' ? 'BANK' : 'CASH');
   const opening = round2(payload.openingBalance || 0);
   if (await isPgMode()) {
@@ -3718,6 +3727,9 @@ export async function createCashbox(payload, actor) {
 }
 
 export async function updateCashbox(id, updates, actor) {
+  if (actor?.role === 'representative' || actor?.role === 'customer') {
+    throw new AppError(403, 'العمليات الإدارية للخزائن غير متاحة للمندوبين', 'FORBIDDEN_REP_CASHBOX_OP');
+  }
   if (await isPgMode()) {
     await getPool().query(
       `UPDATE cashboxes SET name = COALESCE($1, name), type = COALESCE($2, type), is_default = COALESCE($3, is_default) WHERE id = $4`,
@@ -3732,6 +3744,9 @@ export async function updateCashbox(id, updates, actor) {
 }
 
 export async function transferCashbox({ fromId, toId, amount, notes = '' }, actor) {
+  if (actor?.role === 'representative' || actor?.role === 'customer') {
+    throw new AppError(403, 'العمليات الإدارية للخزائن غير متاحة للمندوبين', 'FORBIDDEN_REP_CASHBOX_OP');
+  }
   const amt = round2(amount);
   if (!Number.isFinite(amt) || amt <= 0 || fromId === toId) {
     throw new AppError(400, 'بيانات التحويل غير صالحة', 'INVALID_TRANSFER');
@@ -3825,6 +3840,9 @@ export async function transferCashbox({ fromId, toId, amount, notes = '' }, acto
 }
 
 export async function addExpenseOrIncome(payload, actor) {
+  if (actor?.role === 'representative' || actor?.role === 'customer') {
+    throw new AppError(403, 'العمليات الإدارية للخزائن والمصروفات غير متاحة للمندوبين', 'FORBIDDEN_REP_CASHBOX_OP');
+  }
   const amt = round2(payload.amount);
   if (amt <= 0) throw new AppError(400, 'المبلغ يجب أن يكون أكبر من صفر', 'INVALID_AMOUNT');
   const now = nowIso();
@@ -3878,6 +3896,9 @@ export async function addExpenseOrIncome(payload, actor) {
 }
 
 export async function addCheque(payload, actor) {
+  if (actor?.role === 'representative' || actor?.role === 'customer') {
+    throw new AppError(403, 'العمليات الإدارية للشيكات والخزائن غير متاحة للمندوبين', 'FORBIDDEN_REP_CASHBOX_OP');
+  }
   const id = generateServerId('CHQ');
   const now = nowIso();
   if (await isPgMode()) {
@@ -3895,6 +3916,9 @@ export async function addCheque(payload, actor) {
 }
 
 export async function updateChequeStatus(id, { status, cashboxId }, actor) {
+  if (actor?.role === 'representative' || actor?.role === 'customer') {
+    throw new AppError(403, 'العمليات الإدارية للشيكات والخزائن غير متاحة للمندوبين', 'FORBIDDEN_REP_CASHBOX_OP');
+  }
   const now = nowIso();
   const dateStr = todayIso();
   if (await isPgMode()) {
@@ -3951,6 +3975,9 @@ export async function updateChequeStatus(id, { status, cashboxId }, actor) {
 }
 
 export async function addInstallmentSchedule(payload, actor) {
+  if (actor?.role === 'representative' || actor?.role === 'customer') {
+    throw new AppError(403, 'العمليات الإدارية للأقساط والخزائن غير متاحة للمندوبين', 'FORBIDDEN_REP_CASHBOX_OP');
+  }
   const id = generateServerId('INST');
   const scheduleNumber = `INS-${Date.now().toString().slice(-6)}`;
   const now = nowIso();
@@ -3969,6 +3996,9 @@ export async function addInstallmentSchedule(payload, actor) {
 }
 
 export async function payInstallment({ scheduleId, installmentItemId, amount, cashboxId, notes = '' }, actor) {
+  if (actor?.role === 'representative' || actor?.role === 'customer') {
+    throw new AppError(403, 'العمليات الإدارية للأقساط والخزائن غير متاحة للمندوبين', 'FORBIDDEN_REP_CASHBOX_OP');
+  }
   const amt = round2(amount);
   if (amt <= 0) throw new AppError(400, 'المبلغ يجب أن يكون أكبر من صفر', 'INVALID_AMOUNT');
   const now = nowIso();
@@ -4105,8 +4135,21 @@ export async function addRepresentative(payload, actor) {
 export async function updateRepresentative(id, updates, actor = null) {
   if (await isPgMode()) {
     await getPool().query(
-      `UPDATE representatives SET name = COALESCE($1, name), phone = COALESCE($2, phone), normalized_phone = COALESCE($3, normalized_phone), vehicle_number = COALESCE($4, vehicle_number), commission_rate = COALESCE($5, commission_rate), status = COALESCE($6, status), user_id = COALESCE($7, user_id), notes = COALESCE($8, notes), warehouse_id = COALESCE($9, warehouse_id) WHERE id = $10`,
-      [updates.name ?? null, updates.phone ?? null, updates.phone !== undefined ? normalizePhoneDigits(updates.phone) : null, updates.vehicleNumber ?? null, updates.commissionRate ?? null, updates.status ?? null, updates.userId ?? null, updates.notes ?? null, updates.warehouseId ?? null, id]
+      `UPDATE representatives SET name = COALESCE($1, name), phone = COALESCE($2, phone), normalized_phone = COALESCE($3, normalized_phone), vehicle_number = COALESCE($4, vehicle_number), commission_rate = COALESCE($5, commission_rate), status = COALESCE($6, status), user_id = COALESCE($7, user_id), notes = COALESCE($8, notes), warehouse_id = COALESCE($9, warehouse_id), opening_balance = COALESCE($10, opening_balance), current_balance = COALESCE($11, current_balance) WHERE id = $12`,
+      [
+        updates.name ?? null,
+        updates.phone ?? null,
+        updates.phone !== undefined ? normalizePhoneDigits(updates.phone) : null,
+        updates.vehicleNumber ?? null,
+        updates.commissionRate ?? null,
+        updates.status ?? null,
+        updates.userId ?? null,
+        updates.notes ?? null,
+        updates.warehouseId ?? null,
+        updates.openingBalance !== undefined ? round2(updates.openingBalance) : null,
+        updates.currentBalance !== undefined ? round2(updates.currentBalance) : null,
+        id,
+      ]
     );
   } else {
     await withJsonTransaction((db) => {

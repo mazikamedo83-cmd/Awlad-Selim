@@ -305,12 +305,27 @@ router.delete('/suppliers/:id', requirePermission('canDelete'), asyncHandler(asy
   await deleteSupplier(req.params.id, req.auth.user);
   res.json({ ok: true });
 }));
+function blockRepFromAdminTreasury(req, res) {
+  const role = req.auth?.user?.role;
+  if (role === 'representative' || role === 'customer') {
+    res.status(403).json({
+      ok: false,
+      code: 'FORBIDDEN_REP_CASHBOX_OP',
+      error: 'العمليات الإدارية للخزائن والمصروفات والموردين غير متاحة للمندوبين',
+    });
+    return true;
+  }
+  return false;
+}
+
 router.post('/suppliers/payment', requirePermission('canManageAccounts'), asyncHandler(async (req, res) => {
+  if (blockRepFromAdminTreasury(req, res)) return;
   const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
   const result = await recordSupplierPayment(req.body || {}, req.auth.user, idempotencyKey);
   res.json({ ok: true, ...result });
 }));
 router.post('/suppliers/:id/settle-advance', requirePermission('canManageAccounts'), asyncHandler(async (req, res) => {
+  if (blockRepFromAdminTreasury(req, res)) return;
   const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
   const result = await settleSupplierAdvance(
     { ...(req.body || {}), supplierId: req.params.id },
@@ -320,24 +335,29 @@ router.post('/suppliers/:id/settle-advance', requirePermission('canManageAccount
   res.json({ ok: true, ...result });
 }));
 router.get('/suppliers/:id/statement', requireAnyPermission('canManageAccounts', 'canManagePurchases', 'canViewReports'), asyncHandler(async (req, res) => {
+  if (blockRepFromAdminTreasury(req, res)) return;
   const statement = await getSupplierStatementData(req.params.id);
   res.json({ ok: true, statement });
 }));
 
 // Cashboxes & Expenses
 router.post('/cashboxes', requirePermission('canManageCashboxes'), asyncHandler(async (req, res) => {
+  if (blockRepFromAdminTreasury(req, res)) return;
   const cashbox = await createCashbox(req.body || {}, req.auth.user);
   res.status(201).json({ ok: true, cashbox });
 }));
 router.put('/cashboxes/:id', requirePermission('canManageCashboxes'), asyncHandler(async (req, res) => {
+  if (blockRepFromAdminTreasury(req, res)) return;
   await updateCashbox(req.params.id, req.body || {}, req.auth.user);
   res.json({ ok: true });
 }));
 router.post('/cashboxes/transfer', requirePermission('canManageCashboxes'), asyncHandler(async (req, res) => {
+  if (blockRepFromAdminTreasury(req, res)) return;
   await transferCashbox(req.body || {}, req.auth.user);
   res.json({ ok: true });
 }));
 router.post('/expenses', asyncHandler(async (req, res) => {
+  if (blockRepFromAdminTreasury(req, res)) return;
   const u = req.auth.user;
   if (u.role !== 'admin' && !u.permissions?.canManageCashboxes && !u.permissions?.canManageAccounts) {
     return res.status(403).json({ ok: false, code: 'FORBIDDEN_PERMISSION', error: 'ليس لديك صلاحية تسجيل المصروفات أو الإيرادات' });
@@ -346,6 +366,7 @@ router.post('/expenses', asyncHandler(async (req, res) => {
   res.status(201).json({ ok: true, record });
 }));
 router.post('/cash-operations', asyncHandler(async (req, res) => {
+  if (blockRepFromAdminTreasury(req, res)) return;
   const u = req.auth.user;
   const isTransfer = req.body?.type === 'cashbox_transfer';
   if (isTransfer) {
@@ -362,18 +383,22 @@ router.post('/cash-operations', asyncHandler(async (req, res) => {
 
 // Cheques & Installments
 router.post('/cheques', requirePermission('canManageAccounts'), asyncHandler(async (req, res) => {
+  if (blockRepFromAdminTreasury(req, res)) return;
   const cheque = await addCheque(req.body || {}, req.auth.user);
   res.status(201).json({ ok: true, cheque });
 }));
 router.post('/cheques/:id/status', requirePermission('canManageAccounts'), asyncHandler(async (req, res) => {
+  if (blockRepFromAdminTreasury(req, res)) return;
   await updateChequeStatus(req.params.id, req.body || {}, req.auth.user);
   res.json({ ok: true });
 }));
 router.post('/installments', requirePermission('canManageAccounts'), asyncHandler(async (req, res) => {
+  if (blockRepFromAdminTreasury(req, res)) return;
   const schedule = await addInstallmentSchedule(req.body || {}, req.auth.user);
   res.status(201).json({ ok: true, schedule });
 }));
 router.post('/installments/:id/pay', requirePermission('canManageAccounts'), asyncHandler(async (req, res) => {
+  if (blockRepFromAdminTreasury(req, res)) return;
   await payInstallment({ ...(req.body || {}), scheduleId: req.params.id }, req.auth.user);
   res.json({ ok: true });
 }));
