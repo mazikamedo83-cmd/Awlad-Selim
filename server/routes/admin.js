@@ -9,7 +9,6 @@ import {
   updateSupplier,
   deleteSupplier,
   recordSupplierPayment,
-  settleSupplierAdvance,
   createCashbox,
   updateCashbox,
   transferCashbox,
@@ -31,23 +30,9 @@ import {
   restoreFullBackup,
 } from '../db/stores/inventoryAdminStore.js';
 import { listAuditLogs } from '../db/stores/authStore.js';
-import { getSystemSettingsSafe } from '../db/stores/catalogStore.js';
-import {
-  listPairingTokens,
-  createPairingToken,
-  revokePairingToken,
-  listPairedDevices,
-  approvePairedDevice,
-  revokePairedDevice,
-  pushConnectionConfigUpdate,
-  updateTunnelRuntimeStatus,
-  getTunnelRuntimeStatus,
-  resolveSafeConnectionProfiles,
-  parseValidAndroidSha256Fingerprints,
-} from '../db/stores/connectionPairingStore.js';
-import { checkPostgresHealth, initializeSchema, isStrictPostgresMode } from '../db/postgres.js';
+import { checkPostgresHealth, initializeSchema } from '../db/postgres.js';
 import { runDataMigration, rollbackMigration, readMigrationLogs } from '../db/migrator.js';
-import { readJsonDatabase, hasJsonDatabaseFile, getDataPaths } from '../db/jsonLedger.js';
+import { readJsonDatabase, getDataPaths } from '../db/jsonLedger.js';
 import {
   requireAuth,
   requireStaff,
@@ -70,166 +55,26 @@ router.get(
 
 router.get(
   '/server-info',
-  requirePermission('canManageSettings'),
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (_req, res) => {
     const port = Number(process.env.AWLAD_ACTIVE_PORT || process.env.PORT || process.env.API_PORT || 3000);
     const nets = os.networkInterfaces();
-    const lanIps = [];
     const lanUrls = [];
     for (const list of Object.values(nets)) {
       if (!Array.isArray(list)) continue;
       for (const iface of list) {
         if (iface && iface.family === 'IPv4' && !iface.internal) {
-          lanIps.push(iface.address);
           lanUrls.push({ ip: iface.address, url: `http://${iface.address}:${port}` });
         }
       }
     }
     const { dataDir } = getDataPaths();
-    const pgHealth = await checkPostgresHealth();
-    const forwardedProto = String(req.get('x-forwarded-proto') || req.protocol || 'http')
-      .split(',')[0]
-      .trim()
-      .toLowerCase();
-    const sys = await getSystemSettingsSafe();
-    const connectionConfig = resolveSafeConnectionProfiles(sys, lanUrls, port);
-    const { summary: devicesSummary } = await listPairedDevices();
-    const androidFingerprints = parseValidAndroidSha256Fingerprints(
-      process.env.ANDROID_APP_SHA256_FINGERPRINTS || ''
-    );
-    const androidAppLinkHost = String(process.env.ANDROID_APP_LINK_HOST || '').trim().toLowerCase();
-    const androidAppLinksReady =
-      androidFingerprints.length > 0 && Boolean(androidAppLinkHost) && androidAppLinkHost !== 'awladselim.app';
     res.json({
       ok: true,
-      hostname: os.hostname(),
       port,
-      lanIps,
-      lanUrls,
       dataDir,
+      lanUrls,
       isElectron: process.env.AWLAD_ELECTRON === 'true',
-      electronDesktop: process.env.AWLAD_ELECTRON === 'true',
-      strictMode: isStrictPostgresMode(),
-      databaseAvailable: pgHealth.status === 'online',
-      databaseMode:
-        pgHealth.status === 'online'
-          ? 'postgresql-enterprise'
-          : isStrictPostgresMode()
-          ? 'postgresql-strict-unavailable'
-          : 'local-json-ledger',
-      postgresStatus: pgHealth.status,
-      protocol: forwardedProto,
-      httpsActive: forwardedProto === 'https' || Boolean(req.secure),
-      trustProxy: process.env.TRUST_PROXY !== 'false',
-      tunnelStatus: getTunnelRuntimeStatus(),
-      connectionConfig,
-      devicesSummary,
-      appLinksConfigured: {
-        android: androidAppLinksReady,
-        ios: Boolean(String(process.env.APPLE_TEAM_ID || '').trim()),
-        androidDetails: {
-          packageName: (process.env.ANDROID_APP_ID || 'com.awladselim.erp').trim(),
-          appLinkHost: androidAppLinkHost && androidAppLinkHost !== 'awladselim.app' ? androidAppLinkHost : null,
-          hasValidFingerprints: androidFingerprints.length > 0,
-          fingerprintsCount: androidFingerprints.length,
-        },
-      },
     });
-  })
-);
-
-// Smart Device Pairing & Connection Management (Permitted Admin / Settings Manager only)
-router.get(
-  '/pairing/tokens',
-  requirePermission('canManageSettings'),
-  asyncHandler(async (_req, res) => {
-    const tokens = await listPairingTokens();
-    res.json({ ok: true, tokens });
-  })
-);
-
-router.post(
-  '/pairing/tokens',
-  requirePermission('canManageSettings'),
-  asyncHandler(async (req, res) => {
-    const created = await createPairingToken(req.body || {}, req.auth.user, req);
-    res.status(201).json({ ok: true, ...created });
-  })
-);
-
-router.post(
-  '/pairing/tokens/:id/revoke',
-  requirePermission('canManageSettings'),
-  asyncHandler(async (req, res) => {
-    const result = await revokePairingToken(req.params.id, req.auth.user);
-    res.json(result);
-  })
-);
-
-router.get(
-  '/devices',
-  requirePermission('canManageSettings'),
-  asyncHandler(async (_req, res) => {
-    const result = await listPairedDevices();
-    res.json({ ok: true, ...result });
-  })
-);
-
-router.post(
-  '/devices/:deviceId/approve',
-  requirePermission('canManageSettings'),
-  asyncHandler(async (req, res) => {
-    const device = await approvePairedDevice(req.params.deviceId, req.auth.user);
-    res.json({ ok: true, device });
-  })
-);
-
-router.post(
-  '/devices/:deviceId/revoke',
-  requirePermission('canManageSettings'),
-  asyncHandler(async (req, res) => {
-    const device = await revokePairedDevice(req.params.deviceId, req.auth.user);
-    res.json({ ok: true, device });
-  })
-);
-
-router.post(
-  '/devices/:deviceId/resend-link',
-  requirePermission('canManageSettings'),
-  asyncHandler(async (req, res) => {
-    const { devices } = await listPairedDevices();
-    const target = devices.find((d) => d.deviceId === req.params.deviceId);
-    const created = await createPairingToken(
-      {
-        ...(req.body || {}),
-        targetUserId: req.body?.targetUserId ?? target?.linkedUserId ?? '',
-        targetDeviceType:
-          req.body?.targetDeviceType ||
-          (target?.deviceType && target.deviceType !== 'web' ? target.deviceType : 'any'),
-        notes: req.body?.notes || (target ? `إعادة ربط الجهاز: ${target.deviceName}` : ''),
-      },
-      req.auth.user,
-      req
-    );
-    res.status(201).json({ ok: true, ...created });
-  })
-);
-
-router.post(
-  '/connection/push-update',
-  requirePermission('canManageSettings'),
-  asyncHandler(async (req, res) => {
-    const connectionConfig = await pushConnectionConfigUpdate(req.auth.user);
-    res.json({ ok: true, connectionConfig });
-  })
-);
-
-router.post(
-  '/tunnel-status',
-  requirePermission('canManageSettings'),
-  asyncHandler(async (req, res) => {
-    const result = await updateTunnelRuntimeStatus(req.body || {}, req.auth.user);
-    res.json({ ok: true, ...result });
   })
 );
 
@@ -284,18 +129,8 @@ router.delete('/suppliers/:id', requirePermission('canDelete'), asyncHandler(asy
   res.json({ ok: true });
 }));
 router.post('/suppliers/payment', requirePermission('canManageAccounts'), asyncHandler(async (req, res) => {
-  const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
-  const result = await recordSupplierPayment(req.body || {}, req.auth.user, idempotencyKey);
-  res.json({ ok: true, ...result });
-}));
-router.post('/suppliers/:id/settle-advance', requirePermission('canManageAccounts'), asyncHandler(async (req, res) => {
-  const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
-  const result = await settleSupplierAdvance(
-    { ...(req.body || {}), supplierId: req.params.id },
-    req.auth.user,
-    idempotencyKey
-  );
-  res.json({ ok: true, ...result });
+  await recordSupplierPayment(req.body || {}, req.auth.user);
+  res.json({ ok: true });
 }));
 
 // Cashboxes & Expenses
@@ -311,26 +146,13 @@ router.post('/cashboxes/transfer', requirePermission('canManageCashboxes'), asyn
   await transferCashbox(req.body || {}, req.auth.user);
   res.json({ ok: true });
 }));
-router.post('/expenses', asyncHandler(async (req, res) => {
-  const u = req.auth.user;
-  if (u.role !== 'admin' && !u.permissions?.canManageCashboxes && !u.permissions?.canManageAccounts) {
-    return res.status(403).json({ ok: false, code: 'FORBIDDEN_PERMISSION', error: 'ليس لديك صلاحية تسجيل المصروفات أو الإيرادات' });
-  }
-  const record = await addExpenseOrIncome(req.body || {}, u);
+router.post('/expenses', requirePermission('canManageCashboxes'), asyncHandler(async (req, res) => {
+  const record = await addExpenseOrIncome(req.body || {}, req.auth.user);
   res.status(201).json({ ok: true, record });
 }));
-router.post('/cash-operations', asyncHandler(async (req, res) => {
-  const u = req.auth.user;
-  const isTransfer = req.body?.type === 'cashbox_transfer';
-  if (isTransfer) {
-    if (u.role !== 'admin' && !u.permissions?.canManageCashboxes) {
-      return res.status(403).json({ ok: false, code: 'FORBIDDEN_PERMISSION', error: 'ليس لديك صلاحية الترحيل بين الخزائن' });
-    }
-  } else if (u.role !== 'admin' && !u.permissions?.canManageCashboxes && !u.permissions?.canManageAccounts) {
-    return res.status(403).json({ ok: false, code: 'FORBIDDEN_PERMISSION', error: 'ليس لديك صلاحية تنفيذ العمليات النقدية' });
-  }
+router.post('/cash-operations', requirePermission('canManageCashboxes'), asyncHandler(async (req, res) => {
   const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
-  const result = await executeCashOperation(req.body || {}, u, idempotencyKey);
+  const result = await executeCashOperation(req.body || {}, req.auth.user, idempotencyKey);
   res.status(result.deduplicated ? 200 : 201).json({ ok: true, ...result });
 }));
 
@@ -422,37 +244,39 @@ router.post('/migration/run', requireAdmin, asyncHandler(async (req, res) => {
       error: 'لا يمكن تنفيذ الترحيل قبل إعداد متغيرات PostgreSQL وتشغيل خدمة قاعدة البيانات بنجاح. تم الاحتفاظ بجميع البيانات الحالية دون أي تغيير.',
     });
   }
-  if (!req.body?.database && isStrictPostgresMode()) {
-    return res.status(400).json({
-      ok: false,
-      code: 'MIGRATION_SOURCE_REQUIRED',
-      error: 'في وضع الإنتاج الصارم (Strict Mode)، يجب تمرير بيانات النسخة الاحتياطية صراحة في الطلب لتنفيذ الترحيل.',
-    });
-  }
-  if (!req.body?.database && !hasJsonDatabaseFile()) {
-    return res.status(400).json({
-      ok: false,
-      code: 'MIGRATION_SOURCE_NOT_FOUND',
-      error: 'لا توجد قاعدة بيانات JSON محلية للترحيل.',
-    });
-  }
   const source = req.body?.database || readJsonDatabase();
   const result = await runDataMigration(source, req.auth.user.fullName, { isTestRun: Boolean(req.body?.isTestRun) });
   if (!result.success) return res.status(500).json({ ok: false, error: result.error, log: result.log });
   res.json({ ok: true, log: result.log });
 }));
 router.post('/migration/rollback', requireAdmin, asyncHandler(async (req, res) => {
-  if (isStrictPostgresMode()) {
-    return res.status(403).json({
-      ok: false,
-      code: 'STRICT_MODE_DESTRUCTIVE_BLOCKED',
-      error:
-        'يُمنع التراجع إلى JSON أو مسح جداول PostgreSQL في وضع الإنتاج الصارم (Production Strict Mode) لحماية البيانات ومنع انقسامها.',
-    });
-  }
   const result = await rollbackMigration(req.body?.migrationId || req.body?.backupFile, req.auth.user.fullName);
-  if (!result.success) return res.status(400).json({ ok: false, code: result.code, error: result.error });
+  if (!result.success) return res.status(400).json({ ok: false, error: result.error });
   res.json({ ok: true, ...result });
+}));
+
+router.get('/server-info', asyncHandler(async (_req, res) => {
+  const { networkInterfaces, hostname } = await import('node:os');
+  const { getDataPaths } = await import('../db/jsonLedger.js');
+  const nets = networkInterfaces();
+  const lanIps = [];
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name] || []) {
+      if (net && net.family === 'IPv4' && !net.internal) {
+        lanIps.push(net.address);
+      }
+    }
+  }
+  const activePort = Number(process.env.AWLAD_ACTIVE_PORT || process.env.PORT || process.env.API_PORT || 3000);
+  res.json({
+    ok: true,
+    hostname: hostname(),
+    port: activePort,
+    lanIps,
+    lanUrls: lanIps.map((ip) => `http://${ip}:${activePort}`),
+    dataDir: getDataPaths().dataDir,
+    electronDesktop: process.env.AWLAD_ELECTRON === 'true',
+  });
 }));
 
 export default router;

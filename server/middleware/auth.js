@@ -1,19 +1,10 @@
 import { verifyJwt } from '../utils/crypto.js';
-import { validateActiveSession, recordAuditLog, checkDeviceAuthGuard } from '../db/stores/authStore.js';
+import { validateActiveSession, recordAuditLog } from '../db/stores/authStore.js';
 import { AppError } from '../utils/errors.js';
-import { isPgConnectionError, isStrictPostgresMode, sanitizePgErrorMessage } from '../db/postgres.js';
-import {
-  DATABASE_UNAVAILABLE_CODE,
-  DATABASE_UNAVAILABLE_MESSAGE,
-  markPgUnavailable,
-} from '../db/stores/mode.js';
 
 const RATE_WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILED_ATTEMPTS = 10;
 const failedLoginMap = new Map();
-const PAIRING_RATE_WINDOW_MS = 5 * 60 * 1000;
-const MAX_PAIRING_REQUESTS = 90;
-const pairingRateMap = new Map();
 
 export function getClientIp(req) {
   const fwd = req.headers['x-forwarded-for'];
@@ -74,27 +65,6 @@ export function clearLoginFailure(req) {
 
 export function resetAllRateLimitsForTests() {
   failedLoginMap.clear();
-  pairingRateMap.clear();
-}
-
-export function checkPairingRateLimit(req, res, next) {
-  const ip = getClientIp(req);
-  const now = Date.now();
-  const entry = pairingRateMap.get(ip);
-  if (!entry || now - entry.windowStart >= PAIRING_RATE_WINDOW_MS) {
-    pairingRateMap.set(ip, { count: 1, windowStart: now });
-    return next();
-  }
-  entry.count += 1;
-  pairingRateMap.set(ip, entry);
-  if (entry.count > MAX_PAIRING_REQUESTS) {
-    return res.status(429).json({
-      ok: false,
-      code: 'PAIRING_RATE_LIMITED',
-      error: 'تم تجاوز الحد المسموح به لطلبات الربط من هذا العنوان. يرجى الانتظار بضع دقائق.',
-    });
-  }
-  return next();
 }
 
 export async function requireAuth(req, res, next) {
@@ -106,24 +76,17 @@ export async function requireAuth(req, res, next) {
     }
 
     const payload = verifyJwt(token);
-    if (!payload || !payload.sub || !payload.sid || !payload.iid) {
+    if (!payload || !payload.sub || !payload.sid) {
       return res.status(401).json({ ok: false, code: 'INVALID_TOKEN', error: 'انتهت صلاحية الجلسة أو رمز الدخول غير صالح' });
     }
 
-    const sessionCtx = await validateActiveSession(payload.sid, payload.sub, payload.iid);
+    const sessionCtx = await validateActiveSession(payload.sid, payload.sub);
     if (!sessionCtx) {
       return res.status(401).json({ ok: false, code: 'SESSION_REVOKED', error: 'الجلسة غير نشطة أو تم تسجيل الخروج منها' });
     }
 
-    const effectiveDeviceId = req.get('x-device-id') || sessionCtx.deviceId || payload.did || '';
-    if (effectiveDeviceId) {
-      await checkDeviceAuthGuard(effectiveDeviceId);
-    }
-
     req.auth = {
       sessionId: payload.sid,
-      deviceId: effectiveDeviceId,
-      installationId: sessionCtx.installationId,
       user: sessionCtx.user,
       customerProfile: sessionCtx.customerProfile,
       representativeProfile: sessionCtx.representativeProfile,
@@ -198,21 +161,10 @@ export function errorMiddleware(err, _req, res, _next) {
       details: err.details,
     });
   }
-  if (isStrictPostgresMode() && isPgConnectionError(err)) {
-    markPgUnavailable(err?.code || 'connection_error');
-    const safeMsg = sanitizePgErrorMessage(err?.message);
-    console.error('[PostgreSQL Unavailable - Strict Mode]:', safeMsg || err?.code || 'connection_error');
-    return res.status(503).json({
-      ok: false,
-      code: DATABASE_UNAVAILABLE_CODE,
-      error: DATABASE_UNAVAILABLE_MESSAGE,
-    });
-  }
-  const safeMsg = sanitizePgErrorMessage(err?.message);
-  console.error('[API Error]:', safeMsg || err?.name || 'INTERNAL_ERROR');
+  console.error('[API Error]:', err);
   return res.status(500).json({
     ok: false,
     code: 'INTERNAL_ERROR',
-    error: safeMsg || 'حدث خطأ داخلي في الخادم',
+    error: err?.message || 'حدث خطأ داخلي في الخادم',
   });
 }

@@ -3,20 +3,19 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { DataProvider, useData } from './context/DataContext';
+import { DataProvider } from './context/DataContext';
 import { ShortcutsProvider, useShortcuts } from './context/ShortcutsContext';
 import { LoginView } from './components/modules/auth/LoginView';
 import { ChangePasswordModal } from './components/modules/auth/ChangePasswordModal';
 import { Header } from './components/layout/Header';
 import { Sidebar, NavItemKey } from './components/layout/Sidebar';
-import { ShieldAlert, AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { ShieldAlert } from 'lucide-react';
 import { UserPermissions, CashOperationType } from './types';
 
 // Views
 import { DashboardView } from './components/modules/dashboard/DashboardView';
-import { CustomerRepOrdersView } from './components/modules/orders/CustomerRepOrdersView';
 import { SalesInvoicesView } from './components/modules/sales/SalesInvoicesView';
 import { DeletedInvoicesView } from './components/modules/sales/DeletedInvoicesView';
 import { CustomersView } from './components/modules/customers/CustomersView';
@@ -34,27 +33,9 @@ import { ReportsView } from './components/modules/reports/ReportsView';
 import { UsersManagementView } from './components/modules/users/UsersManagementView';
 import { SettingsView } from './components/modules/settings/SettingsView';
 import { MobilePortal } from './components/modules/mobile/MobilePortal';
-import { StaffMobileShell } from './components/modules/mobile/StaffMobileShell';
-import {
-  getLaunchDeepLinkUrl,
-  isNativeCapacitor,
-  registerAndroidBackButton,
-  subscribeDeepLinks,
-  syncNativeStatusBarStyle,
-} from './services/native';
-import {
-  hasConfiguredServerUrl,
-  hydrateServerUrlFromNative,
-  saveFallbackEndpoints,
-  saveStoredConnectionProfiles,
-  setConfiguredApiBaseUrl,
-} from './services/api';
-import { claimPairingInvitation, discoverServerCandidates, parsePairingInput } from './services/discovery';
 
 const PAGE_PERMISSIONS: Partial<Record<NavItemKey, keyof UserPermissions | Array<keyof UserPermissions>>> = {
-  'customer-orders': 'canManageSales',
   'sales-invoices': 'canManageSales',
-  'quotes': 'canManageSales',
   'new-sale': 'canManageSales',
   'customers': 'canManageSales',
   'sales-returns': 'canManageSales',
@@ -74,7 +55,6 @@ const PAGE_PERMISSIONS: Partial<Record<NavItemKey, keyof UserPermissions | Array
   'stock-counts': ['canCreateStockCount', 'canApproveStockCount', 'canManageInventory'],
   'damaged-stock': 'canManageInventory',
   'stock-movements': 'canManageInventory',
-  'item-movement-report': ['canManageInventory', 'canViewReports'],
   'cashboxes': 'canManageCashboxes',
   'cashbox-transfer': 'canManageCashboxes',
   'expenses': 'canManageCashboxes',
@@ -91,6 +71,7 @@ const PAGE_PERMISSIONS: Partial<Record<NavItemKey, keyof UserPermissions | Array
   'reports': 'canViewReports',
   'users': 'canManageUsers',
   'audit-log': 'canManageUsers',
+  'system-settings': 'canManageSettings',
   'server-settings': 'canManageSettings',
   'backup': 'canManageSettings',
   'migration': 'canManageSettings',
@@ -117,204 +98,18 @@ const ShortcutGlobalActions: React.FC<{ onOpenCashOp: (mode: CashOperationType) 
 };
 
 const MainAppContent: React.FC = () => {
-  const {
-    isAuthenticated,
-    isLoading,
-    currentUser,
-    hasPermission,
-    refreshAuthContext,
-    pairingBanner,
-    setPairingBanner,
-    clearPairingBanner,
-    isDatabaseUnavailable,
-    databaseUnavailableMessage,
-  } = useAuth();
-  const { networkStatus, lastError, triggerSync, isSyncing } = useData();
+  const { isAuthenticated, isLoading, currentUser, hasPermission } = useAuth();
   const [currentPage, setCurrentPage] = useState<NavItemKey>('dashboard');
-  const [reportProductId, setReportProductId] = useState<string | undefined>(undefined);
-  const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.innerWidth < 1024 || isNativeCapacitor() : false
-  );
-  const [isSectionsOpen, setIsSectionsOpen] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.innerWidth >= 1024 && !isNativeCapacitor() : true
-  );
+  const [isSidebarOpenMobile, setIsSidebarOpenMobile] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [cashOpModal, setCashOpModal] = useState<{ open: boolean; mode: CashOperationType }>({
     open: false,
     mode: 'cash_deposit',
   });
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const handleResize = () => {
-      const mobile = window.innerWidth < 1024 || isNativeCapacitor();
-      setIsMobileViewport(mobile);
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  // Auto-open sections sidebar upon desktop login while keeping toggle control
-  useEffect(() => {
-    if (isAuthenticated && currentUser && currentUser.role !== 'customer' && currentUser.role !== 'representative') {
-      if (typeof window !== 'undefined' && window.innerWidth >= 1024 && !isNativeCapacitor()) {
-        setIsSectionsOpen(true);
-      }
-    }
-  }, [isAuthenticated, currentUser?.id]);
-
-  const inFlightPairingUrlsRef = useRef<Set<string>>(new Set());
-  const recentPairingUrlsRef = useRef<Map<string, number>>(new Map());
-  const didBootstrapLaunchRef = useRef(false);
-
-  useEffect(() => {
-    let active = true;
-
-    const handlePairingUrl = async (rawUrl: string) => {
-      const cleanUrl = String(rawUrl || '').trim();
-      if (!cleanUrl) return;
-      const parsed = parsePairingInput(cleanUrl);
-      if (!parsed?.token) {
-        if (/^(?:awladselim:\/\/|https?:\/\/[^/]+\/(?:pair|invite)\/)/i.test(cleanUrl)) {
-          setPairingBanner({
-            type: 'error',
-            message: 'رابط الدعوة غير مكتمل أو لا يحتوي على رمز ربط صالح.',
-          });
-        }
-        return;
-      }
-
-      const dedupeKey = `${parsed.serverUrl || ''}|${parsed.token}`;
-      const lastHandledAt = recentPairingUrlsRef.current.get(dedupeKey) || 0;
-      if (inFlightPairingUrlsRef.current.has(dedupeKey) || Date.now() - lastHandledAt < 5000) {
-        return;
-      }
-
-      inFlightPairingUrlsRef.current.add(dedupeKey);
-      let claimSucceeded = false;
-      try {
-        await hydrateServerUrlFromNative();
-        if (!active) return;
-        const res = await claimPairingInvitation(cleanUrl, { clearExistingAuth: true });
-        if (!active) return;
-        if (res.ok) {
-          claimSucceeded = true;
-          setPairingBanner({
-            type: res.requiresAdminApproval ? 'warning' : 'success',
-            message: res.requiresAdminApproval
-              ? `تم ربط الجهاز بسيرفر (${res.companyName || ''}). بانتظار اعتماد مدير النظام، ثم أدخل بيانات حسابك للدخول.`
-              : `تم إعداد الاتصال تلقائياً بسيرفر (${res.companyName || ''}). يرجى تسجيل الدخول باسم المستخدم وكلمة المرور المعتادة.`,
-          });
-          await refreshAuthContext();
-        } else {
-          setPairingBanner({
-            type: 'error',
-            message: res.error || 'تعذر تفعيل رابط الربط',
-          });
-        }
-        if (typeof window !== 'undefined' && window.history?.replaceState) {
-          const cleanPath = window.location.pathname;
-          if (cleanPath.startsWith('/pair/') || cleanPath.startsWith('/invite/') || window.location.search.includes('pair_token=')) {
-            window.history.replaceState({}, '', '/');
-          }
-        }
-      } finally {
-        recentPairingUrlsRef.current.set(dedupeKey, claimSucceeded ? Date.now() : Date.now() - 4200);
-        inFlightPairingUrlsRef.current.delete(dedupeKey);
-      }
-    };
-
-    const unsubscribeLinks = subscribeDeepLinks(
-      (url) => {
-        handlePairingUrl(url);
-      },
-      { skipInitialLaunchUrl: true }
-    );
-
-    const bootstrapLinksAndDiscovery = async () => {
-      if (didBootstrapLaunchRef.current) return;
-      didBootstrapLaunchRef.current = true;
-
-      await hydrateServerUrlFromNative();
-      if (!active) return;
-
-      const nativeLaunchUrl = isNativeCapacitor() ? await getLaunchDeepLinkUrl() : null;
-      if (!active) return;
-
-      if (nativeLaunchUrl) {
-        const parsedLaunch = parsePairingInput(nativeLaunchUrl);
-        if (parsedLaunch?.token || /^(?:awladselim:\/\/|https?:\/\/[^/]+\/(?:pair|invite)\/)/i.test(nativeLaunchUrl)) {
-          await handlePairingUrl(nativeLaunchUrl);
-          return;
-        }
-      }
-
-      if (typeof window !== 'undefined') {
-        const loc = window.location.href;
-        if (
-          loc.includes('pair_token=') ||
-          window.location.pathname.startsWith('/pair/') ||
-          window.location.pathname.startsWith('/invite/')
-        ) {
-          await handlePairingUrl(loc);
-          return;
-        }
-      }
-
-      if (isNativeCapacitor() && !hasConfiguredServerUrl()) {
-        try {
-          const found = await discoverServerCandidates();
-          if (!active || found.length === 0 || hasConfiguredServerUrl()) return;
-          const first = found[0];
-          if (first.profiles) saveStoredConnectionProfiles(first.profiles);
-          if (Array.isArray(first.fallbackEndpoints)) saveFallbackEndpoints(first.fallbackEndpoints);
-          setConfiguredApiBaseUrl(first.url);
-          setPairingBanner({
-            type: 'success',
-            message: `تم اكتشاف السيرفر المركزي تلقائياً على الشبكة المحلية (${first.url}). يرجى تسجيل الدخول بحسابك.`,
-          });
-          await refreshAuthContext();
-        } catch {
-          // ignore discovery failures
-        }
-      }
-    };
-
-    bootstrapLinksAndDiscovery();
-
-    return () => {
-      active = false;
-      unsubscribeLinks();
-    };
-  }, [refreshAuthContext, setPairingBanner]);
-
-  useEffect(() => {
-    if (!isAuthenticated || currentUser?.role === 'customer' || currentUser?.role === 'representative') {
-      return;
-    }
-    return registerAndroidBackButton(() => {
-      if (cashOpModal.open) {
-        setCashOpModal((prev) => ({ ...prev, open: false }));
-        return true;
-      }
-      if (isSectionsOpen) {
-        setIsSectionsOpen(false);
-        return true;
-      }
-      if (currentPage !== 'dashboard') {
-        setCurrentPage('dashboard');
-        return true;
-      }
-      return false;
-    });
-  }, [isAuthenticated, currentUser?.role, cashOpModal.open, isSectionsOpen, currentPage]);
-
-  useEffect(() => {
-    syncNativeStatusBarStyle('dark-header');
-  }, [isLoading, isAuthenticated, currentUser?.role]);
-
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-900 text-white font-sans">
+      <div className="flex items-center justify-center min-h-screen bg-slate-900 text-white font-['Cairo']">
         <div className="text-center space-y-4">
           <div className="w-14 h-14 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
           <p className="text-sm font-bold text-slate-300">جاري تشغيل نظام أولاد سليم...</p>
@@ -327,45 +122,8 @@ const MainAppContent: React.FC = () => {
     return <LoginView />;
   }
 
-  const renderFloatingPairingBanner = () =>
-    pairingBanner ? (
-      <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[70] w-[calc(100%-1.5rem)] max-w-lg px-2 pointer-events-none">
-        <div
-          className={`pointer-events-auto p-3.5 rounded-2xl border shadow-xl text-xs font-bold flex items-start justify-between gap-2.5 ${
-            pairingBanner.type === 'success'
-              ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
-              : pairingBanner.type === 'warning'
-              ? 'bg-amber-50 border-amber-300 text-amber-900'
-              : 'bg-red-50 border-red-200 text-red-700'
-          }`}
-        >
-          <div className="flex items-start gap-2">
-            {pairingBanner.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-700 mt-0.5" />
-            ) : (
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            )}
-            <span className="leading-relaxed">{pairingBanner.message}</span>
-          </div>
-          <button
-            type="button"
-            onClick={clearPairingBanner}
-            className="p-1 rounded-lg hover:bg-black/5 shrink-0 cursor-pointer"
-            aria-label="إغلاق"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-    ) : null;
-
   if (currentUser?.role === 'customer' || currentUser?.role === 'representative') {
-    return (
-      <>
-        {renderFloatingPairingBanner()}
-        <MobilePortal />
-      </>
-    );
+    return <MobilePortal />;
   }
 
   const requiredPerm = PAGE_PERMISSIONS[currentPage];
@@ -395,14 +153,8 @@ const MainAppContent: React.FC = () => {
       case 'dashboard':
         return <DashboardView onNavigate={(page) => setCurrentPage(page)} />;
 
-      case 'customer-orders':
-        return <CustomerRepOrdersView />;
-
       case 'sales-invoices':
         return <SalesInvoicesView />;
-
-      case 'quotes':
-        return <SalesInvoicesView initialTab="quotes" />;
 
       case 'new-sale':
         return <SalesInvoicesView initialOpenNew={true} />;
@@ -411,7 +163,7 @@ const MainAppContent: React.FC = () => {
         return <DeletedInvoicesView />;
 
       case 'customers':
-        return <CustomersView onNavigate={(page) => setCurrentPage(page)} />;
+        return <CustomersView />;
 
       case 'purchase-invoices':
         return <PurchaseInvoicesView />;
@@ -429,15 +181,7 @@ const MainAppContent: React.FC = () => {
         return <ReturnsView initialTypeFilter="purchase_return" />;
 
       case 'products':
-        return (
-          <InventoryView
-            initialTab="products"
-            onOpenItemMovementReport={(productId) => {
-              setReportProductId(productId);
-              setCurrentPage('item-movement-report');
-            }}
-          />
-        );
+        return <InventoryView initialTab="products" />;
 
       case 'product-categories':
         return <InventoryView initialTab="categories" />;
@@ -465,9 +209,6 @@ const MainAppContent: React.FC = () => {
 
       case 'stock-movements':
         return <InventoryView initialTab="movements" />;
-
-      case 'item-movement-report':
-        return <ReportsView initialTab="item_movement" initialProductId={reportProductId} />;
 
       case 'abu-selim-import':
         return <SettingsView initialTab="abu-selim" />;
@@ -514,13 +255,7 @@ const MainAppContent: React.FC = () => {
         return <UsersManagementView initialTab="audit" />;
 
       case 'system-settings':
-        return (
-          <SettingsView
-            initialTab={
-              currentUser?.role === 'admin' || hasPermission('canManageSettings') ? 'general' : 'shortcuts'
-            }
-          />
-        );
+        return <SettingsView initialTab="general" />;
 
       case 'server-settings':
         return <SettingsView initialTab="server" />;
@@ -560,83 +295,44 @@ const MainAppContent: React.FC = () => {
     }
   };
 
-  const renderDbOrSyncAlert = () =>
-    isDatabaseUnavailable || (networkStatus === 'error' && lastError) ? (
-      <div className="mb-4 p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-800 text-xs font-bold flex flex-wrap items-center justify-between gap-2 shadow-xs">
-        <div className="flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
-          <span>
-            {isDatabaseUnavailable
-              ? databaseUnavailableMessage || lastError
-              : lastError}
-          </span>
-        </div>
-        <button
-          type="button"
-          disabled={isSyncing}
-          onClick={() => {
-            refreshAuthContext().catch(() => {});
-            triggerSync(false);
-          }}
-          className="px-3 py-1.5 rounded-xl bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors cursor-pointer"
-        >
-          {isSyncing ? 'جاري الفحص...' : 'إعادة المحاولة'}
-        </button>
-      </div>
-    ) : null;
-
   return (
     <ShortcutsProvider onNavigate={(page) => setCurrentPage(page as NavItemKey)}>
       <ShortcutGlobalActions onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })} />
-      <ChangePasswordModal />
+      <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col font-['Cairo'] antialiased">
+        <ChangePasswordModal />
 
-      <CashOperationModal
-        isOpen={cashOpModal.open}
-        initialMode={cashOpModal.mode}
-        onClose={() => setCashOpModal((prev) => ({ ...prev, open: false }))}
-      />
+        <CashOperationModal
+          isOpen={cashOpModal.open}
+          initialMode={cashOpModal.mode}
+          onClose={() => setCashOpModal((prev) => ({ ...prev, open: false }))}
+        />
 
-      {renderFloatingPairingBanner()}
-
-      {isMobileViewport ? (
-        <StaffMobileShell
+        <Sidebar
           currentPage={currentPage}
           onNavigate={(page) => setCurrentPage(page)}
-          onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })}
+          isOpenMobile={isSidebarOpenMobile}
+          onCloseMobile={() => setIsSidebarOpenMobile(false)}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+        />
+
+        <div
+          className={`flex-1 flex flex-col transition-all duration-300 ${
+            isSidebarCollapsed ? 'lg:mr-20' : 'lg:mr-72'
+          }`}
         >
-          {renderDbOrSyncAlert()}
-          {renderActivePage()}
-        </StaffMobileShell>
-      ) : (
-        <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col font-sans antialiased pb-safe">
-          <Sidebar
-            currentPage={currentPage}
+          <Header
+            onToggleSidebar={() => setIsSidebarOpenMobile((prev) => !prev)}
             onNavigate={(page) => setCurrentPage(page)}
-            isOpen={isSectionsOpen}
-            onClose={() => setIsSectionsOpen(false)}
             onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })}
+            onNavigateToTransfers={() => setCurrentPage('rep-transfers')}
           />
 
-          <div
-            className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${
-              isSectionsOpen ? 'lg:mr-80' : ''
-            }`}
-          >
-            <Header
-              currentPage={currentPage}
-              isSidebarOpen={isSectionsOpen}
-              onToggleSidebar={() => setIsSectionsOpen((prev) => !prev)}
-              onNavigate={(page) => setCurrentPage(page)}
-              onNavigateToTransfers={() => setCurrentPage('rep-transfers')}
-            />
-
-            <main className="flex-1 p-3 sm:p-4 lg:p-6 max-w-7xl w-full mx-auto min-w-0">
-              {renderDbOrSyncAlert()}
-              {renderActivePage()}
-            </main>
-          </div>
+          <main className="flex-1 p-4 sm:p-6 max-w-7xl w-full mx-auto">
+            {renderActivePage()}
+          </main>
         </div>
-      )}
+      </div>
     </ShortcutsProvider>
   );
 };

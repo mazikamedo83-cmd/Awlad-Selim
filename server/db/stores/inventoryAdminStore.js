@@ -38,7 +38,6 @@ import {
   getRepresentativeByUserId,
   isCustomerAllowedForRep,
   getSystemSettingsSafe,
-  normalizePhoneDigits,
 } from './catalogStore.js';
 import { listInvoices } from './invoicesStore.js';
 import { listOrders } from './ordersStore.js';
@@ -85,9 +84,6 @@ export async function getStaffBootstrapData(actor) {
       stRes,
       orders,
       audits,
-      advPayRes,
-      conflictsRes,
-      custodyOpsRes,
     ] = await Promise.all([
       isAdminOrUserMgr ? pool.query('SELECT * FROM users ORDER BY created_at DESC') : Promise.resolve({ rows: [] }),
       pool.query('SELECT * FROM warehouses ORDER BY created_at ASC'),
@@ -113,15 +109,8 @@ export async function getStaffBootstrapData(actor) {
       pool.query('SELECT * FROM expenses_incomes ORDER BY created_at DESC'),
       pool.query('SELECT * FROM stock_movements ORDER BY created_at DESC LIMIT 1500'),
       pool.query('SELECT * FROM system_settings LIMIT 1'),
-      listOrders({ user: actor, representativeProfile: repProfile }),
+      listOrders({ user: actor }),
       isAdminOrUserMgr ? listAuditLogs(300) : Promise.resolve([]),
-      pool.query('SELECT * FROM order_advance_payments ORDER BY created_at DESC LIMIT 1000'),
-      actor.role === 'admin' || actor.permissions?.canManageSales || actor.permissions?.canManageAccounts
-        ? pool.query('SELECT * FROM sync_conflicts ORDER BY created_at DESC LIMIT 300')
-        : Promise.resolve({ rows: [] }),
-      isRep && repProfile
-        ? pool.query('SELECT * FROM rep_custody_operations WHERE representative_id = $1 ORDER BY created_at DESC', [repProfile.id])
-        : pool.query('SELECT * FROM rep_custody_operations ORDER BY created_at DESC LIMIT 1000'),
     ]);
 
     const retItemsMap = new Map();
@@ -349,7 +338,6 @@ export async function getStaffBootstrapData(actor) {
           sourceWarehouseName: rit.source_warehouse_name,
           targetWarehouseId: rit.target_warehouse_id,
           targetWarehouseName: rit.target_warehouse_name,
-          transferMode: rit.transfer_mode || 'transfer',
           items: ritItemsMap.get(rit.id) || [],
           status: rit.status,
           rejectionReason: rit.rejection_reason || undefined,
@@ -358,36 +346,10 @@ export async function getStaffBootstrapData(actor) {
           createdAt: isoTimestamp(rit.created_at),
           reviewedBy: rit.reviewed_by || undefined,
           reviewedAt: rit.reviewed_at ? isoTimestamp(rit.reviewed_at) : undefined,
-          dispatchedBy: rit.dispatched_by || undefined,
-          dispatchedAt: rit.dispatched_at ? isoTimestamp(rit.dispatched_at) : undefined,
           executedAt: rit.executed_at ? isoTimestamp(rit.executed_at) : undefined,
           receivedBy: rit.received_by || undefined,
           receivedAt: rit.received_at ? isoTimestamp(rit.received_at) : undefined,
         })),
-      repCustodyOperations: (custodyOpsRes?.rows || []).map((op) => ({
-        id: op.id,
-        operationNumber: op.operation_number,
-        date: isoDateOnly(op.date),
-        representativeId: op.representative_id,
-        representativeName: op.representative_name,
-        operationType: op.operation_type,
-        productId: op.product_id,
-        productName: op.product_name,
-        unit: op.unit,
-        unitFactor: Number(op.unit_factor || 1),
-        quantity: Number(op.quantity || 0),
-        baseQuantity: Number(op.base_quantity || 0),
-        warehouseId: op.warehouse_id || undefined,
-        warehouseName: op.warehouse_name || '',
-        customerId: op.customer_id || undefined,
-        customerName: op.customer_name || '',
-        invoiceId: op.invoice_id || undefined,
-        invoiceNumber: op.invoice_number || undefined,
-        notes: op.notes || '',
-        status: op.status || 'approved',
-        createdBy: op.created_by,
-        createdAt: isoTimestamp(op.created_at),
-      })),
       customerItemOrders: orders,
       employees: isRep
         ? []
@@ -491,42 +453,6 @@ export async function getStaffBootstrapData(actor) {
       ownerTransactions: personalData.transactions,
       stockCounts: stockCountsList,
       stockTransferRequests: stockTransferRequestsList,
-      orderAdvancePayments: advPayRes.rows
-        .filter((r) => !isRep || (customers && customers.some((c) => c.id === r.customer_id)))
-        .map((r) => ({
-          id: r.id,
-          paymentNumber: r.payment_number,
-          orderId: r.order_id,
-          customerId: r.customer_id,
-          cashboxId: r.cashbox_id,
-          cashboxName: r.cashbox_name || '',
-          paymentMethod: r.payment_method || 'cash',
-          amount: Number(r.amount || 0),
-          date: isoDateOnly(r.date),
-          notes: r.notes || '',
-          status: r.status || 'active',
-          appliedInvoiceId: r.applied_invoice_id || undefined,
-          createdBy: r.created_by,
-          createdAt: isoTimestamp(r.created_at),
-        })),
-      syncConflicts: conflictsRes.rows.map((r) => ({
-        id: r.id,
-        operationId: r.operation_id,
-        operationType: r.operation_type,
-        entityType: r.entity_type,
-        entityId: r.entity_id || undefined,
-        deviceId: r.device_id || undefined,
-        userId: r.user_id || undefined,
-        userName: r.user_name || '',
-        conflictReason: r.conflict_reason,
-        localPayload: r.local_payload || {},
-        serverSnapshot: r.server_snapshot || {},
-        status: r.status,
-        resolutionNotes: r.resolution_notes || '',
-        resolvedBy: r.resolved_by || undefined,
-        resolvedAt: r.resolved_at ? isoTimestamp(r.resolved_at) : undefined,
-        createdAt: isoTimestamp(r.created_at),
-      })),
       settings,
       auditLogs: audits,
     };
@@ -569,17 +495,9 @@ export async function getStaffBootstrapData(actor) {
     repItemTransfers: isRep
       ? (repProfile ? (db.repItemTransfers || []).filter((rit) => rit.representativeId === repProfile.id) : [])
       : db.repItemTransfers,
-    repCustodyOperations: isRep
-      ? (repProfile ? (db.repCustodyOperations || []).filter((op) => op.representativeId === repProfile.id) : [])
-      : (db.repCustodyOperations || []),
-    customerItemOrders: await listOrders({ user: actor, representativeProfile: repProfile }),
-    orderAdvancePayments: isRep
-      ? (db.orderAdvancePayments || []).filter((a) => scopedCustomerIdSet.has(a.customerId))
-      : db.orderAdvancePayments || [],
-    syncConflicts:
-      actor.role === 'admin' || actor.permissions?.canManageSales || actor.permissions?.canManageAccounts
-        ? db.syncConflicts || []
-        : [],
+    customerItemOrders: isRep
+      ? (db.customerItemOrders || []).filter((o) => scopedCustomerIdSet.has(o.customerId))
+      : db.customerItemOrders,
     employees: isRep ? [] : db.employees,
     advancesDeductions: isRep ? [] : db.advancesDeductions,
     attendance: isRep ? [] : db.attendance,
@@ -1148,63 +1066,26 @@ export async function ensureRepVanWarehouse(repName, actor, repId = null) {
 
 export async function createRepItemTransfer(payload, actor) {
   const id = generateServerId('RTR');
-  const requestNumber = `RTR-${Date.now().toString().slice(-5)}-${Math.floor(Math.random() * 90 + 10)}`;
+  const requestNumber = `RTR-${Date.now().toString().slice(-5)}`;
   const now = nowIso();
   const dateStr = payload.date || todayIso();
   const items = Array.isArray(payload.items) ? payload.items : [];
   if (!items.length) throw new AppError(400, 'يجب تحديد صنف واحد على الأقل للتحويل', 'EMPTY_ITEMS');
 
-  const transferMode = payload.transferMode === 'custody_dispatch' ? 'custody_dispatch' : 'transfer';
-
   let representativeId = payload.representativeId;
   let representativeName = payload.representativeName;
-  let repTargetWhId = payload.targetWarehouseId;
-  let repTargetWhName = payload.targetWarehouseName;
-
   if (actor.role === 'representative') {
     const repProfile = await getRepresentativeByUserId(actor.id);
     if (!repProfile) throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
     representativeId = repProfile.id;
     representativeName = repProfile.name;
-    if (transferMode === 'custody_dispatch') {
-      throw new AppError(403, 'صرف العهدة المباشر متاح للإدارة فقط', 'FORBIDDEN_CUSTODY_DISPATCH');
-    }
-  } else if (transferMode === 'custody_dispatch' && (!repTargetWhId || !representativeName) && representativeId) {
-    if (await isPgMode()) {
-      const rRow = (await getPool().query('SELECT * FROM representatives WHERE id = $1 LIMIT 1', [representativeId])).rows[0];
-      if (!rRow) throw new AppError(404, 'المندوب المحدد غير موجود', 'REP_NOT_FOUND');
-      representativeName = representativeName || rRow.name;
-      repTargetWhId = repTargetWhId || rRow.warehouse_id;
-    } else {
-      const db = readJsonDatabase();
-      const rRow = (db.representatives || []).find((r) => r.id === representativeId);
-      if (!rRow) throw new AppError(404, 'المندوب المحدد غير موجود', 'REP_NOT_FOUND');
-      representativeName = representativeName || rRow.name;
-      repTargetWhId = repTargetWhId || rRow.warehouseId;
-    }
-    if (!repTargetWhId) {
-      const van = await ensureRepVanWarehouse(representativeName, actor, representativeId);
-      repTargetWhId = van.id;
-      repTargetWhName = van.name;
-    }
   }
 
-  let srcWhId = payload.sourceWarehouseId;
-  let srcWhName = payload.sourceWarehouseName;
-
   if (await isPgMode()) {
-    if (!srcWhName && srcWhId) {
-      const wRow = (await getPool().query('SELECT id, name FROM warehouses WHERE id = $1', [srcWhId])).rows[0];
-      if (wRow) srcWhName = wRow.name;
-    }
-    if (!repTargetWhName && repTargetWhId) {
-      const wRow = (await getPool().query('SELECT id, name FROM warehouses WHERE id = $1', [repTargetWhId])).rows[0];
-      if (wRow) repTargetWhName = wRow.name;
-    }
     await withTransaction(async (client) => {
       await client.query(
-        `INSERT INTO rep_item_transfers (id, request_number, date, representative_id, representative_name, invoice_id, invoice_number, source_warehouse_id, source_warehouse_name, target_warehouse_id, target_warehouse_name, transfer_mode, status, notes, created_by, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending',$13,$14,$15)`,
+        `INSERT INTO rep_item_transfers (id, request_number, date, representative_id, representative_name, invoice_id, invoice_number, source_warehouse_id, source_warehouse_name, target_warehouse_id, target_warehouse_name, status, notes, created_by, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'pending',$12,$13,$14)`,
         [
           id,
           requestNumber,
@@ -1213,11 +1094,10 @@ export async function createRepItemTransfer(payload, actor) {
           representativeName,
           payload.invoiceId || null,
           payload.invoiceNumber || null,
-          srcWhId,
-          srcWhName || '',
-          repTargetWhId,
-          repTargetWhName || '',
-          transferMode,
+          payload.sourceWarehouseId,
+          payload.sourceWarehouseName,
+          payload.targetWarehouseId,
+          payload.targetWarehouseName,
           payload.notes || '',
           actor.fullName,
           now,
@@ -1250,74 +1130,56 @@ export async function createRepItemTransfer(payload, actor) {
         );
       }
     });
-  } else {
-    await withJsonTransaction(async (db) => {
-      if (!srcWhName && srcWhId) {
-        srcWhName = db.warehouses.find((w) => w.id === srcWhId)?.name || '';
-      }
-      if (!repTargetWhName && repTargetWhId) {
-        repTargetWhName = db.warehouses.find((w) => w.id === repTargetWhId)?.name || '';
-      }
-      const reqObj = {
-        ...payload,
-        representativeId,
-        representativeName,
-        sourceWarehouseId: srcWhId,
-        sourceWarehouseName: srcWhName || '',
-        targetWarehouseId: repTargetWhId,
-        targetWarehouseName: repTargetWhName || '',
-        transferMode,
-        id,
-        requestNumber,
-        date: dateStr,
-        status: 'pending',
-        createdBy: actor.fullName,
-        createdAt: now,
-      };
-      db.repItemTransfers.unshift(reqObj);
-      if (payload.invoiceId) {
-        const inv = db.invoices.find((i) => i.id === payload.invoiceId);
-        if (inv) {
-          inv.linkedRepTransferId = id;
-          inv.linkedRepTransferNumber = requestNumber;
-        }
-      }
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `إنشاء طلب تحويل أصناف للمندوب (${requestNumber})`,
+      module: 'المندوبون',
+      recordId: id,
     });
+    return {
+      ...payload,
+      representativeId,
+      representativeName,
+      id,
+      requestNumber,
+      date: dateStr,
+      status: 'pending',
+      createdBy: actor.fullName,
+      createdAt: now,
+    };
   }
 
+  const created = await withJsonTransaction(async (db) => {
+    const reqObj = {
+      ...payload,
+      representativeId,
+      representativeName,
+      id,
+      requestNumber,
+      date: dateStr,
+      status: 'pending',
+      createdBy: actor.fullName,
+      createdAt: now,
+    };
+    db.repItemTransfers.unshift(reqObj);
+    if (payload.invoiceId) {
+      const inv = db.invoices.find((i) => i.id === payload.invoiceId);
+      if (inv) {
+        inv.linkedRepTransferId = id;
+        inv.linkedRepTransferNumber = requestNumber;
+      }
+    }
+    return reqObj;
+  });
   await recordAuditLog({
     userId: actor.id,
     userName: actor.fullName,
-    action:
-      transferMode === 'custody_dispatch'
-        ? `إنشاء إرسال عهدة بضاعة للمندوب ${representativeName} (${requestNumber})`
-        : `إنشاء طلب تحويل أصناف للمندوب (${requestNumber})`,
+    action: `إنشاء طلب تحويل أصناف للمندوب (${requestNumber})`,
     module: 'المندوبون',
     recordId: id,
   });
-
-  if (transferMode === 'custody_dispatch' && payload.autoDispatch === true) {
-    await updateRepItemTransferStatus(id, { status: 'executed', notes: payload.notes || '' }, actor);
-  }
-
-  return {
-    ...payload,
-    representativeId,
-    representativeName,
-    sourceWarehouseId: srcWhId,
-    sourceWarehouseName: srcWhName || '',
-    targetWarehouseId: repTargetWhId,
-    targetWarehouseName: repTargetWhName || '',
-    transferMode,
-    id,
-    requestNumber,
-    date: dateStr,
-    status: transferMode === 'custody_dispatch' && payload.autoDispatch === true ? 'executed' : 'pending',
-    dispatchedBy: transferMode === 'custody_dispatch' && payload.autoDispatch === true ? actor.fullName : undefined,
-    dispatchedAt: transferMode === 'custody_dispatch' && payload.autoDispatch === true ? nowIso() : undefined,
-    createdBy: actor.fullName,
-    createdAt: now,
-  };
+  return created;
 }
 
 export async function updateRepItemTransferStatus(requestId, { status, approvedItems, notes }, actor) {
@@ -1356,8 +1218,6 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
       const req = rRes.rows[0];
       if (!req) throw new AppError(404, 'طلب التحويل غير موجود', 'NOT_FOUND');
 
-      const isCustodyDispatch = req.transfer_mode === 'custody_dispatch';
-
       if (isRepActor) {
         if (req.representative_id !== repActorProfile.id) {
           throw new AppError(403, 'غير مصرح لك بتأكيد استلام تحويل يخص مندوباً آخر', 'FORBIDDEN_REP_TRANSFER_OWNER');
@@ -1372,17 +1232,15 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
       }
 
       const itemsRes = await client.query('SELECT * FROM rep_item_transfer_items WHERE transfer_id = $1', [requestId]);
-      const stRes = await client.query('SELECT allow_negative_stock FROM system_settings LIMIT 1');
-      const allowNeg = Boolean(stRes.rows[0]?.allow_negative_stock);
 
       if (status === 'executed' && req.status !== 'executed' && req.status !== 'received') {
-        const origByProduct = new Map(itemsRes.rows.map((r) => [r.product_id, r]));
+        const stRes = await client.query('SELECT allow_negative_stock FROM system_settings LIMIT 1');
+        const allowNeg = Boolean(stRes.rows[0]?.allow_negative_stock);
         const itemsToMove =
           approvedItems ||
           itemsRes.rows.map((r) => ({
             productId: r.product_id,
             productName: r.product_name,
-            unit: r.unit,
             approvedQty: r.approved_qty,
             requestedQty: r.requested_qty,
           }));
@@ -1391,44 +1249,21 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
           const pRes = await client.query('SELECT * FROM products WHERE id = $1 FOR UPDATE', [it.productId]);
           const prod = pRes.rows[0];
           if (!prod) continue;
-          const origRow = origByProduct.get(prod.id);
           const qty = Number(it.approvedQty || it.requestedQty || 0);
-          if (qty <= 0) continue;
-          const uRes = await client.query('SELECT * FROM product_units WHERE product_id = $1', [prod.id]);
-          const unitName = String(it.unit || origRow?.unit || prod.base_unit || 'قطعة');
-          const unitObj = uRes.rows.find((u) => u.name === unitName);
-          const factor = unitObj ? Number(unitObj.conversion_factor || 1) : 1;
-          const baseQty = round3(qty * factor);
-
           const stockMap = { ...(prod.stock_per_warehouse || {}) };
           const srcQty = Number(stockMap[req.source_warehouse_id] || 0);
           const dstQty = Number(stockMap[req.target_warehouse_id] || 0);
-          if (srcQty < baseQty && !allowNeg) {
-            throw new AppError(409, `الرصيد المتاح من (${prod.name}) بالمصدر (${srcQty}) أقل من (${baseQty})`, 'INSUFFICIENT_STOCK');
+          if (srcQty < qty && !allowNeg) {
+            throw new AppError(409, `الرصيد المتاح من (${prod.name}) بالمصدر (${srcQty}) أقل من (${qty})`, 'INSUFFICIENT_STOCK');
           }
-          // Custody dispatch holds items in-transit until rep confirms receipt; normal transfer moves immediately
-          stockMap[req.source_warehouse_id] = round3(srcQty - baseQty);
-          if (!isCustodyDispatch) {
-            stockMap[req.target_warehouse_id] = round3(dstQty + baseQty);
-          }
+          stockMap[req.source_warehouse_id] = round3(srcQty - qty);
+          stockMap[req.target_warehouse_id] = round3(dstQty + qty);
           await client.query('UPDATE products SET stock_per_warehouse = $1 WHERE id = $2', [JSON.stringify(stockMap), prod.id]);
-
-          if (approvedItems) {
-            await client.query(
-              `UPDATE rep_item_transfer_items SET approved_qty = $1, executed_qty = $1 WHERE transfer_id = $2 AND product_id = $3`,
-              [qty, requestId, prod.id]
-            );
-          } else {
-            await client.query(
-              `UPDATE rep_item_transfer_items SET executed_qty = COALESCE(executed_qty, $1) WHERE transfer_id = $2 AND product_id = $3`,
-              [qty, requestId, prod.id]
-            );
-          }
 
           const mvId = generateServerId('SM');
           await client.query(
-            `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, target_warehouse_id, target_warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'transfer_out',$10,$11,$12,$13,'rep_item_transfer',$14,$15,$16,$17,$18)`,
+            `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, target_warehouse_id, target_warehouse_name, movement_type, quantity, unit_cost, related_doc_id, related_doc_number, notes, created_by, created_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'transfer_out',$10,$11,$12,$13,$14,$15,$16)`,
             [
               mvId,
               mvId,
@@ -1439,15 +1274,11 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
               req.source_warehouse_name,
               req.target_warehouse_id,
               req.target_warehouse_name,
-              baseQty,
-              unitName,
-              factor,
+              qty,
               prod.purchase_price,
               req.id,
               req.request_number,
-              isCustodyDispatch
-                ? `صرف عهدة بضاعة مرسلة للمندوب ${req.representative_name} (بانتظار تأكيد الاستلام)`
-                : `تحويل عهدة بضاعة للمندوب ${req.representative_name}`,
+              `تحويل عهدة بضاعة للمندوب ${req.representative_name}`,
               actor.fullName,
               now,
             ]
@@ -1455,96 +1286,15 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
         }
       }
 
-      if (status === 'rejected' && isCustodyDispatch && req.status === 'executed') {
-        // Restore deducted source stock if dispatched custody is cancelled/rejected before rep receipt
-        for (const r of itemsRes.rows) {
-          const qty = Number(r.executed_qty ?? r.approved_qty ?? r.requested_qty ?? 0);
-          if (qty <= 0) continue;
-          const pRes = await client.query('SELECT * FROM products WHERE id = $1 FOR UPDATE', [r.product_id]);
-          const prod = pRes.rows[0];
-          if (!prod) continue;
-          const uRes = await client.query('SELECT * FROM product_units WHERE product_id = $1', [prod.id]);
-          const unitName = String(r.unit || prod.base_unit || 'قطعة');
-          const unitObj = uRes.rows.find((u) => u.name === unitName);
-          const factor = unitObj ? Number(unitObj.conversion_factor || 1) : 1;
-          const baseQty = round3(qty * factor);
-
-          const stockMap = { ...(prod.stock_per_warehouse || {}) };
-          stockMap[req.source_warehouse_id] = round3(Number(stockMap[req.source_warehouse_id] || 0) + baseQty);
-          await client.query('UPDATE products SET stock_per_warehouse = $1 WHERE id = $2', [JSON.stringify(stockMap), prod.id]);
-          const mvId = generateServerId('SM');
-          await client.query(
-            `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,'transfer_in',$8,$9,$10,$11,'rep_item_transfer',$12,$13,$14,$15,$16)`,
-            [mvId, mvId, dateStr, prod.id, prod.name, req.source_warehouse_id, req.source_warehouse_name, baseQty, unitName, factor, prod.purchase_price, req.id, req.request_number, `رد عهدة مرفوضة للمندوب ${req.representative_name}`, actor.fullName, now]
-          );
-        }
-      }
-
       if (status === 'received') {
-        if (req.status === 'received') {
-          throw new AppError(409, 'تم تأكيد استلام هذه العهدة مسبقاً', 'ALREADY_RECEIVED');
-        }
-        if (isCustodyDispatch) {
-          for (const r of itemsRes.rows) {
-            const qty = Number(r.executed_qty ?? r.approved_qty ?? r.requested_qty ?? 0);
-            if (qty <= 0) continue;
-            const pRes = await client.query('SELECT * FROM products WHERE id = $1 FOR UPDATE', [r.product_id]);
-            const prod = pRes.rows[0];
-            if (!prod) continue;
-            const uRes = await client.query('SELECT * FROM product_units WHERE product_id = $1', [prod.id]);
-            const unitName = String(r.unit || prod.base_unit || 'قطعة');
-            const unitObj = uRes.rows.find((u) => u.name === unitName);
-            const factor = unitObj ? Number(unitObj.conversion_factor || 1) : 1;
-            const baseQty = round3(qty * factor);
-
-            const stockMap = { ...(prod.stock_per_warehouse || {}) };
-            stockMap[req.target_warehouse_id] = round3(Number(stockMap[req.target_warehouse_id] || 0) + baseQty);
-            await client.query('UPDATE products SET stock_per_warehouse = $1 WHERE id = $2', [JSON.stringify(stockMap), prod.id]);
-
-            const mvId = generateServerId('SM');
-            await client.query(
-              `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, target_warehouse_id, target_warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'transfer_in',$10,$11,$12,$13,'rep_item_transfer',$14,$15,$16,$17,$18)`,
-              [
-                mvId,
-                mvId,
-                dateStr,
-                prod.id,
-                prod.name,
-                req.target_warehouse_id,
-                req.target_warehouse_name,
-                req.source_warehouse_id,
-                req.source_warehouse_name,
-                baseQty,
-                unitName,
-                factor,
-                prod.purchase_price,
-                req.id,
-                req.request_number,
-                `تأكيد استلام عهدة المندوب ${req.representative_name}`,
-                actor.fullName,
-                now,
-              ]
-            );
-          }
-        }
         await client.query(
-          `UPDATE rep_item_transfers SET status = 'received', notes = CASE WHEN $1 <> '' THEN $1 ELSE notes END, received_by = $2, received_at = $3 WHERE id = $4`,
-          [String(notes || ''), actor.fullName, now, requestId]
+          `UPDATE rep_item_transfers SET status = 'received', notes = COALESCE(NULLIF($1, ''), notes), received_by = $2, received_at = $3 WHERE id = $4`,
+          [notes || '', actor.fullName, now, requestId]
         );
       } else {
         await client.query(
-          `UPDATE rep_item_transfers
-           SET status = $1,
-               notes = CASE WHEN $2 <> '' THEN $2 ELSE notes END,
-               reviewed_by = $3,
-               reviewed_at = $4,
-               executed_at = CASE WHEN $1 = 'executed' THEN $4 ELSE executed_at END,
-               dispatched_by = CASE WHEN $1 = 'executed' AND transfer_mode = 'custody_dispatch' THEN $3 ELSE dispatched_by END,
-               dispatched_at = CASE WHEN $1 = 'executed' AND transfer_mode = 'custody_dispatch' THEN $4 ELSE dispatched_at END
-           WHERE id = $5`,
-          [status, String(notes || ''), actor.fullName, now, requestId]
+          `UPDATE rep_item_transfers SET status = $1, notes = COALESCE(NULLIF($2, ''), notes), reviewed_by = $3, reviewed_at = $4, executed_at = CASE WHEN $1 = 'executed' THEN $4 ELSE executed_at END WHERE id = $5`,
+          [status, notes || '', actor.fullName, now, requestId]
         );
       }
     });
@@ -1561,7 +1311,6 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
   await withJsonTransaction(async (db) => {
     const req = db.repItemTransfers.find((r) => r.id === requestId);
     if (!req) throw new AppError(404, 'طلب التحويل غير موجود', 'NOT_FOUND');
-    const isCustodyDispatch = req.transferMode === 'custody_dispatch';
 
     if (isRepActor) {
       if (req.representativeId !== repActorProfile.id) {
@@ -1575,33 +1324,20 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
     }
 
     if (status === 'executed' && req.status !== 'executed' && req.status !== 'received') {
-      const origByProduct = new Map((req.items || []).map((r) => [r.productId, r]));
       const itemsToMove = approvedItems || req.items;
       for (const it of itemsToMove) {
         const prod = db.products.find((p) => p.id === it.productId);
         if (!prod) continue;
-        const origRow = origByProduct.get(prod.id);
         const qty = Number(it.approvedQty || it.requestedQty || 0);
-        if (qty <= 0) continue;
-        const unitName = String(it.unit || origRow?.unit || prod.baseUnit || 'قطعة');
-        const unitObj = (prod.units || []).find((u) => u.name === unitName);
-        const factor = unitObj ? Number(unitObj.conversionFactor || 1) : 1;
-        const baseQty = round3(qty * factor);
-
         const src = Number(prod.stockPerWarehouse[req.sourceWarehouseId] || 0);
         const dst = Number(prod.stockPerWarehouse[req.targetWarehouseId] || 0);
-        if (src < baseQty && !db.settings?.allowNegativeStock) {
-          throw new AppError(409, `الرصيد المتاح من (${prod.name}) بالمصدر (${src}) أقل من (${baseQty})`, 'INSUFFICIENT_STOCK');
+        if (src < qty && !db.settings?.allowNegativeStock) {
+          throw new AppError(409, `الرصيد المتاح من (${prod.name}) بالمصدر (${src}) أقل من (${qty})`, 'INSUFFICIENT_STOCK');
         }
-        prod.stockPerWarehouse[req.sourceWarehouseId] = round3(src - baseQty);
-        if (!isCustodyDispatch) {
-          prod.stockPerWarehouse[req.targetWarehouseId] = round3(dst + baseQty);
-        }
-        it.executedQty = qty;
-        const mvId = generateServerId('SM');
+        prod.stockPerWarehouse[req.sourceWarehouseId] = round3(src - qty);
+        prod.stockPerWarehouse[req.targetWarehouseId] = round3(dst + qty);
         db.stockMovements.unshift({
-          id: mvId,
-          movementNumber: mvId,
+          id: generateServerId('SM'),
           date: dateStr,
           type: 'transfer_out',
           productId: prod.id,
@@ -1610,92 +1346,16 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
           warehouseName: req.sourceWarehouseName,
           targetWarehouseId: req.targetWarehouseId,
           targetWarehouseName: req.targetWarehouseName,
-          quantity: baseQty,
-          unit: unitName,
-          unitFactor: factor,
+          quantity: qty,
           unitCost: prod.purchasePrice,
-          relatedDocType: 'rep_item_transfer',
           referenceId: req.id,
           referenceNumber: req.requestNumber,
-          notes: isCustodyDispatch
-            ? `صرف عهدة بضاعة مرسلة للمندوب ${req.representativeName} (بانتظار تأكيد الاستلام)`
-            : `تحويل عهدة بضاعة للمندوب ${req.representativeName}`,
+          notes: `تحويل عهدة بضاعة للمندوب ${req.representativeName}`,
           createdBy: actor.fullName,
           createdAt: now,
         });
       }
     }
-
-    if (status === 'rejected' && isCustodyDispatch && req.status === 'executed') {
-      for (const it of req.items || []) {
-        const qty = Number(it.executedQty ?? it.approvedQty ?? it.requestedQty ?? 0);
-        const prod = db.products.find((p) => p.id === it.productId);
-        if (!prod || qty <= 0) continue;
-        const unitName = String(it.unit || prod.baseUnit || 'قطعة');
-        const unitObj = (prod.units || []).find((u) => u.name === unitName);
-        const factor = unitObj ? Number(unitObj.conversionFactor || 1) : 1;
-        const baseQty = round3(qty * factor);
-        prod.stockPerWarehouse[req.sourceWarehouseId] = round3(Number(prod.stockPerWarehouse[req.sourceWarehouseId] || 0) + baseQty);
-        const mvId = generateServerId('SM');
-        db.stockMovements.unshift({
-          id: mvId,
-          movementNumber: mvId,
-          date: dateStr,
-          type: 'transfer_in',
-          productId: prod.id,
-          productName: prod.name,
-          warehouseId: req.sourceWarehouseId,
-          warehouseName: req.sourceWarehouseName,
-          quantity: baseQty,
-          unit: unitName,
-          unitFactor: factor,
-          unitCost: prod.purchasePrice,
-          relatedDocType: 'rep_item_transfer',
-          referenceId: req.id,
-          referenceNumber: req.requestNumber,
-          notes: `رد عهدة مرفوضة للمندوب ${req.representativeName}`,
-          createdBy: actor.fullName,
-          createdAt: now,
-        });
-      }
-    }
-
-    if (status === 'received' && isCustodyDispatch) {
-      for (const it of req.items || []) {
-        const qty = Number(it.executedQty ?? it.approvedQty ?? it.requestedQty ?? 0);
-        const prod = db.products.find((p) => p.id === it.productId);
-        if (!prod || qty <= 0) continue;
-        const unitName = String(it.unit || prod.baseUnit || 'قطعة');
-        const unitObj = (prod.units || []).find((u) => u.name === unitName);
-        const factor = unitObj ? Number(unitObj.conversionFactor || 1) : 1;
-        const baseQty = round3(qty * factor);
-        prod.stockPerWarehouse[req.targetWarehouseId] = round3(Number(prod.stockPerWarehouse[req.targetWarehouseId] || 0) + baseQty);
-        const mvId = generateServerId('SM');
-        db.stockMovements.unshift({
-          id: mvId,
-          movementNumber: mvId,
-          date: dateStr,
-          type: 'transfer_in',
-          productId: prod.id,
-          productName: prod.name,
-          warehouseId: req.targetWarehouseId,
-          warehouseName: req.targetWarehouseName,
-          targetWarehouseId: req.sourceWarehouseId,
-          targetWarehouseName: req.sourceWarehouseName,
-          quantity: baseQty,
-          unit: unitName,
-          unitFactor: factor,
-          unitCost: prod.purchasePrice,
-          relatedDocType: 'rep_item_transfer',
-          referenceId: req.id,
-          referenceNumber: req.requestNumber,
-          notes: `تأكيد استلام عهدة المندوب ${req.representativeName}`,
-          createdBy: actor.fullName,
-          createdAt: now,
-        });
-      }
-    }
-
     req.status = status;
     if (notes) req.notes = notes;
     if (status === 'received') {
@@ -1704,13 +1364,7 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
     } else {
       req.reviewedBy = actor.fullName;
       req.reviewedAt = now;
-      if (status === 'executed') {
-        req.executedAt = now;
-        if (isCustodyDispatch) {
-          req.dispatchedBy = actor.fullName;
-          req.dispatchedAt = now;
-        }
-      }
+      if (status === 'executed') req.executedAt = now;
       if (approvedItems) req.items = approvedItems;
     }
   });
@@ -1737,23 +1391,13 @@ export async function getMobileNotifications(authContext) {
     }
     const orders = await listOrders(authContext);
     for (const o of orders.slice(0, 15)) {
-      if (o.status === 'under_review') {
-        notifications.push({
-          id: `notif-ord-rev-${o.id}-${o.updatedAt || o.createdAt}`,
-          type: 'order_status',
-          severity: 'info',
-          title: `طلبك قيد المراجعة (${o.requestNumber})`,
-          body: 'بدأت الإدارة بمراجعة طلبك وستصلك النتيجة قريباً.',
-          relatedId: o.id,
-          createdAt: o.reviewedAt || o.updatedAt || o.createdAt,
-        });
-      } else if (o.status === 'approved') {
+      if (o.status === 'approved') {
         notifications.push({
           id: `notif-ord-app-${o.id}-${o.updatedAt || o.createdAt}`,
           type: 'order_status',
           severity: 'info',
-          title: `تم قبول طلبك (${o.requestNumber})`,
-          body: 'وافقت الإدارة على طلبك ومتاح لاستكمال إجراءات الفوترة.',
+          title: `تم اعتماد طلبك (${o.requestNumber})`,
+          body: 'وافقت الإدارة على طلبك وجارٍ تجهيز الفاتورة.',
           relatedId: o.id,
           createdAt: o.reviewedAt || o.updatedAt || o.createdAt,
         });
@@ -1817,20 +1461,14 @@ export async function getMobileNotifications(authContext) {
 
     for (const rit of boot.repItemTransfers || []) {
       if (rit.status === 'executed') {
-        const isDispatch = rit.transferMode === 'custody_dispatch';
         notifications.push({
           id: `notif-rit-exec-${rit.id}`,
-          type: isDispatch ? 'custody_dispatch' : 'item_transfer',
+          type: 'item_transfer',
           severity: 'success',
-          title: isDispatch
-            ? `عهدة بضاعة مرسلة من الإدارة بانتظار الاستلام (${rit.requestNumber})`
-            : `تحويل أصناف منفّذ (${rit.requestNumber})`,
-          body: isDispatch
-            ? 'افتح شاشة التزامن REFRESH أو العهدة لتأكيد الاستلام وإضافتها إلى مخزون سيارتك.'
-            : 'يرجى تأكيد استلام الأصناف في سيارتك ثم اعتماد الفاتورة المرتبطة إن وجدت.',
+          title: `تحويل أصناف منفّذ (${rit.requestNumber})`,
+          body: 'يرجى تأكيد استلام الأصناف في سيارتك ثم اعتماد الفاتورة المرتبطة إن وجدت.',
           relatedId: rit.id,
-          targetTab: isDispatch ? 'refresh' : 'custody',
-          createdAt: rit.dispatchedAt || rit.executedAt || rit.reviewedAt || rit.createdAt,
+          createdAt: rit.executedAt || rit.reviewedAt || rit.createdAt,
         });
       } else if (rit.status === 'approved') {
         notifications.push({
@@ -1885,92 +1523,23 @@ export async function getMobileNotifications(authContext) {
         });
       }
     }
-    for (const ord of boot.customerItemOrders || []) {
-      if (ord.status === 'under_review') {
-        notifications.push({
-          id: `notif-rep-ord-rev-${ord.id}-${ord.updatedAt || ord.createdAt}`,
-          type: 'order_status',
-          severity: 'info',
-          title: `الطلب قيد المراجعة (${ord.requestNumber})`,
-          body: `عميل: ${ord.customerName} — قيد مراجعة الإدارة`,
-          relatedId: ord.id,
-          targetTab: 'orders',
-          createdAt: ord.reviewedAt || ord.updatedAt || ord.createdAt,
-        });
-      } else if (ord.status === 'approved') {
-        notifications.push({
-          id: `notif-rep-ord-app-${ord.id}-${ord.updatedAt || ord.createdAt}`,
-          type: 'order_status',
-          severity: 'success',
-          title: `تم قبول طلبك (${ord.requestNumber})`,
-          body: `عميل: ${ord.customerName} — تم قبول الطلب من الإدارة`,
-          relatedId: ord.id,
-          targetTab: 'orders',
-          createdAt: ord.reviewedAt || ord.updatedAt || ord.createdAt,
-        });
-      } else if (ord.status === 'rejected') {
-        notifications.push({
-          id: `notif-rep-ord-rej-${ord.id}`,
-          type: 'order_status',
-          severity: 'warning',
-          title: `تم رفض الطلب (${ord.requestNumber})`,
-          body: ord.rejectionReason ? `السبب: ${ord.rejectionReason}` : 'يرجى التواصل مع الإدارة.',
-          relatedId: ord.id,
-          targetTab: 'orders',
-          createdAt: ord.reviewedAt || ord.updatedAt || ord.createdAt,
-        });
-      } else if (ord.status === 'invoiced') {
-        notifications.push({
-          id: `notif-rep-ord-inv-${ord.id}`,
-          type: 'order_status',
-          severity: 'success',
-          title: `تم إصدار فاتورة للطلب (${ord.invoiceNumber || ord.requestNumber})`,
-          body: `عميل: ${ord.customerName}`,
-          relatedId: ord.invoiceId || ord.id,
-          targetTab: 'orders',
-          createdAt: ord.updatedAt || ord.createdAt,
-        });
-      }
-    }
   } else {
     // Admin & staff mobile/desktop notifications scoped to actual permissions
     const boot = await getStaffBootstrapData(actor);
     const isAdmin = actor.role === 'admin';
     const perms = actor.permissions || {};
 
-    if (isAdmin || perms.canManageSales || perms.canReviewRepInvoices) {
-      for (const inv of boot.invoices || []) {
-        if (inv.type === 'sales' && inv.status === 'confirmed' && inv.reviewStatus === 'needs_review') {
-          notifications.push({
-            id: `notif-staff-inv-rev-${inv.id}`,
-            type: 'rep_invoice_review',
-            severity: 'info',
-            title: `فاتورة مندوب جديدة للمراجعة (${inv.invoiceNumber})`,
-            body: `المندوب: ${inv.representativeName || inv.createdBy} — العميل: ${inv.customerName || 'نقدي'} (${round2(inv.grandTotal).toLocaleString()} ${settings.currency || 'ج.م'})`,
-            relatedId: inv.id,
-            targetTab: 'sales',
-            createdAt: inv.createdAt,
-          });
-        }
-      }
-    }
-
     if (isAdmin || perms.canManageSales) {
       for (const ord of boot.customerItemOrders || []) {
         if (ord.status === 'pending') {
-          const isRepOrder = ord.requesterType === 'representative' || Boolean(ord.representativeId);
           notifications.push({
             id: `notif-staff-ord-${ord.id}`,
             type: 'customer_order',
             severity: 'warning',
-            title: isRepOrder
-              ? `طلب مندوب جديد بانتظار المراجعة (${ord.requestNumber})`
-              : `طلب عميل جديد بانتظار المراجعة (${ord.requestNumber})`,
-            body: isRepOrder
-              ? `المندوب: ${ord.submittedByName || ord.representativeName || '-'} · العميل: ${ord.customerName || '-'}`
-              : `${ord.customerName || 'عميل'} — ${(ord.items || []).length} صنف`,
+            title: `طلب عميل جديد بانتظار المراجعة (${ord.requestNumber})`,
+            body: `${ord.customerName || 'عميل'} — ${(ord.items || []).length} صنف`,
             relatedId: ord.id,
-            targetTab: 'customer-orders',
+            targetTab: 'customers',
             createdAt: ord.createdAt,
           });
         }
@@ -2083,18 +1652,7 @@ export async function getMobileNotifications(authContext) {
 // Users CRUD (bcrypt enforced, role hierarchy guarded, passwordHash NEVER returned)
 // ==============================================================================
 
-const ALLOWED_USER_ROLES = new Set(['admin', 'manager', 'accountant', 'sales', 'warehouse', 'purchases', 'representative', 'customer']);
-
-function assertNoPermissionEscalation(requestedPermissions, actor) {
-  if (!actor || actor.role === 'admin') return;
-  if (!requestedPermissions || typeof requestedPermissions !== 'object') return;
-  const actorPerms = actor.permissions || {};
-  for (const [key, val] of Object.entries(requestedPermissions)) {
-    if (val === true && actorPerms[key] !== true) {
-      throw new AppError(403, `غير مصرح لك بمنح صلاحية (${key}) لأنها غير متاحة لحسابك`, 'FORBIDDEN_PERMISSION_ESCALATION');
-    }
-  }
-}
+const ALLOWED_USER_ROLES = new Set(['admin', 'manager', 'accountant', 'sales', 'warehouse', 'representative', 'customer']);
 
 export async function createAdminUser(payload, actor) {
   const username = String(payload.username || '').trim();
@@ -2107,7 +1665,6 @@ export async function createAdminUser(payload, actor) {
   if (actor?.role !== 'admin' && targetRole === 'admin') {
     throw new AppError(403, 'غير مصرح لغير المدير العام بإنشاء حساب مدير عام', 'FORBIDDEN_ADMIN_ESCALATION');
   }
-  assertNoPermissionEscalation(payload.permissions, actor);
   if (!username || username.length < 3) throw new AppError(400, 'اسم المستخدم يجب أن لا يقل عن 3 أحرف', 'INVALID_USERNAME');
   if (!fullName) throw new AppError(400, 'الاسم الكامل مطلوب', 'INVALID_NAME');
   if (!password || password.length < 6) throw new AppError(400, 'كلمة المرور يجب أن لا تقل عن 6 أحرف', 'WEAK_PASSWORD');
@@ -2131,7 +1688,7 @@ export async function createAdminUser(payload, actor) {
           payload.phone || '',
           payload.address || '',
           payload.notes || '',
-          targetRole,
+          payload.role || 'sales',
           payload.jobTitle || '',
           payload.department || '',
           payload.isActive ?? true,
@@ -2140,71 +1697,14 @@ export async function createAdminUser(payload, actor) {
           now,
         ]
       );
-
-      let resolvedLinkedCustomerId;
-      if (targetRole === 'customer') {
-        if (payload.linkedCustomerId) {
-          const targetCustRes = await client.query('SELECT id, user_id FROM customers WHERE id = $1 FOR UPDATE', [payload.linkedCustomerId]);
-          const targetCust = targetCustRes.rows[0];
-          if (!targetCust) {
-            throw new AppError(404, 'ملف العميل المحدد للربط غير موجود', 'CUSTOMER_NOT_FOUND');
-          }
-          if (targetCust.user_id && targetCust.user_id !== id) {
-            throw new AppError(409, 'ملف العميل المختار مربوط مسبقًا بحساب مستخدم آخر', 'CUSTOMER_ALREADY_LINKED');
-          }
-          await client.query('UPDATE customers SET user_id = $1, updated_at = $2 WHERE id = $3', [id, now, targetCust.id]);
-          resolvedLinkedCustomerId = targetCust.id;
-        } else if (payload.autoCreateCustomerProfile !== false) {
-          const normPhone = normalizePhoneDigits(payload.phone);
-          let matchedExisting = null;
-          if (normPhone && payload.autoMatchExisting !== false && !payload.forceNewCustomerProfile) {
-            const unlinkedRes = await client.query('SELECT id, name, phone, secondary_phone FROM customers WHERE user_id IS NULL FOR UPDATE');
-            const matches = unlinkedRes.rows.filter(
-              (c) =>
-                normalizePhoneDigits(c.phone) === normPhone ||
-                normalizePhoneDigits(c.secondary_phone) === normPhone
-            );
-            if (matches.length > 1) {
-              throw new AppError(
-                409,
-                `رقم الهاتف (${payload.phone}) مسجل لأكثر من عميل غير مربوط (${matches.map((m) => m.name).join('، ')}). يرجى اختيار ملف العميل المراد ربطه يدوياً لتجنب التكرار.`,
-                'AMBIGUOUS_CUSTOMER_PHONE'
-              );
-            }
-            if (matches.length === 1) {
-              matchedExisting = matches[0];
-            }
-          }
-
-          if (matchedExisting) {
-            await client.query('UPDATE customers SET user_id = $1, updated_at = $2 WHERE id = $3', [id, now, matchedExisting.id]);
-            resolvedLinkedCustomerId = matchedExisting.id;
-          } else {
-            const autoCustId = generateServerId('CUS');
-            const autoCode = `CUS-${String(Date.now()).slice(-5)}-${Math.floor(10 + Math.random() * 89)}`;
-            await client.query(
-              `INSERT INTO customers (id, code, user_id, name, phone, address, shop_address, opening_balance, current_balance, notes, status, created_at, updated_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$6,0,0,$7,$8,$9,$9)`,
-              [
-                autoCustId,
-                autoCode,
-                id,
-                fullName,
-                payload.phone || '',
-                payload.address || '',
-                payload.notes || 'ملف عميل مُنشأ ومربوط تلقائيًا عند إنشاء حساب الدخول',
-                payload.isActive === false ? 'blocked' : 'active',
-                now,
-              ]
-            );
-            resolvedLinkedCustomerId = autoCustId;
-          }
+      if (payload.linkedCustomerId && payload.role === 'customer') {
+        const dupLink = await client.query('SELECT id FROM customers WHERE user_id = $1 LIMIT 1', [id]);
+        if (!dupLink.rows[0]) {
+          await client.query('UPDATE customers SET user_id = $1 WHERE id = $2', [id, payload.linkedCustomerId]);
         }
       }
-
       const r = await client.query('SELECT * FROM users WHERE id = $1', [id]);
-      const sanitized = sanitizeUser(mapPgUserRow(r.rows[0]));
-      return resolvedLinkedCustomerId ? { ...sanitized, linkedCustomerId: resolvedLinkedCustomerId } : sanitized;
+      return sanitizeUser(mapPgUserRow(r.rows[0]));
     });
     await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إنشاء حساب مستخدم (${username})`, module: 'المستخدمون', recordId: id });
     return user;
@@ -2223,7 +1723,7 @@ export async function createAdminUser(payload, actor) {
       phone: payload.phone || '',
       address: payload.address || '',
       notes: payload.notes || '',
-      role: targetRole,
+      role: payload.role || 'sales',
       jobTitle: payload.jobTitle || '',
       department: payload.department || '',
       isActive: payload.isActive ?? true,
@@ -2232,68 +1732,11 @@ export async function createAdminUser(payload, actor) {
       createdAt: now,
     };
     db.users.push(newUser);
-
-    let resolvedLinkedCustomerId;
-    if (targetRole === 'customer') {
-      if (payload.linkedCustomerId) {
-        const cust = db.customers.find((c) => c.id === payload.linkedCustomerId);
-        if (!cust) {
-          throw new AppError(404, 'ملف العميل المحدد للربط غير موجود', 'CUSTOMER_NOT_FOUND');
-        }
-        if (cust.userId && cust.userId !== id) {
-          throw new AppError(409, 'ملف العميل المختار مربوط مسبقًا بحساب مستخدم آخر', 'CUSTOMER_ALREADY_LINKED');
-        }
-        cust.userId = id;
-        resolvedLinkedCustomerId = cust.id;
-      } else if (payload.autoCreateCustomerProfile !== false) {
-        const normPhone = normalizePhoneDigits(payload.phone);
-        let matchedExisting = null;
-        if (normPhone && payload.autoMatchExisting !== false && !payload.forceNewCustomerProfile) {
-          const matches = (db.customers || []).filter(
-            (c) =>
-              !c.userId &&
-              (normalizePhoneDigits(c.phone) === normPhone ||
-                normalizePhoneDigits(c.secondaryPhone) === normPhone)
-          );
-          if (matches.length > 1) {
-            throw new AppError(
-              409,
-              `رقم الهاتف (${payload.phone}) مسجل لأكثر من عميل غير مربوط (${matches.map((m) => m.name).join('، ')}). يرجى اختيار ملف العميل المراد ربطه يدوياً لتجنب التكرار.`,
-              'AMBIGUOUS_CUSTOMER_PHONE'
-            );
-          }
-          if (matches.length === 1) {
-            matchedExisting = matches[0];
-          }
-        }
-        if (matchedExisting) {
-          matchedExisting.userId = id;
-          matchedExisting.updatedAt = now;
-          resolvedLinkedCustomerId = matchedExisting.id;
-        } else {
-          const autoCustId = generateServerId('CUS');
-          const autoCode = `CUS-${String(Date.now()).slice(-5)}-${Math.floor(10 + Math.random() * 89)}`;
-          db.customers.unshift({
-            id: autoCustId,
-            code: autoCode,
-            userId: id,
-            name: fullName,
-            phone: payload.phone || '',
-            address: payload.address || '',
-            openingBalance: 0,
-            currentBalance: 0,
-            priceHistory: {},
-            notes: payload.notes || 'ملف عميل مُنشأ ومربوط تلقائيًا عند إنشاء حساب الدخول',
-            status: payload.isActive === false ? 'blocked' : 'active',
-            createdAt: now,
-          });
-          resolvedLinkedCustomerId = autoCustId;
-        }
-      }
+    if (payload.linkedCustomerId && payload.role === 'customer') {
+      const cust = db.customers.find((c) => c.id === payload.linkedCustomerId);
+      if (cust) cust.userId = id;
     }
-
-    const sanitized = sanitizeUser(newUser);
-    return resolvedLinkedCustomerId ? { ...sanitized, linkedCustomerId: resolvedLinkedCustomerId } : sanitized;
+    return sanitizeUser(newUser);
   });
   await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إنشاء حساب مستخدم (${username})`, module: 'المستخدمون', recordId: id });
   return user;
@@ -2310,7 +1753,6 @@ export async function updateAdminUser(userId, updates, actor) {
       throw new AppError(403, 'غير مصرح لغير المدير العام بترقية أي حساب إلى مدير عام', 'FORBIDDEN_ADMIN_ESCALATION');
     }
   }
-  assertNoPermissionEscalation(updates.permissions, actor);
   const nextPasswordHash = updates.newPassword && String(updates.newPassword).length >= 6 ? await hashPasswordBcrypt(updates.newPassword) : null;
 
   if (await isPgMode()) {
@@ -2321,7 +1763,6 @@ export async function updateAdminUser(userId, updates, actor) {
       if (actor?.role !== 'admin' && cur.role === 'admin') {
         throw new AppError(403, 'غير مصرح لغير المدير العام بتعديل بيانات أو صلاحيات حساب المدير العام', 'FORBIDDEN_ADMIN_ESCALATION');
       }
-      const effectiveRole = updates.role ?? cur.role;
       await client.query(
         `UPDATE users SET full_name = $1, phone = $2, address = $3, notes = $4, role = $5, job_title = $6, department = $7, is_active = $8, must_change_password = $9, permissions = $10, updated_at = $11 WHERE id = $12`,
         [
@@ -2329,7 +1770,7 @@ export async function updateAdminUser(userId, updates, actor) {
           updates.phone ?? cur.phone,
           updates.address ?? cur.address,
           updates.notes ?? cur.notes,
-          effectiveRole,
+          updates.role ?? cur.role,
           updates.jobTitle ?? cur.job_title,
           updates.department ?? cur.department,
           updates.isActive ?? cur.is_active,
@@ -2345,70 +1786,8 @@ export async function updateAdminUser(userId, updates, actor) {
       if (updates.isActive === false) {
         await client.query(`UPDATE user_sessions SET revoked_at = $1 WHERE user_id = $2 AND revoked_at IS NULL`, [now, userId]);
       }
-      let resolvedLinkedCustomerId;
-      if (effectiveRole === 'customer' && updates.linkedCustomerId) {
-        const targetRes = await client.query('SELECT id, user_id FROM customers WHERE id = $1 FOR UPDATE', [updates.linkedCustomerId]);
-        const target = targetRes.rows[0];
-        if (!target) throw new AppError(404, 'ملف العميل المحدد للربط غير موجود', 'CUSTOMER_NOT_FOUND');
-        if (target.user_id && target.user_id !== userId) {
-          throw new AppError(409, 'ملف العميل المختار مربوط مسبقًا بحساب مستخدم آخر', 'CUSTOMER_ALREADY_LINKED');
-        }
-        await client.query('UPDATE customers SET user_id = NULL, updated_at = $1 WHERE user_id = $2 AND id <> $3', [now, userId, target.id]);
-        await client.query('UPDATE customers SET user_id = $1, updated_at = $2 WHERE id = $3', [userId, now, target.id]);
-        resolvedLinkedCustomerId = target.id;
-      } else if (effectiveRole === 'customer' && updates.autoCreateCustomerProfile === true) {
-        const curLinked = await client.query('SELECT id FROM customers WHERE user_id = $1 LIMIT 1', [userId]);
-        if (!curLinked.rows[0]) {
-          const targetPhone = updates.phone ?? cur.phone ?? '';
-          const normPhone = normalizePhoneDigits(targetPhone);
-          let matchedExisting = null;
-          if (normPhone && updates.autoMatchExisting !== false && !updates.forceNewCustomerProfile) {
-            const unlinkedRes = await client.query('SELECT id, name, phone, secondary_phone FROM customers WHERE user_id IS NULL FOR UPDATE');
-            const matches = unlinkedRes.rows.filter(
-              (c) =>
-                normalizePhoneDigits(c.phone) === normPhone ||
-                normalizePhoneDigits(c.secondary_phone) === normPhone
-            );
-            if (matches.length > 1) {
-              throw new AppError(
-                409,
-                `رقم الهاتف (${targetPhone}) مسجل لأكثر من عميل غير مربوط (${matches.map((m) => m.name).join('، ')}). يرجى اختيار ملف العميل المراد ربطه يدوياً لتجنب التكرار.`,
-                'AMBIGUOUS_CUSTOMER_PHONE'
-              );
-            }
-            if (matches.length === 1) {
-              matchedExisting = matches[0];
-            }
-          }
-
-          if (matchedExisting) {
-            await client.query('UPDATE customers SET user_id = $1, updated_at = $2 WHERE id = $3', [userId, now, matchedExisting.id]);
-            resolvedLinkedCustomerId = matchedExisting.id;
-          } else {
-            const autoCustId = generateServerId('CUS');
-            const autoCode = `CUS-${String(Date.now()).slice(-5)}-${Math.floor(10 + Math.random() * 89)}`;
-            await client.query(
-              `INSERT INTO customers (id, code, user_id, name, phone, address, shop_address, opening_balance, current_balance, notes, status, created_at, updated_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$6,0,0,$7,$8,$9,$9)`,
-              [
-                autoCustId,
-                autoCode,
-                userId,
-                updates.fullName ?? cur.full_name,
-                targetPhone,
-                updates.address ?? cur.address ?? '',
-                'ملف عميل مُنشأ تلقائيًا',
-                (updates.isActive ?? cur.is_active) === false ? 'blocked' : 'active',
-                now,
-              ]
-            );
-            resolvedLinkedCustomerId = autoCustId;
-          }
-        }
-      }
       const next = await client.query('SELECT * FROM users WHERE id = $1', [userId]);
-      const sanitized = sanitizeUser(mapPgUserRow(next.rows[0]));
-      return resolvedLinkedCustomerId ? { ...sanitized, linkedCustomerId: resolvedLinkedCustomerId } : sanitized;
+      return sanitizeUser(mapPgUserRow(next.rows[0]));
     });
     await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تحديث حساب مستخدم (${user.username})`, module: 'المستخدمون', recordId: userId });
     return user;
@@ -2421,8 +1800,7 @@ export async function updateAdminUser(userId, updates, actor) {
     if (actor?.role !== 'admin' && cur.role === 'admin') {
       throw new AppError(403, 'غير مصرح لغير المدير العام بتعديل بيانات أو صلاحيات حساب المدير العام', 'FORBIDDEN_ADMIN_ESCALATION');
     }
-    const { newPassword, passwordHash: _ignoredHash, linkedCustomerId, autoCreateCustomerProfile, ...rest } = updates;
-    const effectiveRole = rest.role ?? cur.role;
+    const { newPassword, passwordHash: _ignoredHash, ...rest } = updates;
     db.users[idx] = {
       ...cur,
       ...rest,
@@ -2430,69 +1808,7 @@ export async function updateAdminUser(userId, updates, actor) {
       passwordHash: nextPasswordHash || cur.passwordHash,
       passwordAlgo: nextPasswordHash ? 'bcrypt' : cur.passwordAlgo,
     };
-    let resolvedLinkedCustomerId;
-    if (effectiveRole === 'customer' && linkedCustomerId) {
-      const target = db.customers.find((c) => c.id === linkedCustomerId);
-      if (!target) throw new AppError(404, 'ملف العميل المحدد للربط غير موجود', 'CUSTOMER_NOT_FOUND');
-      if (target.userId && target.userId !== userId) {
-        throw new AppError(409, 'ملف العميل المختار مربوط مسبقًا بحساب مستخدم آخر', 'CUSTOMER_ALREADY_LINKED');
-      }
-      db.customers.forEach((c) => {
-        if (c.userId === userId && c.id !== target.id) c.userId = undefined;
-      });
-      target.userId = userId;
-      resolvedLinkedCustomerId = target.id;
-    } else if (effectiveRole === 'customer' && autoCreateCustomerProfile === true) {
-      const existing = db.customers.find((c) => c.userId === userId);
-      if (!existing) {
-        const targetPhone = db.users[idx].phone || '';
-        const normPhone = normalizePhoneDigits(targetPhone);
-        let matchedExisting = null;
-        if (normPhone && updates.autoMatchExisting !== false && !updates.forceNewCustomerProfile) {
-          const matches = (db.customers || []).filter(
-            (c) =>
-              !c.userId &&
-              (normalizePhoneDigits(c.phone) === normPhone ||
-                normalizePhoneDigits(c.secondaryPhone) === normPhone)
-          );
-          if (matches.length > 1) {
-            throw new AppError(
-              409,
-              `رقم الهاتف (${targetPhone}) مسجل لأكثر من عميل غير مربوط (${matches.map((m) => m.name).join('، ')}). يرجى اختيار ملف العميل المراد ربطه يدوياً لتجنب التكرار.`,
-              'AMBIGUOUS_CUSTOMER_PHONE'
-            );
-          }
-          if (matches.length === 1) {
-            matchedExisting = matches[0];
-          }
-        }
-        if (matchedExisting) {
-          matchedExisting.userId = userId;
-          matchedExisting.updatedAt = now;
-          resolvedLinkedCustomerId = matchedExisting.id;
-        } else {
-          const autoCustId = generateServerId('CUS');
-          const autoCode = `CUS-${String(Date.now()).slice(-5)}-${Math.floor(10 + Math.random() * 89)}`;
-          db.customers.unshift({
-            id: autoCustId,
-            code: autoCode,
-            userId,
-            name: db.users[idx].fullName,
-            phone: targetPhone,
-            address: db.users[idx].address || '',
-            openingBalance: 0,
-            currentBalance: 0,
-            priceHistory: {},
-            notes: 'ملف عميل مُنشأ تلقائيًا',
-            status: db.users[idx].isActive === false ? 'blocked' : 'active',
-            createdAt: now,
-          });
-          resolvedLinkedCustomerId = autoCustId;
-        }
-      }
-    }
-    const sanitized = sanitizeUser(db.users[idx]);
-    return resolvedLinkedCustomerId ? { ...sanitized, linkedCustomerId: resolvedLinkedCustomerId } : sanitized;
+    return sanitizeUser(db.users[idx]);
   });
   await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تحديث حساب مستخدم (${user.username})`, module: 'المستخدمون', recordId: userId });
   return user;
@@ -3976,111 +3292,6 @@ export async function renameCategoryGlobal(categoryId, newName, actor) {
   return out;
 }
 
-function sanitizeRemoteHttpsUrl(rawUrl, label, { requireHttps = true } = {}) {
-  const trimmed = String(rawUrl || '').trim().replace(/\/+$/, '');
-  if (!trimmed) return '';
-  let candidate = trimmed;
-  if (!/^https?:\/\//i.test(candidate)) {
-    candidate = `https://${candidate}`;
-  }
-  let parsed;
-  try {
-    parsed = new URL(candidate);
-  } catch {
-    throw new AppError(400, `صيغة رابط ${label} غير صالحة`, 'INVALID_CONNECTION_URL');
-  }
-  if (requireHttps && parsed.protocol !== 'https:') {
-    throw new AppError(
-      400,
-      `يجب أن يستخدم ${label} بروتوكول HTTPS المشفر لحماية الاتصال الخارجي والتوكنات`,
-      'HTTPS_REQUIRED_FOR_REMOTE'
-    );
-  }
-  return parsed.origin + (parsed.pathname && parsed.pathname !== '/' ? parsed.pathname.replace(/\/+$/, '') : '');
-}
-
-export function sanitizeConnectionConfig(raw, prev = {}) {
-  if (!raw || typeof raw !== 'object') return prev;
-  const allowedModes = new Set(['local_network', 'free_remote', 'pro_remote', 'cloud_vps']);
-  const activeMode = allowedModes.has(raw.activeMode) ? raw.activeMode : (allowedModes.has(prev.activeMode) ? prev.activeMode : 'local_network');
-  const localRaw = raw.localNetwork && typeof raw.localNetwork === 'object' ? { ...(prev.localNetwork || {}), ...raw.localNetwork } : prev.localNetwork || {};
-  const portNum = Math.min(65535, Math.max(1, Number(localRaw.port || 3000) || 3000));
-  const cleanIp = String(localRaw.ip || '192.168.1.100')
-    .trim()
-    .replace(/^https?:\/\//i, '')
-    .split('/')[0]
-    .split(':')[0];
-  const cleanHostname = String(localRaw.hostname || 'awlad-selim-server').trim().slice(0, 120);
-
-  const enforceHttps =
-    raw.enforceHttpsForRemote !== undefined
-      ? raw.enforceHttpsForRemote !== false
-      : prev.enforceHttpsForRemote !== false;
-
-  const rawTunnelUrl =
-    raw.freeRemote && Object.prototype.hasOwnProperty.call(raw.freeRemote, 'tunnelUrl')
-      ? raw.freeRemote.tunnelUrl
-      : prev.freeRemote?.tunnelUrl;
-  const rawDomainUrl =
-    raw.proRemote && Object.prototype.hasOwnProperty.call(raw.proRemote, 'domainUrl')
-      ? raw.proRemote.domainUrl
-      : prev.proRemote?.domainUrl;
-  const rawVpsUrl =
-    raw.cloudVps && Object.prototype.hasOwnProperty.call(raw.cloudVps, 'vpsUrl')
-      ? raw.cloudVps.vpsUrl
-      : prev.cloudVps?.vpsUrl;
-  const rawVpsNotes =
-    raw.cloudVps && Object.prototype.hasOwnProperty.call(raw.cloudVps, 'notes')
-      ? raw.cloudVps.notes
-      : prev.cloudVps?.notes;
-
-  const freeTunnelUrl = sanitizeRemoteHttpsUrl(rawTunnelUrl, 'الربط الخارجي المجاني (Cloudflare Quick Tunnel)', {
-    requireHttps: enforceHttps,
-  });
-  const proDomainUrl = sanitizeRemoteHttpsUrl(rawDomainUrl, 'الربط الخارجي الاحترافي (Named Tunnel)', {
-    requireHttps: enforceHttps,
-  });
-  const vpsUrl = sanitizeRemoteHttpsUrl(rawVpsUrl, 'السيرفر السحابي (Cloud VPS)', {
-    requireHttps: enforceHttps,
-  });
-
-  const prevVersion = Number(prev.configVersion || 0);
-  const nextVersion = Math.max(1, Number(raw.configVersion || 0) || (prevVersion >= 1 ? prevVersion + 1 : 1));
-  const autoDetect =
-    raw.freeRemote?.autoDetect !== undefined
-      ? Boolean(raw.freeRemote.autoDetect)
-      : prev.freeRemote?.autoDetect !== false;
-  const proProviderRaw = String(raw.proRemote?.provider || prev.proRemote?.provider || 'cloudflare_named_tunnel');
-  const proProvider = ['cloudflare_named_tunnel', 'nginx_reverse_proxy', 'custom'].includes(proProviderRaw)
-    ? proProviderRaw
-    : 'cloudflare_named_tunnel';
-
-  // Never persist secrets, tokens, passwords, or SSH keys in connectionConfig
-  return {
-    activeMode,
-    configVersion: nextVersion,
-    localNetwork: {
-      ip: cleanIp || '192.168.1.100',
-      port: portNum,
-      hostname: cleanHostname || 'awlad-selim-server',
-    },
-    freeRemote: {
-      tunnelUrl: freeTunnelUrl,
-      autoDetect,
-    },
-    proRemote: {
-      domainUrl: proDomainUrl,
-      provider: proProvider,
-    },
-    cloudVps: {
-      vpsUrl,
-      notes: String(rawVpsNotes || '').trim().slice(0, 400),
-    },
-    enforceHttpsForRemote: enforceHttps,
-    updatedAt: nowIso(),
-  };
-}
-
 export async function updateSystemSettings(updates, actor) {
   const now = nowIso();
   if (await isPgMode()) {
@@ -4093,15 +3304,6 @@ export async function updateSystemSettings(updates, actor) {
           ...prevExtra,
           ...(updates.extraSettings || {}),
         };
-        if (prevExtra.installationId) {
-          mergedExtra.installationId = prevExtra.installationId;
-        }
-        if (updates.extraSettings?.connectionConfig !== undefined) {
-          mergedExtra.connectionConfig = sanitizeConnectionConfig(
-            updates.extraSettings.connectionConfig,
-            prevExtra.connectionConfig || {}
-          );
-        }
         if (updates.mobileConfig !== undefined || updates.extraSettings?.mobileConfig !== undefined) {
           mergedExtra.mobileConfig = {
             ...(prevExtra.mobileConfig || {}),
@@ -4131,9 +3333,6 @@ export async function updateSystemSettings(updates, actor) {
         return { ...updates, extraSettings: mergedExtra, mobileConfig: mergedExtra.mobileConfig };
       } else {
         const extraSettings = { ...(updates.extraSettings || {}) };
-        if (extraSettings.connectionConfig !== undefined) {
-          extraSettings.connectionConfig = sanitizeConnectionConfig(extraSettings.connectionConfig, {});
-        }
         if (updates.mobileConfig) {
           extraSettings.mobileConfig = { ...(extraSettings.mobileConfig || {}), ...(updates.mobileConfig || {}) };
         }
@@ -4159,7 +3358,7 @@ export async function updateSystemSettings(updates, actor) {
         return { ...updates, extraSettings, mobileConfig: extraSettings.mobileConfig };
       }
     });
-    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: 'تحديث إعدادات المؤسسة والاتصال', module: 'الإعدادات' });
+    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: 'تحديث إعدادات المؤسسة', module: 'الإعدادات' });
     return updated;
   }
 
@@ -4169,15 +3368,6 @@ export async function updateSystemSettings(updates, actor) {
       ...prevExtra,
       ...(updates.extraSettings || {}),
     };
-    if (prevExtra.installationId) {
-      mergedExtra.installationId = prevExtra.installationId;
-    }
-    if (updates.extraSettings?.connectionConfig !== undefined) {
-      mergedExtra.connectionConfig = sanitizeConnectionConfig(
-        updates.extraSettings.connectionConfig,
-        prevExtra.connectionConfig || {}
-      );
-    }
     if (updates.mobileConfig !== undefined || updates.extraSettings?.mobileConfig !== undefined) {
       mergedExtra.mobileConfig = {
         ...(prevExtra.mobileConfig || {}),
@@ -4188,7 +3378,7 @@ export async function updateSystemSettings(updates, actor) {
     db.settings = { ...db.settings, ...updates, extraSettings: mergedExtra };
     return { ...db.settings, mobileConfig: mergedExtra.mobileConfig };
   });
-  await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: 'تحديث إعدادات المؤسسة والاتصال', module: 'الإعدادات' });
+  await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: 'تحديث إعدادات المؤسسة', module: 'الإعدادات' });
   return updated;
 }
 
@@ -4244,1401 +3434,3 @@ export async function restoreFullBackup(backupData, actor) {
   await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: 'استعادة نسخة احتياطية كاملة', module: 'النسخ الاحتياطي' });
   return { ok: true, safetyBackup: safetyFile };
 }
-
-// ==============================================================================
-// Representative Custody Operations & Custody Statement
-// ==============================================================================
-
-async function resolveTargetRepAndVan(repIdParam, actor) {
-  const isRep = actor.role === 'representative';
-  let rep = null;
-  if (isRep) {
-    rep = await getRepresentativeByUserId(actor.id);
-    if (!rep) throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
-    if (repIdParam && repIdParam !== rep.id) {
-      throw new AppError(403, 'غير مصرح لك بتنفيذ عمليات على عهدة مندوب آخر', 'FORBIDDEN_REP_CUSTODY');
-    }
-  } else {
-    if (!repIdParam) throw new AppError(400, 'يرجى تحديد المندوب المطلوب', 'REP_REQUIRED');
-    if (await isPgMode()) {
-      const r = (await getPool().query('SELECT * FROM representatives WHERE id = $1 LIMIT 1', [repIdParam])).rows[0];
-      if (!r) throw new AppError(404, 'المندوب غير موجود', 'REP_NOT_FOUND');
-      rep = { id: r.id, name: r.name, warehouseId: r.warehouse_id };
-    } else {
-      const db = readJsonDatabase();
-      const r = (db.representatives || []).find((x) => x.id === repIdParam);
-      if (!r) throw new AppError(404, 'المندوب غير موجود', 'REP_NOT_FOUND');
-      rep = r;
-    }
-  }
-  if (!rep.warehouseId) {
-    const wh = await ensureRepVanWarehouse(rep.name, actor, rep.id);
-    rep.warehouseId = wh.id;
-  }
-  return rep;
-}
-
-export async function recordRepCustodyDelivery(payload, actor, idempotencyKey = '') {
-  const rep = await resolveTargetRepAndVan(payload.representativeId, actor);
-  const items = Array.isArray(payload.items) && payload.items.length
-    ? payload.items
-    : payload.productId
-    ? [{ productId: payload.productId, quantity: payload.quantity, unit: payload.unit, notes: payload.notes }]
-    : [];
-  if (!items.length) throw new AppError(400, 'يجب تحديد صنف واحد على الأقل للتسليم من العهدة', 'EMPTY_ITEMS');
-
-  const dateStr = payload.date || todayIso();
-  const now = nowIso();
-  const endpoint = 'POST /api/inventory/rep-custody/deliver';
-  const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
-
-  if (await isPgMode()) {
-    const out = await withTransaction(async (client) => {
-      const dup = await findPgIdempotency(client, scopedIdem);
-      if (dup) return { ...dup, deduplicated: true };
-
-      if (payload.invoiceId) {
-        const invRow = (await client.query(`SELECT id, invoice_number, type, status, warehouse_id FROM invoices WHERE id = $1 LIMIT 1`, [payload.invoiceId])).rows[0];
-        if (invRow && invRow.status === 'confirmed' && invRow.type === 'sales' && invRow.warehouse_id === rep.warehouseId) {
-          throw new AppError(
-            409,
-            `تم خصم بضاعة الفاتورة (${invRow.invoice_number}) تلقائياً من عهدة السيارة عند تأكيدها ولا يمكن خصمها مرة أخرى`,
-            'DUPLICATE_INVOICE_CUSTODY_DELIVERY'
-          );
-        }
-      }
-
-      const wh = (await client.query('SELECT id, name FROM warehouses WHERE id = $1', [rep.warehouseId])).rows[0];
-      if (!wh) throw new AppError(404, 'مخزن سيارة المندوب غير موجود', 'WAREHOUSE_NOT_FOUND');
-      const stRes = await client.query('SELECT allow_negative_stock FROM system_settings LIMIT 1');
-      const allowNeg = Boolean(stRes.rows[0]?.allow_negative_stock);
-
-      let custName = payload.customerName || '';
-      if (payload.customerId && !custName) {
-        const cRow = (await client.query('SELECT name FROM customers WHERE id = $1', [payload.customerId])).rows[0];
-        if (cRow) custName = cRow.name;
-      }
-
-      const operations = [];
-      for (const item of items) {
-        const qty = round3(item.quantity);
-        if (!item.productId || qty <= 0) throw new AppError(400, 'الكمية المسلمة يجب أن تكون أكبر من صفر', 'INVALID_QUANTITY');
-
-        const pRes = await client.query('SELECT * FROM products WHERE id = $1 FOR UPDATE', [item.productId]);
-        const prod = pRes.rows[0];
-        if (!prod) throw new AppError(404, 'الصنف غير موجود', 'PRODUCT_NOT_FOUND');
-        const uRes = await client.query('SELECT * FROM product_units WHERE product_id = $1', [prod.id]);
-        const unitName = String(item.unit || prod.base_unit);
-        const unitObj = uRes.rows.find((u) => u.name === unitName);
-        const factor = unitObj ? Number(unitObj.conversion_factor || 1) : 1;
-        const baseQty = round3(qty * factor);
-
-        const stockMap = { ...(prod.stock_per_warehouse || {}) };
-        const avail = Number(stockMap[rep.warehouseId] || 0);
-        if (avail < baseQty && !allowNeg) {
-          throw new AppError(409, `المتاح بعهدة المندوب للصنف (${prod.name}) هو (${avail}) ولا يكفي لتسليم (${baseQty})`, 'INSUFFICIENT_CUSTODY_STOCK');
-        }
-        stockMap[rep.warehouseId] = round3(avail - baseQty);
-        await client.query('UPDATE products SET stock_per_warehouse = $1, updated_at = $2 WHERE id = $3', [JSON.stringify(stockMap), now, prod.id]);
-
-        const opId = generateServerId('RCO');
-        const seqRes = await client.query(`SELECT nextval('seq_rep_custody_op_no') AS n`);
-        const opNo = `RCO-${String(seqRes.rows[0]?.n || 1).padStart(5, '0')}`;
-
-        await client.query(
-          `INSERT INTO rep_custody_operations (id, operation_number, date, representative_id, representative_name, operation_type, product_id, product_name, unit, unit_factor, quantity, base_quantity, warehouse_id, warehouse_name, customer_id, customer_name, invoice_id, invoice_number, notes, status, created_by, created_at)
-           VALUES ($1,$2,$3,$4,$5,'delivered_to_customer',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'approved',$19,$20)`,
-          [opId, opNo, dateStr, rep.id, rep.name, prod.id, prod.name, unitName, factor, qty, baseQty, wh.id, wh.name, payload.customerId || null, custName, payload.invoiceId || null, payload.invoiceNumber || null, item.notes || payload.notes || `تسليم من عهدة المندوب للعميل ${custName}`, actor.fullName, now]
-        );
-
-        const mvId = generateServerId('SM');
-        await client.query(
-          `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,'custody_delivery',$8,$9,$10,$11,$12,'rep_custody',$13,$14,$15,$16,$17)`,
-          [mvId, mvId, dateStr, prod.id, prod.name, wh.id, wh.name, baseQty, unitName, factor, prod.purchase_price, stockMap[rep.warehouseId], opId, opNo, `تسليم من عهدة المندوب للعميل ${custName}`, actor.fullName, now]
-        );
-
-        operations.push({
-          id: opId,
-          operationNumber: opNo,
-          date: dateStr,
-          representativeId: rep.id,
-          representativeName: rep.name,
-          operationType: 'delivered_to_customer',
-          productId: prod.id,
-          productName: prod.name,
-          unit: unitName,
-          unitFactor: factor,
-          quantity: qty,
-          baseQuantity: baseQty,
-          warehouseId: wh.id,
-          warehouseName: wh.name,
-          customerId: payload.customerId || undefined,
-          customerName: custName,
-          notes: item.notes || payload.notes || '',
-          status: 'approved',
-          createdBy: actor.fullName,
-          createdAt: now,
-        });
-      }
-
-      const payloadOut = { operations };
-      await savePgIdempotency(client, scopedIdem, actor, endpoint, payloadOut);
-      return { deduplicated: false, ...payloadOut };
-    });
-
-    if (!out.deduplicated) {
-      await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تسجيل تسليم من عهدة المندوب (${rep.name})`, module: 'عهدة المنادوبين', recordId: rep.id });
-    }
-    return out;
-  }
-
-  const out = await withJsonTransaction((db) => {
-    const dup = findJsonIdempotency(scopedIdem);
-    if (dup) return { ...dup, deduplicated: true };
-
-    if (payload.invoiceId) {
-      const invRow = (db.invoices || []).find((i) => i.id === payload.invoiceId);
-      if (invRow && invRow.status === 'confirmed' && invRow.type === 'sales' && invRow.warehouseId === rep.warehouseId) {
-        throw new AppError(
-          409,
-          `تم خصم بضاعة الفاتورة (${invRow.invoiceNumber}) تلقائياً من عهدة السيارة عند تأكيدها ولا يمكن خصمها مرة أخرى`,
-          'DUPLICATE_INVOICE_CUSTODY_DELIVERY'
-        );
-      }
-    }
-
-    const wh = db.warehouses.find((w) => w.id === rep.warehouseId);
-    if (!wh) throw new AppError(404, 'مخزن سيارة المندوب غير موجود', 'WAREHOUSE_NOT_FOUND');
-    db.repCustodyOperations = db.repCustodyOperations || [];
-
-    const cust = payload.customerId ? db.customers.find((c) => c.id === payload.customerId) : null;
-    const custName = payload.customerName || cust?.name || '';
-    const operations = [];
-
-    for (const item of items) {
-      const qty = round3(item.quantity);
-      if (!item.productId || qty <= 0) throw new AppError(400, 'الكمية المسلمة يجب أن تكون أكبر من صفر', 'INVALID_QUANTITY');
-      const prod = db.products.find((p) => p.id === item.productId);
-      if (!prod) throw new AppError(404, 'الصنف غير موجود', 'PRODUCT_NOT_FOUND');
-
-      const unitName = String(item.unit || prod.baseUnit);
-      const unitObj = (prod.units || []).find((u) => u.name === unitName);
-      const factor = unitObj ? Number(unitObj.conversionFactor || 1) : 1;
-      const baseQty = round3(qty * factor);
-      const avail = Number(prod.stockPerWarehouse?.[rep.warehouseId] || 0);
-      if (avail < baseQty && !db.settings?.allowNegativeStock) {
-        throw new AppError(409, `المتاح بعهدة المندوب للصنف (${prod.name}) هو (${avail}) ولا يكفي لتسليم (${baseQty})`, 'INSUFFICIENT_CUSTODY_STOCK');
-      }
-      prod.stockPerWarehouse[rep.warehouseId] = round3(avail - baseQty);
-
-      const seqNum = nextJsonSequence(db, 'repCustodyOpNo', db.repCustodyOperations, 'operationNumber', /(\d+)$/);
-      const opNo = `RCO-${String(seqNum).padStart(5, '0')}`;
-      const opObj = {
-        id: generateServerId('RCO'),
-        operationNumber: opNo,
-        date: dateStr,
-        representativeId: rep.id,
-        representativeName: rep.name,
-        operationType: 'delivered_to_customer',
-        productId: prod.id,
-        productName: prod.name,
-        unit: unitName,
-        unitFactor: factor,
-        quantity: qty,
-        baseQuantity: baseQty,
-        warehouseId: wh.id,
-        warehouseName: wh.name,
-        customerId: payload.customerId || undefined,
-        customerName: custName,
-        invoiceId: payload.invoiceId || undefined,
-        invoiceNumber: payload.invoiceNumber || undefined,
-        notes: item.notes || payload.notes || '',
-        status: 'approved',
-        createdBy: actor.fullName,
-        createdAt: now,
-      };
-      db.repCustodyOperations.unshift(opObj);
-      operations.push(opObj);
-
-      const mvId = generateServerId('SM');
-      db.stockMovements.unshift({
-        id: mvId,
-        movementNumber: mvId,
-        date: dateStr,
-        type: 'custody_delivery',
-        productId: prod.id,
-        productName: prod.name,
-        warehouseId: wh.id,
-        warehouseName: wh.name,
-        quantity: baseQty,
-        unit: unitName,
-        unitFactor: factor,
-        unitCost: prod.purchasePrice,
-        relatedDocType: 'rep_custody',
-        referenceId: opObj.id,
-        referenceNumber: opNo,
-        notes: `تسليم من عهدة المندوب للعميل ${custName}`,
-        createdBy: actor.fullName,
-        createdAt: now,
-      });
-    }
-
-    const payloadOut = { operations };
-    saveJsonIdempotency(scopedIdem, payloadOut);
-    return { deduplicated: false, ...payloadOut };
-  });
-
-  if (!out.deduplicated) {
-    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تسجيل تسليم من عهدة المندوب (${rep.name})`, module: 'عهدة المنادوبين', recordId: rep.id });
-  }
-  return out;
-}
-
-export async function recordRepCustodyReturn(payload, actor, idempotencyKey = '') {
-  const rep = await resolveTargetRepAndVan(payload.representativeId, actor);
-  const items = Array.isArray(payload.items) && payload.items.length
-    ? payload.items
-    : payload.productId
-    ? [{ productId: payload.productId, quantity: payload.quantity, unit: payload.unit, notes: payload.notes }]
-    : [];
-  if (!items.length) throw new AppError(400, 'يجب تحديد صنف واحد على الأقل لإرجاعه للمخزن', 'EMPTY_ITEMS');
-
-  const dateStr = payload.date || todayIso();
-  const now = nowIso();
-  const endpoint = 'POST /api/inventory/rep-custody/return';
-  const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
-
-  if (await isPgMode()) {
-    const out = await withTransaction(async (client) => {
-      const dup = await findPgIdempotency(client, scopedIdem);
-      if (dup) return { ...dup, deduplicated: true };
-
-      const vanWh = (await client.query('SELECT id, name FROM warehouses WHERE id = $1', [rep.warehouseId])).rows[0];
-      let targetWhId = payload.targetWarehouseId;
-      if (!targetWhId) {
-        const defWh = (await client.query('SELECT id FROM warehouses WHERE is_default = TRUE LIMIT 1')).rows[0];
-        targetWhId = defWh?.id;
-      }
-      const targetWh = targetWhId ? (await client.query('SELECT id, name FROM warehouses WHERE id = $1', [targetWhId])).rows[0] : null;
-      if (!vanWh || !targetWh) throw new AppError(404, 'المستودع غير موجود', 'WAREHOUSE_NOT_FOUND');
-
-      const operations = [];
-      for (const item of items) {
-        const qty = round3(item.quantity);
-        if (!item.productId || qty <= 0) throw new AppError(400, 'الكمية المرتجعة يجب أن تكون أكبر من صفر', 'INVALID_QUANTITY');
-
-        const pRes = await client.query('SELECT * FROM products WHERE id = $1 FOR UPDATE', [item.productId]);
-        const prod = pRes.rows[0];
-        if (!prod) throw new AppError(404, 'الصنف غير موجود', 'PRODUCT_NOT_FOUND');
-        const uRes = await client.query('SELECT * FROM product_units WHERE product_id = $1', [prod.id]);
-        const unitName = String(item.unit || prod.base_unit);
-        const unitObj = uRes.rows.find((u) => u.name === unitName);
-        const factor = unitObj ? Number(unitObj.conversion_factor || 1) : 1;
-        const baseQty = round3(qty * factor);
-
-        const stockMap = { ...(prod.stock_per_warehouse || {}) };
-        const avail = Number(stockMap[vanWh.id] || 0);
-        if (avail < baseQty) {
-          throw new AppError(409, `الرصيد المتاح بعهدة المندوب (${avail}) لا يكفي لإرجاع (${baseQty}) من ${prod.name}`, 'INSUFFICIENT_CUSTODY_STOCK');
-        }
-        stockMap[vanWh.id] = round3(avail - baseQty);
-        stockMap[targetWh.id] = round3(Number(stockMap[targetWh.id] || 0) + baseQty);
-        await client.query('UPDATE products SET stock_per_warehouse = $1, updated_at = $2 WHERE id = $3', [JSON.stringify(stockMap), now, prod.id]);
-
-        const opId = generateServerId('RCO');
-        const seqRes = await client.query(`SELECT nextval('seq_rep_custody_op_no') AS n`);
-        const opNo = `RCO-${String(seqRes.rows[0]?.n || 1).padStart(5, '0')}`;
-
-        await client.query(
-          `INSERT INTO rep_custody_operations (id, operation_number, date, representative_id, representative_name, operation_type, product_id, product_name, unit, unit_factor, quantity, base_quantity, warehouse_id, warehouse_name, notes, status, created_by, created_at)
-           VALUES ($1,$2,$3,$4,$5,'returned_to_warehouse',$6,$7,$8,$9,$10,$11,$12,$13,$14,'approved',$15,$16)`,
-          [opId, opNo, dateStr, rep.id, rep.name, prod.id, prod.name, unitName, factor, qty, baseQty, targetWh.id, targetWh.name, item.notes || payload.notes || `إرجاع عهدة للمخزن ${targetWh.name}`, actor.fullName, now]
-        );
-
-        const mvId = generateServerId('SM');
-        await client.query(
-          `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, target_warehouse_id, target_warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'custody_return',$10,$11,$12,$13,$14,'rep_custody',$15,$16,$17,$18,$19)`,
-          [mvId, mvId, dateStr, prod.id, prod.name, vanWh.id, vanWh.name, targetWh.id, targetWh.name, baseQty, unitName, factor, prod.purchase_price, stockMap[vanWh.id], opId, opNo, `إرجاع بضاعة غير مباعة من عهدة المندوب ${rep.name}`, actor.fullName, now]
-        );
-
-        operations.push({
-          id: opId,
-          operationNumber: opNo,
-          date: dateStr,
-          representativeId: rep.id,
-          representativeName: rep.name,
-          operationType: 'returned_to_warehouse',
-          productId: prod.id,
-          productName: prod.name,
-          unit: unitName,
-          unitFactor: factor,
-          quantity: qty,
-          baseQuantity: baseQty,
-          warehouseId: targetWh.id,
-          warehouseName: targetWh.name,
-          notes: item.notes || payload.notes || '',
-          status: 'approved',
-          createdBy: actor.fullName,
-          createdAt: now,
-        });
-      }
-
-      const payloadOut = { operations };
-      await savePgIdempotency(client, scopedIdem, actor, endpoint, payloadOut);
-      return { deduplicated: false, ...payloadOut };
-    });
-
-    if (!out.deduplicated) {
-      await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إرجاع عهدة من المندوب (${rep.name}) إلى المخزن`, module: 'عهدة المنادوبين', recordId: rep.id });
-    }
-    return out;
-  }
-
-  const out = await withJsonTransaction((db) => {
-    const dup = findJsonIdempotency(scopedIdem);
-    if (dup) return { ...dup, deduplicated: true };
-
-    const vanWh = db.warehouses.find((w) => w.id === rep.warehouseId);
-    const targetWh = payload.targetWarehouseId
-      ? db.warehouses.find((w) => w.id === payload.targetWarehouseId)
-      : db.warehouses.find((w) => w.isDefault) || db.warehouses[0];
-    if (!vanWh || !targetWh) throw new AppError(404, 'المستودع غير موجود', 'WAREHOUSE_NOT_FOUND');
-    db.repCustodyOperations = db.repCustodyOperations || [];
-
-    const operations = [];
-    for (const item of items) {
-      const qty = round3(item.quantity);
-      if (!item.productId || qty <= 0) throw new AppError(400, 'الكمية المرتجعة يجب أن تكون أكبر من صفر', 'INVALID_QUANTITY');
-      const prod = db.products.find((p) => p.id === item.productId);
-      if (!prod) throw new AppError(404, 'الصنف غير موجود', 'PRODUCT_NOT_FOUND');
-
-      const unitName = String(item.unit || prod.baseUnit);
-      const unitObj = (prod.units || []).find((u) => u.name === unitName);
-      const factor = unitObj ? Number(unitObj.conversionFactor || 1) : 1;
-      const baseQty = round3(qty * factor);
-      const avail = Number(prod.stockPerWarehouse?.[vanWh.id] || 0);
-      if (avail < baseQty) {
-        throw new AppError(409, `الرصيد المتاح بعهدة المندوب (${avail}) لا يكفي لإرجاع (${baseQty}) من ${prod.name}`, 'INSUFFICIENT_CUSTODY_STOCK');
-      }
-      prod.stockPerWarehouse[vanWh.id] = round3(avail - baseQty);
-      prod.stockPerWarehouse[targetWh.id] = round3(Number(prod.stockPerWarehouse?.[targetWh.id] || 0) + baseQty);
-
-      const seqNum = nextJsonSequence(db, 'repCustodyOpNo', db.repCustodyOperations, 'operationNumber', /(\d+)$/);
-      const opNo = `RCO-${String(seqNum).padStart(5, '0')}`;
-      const opObj = {
-        id: generateServerId('RCO'),
-        operationNumber: opNo,
-        date: dateStr,
-        representativeId: rep.id,
-        representativeName: rep.name,
-        operationType: 'returned_to_warehouse',
-        productId: prod.id,
-        productName: prod.name,
-        unit: unitName,
-        unitFactor: factor,
-        quantity: qty,
-        baseQuantity: baseQty,
-        warehouseId: targetWh.id,
-        warehouseName: targetWh.name,
-        notes: item.notes || payload.notes || '',
-        status: 'approved',
-        createdBy: actor.fullName,
-        createdAt: now,
-      };
-      db.repCustodyOperations.unshift(opObj);
-      operations.push(opObj);
-
-      const mvId = generateServerId('SM');
-      db.stockMovements.unshift({
-        id: mvId,
-        movementNumber: mvId,
-        date: dateStr,
-        type: 'custody_return',
-        productId: prod.id,
-        productName: prod.name,
-        warehouseId: vanWh.id,
-        warehouseName: vanWh.name,
-        targetWarehouseId: targetWh.id,
-        targetWarehouseName: targetWh.name,
-        quantity: baseQty,
-        unit: unitName,
-        unitFactor: factor,
-        unitCost: prod.purchasePrice,
-        relatedDocType: 'rep_custody',
-        referenceId: opObj.id,
-        referenceNumber: opNo,
-        notes: `إرجاع بضاعة غير مباعة من عهدة المندوب ${rep.name}`,
-        createdBy: actor.fullName,
-        createdAt: now,
-      });
-    }
-
-    const payloadOut = { operations };
-    saveJsonIdempotency(scopedIdem, payloadOut);
-    return { deduplicated: false, ...payloadOut };
-  });
-
-  if (!out.deduplicated) {
-    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إرجاع عهدة من المندوب (${rep.name}) إلى المخزن`, module: 'عهدة المنادوبين', recordId: rep.id });
-  }
-  return out;
-}
-
-export async function recordRepCustodyAdjustment(payload, actor) {
-  if (actor.role !== 'admin' && !actor.permissions?.canManageInventory && !actor.permissions?.canApprove && !actor.permissions?.canManageTransfers) {
-    throw new AppError(403, 'ليس لديك صلاحية تسجيل تسويات أو توالف عهدة المناديب', 'FORBIDDEN_CUSTODY_ADJUSTMENT');
-  }
-  const rep = await resolveTargetRepAndVan(payload.representativeId, actor);
-  const opType = ['custody_damaged', 'custody_shortage', 'custody_adjustment'].includes(payload.operationType)
-    ? payload.operationType
-    : 'custody_adjustment';
-  const qty = round3(payload.quantity);
-  if (!payload.productId || qty <= 0) {
-    throw new AppError(400, 'الصنف والكمية (أكبر من صفر) مطلوبان', 'INVALID_QUANTITY');
-  }
-  const dateStr = payload.date || todayIso();
-  const now = nowIso();
-  const reason = String(payload.notes || payload.reason || '').trim();
-  if (!reason) throw new AppError(400, 'يجب إدخال سبب التسوية أو العجز/التالف', 'REASON_REQUIRED');
-
-  let opObj;
-  if (await isPgMode()) {
-    opObj = await withTransaction(async (client) => {
-      const vanWh = (await client.query('SELECT id, name FROM warehouses WHERE id = $1', [rep.warehouseId])).rows[0];
-      if (!vanWh) throw new AppError(404, 'مخزن سيارة المندوب غير موجود', 'WAREHOUSE_NOT_FOUND');
-      const pRes = await client.query('SELECT * FROM products WHERE id = $1 FOR UPDATE', [payload.productId]);
-      const prod = pRes.rows[0];
-      if (!prod) throw new AppError(404, 'الصنف غير موجود', 'PRODUCT_NOT_FOUND');
-
-      const stockMap = { ...(prod.stock_per_warehouse || {}) };
-      const avail = Number(stockMap[vanWh.id] || 0);
-      if (avail < qty) {
-        throw new AppError(409, `الرصيد المتاح بعهدة المندوب (${avail}) أقل من الكمية المطلوب تسويتها (${qty})`, 'INSUFFICIENT_CUSTODY_STOCK');
-      }
-      stockMap[vanWh.id] = round3(avail - qty);
-      await client.query('UPDATE products SET stock_per_warehouse = $1, updated_at = $2 WHERE id = $3', [JSON.stringify(stockMap), now, prod.id]);
-
-      const opId = generateServerId('RCO');
-      const seqRes = await client.query(`SELECT nextval('seq_rep_custody_op_no') AS n`);
-      const opNo = `RCO-${String(seqRes.rows[0]?.n || 1).padStart(5, '0')}`;
-      await client.query(
-        `INSERT INTO rep_custody_operations (id, operation_number, date, representative_id, representative_name, operation_type, product_id, product_name, unit, unit_factor, quantity, base_quantity, warehouse_id, warehouse_name, notes, status, created_by, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,1,$10,$10,$11,$12,$13,'approved',$14,$15)`,
-        [opId, opNo, dateStr, rep.id, rep.name, opType, prod.id, prod.name, prod.base_unit, qty, vanWh.id, vanWh.name, reason, actor.fullName, now]
-      );
-
-      const mvId = generateServerId('SM');
-      await client.query(
-        `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,1,$11,$12,'rep_custody',$13,$14,$15,$16,$17)`,
-        [mvId, mvId, dateStr, prod.id, prod.name, vanWh.id, vanWh.name, opType === 'custody_damaged' ? 'damaged' : 'adjustment', qty, prod.base_unit, prod.purchase_price, stockMap[vanWh.id], opId, opNo, `تسوية عهدة مندوب (${opType}): ${reason}`, actor.fullName, now]
-      );
-
-      return {
-        id: opId,
-        operationNumber: opNo,
-        date: dateStr,
-        representativeId: rep.id,
-        representativeName: rep.name,
-        operationType: opType,
-        productId: prod.id,
-        productName: prod.name,
-        unit: prod.base_unit,
-        unitFactor: 1,
-        quantity: qty,
-        baseQuantity: qty,
-        warehouseId: vanWh.id,
-        warehouseName: vanWh.name,
-        notes: reason,
-        status: 'approved',
-        createdBy: actor.fullName,
-        createdAt: now,
-      };
-    });
-  } else {
-    opObj = await withJsonTransaction((db) => {
-      const vanWh = db.warehouses.find((w) => w.id === rep.warehouseId);
-      const prod = db.products.find((p) => p.id === payload.productId);
-      if (!vanWh || !prod) throw new AppError(404, 'المستودع أو الصنف غير موجود', 'NOT_FOUND');
-      const avail = Number(prod.stockPerWarehouse?.[vanWh.id] || 0);
-      if (avail < qty) {
-        throw new AppError(409, `الرصيد المتاح بعهدة المندوب (${avail}) أقل من الكمية المطلوب تسويتها (${qty})`, 'INSUFFICIENT_CUSTODY_STOCK');
-      }
-      prod.stockPerWarehouse[vanWh.id] = round3(avail - qty);
-      db.repCustodyOperations = db.repCustodyOperations || [];
-      const seqNum = nextJsonSequence(db, 'repCustodyOpNo', db.repCustodyOperations, 'operationNumber', /(\d+)$/);
-      const opNo = `RCO-${String(seqNum).padStart(5, '0')}`;
-      const rec = {
-        id: generateServerId('RCO'),
-        operationNumber: opNo,
-        date: dateStr,
-        representativeId: rep.id,
-        representativeName: rep.name,
-        operationType: opType,
-        productId: prod.id,
-        productName: prod.name,
-        unit: prod.baseUnit,
-        unitFactor: 1,
-        quantity: qty,
-        baseQuantity: qty,
-        warehouseId: vanWh.id,
-        warehouseName: vanWh.name,
-        notes: reason,
-        status: 'approved',
-        createdBy: actor.fullName,
-        createdAt: now,
-      };
-      db.repCustodyOperations.unshift(rec);
-      const mvId = generateServerId('SM');
-      db.stockMovements.unshift({
-        id: mvId,
-        movementNumber: mvId,
-        date: dateStr,
-        type: opType === 'custody_damaged' ? 'damaged' : 'adjustment',
-        productId: prod.id,
-        productName: prod.name,
-        warehouseId: vanWh.id,
-        warehouseName: vanWh.name,
-        quantity: qty,
-        unit: prod.baseUnit,
-        unitFactor: 1,
-        unitCost: prod.purchasePrice,
-        relatedDocType: 'rep_custody',
-        referenceId: rec.id,
-        referenceNumber: opNo,
-        notes: `تسوية عهدة مندوب (${opType}): ${reason}`,
-        createdBy: actor.fullName,
-        createdAt: now,
-      });
-      return rec;
-    });
-  }
-
-  await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تسوية عهدة المندوب (${rep.name}): ${reason}`, module: 'عهدة المنادوبين', recordId: opObj.id });
-  return opObj;
-}
-
-export async function getRepCustodyStatement(repIdParam, filters = {}, actor) {
-  const rep = await resolveTargetRepAndVan(repIdParam, actor);
-  const boot = await getStaffBootstrapData(actor);
-
-  const repObj = (boot.representatives || []).find((r) => r.id === rep.id) || rep;
-  const vanId = repObj.warehouseId || rep.warehouseId;
-
-  const productMap = new Map((boot.products || []).map((p) => [p.id, p]));
-  const itemsAcc = new Map();
-  const ensureAcc = (productId, fallbackName = '') => {
-    if (!itemsAcc.has(productId)) {
-      const p = productMap.get(productId);
-      itemsAcc.set(productId, {
-        productId,
-        productName: p?.name || fallbackName || productId,
-        productCode: p?.code || '',
-        baseUnit: p?.baseUnit || 'قطعة',
-        purchasePrice: Number(p?.purchasePrice || 0),
-        sellingPrice: Number(p?.sellingPrice || 0),
-        receivedQty: 0,
-        pendingReceiveQty: 0,
-        deliveredToCustomersQty: 0,
-        invoicedSoldQty: 0,
-        returnedToWarehouseQty: 0,
-        approvedReductionsQty: 0,
-        vanPhysicalStockQty: Number(p?.stockPerWarehouse?.[vanId] || 0),
-      });
-    }
-    return itemsAcc.get(productId);
-  };
-
-  const custodyTransferDocIds = new Set();
-  const ledger = [];
-
-  const resolveUnitFactor = (prod, unitName) => {
-    if (!prod || !unitName || unitName === prod.baseUnit) return 1;
-    const u = (prod.units || []).find((x) => x.name === unitName);
-    return u ? Number(u.conversionFactor || 1) : 1;
-  };
-
-  for (const rit of boot.repItemTransfers || []) {
-    if (rit.representativeId !== rep.id) continue;
-    custodyTransferDocIds.add(rit.id);
-    if (rit.status === 'executed' && rit.transferMode === 'custody_dispatch') {
-      for (const it of rit.items || []) {
-        const prod = productMap.get(it.productId);
-        const rawQty = Number(it.executedQty ?? it.approvedQty ?? it.requestedQty ?? 0);
-        const qty = round3(rawQty * resolveUnitFactor(prod, it.unit));
-        const acc = ensureAcc(it.productId, it.productName);
-        acc.pendingReceiveQty = round3(acc.pendingReceiveQty + qty);
-      }
-    }
-    const isReceived = rit.status === 'received' || (rit.status === 'executed' && rit.transferMode !== 'custody_dispatch');
-    if (!isReceived) continue;
-
-    for (const it of rit.items || []) {
-      const prod = productMap.get(it.productId);
-      const rawQty = Number(it.executedQty ?? it.approvedQty ?? it.requestedQty ?? 0);
-      const qty = round3(rawQty * resolveUnitFactor(prod, it.unit));
-      if (qty <= 0) continue;
-      const acc = ensureAcc(it.productId, it.productName);
-      acc.receivedQty = round3(acc.receivedQty + qty);
-      ledger.push({
-        id: `${rit.id}-${it.productId}-${it.unit || ''}`,
-        date: rit.date,
-        createdAt: rit.receivedAt || rit.executedAt || rit.createdAt,
-        docType: rit.transferMode === 'custody_dispatch' ? 'custody_dispatch' : 'rep_item_transfer',
-        docNumber: rit.requestNumber,
-        productId: it.productId,
-        productName: acc.productName,
-        quantityIn: qty,
-        quantityOut: 0,
-        notes: rit.notes || `استلام عهدة من ${rit.sourceWarehouseName || 'المخزن الرئيسي'}`,
-      });
-    }
-  }
-
-  // Also include manual warehouse->van transfer_in movements not already from rep_item_transfers
-  for (const sm of boot.stockMovements || []) {
-    if (filters.dateFrom && sm.date < filters.dateFrom) continue;
-    if (filters.dateTo && sm.date > filters.dateTo) continue;
-    if (sm.referenceId && custodyTransferDocIds.has(sm.referenceId)) continue;
-    if (sm.type === 'transfer_in' && sm.warehouseId === vanId) {
-      const acc = ensureAcc(sm.productId, sm.productName);
-      acc.receivedQty = round3(acc.receivedQty + Number(sm.quantity || 0));
-      ledger.push({
-        id: sm.id,
-        date: sm.date,
-        createdAt: sm.createdAt,
-        docType: 'warehouse_transfer_in',
-        docNumber: sm.referenceNumber || sm.id,
-        productId: sm.productId,
-        productName: acc.productName,
-        quantityIn: Number(sm.quantity || 0),
-        quantityOut: 0,
-        notes: sm.notes || 'تحويل مخزني وارد لسيارة المندوب',
-      });
-    } else if (sm.type === 'transfer_out' && sm.warehouseId === vanId) {
-      const acc = ensureAcc(sm.productId, sm.productName);
-      acc.returnedToWarehouseQty = round3(acc.returnedToWarehouseQty + Number(sm.quantity || 0));
-      ledger.push({
-        id: sm.id,
-        date: sm.date,
-        createdAt: sm.createdAt,
-        docType: 'warehouse_transfer_out',
-        docNumber: sm.referenceNumber || sm.id,
-        productId: sm.productId,
-        productName: acc.productName,
-        quantityIn: 0,
-        quantityOut: Number(sm.quantity || 0),
-        notes: sm.notes || 'تحويل مخزني صادر من سيارة المندوب',
-      });
-    }
-  }
-
-  // Confirmed van sales invoices already deduct & count custody deliveries; exclude any linked duplicate op
-  const vanInvoicedIds = new Set(
-    (boot.invoices || [])
-      .filter((inv) => inv.status === 'confirmed' && inv.type === 'sales' && inv.warehouseId === vanId)
-      .map((inv) => inv.id)
-  );
-
-  // Rep custody explicit operations
-  for (const op of boot.repCustodyOperations || []) {
-    if (op.representativeId !== rep.id || op.status !== 'approved') continue;
-    if (op.operationType === 'delivered_to_customer' && op.invoiceId && vanInvoicedIds.has(op.invoiceId)) continue;
-    if (filters.dateFrom && op.date < filters.dateFrom) continue;
-    if (filters.dateTo && op.date > filters.dateTo) continue;
-    const acc = ensureAcc(op.productId, op.productName);
-    const bQty = Number(op.baseQuantity || op.quantity || 0);
-    if (op.operationType === 'delivered_to_customer') {
-      acc.deliveredToCustomersQty = round3(acc.deliveredToCustomersQty + bQty);
-    } else if (op.operationType === 'returned_to_warehouse') {
-      acc.returnedToWarehouseQty = round3(acc.returnedToWarehouseQty + bQty);
-    } else if (['custody_damaged', 'custody_shortage', 'custody_adjustment'].includes(op.operationType)) {
-      acc.approvedReductionsQty = round3(acc.approvedReductionsQty + bQty);
-    }
-    ledger.push({
-      id: op.id,
-      date: op.date,
-      createdAt: op.createdAt,
-      docType: op.operationType,
-      docNumber: op.operationNumber,
-      productId: op.productId,
-      productName: acc.productName,
-      customerName: op.customerName || undefined,
-      quantityIn: 0,
-      quantityOut: bQty,
-      notes: op.notes || op.operationType,
-    });
-  }
-
-  // Sales invoices & sales returns affecting rep van warehouse
-  let totalSalesAmount = 0;
-  let totalSalesPaidAmount = 0;
-  let totalSalesRemainingAmount = 0;
-  for (const inv of boot.invoices || []) {
-    if (inv.status !== 'confirmed' || inv.type !== 'sales') continue;
-    const belongsToRep = inv.representativeId === rep.id || inv.warehouseId === vanId;
-    if (!belongsToRep) continue;
-    if (filters.dateFrom && inv.date < filters.dateFrom) continue;
-    if (filters.dateTo && inv.date > filters.dateTo) continue;
-
-    totalSalesAmount = round2(totalSalesAmount + Number(inv.grandTotal || 0));
-    totalSalesPaidAmount = round2(totalSalesPaidAmount + Number(inv.paidAmount || 0));
-    totalSalesRemainingAmount = round2(totalSalesRemainingAmount + Number(inv.remainingAmount || 0));
-
-    if (inv.warehouseId === vanId) {
-      for (const it of inv.items || []) {
-        const bQty = round3(Number(it.quantity || 0) * Number(it.unitFactor || 1));
-        const acc = ensureAcc(it.productId, it.productName);
-        acc.invoicedSoldQty = round3(acc.invoicedSoldQty + bQty);
-        acc.deliveredToCustomersQty = round3(acc.deliveredToCustomersQty + bQty);
-        ledger.push({
-          id: `${inv.id}-${it.productId}`,
-          date: inv.date,
-          createdAt: inv.createdAt,
-          docType: 'sales_invoice',
-          docNumber: inv.invoiceNumber,
-          productId: it.productId,
-          productName: acc.productName,
-          customerName: inv.customerName || 'نقدي',
-          quantityIn: 0,
-          quantityOut: bQty,
-          notes: `مبيعات فاتورة رقم ${inv.invoiceNumber}`,
-        });
-      }
-    }
-  }
-
-  for (const ret of boot.invoiceReturns || []) {
-    if (ret.type !== 'sales_return' || ret.warehouseId !== vanId) continue;
-    if (filters.dateFrom && ret.date < filters.dateFrom) continue;
-    if (filters.dateTo && ret.date > filters.dateTo) continue;
-    for (const it of ret.items || []) {
-      const bQty = round3(Number(it.quantity || 0) * Number(it.unitFactor || 1));
-      const acc = ensureAcc(it.productId, it.productName);
-      acc.receivedQty = round3(acc.receivedQty + bQty);
-      ledger.push({
-        id: `${ret.id}-${it.productId}`,
-        date: ret.date,
-        createdAt: ret.createdAt,
-        docType: 'sales_return',
-        docNumber: ret.returnNumber,
-        productId: it.productId,
-        productName: acc.productName,
-        customerName: ret.partyName || '',
-        quantityIn: bQty,
-        quantityOut: 0,
-        notes: `مرتجع مبيعات وارد لسيارة المندوب (${ret.returnNumber})`,
-      });
-    }
-  }
-
-  // Also include products with active stock in van even if zero historical transfers yet
-  for (const p of boot.products || []) {
-    if (Number(p.stockPerWarehouse?.[vanId] || 0) > 0) {
-      ensureAcc(p.id, p.name);
-    }
-  }
-
-  const itemsSummary = Array.from(itemsAcc.values()).map((it) => {
-    const remainingCustodyQty = round3(
-      it.receivedQty - it.deliveredToCustomersQty - it.returnedToWarehouseQty - it.approvedReductionsQty
-    );
-    return {
-      ...it,
-      remainingCustodyQty,
-      custodyValueAtCost: round2(Math.max(0, it.vanPhysicalStockQty) * it.purchasePrice),
-    };
-  });
-
-  ledger.sort((a, b) => String(b.createdAt || b.date || '').localeCompare(String(a.createdAt || a.date || '')));
-
-  const totals = itemsSummary.reduce(
-    (s, it) => ({
-      totalReceivedQty: round3(s.totalReceivedQty + it.receivedQty),
-      totalPendingReceiveQty: round3(s.totalPendingReceiveQty + it.pendingReceiveQty),
-      totalDeliveredQty: round3(s.totalDeliveredQty + it.deliveredToCustomersQty),
-      totalReturnedQty: round3(s.totalReturnedQty + it.returnedToWarehouseQty),
-      totalReductionsQty: round3(s.totalReductionsQty + it.approvedReductionsQty),
-      totalRemainingCustodyQty: round3(s.totalRemainingCustodyQty + it.remainingCustodyQty),
-      totalVanPhysicalQty: round3(s.totalVanPhysicalQty + it.vanPhysicalStockQty),
-      totalCustodyCostValue: round2(s.totalCustodyCostValue + it.custodyValueAtCost),
-    }),
-    {
-      totalReceivedQty: 0,
-      totalPendingReceiveQty: 0,
-      totalDeliveredQty: 0,
-      totalReturnedQty: 0,
-      totalReductionsQty: 0,
-      totalRemainingCustodyQty: 0,
-      totalVanPhysicalQty: 0,
-      totalCustodyCostValue: 0,
-    }
-  );
-
-  return {
-    representative: repObj,
-    vanWarehouseId: vanId,
-    financialSummary: {
-      currentCashCustodyBalance: round2(repObj.currentBalance || 0),
-      totalSalesAmount,
-      totalSalesPaidAmount,
-      totalSalesRemainingAmount,
-    },
-    totals,
-    itemsSummary,
-    ledger,
-  };
-}
-
-// ==============================================================================
-// Brand Store Item Movement Report (تقرير حركة الصنف المفصل)
-// ==============================================================================
-
-export async function getItemMovementReport(filters = {}, actor) {
-  const boot = await getStaffBootstrapData(actor);
-  const productIdFilter = filters.productId && filters.productId !== 'all' ? String(filters.productId) : null;
-  const warehouseIdFilter = filters.warehouseId && filters.warehouseId !== 'all' ? String(filters.warehouseId) : null;
-  const movementTypeFilter = filters.movementType && filters.movementType !== 'all' ? String(filters.movementType) : null;
-  const repIdFilter = filters.representativeId && filters.representativeId !== 'all' ? String(filters.representativeId) : null;
-  const dateFrom = filters.dateFrom ? String(filters.dateFrom) : null;
-  const dateTo = filters.dateTo ? String(filters.dateTo) : null;
-  const search = filters.search ? String(filters.search).trim().toLowerCase() : '';
-
-  let allStockMovements = boot.stockMovements || [];
-  let allRepCustodyOperations = boot.repCustodyOperations || [];
-
-  if (await isPgMode()) {
-    const pool = getPool();
-    const isRep = actor?.role === 'representative';
-    const repProfile = isRep ? await getRepresentativeByUserId(actor.id) : null;
-
-    const smQuery = productIdFilter
-      ? pool.query('SELECT * FROM stock_movements WHERE product_id = $1 ORDER BY created_at DESC', [productIdFilter])
-      : pool.query('SELECT * FROM stock_movements ORDER BY created_at DESC');
-
-    const opQuery = isRep && repProfile
-      ? productIdFilter
-        ? pool.query('SELECT * FROM rep_custody_operations WHERE representative_id = $1 AND product_id = $2 ORDER BY created_at DESC', [repProfile.id, productIdFilter])
-        : pool.query('SELECT * FROM rep_custody_operations WHERE representative_id = $1 ORDER BY created_at DESC', [repProfile.id])
-      : productIdFilter
-      ? pool.query('SELECT * FROM rep_custody_operations WHERE product_id = $1 ORDER BY created_at DESC', [productIdFilter])
-      : pool.query('SELECT * FROM rep_custody_operations ORDER BY created_at DESC');
-
-    const [smFullRes, opFullRes] = await Promise.all([smQuery, opQuery]);
-    allStockMovements = smFullRes.rows
-      .filter((sm) => !isRep || (repProfile?.warehouseId && (sm.warehouse_id === repProfile.warehouseId || sm.target_warehouse_id === repProfile.warehouseId)))
-      .map((sm) => ({
-        id: sm.id,
-        date: isoDateOnly(sm.date),
-        type: sm.movement_type,
-        productId: sm.product_id,
-        productName: sm.product_name,
-        warehouseId: sm.warehouse_id,
-        warehouseName: sm.warehouse_name,
-        targetWarehouseId: sm.target_warehouse_id || undefined,
-        targetWarehouseName: sm.target_warehouse_name || undefined,
-        quantity: Number(sm.quantity || 0),
-        unit: sm.unit || undefined,
-        unitFactor: Number(sm.unit_factor || 1),
-        unitCost: Number(sm.unit_cost || 0),
-        referenceId: sm.related_doc_id || undefined,
-        referenceNumber: sm.related_doc_number || undefined,
-        notes: sm.notes || '',
-        createdBy: sm.created_by,
-        createdAt: isoTimestamp(sm.created_at),
-      }));
-
-    allRepCustodyOperations = opFullRes.rows.map((op) => ({
-      id: op.id,
-      operationNumber: op.operation_number,
-      date: isoDateOnly(op.date),
-      representativeId: op.representative_id,
-      representativeName: op.representative_name,
-      operationType: op.operation_type,
-      productId: op.product_id,
-      productName: op.product_name,
-      unit: op.unit,
-      unitFactor: Number(op.unit_factor || 1),
-      quantity: Number(op.quantity || 0),
-      baseQuantity: Number(op.base_quantity || 0),
-      warehouseId: op.warehouse_id || undefined,
-      warehouseName: op.warehouse_name || '',
-      customerId: op.customer_id || undefined,
-      customerName: op.customer_name || '',
-      invoiceId: op.invoice_id || undefined,
-      invoiceNumber: op.invoice_number || undefined,
-      notes: op.notes || '',
-      status: op.status || 'approved',
-      createdBy: op.created_by,
-      createdAt: isoTimestamp(op.created_at),
-    }));
-  }
-
-  const productMap = new Map((boot.products || []).map((p) => [p.id, p]));
-  const warehouseMap = new Map((boot.warehouses || []).map((w) => [w.id, w]));
-  const repMap = new Map((boot.representatives || []).map((r) => [r.id, r]));
-  const invoiceMap = new Map((boot.invoices || []).map((i) => [i.id, i]));
-  const selectedProduct = productIdFilter ? productMap.get(productIdFilter) || null : null;
-  const resolveUnitFactor = (prod, unitName) => {
-    if (!prod || !unitName || unitName === prod.baseUnit) return 1;
-    const u = (prod.units || []).find((x) => x.name === unitName);
-    return u ? Number(u.conversionFactor || 1) : 1;
-  };
-
-  const matchesRow = (row) => {
-    if (productIdFilter && row.productId !== productIdFilter) return false;
-    if (warehouseIdFilter && row.warehouseId !== warehouseIdFilter && row.targetWarehouseId !== warehouseIdFilter) return false;
-    if (repIdFilter && row.representativeId !== repIdFilter) return false;
-    if (dateFrom && row.date && row.date < dateFrom) return false;
-    if (dateTo && row.date && row.date > dateTo) return false;
-    if (search) {
-      const hay = [
-        row.docNumber,
-        row.productName,
-        row.partyName,
-        row.representativeName,
-        row.warehouseName,
-        row.targetWarehouseName,
-        row.notes,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      if (!hay.includes(search)) return false;
-    }
-    return true;
-  };
-
-  const sections = {
-    sales: [],
-    purchases: [],
-    sales_returns: [],
-    purchase_returns: [],
-    transfers: [],
-    custody_sent: [],
-    custody_received: [],
-    custody_deliveries: [],
-    adjustments: [],
-  };
-
-  let totalSalesQty = 0;
-  let totalSalesValue = 0;
-  let totalSalesCost = 0;
-  let totalPurchaseQty = 0;
-  let totalPurchaseValue = 0;
-  let totalSalesReturnQty = 0;
-  let totalSalesReturnValue = 0;
-  let totalSalesReturnCost = 0;
-  let totalPurchaseReturnQty = 0;
-  let totalPurchaseReturnValue = 0;
-  let totalQtyIn = 0;
-  let totalQtyOut = 0;
-
-  // 1. Confirmed Sales & Purchases Invoices
-  for (const inv of boot.invoices || []) {
-    if (inv.status !== 'confirmed') continue;
-    if (inv.type !== 'sales' && inv.type !== 'purchase') continue;
-
-    for (const it of inv.items || []) {
-      const prod = productMap.get(it.productId);
-      const baseQty = round3(Number(it.quantity || 0) * Number(it.unitFactor || 1));
-      const costPerBase = Number(it.purchasePriceAtTime || 0) > 0
-        ? Number(it.purchasePriceAtTime)
-        : Number(prod?.purchasePrice || 0);
-      const lineTotal = round2(it.total || Number(it.unitPrice || 0) * Number(it.quantity || 0));
-      const lineCost = round2(costPerBase * baseQty);
-      const row = {
-        id: `${inv.id}-${it.productId}-${it.unit}`,
-        date: inv.date,
-        createdAt: inv.createdAt,
-        docType: inv.type === 'sales' ? 'sales_invoice' : 'purchase_invoice',
-        docId: inv.id,
-        docNumber: inv.invoiceNumber,
-        productId: it.productId,
-        productName: it.productName || prod?.name || '',
-        warehouseId: inv.warehouseId,
-        warehouseName: inv.warehouseName,
-        partyId: inv.type === 'sales' ? inv.customerId : inv.supplierId,
-        partyName: inv.type === 'sales' ? (inv.customerName || 'عميل نقدي') : (inv.supplierName || 'مورد نقدي'),
-        representativeId: inv.representativeId || undefined,
-        representativeName: inv.representativeName || undefined,
-        unit: it.unit,
-        quantity: Number(it.quantity || 0),
-        baseQuantity: baseQty,
-        unitPrice: round2(it.unitPrice || 0),
-        costPrice: round2(costPerBase),
-        totalValue: lineTotal,
-        costValue: lineCost,
-        profitValue: inv.type === 'sales' ? round2(lineTotal - lineCost) : 0,
-        direction: inv.type === 'sales' ? 'out' : 'in',
-        notes: inv.notes || '',
-        createdBy: inv.createdBy,
-      };
-      if (!matchesRow(row)) continue;
-
-      if (inv.type === 'sales') {
-        sections.sales.push(row);
-        totalSalesQty = round3(totalSalesQty + baseQty);
-        totalSalesValue = round2(totalSalesValue + lineTotal);
-        totalSalesCost = round2(totalSalesCost + lineCost);
-        totalQtyOut = round3(totalQtyOut + baseQty);
-      } else {
-        sections.purchases.push(row);
-        totalPurchaseQty = round3(totalPurchaseQty + baseQty);
-        totalPurchaseValue = round2(totalPurchaseValue + lineTotal);
-        totalQtyIn = round3(totalQtyIn + baseQty);
-      }
-    }
-  }
-
-  // 2. Invoice Returns (Sales Returns & Purchase Returns)
-  for (const ret of boot.invoiceReturns || []) {
-    const isSalesRet = ret.type === 'sales_return';
-    for (const it of ret.items || []) {
-      const prod = productMap.get(it.productId);
-      const baseQty = round3(Number(it.quantity || 0) * Number(it.unitFactor || 1));
-      const costPerBase = Number(prod?.purchasePrice || 0);
-      const lineTotal = round2(it.total || Number(it.unitPrice || 0) * Number(it.quantity || 0));
-      const lineCost = round2(costPerBase * baseQty);
-      const row = {
-        id: `${ret.id}-${it.productId}-${it.unit}`,
-        date: ret.date,
-        createdAt: ret.createdAt,
-        docType: ret.type,
-        docId: ret.id,
-        docNumber: ret.returnNumber,
-        productId: it.productId,
-        productName: it.productName || prod?.name || '',
-        warehouseId: ret.warehouseId,
-        warehouseName: ret.warehouseName,
-        partyId: ret.partyId,
-        partyName: ret.partyName,
-        unit: it.unit,
-        quantity: Number(it.quantity || 0),
-        baseQuantity: baseQty,
-        unitPrice: round2(it.unitPrice || 0),
-        costPrice: round2(costPerBase),
-        totalValue: lineTotal,
-        costValue: lineCost,
-        profitValue: isSalesRet ? round2(-(lineTotal - lineCost)) : 0,
-        direction: isSalesRet ? 'in' : 'out',
-        notes: `${ret.reason || ''}${ret.notes ? ` — ${ret.notes}` : ''}`.trim(),
-        createdBy: ret.createdBy,
-      };
-      if (!matchesRow(row)) continue;
-
-      if (isSalesRet) {
-        sections.sales_returns.push(row);
-        totalSalesReturnQty = round3(totalSalesReturnQty + baseQty);
-        totalSalesReturnValue = round2(totalSalesReturnValue + lineTotal);
-        totalSalesReturnCost = round2(totalSalesReturnCost + lineCost);
-        totalQtyIn = round3(totalQtyIn + baseQty);
-      } else {
-        sections.purchase_returns.push(row);
-        totalPurchaseReturnQty = round3(totalPurchaseReturnQty + baseQty);
-        totalPurchaseReturnValue = round2(totalPurchaseReturnValue + lineTotal);
-        totalQtyOut = round3(totalQtyOut + baseQty);
-      }
-    }
-  }
-
-  // 3. Custody Dispatches & Receipts (Rep Item Transfers)
-  const custodyRefIds = new Set();
-  for (const rit of boot.repItemTransfers || []) {
-    custodyRefIds.add(rit.id);
-    if (rit.status === 'rejected') continue;
-    for (const it of rit.items || []) {
-      const prod = productMap.get(it.productId);
-      const rawQty = Number(it.executedQty ?? it.approvedQty ?? it.requestedQty ?? 0);
-      if (rawQty <= 0) continue;
-      const factor = resolveUnitFactor(prod, it.unit);
-      const baseQty = round3(rawQty * factor);
-      const costPerBase = Number(prod?.purchasePrice || 0);
-      const val = round2(baseQty * costPerBase);
-      if (rit.status === 'executed' || rit.status === 'received') {
-        const sentRow = {
-          id: `${rit.id}-sent-${it.productId}-${it.unit || ''}`,
-          date: rit.date,
-          createdAt: rit.dispatchedAt || rit.executedAt || rit.createdAt,
-          docType: 'custody_sent',
-          docId: rit.id,
-          docNumber: rit.requestNumber,
-          productId: it.productId,
-          productName: it.productName || prod?.name || '',
-          warehouseId: rit.sourceWarehouseId,
-          warehouseName: rit.sourceWarehouseName,
-          targetWarehouseId: rit.targetWarehouseId,
-          targetWarehouseName: rit.targetWarehouseName,
-          representativeId: rit.representativeId,
-          representativeName: rit.representativeName,
-          unit: it.unit || prod?.baseUnit || 'قطعة',
-          quantity: rawQty,
-          baseQuantity: baseQty,
-          unitPrice: round2(costPerBase),
-          costPrice: round2(costPerBase),
-          totalValue: val,
-          profitValue: 0,
-          direction: 'out',
-          notes: rit.notes || `صرف عهدة للمندوب ${rit.representativeName}`,
-          createdBy: rit.dispatchedBy || rit.reviewedBy || rit.createdBy,
-        };
-        if (matchesRow(sentRow)) {
-          sections.custody_sent.push(sentRow);
-          if (warehouseIdFilter && sentRow.warehouseId === warehouseIdFilter) {
-            totalQtyOut = round3(totalQtyOut + baseQty);
-          }
-        }
-      }
-      if (rit.status === 'received') {
-        const recRow = {
-          id: `${rit.id}-rec-${it.productId}-${it.unit || ''}`,
-          date: String(rit.receivedAt || rit.date).split('T')[0],
-          createdAt: rit.receivedAt || rit.createdAt,
-          docType: 'custody_received',
-          docId: rit.id,
-          docNumber: rit.requestNumber,
-          productId: it.productId,
-          productName: it.productName || prod?.name || '',
-          warehouseId: rit.targetWarehouseId,
-          warehouseName: rit.targetWarehouseName,
-          targetWarehouseId: rit.sourceWarehouseId,
-          targetWarehouseName: rit.sourceWarehouseName,
-          representativeId: rit.representativeId,
-          representativeName: rit.representativeName,
-          unit: it.unit || prod?.baseUnit || 'قطعة',
-          quantity: rawQty,
-          baseQuantity: baseQty,
-          unitPrice: round2(costPerBase),
-          costPrice: round2(costPerBase),
-          totalValue: val,
-          profitValue: 0,
-          direction: 'in',
-          notes: `تأكيد استلام عهدة المندوب ${rit.representativeName}`,
-          createdBy: rit.receivedBy || rit.representativeName,
-        };
-        if (matchesRow(recRow)) {
-          sections.custody_received.push(recRow);
-          if (warehouseIdFilter && recRow.warehouseId === warehouseIdFilter) {
-            totalQtyIn = round3(totalQtyIn + baseQty);
-          }
-        }
-      }
-    }
-  }
-
-  // 4. Rep Custody Operations (Deliveries to Customers, Returns to Warehouse, Damaged/Adjustments)
-  const custodyOpIds = new Set();
-  for (const op of allRepCustodyOperations) {
-    custodyOpIds.add(op.id);
-    if (op.operationType === 'delivered_to_customer' && op.invoiceId) {
-      const linkedInv = invoiceMap.get(op.invoiceId);
-      const opRep = repMap.get(op.representativeId);
-      if (linkedInv && linkedInv.status === 'confirmed' && linkedInv.type === 'sales' && (linkedInv.warehouseId === opRep?.warehouseId || linkedInv.warehouseId === op.warehouseId)) {
-        continue;
-      }
-    }
-    const prod = productMap.get(op.productId);
-    const bQty = Number(op.baseQuantity || op.quantity || 0);
-    const costPerBase = Number(prod?.purchasePrice || 0);
-    const val = round2(bQty * costPerBase);
-    const opRep = repMap.get(op.representativeId);
-    const repVanWh = opRep?.warehouseId ? warehouseMap.get(opRep.warehouseId) : null;
-    const isReturn = op.operationType === 'returned_to_warehouse';
-    const row = {
-      id: op.id,
-      date: op.date,
-      createdAt: op.createdAt,
-      docType: op.operationType,
-      docId: op.id,
-      docNumber: op.operationNumber,
-      productId: op.productId,
-      productName: op.productName || prod?.name || '',
-      warehouseId: isReturn ? (repVanWh?.id || op.warehouseId) : op.warehouseId,
-      warehouseName: isReturn ? (repVanWh?.name || op.representativeName) : op.warehouseName,
-      targetWarehouseId: isReturn ? op.warehouseId : undefined,
-      targetWarehouseName: isReturn ? op.warehouseName : undefined,
-      partyId: op.customerId,
-      partyName: op.customerName || op.representativeName,
-      representativeId: op.representativeId,
-      representativeName: op.representativeName,
-      unit: op.unit || prod?.baseUnit || 'قطعة',
-      quantity: Number(op.quantity || 0),
-      baseQuantity: bQty,
-      unitPrice: round2(costPerBase),
-      costPrice: round2(costPerBase),
-      totalValue: val,
-      profitValue: 0,
-      direction: isReturn ? 'in' : 'out',
-      notes: op.notes || '',
-      createdBy: op.createdBy,
-    };
-    if (!matchesRow(row)) continue;
-
-    if (op.operationType === 'delivered_to_customer' || op.operationType === 'returned_to_warehouse') {
-      sections.custody_deliveries.push(row);
-      if (op.operationType === 'delivered_to_customer') {
-        totalQtyOut = round3(totalQtyOut + bQty);
-      } else if (warehouseIdFilter) {
-        if (row.targetWarehouseId === warehouseIdFilter) totalQtyIn = round3(totalQtyIn + bQty);
-        if (row.warehouseId === warehouseIdFilter) totalQtyOut = round3(totalQtyOut + bQty);
-      }
-    } else {
-      sections.adjustments.push(row);
-      totalQtyOut = round3(totalQtyOut + bQty);
-    }
-  }
-
-  // 5. Direct Warehouse Transfers & Stock Adjustments / Damaged / Stock Counts
-  const seenTransferPairs = new Set();
-  for (const sm of allStockMovements) {
-    if (sm.referenceId && (custodyRefIds.has(sm.referenceId) || custodyOpIds.has(sm.referenceId))) continue;
-    if (['sale', 'purchase', 'sales_return', 'purchase_return', 'custody_delivery', 'custody_return'].includes(sm.type)) {
-      continue;
-    }
-    const prod = productMap.get(sm.productId);
-    const bQty = Number(sm.quantity || 0);
-    const costPerBase = Number(sm.unitCost || prod?.purchasePrice || 0);
-    const row = {
-      id: sm.id,
-      date: sm.date,
-      createdAt: sm.createdAt,
-      docType: sm.type,
-      docId: sm.referenceId || sm.id,
-      docNumber: sm.referenceNumber || sm.id,
-      productId: sm.productId,
-      productName: sm.productName || prod?.name || '',
-      warehouseId: sm.warehouseId,
-      warehouseName: sm.warehouseName,
-      targetWarehouseId: sm.targetWarehouseId,
-      targetWarehouseName: sm.targetWarehouseName,
-      unit: prod?.baseUnit || 'قطعة',
-      quantity: bQty,
-      baseQuantity: bQty,
-      unitPrice: round2(costPerBase),
-      costPrice: round2(costPerBase),
-      totalValue: round2(bQty * costPerBase),
-      profitValue: 0,
-      direction: sm.type === 'transfer_in' || sm.type === 'opening_balance' ? 'in' : sm.type === 'adjustment' ? 'neutral' : 'out',
-      notes: sm.notes || '',
-      createdBy: sm.createdBy,
-    };
-    if (!matchesRow(row)) continue;
-
-    if (sm.type === 'transfer_out' || sm.type === 'transfer_in') {
-      if (sm.type === 'transfer_out') {
-        const pairKey = `${sm.createdAt}-${sm.productId}-${sm.warehouseId}-${sm.targetWarehouseId}-${bQty}`;
-        seenTransferPairs.add(pairKey);
-        sections.transfers.push(row);
-      } else {
-        const reverseKey = `${sm.createdAt}-${sm.productId}-${sm.targetWarehouseId}-${sm.warehouseId}-${bQty}`;
-        if (!seenTransferPairs.has(reverseKey)) {
-          sections.transfers.push(row);
-        }
-      }
-      if (warehouseIdFilter) {
-        if (sm.warehouseId === warehouseIdFilter) {
-          if (sm.type === 'transfer_in') totalQtyIn = round3(totalQtyIn + bQty);
-          else totalQtyOut = round3(totalQtyOut + bQty);
-        }
-      }
-    } else {
-      sections.adjustments.push(row);
-      if (sm.type === 'damaged') totalQtyOut = round3(totalQtyOut + bQty);
-      else if (sm.type === 'opening_balance') totalQtyIn = round3(totalQtyIn + bQty);
-    }
-  }
-
-  // Apply movementType filter cleanly if specified
-  if (movementTypeFilter && sections[movementTypeFilter]) {
-    for (const key of Object.keys(sections)) {
-      if (key !== movementTypeFilter) sections[key] = [];
-    }
-  }
-
-  // Compute Warehouse & Rep Custody Breakdown for selected product(s)
-  const targetProducts = selectedProduct ? [selectedProduct] : (boot.products || []).filter((p) => p.status === 'active');
-  const vanWarehouseToRep = new Map();
-  for (const r of boot.representatives || []) {
-    if (r.warehouseId) vanWarehouseToRep.set(r.warehouseId, r);
-  }
-
-  const warehouseBreakdown = [];
-  const repCustodyBreakdown = [];
-  let currentBalance = 0;
-  let inventoryValuation = 0;
-
-  for (const wh of boot.warehouses || []) {
-    if (warehouseIdFilter && wh.id !== warehouseIdFilter) continue;
-    let qtySum = 0;
-    let costVal = 0;
-    let sellVal = 0;
-    for (const p of targetProducts) {
-      const q = Number(p.stockPerWarehouse?.[wh.id] || 0);
-      qtySum = round3(qtySum + q);
-      costVal = round2(costVal + Math.max(0, q) * Number(p.purchasePrice || 0));
-      sellVal = round2(sellVal + Math.max(0, q) * Number(p.sellingPrice || 0));
-    }
-    currentBalance = round3(currentBalance + qtySum);
-    inventoryValuation = round2(inventoryValuation + costVal);
-    const linkedRep = vanWarehouseToRep.get(wh.id);
-    if (linkedRep) {
-      repCustodyBreakdown.push({
-        representativeId: linkedRep.id,
-        representativeName: linkedRep.name,
-        warehouseId: wh.id,
-        warehouseName: wh.name,
-        quantity: qtySum,
-        costValue: costVal,
-        sellingValue: sellVal,
-      });
-    } else {
-      warehouseBreakdown.push({
-        warehouseId: wh.id,
-        warehouseName: wh.name,
-        code: wh.code,
-        quantity: qtySum,
-        costValue: costVal,
-        sellingValue: sellVal,
-      });
-    }
-  }
-
-  const netSalesValue = round2(totalSalesValue - totalSalesReturnValue);
-  const netCostOfGoodsSold = round2(totalSalesCost - totalSalesReturnCost);
-  const totalProfit = round2(netSalesValue - netCostOfGoodsSold);
-
-  return {
-    product: selectedProduct,
-    filters: {
-      productId: productIdFilter || 'all',
-      warehouseId: warehouseIdFilter || 'all',
-      movementType: movementTypeFilter || 'all',
-      representativeId: repIdFilter || 'all',
-      dateFrom,
-      dateTo,
-      search,
-    },
-    warehouseBreakdown,
-    repCustodyBreakdown,
-    sections,
-    totals: {
-      totalSalesQty,
-      totalSalesValue,
-      totalPurchaseQty,
-      totalPurchaseValue,
-      totalSalesReturnQty,
-      totalSalesReturnValue,
-      totalPurchaseReturnQty,
-      totalPurchaseReturnValue,
-      totalCostOfGoodsSold: netCostOfGoodsSold,
-      totalProfit,
-      totalQtyIn,
-      totalQtyOut,
-      currentBalance,
-      inventoryValuation,
-    },
-  };
-}
-

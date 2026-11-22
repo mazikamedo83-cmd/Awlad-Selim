@@ -1,39 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { Server, Wifi, CheckCircle2, AlertCircle, X } from 'lucide-react';
 import {
-  Server,
-  Wifi,
-  CheckCircle2,
-  AlertCircle,
-  X,
-  Radio,
-  Globe,
-  Cloud,
-  Lock,
-  QrCode,
-  Search,
-  Loader2,
-} from 'lucide-react';
-import {
-  detectModeFromUrl,
   getConfiguredApiBaseUrl,
-  getConnectionModeLabel,
-  getStoredConnectionProfiles,
-  resolveModeEndpointUrl,
-  saveFallbackEndpoints,
-  saveStoredConnectionProfiles,
   setConfiguredApiBaseUrl,
   testServerHealth,
-  validateConnectionUrl,
 } from '../../../services/api';
-import {
-  claimPairingInvitation,
-  discoverServerCandidates,
-  type DiscoveredServerCandidate,
-} from '../../../services/discovery';
-import { useAuth } from '../../../context/AuthContext';
 import { isNativeCapacitor } from '../../../services/native';
-import { QrScannerModal } from '../../common/QrScannerModal';
-import type { ConnectionMode, ConnectionProfilesConfig } from '../../../types';
 
 interface MobileServerModalProps {
   isOpen: boolean;
@@ -41,177 +13,38 @@ interface MobileServerModalProps {
   onSaved: () => Promise<void> | void;
 }
 
-const MODE_OPTIONS: Array<{
-  key: ConnectionMode;
-  shortLabel: string;
-  title: string;
-  hint: string;
-  icon: React.ElementType;
-  placeholder: string;
-}> = [
-  {
-    key: 'local_network',
-    shortLabel: 'الشبكة المحلية',
-    title: 'Local Network (IP + 3000)',
-    hint: 'الاتصال المباشر بلابتوب المحل عبر شبكة الواي فاي المحلية (http://IP:3000).',
-    icon: Wifi,
-    placeholder: '192.168.1.100',
-  },
-  {
-    key: 'free_remote',
-    shortLabel: 'رابط مجاني',
-    title: 'Free Remote (Quick Tunnel)',
-    hint: 'رابط Cloudflare Quick Tunnel المجاني بصيغة https://xxxx.trycloudflare.com.',
-    icon: Radio,
-    placeholder: 'https://example-shop.trycloudflare.com',
-  },
-  {
-    key: 'pro_remote',
-    shortLabel: 'دومين احترافي',
-    title: 'Pro Remote (Named Tunnel)',
-    hint: 'دومين ثابت بشهادة HTTPS مشفرة دون تغيير مع إعادة التشغيل.',
-    icon: Globe,
-    placeholder: 'https://erp.yourdomain.com',
-  },
-  {
-    key: 'cloud_vps',
-    shortLabel: 'Cloud VPS',
-    title: 'Cloud VPS Connection',
-    hint: 'سيرفر سحابي دائم متصل بنفس قاعدة البيانات المركزية.',
-    icon: Cloud,
-    placeholder: 'https://cloud-erp.yourdomain.com',
-  },
-];
-
 export const MobileServerModal: React.FC<MobileServerModalProps> = ({
   isOpen,
   onClose,
   onSaved,
 }) => {
-  const { setPairingBanner } = useAuth();
-  const [profiles, setProfiles] = useState<ConnectionProfilesConfig>(() =>
-    getStoredConnectionProfiles()
-  );
-  const [selectedMode, setSelectedMode] = useState<ConnectionMode>(() =>
-    detectModeFromUrl(getConfiguredApiBaseUrl(), getStoredConnectionProfiles())
-  );
-  const [useSameOrigin, setUseSameOrigin] = useState<boolean>(
-    () => !isNativeCapacitor() && !getConfiguredApiBaseUrl()
-  );
+  const [urlInput, setUrlInput] = useState(() => getConfiguredApiBaseUrl());
   const [testing, setTesting] = useState(false);
-  const [discovering, setDiscovering] = useState(false);
-  const [discoveredServers, setDiscoveredServers] = useState<DiscoveredServerCandidate[]>([]);
-  const [discoveryNotice, setDiscoveryNotice] = useState<string | null>(null);
-  const [showQrScanner, setShowQrScanner] = useState(false);
-  const [claimingQr, setClaimingQr] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{
     ok?: boolean;
     message?: string;
     lanUrls?: string[];
-    httpsActive?: boolean;
   }>({});
 
   const nativeApp = isNativeCapacitor();
 
   useEffect(() => {
     if (isOpen) {
-      const stored = getStoredConnectionProfiles();
-      const currentUrl = getConfiguredApiBaseUrl();
-      setProfiles(stored);
-      setSelectedMode(detectModeFromUrl(currentUrl, stored));
-      setUseSameOrigin(!nativeApp && !currentUrl);
-      setFormError(null);
+      setUrlInput(getConfiguredApiBaseUrl());
       setTestResult({});
-      setDiscoveryNotice(null);
     }
-  }, [isOpen, nativeApp]);
-
-  const handleAutoDiscover = async () => {
-    setFormError(null);
-    setDiscoveryNotice(null);
-    setDiscovering(true);
-    try {
-      const results = await discoverServerCandidates();
-      setDiscoveredServers(results);
-      if (results.length === 0) {
-        setDiscoveryNotice('لم يتم العثور على سيرفر يعمل على الشبكة الحالية تلقائياً. تأكد من الاتصال بنفس Wi-Fi أو استخدم رابط QR.');
-      } else {
-        setDiscoveryNotice(`تم اكتشاف (${results.length}) عنوان سيرفر متاح. اضغط على أي عنوان لتطبيقه فوراً.`);
-      }
-    } finally {
-      setDiscovering(false);
-    }
-  };
-
-  const handleSelectDiscovered = async (candidate: DiscoveredServerCandidate) => {
-    setFormError(null);
-    if (candidate.profiles) {
-      saveStoredConnectionProfiles(candidate.profiles);
-      setProfiles(candidate.profiles);
-    }
-    if (Array.isArray(candidate.fallbackEndpoints)) {
-      saveFallbackEndpoints(candidate.fallbackEndpoints);
-    }
-    const mode = detectModeFromUrl(candidate.url, candidate.profiles || profiles);
-    setSelectedMode(mode);
-    setUseSameOrigin(false);
-    setConfiguredApiBaseUrl(candidate.url);
-    onClose();
-    await onSaved();
-  };
-
-  const handleQrDetected = async (rawText: string) => {
-    setShowQrScanner(false);
-    setFormError(null);
-    setClaimingQr(true);
-    const res = await claimPairingInvitation(rawText, { clearExistingAuth: true });
-    setClaimingQr(false);
-    if (!res.ok) {
-      setFormError(res.error || 'تعذر ربط الجهاز عبر الرمز المدخل');
-      return;
-    }
-    setPairingBanner({
-      type: res.requiresAdminApproval ? 'warning' : 'success',
-      message: res.requiresAdminApproval
-        ? `تم إعداد السيرفر (${res.companyName || ''}). هذا الجهاز بانتظار موافقة مدير النظام، وبعدها يمكنك تسجيل الدخول بحسابك.`
-        : `تم ربط الجهاز بسيرفر (${res.companyName || ''}) بنجاح (${res.endpointUrl}). أدخل اسم المستخدم وكلمة المرور للدخول.`,
-    });
-    onClose();
-    await onSaved();
-  };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const activeModeMeta = MODE_OPTIONS.find((m) => m.key === selectedMode) || MODE_OPTIONS[0];
-  const resolvedCandidateUrl = useSameOrigin
-    ? ''
-    : resolveModeEndpointUrl(selectedMode, profiles);
-
   const handleTest = async () => {
-    setFormError(null);
-    setTestResult({});
-
-    if (!useSameOrigin) {
-      const check = validateConnectionUrl(
-        selectedMode,
-        resolvedCandidateUrl,
-        profiles.enforceHttpsForRemote !== false
-      );
-      if (!check.valid) {
-        setFormError(check.error || 'عنوان السيرفر غير صالح');
-        return;
-      }
-    }
-
     setTesting(true);
-    const res = await testServerHealth(resolvedCandidateUrl);
+    const res = await testServerHealth(urlInput);
     setTesting(false);
     if (res.ok) {
       setTestResult({
         ok: true,
-        httpsActive: res.httpsActive,
-        message: `متصل بالسيرفر المركزي (${res.latencyMs}ms)${res.httpsActive ? ' • HTTPS مشفر' : ''}${res.version ? ` — إصدار ${res.version}` : ''}`,
+        message: `متصل بالسيرفر المركزي (${res.latencyMs}ms)${res.version ? ` — إصدار ${res.version}` : ''}`,
         lanUrls: res.lanUrls,
       });
     } else {
@@ -224,72 +57,23 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setFormError(null);
-
-    if (useSameOrigin && !nativeApp) {
-      const updatedProfiles: ConnectionProfilesConfig = {
-        ...profiles,
-        activeMode: selectedMode,
-      };
-      saveStoredConnectionProfiles(updatedProfiles);
-      setConfiguredApiBaseUrl('');
-      onClose();
-      await onSaved();
-      return;
-    }
-
-    const check = validateConnectionUrl(
-      selectedMode,
-      resolvedCandidateUrl,
-      profiles.enforceHttpsForRemote !== false
-    );
-    if (!check.valid) {
-      setFormError(check.error || 'يرجى التحقق من عنوان السيرفر');
-      return;
-    }
-
-    const updatedProfiles: ConnectionProfilesConfig = {
-      ...profiles,
-      activeMode: selectedMode,
-      freeRemote:
-        selectedMode === 'free_remote'
-          ? { ...profiles.freeRemote, tunnelUrl: check.normalizedUrl }
-          : profiles.freeRemote,
-      proRemote:
-        selectedMode === 'pro_remote'
-          ? { ...profiles.proRemote, domainUrl: check.normalizedUrl }
-          : profiles.proRemote,
-      cloudVps:
-        selectedMode === 'cloud_vps'
-          ? { ...profiles.cloudVps, vpsUrl: check.normalizedUrl }
-          : profiles.cloudVps,
-    };
-
-    saveStoredConnectionProfiles(updatedProfiles);
-    setConfiguredApiBaseUrl(check.normalizedUrl);
+    setConfiguredApiBaseUrl(urlInput);
     onClose();
     await onSaved();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/65 backdrop-blur-xs">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
       <form
         onSubmit={handleSave}
-        className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 space-y-4 text-right pb-safe max-h-[92vh] overflow-y-auto"
+        className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 space-y-4 text-right pb-safe"
       >
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Server className="w-5 h-5 text-blue-900" />
-            <div>
-              <h3 className="text-sm font-black text-slate-900">
-                إعداد الاتصال بالسيرفر المركزي (4 أوضاع)
-              </h3>
-              <p className="text-[11px] text-slate-500">
-                {useSameOrigin
-                  ? 'الوضع الحالي: الخادم المحلي المباشر (Same-Origin)'
-                  : `الوضع المحدد: ${getConnectionModeLabel(selectedMode)}`}
-              </p>
-            </div>
+            <h3 className="text-sm font-black text-slate-900">
+              عنوان السيرفر المركزي (لابتوب المحل)
+            </h3>
           </div>
           <button
             type="button"
@@ -300,236 +84,40 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
           </button>
         </div>
 
-        {/* Smart Auto-Discovery & QR Pairing Quick Actions */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <p className="text-xs text-slate-600 leading-relaxed">
+          أدخل عنوان جهاز المحل على الواي فاي المحلي (مثال: <span className="font-mono" dir="ltr">http://192.168.1.100:3000</span>) أو رابط HTTPS الخاص بالمحل للاتصال من خارج المحل.
+        </p>
+
+        <input
+          type="text"
+          dir="ltr"
+          value={urlInput}
+          onChange={(e) => {
+            setUrlInput(e.target.value);
+            setTestResult({});
+          }}
+          placeholder="http://192.168.1.100:3000"
+          className="w-full rounded-xl border border-slate-300 px-3 py-3 text-xs font-mono text-left focus:border-blue-600 outline-hidden"
+        />
+
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={claimingQr}
-            onClick={() => setShowQrScanner(true)}
-            className="min-h-[42px] px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            onClick={() => setUrlInput('http://192.168.1.100:3000')}
+            className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-[11px] font-mono cursor-pointer"
           >
-            {claimingQr ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />}
-            <span>{claimingQr ? 'جاري الربط...' : 'مسح QR أو لصق رابط دعوة'}</span>
+            http://192.168.1.100:3000
           </button>
-          <button
-            type="button"
-            disabled={discovering}
-            onClick={handleAutoDiscover}
-            className="min-h-[42px] px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-800 text-xs font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-          >
-            {discovering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-            <span>{discovering ? 'جاري البحث في الشبكة...' : 'اكتشاف السيرفر تلقائياً'}</span>
-          </button>
+          {!nativeApp && (
+            <button
+              type="button"
+              onClick={() => setUrlInput('')}
+              className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-[11px] font-bold cursor-pointer"
+            >
+              الخادم الحالي
+            </button>
+          )}
         </div>
-
-        {discoveryNotice && (
-          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-            <div className="text-[11px] font-bold text-slate-700">{discoveryNotice}</div>
-            {discoveredServers.length > 0 && (
-              <div className="space-y-1.5">
-                {discoveredServers.map((srv) => (
-                  <button
-                    key={srv.url}
-                    type="button"
-                    onClick={() => handleSelectDiscovered(srv)}
-                    className="w-full p-2.5 rounded-xl bg-white hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 flex items-center justify-between gap-2 text-right cursor-pointer"
-                  >
-                    <div>
-                      <div className="text-xs font-black text-slate-900">{srv.companyName || 'AWLAD SELIM Server'}</div>
-                      <div className="text-[11px] font-mono text-emerald-700" dir="ltr">{srv.url}</div>
-                    </div>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">
-                      {srv.latencyMs}ms
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 4-Mode Switcher Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {MODE_OPTIONS.map((mode) => {
-            const ModeIcon = mode.icon;
-            const active = !useSameOrigin && selectedMode === mode.key;
-            return (
-              <button
-                key={mode.key}
-                type="button"
-                onClick={() => {
-                  setUseSameOrigin(false);
-                  setSelectedMode(mode.key);
-                  setFormError(null);
-                  setTestResult({});
-                }}
-                className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
-                  active
-                    ? 'bg-blue-900 text-white border-blue-900 shadow-xs'
-                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300'
-                }`}
-              >
-                <ModeIcon className="w-4 h-4" />
-                <span className="text-[11px] font-bold">{mode.shortLabel}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {!nativeApp && (
-          <label className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={useSameOrigin}
-              onChange={(e) => {
-                setUseSameOrigin(e.target.checked);
-                setFormError(null);
-                setTestResult({});
-              }}
-              className="w-4 h-4 rounded text-blue-900"
-            />
-            <span>اتصال تلقائي بنفس السيرفر المفتوح منه البرنامج (Same-Origin)</span>
-          </label>
-        )}
-
-        {!useSameOrigin && (
-          <div className="space-y-3 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200">
-            <div className="text-xs font-black text-slate-900">{activeModeMeta.title}</div>
-            <p className="text-[11px] text-slate-600 leading-relaxed">{activeModeMeta.hint}</p>
-
-            {selectedMode === 'local_network' ? (
-              <div className="space-y-2.5">
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="col-span-2">
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      عنوان IP اللابتوب:
-                    </label>
-                    <input
-                      type="text"
-                      dir="ltr"
-                      value={profiles.localNetwork.ip}
-                      onChange={(e) => {
-                        setProfiles((prev) => ({
-                          ...prev,
-                          localNetwork: { ...prev.localNetwork, ip: e.target.value },
-                        }));
-                        setFormError(null);
-                        setTestResult({});
-                      }}
-                      placeholder="192.168.1.100"
-                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-mono text-left focus:border-blue-600 outline-hidden"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      المنفذ (Port):
-                    </label>
-                    <input
-                      type="number"
-                      dir="ltr"
-                      min={1}
-                      max={65535}
-                      value={profiles.localNetwork.port}
-                      onChange={(e) => {
-                        setProfiles((prev) => ({
-                          ...prev,
-                          localNetwork: {
-                            ...prev.localNetwork,
-                            port: parseInt(e.target.value, 10) || 3000,
-                          },
-                        }));
-                        setFormError(null);
-                        setTestResult({});
-                      }}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-mono text-left focus:border-blue-600 outline-hidden"
-                    />
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setProfiles((prev) => ({
-                        ...prev,
-                        localNetwork: { ...prev.localNetwork, ip: '192.168.1.100', port: 3000 },
-                      }))
-                    }
-                    className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 text-[11px] font-mono cursor-pointer"
-                  >
-                    192.168.1.100:3000
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setProfiles((prev) => ({
-                        ...prev,
-                        localNetwork: { ...prev.localNetwork, ip: '10.0.2.2', port: 3000 },
-                      }))
-                    }
-                    className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 text-[11px] font-mono cursor-pointer"
-                  >
-                    10.0.2.2:3000 (محاكي)
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <label className="block text-[11px] font-bold text-slate-700">
-                  رابط الاتصال الآمن (HTTPS):
-                </label>
-                <input
-                  type="url"
-                  dir="ltr"
-                  value={
-                    selectedMode === 'free_remote'
-                      ? profiles.freeRemote.tunnelUrl
-                      : selectedMode === 'pro_remote'
-                      ? profiles.proRemote.domainUrl
-                      : profiles.cloudVps.vpsUrl
-                  }
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setProfiles((prev) => ({
-                      ...prev,
-                      freeRemote:
-                        selectedMode === 'free_remote'
-                          ? { ...prev.freeRemote, tunnelUrl: val }
-                          : prev.freeRemote,
-                      proRemote:
-                        selectedMode === 'pro_remote'
-                          ? { ...prev.proRemote, domainUrl: val }
-                          : prev.proRemote,
-                      cloudVps:
-                        selectedMode === 'cloud_vps'
-                          ? { ...prev.cloudVps, vpsUrl: val }
-                          : prev.cloudVps,
-                    }));
-                    setFormError(null);
-                    setTestResult({});
-                  }}
-                  placeholder={activeModeMeta.placeholder}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-mono text-left focus:border-blue-600 outline-hidden"
-                />
-                {selectedMode === 'free_remote' && (
-                  <p className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 font-bold">
-                    تنبيه: رابط Quick Tunnel المجاني مؤقت وقد يتغير عند إعادة تشغيل النفق على اللابتوب؛ يمكنك إعادة الربط فوراً بالـ QR أو الرابط الجديد.
-                  </p>
-                )}
-                <div className="flex items-center gap-1.5 text-[10px] text-slate-600">
-                  <Lock className="w-3 h-3 text-emerald-700 shrink-0" />
-                  <span>يُشترط HTTPS لحماية جلسة الدخول والتوكنات عند الاتصال من خارج المحل.</span>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {formError && (
-          <div className="p-3 rounded-xl border bg-red-50 border-red-200 text-red-700 text-xs font-bold flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
-            <span>{formError}</span>
-          </div>
-        )}
 
         {testResult.message && (
           <div
@@ -548,31 +136,9 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
               <span>{testResult.message}</span>
             </div>
             {testResult.lanUrls && testResult.lanUrls.length > 0 && (
-              <div className="flex flex-wrap gap-1 pt-1" dir="ltr">
-                {testResult.lanUrls.map((u) => (
-                  <button
-                    key={u}
-                    type="button"
-                    onClick={() => {
-                      const clean = u.replace(/^https?:\/\//i, '');
-                      const [host, p] = clean.split(':');
-                      setUseSameOrigin(false);
-                      setSelectedMode('local_network');
-                      setProfiles((prev) => ({
-                        ...prev,
-                        localNetwork: {
-                          ...prev.localNetwork,
-                          ip: host || prev.localNetwork.ip,
-                          port: parseInt(p || '3000', 10) || 3000,
-                        },
-                      }));
-                    }}
-                    className="px-2 py-0.5 rounded bg-white border border-emerald-300 text-[10px] font-mono text-emerald-800 cursor-pointer"
-                  >
-                    {u}
-                  </button>
-                ))}
-              </div>
+              <p className="text-[11px] font-mono text-emerald-700" dir="ltr">
+                LAN: {testResult.lanUrls.join(' · ')}
+              </p>
             )}
           </div>
         )}
@@ -591,16 +157,10 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
             type="submit"
             className="min-h-[44px] flex-1 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black cursor-pointer"
           >
-            حفظ وتطبيق الوضع
+            حفظ وتحديث البيانات
           </button>
         </div>
       </form>
-
-      <QrScannerModal
-        isOpen={showQrScanner}
-        onClose={() => setShowQrScanner(false)}
-        onDetected={handleQrDetected}
-      />
     </div>
   );
 };

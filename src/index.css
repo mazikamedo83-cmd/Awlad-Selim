@@ -1,37 +1,10 @@
 @import "tailwindcss";
-@import "./styles/design-system.css";
-
-@theme {
-  --font-sans: 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
 
 @layer base {
-  html {
-    font-size: 16px;
-    -webkit-text-size-adjust: 100%;
-    text-size-adjust: 100%;
-    color-scheme: light;
-    direction: rtl;
-  }
-
   body {
-    font-family: var(--awlad-font-sans);
+    font-family: 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     direction: rtl;
     text-align: right;
-    background-color: #f8fafc;
-    color: var(--awlad-text-body);
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    -webkit-tap-highlight-color: transparent;
-    overscroll-behavior-y: contain;
-    overflow-x: hidden;
-  }
-
-  input,
-  button,
-  select,
-  textarea {
-    font-family: inherit;
   }
 
   input[type="number"]::-webkit-inner-spin-button,
@@ -41,7 +14,7 @@
   }
 }
 
-/* Custom scrollbar (consistent across Windows Electron & Chromium) */
+/* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -121,3 +94,12 @@
 .print-only {
   display: none;
 }
+
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+

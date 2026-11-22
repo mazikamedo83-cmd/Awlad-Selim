@@ -9,8 +9,6 @@ import { Modal } from '../../common/Modal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
-import { QuantityInput } from '../../common/QuantityInput';
-import { computeLineTotal } from '../../../utils/quantity';
 
 export interface PurchaseInvoicesViewProps {
   initialStatusFilter?: 'all' | 'confirmed' | 'draft' | 'cancelled';
@@ -25,7 +23,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     invoices, suppliers, products, warehouses, cashboxes,
     settings, createPurchaseInvoice, cancelInvoice
   } = useData();
-  const { registerHandler } = useShortcuts();
+  const { registerHandler, getShortcutLabelForAction } = useShortcuts();
 
   const productSearchRef = useRef<HTMLInputElement | null>(null);
   const qtyInputRef = useRef<HTMLInputElement | null>(null);
@@ -134,7 +132,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       setError('يرجى إدخال كمية صحيحة أكبر من صفر');
       return;
     }
-    const total = computeLineTotal(itemQty, itemPrice);
+    const total = itemQty * itemPrice;
 
     setItems(prev => [
       ...prev,
@@ -488,7 +486,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 priceMode="purchase"
                 currency={settings.currency}
                 inputRef={productSearchRef}
-                placeholder="ابحث بالاسم أو الكود أو الباركود..."
+                placeholder={`ابحث بالاسم أو الكود أو الباركود (${getShortcutLabelForAction('action:focus_product_search') || 'F3'})...`}
                 onSelect={(prod) => handleProductPick(prod.id)}
                 onAfterSelect={() => {
                   qtyInputRef.current?.focus();
@@ -498,20 +496,19 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             </div>
             <div className="sm:col-span-2">
               <label className="block font-bold text-slate-700 mb-1">الكمية:</label>
-              <QuantityInput
-                inputRef={qtyInputRef}
-                allowDecimals
-                min={0.001}
+              <input
+                ref={qtyInputRef}
+                type="number"
+                min="1"
                 value={itemQty}
-                onChange={setItemQty}
+                onChange={(e) => setItemQty(Number(e.target.value))}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
                     handleAddItem();
                   }
                 }}
-                ariaLabel="كمية الشراء"
-                inputClassName="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-center font-mono font-bold outline-hidden focus:border-blue-700"
+                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-center font-mono font-bold"
               />
             </div>
             <div className="sm:col-span-2">
@@ -542,7 +539,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
           </div>
 
           {/* Items list */}
-          <div className="border rounded-xl awlad-table-scroll">
+          <div className="border rounded-xl overflow-hidden">
             <table className="w-full text-right">
               <thead>
                 <tr className="bg-slate-100 font-bold border-b">
@@ -565,21 +562,19 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     <tr key={i}>
                       <td className="p-2 font-bold">{it.productName}</td>
                       <td className="p-2 text-center">
-                        <QuantityInput
-                          allowDecimals
-                          min={0.001}
+                        <input
+                          type="number"
+                          min="1"
                           value={it.quantity}
-                          onChange={(q) => {
+                          onChange={(e) => {
+                            const q = Math.max(1, Number(e.target.value));
                             setItems((prev) =>
                               prev.map((row, idx) =>
-                                idx === i
-                                  ? { ...row, quantity: q, total: computeLineTotal(q, row.unitPrice, row.discount || 0) }
-                                  : row
+                                idx === i ? { ...row, quantity: q, total: q * row.unitPrice } : row
                               )
                             );
                           }}
-                          ariaLabel={`كمية ${it.productName}`}
-                          inputClassName="w-20 border rounded-lg px-2 py-1 text-center font-mono font-bold outline-hidden focus:border-blue-700"
+                          className="w-20 border rounded-lg px-2 py-1 text-center font-mono font-bold"
                         />
                       </td>
                       <td className="p-2 text-center">
@@ -734,6 +729,11 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               >
                 <Save className="w-4 h-4" />
                 <span>{isSubmitting ? 'جاري الحفظ...' : 'حفظ الفاتورة فقط'}</span>
+                {getShortcutLabelForAction('action:save_invoice') && (
+                  <kbd dir="ltr" className="text-[10px] font-mono bg-black/20 px-1.5 py-0.5 rounded">
+                    {getShortcutLabelForAction('action:save_invoice')}
+                  </kbd>
+                )}
               </button>
               <button
                 type="button"

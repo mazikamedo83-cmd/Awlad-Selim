@@ -8,7 +8,6 @@ import {
   linkCustomerToUser,
   recordCustomerPayment,
   detectCustomerUserConflicts,
-  repairUnlinkedCustomerUsers,
   getRepresentativeByUserId,
   isCustomerAllowedForRep,
   getCustomerProductPriceHistory,
@@ -84,16 +83,6 @@ router.get(
   })
 );
 
-router.post(
-  '/conflicts/fix-unlinked',
-  requireStaff,
-  requirePermission('canManageUsers'),
-  asyncHandler(async (req, res) => {
-    const result = await repairUnlinkedCustomerUsers(req.auth.user);
-    res.json({ ok: true, ...result });
-  })
-);
-
 router.get(
   '/',
   requireStaff,
@@ -124,24 +113,6 @@ router.get(
     }
     const priceHistory = await getCustomerProductPriceHistory(customer.id);
     res.json({ ok: true, customerId: customer.id, priceHistory });
-  })
-);
-
-router.get(
-  '/:id/statement',
-  requireStaff,
-  requirePermission('canView'),
-  asyncHandler(async (req, res) => {
-    const customer = await getCustomerById(req.params.id);
-    if (!customer) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
-    if (req.auth.user.role === 'representative') {
-      const rep = req.auth.representativeProfile || (await getRepresentativeByUserId(req.auth.user.id));
-      if (!rep || !isCustomerAllowedForRep(customer, rep.id)) {
-        throw new AppError(403, 'غير مصرح لك بالوصول لبيانات عميل غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
-      }
-    }
-    const statement = await getCustomerStatementData(customer.id, { allowPriceView: true });
-    res.json({ ok: true, statement });
   })
 );
 
@@ -214,15 +185,6 @@ router.post(
   requireStaff,
   requirePermission('canManageAccounts'),
   asyncHandler(async (req, res) => {
-    if (req.auth.user.role === 'representative') {
-      const customer = await getCustomerById(req.params.id);
-      if (!customer) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
-      const rep = req.auth.representativeProfile || (await getRepresentativeByUserId(req.auth.user.id));
-      if (!rep || !isCustomerAllowedForRep(customer, rep.id)) {
-        throw new AppError(403, 'غير مصرح لك بتحصيل مبالغ من عميل غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
-      }
-    }
-    const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
     const result = await recordCustomerPayment(
       {
         customerId: req.params.id,
@@ -232,8 +194,7 @@ router.post(
         notes: req.body?.notes,
         date: req.body?.date,
       },
-      req.auth.user,
-      idempotencyKey
+      req.auth.user
     );
     res.json({ ok: true, ...result });
   })

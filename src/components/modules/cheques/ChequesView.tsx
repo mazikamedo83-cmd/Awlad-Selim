@@ -240,7 +240,6 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
             />
           </div>
 
-          <div className="awlad-table-scroll">
           <table className="w-full text-right text-xs">
             <thead>
               <tr className="bg-slate-50 font-bold border-b text-slate-700">
@@ -307,7 +306,6 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
               ))}
             </tbody>
           </table>
-          </div>
         </div>
       )}
 
@@ -329,7 +327,6 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
               </div>
 
               {/* Installments Table */}
-              <div className="awlad-table-scroll">
               <table className="w-full text-right text-xs">
                 <thead>
                   <tr className="bg-slate-50 font-bold border-b">
@@ -377,7 +374,6 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
                   })}
                 </tbody>
               </table>
-              </div>
             </div>
           ))}
         </div>

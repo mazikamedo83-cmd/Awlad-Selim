@@ -58,22 +58,21 @@ export const Modal: React.FC<ModalProps> = ({
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-4 py-3 sm:px-6 sm:py-4 gap-2">
-            <div className="min-w-0">
-              <h3 className="text-base sm:text-lg font-bold text-slate-900 truncate">{title}</h3>
-              {subtitle && <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{subtitle}</p>}
+          <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-6 py-4">
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">{title}</h3>
+              {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
             </div>
             <button
               onClick={onClose}
-              className="rounded-lg p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-400 hover:bg-slate-200 hover:text-slate-600 transition-colors shrink-0"
-              aria-label="إغلاق"
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-600 transition-colors"
             >
               <X className="h-5 w-5" />
             </button>
           </div>
 
           {/* Content */}
-          <div className="p-4 sm:p-6 max-h-[calc(90vh-72px)] overflow-y-auto">
+          <div className="p-6 max-h-[calc(85vh-80px)] overflow-y-auto">
             {children}
           </div>
         </div>

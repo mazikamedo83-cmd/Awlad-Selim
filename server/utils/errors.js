@@ -41,6 +41,7 @@ export function sanitizeUser(user) {
     mustChangePassword: safe.mustChangePassword ?? safe.must_change_password ?? false,
     lastLogin: safe.lastLogin ?? safe.last_login ?? undefined,
     permissions: safe.permissions || {},
+    isSuperAdmin: Boolean(safe.isSuperAdmin || safe.permissions?.isSuperAdmin),
     shortcuts: Array.isArray(safe.shortcuts) ? safe.shortcuts : [],
     createdAt: safe.createdAt ?? safe.created_at ?? nowIso(),
   };

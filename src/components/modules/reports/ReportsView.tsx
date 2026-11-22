@@ -1,1420 +1,632 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import {
-  Search,
-  RotateCcw,
-  ChevronDown,
-  ChevronUp,
-  ArrowUpDown,
-  Printer,
-  FileSpreadsheet,
-  FileText,
-  SlidersHorizontal,
-  History,
-  Table2,
-  Receipt,
-  Calendar,
+import React, { useState, useMemo } from 'react';
+import { 
+  FileBarChart, Printer, Download, Calendar, Filter, DollarSign, 
+  TrendingUp, TrendingDown, ShoppingCart, Truck, Boxes, Wallet, Users2, FileDown 
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
-import { fetchComprehensiveReport, fetchReportSourceDocument } from '../../../services/api';
+import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
 import { exportTableToPdf } from '../../common/PdfExporter';
-import { PrintDocumentModal, type PrintData } from '../../common/PrintDocument';
-import { SourceDocumentModal } from './SourceDocumentModal';
-import { ItemLifecycleAndPnlPanel } from './ItemLifecycleAndPnlPanel';
-import type {
-  ComprehensiveReportOption,
-  ComprehensiveReportResponse,
-  ComprehensiveReportRow,
-  ComprehensiveReportTypeKey,
-  ReportSourceDocumentResponse,
-} from '../../../types';
 
-export interface ReportsViewProps {
-  initialTab?: string;
-  initialProductId?: string;
-}
+export const ReportsView: React.FC = () => {
+  const { 
+    invoices, products, customers, suppliers, cashboxes, 
+    repTransfers, installments, expenseIncomes, settings, employees, payrolls,
+    ownerAccounts = [], ownerTransactions = [], stockCounts = [], stockTransferRequests = [],
+  } = useData();
+  const { currentUser, hasPermission } = useAuth();
 
-export const REPORT_TYPE_OPTIONS: ComprehensiveReportOption[] = [
-  { key: 'all', label: 'الكل', group: 1 },
-  { key: 'sales_items', label: 'اصناف البيع', group: 1 },
-  { key: 'sales_invoices', label: 'فواتير بيع', group: 1 },
-  { key: 'sales_items_by_unit', label: 'اصناف بيع/ بالوحدة', group: 1 },
-  { key: 'sales_items_grouped', label: 'اصناف بيع/مَجمع', group: 1 },
-  { key: 'sales_items_grouped_by_customer', label: 'اصناف بيع/مَجمع حسب العميل', group: 1 },
-  { key: 'sales_items_grouped_by_category', label: 'اصناف بيع/مَجمع حسب المجموعة', group: 1 },
-  { key: 'sales_items_grouped_by_category_class1', label: 'اصناف بيع/مَجمع حسب المجموعة وتصنيف 1', group: 1 },
-
-  { key: 'sales_return_items', label: 'اصناف مرتجع بيع', group: 2 },
-  { key: 'sales_return_invoices', label: 'فواتير مرتجع بيع', group: 2 },
-
-  { key: 'purchase_items', label: 'اصناف شراء', group: 3 },
-  { key: 'purchase_invoices', label: 'فواتير شراء', group: 3 },
-
-  { key: 'purchase_return_items', label: 'اصناف مرتجع شراء', group: 4 },
-  { key: 'purchase_return_invoices', label: 'فواتير مرتجع شراء', group: 4 },
-
-  { key: 'damaged_items', label: 'اصناف تالف', group: 5 },
-  { key: 'damaged_invoices', label: 'فواتير تالف', group: 5 },
-
-  { key: 'cash_payment', label: 'سداد نقدى', group: 6 },
-  { key: 'cash_payment_customer', label: 'سداد نقدى/عميل', group: 6 },
-  { key: 'cash_payment_supplier', label: 'سداد نقدى/مورد', group: 6 },
-  { key: 'cash_payment_employee', label: 'سداد نقدى/موظف', group: 6 },
-
-  { key: 'cash_withdrawal', label: 'سحب نقدى', group: 7 },
-  { key: 'cash_withdrawal_customer', label: 'سحب نقدى/عميل', group: 7 },
-  { key: 'cash_withdrawal_supplier', label: 'سحب نقدى/مورد', group: 7 },
-];
-
-type SortColumnKey =
-  | 'operationLabel'
-  | 'quantity'
-  | 'unit'
-  | 'priceOrTotal'
-  | 'valueOrPaid'
-  | 'movementOrRemaining'
-  | 'employeeName'
-  | 'userName'
-  | 'businessDate'
-  | 'rawCreatedAt'
-  | 'profit'
-  | 'barcode'
-  | 'displayId'
-  | 'invoiceNumber'
-  | 'branchName'
-  | 'cashboxName'
-  | 'notes'
-  | 'discount'
-  | 'profitPercent';
-
-const TABLE_COLUMNS: Array<{ key: SortColumnKey; label: string; align?: 'right' | 'center' }> = [
-  { key: 'operationLabel', label: 'العملية', align: 'right' },
-  { key: 'quantity', label: 'الكمية', align: 'center' },
-  { key: 'unit', label: 'الوحدة', align: 'center' },
-  { key: 'priceOrTotal', label: 'السعر', align: 'center' },
-  { key: 'valueOrPaid', label: 'القيمة', align: 'center' },
-  { key: 'movementOrRemaining', label: 'الحركة', align: 'right' },
-  { key: 'employeeName', label: 'الموظف', align: 'center' },
-  { key: 'userName', label: 'المستخدم', align: 'center' },
-  { key: 'businessDate', label: 'اليومية', align: 'center' },
-  { key: 'rawCreatedAt', label: 'التاريخ الفعلى', align: 'center' },
-  { key: 'profit', label: 'الربح', align: 'center' },
-  { key: 'barcode', label: 'الباركود', align: 'center' },
-  { key: 'displayId', label: 'ID', align: 'center' },
-  { key: 'invoiceNumber', label: 'رقم الفاتورة', align: 'center' },
-  { key: 'branchName', label: 'الفرع', align: 'center' },
-  { key: 'cashboxName', label: 'الخزنة', align: 'center' },
-  { key: 'notes', label: 'ملاحظات', align: 'right' },
-  { key: 'discount', label: 'الخصم', align: 'center' },
-  { key: 'profitPercent', label: 'نسبة الربح', align: 'center' },
-];
-
-const fmtMoney = (v: number | null | undefined) => {
-  if (v === null || v === undefined || Number.isNaN(Number(v))) return '0';
-  const n = Number(v);
-  return Number.isInteger(n) ? n.toLocaleString('en-US') : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-};
-
-const fmtNum = (v: number | null | undefined) => {
-  if (v === null || v === undefined || Number.isNaN(Number(v))) return '0';
-  return Number(v).toLocaleString('en-US', { maximumFractionDigits: 3 });
-};
-
-function todayYmd(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function addDaysYmd(ymd: string, delta: number): string {
-  const base = ymd ? new Date(`${ymd}T00:00:00`) : new Date();
-  if (Number.isNaN(base.getTime())) return todayYmd();
-  base.setDate(base.getDate() + delta);
-  const y = base.getFullYear();
-  const m = String(base.getMonth() + 1).padStart(2, '0');
-  const day = String(base.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialProductId }) => {
-  const { settings } = useData();
-  const { hasPermission } = useAuth();
-  const currency = settings.currency || 'ج.م';
-
-  const [viewMode, setViewMode] = useState<'unified_grid' | 'item_lifecycle'>(
-    initialTab === 'item_movement' ? 'item_lifecycle' : 'unified_grid'
+  // Date filter (Default: First day of current month through today as requested in spec 18)
+  const [dateFilter, setDateFilter] = useState<'thisMonth' | 'today' | 'yesterday' | '7days' | 'prevMonth' | 'thisYear' | 'custom'>('thisMonth');
+  const [customStartDate, setCustomStartDate] = useState(
+    new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
   );
-  const [reportType, setReportType] = useState<ComprehensiveReportTypeKey>('all');
-  const [periodPreset, setPeriodPreset] = useState<'today' | 'this_month' | 'prev_month' | 'this_year' | 'prev_year' | 'all_time' | 'custom'>(
-    initialTab === 'item_movement' ? 'all_time' : 'today'
-  );
-  const [dateFrom, setDateFrom] = useState<string>(() => (initialTab === 'item_movement' ? '' : todayYmd()));
-  const [useDateTo, setUseDateTo] = useState<boolean>(() => initialTab !== 'item_movement');
-  const [dateTo, setDateTo] = useState<string>(() => todayYmd());
+  const [customEndDate, setCustomEndDate] = useState(new Date().toISOString().split('T')[0]);
 
-  const [branchId, setBranchId] = useState('all');
-  const [warehouseId, setWarehouseId] = useState('all');
-  const [cashboxId, setCashboxId] = useState('all');
-  const [productId, setProductId] = useState(initialProductId || 'all');
-  const [productSearch, setProductSearch] = useState('');
-  const [barcode, setBarcode] = useState('');
-  const [customerId, setCustomerId] = useState('all');
-  const [supplierId, setSupplierId] = useState('all');
-  const [employeeId, setEmployeeId] = useState('all');
-  const [userId, setUserId] = useState('all');
-  const [representativeId, setRepresentativeId] = useState('all');
-  const [invoiceNumber, setInvoiceNumber] = useState('');
-  const [recordId, setRecordId] = useState('');
-  const [search, setSearch] = useState('');
-  const [showMoreFilters, setShowMoreFilters] = useState(true);
-  const [inlineTableSearch, setInlineTableSearch] = useState('');
+  // Selected report category
+  const [selectedReport, setSelectedReport] = useState<
+    'sales' | 'purchases' | 'pnl' | 'income_expense' | 'cashbox' | 'customer_debts' | 'supplier_debts' | 'inventory_valuation' | 'rep_performance' | 'rep_transfers' | 'cheques' | 'installments' | 'payroll' | 'personal_accounts' | 'stock_counts' | 'stock_transfers'
+  >('pnl');
 
-  const [sortCol, setSortCol] = useState<SortColumnKey | null>(null);
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  // Print modal
+  const [printData, setPrintData] = useState<PrintData | null>(null);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
-  const [reportData, setReportData] = useState<ComprehensiveReportResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  const [isReportDropdownOpen, setIsReportDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement | null>(null);
-
-  const [sourceModalOpen, setSourceModalOpen] = useState(false);
-  const [sourceLoading, setSourceLoading] = useState(false);
-  const [sourceError, setSourceError] = useState<string | null>(null);
-  const [sourceDoc, setSourceDoc] = useState<ReportSourceDocumentResponse | null>(null);
-  const [printModalData, setPrintModalData] = useState<PrintData | null>(null);
-  const [exportScope, setExportScope] = useState<'filtered' | 'all'>('filtered');
-
-  useEffect(() => {
-    if (initialProductId) {
-      setProductId(initialProductId);
-    }
-    if (initialTab === 'item_movement') {
-      setViewMode('item_lifecycle');
-    }
-  }, [initialTab, initialProductId]);
-
-  useEffect(() => {
-    const onDocClick = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setIsReportDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
-  }, []);
-
-  const loadReport = useCallback(
-    async (overrideType?: ComprehensiveReportTypeKey) => {
-      setIsLoading(true);
-      setErrorMsg(null);
-      try {
-        const activeType = overrideType ?? reportType;
-        const data = await fetchComprehensiveReport({
-          reportType: activeType,
-          dateFrom: dateFrom || undefined,
-          dateTo: useDateTo && dateTo ? dateTo : undefined,
-          branchId,
-          warehouseId,
-          cashboxId,
-          productId,
-          productSearch: productSearch.trim() || undefined,
-          barcode: barcode.trim() || undefined,
-          customerId,
-          supplierId,
-          employeeId,
-          userId,
-          representativeId,
-          invoiceNumber: invoiceNumber.trim() || undefined,
-          recordId: recordId.trim() || undefined,
-          search: search.trim() || undefined,
-        });
-        setReportData(data);
-      } catch (err: any) {
-        setErrorMsg(err?.message || 'تعذر تحميل بيانات التقرير');
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [
-      reportType,
-      dateFrom,
-      useDateTo,
-      dateTo,
-      branchId,
-      warehouseId,
-      cashboxId,
-      productId,
-      productSearch,
-      barcode,
-      customerId,
-      supplierId,
-      employeeId,
-      userId,
-      representativeId,
-      invoiceNumber,
-      recordId,
-      search,
-    ]
-  );
-
-  // Auto-load on mount and whenever reportType or core filters change
-  useEffect(() => {
-    loadReport();
-  }, [loadReport]);
-
-  const applyPeriodPreset = (preset: typeof periodPreset) => {
-    setPeriodPreset(preset);
+  // Date Range calculation
+  const dateRange = useMemo(() => {
     const now = new Date();
-    const y = now.getFullYear();
-    const m = now.getMonth();
-    const fmtD = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    let start = new Date(now.getFullYear(), now.getMonth(), 1);
+    let end = new Date();
 
-    if (preset === 'today') {
-      const t = todayYmd();
-      setDateFrom(t);
-      setUseDateTo(true);
-      setDateTo(t);
-    } else if (preset === 'this_month') {
-      setDateFrom(fmtD(new Date(y, m, 1)));
-      setUseDateTo(true);
-      setDateTo(fmtD(new Date(y, m + 1, 0)));
-    } else if (preset === 'prev_month') {
-      setDateFrom(fmtD(new Date(y, m - 1, 1)));
-      setUseDateTo(true);
-      setDateTo(fmtD(new Date(y, m, 0)));
-    } else if (preset === 'this_year') {
-      setDateFrom(`${y}-01-01`);
-      setUseDateTo(true);
-      setDateTo(`${y}-12-31`);
-    } else if (preset === 'prev_year') {
-      setDateFrom(`${y - 1}-01-01`);
-      setUseDateTo(true);
-      setDateTo(`${y - 1}-12-31`);
-    } else if (preset === 'all_time') {
-      setDateFrom('');
-      setUseDateTo(false);
+    if (dateFilter === 'today') {
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    } else if (dateFilter === 'yesterday') {
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+      end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    } else if (dateFilter === '7days') {
+      start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    } else if (dateFilter === 'prevMonth') {
+      start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      end = new Date(now.getFullYear(), now.getMonth(), 0);
+    } else if (dateFilter === 'thisYear') {
+      start = new Date(now.getFullYear(), 0, 1);
+    } else if (dateFilter === 'custom') {
+      start = new Date(customStartDate);
+      end = new Date(customEndDate);
     }
-  };
 
-  const handleResetFilters = () => {
-    setReportType('all');
-    const t = todayYmd();
-    setPeriodPreset('today');
-    setDateFrom(t);
-    setUseDateTo(true);
-    setDateTo(t);
-    setBranchId('all');
-    setWarehouseId('all');
-    setCashboxId('all');
-    setProductId('all');
-    setProductSearch('');
-    setBarcode('');
-    setCustomerId('all');
-    setSupplierId('all');
-    setEmployeeId('all');
-    setUserId('all');
-    setRepresentativeId('all');
-    setInvoiceNumber('');
-    setRecordId('');
-    setSearch('');
-    setInlineTableSearch('');
-  };
+    const startStr = start.toISOString().split('T')[0];
+    const endStr = end.toISOString().split('T')[0];
+    return { startStr, endStr };
+  }, [dateFilter, customStartDate, customEndDate]);
 
-  const handleInspectDocument = async (docType: string, docId: string) => {
-    if (!docId || docType === 'product_aggregate') return;
-    setSourceModalOpen(true);
-    setSourceLoading(true);
-    setSourceError(null);
-    setSourceDoc(null);
-    try {
-      const res = await fetchReportSourceDocument(docType, docId);
-      setSourceDoc(res);
-    } catch (err: any) {
-      setSourceError(err?.message || 'تعذر فتح تفاصيل المستند الأصلي');
-    } finally {
-      setSourceLoading(false);
-    }
-  };
+  // Filtered dataset
+  const periodSales = invoices.filter(i => i.type === 'sales' && i.status === 'confirmed' && i.date >= dateRange.startStr && i.date <= dateRange.endStr);
+  const periodPurchases = invoices.filter(i => i.type === 'purchase' && i.status === 'confirmed' && i.date >= dateRange.startStr && i.date <= dateRange.endStr);
+  const periodExpenses = expenseIncomes.filter(e => e.type === 'expense' && e.date >= dateRange.startStr && e.date <= dateRange.endStr);
+  const periodIncomes = expenseIncomes.filter(e => e.type === 'income' && e.date >= dateRange.startStr && e.date <= dateRange.endStr);
 
-  const handleSort = (col: SortColumnKey) => {
-    if (sortCol === col) {
-      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortCol(col);
-      setSortDir('desc');
-    }
-  };
+  const totalSalesVal = periodSales.reduce((a, b) => a + b.grandTotal, 0);
+  const totalPurchasesVal = periodPurchases.reduce((a, b) => a + b.grandTotal, 0);
+  const totalExpensesVal = periodExpenses.reduce((a, b) => a + b.amount, 0);
+  const totalIncomesVal = periodIncomes.reduce((a, b) => a + b.amount, 0);
 
-  // Contextual visibility flags for top filters based on selected reportType
-  const filterVisibility = useMemo(() => {
-    const isSalesOnly = reportType.startsWith('sales');
-    const isPurchaseOnly = reportType.startsWith('purchase');
-    const isDamaged = reportType.startsWith('damaged');
-    const isCashOnly = reportType.startsWith('cash_');
-    const isCashCustomer = reportType === 'cash_payment_customer' || reportType === 'cash_withdrawal_customer';
-    const isCashSupplier = reportType === 'cash_payment_supplier' || reportType === 'cash_withdrawal_supplier';
-    const isCashEmployee = reportType === 'cash_payment_employee';
+  // Approximate gross and net profit
+  const grossProfit = totalSalesVal - totalPurchasesVal;
+  const netProfit = grossProfit - totalExpensesVal + totalIncomesVal;
 
-    return {
-      showWarehouse: !isCashOnly,
-      showCashbox: !isDamaged,
-      showProductFilters: !isCashOnly,
-      showCustomer: reportType === 'all' || isSalesOnly || isCashCustomer || reportType === 'cash_payment' || reportType === 'cash_withdrawal',
-      showSupplier: reportType === 'all' || isPurchaseOnly || isCashSupplier || reportType === 'cash_payment' || reportType === 'cash_withdrawal',
-      showRepresentative: reportType === 'all' || isSalesOnly || isDamaged || (!isCashSupplier && !isCashEmployee),
-      showEmployee: true,
-      showUser: true,
-      showInvoiceNumber: !isCashEmployee,
-      showRecordId: true,
-    };
-  }, [reportType]);
+  const getReportTableData = () => {
+    let reportTitle = 'تقرير محاسبي';
+    let headers: string[] = [];
+    let rows: Array<Array<string | number>> = [];
 
-  // Apply optional inline search + sorting within each section
-  const processedSections = useMemo(() => {
-    const sections = reportData?.sections || [];
-    const q = inlineTableSearch.trim().toLowerCase();
-
-    return sections.map((sec) => {
-      let rows = sec.rows;
-      if (q) {
-        rows = rows.filter((r) =>
-          [
-            r.operationLabel,
-            r.movementOrRemaining,
-            r.employeeName,
-            r.userName,
-            r.barcode,
-            r.displayId,
-            r.invoiceNumber,
-            r.branchName,
-            r.cashboxName,
-            r.notes,
-            r.actualDateTime,
-          ]
-            .filter(Boolean)
-            .join(' ')
-            .toLowerCase()
-            .includes(q)
-        );
-      }
-
-      if (sortCol) {
-        rows = [...rows].sort((a, b) => {
-          const av = a[sortCol];
-          const bv = b[sortCol];
-          let cmp = 0;
-          if (typeof av === 'number' && typeof bv === 'number') {
-            cmp = av - bv;
-          } else {
-            cmp = String(av ?? '').localeCompare(String(bv ?? ''), 'ar');
-          }
-          return sortDir === 'asc' ? cmp : -cmp;
+    if (selectedReport === 'sales') {
+      reportTitle = 'تقرير المبيعات المعتمدة';
+      headers = ['رقم الفاتورة', 'التاريخ', 'العميل', 'المستودع', 'الإجمالي', 'المدفوع', 'المتبقي'];
+      rows = periodSales.map(s => [s.invoiceNumber, s.date, s.customerName || 'نقدي', s.warehouseName, s.grandTotal, s.paidAmount, s.remainingAmount]);
+    } else if (selectedReport === 'purchases') {
+      reportTitle = 'تقرير المشتريات المعتمدة';
+      headers = ['رقم الفاتورة', 'التاريخ', 'المورد', 'المستودع', 'الإجمالي', 'المدفوع', 'المتبقي'];
+      rows = periodPurchases.map(p => [p.invoiceNumber, p.date, p.supplierName || 'مورد', p.warehouseName, p.grandTotal, p.paidAmount, p.remainingAmount]);
+    } else if (selectedReport === 'customer_debts') {
+      reportTitle = 'تقرير مديونيات العملاء';
+      headers = ['كود العميل', 'اسم العميل', 'رقم الهاتف', 'الرصيد الافتتاحي', 'المديونية الحالية'];
+      rows = customers.map(c => [c.code, c.name, c.phone, c.openingBalance, c.currentBalance]);
+    } else if (selectedReport === 'supplier_debts') {
+      reportTitle = 'تقرير أرصدة ومستحقات الموردين';
+      headers = ['كود المورد', 'اسم المورد', 'الهاتف', 'الرصيد الافتتاحي', 'الرصيد المستحق'];
+      rows = suppliers.map(s => [s.code, s.name, s.phone, s.openingBalance, s.currentBalance]);
+    } else if (selectedReport === 'rep_transfers') {
+      reportTitle = 'تقرير تحويلات المناديب بالنصف';
+      headers = ['رقم التحويل', 'التاريخ', 'المرسل', 'المستلم', 'المبلغ', 'الحالة'];
+      rows = repTransfers.map(t => [t.transferNumber, t.date, t.senderName, t.receiverName, t.amount, t.status === 'received' ? 'تم الاستلام' : 'قيد الاستلام']);
+    } else if (selectedReport === 'personal_accounts') {
+      reportTitle = 'تقرير الحسابات الشخصية للملاك';
+      headers = ['رقم الحركة', 'التاريخ', 'الحساب الشخصي', 'النوع', 'المبلغ', 'الخزينة', 'السبب / البيان'];
+      rows = ownerTransactions
+        .filter(tx => tx.date >= dateRange.startStr && tx.date <= dateRange.endStr)
+        .map(tx => {
+          const acc = ownerAccounts.find(a => a.id === tx.accountId);
+          return [
+            tx.txNumber,
+            tx.date,
+            acc ? `${acc.ownerName} - ${acc.accountName}` : tx.accountId,
+            tx.type,
+            tx.amount,
+            tx.cashboxName || 'غير مرتبط بخزينة',
+            tx.reason || tx.notes || '-',
+          ];
         });
-      }
-
-      const qtySum = rows.reduce((s, r) => s + Number(r.quantity || 0), 0);
-      const priceSum = sec.isInvoiceLayout ? rows.reduce((s, r) => s + Number(r.priceOrTotal || 0), 0) : null;
-      const valueSum = rows.reduce((s, r) => s + Number(r.valueOrPaid || 0), 0);
-      const remSum = sec.isInvoiceLayout ? rows.reduce((s, r) => s + Number(r.movementOrRemaining || 0), 0) : null;
-      const profitSum = rows.reduce((s, r) => s + Number(r.profit || 0), 0);
-      const costSum = rows.reduce((s, r) => s + Number(r.costValue || 0), 0);
-      const discSum = rows.reduce((s, r) => s + Number(r.discount || 0), 0);
-      const profitPct = costSum > 0 ? Math.round((profitSum / costSum) * 1000) / 10 : profitSum > 0 ? 100 : profitSum < 0 ? -100 : 0;
-
-      return {
-        ...sec,
-        rows,
-        totals: {
-          ...sec.totals,
-          count: rows.length,
-          quantity: qtySum,
-          priceOrTotal: priceSum,
-          valueOrPaid: valueSum,
-          remaining: remSum,
-          profit: profitSum,
-          costValue: costSum,
-          discount: discSum,
-          profitPercent: profitPct,
-        },
-      };
-    });
-  }, [reportData?.sections, inlineTableSearch, sortCol, sortDir]);
-
-  const activeReportOption =
-    REPORT_TYPE_OPTIONS.find((t) => t.key === reportType) || REPORT_TYPE_OPTIONS[0];
-
-  const handleExportExcel = async () => {
-    const sourceReport =
-      exportScope === 'all' && (inlineTableSearch || reportType !== 'all')
-        ? await fetchComprehensiveReport({ reportType: 'all' })
-        : null;
-    const secsToExport = sourceReport ? sourceReport.sections : processedSections;
-    const sumToExport = sourceReport ? sourceReport.summary : reportData?.summary;
-
-    const headers = TABLE_COLUMNS.map((c) => c.label);
-    const rows: Array<Array<string | number>> = [];
-
-    // Header info rows for Excel clarity
-    rows.push([`AWLAD SELIM - ${settings.companyName}`, `نوع التقرير: ${sourceReport ? 'الكل (شامل)' : activeReportOption.label}`, `الفترة: ${dateFrom || 'البداية'} إلى ${useDateTo ? dateTo : 'الآن'}`, `تاريخ الاستخراج: ${new Date().toLocaleString('ar-EG')}`]);
-
-    for (const sec of secsToExport) {
-      rows.push([`=== ${sec.title} (${sec.rows.length}) ===`]);
-      if (sec.isInvoiceLayout) {
-        rows.push(['', '', '', 'اجمالى', 'مدفوع', 'آجل']);
-      }
-      for (const r of sec.rows) {
-        rows.push([
-          r.operationLabel,
-          r.quantity,
-          r.unit,
-          r.priceOrTotal,
-          r.valueOrPaid,
-          r.movementOrRemaining,
-          r.employeeName,
-          r.userName,
-          r.businessDate,
-          r.actualDateTime,
-          r.profit,
-          r.barcode,
-          r.displayId,
-          r.invoiceNumber,
-          r.branchName,
-          r.cashboxName,
-          r.notes,
-          r.discount,
-          `${r.profitPercent}%`,
-        ]);
-      }
-      rows.push([
-        'الإجمالي',
-        sec.totals.quantity,
-        '',
-        sec.totals.priceOrTotal ?? '',
-        sec.totals.valueOrPaid,
-        sec.totals.remaining ?? '',
-        '',
-        '',
-        '',
-        '',
-        sec.totals.profit,
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        sec.totals.discount,
-        `${sec.totals.profitPercent}%`,
-      ]);
+    } else if (selectedReport === 'stock_counts') {
+      reportTitle = 'تقرير جلسات جرد المخزون';
+      headers = ['رقم الجرد', 'التاريخ', 'المستودع', 'عدد الأصناف', 'صافي الفرق', 'الحالة', 'أنشئ بواسطة'];
+      rows = stockCounts
+        .filter(c => c.date >= dateRange.startStr && c.date <= dateRange.endStr)
+        .map(c => {
+          const netDiff = (c.items || []).reduce((acc, it) => acc + it.varianceQty, 0);
+          return [c.countNumber, c.date, c.warehouseName, c.items?.length || 0, netDiff, c.status, c.counterName];
+        });
+    } else if (selectedReport === 'stock_transfers') {
+      reportTitle = 'تقرير أوامر تحويل الأصناف بين المستودعات';
+      headers = ['رقم التحويل', 'التاريخ', 'من مستودع', 'إلى مستودع', 'عدد الأصناف', 'الحالة', 'السبب'];
+      rows = stockTransferRequests
+        .filter(t => t.date >= dateRange.startStr && t.date <= dateRange.endStr)
+        .map(t => [t.transferNumber, t.date, t.sourceWarehouseName, t.targetWarehouseName, t.items?.length || 0, t.status, t.reason || '-']);
+    } else {
+      reportTitle = 'قائمة الدخل والأرباح والخسائر';
+      headers = ['البند', 'المبلغ'];
+      rows = [
+        ['إجمالي المبيعات', totalSalesVal],
+        ['إجمالي المشتريات', totalPurchasesVal],
+        ['إجمالي المصروفات', totalExpensesVal],
+        ['إيرادات أخرى', totalIncomesVal],
+        ['صافي الأرباح المقدرة', netProfit],
+      ];
     }
 
-    if (sumToExport) {
-      rows.push([]);
-      rows.push(['رصيد الدرج', sumToExport.drawerBalance, 'رصيد التقرير', sumToExport.reportBalance, 'مرحل من الأمس', sumToExport.carriedFromYesterday, 'ربح التقرير', sumToExport.reportProfit]);
-    }
-
-    exportToExcel(`AWLAD_SELIM_${reportType}_${todayYmd()}`, headers, rows);
+    return { reportTitle, headers, rows };
   };
 
-  const handleExportPdf = async () => {
-    const sourceReport =
-      exportScope === 'all' && (inlineTableSearch || reportType !== 'all')
-        ? await fetchComprehensiveReport({ reportType: 'all' })
-        : null;
-    const secsToExport = sourceReport ? sourceReport.sections : processedSections;
-    const sumToExport = sourceReport ? sourceReport.summary : reportData?.summary;
-
-    const headers = ['القسم / العملية', 'الكمية', 'الوحدة', 'السعر/الإجمالي', 'القيمة/المدفوع', 'الحركة/الآجل', 'المستخدم', 'التاريخ الفعلى', 'الربح', 'رقم الفاتورة', 'الفرع', 'الخزنة', 'الخصم'];
-    const rows: Array<Array<string | number>> = [];
-    for (const sec of secsToExport) {
-      rows.push([`[ ${sec.title} ]`, sec.totals.quantity, '', sec.totals.priceOrTotal ?? '-', sec.totals.valueOrPaid, sec.totals.remaining ?? '-', '', '', sec.totals.profit, '', '', '', sec.totals.discount]);
-      for (const r of sec.rows) {
-        rows.push([
-          r.operationLabel,
-          r.quantity,
-          r.unit,
-          fmtMoney(r.priceOrTotal),
-          fmtMoney(r.valueOrPaid),
-          typeof r.movementOrRemaining === 'number' ? fmtMoney(r.movementOrRemaining) : r.movementOrRemaining,
-          r.userName,
-          r.actualDateTime,
-          fmtMoney(r.profit),
-          r.invoiceNumber,
-          r.branchName,
-          r.cashboxName,
-          fmtMoney(r.discount),
-        ]);
-      }
-    }
-
-    exportTableToPdf(`تقرير ${sourceReport ? 'الكل (شامل)' : activeReportOption.label}`, headers, rows, {
-      companyName: settings.companyName || 'AWLAD SELIM — أولاد سليم',
-      subtitle: 'نظام التقارير الشامل والموحد',
-      dateRangeText: `من: ${dateFrom || 'البداية'} إلى: ${useDateTo ? dateTo : 'الآن'}`,
-      summaryPairs: sumToExport
-        ? [
-            { label: 'رصيد الدرج', value: `${fmtMoney(sumToExport.drawerBalance)} ${currency}` },
-            { label: 'رصيد التقرير', value: `${fmtMoney(sumToExport.reportBalance)} ${currency}` },
-            { label: 'مرحل من الأمس', value: `${fmtMoney(sumToExport.carriedFromYesterday)} ${currency}` },
-            { label: 'ربح التقرير', value: `${fmtMoney(sumToExport.reportProfit)} ${currency}`, highlight: true },
-          ]
-        : [],
-    });
-  };
-
-  const handleOpenThermalOrA4Print = () => {
-    const items = processedSections.flatMap((sec) =>
-      sec.rows.map((r) => ({
-        name: `[${sec.title}] ${r.operationLabel}`,
-        unit: r.unit,
-        quantity: r.quantity,
-        price: r.priceOrTotal,
-        discount: r.discount,
-        total: r.valueOrPaid,
-      }))
-    );
-    setPrintModalData({
-      title: `تقرير ${activeReportOption.label}`,
-      docNumber: `RPT-${todayYmd().replace(/-/g, '')}`,
+  const handlePrintCurrentReport = () => {
+    const { reportTitle } = getReportTableData();
+    setPrintData({
+      title: `${reportTitle} - أولاد سليم`,
+      docNumber: `REP-${Date.now().toString().slice(-6)}`,
       docType: 'كشف حساب',
-      date: `${dateFrom || 'البداية'} → ${useDateTo ? dateTo : 'الآن'}`,
-      partyName: `تقرير: ${activeReportOption.label}`,
-      items,
-      grandTotal: reportData?.summary.reportBalance ?? 0,
-      paidAmount: reportData?.summary.drawerBalance ?? 0,
-      remainingAmount: reportData?.summary.reportProfit ?? 0,
-      notes: `مرحل من الأمس: ${fmtMoney(reportData?.summary.carriedFromYesterday)} ${currency} | ربح التقرير: ${fmtMoney(reportData?.summary.reportProfit)} ${currency}`,
-      tableHeaders: ['م', 'القسم / العملية', 'الوحدة', 'الكمية', 'السعر', 'الخصم', 'القيمة'],
+      date: `${dateRange.startStr} إلى ${dateRange.endStr}`,
+      grandTotal: selectedReport === 'pnl' ? netProfit : selectedReport === 'purchases' ? totalPurchasesVal : totalSalesVal,
+      notes: `الفترة المحددة: من ${dateRange.startStr} حتى ${dateRange.endStr}`,
+      items: selectedReport === 'pnl' ? [
+        { name: 'إجمالي المبيعات المؤكدة', unit: 'إيراد', quantity: 1, price: totalSalesVal, total: totalSalesVal },
+        { name: 'إجمالي المشتريات والتوريدات', unit: 'تكلفة', quantity: 1, price: totalPurchasesVal, total: totalPurchasesVal },
+        { name: 'إجمالي المصروفات والنثريات', unit: 'مصروف', quantity: 1, price: totalExpensesVal, total: totalExpensesVal },
+        { name: 'إيرادات أخرى متنوعة', unit: 'إيراد', quantity: 1, price: totalIncomesVal, total: totalIncomesVal },
+      ] : selectedReport === 'purchases' ? periodPurchases.map(p => ({
+        name: `فاتورة شراء ${p.invoiceNumber} - ${p.supplierName || 'مورد'}`,
+        unit: p.paymentType,
+        quantity: 1,
+        price: p.grandTotal,
+        total: p.grandTotal,
+      })) : periodSales.map(s => ({
+        name: `فاتورة ${s.invoiceNumber} - ${s.customerName}`,
+        unit: s.paymentType,
+        quantity: 1,
+        price: s.grandTotal,
+        total: s.grandTotal,
+      })),
+    });
+    setIsPrintModalOpen(true);
+  };
+
+  const handleExportExcel = () => {
+    const { headers, rows } = getReportTableData();
+    exportToExcel(`تقرير_أولاد_سليم_${selectedReport}_${new Date().toISOString().split('T')[0]}`, headers, rows);
+  };
+
+  const handleExportPdf = () => {
+    const { reportTitle, headers, rows } = getReportTableData();
+    exportTableToPdf(reportTitle, headers, rows, {
+      subtitle: settings.companyName,
+      companyName: settings.companyName,
+      companySubtitle: settings.companySubtitle,
+      dateRangeText: `${dateRange.startStr} إلى ${dateRange.endStr}`,
     });
   };
 
-  const handlePrintSourceDoc = (src: ReportSourceDocumentResponse) => {
-    const d = src.document || {};
-    setPrintModalData({
-      title: src.title,
-      docNumber: d.invoiceNumber || d.returnNumber || d.docNumber || d.transactionNumber || '-',
-      docType:
-        src.docType === 'sales_invoice'
-          ? 'فاتورة مبيعات'
-          : src.docType === 'purchase_invoice'
-          ? 'فاتورة مشتريات'
-          : src.docType === 'sales_return'
-          ? 'مرتجع مبيعات'
-          : src.docType === 'purchase_return'
-          ? 'مرتجع مشتريات'
-          : 'سند قبض',
-      date: d.actualDateTime || d.date || todayYmd(),
-      partyName: d.customerName || d.supplierName || d.partyName || d.relatedEntityName,
-      warehouseName: d.warehouseName,
-      representativeName: d.representativeName,
-      items: Array.isArray(d.items)
-        ? d.items.map((it: any) => ({
-            name: it.productName,
-            unit: it.unit,
-            quantity: Number(it.quantity || 0),
-            price: Number(it.unitPrice || it.unitCost || 0),
-            discount: Number(it.discount || 0),
-            total: Number(it.total || it.totalLoss || 0),
-          }))
-        : undefined,
-      subtotal: d.subtotal,
-      discountTotal: d.discountTotal,
-      grandTotal: Number(d.grandTotal ?? d.amount ?? 0),
-      paidAmount: d.paidAmount,
-      remainingAmount: d.remainingAmount,
-      notes: d.notes || d.description || d.reason,
-    });
-  };
-
-  const canExport = hasPermission('canExport');
-  const canPrint = hasPermission('canPrint');
-  const filterOpts = reportData?.filterOptions;
-  const summary = reportData?.summary;
+  const canSeePersonalReport = currentUser?.role === 'admin' || hasPermission('canViewPersonalAccounts');
 
   return (
-    <div className="flex flex-col gap-2.5 text-slate-900 select-none sm:select-text" dir="rtl">
-      {/* Top Unified Header + Mode Toggle + Quick Period Presets */}
-      <div className="bg-white border border-slate-300 rounded-xl p-2.5 shadow-2xs flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setViewMode('unified_grid')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors cursor-pointer ${
-              viewMode === 'unified_grid'
-                ? 'bg-[#22b14c] text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            <Table2 className="w-4 h-4" />
-            <span>نظام التقارير التفصيلية الموحد</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setViewMode('item_lifecycle')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors cursor-pointer ${
-              viewMode === 'item_lifecycle'
-                ? 'bg-slate-800 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            <History className="w-4 h-4" />
-            <span>تاريخ الصنف والأرباح والخسائر</span>
-          </button>
-
-          <div className="h-5 w-px bg-slate-300 mx-1 hidden sm:block" />
-
-          {/* Reference Quick Period Presets */}
-          <div className="flex flex-wrap items-center gap-1 text-[11px]">
-            {[
-              { id: 'today', label: 'تقرير اليوم' },
-              { id: 'this_month', label: 'الشهر الحالي' },
-              { id: 'prev_month', label: 'الشهر السابق' },
-              { id: 'this_year', label: 'السنة الحالية' },
-              { id: 'prev_year', label: 'السنة السابقة' },
-              { id: 'all_time', label: 'كل الفترات' },
-            ].map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => applyPeriodPreset(p.id as any)}
-                className={`px-2.5 py-1 rounded-md font-bold border transition-colors cursor-pointer ${
-                  periodPreset === p.id
-                    ? 'bg-emerald-700 text-white border-emerald-700'
-                    : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+        <div>
+          <h2 className="text-lg font-black text-slate-900 tracking-tight">التقارير المالية والمحاسبية الشاملة</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            تحليل الأرباح والخسائر، حركة المبيعات والمشتريات، الجرد والتحويلات، والحسابات الشخصية
+          </p>
         </div>
 
-        {/* Print & Export Actions */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          <select
-            value={exportScope}
-            onChange={(e) => setExportScope(e.target.value as 'filtered' | 'all')}
-            aria-label="نطاق التصدير"
-            className="h-8 px-2 text-[11px] font-bold bg-slate-50 border border-slate-300 rounded-md text-slate-700"
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleExportExcel}
+            className="flex items-center gap-1.5 px-3.5 py-2 border border-slate-300 rounded-xl text-xs font-bold hover:bg-slate-50 text-slate-700 cursor-pointer"
           >
-            <option value="filtered">تصدير المعروض المفلتر</option>
-            <option value="all">تصدير كامل التقرير</option>
-          </select>
-
-          {canPrint && (
-            <>
-              <button
-                type="button"
-                onClick={handleOpenThermalOrA4Print}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-slate-700 hover:bg-slate-800 text-white text-[11px] font-bold cursor-pointer"
-                title="طباعة A4 أو حراري 80/58 مم"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                <span>طباعة</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleExportPdf}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-blue-700 hover:bg-blue-800 text-white text-[11px] font-bold cursor-pointer"
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>PDF</span>
-              </button>
-            </>
-          )}
-          {canExport && (
-            <button
-              type="button"
-              onClick={handleExportExcel}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold cursor-pointer"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>Excel</span>
-            </button>
-          )}
+            <Download className="w-4 h-4 text-emerald-600" />
+            <span>تصدير Excel</span>
+          </button>
+          <button
+            onClick={handleExportPdf}
+            className="flex items-center gap-1.5 px-3.5 py-2 border border-red-200 bg-red-50 rounded-xl text-xs font-bold hover:bg-red-100 text-red-800 cursor-pointer"
+          >
+            <FileDown className="w-4 h-4 text-red-700" />
+            <span>تصدير PDF</span>
+          </button>
+          <button
+            onClick={handlePrintCurrentReport}
+            className="flex items-center gap-1.5 px-4 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl text-xs font-black shadow-md cursor-pointer"
+          >
+            <Printer className="w-4 h-4" />
+            <span>طباعة التقرير (A4 / حراري)</span>
+          </button>
         </div>
       </div>
 
-      {/* Top Reference Filter Bar */}
-      <div className="bg-[#f4f6f8] border border-slate-300 rounded-xl p-2.5 shadow-2xs space-y-2">
-        {/* Row 1 matching desktop reference */}
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          {/* الفرع */}
-          <div className="flex items-center gap-1.5">
-            <label className="font-bold text-slate-700">الفرع</label>
-            <select
-              value={branchId}
-              onChange={(e) => setBranchId(e.target.value)}
-              className="h-8 min-w-[125px] bg-white border border-slate-300 rounded px-2 text-xs font-semibold focus:border-emerald-600 focus:outline-none"
-            >
-              <option value="all">الكل</option>
-              {(filterOpts?.branches || []).map((b) => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* من تاريخ with +/- day steppers */}
-          <div className="flex items-center gap-1">
-            <label className="font-bold text-slate-700 flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-slate-500" />
-              <span>من</span>
-            </label>
-            <button
-              type="button"
-              onClick={() => {
-                setPeriodPreset('custom');
-                setDateFrom((prev) => addDaysYmd(prev || todayYmd(), -1));
-              }}
-              className="h-8 w-6 bg-white border border-slate-300 rounded hover:bg-slate-100 font-bold cursor-pointer"
-              title="يوم سابق"
-            >
-              -
-            </button>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => {
-                setPeriodPreset('custom');
-                setDateFrom(e.target.value);
-              }}
-              className="h-8 bg-white border border-slate-300 rounded px-2 text-xs font-mono"
-            />
-            <button
-              type="button"
-              onClick={() => {
-                setPeriodPreset('custom');
-                setDateFrom((prev) => addDaysYmd(prev || todayYmd(), 1));
-              }}
-              className="h-8 w-6 bg-white border border-slate-300 rounded hover:bg-slate-100 font-bold cursor-pointer"
-              title="يوم تالٍ"
-            >
-              +
-            </button>
-          </div>
-
-          {/* إلى checkbox + date */}
-          <div className="flex items-center gap-1.5">
-            <label className="flex items-center gap-1 font-bold text-slate-700 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={useDateTo}
-                onChange={(e) => {
-                  setPeriodPreset('custom');
-                  setUseDateTo(e.target.checked);
-                }}
-                className="accent-emerald-600 w-3.5 h-3.5"
-              />
-              <span>إلى</span>
-            </label>
-            <input
-              type="date"
-              disabled={!useDateTo}
-              value={dateTo}
-              onChange={(e) => {
-                setPeriodPreset('custom');
-                setDateTo(e.target.value);
-              }}
-              className="h-8 bg-white border border-slate-300 rounded px-2 text-xs font-mono disabled:opacity-45"
-            />
-          </div>
-
-          {/* الموظف */}
-          {filterVisibility.showEmployee && (
-            <div className="flex items-center gap-1">
-              <label className="font-bold text-slate-700">الموظف</label>
-              <select
-                value={employeeId}
-                onChange={(e) => setEmployeeId(e.target.value)}
-                className="h-8 min-w-[115px] bg-white border border-slate-300 rounded px-2 text-xs font-semibold"
-              >
-                <option value="all">الكل</option>
-                {(filterOpts?.employees || []).map((emp) => (
-                  <option key={emp.id} value={emp.id}>{emp.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* الخزنة */}
-          {filterVisibility.showCashbox && (
-            <div className="flex items-center gap-1">
-              <label className="font-bold text-slate-700">الخزنة</label>
-              <select
-                value={cashboxId}
-                onChange={(e) => setCashboxId(e.target.value)}
-                className="h-8 min-w-[115px] bg-white border border-slate-300 rounded px-2 text-xs font-semibold"
-              >
-                <option value="all">الكل</option>
-                {(filterOpts?.cashboxes || []).map((cb) => (
-                  <option key={cb.id} value={cb.id}>{cb.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* المستخدم */}
-          {filterVisibility.showUser && (
-            <div className="flex items-center gap-1">
-              <label className="font-bold text-slate-700">المستخدم</label>
-              <select
-                value={userId}
-                onChange={(e) => setUserId(e.target.value)}
-                className="h-8 min-w-[115px] bg-white border border-slate-300 rounded px-2 text-xs font-semibold"
-              >
-                <option value="all">الكل</option>
-                {(filterOpts?.users || []).map((u) => (
-                  <option key={u.id} value={u.id}>{u.fullName}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* بحث عام + أزرار التحكم */}
-          <div className="flex items-center gap-1.5 mr-auto">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && loadReport()}
-              placeholder="بحث شامل..."
-              className="h-8 w-36 sm:w-44 bg-white border border-slate-300 rounded px-2.5 text-xs focus:border-emerald-600 focus:outline-none"
-            />
-            <button
-              type="button"
-              onClick={() => loadReport()}
-              className="h-8 px-3.5 rounded bg-[#22b14c] hover:bg-[#1a963f] text-white font-extrabold text-xs flex items-center gap-1 shadow-2xs cursor-pointer"
-            >
-              <Search className="w-3.5 h-3.5" />
-              <span>بحث</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowMoreFilters((p) => !p)}
-              className="h-8 px-2.5 rounded bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
-              title="الفلاتر التفصيلية"
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">فلاتر</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleResetFilters}
-              className="h-8 px-2.5 rounded bg-white border border-slate-300 hover:bg-rose-50 hover:text-rose-700 text-slate-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
-              title="عرض الكل / مسح الفلاتر"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-          </div>
+      {/* Date Filter selector bar */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-slate-500" />
+          <span className="font-bold text-slate-700">الفترة الزمنية:</span>
+          <select
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value as any)}
+            className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 font-bold"
+          >
+            <option value="thisMonth">الشهر الحالي (افتراضي: 1 من الشهر حتى اليوم)</option>
+            <option value="today">اليوم</option>
+            <option value="yesterday">أمس</option>
+            <option value="7days">آخر 7 أيام</option>
+            <option value="prevMonth">الشهر السابق</option>
+            <option value="thisYear">السنة الحالية</option>
+            <option value="custom">فترة مخصصة</option>
+          </select>
         </div>
 
-        {/* Row 2: Contextual Upper Filters (Warehouse, Product, Barcode, Customer, Supplier, Rep, Invoice#, ID) */}
-        {showMoreFilters && (
-          <div className="pt-2 border-t border-slate-200/80 flex flex-wrap items-center gap-2 text-xs">
-            {filterVisibility.showWarehouse && (
-              <div className="flex items-center gap-1">
-                <label className="font-bold text-slate-600">المخزن</label>
-                <select
-                  value={warehouseId}
-                  onChange={(e) => setWarehouseId(e.target.value)}
-                  className="h-7 min-w-[115px] bg-white border border-slate-300 rounded px-2 text-xs"
-                >
-                  <option value="all">الكل</option>
-                  {(filterOpts?.warehouses || []).map((w) => (
-                    <option key={w.id} value={w.id}>{w.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {filterVisibility.showProductFilters && (
-              <>
-                <div className="flex items-center gap-1">
-                  <label className="font-bold text-slate-600">الصنف</label>
-                  <select
-                    value={productId}
-                    onChange={(e) => setProductId(e.target.value)}
-                    className="h-7 min-w-[150px] max-w-[220px] bg-white border border-slate-300 rounded px-2 text-xs"
-                  >
-                    <option value="all">الكل</option>
-                    {(filterOpts?.products || []).map((p) => (
-                      <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
-                    ))}
-                  </select>
-                  {productId !== 'all' && viewMode === 'unified_grid' && (
-                    <button
-                      type="button"
-                      onClick={() => setViewMode('item_lifecycle')}
-                      className="h-7 px-2 rounded bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold cursor-pointer"
-                    >
-                      تاريخ وربح الصنف
-                    </button>
-                  )}
-                </div>
-
-                <input
-                  type="text"
-                  value={productSearch}
-                  onChange={(e) => setProductSearch(e.target.value)}
-                  placeholder="بحث باسم الصنف..."
-                  className="h-7 w-32 bg-white border border-slate-300 rounded px-2 text-xs"
-                />
-
-                <input
-                  type="text"
-                  value={barcode}
-                  onChange={(e) => setBarcode(e.target.value)}
-                  placeholder="الباركود..."
-                  className="h-7 w-28 bg-white border border-slate-300 rounded px-2 text-xs font-mono"
-                />
-              </>
-            )}
-
-            {filterVisibility.showCustomer && (
-              <div className="flex items-center gap-1">
-                <label className="font-bold text-slate-600">العميل</label>
-                <select
-                  value={customerId}
-                  onChange={(e) => setCustomerId(e.target.value)}
-                  className="h-7 min-w-[125px] max-w-[180px] bg-white border border-slate-300 rounded px-2 text-xs"
-                >
-                  <option value="all">الكل</option>
-                  {(filterOpts?.customers || []).map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {filterVisibility.showSupplier && (
-              <div className="flex items-center gap-1">
-                <label className="font-bold text-slate-600">المورد</label>
-                <select
-                  value={supplierId}
-                  onChange={(e) => setSupplierId(e.target.value)}
-                  className="h-7 min-w-[125px] max-w-[180px] bg-white border border-slate-300 rounded px-2 text-xs"
-                >
-                  <option value="all">الكل</option>
-                  {(filterOpts?.suppliers || []).map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {filterVisibility.showRepresentative && (
-              <div className="flex items-center gap-1">
-                <label className="font-bold text-slate-600">المندوب</label>
-                <select
-                  value={representativeId}
-                  onChange={(e) => setRepresentativeId(e.target.value)}
-                  className="h-7 min-w-[115px] bg-white border border-slate-300 rounded px-2 text-xs"
-                >
-                  <option value="all">الكل</option>
-                  {(filterOpts?.representatives || []).map((r) => (
-                    <option key={r.id} value={r.id}>{r.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {filterVisibility.showInvoiceNumber && (
-              <input
-                type="text"
-                value={invoiceNumber}
-                onChange={(e) => setInvoiceNumber(e.target.value)}
-                placeholder="رقم الفاتورة..."
-                className="h-7 w-28 bg-white border border-slate-300 rounded px-2 text-xs font-mono"
-              />
-            )}
-
-            {filterVisibility.showRecordId && (
-              <input
-                type="text"
-                value={recordId}
-                onChange={(e) => setRecordId(e.target.value)}
-                placeholder="الرقم التعريفي ID..."
-                className="h-7 w-28 bg-white border border-slate-300 rounded px-2 text-xs font-mono"
-              />
-            )}
+        {dateFilter === 'custom' && (
+          <div className="flex items-center gap-2">
+            <span>من:</span>
+            <input
+              type="date"
+              value={customStartDate}
+              onChange={(e) => setCustomStartDate(e.target.value)}
+              className="border rounded-lg p-1 font-mono"
+            />
+            <span>إلى:</span>
+            <input
+              type="date"
+              value={customEndDate}
+              onChange={(e) => setCustomEndDate(e.target.value)}
+              className="border rounded-lg p-1 font-mono"
+            />
           </div>
         )}
+
+        <div className="font-mono text-[11px] text-slate-500 font-bold">
+          الفترة الفعلية: {dateRange.startStr} ⬅ {dateRange.endStr}
+        </div>
       </div>
 
-      {/* Error State */}
-      {errorMsg && (
-        <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold">
-          {errorMsg}
-        </div>
-      )}
+      {/* Report Types Navigator */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2 text-xs font-bold">
+        {[
+          { key: 'pnl', label: 'الأرباح والخسائر' },
+          { key: 'sales', label: 'تقرير المبيعات' },
+          { key: 'purchases', label: 'تقرير المشتريات' },
+          { key: 'customer_debts', label: 'ديون العملاء' },
+          { key: 'supplier_debts', label: 'أرصدة الموردين' },
+          { key: 'rep_transfers', label: 'تحويلات المناديب بالنصف' },
+          { key: 'stock_counts', label: 'تقارير جرد المخزون' },
+          { key: 'stock_transfers', label: 'تقارير تحويلات الأصناف' },
+          ...(canSeePersonalReport ? [{ key: 'personal_accounts', label: 'الحسابات الشخصية للملاك' }] : []),
+        ].map(r => (
+          <button
+            key={r.key}
+            onClick={() => setSelectedReport(r.key as any)}
+            className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
+              selectedReport === r.key
+                ? 'bg-blue-900 text-white border-blue-900 shadow-md font-black'
+                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            {r.label}
+          </button>
+        ))}
+      </div>
 
-      {/* MAIN CONTENT: Either Reference 19-Column Unified Table OR Item Lifecycle & P&L Panel */}
-      {viewMode === 'item_lifecycle' && reportData ? (
-        <ItemLifecycleAndPnlPanel
-          lifecycle={reportData.itemLifecycle}
-          selectedPnl={reportData.itemPnl.selectedItem}
-          pnlItems={reportData.itemPnl.items}
-          portfolioTotals={reportData.itemPnl.portfolioTotals}
-          currency={currency}
-          onSelectProduct={(pid) => setProductId(pid)}
-          onInspectDocument={handleInspectDocument}
-        />
-      ) : (
-        <div className="bg-white border border-slate-400 rounded-md overflow-hidden shadow-xs">
-          {/* Reference Green Header Strip: عرض + in-table search */}
-          <div className="bg-[#22b14c] text-white px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs font-extrabold">
-            <div className="flex items-center gap-3">
-              <span>عرض — {activeReportOption.label}</span>
-              <span className="bg-white/20 px-2 py-0.5 rounded font-mono text-[11px]">
-                {processedSections.reduce((s, sec) => s + sec.rows.length, 0)} حركة
-              </span>
-              {isLoading && <span className="text-[11px] opacity-90">جاري التحديث...</span>}
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={inlineTableSearch}
-                onChange={(e) => setInlineTableSearch(e.target.value)}
-                placeholder="تصفية سريعة داخل الجدول..."
-                className="h-6 px-2 rounded bg-white text-slate-900 placeholder-slate-400 text-[11px] font-normal w-44 focus:outline-none"
-              />
+      {/* Report Data Render */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6">
+        {/* P&L Report */}
+        {selectedReport === 'pnl' && (
+          <div className="space-y-6">
+            <h3 className="text-base font-black text-slate-900 border-b pb-3">
+              قائمة الدخل والأرباح المقدرة للفترة ({dateRange.startStr} - {dateRange.endStr})
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="p-4 rounded-xl bg-blue-50 border border-blue-200">
+                <span className="text-xs font-bold text-slate-600 block">إجمالي المبيعات</span>
+                <span className="text-lg font-black text-blue-950 font-mono mt-1 block">
+                  {totalSalesVal.toLocaleString()} {settings.currency}
+                </span>
+              </div>
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                <span className="text-xs font-bold text-slate-600 block">تكلفة المشتريات</span>
+                <span className="text-lg font-black text-slate-800 font-mono mt-1 block">
+                  {totalPurchasesVal.toLocaleString()} {settings.currency}
+                </span>
+              </div>
+              <div className="p-4 rounded-xl bg-orange-50 border border-orange-200">
+                <span className="text-xs font-bold text-slate-600 block">إجمالي المصروفات</span>
+                <span className="text-lg font-black text-orange-800 font-mono mt-1 block">
+                  {totalExpensesVal.toLocaleString()} {settings.currency}
+                </span>
+              </div>
+              <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200">
+                <span className="text-xs font-bold text-slate-600 block">صافي الأرباح التقديرية</span>
+                <span className="text-lg font-black text-emerald-800 font-mono mt-1 block">
+                  {netProfit.toLocaleString()} {settings.currency}
+                </span>
+              </div>
             </div>
           </div>
+        )}
 
-          {/* Scrollable 19-Column Table Container */}
-          <div className="overflow-auto max-h-[54vh] bg-white">
-            <table className="w-full border-collapse text-[11.5px] min-w-[1680px]">
-              <thead className="sticky top-0 z-20 bg-[#eef1f4] text-slate-800 border-b-2 border-slate-400">
-                <tr>
-                  {TABLE_COLUMNS.map((col) => (
-                    <th
-                      key={col.key}
-                      onClick={() => handleSort(col.key)}
-                      className={`px-2 py-2 border-l border-slate-300 font-extrabold whitespace-nowrap cursor-pointer hover:bg-slate-200/70 transition-colors ${
-                        col.align === 'center' ? 'text-center' : 'text-right'
-                      }`}
-                    >
-                      <span className="inline-flex items-center gap-1">
-                        <span>{col.label}</span>
-                        <ArrowUpDown className={`w-3 h-3 ${sortCol === col.key ? 'text-emerald-700' : 'text-slate-400'}`} />
-                      </span>
-                    </th>
-                  ))}
+        {/* Sales Report */}
+        {selectedReport === 'sales' && (
+          <div>
+            <h3 className="text-sm font-black mb-3">فواتير المبيعات الصادرة خلال الفترة ({periodSales.length} فاتورة)</h3>
+            <table className="w-full text-right text-xs">
+              <thead>
+                <tr className="bg-slate-50 font-bold border-b">
+                  <th className="p-2.5">رقم الفاتورة</th>
+                  <th className="p-2.5">التاريخ</th>
+                  <th className="p-2.5">العميل</th>
+                  <th className="p-2.5 text-center">الإجمالي</th>
+                  <th className="p-2.5 text-center">المدفوع</th>
+                  <th className="p-2.5 text-center">المتبقي</th>
                 </tr>
               </thead>
+              <tbody className="divide-y">
+                {periodSales.map(s => (
+                  <tr key={s.id} className="hover:bg-slate-50">
+                    <td className="p-2.5 font-mono font-bold text-blue-900">{s.invoiceNumber}</td>
+                    <td className="p-2.5 font-mono">{s.date}</td>
+                    <td className="p-2.5 font-bold">{s.customerName}</td>
+                    <td className="p-2.5 text-center font-black">{s.grandTotal.toLocaleString()}</td>
+                    <td className="p-2.5 text-center text-emerald-700 font-bold">{s.paidAmount.toLocaleString()}</td>
+                    <td className="p-2.5 text-center text-red-700 font-bold">{s.remainingAmount.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-              <tbody>
-                {processedSections.length === 0 && !isLoading && (
-                  <tr>
-                    <td colSpan={19} className="p-10 text-center text-slate-500 font-bold text-sm">
-                      لا توجد حركات مطابقة لمعايير البحث والتصفية الحالية.
+        {/* Customer Debts Report */}
+        {selectedReport === 'customer_debts' && (
+          <div>
+            <h3 className="text-sm font-black mb-3">تقرير مديونيات وأرصدة العملاء المستحقة</h3>
+            <table className="w-full text-right text-xs">
+              <thead>
+                <tr className="bg-slate-50 font-bold border-b">
+                  <th className="p-2.5">كود العميل</th>
+                  <th className="p-2.5">الاسم</th>
+                  <th className="p-2.5">الهاتف</th>
+                  <th className="p-2.5">العنوان</th>
+                  <th className="p-2.5 text-center">المديونية الحالية للشركة</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {customers.map(c => (
+                  <tr key={c.id} className="hover:bg-slate-50">
+                    <td className="p-2.5 font-mono font-bold text-blue-900">{c.code}</td>
+                    <td className="p-2.5 font-bold">{c.name}</td>
+                    <td className="p-2.5 font-mono">{c.phone}</td>
+                    <td className="p-2.5 text-slate-600">{c.address}</td>
+                    <td className="p-2.5 text-center font-mono font-black text-red-700">
+                      {c.currentBalance.toLocaleString()} {settings.currency}
                     </td>
                   </tr>
-                )}
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-                {processedSections.map((section) => {
-                  const isSlate = section.theme === 'slate';
-                  const headerBg = isSlate ? 'bg-[#4f5d6b] text-white' : 'bg-[#8d9973] text-white';
+        {/* Rep Transfers Report */}
+        {selectedReport === 'rep_transfers' && (
+          <div>
+            <h3 className="text-sm font-black mb-3">تقرير حركات نظام "طلب تحويل بالنصف" للمناديب</h3>
+            <table className="w-full text-right text-xs">
+              <thead>
+                <tr className="bg-slate-50 font-bold border-b">
+                  <th className="p-2.5">رقم التحويل</th>
+                  <th className="p-2.5">التاريخ</th>
+                  <th className="p-2.5">المرسل</th>
+                  <th className="p-2.5">المستلم</th>
+                  <th className="p-2.5 text-center">المبلغ</th>
+                  <th className="p-2.5">الحالة</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {repTransfers.map(t => (
+                  <tr key={t.id} className="hover:bg-slate-50">
+                    <td className="p-2.5 font-mono font-bold text-blue-900">{t.transferNumber}</td>
+                    <td className="p-2.5 font-mono">{t.date}</td>
+                    <td className="p-2.5 font-bold">{t.senderName}</td>
+                    <td className="p-2.5 font-bold">{t.receiverName}</td>
+                    <td className="p-2.5 text-center font-mono font-black text-blue-950">{t.amount.toLocaleString()}</td>
+                    <td className="p-2.5 font-bold">
+                      {t.status === 'received' ? <span className="text-emerald-700">تم الاستلام وتعديل الأرصدة</span> : <span className="text-amber-700">قيد الاستلام</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
+        {/* Purchases Report (Previously missing!) */}
+        {selectedReport === 'purchases' && (
+          <div>
+            <h3 className="text-sm font-black mb-3">فواتير المشتريات والتوريدات خلال الفترة ({periodPurchases.length} فاتورة)</h3>
+            <table className="w-full text-right text-xs">
+              <thead>
+                <tr className="bg-slate-50 font-bold border-b">
+                  <th className="p-2.5">رقم الفاتورة</th>
+                  <th className="p-2.5">التاريخ</th>
+                  <th className="p-2.5">المورد</th>
+                  <th className="p-2.5">المستودع</th>
+                  <th className="p-2.5 text-center">الإجمالي</th>
+                  <th className="p-2.5 text-center">المدفوع</th>
+                  <th className="p-2.5 text-center">المتبقي</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {periodPurchases.length === 0 ? (
+                  <tr><td colSpan={7} className="p-6 text-center text-slate-400">لا توجد فواتير مشتريات في هذه الفترة.</td></tr>
+                ) : periodPurchases.map(p => (
+                  <tr key={p.id} className="hover:bg-slate-50">
+                    <td className="p-2.5 font-mono font-bold text-blue-900">{p.invoiceNumber}</td>
+                    <td className="p-2.5 font-mono">{p.date}</td>
+                    <td className="p-2.5 font-bold">{p.supplierName}</td>
+                    <td className="p-2.5 text-slate-600">{p.warehouseName}</td>
+                    <td className="p-2.5 text-center font-black">{p.grandTotal.toLocaleString()}</td>
+                    <td className="p-2.5 text-center text-emerald-700 font-bold">{p.paidAmount.toLocaleString()}</td>
+                    <td className="p-2.5 text-center text-red-700 font-bold">{p.remainingAmount.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Supplier Debts Report */}
+        {selectedReport === 'supplier_debts' && (
+          <div>
+            <h3 className="text-sm font-black mb-3">تقرير أرصدة ومستحقات الموردين</h3>
+            <table className="w-full text-right text-xs">
+              <thead>
+                <tr className="bg-slate-50 font-bold border-b">
+                  <th className="p-2.5">كود المورد</th>
+                  <th className="p-2.5">اسم المورد / الشركة</th>
+                  <th className="p-2.5">الهاتف</th>
+                  <th className="p-2.5 text-center">الرصيد الافتتاحي</th>
+                  <th className="p-2.5 text-center">الرصيد المستحق للمورد</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {suppliers.map(s => (
+                  <tr key={s.id} className="hover:bg-slate-50">
+                    <td className="p-2.5 font-mono font-bold text-blue-900">{s.code}</td>
+                    <td className="p-2.5 font-bold">{s.name}</td>
+                    <td className="p-2.5 font-mono">{s.phone}</td>
+                    <td className="p-2.5 text-center font-mono">{s.openingBalance.toLocaleString()}</td>
+                    <td className="p-2.5 text-center font-mono font-black text-purple-800">{s.currentBalance.toLocaleString()} {settings.currency}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Stock Counts Report */}
+        {selectedReport === 'stock_counts' && (
+          <div>
+            <h3 className="text-sm font-black mb-3">تقرير جلسات جرد المخزون ({stockCounts.length})</h3>
+            <table className="w-full text-right text-xs">
+              <thead>
+                <tr className="bg-slate-50 font-bold border-b">
+                  <th className="p-2.5">رقم الجرد</th>
+                  <th className="p-2.5">التاريخ</th>
+                  <th className="p-2.5">المستودع</th>
+                  <th className="p-2.5 text-center">عدد الأصناف</th>
+                  <th className="p-2.5 text-center">صافي الفرق</th>
+                  <th className="p-2.5 text-center">الحالة</th>
+                  <th className="p-2.5">أنشئ بواسطة</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {stockCounts.length === 0 ? (
+                  <tr><td colSpan={7} className="p-6 text-center text-slate-400">لا توجد جلسات جرد مسجلة.</td></tr>
+                ) : stockCounts.map(c => {
+                  const netDiff = (c.items || []).reduce((acc, it) => acc + it.varianceQty, 0);
                   return (
-                    <React.Fragment key={section.key}>
-                      {/* Section Header Banner Row */}
-                      <tr className={`${headerBg} font-extrabold text-xs`}>
-                        <td colSpan={19} className="px-3 py-1.5 border-y border-slate-400">
-                          <div className="flex items-center justify-between">
-                            <span>{section.title}</span>
-                            <span className="text-[11px] opacity-90 font-mono">({section.rows.length})</span>
-                          </div>
-                        </td>
-                      </tr>
-
-                      {/* Secondary Sub-header for Invoice Sections matching Reference (اجمالى / مدفوع / آجل) */}
-                      {section.isInvoiceLayout && (
-                        <tr className="bg-[#f1f3f5] text-slate-700 font-bold text-[11px] border-b border-slate-300">
-                          <td className="px-2 py-1 border-l border-slate-300" />
-                          <td className="px-2 py-1 border-l border-slate-300" />
-                          <td className="px-2 py-1 border-l border-slate-300" />
-                          <td className="px-2 py-1 border-l border-slate-300 text-center bg-slate-200/70">اجمالى</td>
-                          <td className="px-2 py-1 border-l border-slate-300 text-center bg-slate-200/70">مدفوع</td>
-                          <td className="px-2 py-1 border-l border-slate-300 text-center bg-slate-200/70">آجل</td>
-                          <td colSpan={13} className="px-2 py-1" />
-                        </tr>
-                      )}
-
-                      {/* Data Rows */}
-                      {section.rows.length === 0 ? (
-                        <tr className="bg-slate-50 text-slate-400">
-                          <td colSpan={19} className="px-3 py-3 text-center text-xs">
-                            لا توجد سجلات في قسم ({section.title}) ضمن هذه الفترة
-                          </td>
-                        </tr>
-                      ) : (
-                        section.rows.map((r) => {
-                          const rowBg =
-                            r.rowTone === 'invoice_blue'
-                              ? 'bg-[#e8eff8] hover:bg-[#d8e5f6]'
-                              : r.rowTone === 'warning_rose'
-                              ? 'bg-[#fff5f6] hover:bg-[#ffe8eb]'
-                              : 'bg-white hover:bg-slate-50';
-
-                          const valueCellHighlight = section.cashHighlightCol
-                            ? 'bg-[#dff2d8] font-black text-emerald-900'
-                            : 'font-bold text-slate-900';
-
-                          return (
-                            <tr
-                              key={r.rowId}
-                              onClick={() => handleInspectDocument(r.docType, r.docId)}
-                              title="اضغط لعرض المستند الأصلي والتدقيق"
-                              className={`${rowBg} border-b border-slate-200 transition-colors cursor-pointer`}
-                            >
-                              {/* 1. العملية */}
-                              <td className="px-2 py-1.5 border-l border-slate-200 font-bold text-slate-900 whitespace-nowrap">
-                                <span className="inline-flex items-center gap-1">
-                                  <Receipt className="w-3 h-3 text-slate-400 shrink-0" />
-                                  <span>{r.operationLabel}</span>
-                                </span>
-                              </td>
-                              {/* 2. الكمية */}
-                              <td className="px-2 py-1.5 border-l border-slate-200 text-center font-mono font-bold whitespace-nowrap">
-                                {fmtNum(r.quantity)}
-                              </td>
-                              {/* 3. الوحدة */}
-                              <td className="px-2 py-1.5 border-l border-slate-200 text-center whitespace-nowrap">
-                                {r.unit}
-                              </td>
-                              {/* 4. السعر / اجمالى */}
-                              <td className="px-2 py-1.5 border-l border-slate-200 text-center font-mono whitespace-nowrap">
-                                {fmtMoney(r.priceOrTotal)}
-                              </td>
-                              {/* 5. القيمة / مدفوع */}
-                              <td className={`px-2 py-1.5 border-l border-slate-200 text-center font-mono whitespace-nowrap ${valueCellHighlight}`}>
-                                {fmtMoney(r.valueOrPaid)}
-                              </td>
-                              {/* 6. الحركة / آجل */}
-                              <td className="px-2 py-1.5 border-l border-slate-200 whitespace-nowrap text-slate-700">
-                                {typeof r.movementOrRemaining === 'number'
-                                  ? fmtMoney(r.movementOrRemaining)
-                                  : r.movementOrRemaining}
-                              </td>
-                              {/* 7. الموظف */}
-                              <td className="px-2 py-1.5 border-l border-slate-200 text-center whitespace-nowrap">
-                                {r.employeeName || '-'}
-                              </td>
-                              {/* 8. المستخدم */}
-                              <td className="px-2 py-1.5 border-l border-slate-200 text-center whitespace-nowrap">
-                                {r.userName || '-'}
-                              </td>
-                              {/* 9. اليومية */}
-                              <td className="px-2 py-1.5 border-l border-slate-200 text-center font-mono whitespace-nowrap">
-                                {r.businessDate}
-                              </td>
-                              {/* 10. التاريخ الفعلى (MANDATORY exact column title & date+time) */}
-                              <td className="px-2 py-1.5 border-l border-slate-200 text-center font-mono text-[11px] whitespace-nowrap text-slate-700">
-                                {r.actualDateTime}
-                              </td>
-                              {/* 11. الربح */}
-                              <td
-                                className={`px-2 py-1.5 border-l border-slate-200 text-center font-mono font-bold whitespace-nowrap ${
-                                  r.profit > 0
-                                    ? 'text-emerald-700'
-                                    : r.profit < 0
-                                    ? 'text-rose-700'
-                                    : 'text-slate-500'
-                                }`}
-                              >
-                                {fmtMoney(r.profit)}
-                              </td>
-                              {/* 12. الباركود */}
-                              <td className="px-2 py-1.5 border-l border-slate-200 text-center font-mono whitespace-nowrap text-slate-600">
-                                {r.barcode || '-'}
-                              </td>
-                              {/* 13. ID */}
-                              <td className="px-2 py-1.5 border-l border-slate-200 text-center font-mono whitespace-nowrap text-slate-600">
-                                {r.displayId}
-                              </td>
-                              {/* 14. رقم الفاتورة */}
-                              <td className="px-2 py-1.5 border-l border-slate-200 text-center font-mono font-bold text-blue-800 whitespace-nowrap">
-                                {r.invoiceNumber || '-'}
-                              </td>
-                              {/* 15. الفرع */}
-                              <td className="px-2 py-1.5 border-l border-slate-200 text-center whitespace-nowrap">
-                                {r.branchName}
-                              </td>
-                              {/* 16. الخزنة */}
-                              <td className="px-2 py-1.5 border-l border-slate-200 text-center whitespace-nowrap">
-                                {r.cashboxName}
-                              </td>
-                              {/* 17. ملاحظات */}
-                              <td className="px-2 py-1.5 border-l border-slate-200 whitespace-nowrap text-slate-600">
-                                {r.notes || ''}
-                              </td>
-                              {/* 18. الخصم */}
-                              <td className="px-2 py-1.5 border-l border-slate-200 text-center font-mono whitespace-nowrap text-amber-800">
-                                {r.discount ? fmtMoney(r.discount) : '0'}
-                              </td>
-                              {/* 19. نسبة الربح */}
-                              <td className="px-2 py-1.5 text-center font-mono whitespace-nowrap font-bold text-slate-700">
-                                {r.profitPercent !== 0 ? `(${r.profitPercent}%)` : '(0%)'}
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-
-                      {/* Section Total Row (الإجمالي) */}
-                      <tr className="bg-[#e3e7ec] border-y-2 border-slate-400 font-black text-slate-900">
-                        <td className="px-2 py-1.5 border-l border-slate-300">الإجمالي ({section.totals.count})</td>
-                        <td className="px-2 py-1.5 border-l border-slate-300 text-center font-mono">{fmtNum(section.totals.quantity)}</td>
-                        <td className="px-2 py-1.5 border-l border-slate-300" />
-                        <td className="px-2 py-1.5 border-l border-slate-300 text-center font-mono">
-                          {section.totals.priceOrTotal !== null ? fmtMoney(section.totals.priceOrTotal) : ''}
-                        </td>
-                        <td className="px-2 py-1.5 border-l border-slate-300 text-center font-mono bg-[#d4e8cb]">
-                          {fmtMoney(section.totals.valueOrPaid)}
-                        </td>
-                        <td className="px-2 py-1.5 border-l border-slate-300 text-center font-mono">
-                          {section.totals.remaining !== null ? fmtMoney(section.totals.remaining) : ''}
-                        </td>
-                        <td colSpan={4} className="px-2 py-1.5 border-l border-slate-300" />
-                        <td className={`px-2 py-1.5 border-l border-slate-300 text-center font-mono ${section.totals.profit >= 0 ? 'text-emerald-800' : 'text-rose-700'}`}>
-                          {fmtMoney(section.totals.profit)}
-                        </td>
-                        <td colSpan={6} className="px-2 py-1.5 border-l border-slate-300" />
-                        <td className="px-2 py-1.5 border-l border-slate-300 text-center font-mono">{fmtMoney(section.totals.discount)}</td>
-                        <td className="px-2 py-1.5 text-center font-mono">({section.totals.profitPercent}%)</td>
-                      </tr>
-                    </React.Fragment>
+                    <tr key={c.id} className="hover:bg-slate-50">
+                      <td className="p-2.5 font-mono font-bold text-blue-900">{c.countNumber}</td>
+                      <td className="p-2.5 font-mono">{c.date}</td>
+                      <td className="p-2.5 font-bold">{c.warehouseName}</td>
+                      <td className="p-2.5 text-center font-mono">{c.items?.length || 0}</td>
+                      <td className={`p-2.5 text-center font-mono font-black ${netDiff < 0 ? 'text-red-700' : netDiff > 0 ? 'text-emerald-700' : 'text-slate-600'}`}>{netDiff}</td>
+                      <td className="p-2.5 text-center font-bold">{c.status}</td>
+                      <td className="p-2.5">{c.counterName}</td>
+                    </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* FIXED BOTTOM BAR: Cashbox Balances + Report Selector («نوع التقرير») + عرض التقرير */}
-      <div className="bg-[#eef0f3] border border-slate-400 rounded-xl p-2.5 shadow-sm flex flex-wrap items-center justify-between gap-2.5">
-        {/* 4 Summary Boxes matching Brand Store Reference */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 flex-1 min-w-[280px]">
-          <div className="bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs">
-            <span className="block text-[11px] font-bold text-slate-600">رصيد الدرج</span>
-            <strong className="text-sm sm:text-base font-black font-mono text-slate-900">
-              {fmtMoney(summary?.drawerBalance)}
-            </strong>
+        {/* Stock Transfers Report */}
+        {selectedReport === 'stock_transfers' && (
+          <div>
+            <h3 className="text-sm font-black mb-3">تقرير أوامر تحويل الأصناف المنظمة ({stockTransferRequests.length})</h3>
+            <table className="w-full text-right text-xs">
+              <thead>
+                <tr className="bg-slate-50 font-bold border-b">
+                  <th className="p-2.5">رقم التحويل</th>
+                  <th className="p-2.5">التاريخ</th>
+                  <th className="p-2.5">من مستودع</th>
+                  <th className="p-2.5">إلى مستودع</th>
+                  <th className="p-2.5 text-center">الأصناف</th>
+                  <th className="p-2.5 text-center">الحالة</th>
+                  <th className="p-2.5">السبب</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {stockTransferRequests.length === 0 ? (
+                  <tr><td colSpan={7} className="p-6 text-center text-slate-400">لا توجد أوامر تحويل مسجلة.</td></tr>
+                ) : stockTransferRequests.map(t => (
+                  <tr key={t.id} className="hover:bg-slate-50">
+                    <td className="p-2.5 font-mono font-bold text-blue-900">{t.transferNumber}</td>
+                    <td className="p-2.5 font-mono">{t.date}</td>
+                    <td className="p-2.5 font-bold">{t.sourceWarehouseName}</td>
+                    <td className="p-2.5 font-bold">{t.targetWarehouseName}</td>
+                    <td className="p-2.5 text-center font-mono">{t.items?.length || 0}</td>
+                    <td className="p-2.5 text-center font-bold">{t.status}</td>
+                    <td className="p-2.5 text-slate-600">{t.reason || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
+        )}
 
-          <div className="bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs">
-            <span className="block text-[11px] font-bold text-slate-600">رصيد التقرير</span>
-            <strong className={`text-sm sm:text-base font-black font-mono ${(summary?.reportBalance ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-              {fmtMoney(summary?.reportBalance)}
-            </strong>
-          </div>
-
-          <div className="bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs">
-            <span className="block text-[11px] font-bold text-slate-600">مرحل من الأمس</span>
-            <strong className="text-sm sm:text-base font-black font-mono text-blue-900">
-              {fmtMoney(summary?.carriedFromYesterday)}
-            </strong>
-          </div>
-
-          <div className="bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs">
-            <span className="block text-[11px] font-bold text-slate-600">ربح التقرير</span>
-            <strong className={`text-sm sm:text-base font-black font-mono ${(summary?.reportProfit ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-              {fmtMoney(summary?.reportProfit)}
-              <span className="text-[10px] text-slate-500 mr-1">({summary?.reportProfitPercent ?? 0}%)</span>
-            </strong>
-          </div>
-        </div>
-
-        {/* Single Unified Dropdown «نوع التقرير» with Exact Order & Dividers + عرض التقرير */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 relative" ref={dropdownRef}>
-            <span className="text-xs font-extrabold text-slate-800 whitespace-nowrap">نوع التقرير</span>
-            <button
-              type="button"
-              onClick={() => setIsReportDropdownOpen((o) => !o)}
-              aria-haspopup="listbox"
-              aria-expanded={isReportDropdownOpen}
-              className="h-9 min-w-[230px] sm:min-w-[260px] bg-white border border-slate-400 rounded px-3 text-xs font-extrabold text-slate-900 flex items-center justify-between gap-2 shadow-2xs hover:border-emerald-600 cursor-pointer"
-            >
-              <span className="truncate">{activeReportOption.label}</span>
-              {isReportDropdownOpen ? <ChevronUp className="w-4 h-4 text-slate-600" /> : <ChevronDown className="w-4 h-4 text-slate-600" />}
-            </button>
-
-            {isReportDropdownOpen && (
-              <div
-                role="listbox"
-                aria-label="نوع التقرير"
-                className="absolute bottom-full mb-1.5 left-0 w-72 max-h-[60vh] overflow-y-auto bg-white border border-slate-400 rounded-lg shadow-2xl z-40 py-1 text-right"
-              >
-                {REPORT_TYPE_OPTIONS.map((opt, idx) => {
-                  const prevGroup = idx > 0 ? REPORT_TYPE_OPTIONS[idx - 1].group : opt.group;
-                  const showDivider = idx > 0 && opt.group !== prevGroup;
-                  const isSelected = opt.key === reportType;
+        {/* Owner Personal Accounts Report */}
+        {selectedReport === 'personal_accounts' && canSeePersonalReport && (
+          <div className="space-y-4">
+            <h3 className="text-sm font-black">ملخص وحركات الحسابات الشخصية للملاك</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {ownerAccounts.map(acc => (
+                <div key={acc.id} className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <div className="text-xs font-black text-slate-900">{acc.ownerName} — {acc.accountName}</div>
+                  <div className="text-base font-black font-mono text-blue-950 mt-1">
+                    {acc.currentBalance.toLocaleString()} {settings.currency}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <table className="w-full text-right text-xs">
+              <thead>
+                <tr className="bg-slate-50 font-bold border-b">
+                  <th className="p-2.5">رقم الحركة</th>
+                  <th className="p-2.5">التاريخ</th>
+                  <th className="p-2.5">الحساب</th>
+                  <th className="p-2.5">النوع</th>
+                  <th className="p-2.5 text-center">المبلغ</th>
+                  <th className="p-2.5">الخزينة</th>
+                  <th className="p-2.5">البيان / السبب</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {ownerTransactions.length === 0 ? (
+                  <tr><td colSpan={7} className="p-6 text-center text-slate-400">لا توجد معاملات مسجلة في الحسابات الشخصية.</td></tr>
+                ) : ownerTransactions.map(tx => {
+                  const acc = ownerAccounts.find(a => a.id === tx.accountId);
                   return (
-                    <React.Fragment key={opt.key}>
-                      {showDivider && <div className="my-1 border-t border-slate-300" role="separator" />}
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={isSelected}
-                        data-report-type={opt.key}
-                        onClick={() => {
-                          setReportType(opt.key);
-                          setViewMode('unified_grid');
-                          setIsReportDropdownOpen(false);
-                        }}
-                        className={`w-full text-right px-3 py-1.5 text-xs transition-colors cursor-pointer ${
-                          isSelected
-                            ? 'bg-[#22b14c] text-white font-extrabold'
-                            : 'text-slate-800 font-semibold hover:bg-emerald-50'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    </React.Fragment>
+                    <tr key={tx.id} className="hover:bg-slate-50">
+                      <td className="p-2.5 font-mono font-bold text-blue-900">{tx.txNumber}</td>
+                      <td className="p-2.5 font-mono">{tx.date}</td>
+                      <td className="p-2.5 font-bold">{acc ? `${acc.ownerName} - ${acc.accountName}` : tx.accountId}</td>
+                      <td className="p-2.5 font-bold">{tx.type}</td>
+                      <td className="p-2.5 text-center font-mono font-black">{tx.amount.toLocaleString()}</td>
+                      <td className="p-2.5 text-slate-600">{tx.cashboxName || 'مستقل (بدون خزينة)'}</td>
+                      <td className="p-2.5 text-slate-600">{tx.reason || tx.notes || '-'}</td>
+                    </tr>
                   );
                 })}
-              </div>
-            )}
+              </tbody>
+            </table>
           </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              setViewMode('unified_grid');
-              loadReport();
-            }}
-            className="h-9 px-4 rounded bg-[#22b14c] hover:bg-[#1a963f] text-white font-black text-xs shadow-xs transition-colors cursor-pointer"
-          >
-            عرض التقرير
-          </button>
-        </div>
+        )}
       </div>
 
-      {/* Source Document Inspection Modal */}
-      <SourceDocumentModal
-        isOpen={sourceModalOpen}
-        isLoading={sourceLoading}
-        error={sourceError}
-        data={sourceDoc}
-        currency={currency}
-        onClose={() => setSourceModalOpen(false)}
-        onPrint={handlePrintSourceDoc}
-      />
-
-      {/* Print Preview Modal (A4 + 80mm + 58mm + PDF) */}
+      {/* Print Document Modal */}
       <PrintDocumentModal
-        isOpen={Boolean(printModalData)}
-        onClose={() => setPrintModalData(null)}
-        data={printModalData}
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        data={printData}
       />
     </div>
   );

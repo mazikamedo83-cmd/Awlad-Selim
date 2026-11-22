@@ -4,7 +4,6 @@ export type UserRole =
   | 'accountant'    // محاسب
   | 'sales'         // موظف مبيعات
   | 'warehouse'     // أمين مستودع
-  | 'purchases'     // موظف مشتريات
   | 'representative'
   | 'customer';// مندوب مبيعات / عميل
 
@@ -29,10 +28,6 @@ export interface UserPermissions {
   canManageUsers: boolean;
   canManageSettings: boolean;
   canAllowNegativeInventory: boolean;
-  canApprove?: boolean;
-  canSend?: boolean;
-  canReceive?: boolean;
-  canReviewRepInvoices?: boolean;
   canViewPersonalAccounts?: boolean;
   canCreatePersonalTx?: boolean;
   canEditPersonalTx?: boolean;
@@ -162,16 +157,12 @@ export interface Product {
   sellingPrice: number;
   minStockLevel: number;
   stockPerWarehouse: Record<string, number>; // warehouseId -> quantity in base unit
-  inStock?: boolean;
-  availableQty?: number;
   image?: string;
   status: 'active' | 'archived'; // active = نشط، archived = موقوف منطقياً
   notes?: string;
   importBatchId?: string;
   importedFromFile?: boolean;
   sourceFileName?: string;
-  version?: number;
-  updatedAt?: string;
   createdAt: string;
 }
 
@@ -207,10 +198,6 @@ export interface Customer {
   status: 'active' | 'blocked';
   // التاريخ الفعلي لأسعار الشراء السابقة لكل منتج: productId -> prices array [oldest to newest]
   priceHistory: Record<string, Array<number | CustomerPriceHistoryEntry>>;
-  syncStatus?: SyncQueueStatus | 'synced';
-  originDeviceId?: string;
-  version?: number;
-  updatedAt?: string;
   createdAt: string;
 }
 
@@ -224,7 +211,6 @@ export interface Supplier {
   openingBalance: number; // موجب = له مستحقات علينا، سالب = دفع زيادة
   currentBalance: number;
   status?: 'active' | 'suspended'; // حالة المورد: نشط / موقوف
-  syncStatus?: SyncQueueStatus | 'synced';
   createdAt: string;
 }
 
@@ -258,7 +244,7 @@ export interface InvoicePayment {
 export interface Invoice {
   id: string;
   invoiceNumber: string;
-  type: 'sales' | 'purchase' | 'quote';
+  type: 'sales' | 'purchase';
   date: string;
   customerId?: string;
   customerName?: string;
@@ -274,35 +260,16 @@ export interface Invoice {
   taxTotal: number;
   grandTotal: number;
   paidAmount: number;
-  paidAtInvoice?: number;
-  appliedAdvanceAmount?: number;
   remainingAmount: number;
   paymentType: 'cash' | 'credit' | 'partial';
   paymentMethod: 'cash' | 'bank' | 'cheque';
   cashboxId: string;
   status: 'draft' | 'confirmed' | 'cancelled';
-  reviewStatus?: 'not_required' | 'needs_review' | 'reviewed';
-  reviewedBy?: string;
-  reviewedAt?: string;
-  reviewNotes?: string;
-  editedBy?: string;
-  editedAt?: string;
-  cancelledBy?: string;
-  cancelledAt?: string;
-  cancelReason?: string;
-  convertedFromQuoteId?: string;
-  convertedFromQuoteNumber?: string;
   notes?: string;
   payments?: InvoicePayment[]; // دفعات متعددة مسجلة على نفس الفاتورة
   linkedRepTransferId?: string; // معرف طلب تحويل عهدة المندوب المرتبط
   linkedRepTransferNumber?: string; // رقم طلب تحويل عهدة المندوب المرتبط
   linkedCustomerOrderId?: string; // معرف طلب العميل المرتبط (1:1)
-  localId?: string;
-  operationId?: string;
-  originDeviceId?: string;
-  syncStatus?: SyncQueueStatus | 'synced';
-  version?: number;
-  updatedAt?: string;
   createdBy: string;
   createdAt: string;
   returnedQuantityByItem?: Record<string, number>;
@@ -335,8 +302,6 @@ export interface InvoiceReturn {
   cashboxId?: string;
   reason: string;
   notes?: string;
-  syncStatus?: SyncQueueStatus | 'synced';
-  originDeviceId?: string;
   createdBy: string;
   createdAt: string;
 }
@@ -373,14 +338,13 @@ export interface FinancialTransaction {
   targetCashboxName?: string;
   amount: number;
   category: string;
-  relatedDocType?: 'sales' | 'purchase' | 'sales_return' | 'purchase_return' | 'rep_transfer' | 'salary' | 'manual' | 'order_advance';
+  relatedDocType?: 'sales' | 'purchase' | 'sales_return' | 'purchase_return' | 'rep_transfer' | 'salary' | 'manual';
   relatedDocId?: string;
   relatedDocNumber?: string;
   partyId?: string;
   partyName?: string;
   description: string;
   notes?: string;
-  syncStatus?: SyncQueueStatus | 'synced';
   createdBy: string;
   createdAt: string;
 }
@@ -437,7 +401,6 @@ export interface Representative {
   phone: string;
   vehicleNumber?: string;
   userId?: string; // حساب الدخول المرتبط
-  warehouseId?: string;
   openingBalance: number;
   currentBalance: number;
   commissionRate?: number;
@@ -549,7 +512,6 @@ export interface ExpenseIncomeRecord {
   recipientOrPayer: string;
   notes?: string;
   attachmentName?: string;
-  syncStatus?: SyncQueueStatus | 'synced';
   createdBy: string;
   createdAt: string;
 }
@@ -654,7 +616,6 @@ export interface ExtraSettingsConfig {
     enableWhatsAppAlerts: boolean;
     whatsappNumber?: string;
   };
-  connectionConfig?: ConnectionProfilesConfig;
 }
 
 export interface SystemSettings {
@@ -701,121 +662,19 @@ export interface RepItemTransferRequest {
   targetWarehouseName: string;
   items: RepTransferItem[];
   status: RepItemTransferStatus;
-  transferMode?: 'transfer' | 'custody_dispatch';
   rejectionReason?: string;
   notes?: string;
   createdBy: string;
   createdAt: string;
   reviewedBy?: string;
   reviewedAt?: string;
-  dispatchedBy?: string;
-  dispatchedAt?: string;
   executedAt?: string;
   receivedBy?: string;
   receivedAt?: string;
 }
 
-export interface RepCustodyOperation {
-  id: string;
-  operationNumber: string;
-  representativeId: string;
-  representativeName: string;
-  warehouseId: string;
-  warehouseName: string;
-  targetWarehouseId?: string;
-  targetWarehouseName?: string;
-  operationType:
-    | 'delivered_to_customer'
-    | 'returned_to_warehouse'
-    | 'custody_damaged'
-    | 'custody_shortage'
-    | 'custody_adjustment';
-  productId: string;
-  productName: string;
-  unit: string;
-  unitFactor: number;
-  quantity: number;
-  baseQuantity: number;
-  customerId?: string;
-  customerName?: string;
-  invoiceId?: string;
-  invoiceNumber?: string;
-  date: string;
-  reason?: string;
-  notes?: string;
-  status: 'pending' | 'approved' | 'rejected';
-  createdBy: string;
-  createdAt: string;
-}
 
-export interface RepCustodyStatementItem {
-  productId: string;
-  productName: string;
-  productCode: string;
-  baseUnit: string;
-  purchasePrice: number;
-  sellingPrice: number;
-  receivedQty: number;
-  pendingReceiveQty: number;
-  deliveredToCustomersQty: number;
-  invoicedSoldQty: number;
-  returnedToWarehouseQty: number;
-  approvedReductionsQty: number;
-  vanPhysicalStockQty: number;
-  remainingCustodyQty: number;
-  custodyValueAtCost: number;
-}
-
-export interface RepCustodyStatementResponse {
-  representative: Representative;
-  vanWarehouseId: string;
-  financialSummary: {
-    currentCashCustodyBalance: number;
-    totalSalesAmount: number;
-    totalSalesPaidAmount: number;
-    totalSalesRemainingAmount: number;
-  };
-  totals: {
-    totalReceivedQty: number;
-    totalPendingReceiveQty: number;
-    totalDeliveredQty: number;
-    totalReturnedQty: number;
-    totalReductionsQty: number;
-    totalRemainingCustodyQty: number;
-    totalVanPhysicalQty: number;
-    totalCustodyCostValue: number;
-  };
-  itemsSummary: RepCustodyStatementItem[];
-  ledger: Array<{
-    id: string;
-    date: string;
-    createdAt: string;
-    docType: string;
-    docNumber: string;
-    productId: string;
-    productName: string;
-    customerName?: string;
-    quantityIn: number;
-    quantityOut: number;
-    notes?: string;
-  }>;
-}
-
-export type CustomerItemOrderStatus =
-  | 'pending'
-  | 'under_review'
-  | 'approved'
-  | 'rejected'
-  | 'preparing'
-  | 'rep_assigned'
-  | 'out_for_delivery'
-  | 'delivered'
-  | 'collected'
-  | 'closed'
-  | 'needs_review'
-  | 'invoiced'
-  | 'cancelled';
-
+export type CustomerItemOrderStatus = 'pending' | 'approved' | 'rejected' | 'invoiced';
 export interface CustomerOrderStatusHistoryEntry {
   id: string;
   fromStatus: string | null;
@@ -825,53 +684,9 @@ export interface CustomerOrderStatusHistoryEntry {
   changedAt: string;
 }
 
-export interface CustomerOrderPaymentHistoryEntry {
-  id: string;
-  source: 'advance' | 'invoice_payment';
-  paymentNumber: string;
-  amount: number;
-  paymentMethod: string;
-  cashboxName?: string;
-  date: string;
-  createdAt: string;
-  notes?: string;
-}
-
-export interface OrderAdvancePayment {
-  id: string;
-  paymentNumber: string;
-  orderId: string;
-  orderNumber?: string;
-  customerId: string;
-  customerName?: string;
-  cashboxId: string;
-  cashboxName?: string;
-  paymentMethod: 'cash' | 'bank' | 'cheque';
-  amount: number;
-  date: string;
-  notes?: string;
-  status: 'active' | 'applied' | 'refunded';
-  appliedInvoiceId?: string;
-  createdBy: string;
-  createdAt: string;
-  operationId?: string;
-  originDeviceId?: string;
-  syncStatus?: SyncQueueStatus;
-}
-
 export interface CustomerItemOrderRequest {
   id: string;
   requestNumber: string;
-  requesterType?: 'customer' | 'representative' | 'staff';
-  submittedByName?: string;
-  representativeId?: string;
-  representativeName?: string;
-  deliveryRepId?: string;
-  deliveryRepName?: string;
-  deliveredAt?: string;
-  deliveryNotes?: string;
-  deliveryProof?: string;
-  collectedAmount?: number;
   customerId: string;
   userId?: string;
   customerName: string;
@@ -883,28 +698,12 @@ export interface CustomerItemOrderRequest {
     productId: string;
     productCode?: string;
     productName: string;
-    productImage?: string;
     unit: string;
     unitFactor?: number;
     quantity: number;
     unitPrice?: number;
   }>;
-  totalAmount?: number;
-  totalEstimatedAmount?: number;
-  advancePaidAmount?: number;
-  remainingAmount?: number;
-  invoiceTotal?: number;
-  invoicePaidAmount?: number;
-  invoiceRemainingAmount?: number;
-  paymentStatus?: 'unpaid' | 'partial' | 'paid';
-  paymentsHistory?: CustomerOrderPaymentHistoryEntry[];
   status: CustomerItemOrderStatus;
-  sourcePlatform?: string;
-  localId?: string;
-  operationId?: string;
-  originDeviceId?: string;
-  syncStatus?: SyncQueueStatus;
-  version?: number;
   notes?: string;
   rejectionReason?: string;
   createdAt: string;
@@ -917,133 +716,13 @@ export interface CustomerItemOrderRequest {
   statusHistory?: CustomerOrderStatusHistoryEntry[];
 }
 
-// أوضاع الاتصال المتعددة بالسيرفر المركزي (Dual / Multi Connection System)
-export type ConnectionMode = 'local_network' | 'free_remote' | 'pro_remote' | 'cloud_vps';
-
-export interface ConnectionProfilesConfig {
-  activeMode: ConnectionMode;
-  configVersion?: number;
-  localNetwork: {
-    ip: string;
-    port: number;
-    hostname?: string;
-  };
-  freeRemote: {
-    tunnelUrl: string; // Cloudflare Quick Tunnel (https://xxxx.trycloudflare.com)
-    autoDetect?: boolean;
-  };
-  proRemote: {
-    domainUrl: string; // Cloudflare Named Tunnel / Custom HTTPS Domain
-    provider?: string;
-  };
-  cloudVps: {
-    vpsUrl: string; // Future Cloud VPS HTTPS Endpoint
-    notes?: string;
-  };
-  enforceHttpsForRemote?: boolean;
-  updatedAt?: string;
-}
-
-export type DevicePlatform = 'windows' | 'android' | 'ios' | 'web';
-
-export interface TunnelRuntimeStatus {
-  status: 'offline' | 'starting' | 'online' | 'error';
-  provider: string;
-  tunnelUrl: string;
-  localPort: number;
-  startedAt: string | null;
-  updatedAt: string | null;
-  lastError: string | null;
-}
-
-export interface PairedDevice {
-  deviceId: string;
-  deviceName: string;
-  deviceType: DevicePlatform;
-  osVersion?: string;
-  appVersion?: string;
-  linkedUserId?: string;
-  linkedUserName?: string;
-  connectionMode: ConnectionMode | string;
-  serverUrlUsed?: string;
-  ipAddress?: string;
-  status: 'active' | 'pending_approval' | 'revoked';
-  pairingTokenId?: string;
-  configVersion?: number;
-  pairedAt: string;
-  lastSeenAt: string;
-  revokedAt?: string;
-  isRecentlyOnline?: boolean;
-  notes?: string;
-}
-
-export interface PairedDevicesSummary {
-  total: number;
-  active: number;
-  pendingApproval: number;
-  revoked: number;
-  onlineNow: number;
-}
-
-export interface PairingTokenRecord {
-  id: string;
-  tokenPreview: string;
-  createdByUserId?: string;
-  createdByName: string;
-  targetUserId?: string;
-  targetUserName?: string;
-  targetRole?: string;
-  targetDeviceType: 'any' | 'windows' | 'android' | 'ios';
-  connectionMode: ConnectionMode | 'auto';
-  expiresAt: string;
-  singleUse: boolean;
-  usedCount: number;
-  lastUsedAt?: string;
-  requireAdminApproval: boolean;
-  revokedAt?: string;
-  status: 'active' | 'used' | 'expired' | 'revoked' | 'invalid';
-  notes?: string;
-  createdAt: string;
-}
-
-export interface PairingCreateResponse {
-  ok: boolean;
-  tokenRecord: PairingTokenRecord;
-  rawToken: string;
-  serverBaseUrl: string;
-  directInviteUrl: string;
-  deepLinkUrl: string;
-  qrPayload: string;
-}
-
-export interface ConnectionDiscoveryResponse {
-  ok: boolean;
-  service: string;
-  version: string;
-  timestamp: string;
-  companyName: string;
-  activeMode: ConnectionMode;
-  configVersion: number;
-  supportedModes: ConnectionMode[];
-  port: number;
-  httpsActive: boolean;
-  activeEndpoint: string;
-  currentHostUrl?: string;
-  lanUrls: string[];
-  profiles: ConnectionProfilesConfig;
-  fallbackEndpoints: Array<{ mode: ConnectionMode; url: string; label: string }>;
-  tunnelStatus?: TunnelRuntimeStatus;
-}
-
 // إعدادات السيرفر والاتصال المحلي والشبكة
 export interface ServerConnectionSettings {
   serverIp: string;
   hostname: string;
   port: number;
   apiBaseUrl: string;
-  connectionType: ConnectionMode | 'lan' | 'vpn' | 'reverse_proxy' | 'offline_local';
-  activeMode?: ConnectionMode;
-  profiles?: ConnectionProfilesConfig;
+  connectionType: 'lan' | 'vpn' | 'reverse_proxy' | 'offline_local';
   serverStatus: 'online' | 'offline' | 'checking';
   databaseStatus: 'connected' | 'disconnected' | 'migrating';
   latencyMs: number;
@@ -1269,23 +948,10 @@ export interface MobileConfig {
 export interface MobileNotificationItem {
   id: string;
   type:
-    | 'customer_order'
-    | 'order_under_review'
     | 'order_approved'
     | 'order_rejected'
     | 'order_invoiced'
-    | 'order_status'
     | 'invoice_confirmed'
-    | 'rep_invoice_review'
-    | 'custody_dispatch'
-    | 'item_transfer'
-    | 'cash_transfer'
-    | 'invoice'
-    | 'balance'
-    | 'draft_ready'
-    | 'stock_count'
-    | 'stock_transfer'
-    | 'low_stock'
     | 'rep_item_transfer_executed'
     | 'rep_item_transfer_rejected'
     | 'rep_cash_awaiting_receipt'
@@ -1296,15 +962,13 @@ export interface MobileNotificationItem {
   targetTab?: string;
   referenceId?: string;
   referenceNumber?: string;
-  relatedId?: string;
-  severity?: 'info' | 'warning' | 'success' | 'error';
 }
 
 export interface CustomerStatementEntry {
   id: string;
   date: string;
   docNumber: string;
-  type: 'opening_balance' | 'sales_invoice' | 'customer_payment' | 'order_advance' | 'sales_return';
+  type: 'opening_balance' | 'sales_invoice' | 'customer_payment' | 'sales_return';
   label: string;
   description: string;
   debit: number | null;
@@ -1314,449 +978,17 @@ export interface CustomerStatementEntry {
 
 export interface CustomerStatementResponse {
   customer: Customer | null;
-  customerType?: 'regular' | 'app' | 'hybrid';
   allowPriceView: boolean;
-  orders?: CustomerItemOrderRequest[];
-  advancePayments?: OrderAdvancePayment[];
   summary: {
     openingBalance: number | null;
     totalDebit: number | null;
     totalCredit: number | null;
     currentBalance: number | null;
-    activeAdvanceBalance?: number | null;
-    openOrdersCount?: number;
-    openOrdersEstimatedTotal?: number | null;
     invoicesCount: number;
     returnsCount: number;
-    ordersCount?: number;
   };
   entries: CustomerStatementEntry[];
 }
 
-export type SyncQueueStatus = 'local' | 'pending' | 'syncing' | 'synced' | 'failed' | 'needs_review';
 
-export type SyncOperationType =
-  | 'create_order'
-  | 'create_sales_invoice'
-  | 'create_sales_quote'
-  | 'edit_sales_invoice'
-  | 'create_purchase_invoice'
-  | 'create_invoice_return'
-  | 'create_purchase_return'
-  | 'add_invoice_payment'
-  | 'record_customer_payment'
-  | 'record_order_advance'
-  | 'update_order_delivery'
-  | 'execute_cash_operation'
-  | 'create_customer'
-  | 'update_customer'
-  | 'create_supplier'
-  | 'confirm_custody_receipt'
-  | 'record_custody_delivery'
-  | 'record_custody_return';
-
-export interface SyncQueueItem {
-  operationId: string;
-  userId: string;
-  deviceId: string;
-  operationType: SyncOperationType;
-  entityType: string;
-  entityId?: string;
-  localId?: string;
-  summaryAr: string;
-  payload: Record<string, any>;
-  status: SyncQueueStatus;
-  attempts: number;
-  lastError?: string;
-  conflictId?: string;
-  nextRetryAt?: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface SyncConflictRecord {
-  id: string;
-  operationId: string;
-  operationType: SyncOperationType | string;
-  entityType: string;
-  entityId?: string;
-  deviceId?: string;
-  userId?: string;
-  userName?: string;
-  conflictReason: string;
-  localPayload: Record<string, any>;
-  serverSnapshot: Record<string, any>;
-  status: 'needs_review' | 'resolved_keep_server' | 'resolved_apply_local' | 'dismissed';
-  resolutionNotes?: string;
-  resolvedBy?: string;
-  resolvedAt?: string;
-  createdAt: string;
-}
-
-export interface ItemMovementRow {
-  id: string;
-  date: string;
-  createdAt?: string;
-  docType: string;
-  docId: string;
-  docNumber: string;
-  productId: string;
-  productName: string;
-  warehouseId?: string;
-  warehouseName?: string;
-  targetWarehouseId?: string;
-  targetWarehouseName?: string;
-  partyId?: string;
-  partyName?: string;
-  representativeId?: string;
-  representativeName?: string;
-  unit: string;
-  quantity: number;
-  baseQuantity: number;
-  unitPrice: number;
-  costPrice: number;
-  totalValue: number;
-  costValue?: number;
-  profitValue: number;
-  direction: 'in' | 'out' | 'neutral';
-  notes?: string;
-  createdBy?: string;
-}
-
-export interface ItemMovementReportResponse {
-  product: Product | null;
-  filters: {
-    productId: string;
-    warehouseId: string;
-    movementType: string;
-    representativeId: string;
-    dateFrom: string | null;
-    dateTo: string | null;
-    search: string;
-  };
-  warehouseBreakdown: Array<{
-    warehouseId: string;
-    warehouseName: string;
-    code?: string;
-    quantity: number;
-    costValue: number;
-    sellingValue: number;
-  }>;
-  repCustodyBreakdown: Array<{
-    representativeId: string;
-    representativeName: string;
-    warehouseId: string;
-    warehouseName: string;
-    quantity: number;
-    costValue: number;
-    sellingValue: number;
-  }>;
-  sections: {
-    sales: ItemMovementRow[];
-    purchases: ItemMovementRow[];
-    sales_returns: ItemMovementRow[];
-    purchase_returns: ItemMovementRow[];
-    transfers: ItemMovementRow[];
-    custody_sent: ItemMovementRow[];
-    custody_received: ItemMovementRow[];
-    custody_deliveries: ItemMovementRow[];
-    adjustments: ItemMovementRow[];
-  };
-  totals: {
-    totalSalesQty: number;
-    totalSalesValue: number;
-    totalPurchaseQty: number;
-    totalPurchaseValue: number;
-    totalSalesReturnQty: number;
-    totalSalesReturnValue: number;
-    totalPurchaseReturnQty: number;
-    totalPurchaseReturnValue: number;
-    totalCostOfGoodsSold: number;
-    totalProfit: number;
-    totalQtyIn: number;
-    totalQtyOut: number;
-    currentBalance: number;
-    inventoryValuation: number;
-  };
-}
-
-export type ComprehensiveReportTypeKey =
-  | 'all'
-  | 'sales_items'
-  | 'sales_invoices'
-  | 'sales_items_by_unit'
-  | 'sales_items_grouped'
-  | 'sales_items_grouped_by_customer'
-  | 'sales_items_grouped_by_category'
-  | 'sales_items_grouped_by_category_class1'
-  | 'sales_return_items'
-  | 'sales_return_invoices'
-  | 'purchase_items'
-  | 'purchase_invoices'
-  | 'purchase_return_items'
-  | 'purchase_return_invoices'
-  | 'damaged_items'
-  | 'damaged_invoices'
-  | 'cash_payment'
-  | 'cash_payment_customer'
-  | 'cash_payment_supplier'
-  | 'cash_payment_employee'
-  | 'cash_withdrawal'
-  | 'cash_withdrawal_customer'
-  | 'cash_withdrawal_supplier';
-
-export interface ComprehensiveReportOption {
-  key: ComprehensiveReportTypeKey;
-  label: string;
-  group: number;
-}
-
-export interface ComprehensiveReportRow {
-  rowId: string;
-  docType: string;
-  docId: string;
-  txId?: string;
-  productId?: string;
-  productName?: string;
-  categoryName?: string;
-  class1?: string;
-  operationLabel: string;
-  quantity: number;
-  baseQuantity?: number;
-  unit: string;
-  priceOrTotal: number;
-  valueOrPaid: number;
-  movementOrRemaining: string | number;
-  employeeId?: string;
-  employeeName: string;
-  userName: string;
-  businessDate: string;
-  rawDate: string;
-  actualDateTime: string;
-  rawCreatedAt: string;
-  profit: number;
-  costValue?: number;
-  barcode: string;
-  displayId: string;
-  invoiceNumber: string;
-  branchName: string;
-  warehouseId?: string;
-  warehouseName?: string;
-  cashboxId?: string;
-  cashboxName: string;
-  notes: string;
-  discount: number;
-  profitPercent: number;
-  customerId?: string;
-  supplierId?: string;
-  partyName?: string;
-  representativeId?: string;
-  representativeName?: string;
-  rowTone?: 'default' | 'invoice_blue' | 'cash_green' | 'warning_rose';
-}
-
-export interface ComprehensiveReportSection {
-  key: string;
-  title: string;
-  theme: 'sage' | 'slate';
-  isInvoiceLayout: boolean;
-  cashHighlightCol?: boolean;
-  rows: ComprehensiveReportRow[];
-  totals: {
-    count: number;
-    quantity: number;
-    priceOrTotal: number | null;
-    valueOrPaid: number;
-    remaining: number | null;
-    profit: number;
-    costValue: number;
-    discount: number;
-    profitPercent: number;
-  };
-}
-
-export interface ItemHistoryTimelineEntry {
-  id: string;
-  sortTime: string;
-  date: string;
-  actualDateTime: string;
-  eventType: string;
-  eventLabel: string;
-  docType: string;
-  docId: string;
-  docNumber: string;
-  warehouseName: string;
-  partyName: string;
-  unit: string;
-  qty: number;
-  qtyIn: number;
-  qtyOut: number;
-  unitPrice: number;
-  unitCost: number;
-  totalValue: number;
-  runningBalance: number;
-  userName: string;
-  notes: string;
-}
-
-export interface ItemLifecyclePayload {
-  product: Product & { class1?: string; createdAtFormatted?: string };
-  lastPurchasePrice: number;
-  lastPurchaseDate: string | null;
-  lastSalePrice: number;
-  lastSaleDate: string | null;
-  currentStockTotal: number;
-  currentStockValueAtCost: number;
-  warehouseBalances: Array<{
-    warehouseId: string;
-    warehouseName: string;
-    branchName: string;
-    quantity: number;
-    costValue: number;
-    sellingValue: number;
-  }>;
-  timeline: ItemHistoryTimelineEntry[];
-  fullCount: number;
-}
-
-export interface ItemLossTransaction {
-  id: string;
-  date: string;
-  actualDateTime: string;
-  docType: string;
-  docId: string;
-  docNumber: string;
-  partyName: string;
-  quantity: number;
-  unit: string;
-  sellingPrice: number;
-  costPrice: number;
-  discount: number;
-  lossAmount: number;
-  reason: string;
-}
-
-export interface ItemPnlSummary {
-  productId: string;
-  code: string;
-  barcode: string;
-  productName: string;
-  category: string;
-  class1: string;
-  baseUnit: string;
-  totalPurchaseQty: number;
-  totalPurchaseValue: number;
-  purchaseReturnsQty: number;
-  purchaseReturnsValue: number;
-  netPurchaseQty: number;
-  netPurchaseValue: number;
-  totalSalesQty: number;
-  totalSalesValue: number;
-  salesReturnsQty: number;
-  salesReturnsValue: number;
-  netSalesQty: number;
-  netSalesValue: number;
-  cogs: number;
-  avgPurchasePrice: number;
-  minPurchasePrice: number;
-  maxPurchasePrice: number;
-  lastPurchasePrice: number;
-  lastPurchaseDate: string | null;
-  avgSalePrice: number;
-  minSalePrice: number;
-  maxSalePrice: number;
-  lastSalePrice: number;
-  lastSaleDate: string | null;
-  totalDiscounts: number;
-  damagedQty: number;
-  damagedLossValue: number;
-  shortageQty: number;
-  shortageLossValue: number;
-  allocatedExpenses: number;
-  grossProfit: number;
-  netProfit: number;
-  totalLoss: number;
-  profitPercentOnCost: number;
-  profitMarginOnSales: number;
-  currentStockQty: number;
-  currentStockValue: number;
-  lossTransactionsCount: number;
-  lossTransactions: ItemLossTransaction[];
-}
-
-export interface ComprehensiveReportResponse {
-  reportType: ComprehensiveReportTypeKey;
-  reportTypeLabel: string;
-  reportTypes: ComprehensiveReportOption[];
-  filters: Record<string, any>;
-  filterOptions: {
-    branches: BranchSettingItem[];
-    warehouses: Array<{ id: string; name: string; code?: string }>;
-    cashboxes: Array<{ id: string; name: string; type?: string; currentBalance?: number }>;
-    products: Array<{
-      id: string;
-      code: string;
-      barcode?: string;
-      name: string;
-      category: string;
-      baseUnit: string;
-      size?: string;
-      color?: string;
-    }>;
-    customers: Array<{ id: string; name: string; phone?: string }>;
-    suppliers: Array<{ id: string; name: string; phone?: string }>;
-    employees: Array<{ id: string; name: string; jobTitle?: string }>;
-    representatives: Array<{ id: string; name: string; warehouseId?: string }>;
-    users: Array<{ id: string; fullName: string; username: string; role: string }>;
-  };
-  sections: ComprehensiveReportSection[];
-  summary: {
-    drawerBalance: number;
-    reportBalance: number;
-    carriedFromYesterday: number;
-    reportProfit: number;
-    reportProfitPercent: number;
-    filteredSalesNet: number;
-    filteredPurchasesNet: number;
-    filteredCashIn: number;
-    filteredCashOut: number;
-    totalRows: number;
-  };
-  itemLifecycle: ItemLifecyclePayload | null;
-  itemPnl: {
-    selectedItem: ItemPnlSummary | null;
-    items: ItemPnlSummary[];
-    portfolioTotals: {
-      totalPurchaseValue: number;
-      totalSalesValue: number;
-      netSalesValue: number;
-      cogs: number;
-      totalDiscounts: number;
-      salesReturnsValue: number;
-      purchaseReturnsValue: number;
-      allocatedExpenses: number;
-      grossProfit: number;
-      netProfit: number;
-      totalLoss: number;
-      stockValuation: number;
-    };
-  };
-}
-
-export interface ReportSourceDocumentResponse {
-  ok: boolean;
-  docType: string;
-  title: string;
-  document: Record<string, any>;
-  auditTrail: Array<{
-    id: string;
-    timestamp: string;
-    userName: string;
-    action: string;
-    module: string;
-    oldValues?: Record<string, any> | null;
-    newValues?: Record<string, any> | null;
-    notes?: string;
-  }>;
-}
 

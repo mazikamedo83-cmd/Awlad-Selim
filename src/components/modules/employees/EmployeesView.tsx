@@ -683,7 +683,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
             </div>
           </form>
 
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden awlad-table-scroll">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
             <table className="w-full text-right text-xs">
               <thead>
                 <tr className="bg-slate-50 font-bold border-b text-slate-700">
@@ -742,7 +742,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
 
       {/* Advances & Deductions Tab */}
       {activeTab === 'advances' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden awlad-table-scroll">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
           <table className="w-full text-right text-xs">
             <thead>
               <tr className="bg-slate-50 font-bold border-b text-slate-700">
@@ -794,7 +794,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
 
       {/* Payrolls Tab */}
       {activeTab === 'payrolls' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden awlad-table-scroll">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
           <table className="w-full text-right text-xs">
             <thead>
               <tr className="bg-slate-50 font-bold border-b text-slate-700">

@@ -18,10 +18,9 @@ import { StockTransfersView } from './StockTransfersView';
 
 export interface InventoryViewProps {
   initialTab?: 'products' | 'categories' | 'warehouses' | 'transfers' | 'adjustments' | 'damaged' | 'movements' | 'stock-counts' | 'stock-transfers' | 'units' | string;
-  onOpenItemMovementReport?: (productId?: string) => void;
 }
 
-export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'products', onOpenItemMovementReport }) => {
+export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'products' }) => {
   const { 
     products, warehouses, categories: categoryList, stockMovements, settings, addProduct, updateProduct, 
     deleteProduct, toggleProductStatus, transferStock, adjustStock, recordDamagedStock,
@@ -954,7 +953,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           </button>
         </form>
 
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden awlad-table-scroll">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
           <table className="w-full text-right text-xs">
             <thead>
               <tr className="bg-slate-50 border-b text-slate-700 font-bold">
@@ -1107,7 +1106,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           </button>
         </form>
 
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden awlad-table-scroll">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
           <table className="w-full text-right text-xs">
             <thead>
               <tr className="bg-slate-50 border-b text-slate-700 font-bold">
@@ -1359,17 +1358,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                       )}
                     </td>
                     <td className="p-3.5">
-                      <div className="flex items-center justify-center gap-1 flex-wrap">
-                        {onOpenItemMovementReport && (
-                          <button
-                            type="button"
-                            onClick={() => onOpenItemMovementReport(prod.id)}
-                            className="px-2 py-1 rounded-lg bg-blue-50 text-blue-900 hover:bg-blue-100 border border-blue-200 text-[11px] font-bold cursor-pointer"
-                            title="تقرير حركة الصنف المفصل"
-                          >
-                            حركة الصنف
-                          </button>
-                        )}
+                      <div className="flex items-center justify-center gap-1">
                         <button
                           type="button"
                           onClick={() => {
