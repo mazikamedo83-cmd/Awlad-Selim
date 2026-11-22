@@ -76,7 +76,11 @@ public class SecureVaultPlugin extends Plugin {
             buffer.put(cipherBytes);
 
             String encoded = Base64.encodeToString(buffer.array(), Base64.NO_WRAP);
-            getPrefs().edit().putString(key, encoded).apply();
+            boolean saved = getPrefs().edit().putString(key, encoded).commit();
+            if (!saved) {
+                call.reject("Failed to commit encrypted vault item to SharedPreferences");
+                return;
+            }
             call.resolve();
         } catch (Exception ex) {
             call.reject("Failed to encrypt vault item: " + ex.getMessage(), ex);
@@ -99,11 +103,14 @@ public class SecureVaultPlugin extends Plugin {
                 return;
             }
             byte[] raw = Base64.decode(encoded, Base64.NO_WRAP);
+            if (raw.length < 4) {
+                call.reject("Corrupt encrypted vault payload");
+                return;
+            }
             ByteBuffer buffer = ByteBuffer.wrap(raw);
             int ivLen = buffer.getInt();
             if (ivLen < GCM_IV_LENGTH || ivLen > 32 || buffer.remaining() <= ivLen) {
-                ret.put("value", (Object) null);
-                call.resolve(ret);
+                call.reject("Corrupt encrypted vault header");
                 return;
             }
             byte[] iv = new byte[ivLen];
@@ -119,9 +126,7 @@ public class SecureVaultPlugin extends Plugin {
             ret.put("value", new String(plainBytes, StandardCharsets.UTF_8));
             call.resolve(ret);
         } catch (Exception ex) {
-            JSObject ret = new JSObject();
-            ret.put("value", (Object) null);
-            call.resolve(ret);
+            call.reject("Failed to decrypt vault item: " + ex.getMessage(), ex);
         }
     }
 
@@ -132,7 +137,11 @@ public class SecureVaultPlugin extends Plugin {
             call.reject("Missing key");
             return;
         }
-        getPrefs().edit().remove(key).apply();
+        boolean removed = getPrefs().edit().remove(key).commit();
+        if (!removed) {
+            call.reject("Failed to remove vault item");
+            return;
+        }
         call.resolve();
     }
 }

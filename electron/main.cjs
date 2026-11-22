@@ -1,9 +1,12 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell, clipboard, session, safeStorage } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
-const nodeCrypto = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { prepareElectronDataDirectory } = require('./dataBootstrap.cjs');
+const {
+  writeEncryptedOfflineFile: writeVaultEncryptedFile,
+  readEncryptedOfflineFile: readVaultEncryptedFile,
+} = require('./vaultCrypto.cjs');
 
 let mainWindow = null;
 let serverInstance = null;
@@ -169,98 +172,25 @@ function buildApplicationMenu() {
   Menu.setApplicationMenu(menu);
 }
 
-function ensureOfflineClientKey() {
-  if (!desktopState.offlineClientDir) return null;
-  fs.mkdirSync(desktopState.offlineClientDir, { recursive: true });
-  const encKeyPath = path.join(desktopState.offlineClientDir, '.vault.key.enc');
-  const legacyKeyPath = path.join(desktopState.offlineClientDir, '.vault.key');
-  const canUseSafeStorage = Boolean(
-    safeStorage &&
-      typeof safeStorage.isEncryptionAvailable === 'function' &&
-      safeStorage.isEncryptionAvailable()
-  );
-
-  if (canUseSafeStorage && fs.existsSync(encKeyPath)) {
-    try {
-      const encBuf = fs.readFileSync(encKeyPath);
-      const hex = safeStorage.decryptString(encBuf);
-      const key = Buffer.from(hex, 'hex');
-      if (key.length === 32) return key;
-    } catch {
-      // fall through to legacy migration or regeneration
-    }
-  }
-
-  if (fs.existsSync(legacyKeyPath)) {
-    try {
-      const raw = fs.readFileSync(legacyKeyPath);
-      if (raw.length === 32) {
-        if (canUseSafeStorage) {
-          try {
-            const encrypted = safeStorage.encryptString(raw.toString('hex'));
-            fs.writeFileSync(encKeyPath, encrypted, { mode: 0o600 });
-            fs.unlinkSync(legacyKeyPath);
-          } catch {
-            // keep legacy file if OS keychain migration fails temporarily
-          }
-        }
-        return raw;
-      }
-    } catch {
-      // ignore read failure
-    }
-  }
-
-  const requireOsKeychain =
-    app.isPackaged && (process.platform === 'win32' || process.platform === 'darwin');
-  const key = nodeCrypto.randomBytes(32);
-  if (canUseSafeStorage) {
-    try {
-      const encrypted = safeStorage.encryptString(key.toString('hex'));
-      fs.writeFileSync(encKeyPath, encrypted, { mode: 0o600 });
-      return key;
-    } catch (err) {
-      if (requireOsKeychain) {
-        throw new Error(`OS credential storage unavailable for vault encryption: ${err?.message || String(err)}`);
-      }
-    }
-  } else if (requireOsKeychain) {
-    throw new Error('OS credential encryption (safeStorage) is required in packaged desktop builds');
-  }
-  fs.writeFileSync(legacyKeyPath, key, { mode: 0o600 });
-  return key;
-}
-
 function sanitizeKeySegment(val) {
   return String(val || 'default').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'default';
 }
 
 function writeEncryptedOfflineFile(filePath, plainBuffer) {
-  const key = ensureOfflineClientKey();
-  if (!key) throw new Error('Offline client directory not initialized');
-  const iv = nodeCrypto.randomBytes(12);
-  const cipher = nodeCrypto.createCipheriv('aes-256-gcm', key, iv);
-  const encrypted = Buffer.concat([cipher.update(plainBuffer), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  const payload = Buffer.concat([Buffer.from('AWL1', 'ascii'), iv, tag, encrypted]);
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const tmpPath = `${filePath}.${process.pid}.tmp`;
-  fs.writeFileSync(tmpPath, payload);
-  fs.renameSync(tmpPath, filePath);
+  return writeVaultEncryptedFile({
+    offlineClientDir: desktopState.offlineClientDir,
+    safeStorage,
+    filePath,
+    plainBuffer,
+  });
 }
 
 function readEncryptedOfflineFile(filePath) {
-  if (!fs.existsSync(filePath)) return null;
-  const key = ensureOfflineClientKey();
-  if (!key) return null;
-  const raw = fs.readFileSync(filePath);
-  if (raw.length < 32 || raw.subarray(0, 4).toString('ascii') !== 'AWL1') return null;
-  const iv = raw.subarray(4, 16);
-  const tag = raw.subarray(16, 32);
-  const data = raw.subarray(32);
-  const decipher = nodeCrypto.createDecipheriv('aes-256-gcm', key, iv);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(data), decipher.final()]);
+  return readVaultEncryptedFile({
+    offlineClientDir: desktopState.offlineClientDir,
+    safeStorage,
+    filePath,
+  });
 }
 
 function registerIpcHandlers() {
@@ -512,6 +442,9 @@ async function bootstrapApplication() {
 
   // Always point embedded server at verified %APPDATA%\AWLAD SELIM\data before loading server modules
   process.env.AWLAD_ELECTRON = 'true';
+  if (!process.env.ALLOW_MOBILE_LAN_HTTP) {
+    process.env.ALLOW_MOBILE_LAN_HTTP = 'true';
+  }
   process.env.AWLAD_IS_PACKAGED = app.isPackaged ? 'true' : 'false';
   process.env.AWLAD_DATA_DIR = prepResult.targetDataDir;
   if (prepResult.envFilePath && allowLegacyImport) {

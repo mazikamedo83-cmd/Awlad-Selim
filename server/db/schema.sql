@@ -999,8 +999,18 @@ CREATE INDEX IF NOT EXISTS idx_rep_custody_ops_prod ON rep_custody_operations(pr
 CREATE INDEX IF NOT EXISTS idx_invoices_wh_date ON invoices(warehouse_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_invoices_cust_date ON invoices(customer_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_invoices_supp_date ON invoices(supplier_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_invoices_date_type ON invoices(date DESC, type);
+CREATE INDEX IF NOT EXISTS idx_invoices_rep_date ON invoices(representative_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_invoice_returns_date_wh ON invoice_returns(date DESC, warehouse_id);
 CREATE INDEX IF NOT EXISTS idx_fin_tx_date_type ON financial_transactions(date DESC, type);
 CREATE INDEX IF NOT EXISTS idx_expenses_incomes_date_type ON expenses_incomes(date DESC, type);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_prod_date ON stock_movements(product_id, date DESC);
+
+-- 45. قفل التهيئة الذرية للمدير الأول (Atomic First-Admin Bootstrap Singleton Lock)
+CREATE TABLE IF NOT EXISTS system_bootstrap_lock (
+  id VARCHAR(32) PRIMARY KEY,
+  admin_user_id VARCHAR(64) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 

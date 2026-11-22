@@ -1,14 +1,16 @@
 import {
   DEVICE_ID_STORAGE_KEY,
   getOrCreatePersistentDeviceId,
+  getPref,
   hydrateNativePreferences,
+  isElectronDesktop,
   isNativeCapacitor,
   removePref,
   setPref,
 } from './native';
 import type { ConnectionMode, ConnectionProfilesConfig } from '../types';
 import { logDiagnostic } from './diagnostics';
-import { removeSealedKey, sealJson, unsealJson } from './secureVault';
+import { removeSealedKey, SecureVaultError, sealJson, unsealJson } from './secureVault';
 
 const TOKENS_KEY = 'awlad_selim_auth_tokens_v3';
 const VAULT_TOKENS_KEY = 'auth_tokens_v1';
@@ -19,6 +21,15 @@ const INSTALLATION_ID_KEY = 'awlad_selim_server_installation_id_v1';
 
 let inMemoryTokens: StoredTokens | null = null;
 let tokenHydrated = false;
+let lastVaultErrorMessage: string | null = null;
+
+export function shouldPersistTokensInNativeVault(): boolean {
+  return isElectronDesktop() || isNativeCapacitor();
+}
+
+export function getLastVaultError(): string | null {
+  return lastVaultErrorMessage;
+}
 
 export interface StoredTokens {
   accessToken: string;
@@ -94,8 +105,39 @@ function purgeLegacyPlaintextTokens(): void {
   }
 }
 
+async function readLegacyPlaintextTokensRaw(): Promise<string | null> {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const lsRaw = localStorage.getItem(TOKENS_KEY);
+      if (lsRaw) return lsRaw;
+    }
+  } catch {
+    // ignore
+  }
+  if (isNativeCapacitor()) {
+    try {
+      return await getPref(TOKENS_KEY);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 export async function initSecureTokenCache(): Promise<void> {
   if (tokenHydrated && inMemoryTokens) return;
+  lastVaultErrorMessage = null;
+
+  // On plain Web browsers, session tokens are governed by HttpOnly cookies + in-memory Bearer,
+  // never persisted in IndexedDB, localStorage, or Capacitor Preferences.
+  if (!shouldPersistTokensInNativeVault()) {
+    purgeLegacyPlaintextTokens();
+    await removeSealedKey(VAULT_TOKENS_KEY).catch(() => {});
+    tokenHydrated = true;
+    return;
+  }
+
+  let safeToPurgeLegacy = false;
   try {
     const sealed = await unsealJson<StoredTokens>(VAULT_TOKENS_KEY);
     if (sealed?.accessToken && sealed?.refreshToken && !inMemoryTokens) {
@@ -103,34 +145,50 @@ export async function initSecureTokenCache(): Promise<void> {
         accessToken: String(sealed.accessToken),
         refreshToken: String(sealed.refreshToken),
       };
+      safeToPurgeLegacy = true;
     } else if (!inMemoryTokens) {
-      let legacyRaw: string | null = null;
-      try {
-        legacyRaw = typeof localStorage !== 'undefined' ? localStorage.getItem(TOKENS_KEY) : null;
-      } catch {
-        legacyRaw = null;
-      }
+      const legacyRaw = await readLegacyPlaintextTokensRaw();
       if (legacyRaw) {
+        let parsed: any = null;
         try {
-          const parsed = JSON.parse(legacyRaw);
-          if (parsed?.accessToken && parsed?.refreshToken) {
-            const migrated: StoredTokens = {
-              accessToken: String(parsed.accessToken),
-              refreshToken: String(parsed.refreshToken),
-            };
-            inMemoryTokens = migrated;
-            await sealJson(VAULT_TOKENS_KEY, migrated).catch(() => {});
-          }
+          parsed = JSON.parse(legacyRaw);
         } catch {
-          // ignore malformed legacy entry
+          parsed = null;
+          safeToPurgeLegacy = true;
+        }
+        if (parsed?.accessToken && parsed?.refreshToken) {
+          const migrated: StoredTokens = {
+            accessToken: String(parsed.accessToken),
+            refreshToken: String(parsed.refreshToken),
+          };
+          await sealJson(VAULT_TOKENS_KEY, migrated);
+          const verified = await unsealJson<StoredTokens>(VAULT_TOKENS_KEY);
+          if (
+            verified?.accessToken === migrated.accessToken &&
+            verified?.refreshToken === migrated.refreshToken
+          ) {
+            inMemoryTokens = migrated;
+            safeToPurgeLegacy = true;
+          } else {
+            throw new SecureVaultError('تعذر التحقق من حفظ رموز الدخول بعد ترحيلها إلى المخزن الآمن.');
+          }
         }
       }
     }
-  } catch {
-    // ignore vault hydration failure
+  } catch (err: any) {
+    const fallbackMsg = err?.message || 'تعذر الوصول إلى المخزن الآمن لاستعادة الجلسة أو ترحيلها.';
+    lastVaultErrorMessage = fallbackMsg;
+    logDiagnostic({
+      category: 'auth',
+      severity: 'error',
+      source: 'api.initSecureTokenCache',
+      message: fallbackMsg,
+    });
   } finally {
     tokenHydrated = true;
-    purgeLegacyPlaintextTokens();
+    if (safeToPurgeLegacy) {
+      purgeLegacyPlaintextTokens();
+    }
   }
 }
 
@@ -537,18 +595,40 @@ export function getStoredTokens(): StoredTokens | null {
 
 export async function saveStoredTokensAsync(tokens: StoredTokens | null): Promise<void> {
   tokenHydrated = true;
-  inMemoryTokens = tokens?.accessToken && tokens?.refreshToken
+  const nextTokens = tokens?.accessToken && tokens?.refreshToken
     ? { accessToken: String(tokens.accessToken), refreshToken: String(tokens.refreshToken) }
     : null;
-  purgeLegacyPlaintextTokens();
+  if (!nextTokens) {
+    inMemoryTokens = null;
+    lastVaultErrorMessage = null;
+    purgeLegacyPlaintextTokens();
+    await removeSealedKey(VAULT_TOKENS_KEY).catch(() => {});
+    return;
+  }
+
+  if (!shouldPersistTokensInNativeVault()) {
+    inMemoryTokens = nextTokens;
+    purgeLegacyPlaintextTokens();
+    await removeSealedKey(VAULT_TOKENS_KEY).catch(() => {});
+    return;
+  }
+
   try {
-    if (!inMemoryTokens) {
-      await removeSealedKey(VAULT_TOKENS_KEY);
-    } else {
-      await sealJson(VAULT_TOKENS_KEY, inMemoryTokens);
+    await sealJson(VAULT_TOKENS_KEY, nextTokens);
+    const verified = await unsealJson<StoredTokens>(VAULT_TOKENS_KEY);
+    if (
+      !verified ||
+      verified.accessToken !== nextTokens.accessToken ||
+      verified.refreshToken !== nextTokens.refreshToken
+    ) {
+      throw new SecureVaultError('فشل التحقق من حفظ رموز الجلسة داخل المخزن الآمن.');
     }
-  } catch {
-    // ignore storage quota errors
+    inMemoryTokens = nextTokens;
+    lastVaultErrorMessage = null;
+    purgeLegacyPlaintextTokens();
+  } catch (err: any) {
+    lastVaultErrorMessage = err?.message || 'فشل تخزين بيانات الجلسة في المخزن الآمن الأصلي.';
+    throw err;
   }
 }
 
@@ -739,21 +819,24 @@ interface RefreshAttemptResult {
 
 let refreshPromise: Promise<RefreshAttemptResult> | null = null;
 
-async function refreshAccessToken(): Promise<RefreshAttemptResult> {
+async function refreshAccessToken(allowCookieRefresh = false): Promise<RefreshAttemptResult> {
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
     const current = getStoredTokens();
-    if (!current?.refreshToken) return { tokens: null };
+    const useCookieFlow = !current?.refreshToken && allowCookieRefresh && !shouldPersistTokensInNativeVault();
+    if (!current?.refreshToken && !useCookieFlow) return { tokens: null };
     try {
       const base = getConfiguredApiBaseUrl();
       if (isNativeCapacitor() && !base) return { tokens: null };
       const res = await fetch(`${base}/api/auth/refresh`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           'X-Device-Id': getOrCreatePersistentDeviceId(),
+          'X-Requested-With': 'awlad-selim-spa',
         },
-        body: JSON.stringify({ refreshToken: current.refreshToken }),
+        body: JSON.stringify(current?.refreshToken ? { refreshToken: current.refreshToken } : {}),
       });
       const data = await res.json().catch(() => null);
       if (res.status === 503 || data?.code === 'DATABASE_UNAVAILABLE') {
@@ -802,7 +885,7 @@ async function refreshAccessToken(): Promise<RefreshAttemptResult> {
       }
       if (data?.ok && data.accessToken && data.refreshToken) {
         const nextTokens = { accessToken: data.accessToken, refreshToken: data.refreshToken };
-        saveStoredTokens(nextTokens);
+        await saveStoredTokensAsync(nextTokens).catch(() => {});
         return { tokens: nextTokens };
       }
       saveStoredTokens(null);
@@ -855,6 +938,7 @@ export async function apiRequest<T = any>(
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'X-Device-Id': getOrCreatePersistentDeviceId(),
+      'X-Requested-With': 'awlad-selim-spa',
     };
     if (accessToken && !options.skipAuth) {
       headers['Authorization'] = `Bearer ${accessToken}`;
@@ -871,6 +955,7 @@ export async function apiRequest<T = any>(
         url,
         {
           method,
+          credentials: 'include',
           headers: buildHeaders(token),
           body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
         },
@@ -903,8 +988,8 @@ export async function apiRequest<T = any>(
 
   let refreshAuthErrorMessage: string | undefined;
   if (res.status === 401 && !options.skipAuth) {
-    if (tokens?.refreshToken) {
-      const refreshOutcome = await refreshAccessToken();
+    if (tokens?.refreshToken || !shouldPersistTokensInNativeVault()) {
+      const refreshOutcome = await refreshAccessToken(!tokens?.refreshToken);
       if (refreshOutcome.dbUnavailableError) {
         throw refreshOutcome.dbUnavailableError;
       }

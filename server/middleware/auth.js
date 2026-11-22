@@ -129,9 +129,68 @@ export function clearLoginFailure(req) {
   }
 }
 
+const REGISTER_RATE_WINDOW_MS = 15 * 60 * 1000;
+const MAX_REGISTER_REQUESTS = 25;
+const registerRateMap = new Map();
+const BOOTSTRAP_RATE_WINDOW_MS = 15 * 60 * 1000;
+const MAX_BOOTSTRAP_REQUESTS = 15;
+const bootstrapRateMap = new Map();
+const REFRESH_RATE_WINDOW_MS = 15 * 60 * 1000;
+const MAX_REFRESH_REQUESTS = 90;
+const refreshRateMap = new Map();
+
+function checkWindowedIpLimit(map, windowMs, maxReq, code, errorMsg) {
+  return (req, res, next) => {
+    const ip = getClientIp(req);
+    const now = Date.now();
+    const entry = map.get(ip);
+    if (!entry || now - entry.windowStart >= windowMs) {
+      map.set(ip, { count: 1, windowStart: now });
+      return next();
+    }
+    entry.count += 1;
+    map.set(ip, entry);
+    if (entry.count > maxReq) {
+      return res.status(429).json({
+        ok: false,
+        code,
+        error: errorMsg,
+      });
+    }
+    return next();
+  };
+}
+
+export const checkRegisterRateLimit = checkWindowedIpLimit(
+  registerRateMap,
+  REGISTER_RATE_WINDOW_MS,
+  MAX_REGISTER_REQUESTS,
+  'REGISTER_RATE_LIMITED',
+  'تم تجاوز الحد المسموح به لطلبات التسجيل من هذا العنوان. يرجى المحاولة لاحقًا.'
+);
+
+export const checkBootstrapRateLimit = checkWindowedIpLimit(
+  bootstrapRateMap,
+  BOOTSTRAP_RATE_WINDOW_MS,
+  MAX_BOOTSTRAP_REQUESTS,
+  'BOOTSTRAP_RATE_LIMITED',
+  'تم تجاوز الحد المسموح به لمحاولات التهيئة من هذا العنوان. يرجى المحاولة لاحقًا.'
+);
+
+export const checkRefreshRateLimit = checkWindowedIpLimit(
+  refreshRateMap,
+  REFRESH_RATE_WINDOW_MS,
+  MAX_REFRESH_REQUESTS,
+  'REFRESH_RATE_LIMITED',
+  'تم تجاوز الحد المسموح به لطلبات تجديد الجلسة. يرجى المحاولة لاحقًا.'
+);
+
 export function resetAllRateLimitsForTests() {
   failedLoginMap.clear();
   pairingRateMap.clear();
+  registerRateMap.clear();
+  bootstrapRateMap.clear();
+  refreshRateMap.clear();
   rateLimitsHydrated = true;
   const filePath = getRateLimitFilePath();
   if (filePath) {
@@ -163,12 +222,80 @@ export function checkPairingRateLimit(req, res, next) {
   return next();
 }
 
+export function parseCookieHeader(cookieHeader) {
+  const out = {};
+  const raw = String(cookieHeader || '');
+  if (!raw) return out;
+  for (const part of raw.split(';')) {
+    const idx = part.indexOf('=');
+    if (idx <= 0) continue;
+    const name = part.slice(0, idx).trim();
+    const val = part.slice(idx + 1).trim();
+    if (!name) continue;
+    try {
+      out[name] = decodeURIComponent(val);
+    } catch {
+      out[name] = val;
+    }
+  }
+  return out;
+}
+
+export function verifyCookieCsrfRequest(req) {
+  const method = String(req.method || 'GET').toUpperCase();
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+    return true;
+  }
+  // Custom header required on cookie-authenticated browser state changes (CORS preflight protects cross-origin)
+  const xRequestedWith = String(req.get('x-requested-with') || '').trim();
+  if (!xRequestedWith) {
+    return false;
+  }
+  const origin = req.get('origin');
+  if (origin) {
+    try {
+      const originHost = new URL(origin).host.toLowerCase();
+      const host = String(req.get('host') || '').trim().toLowerCase();
+      const allowedRaw = String(process.env.ALLOWED_ORIGINS || '').trim();
+      const allowedList = allowedRaw ? allowedRaw.split(',').map((s) => s.trim()).filter(Boolean) : [];
+      const isCapacitor = origin === 'capacitor://localhost' || origin === 'ionic://localhost';
+      const isAllowedList = allowedList.includes(origin);
+      const isSameHost = Boolean(host) && originHost === host;
+      if (!isSameHost && !isAllowedList && !isCapacitor) {
+        return false;
+      }
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
 export async function requireAuth(req, res, next) {
   try {
     const authHeader = req.get('authorization') || '';
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    let token = bearerToken;
+    let usingCookieAuth = false;
+
+    if (!token) {
+      const cookies = parseCookieHeader(req.get('cookie'));
+      if (cookies.awlad_access_token) {
+        token = cookies.awlad_access_token;
+        usingCookieAuth = true;
+      }
+    }
+
     if (!token) {
       return res.status(401).json({ ok: false, code: 'UNAUTHORIZED', error: 'مطلوب تسجيل الدخول أولاً' });
+    }
+
+    if (usingCookieAuth && !verifyCookieCsrfRequest(req)) {
+      return res.status(403).json({
+        ok: false,
+        code: 'CSRF_FORBIDDEN',
+        error: 'تم رفض الطلب لعدم تحقق حماية CSRF للجلسة.',
+      });
     }
 
     const payload = verifyJwt(token);
@@ -194,6 +321,7 @@ export async function requireAuth(req, res, next) {
       customerProfile: sessionCtx.customerProfile,
       representativeProfile: sessionCtx.representativeProfile,
       linkWarning: sessionCtx.linkWarning,
+      viaCookie: usingCookieAuth,
     };
     next();
   } catch (err) {

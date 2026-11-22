@@ -1624,7 +1624,15 @@ export async function updateOrderDeliveryStatus(orderId, payload, authContext) {
       const ordRes = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1 FOR UPDATE`, [orderId]);
       const row = ordRes.rows[0];
       if (!row) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
-      if (['rejected', 'cancelled', 'closed'].includes(row.status)) {
+const DELIVERY_ALLOWED_SOURCE_STATUSES = new Set([
+        'approved',
+        'rep_assigned',
+        'preparing',
+        'out_for_delivery',
+        'invoiced',
+        'delivered',
+      ]);
+      if (!DELIVERY_ALLOWED_SOURCE_STATUSES.has(row.status)) {
         throw new AppError(409, `لا يمكن تحديث التوصيل لطلب بحالة (${row.status})`, 'INVALID_ORDER_TRANSITION');
       }
       if (isRep) {
@@ -1647,7 +1655,7 @@ export async function updateOrderDeliveryStatus(orderId, payload, authContext) {
               notes: deliveryNotes || `تحصيل مندوب عند تسليم الطلب رقم ${row.request_number}`,
             },
             actor,
-            '',
+            idempotencyKey ? `${idempotencyKey}-invpay` : '',
             { skipAuditLog: true }
           );
         } else {
@@ -1760,7 +1768,15 @@ export async function updateOrderDeliveryStatus(orderId, payload, authContext) {
 
     const ord = db.customerItemOrders.find((o) => o.id === orderId);
     if (!ord) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
-    if (['rejected', 'cancelled', 'closed'].includes(ord.status)) {
+    const DELIVERY_ALLOWED_SOURCE_STATUSES_JSON = new Set([
+      'approved',
+      'rep_assigned',
+      'preparing',
+      'out_for_delivery',
+      'invoiced',
+      'delivered',
+    ]);
+    if (!DELIVERY_ALLOWED_SOURCE_STATUSES_JSON.has(ord.status)) {
       throw new AppError(409, `لا يمكن تحديث التوصيل لطلب بحالة (${ord.status})`, 'INVALID_ORDER_TRANSITION');
     }
     if (isRep) {
@@ -1783,7 +1799,7 @@ export async function updateOrderDeliveryStatus(orderId, payload, authContext) {
             notes: deliveryNotes || `تحصيل مندوب عند تسليم الطلب رقم ${ord.requestNumber}`,
           },
           actor,
-          ''
+          idempotencyKey ? `${idempotencyKey}-invpay` : ''
         );
       } else {
         advanceResult = recordOrderAdvancePaymentJsonTx(
@@ -2155,7 +2171,7 @@ export async function advanceOrderStage(orderId, payload, authContext) {
               notes: notes || `تحصيل على الطلب رقم ${row.request_number}`,
             },
             actor,
-            '',
+            idempotencyKey ? `${idempotencyKey}-invpay` : '',
             { skipAuditLog: true }
           );
           updatedInvoice = payRes.invoice;
@@ -2337,7 +2353,7 @@ export async function advanceOrderStage(orderId, payload, authContext) {
             notes: notes || `تحصيل على الطلب رقم ${ord.requestNumber}`,
           },
           actor,
-          ''
+          idempotencyKey ? `${idempotencyKey}-invpay` : ''
         );
         updatedInvoice = payRes.invoice;
       } else {

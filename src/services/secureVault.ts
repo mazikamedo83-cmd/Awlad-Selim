@@ -123,58 +123,71 @@ async function getOrCreateWebCryptoKey(): Promise<CryptoKey | null> {
   }
 }
 
+export class SecureVaultError extends Error {
+  code: string;
+  constructor(message: string, code = 'SECURE_VAULT_UNAVAILABLE') {
+    super(message);
+    this.name = 'SecureVaultError';
+    this.code = code;
+  }
+}
+
 interface EncryptedVaultEnvelope {
   v: 1;
   iv: number[];
   ct: number[];
 }
 
-interface PlainIdbEnvelope {
-  v: 0;
-  json: string;
+function isHeadlessNonIdbTestEnv(): boolean {
+  return typeof indexedDB === 'undefined';
 }
 
 async function sealWebSecret(key: string, jsonStr: string): Promise<void> {
-  const db = await openVaultIdb();
-  if (!db) {
+  if (isHeadlessNonIdbTestEnv()) {
     memoryFallbackStore.set(key, jsonStr);
     return;
   }
 
-  const cryptoKey = await getOrCreateWebCryptoKey();
-  if (cryptoKey && typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
-    try {
-      const iv = new Uint8Array(12);
-      crypto.getRandomValues(iv);
-      const encoded = new TextEncoder().encode(jsonStr);
-      const cipherBuf = await crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv: iv.buffer as ArrayBuffer },
-        cryptoKey,
-        encoded
-      );
-      const payload: EncryptedVaultEnvelope = {
-        v: 1,
-        iv: Array.from(iv),
-        ct: Array.from(new Uint8Array(cipherBuf)),
-      };
-      await idbVaultSet(STORE_SECRETS, key, payload);
-      return;
-    } catch {
-      // fall through to IndexedDB origin-isolated fallback below
-    }
+  const db = await openVaultIdb();
+  if (!db) {
+    throw new SecureVaultError('تعذر فتح قاعدة التشفير المحلية للمتصفح لحماية البيانات الحساسة.');
   }
 
-  const fallback: PlainIdbEnvelope = { v: 0, json: jsonStr };
-  await idbVaultSet(STORE_SECRETS, key, fallback);
+  const cryptoKey = await getOrCreateWebCryptoKey();
+  if (!cryptoKey || typeof crypto === 'undefined' || typeof crypto.getRandomValues !== 'function') {
+    throw new SecureVaultError(
+      'تشفير WebCrypto AES-GCM غير متاح في هذه البيئة؛ يُمنع حفظ البيانات الحساسة بدون تشفير.'
+    );
+  }
+
+  const iv = new Uint8Array(12);
+  crypto.getRandomValues(iv);
+  const encoded = new TextEncoder().encode(jsonStr);
+  const cipherBuf = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: iv.buffer as ArrayBuffer },
+    cryptoKey,
+    encoded
+  );
+  const payload: EncryptedVaultEnvelope = {
+    v: 1,
+    iv: Array.from(iv),
+    ct: Array.from(new Uint8Array(cipherBuf)),
+  };
+  const saved = await idbVaultSet(STORE_SECRETS, key, payload);
+  if (!saved) {
+    throw new SecureVaultError('فشل حفظ البيانات المشفرة في المخزن المحلي.');
+  }
 }
 
 async function unsealWebSecret(key: string): Promise<string | null> {
-  const db = await openVaultIdb();
-  if (!db) {
+  if (isHeadlessNonIdbTestEnv()) {
     return memoryFallbackStore.get(key) ?? null;
   }
 
-  const stored = await idbVaultGet<EncryptedVaultEnvelope | PlainIdbEnvelope>(STORE_SECRETS, key);
+  const db = await openVaultIdb();
+  if (!db) return null;
+
+  const stored = await idbVaultGet<EncryptedVaultEnvelope>(STORE_SECRETS, key);
   if (!stored) return null;
 
   if (stored.v === 1 && Array.isArray(stored.iv) && Array.isArray(stored.ct)) {
@@ -194,10 +207,6 @@ async function unsealWebSecret(key: string): Promise<string | null> {
     }
   }
 
-  if (stored.v === 0 && typeof stored.json === 'string') {
-    return stored.json;
-  }
-
   return null;
 }
 
@@ -205,16 +214,33 @@ export async function sealJson(key: string, value: unknown): Promise<void> {
   const jsonStr = JSON.stringify(value);
   const electronVault = getElectronSecureVaultBridge();
   if (electronVault) {
-    const res = await electronVault.setItem(key, jsonStr);
-    if (res?.ok) return;
+    let res: { ok: boolean; error?: string } | null = null;
+    try {
+      res = await electronVault.setItem(key, jsonStr);
+    } catch (err: any) {
+      throw new SecureVaultError(
+        err?.message || 'فشل الوصول إلى المخزن الآمن لنظام التشغيل (safeStorage). يرجى إعادة المحاولة.',
+        'ELECTRON_VAULT_ERROR'
+      );
+    }
+    if (!res?.ok) {
+      throw new SecureVaultError(
+        (res as any)?.error || 'تعذر حفظ البيانات داخل المخزن الآمن لنظام التشغيل (safeStorage).',
+        'ELECTRON_VAULT_ERROR'
+      );
+    }
+    return;
   }
 
   if (isNativeCapacitor()) {
     try {
       await NativeSecureVault.setItem({ key, value: jsonStr });
       return;
-    } catch {
-      // fall back cleanly to IndexedDB WebCrypto vault
+    } catch (err: any) {
+      throw new SecureVaultError(
+        err?.message || 'فشل الحفظ داخل المخزن الآمن الأصلي للجهاز (Keystore/Keychain).',
+        'NATIVE_VAULT_ERROR'
+      );
     }
   }
 
@@ -226,20 +252,23 @@ export async function unsealJson<T = unknown>(key: string): Promise<T | null> {
 
   const electronVault = getElectronSecureVaultBridge();
   if (electronVault) {
-    try {
-      const res = await electronVault.getItem(key);
-      if (res?.ok && typeof res.value === 'string') {
-        raw = res.value;
-      }
-    } catch {
-      raw = null;
+    const res = await electronVault.getItem(key);
+    if (!res?.ok) {
+      throw new SecureVaultError(
+        (res as any)?.error || 'فشل قراءة المخزن الآمن لنظام التشغيل (safeStorage).',
+        'ELECTRON_VAULT_ERROR'
+      );
     }
+    raw = typeof res.value === 'string' ? res.value : null;
   } else if (isNativeCapacitor()) {
     try {
       const res = await NativeSecureVault.getItem({ key });
       raw = typeof res?.value === 'string' ? res.value : null;
-    } catch {
-      raw = null;
+    } catch (err: any) {
+      throw new SecureVaultError(
+        err?.message || 'فشل قراءة المخزن الآمن الأصلي للجهاز (Keystore/Keychain).',
+        'NATIVE_VAULT_ERROR'
+      );
     }
   } else {
     raw = await unsealWebSecret(key);
@@ -258,11 +287,13 @@ export async function removeSealedKey(key: string): Promise<void> {
 
   const electronVault = getElectronSecureVaultBridge();
   if (electronVault) {
-    await electronVault.removeItem(key).catch(() => {});
+    await electronVault.removeItem(key);
+    return;
   }
 
   if (isNativeCapacitor()) {
-    await NativeSecureVault.removeItem({ key }).catch(() => {});
+    await NativeSecureVault.removeItem({ key });
+    return;
   }
 
   await idbVaultRemove(STORE_SECRETS, key).catch(() => {});

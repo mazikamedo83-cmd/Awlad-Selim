@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { getPool, withTransaction, isPgConnectionError, sanitizePgErrorMessage } from '../postgres.js';
 import {
   withJsonTransaction,
@@ -223,6 +224,39 @@ export async function getAuthStatus() {
   };
 }
 
+function constantTimeEqualSecret(provided, expected) {
+  if (typeof provided !== 'string' || typeof expected !== 'string' || !expected) return false;
+  const a = Buffer.from(sha256Hex(provided), 'utf8');
+  const b = Buffer.from(sha256Hex(expected), 'utf8');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function toAdvisoryLockInt32(key) {
+  const hex = sha256Hex(String(key || '')).slice(0, 8);
+  return (Number.parseInt(hex, 16) | 0) || 1;
+}
+
+async function acquirePgTxAdvisoryLock(client, namespaceInt, keyInt) {
+  let savepointCreated = false;
+  try {
+    await client.query('SAVEPOINT sp_adv_lock');
+    savepointCreated = true;
+    await client.query('SELECT pg_advisory_xact_lock($1::int, $2::int)', [namespaceInt, keyInt]);
+    await client.query('RELEASE SAVEPOINT sp_adv_lock');
+  } catch (err) {
+    if (savepointCreated) {
+      await client.query('ROLLBACK TO SAVEPOINT sp_adv_lock').catch(() => {});
+      await client.query('RELEASE SAVEPOINT sp_adv_lock').catch(() => {});
+    }
+    const msg = String(err?.message || '').toLowerCase();
+    // Only tolerate pg-mem test-harness lack of savepoints / pg_advisory_xact_lock; rethrow real PG/connection errors
+    if (msg.includes('pg-mem') || msg.includes('pg_advisory_xact_lock')) {
+      return;
+    }
+    throw err;
+  }
+}
+
 export async function bootstrapAdmin(
   { fullName, username, password, phone = '', companyName = '', bootstrapSecret = '' },
   meta = {}
@@ -234,8 +268,8 @@ export async function bootstrapAdmin(
   const expectedSecret = String(process.env.BOOTSTRAP_ADMIN_SECRET || '').trim();
   if (expectedSecret) {
     const providedSecret = String(meta.bootstrapSecret || bootstrapSecret || '').trim();
-    if (!providedSecret || providedSecret !== expectedSecret) {
-      throw new AppError(403, 'مفتاح التهيئة الأولية (Bootstrap Secret) غير صحيح أو مفقود', 'BOOTSTRAP_SECRET_REQUIRED');
+    if (!constantTimeEqualSecret(providedSecret, expectedSecret)) {
+      throw new AppError(403, 'تعذر إتمام عملية التهيئة الأولية للنظام.', 'BOOTSTRAP_FORBIDDEN');
     }
   }
   if (!cleanUser || cleanUser.length < 3) {
@@ -255,13 +289,23 @@ export async function bootstrapAdmin(
     const ensuredInstallationId = await ensureInstallationId();
 
     if (await isPgMode()) {
-      const created = await withTransaction(async (client) => {
-        const existingUsers = await client.query(`SELECT id, role FROM users FOR UPDATE`);
-        const totalUsers = existingUsers.rows.length;
-        const adminCount = existingUsers.rows.filter((r) => r.role === 'admin').length;
-        if (totalUsers > 0 || adminCount > 0) {
-          throw new AppError(403, 'تم تهيئة حساب المدير مسبقًا. استخدم تسجيل الدخول.', 'ALREADY_BOOTSTRAPPED');
-        }
+      let created;
+      try {
+        created = await withTransaction(async (client) => {
+          await acquirePgTxAdvisoryLock(client, 849201, 1);
+
+          const existingUsers = await client.query(`SELECT id, role FROM users`);
+          const totalUsers = existingUsers.rows.length;
+          const adminCount = existingUsers.rows.filter((r) => r.role === 'admin').length;
+          if (totalUsers > 0 || adminCount > 0) {
+            throw new AppError(403, 'تم تهيئة حساب المدير مسبقًا. استخدم تسجيل الدخول.', 'ALREADY_BOOTSTRAPPED');
+          }
+
+          // Atomic singleton guard across all PG processes and connections
+          await client.query(
+            `INSERT INTO system_bootstrap_lock (id, admin_user_id, created_at) VALUES ('singleton', $1, $2)`,
+            [adminId, now]
+          );
 
         await client.query(
           `INSERT INTO users (id, full_name, username, password_hash, password_algo, phone, role, job_title, department, is_active, must_change_password, permissions, created_at)
@@ -309,9 +353,15 @@ export async function bootstrapAdmin(
           }
         }
 
-        const uRes = await client.query('SELECT * FROM users WHERE id = $1', [adminId]);
-        return mapPgUserRow(uRes.rows[0]);
-      });
+          const uRes = await client.query('SELECT * FROM users WHERE id = $1', [adminId]);
+          return mapPgUserRow(uRes.rows[0]);
+        });
+      } catch (err) {
+        if (err?.code === '23505') {
+          throw new AppError(403, 'تم تهيئة حساب المدير مسبقًا. استخدم تسجيل الدخول.', 'ALREADY_BOOTSTRAPPED');
+        }
+        throw err;
+      }
 
       await recordAuditLog({
         userId: created.id,
@@ -873,6 +923,12 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
     let result;
     try {
       result = await withTransaction(async (client) => {
+        // Cross-process PostgreSQL transaction advisory locks on username & phone
+        await acquirePgTxAdvisoryLock(client, 849202, toAdvisoryLockInt32(`u:${cleanUsernameLower}`));
+        if (normPhone) {
+          await acquirePgTxAdvisoryLock(client, 849203, toAdvisoryLockInt32(`p:${role}:${normPhone}`));
+        }
+
         if (scopedIdem) {
           const txDup = await findPgIdempotency(client, scopedIdem);
           if (txDup?.response && txDup.payloadDigest === payloadDigest) {

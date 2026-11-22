@@ -1783,6 +1783,41 @@ export async function getComprehensiveReport(filters = {}, actor) {
     }
   }
 
+  const isRepActor = actor?.role === 'representative';
+  const repProfile = isRepActor
+    ? ((data.representatives || []).find((r) => r.userId === actor?.id || r.id === actor?.representativeId) ||
+        (await getRepresentativeByUserId(actor?.id)))
+    : null;
+  const canViewPayrollRows = actor?.role === 'admin' || actor?.permissions?.canManageSalaries === true || actor?.permissions?.canManageEmployees === true;
+  if (!canViewPayrollRows) {
+    sections = sections
+      .map((sec) => {
+        if (sec.key !== 'cash_payment_employee') return sec;
+        return makeSection(sec.key, sec.title, sec.theme, sec.isInvoiceLayout, [], { cashHighlightCol: sec.cashHighlightCol });
+      })
+      .filter((sec) => reportType === 'cash_payment_employee' || sec.rows.length > 0);
+  }
+  if (isRepActor) {
+    sections = sections.map((sec) => {
+      const redactedRows = (sec.rows || []).map((r) => ({
+        ...r,
+        profit: 0,
+        costValue: 0,
+        profitPercent: 0,
+      }));
+      return {
+        ...sec,
+        rows: redactedRows,
+        totals: {
+          ...sec.totals,
+          profit: 0,
+          costValue: 0,
+          profitPercent: 0,
+        },
+      };
+    });
+  }
+
   // ============================================================================
   // Bottom Bar Exact Reconciliation:
   //   carriedFromYesterday (مرحل من الأمس)
@@ -1790,11 +1825,13 @@ export async function getComprehensiveReport(filters = {}, actor) {
   // = drawerBalance        (رصيد الدرج)
   // + reportProfit         (ربح التقرير)
   // ============================================================================
-  let targetCashboxes = data.cashboxes || [];
-  if (cashboxId) {
-    targetCashboxes = targetCashboxes.filter((c) => c.id === cashboxId);
-  } else if (branchCashboxId) {
-    targetCashboxes = targetCashboxes.filter((c) => c.id === branchCashboxId);
+  let targetCashboxes = isRepActor ? [] : (data.cashboxes || []);
+  if (!isRepActor) {
+    if (cashboxId) {
+      targetCashboxes = targetCashboxes.filter((c) => c.id === cashboxId);
+    } else if (branchCashboxId) {
+      targetCashboxes = targetCashboxes.filter((c) => c.id === branchCashboxId);
+    }
   }
   const targetCashboxSet = new Set(targetCashboxes.map((c) => c.id));
   const cashboxNameToId = new Map((data.cashboxes || []).map((c) => [String(c.name || '').trim(), c.id]));
@@ -1866,11 +1903,31 @@ export async function getComprehensiveReport(filters = {}, actor) {
       .reduce((s, r) => s + Number(r.valueOrPaid || 0), 0)
   );
 
+  if (isRepActor) {
+    reportProfit = 0;
+    reportCost = 0;
+  }
+
   // ============================================================================
   // Optional Full Item Lifecycle + Per-Item P&L (when productId selected OR includeItemPnl=true)
   // ============================================================================
   const itemLifecycle = productId ? buildProductLifecycleHistory(productId, data, resolvers, { dateFrom, dateTo, warehouseId }) : null;
-  const itemPnlList = buildProductsPnlAnalysis(data, { dateFrom, dateTo, warehouseId, branchWarehouseId, productId, customerId, supplierId, userMatchKeys });
+  const rawItemPnlList = buildProductsPnlAnalysis(data, { dateFrom, dateTo, warehouseId, branchWarehouseId, productId, customerId, supplierId, userMatchKeys });
+  const itemPnlList = isRepActor
+    ? rawItemPnlList.map((it) => ({
+        ...it,
+        cogs: 0,
+        grossProfit: 0,
+        netProfit: 0,
+        profitPercentOnCost: 0,
+        profitMarginOnSales: 0,
+        avgPurchasePrice: 0,
+        minPurchasePrice: 0,
+        maxPurchasePrice: 0,
+        lastPurchasePrice: 0,
+        currentStockValue: 0,
+      }))
+    : rawItemPnlList;
 
   return {
     reportType,
@@ -1895,9 +1952,11 @@ export async function getComprehensiveReport(filters = {}, actor) {
       search,
     },
     filterOptions: {
-      branches: resolvers.branches,
-      warehouses: data.warehouses || [],
-      cashboxes: data.cashboxes || [],
+      branches: isRepActor ? [] : resolvers.branches,
+      warehouses: isRepActor
+        ? (data.warehouses || []).filter((w) => Boolean(repProfile?.warehouseId) && w.id === repProfile.warehouseId)
+        : (data.warehouses || []),
+      cashboxes: isRepActor ? [] : (data.cashboxes || []),
       products: (data.products || []).map((p) => ({
         id: p.id,
         code: p.code,
@@ -1909,10 +1968,14 @@ export async function getComprehensiveReport(filters = {}, actor) {
         color: p.color,
       })),
       customers: (data.customers || []).map((c) => ({ id: c.id, name: c.name, phone: c.phone })),
-      suppliers: (data.suppliers || []).map((s) => ({ id: s.id, name: s.name, phone: s.phone })),
-      employees: (data.employees || []).map((e) => ({ id: e.id, name: e.name, jobTitle: e.jobTitle })),
-      representatives: (data.representatives || []).map((r) => ({ id: r.id, name: r.name, warehouseId: r.warehouseId })),
-      users: (data.users || []).map((u) => ({ id: u.id, fullName: u.fullName, username: u.username, role: u.role })),
+      suppliers: isRepActor ? [] : (data.suppliers || []).map((s) => ({ id: s.id, name: s.name, phone: s.phone })),
+      employees: canViewPayrollRows && !isRepActor ? (data.employees || []).map((e) => ({ id: e.id, name: e.name, jobTitle: e.jobTitle })) : [],
+      representatives: isRepActor
+        ? (data.representatives || [])
+            .filter((r) => r.userId === actor?.id || r.id === repProfile?.id)
+            .map((r) => ({ id: r.id, name: r.name, warehouseId: r.warehouseId }))
+        : (data.representatives || []).map((r) => ({ id: r.id, name: r.name, warehouseId: r.warehouseId })),
+      users: isRepActor ? [] : (data.users || []).map((u) => ({ id: u.id, fullName: u.fullName, username: u.username, role: u.role })),
     },
     sections,
     summary: {

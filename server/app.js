@@ -89,6 +89,7 @@ export async function initializeServerRuntime() {
           fullName: process.env.ADMIN_INITIAL_FULL_NAME || 'المدير العام',
           username: initUser,
           password: initPass,
+          bootstrapSecret: process.env.BOOTSTRAP_ADMIN_SECRET || '',
         });
         console.log(`[Bootstrap] Created initial admin account from environment variables.`);
       }
@@ -103,10 +104,34 @@ export async function initializeServerRuntime() {
   }
 }
 
+function resolveTrustProxySetting() {
+  const raw = String(process.env.TRUST_PROXY || '').trim().toLowerCase();
+  if (raw === 'true') return 1;
+  if (/^\d+$/.test(raw)) {
+    const hops = Number.parseInt(raw, 10);
+    return hops > 0 ? hops : false;
+  }
+  return false;
+}
+
+function isDirectLoopbackSocket(req) {
+  const addr = String(req.socket?.remoteAddress || '');
+  return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
+}
+
+function isRequestHttps(req) {
+  if (req.secure) return true;
+  if (req.app?.get('trust proxy')) {
+    const xfProto = String(req.get('x-forwarded-proto') || '').split(',')[0].trim().toLowerCase();
+    return xfProto === 'https';
+  }
+  return false;
+}
+
 export function createApiApp() {
   const app = express();
 
-  app.set('trust proxy', process.env.TRUST_PROXY === 'false' ? false : 1);
+  app.set('trust proxy', resolveTrustProxySetting());
 
   const capacitorOrigins = new Set([
     'capacitor://localhost',
@@ -131,10 +156,33 @@ export function createApiApp() {
   };
 
   app.disable('x-powered-by');
-  app.use((_req, res, next) => {
+  app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('X-Frame-Options', 'DENY');
+    if (isRequestHttps(req)) {
+      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
     next();
+  });
+
+  // Enforce HTTPS for external/proxied production traffic unless explicitly running desktop/LAN mode
+  app.use((req, res, next) => {
+    const isProd = process.env.NODE_ENV === 'production';
+    const isLocalExplicit = process.env.AWLAD_ELECTRON === 'true' || process.env.ALLOW_MOBILE_LAN_HTTP === 'true';
+    const xfProtoHeader = String(req.get('x-forwarded-proto') || '').split(',')[0].trim().toLowerCase();
+    const proxiedHttp = Boolean(req.app?.get('trust proxy') && xfProtoHeader && xfProtoHeader !== 'https');
+    if (!isProd || isLocalExplicit) {
+      return next();
+    }
+    if (!proxiedHttp && (isDirectLoopbackSocket(req) || isRequestHttps(req))) {
+      return next();
+    }
+    return res.status(403).json({
+      ok: false,
+      code: 'HTTPS_REQUIRED',
+      error: 'الاتصال غير المشفر عبر HTTP غير مسموح به خارج الشبكة المحلية في بيئة الإنتاج. يرجى استخدام HTTPS.',
+    });
   });
 
   app.use(
@@ -143,13 +191,22 @@ export function createApiApp() {
       const allowedList = allowedOriginsEnv
         ? allowedOriginsEnv.split(',').map((s) => s.trim()).filter(Boolean)
         : null;
-      const allowMobileLanHttp = process.env.ALLOW_MOBILE_LAN_HTTP !== 'false';
-      const allowCloudflareTunnel = process.env.ALLOW_CLOUDFLARE_QUICK_TUNNEL !== 'false';
+      const allowMobileLanHttp = process.env.ALLOW_MOBILE_LAN_HTTP === 'true';
+      const allowCloudflareTunnel = process.env.ALLOW_CLOUDFLARE_QUICK_TUNNEL === 'true';
+      const isProd = process.env.NODE_ENV === 'production';
 
       const origin = req.get('origin');
       const corsOptions = {
-        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Device-Info', 'X-Device-Id'],
+        methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+        allowedHeaders: [
+          'Content-Type',
+          'Authorization',
+          'Idempotency-Key',
+          'X-Device-Info',
+          'X-Device-Id',
+          'X-Requested-With',
+          'X-CSRF-Token',
+        ],
         credentials: true,
       };
       if (!origin) return cb(null, { ...corsOptions, origin: true });
@@ -159,25 +216,7 @@ export function createApiApp() {
       ) {
         return cb(null, { ...corsOptions, origin: true });
       }
-      // Allow same-host origin behind Cloudflare Tunnel / Nginx Reverse Proxy / Cloud VPS
-      try {
-        const originHost = new URL(origin).host.toLowerCase();
-        const forwardedHost = (req.get('x-forwarded-host') || req.get('host') || '')
-          .split(',')[0]
-          .trim()
-          .toLowerCase();
-        if (forwardedHost && originHost === forwardedHost) {
-          return cb(null, { ...corsOptions, origin: true });
-        }
-      } catch {
-        // ignore malformed origin URL
-      }
-      if (!allowedList) {
-        if (process.env.NODE_ENV === 'production') {
-          return cb(new AppError(403, 'Origin not allowed by CORS', 'CORS_FORBIDDEN'));
-        }
-        // Check explicit tunnel/LAN patterns even if allowedList is unset
-      } else if (allowedList.some((pat) => matchesOriginPattern(origin, pat))) {
+      if (allowedList && allowedList.some((pat) => matchesOriginPattern(origin, pat))) {
         return cb(null, { ...corsOptions, origin: true });
       }
       if (
@@ -192,7 +231,23 @@ export function createApiApp() {
       ) {
         return cb(null, { ...corsOptions, origin: true });
       }
-      if (!allowedList && process.env.NODE_ENV !== 'production') {
+      // Same-host browser request behind verified trusted proxy or non-production dev server only when not bypassing production ALLOWED_ORIGINS
+      if (!isProd || allowedList) {
+        try {
+          const originHost = new URL(origin).host.toLowerCase();
+          const trustedProxyHost = app.get('trust proxy') ? req.get('x-forwarded-host') : '';
+          const candidateHost = String(trustedProxyHost || req.get('host') || '')
+            .split(',')[0]
+            .trim()
+            .toLowerCase();
+          if (candidateHost && originHost === candidateHost && (!isProd || (allowedList && allowedList.some((pat) => matchesOriginPattern(origin, pat))))) {
+            return cb(null, { ...corsOptions, origin: true });
+          }
+        } catch {
+          // ignore malformed origin URL
+        }
+      }
+      if (!allowedList && !isProd) {
         return cb(null, { ...corsOptions, origin: true });
       }
       return cb(new AppError(403, 'Origin not allowed by CORS', 'CORS_FORBIDDEN'));
@@ -238,11 +293,8 @@ export function createApiApp() {
           }
         }
       }
-      const forwardedProto = String(req.get('x-forwarded-proto') || req.protocol || 'http')
-        .split(',')[0]
-        .trim()
-        .toLowerCase();
-      const httpsActive = forwardedProto === 'https' || Boolean(req.secure);
+      const httpsActive = isRequestHttps(req);
+      const forwardedProto = httpsActive ? 'https' : 'http';
       const tunnelState = getTunnelRuntimeStatus();
 
       if (strict && pgStatus.status !== 'online') {

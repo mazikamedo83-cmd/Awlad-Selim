@@ -1398,6 +1398,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (hydratedUserRef.current !== currentUser.id) {
         hydratedUserRef.current = currentUser.id;
+        // Clear previous user's state synchronously before async local cache load so stale records never leak across switches
+        setData(getEmptyClientDatabaseState());
+        setCustomerStatement(null);
+        setCachedMediaMap({});
+        setMobileNotifications([]);
+        setSyncQueue([]);
+        setSyncConflicts([]);
+        setLastServerSyncAt(null);
+        setIsUsingOfflineCache(false);
+        setLastCacheTimestamp(null);
+
         const [snap, queue, conflicts, lastSyncMeta] = await Promise.all([
           localDb.getSnapshot(currentUser.id),
           localDb.listSyncQueue(currentUser.id),

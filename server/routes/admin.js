@@ -124,7 +124,7 @@ router.get(
       postgresStatus: pgHealth.status,
       protocol: forwardedProto,
       httpsActive: forwardedProto === 'https' || Boolean(req.secure),
-      trustProxy: process.env.TRUST_PROXY !== 'false',
+      trustProxy: Boolean(req.app.get('trust proxy')),
       tunnelStatus: getTunnelRuntimeStatus(),
       connectionConfig,
       devicesSummary,

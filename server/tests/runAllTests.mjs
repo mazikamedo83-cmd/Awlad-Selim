@@ -1808,43 +1808,96 @@ async function runSuiteA_JsonLedgerHttp() {
       assert.ok(!JSON.stringify(hPlain.json).includes('JWT_SECRET'));
       assert.ok(!JSON.stringify(hPlain.json).includes('tunnelToken'));
 
-      const hProxyHttps = await req(baseUrl, 'GET', '/api/health', {
+      // Unverified X-Forwarded-Proto MUST be ignored when TRUST_PROXY is disabled (default)
+      const hSpoofedProxy = await req(baseUrl, 'GET', '/api/health', {
         headers: { 'X-Forwarded-Proto': 'https', 'X-Forwarded-Host': 'erp.awladselim.example.com' },
       });
-      assert.equal(hProxyHttps.status, 200);
-      assert.equal(hProxyHttps.json.protocol, 'https');
-      assert.equal(hProxyHttps.json.httpsActive, true);
+      assert.equal(hSpoofedProxy.status, 200);
+      assert.equal(hSpoofedProxy.json.protocol, 'http');
+      assert.equal(hSpoofedProxy.json.httpsActive, false);
 
-      // 2. Dynamic CORS allows Capacitor, Quick Tunnel, LAN HTTP, and X-Forwarded-Host even when ALLOWED_ORIGINS is restricted
+      // When TRUST_PROXY=true, trusted reverse-proxy X-Forwarded-Proto=https is honored
+      const prevTrustProxyEnv = process.env.TRUST_PROXY;
+      process.env.TRUST_PROXY = 'true';
+      const trustedProxyApp = await createApiApp({ disableFrontend: true });
+      const trustedProxyServer = http.createServer(trustedProxyApp);
+      await new Promise((resolve) => trustedProxyServer.listen(0, '127.0.0.1', resolve));
+      const trustedProxyPort = trustedProxyServer.address().port;
+      try {
+        const hTrustedProxy = await req(`http://127.0.0.1:${trustedProxyPort}`, 'GET', '/api/health', {
+          headers: { 'X-Forwarded-Proto': 'https', 'X-Forwarded-Host': 'erp.awladselim.example.com' },
+        });
+        assert.equal(hTrustedProxy.status, 200);
+        assert.equal(hTrustedProxy.json.protocol, 'https');
+        assert.equal(hTrustedProxy.json.httpsActive, true);
+      } finally {
+        await new Promise((resolve) => trustedProxyServer.close(resolve));
+        if (prevTrustProxyEnv === undefined) delete process.env.TRUST_PROXY;
+        else process.env.TRUST_PROXY = prevTrustProxyEnv;
+      }
+
+      // 2. Hardened Dynamic CORS: reject trycloudflare, LAN HTTP, and X-Forwarded-Host spoofs unless explicitly enabled
       const prevAllowedOrigins = process.env.ALLOWED_ORIGINS;
+      const prevTunnelFlag = process.env.ALLOW_CLOUDFLARE_QUICK_TUNNEL;
+      const prevLanFlag = process.env.ALLOW_MOBILE_LAN_HTTP;
+      const prevNodeEnv = process.env.NODE_ENV;
       try {
         process.env.ALLOWED_ORIGINS = 'https://office.awladselim.com';
-        const allowedOriginsToCheck = [
-          { origin: 'capacitor://localhost', extraHeaders: {} },
-          { origin: 'https://localhost', extraHeaders: {} },
+        process.env.NODE_ENV = 'production';
+        delete process.env.ALLOW_CLOUDFLARE_QUICK_TUNNEL;
+        delete process.env.ALLOW_MOBILE_LAN_HTTP;
+
+        for (const origin of ['capacitor://localhost', 'https://localhost', 'https://office.awladselim.com']) {
+          const corsRes = await fetch(`${baseUrl}/api/health`, {
+            method: 'OPTIONS',
+            headers: { Origin: origin, 'Access-Control-Request-Method': 'GET' },
+          });
+          assert.equal(corsRes.status, 204);
+          assert.equal(corsRes.headers.get('access-control-allow-origin'), origin);
+        }
+
+        for (const item of [
           { origin: 'https://shop-tunnel.trycloudflare.com', extraHeaders: {} },
           { origin: 'http://192.168.1.55:3000', extraHeaders: {} },
           { origin: 'https://erp.awladselim.com', extraHeaders: { 'X-Forwarded-Host': 'erp.awladselim.com' } },
-        ];
-        for (const item of allowedOriginsToCheck) {
-          const corsRes = await fetch(`${baseUrl}/api/health`, {
-            headers: { Origin: item.origin, ...item.extraHeaders },
+          { origin: 'https://evil-attacker.example.net', extraHeaders: {} },
+        ]) {
+          const blockedRes = await fetch(`${baseUrl}/api/health`, {
+            method: 'OPTIONS',
+            headers: { Origin: item.origin, 'Access-Control-Request-Method': 'GET', ...item.extraHeaders },
           });
-          assert.equal(corsRes.status, 200);
-          assert.equal(
-            corsRes.headers.get('access-control-allow-origin'),
-            item.origin,
-            `Expected CORS allow for origin ${item.origin}`
-          );
+          assert.equal(blockedRes.status, 403, `Expected CORS block when unconfigured for ${item.origin}`);
         }
 
-        const blockedRes = await fetch(`${baseUrl}/api/health`, {
-          headers: { Origin: 'https://evil-attacker.example.net' },
+        // Explicit opt-in flags allow Quick Tunnel and LAN HTTP while attacker origin & X-Forwarded-Host spoof remain blocked
+        process.env.ALLOW_CLOUDFLARE_QUICK_TUNNEL = 'true';
+        process.env.ALLOW_MOBILE_LAN_HTTP = 'true';
+        for (const origin of ['https://shop-tunnel.trycloudflare.com', 'http://192.168.1.55:3000']) {
+          const optInRes = await fetch(`${baseUrl}/api/health`, {
+            method: 'OPTIONS',
+            headers: { Origin: origin, 'Access-Control-Request-Method': 'GET' },
+          });
+          assert.equal(optInRes.status, 204);
+          assert.equal(optInRes.headers.get('access-control-allow-origin'), origin);
+        }
+        const stillBlockedSpoof = await fetch(`${baseUrl}/api/health`, {
+          method: 'OPTIONS',
+          headers: {
+            Origin: 'https://erp.awladselim.com',
+            'Access-Control-Request-Method': 'GET',
+            'X-Forwarded-Host': 'erp.awladselim.com',
+          },
         });
-        assert.equal(blockedRes.status, 403);
+        assert.equal(stillBlockedSpoof.status, 403);
       } finally {
         if (prevAllowedOrigins === undefined) delete process.env.ALLOWED_ORIGINS;
         else process.env.ALLOWED_ORIGINS = prevAllowedOrigins;
+        if (prevTunnelFlag === undefined) delete process.env.ALLOW_CLOUDFLARE_QUICK_TUNNEL;
+        else process.env.ALLOW_CLOUDFLARE_QUICK_TUNNEL = prevTunnelFlag;
+        if (prevLanFlag === undefined) delete process.env.ALLOW_MOBILE_LAN_HTTP;
+        else process.env.ALLOW_MOBILE_LAN_HTTP = prevLanFlag;
+        if (prevNodeEnv === undefined) delete process.env.NODE_ENV;
+        else process.env.NODE_ENV = prevNodeEnv;
       }
 
       // 3. Unauthorized roles blocked from server-info, settings, backup, and cash-operations

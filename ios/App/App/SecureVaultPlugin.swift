@@ -27,7 +27,11 @@ public class SecureVaultPlugin: CAPPlugin, CAPBridgedPlugin {
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: key
         ]
-        SecItemDelete(deleteQuery as CFDictionary)
+        let deleteStatus = SecItemDelete(deleteQuery as CFDictionary)
+        if deleteStatus != errSecSuccess && deleteStatus != errSecItemNotFound {
+            call.reject("Keychain pre-store cleanup failed with status \(deleteStatus)")
+            return
+        }
 
         let addQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -61,12 +65,17 @@ public class SecureVaultPlugin: CAPPlugin, CAPBridgedPlugin {
 
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecSuccess,
-           let data = result as? Data,
-           let value = String(data: data, encoding: .utf8) {
-            call.resolve(["value": value])
-        } else {
+        if status == errSecItemNotFound {
             call.resolve(["value": NSNull()])
+        } else if status == errSecSuccess {
+            if let data = result as? Data,
+               let value = String(data: data, encoding: .utf8) {
+                call.resolve(["value": value])
+            } else {
+                call.reject("Keychain data decoding failed")
+            }
+        } else {
+            call.reject("Keychain read failed with status \(status)")
         }
     }
 
@@ -81,7 +90,11 @@ public class SecureVaultPlugin: CAPPlugin, CAPBridgedPlugin {
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: key
         ]
-        SecItemDelete(query as CFDictionary)
-        call.resolve()
+        let status = SecItemDelete(query as CFDictionary)
+        if status == errSecSuccess || status == errSecItemNotFound {
+            call.resolve()
+        } else {
+            call.reject("Keychain delete failed with status \(status)")
+        }
     }
 }

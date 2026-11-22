@@ -471,6 +471,25 @@ export async function initializeSchema(customPool = null) {
       }
     }
 
+    // Ensure v8 atomic bootstrap singleton table and composite report indexes exist on pre-existing PG DBs
+    const v8Statements = [
+      `CREATE TABLE IF NOT EXISTS system_bootstrap_lock (
+        id VARCHAR(32) PRIMARY KEY,
+        admin_user_id VARCHAR(64) NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`,
+      'CREATE INDEX IF NOT EXISTS idx_invoices_date_type ON invoices(date DESC, type)',
+      'CREATE INDEX IF NOT EXISTS idx_invoices_rep_date ON invoices(representative_id, date DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_stock_movements_prod_date ON stock_movements(product_id, date DESC)',
+    ];
+    for (const stmt of v8Statements) {
+      try {
+        await currentPool.query(stmt);
+      } catch {
+        // ignore if already present or engine-specific
+      }
+    }
+
     return { success: true, message: 'تم تطبيق هيكل الجداول والفهارس والتسلسلات في PostgreSQL بنجاح.' };
   } catch (err) {
     return { success: false, error: err.message };

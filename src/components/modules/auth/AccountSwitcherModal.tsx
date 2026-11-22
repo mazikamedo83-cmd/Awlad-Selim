@@ -82,9 +82,13 @@ export const AccountSwitcherModal: React.FC = () => {
 
   const handleConfirmRemove = async () => {
     if (!accountToRemove) return;
-    await removeSavedAccountFromDevice(accountToRemove.userId);
+    const res = await removeSavedAccountFromDevice(accountToRemove.userId);
     setAccountToRemove(null);
-    setNotice({ type: 'success', text: 'تمت إزالة الحساب من هذا الجهاز دون التأثير على باقي الحسابات أو بيانات السيرفر.' });
+    if (!res.serverRevoked && res.warning) {
+      setNotice({ type: 'info', text: res.warning });
+    } else {
+      setNotice({ type: 'success', text: 'تمت إزالة الحساب من هذا الجهاز دون التأثير على باقي الحسابات أو بيانات السيرفر.' });
+    }
   };
 
   const handleAddAccountLogin = async () => {

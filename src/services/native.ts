@@ -30,6 +30,14 @@ export function isMobileAppPlatform(): boolean {
   return platform === 'android' || platform === 'ios';
 }
 
+export function isElectronDesktop(): boolean {
+  try {
+    return typeof window !== 'undefined' && Boolean((window as any).awladDesktop?.secureVault);
+  } catch {
+    return false;
+  }
+}
+
 export function syncNativeStatusBarStyle(appearance: 'light-header' | 'dark-header'): void {
   if (!isNativeCapacitor()) return;
   try {

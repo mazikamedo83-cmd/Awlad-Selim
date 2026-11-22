@@ -1,6 +1,6 @@
 import type { Customer, Representative, User, UserRole } from '../types';
 import { getKV, setKV } from './localDb';
-import { getOrCreatePersistentDeviceId, getPref, setPref } from './native';
+import { getOrCreatePersistentDeviceId, getPref, isElectronDesktop, isNativeCapacitor, setPref } from './native';
 import { normalizeServerOrigin } from './offlineAuth';
 import { removeSealedKey, sealJson, unsealJson } from './secureVault';
 
@@ -10,6 +10,13 @@ const VAULT_TOKENS_SECRET_KEY = 'account_vault_tokens_v1';
 const ACTIVE_ACCOUNT_PREF_KEY = 'awlad_selim_active_account_id_v1';
 const RUNTIME_UNLOCKED_KEY = 'awlad_selim_runtime_unlocked_uid';
 const ACCOUNT_INDEX_LS_KEY = 'awlad_selim_saved_accounts_meta_v1';
+
+// Plain Web runtimes must never persist JWTs in IndexedDB/localStorage/Preferences; hold per-tab memory only
+const webInMemoryAccountTokens = new Map<string, { accessToken?: string; refreshToken?: string }>();
+
+function shouldPersistAccountTokensToNativeVault(): boolean {
+  return isElectronDesktop() || isNativeCapacitor();
+}
 
 export type SavedAccountSessionStatus = 'active' | 'logged_out' | 'expired' | 'revoked';
 
@@ -121,7 +128,12 @@ async function loadRawAccounts(): Promise<SavedDeviceAccount[]> {
   if (!Array.isArray(fromVault)) {
     return [];
   }
-  const sealedTokens = (await unsealJson<SealedAccountTokenMap>(VAULT_TOKENS_SECRET_KEY)) || {};
+
+  const useNativeVault = shouldPersistAccountTokensToNativeVault();
+  const sealedTokens = useNativeVault
+    ? (await unsealJson<SealedAccountTokenMap>(VAULT_TOKENS_SECRET_KEY)) || {}
+    : Object.fromEntries(webInMemoryAccountTokens.entries());
+
   let hadLegacyPlaintextTokens = false;
   const migratedTokens: SealedAccountTokenMap = { ...sealedTokens };
 
@@ -129,7 +141,7 @@ async function loadRawAccounts(): Promise<SavedDeviceAccount[]> {
     const uid = entry.userId;
     if (entry.accessToken || entry.refreshToken) {
       hadLegacyPlaintextTokens = true;
-      if (!migratedTokens[uid]?.refreshToken && entry.refreshToken) {
+      if (useNativeVault && !migratedTokens[uid]?.refreshToken && entry.refreshToken) {
         migratedTokens[uid] = {
           accessToken: entry.accessToken,
           refreshToken: entry.refreshToken,
@@ -139,14 +151,28 @@ async function loadRawAccounts(): Promise<SavedDeviceAccount[]> {
     const secret = migratedTokens[uid];
     return {
       ...entry,
-      accessToken: secret?.accessToken ?? entry.accessToken,
-      refreshToken: secret?.refreshToken ?? entry.refreshToken,
+      accessToken: secret?.accessToken ?? (useNativeVault ? entry.accessToken : undefined),
+      refreshToken: secret?.refreshToken ?? (useNativeVault ? entry.refreshToken : undefined),
     };
   });
 
   if (hadLegacyPlaintextTokens) {
-    await sealJson(VAULT_TOKENS_SECRET_KEY, migratedTokens).catch(() => {});
-    await setKV(VAULT_NAMESPACE, VAULT_RECORDS_KEY, stripSensitiveTokensForDisplayMeta(hydrated)).catch(() => {});
+    if (useNativeVault) {
+      // Write to OS vault AND verify read-back BEFORE deleting legacy plaintext copies
+      await sealJson(VAULT_TOKENS_SECRET_KEY, migratedTokens);
+      const verified = await unsealJson<SealedAccountTokenMap>(VAULT_TOKENS_SECRET_KEY);
+      if (!verified) {
+        throw new Error('فشل التحقق من ترحيل بيانات الحسابات إلى المخزن الآمن؛ لم تُحذف النسخ القديمة.');
+      }
+      for (const [uid, tok] of Object.entries(migratedTokens)) {
+        if (tok.refreshToken && verified[uid]?.refreshToken !== tok.refreshToken) {
+          throw new Error('عدم تطابق رموز الحسابات بعد الترحيل؛ تم الإبقاء على السجلات القديمة.');
+        }
+      }
+    } else {
+      await removeSealedKey(VAULT_TOKENS_SECRET_KEY).catch(() => {});
+    }
+    await setKV(VAULT_NAMESPACE, VAULT_RECORDS_KEY, stripSensitiveTokensForDisplayMeta(hydrated));
   }
 
   return hydrated;
@@ -163,11 +189,21 @@ async function saveRawAccounts(records: SavedDeviceAccount[]): Promise<void> {
       };
     }
   }
-  if (Object.keys(tokenMap).length > 0) {
-    await sealJson(VAULT_TOKENS_SECRET_KEY, tokenMap);
+
+  if (shouldPersistAccountTokensToNativeVault()) {
+    if (Object.keys(tokenMap).length > 0) {
+      await sealJson(VAULT_TOKENS_SECRET_KEY, tokenMap);
+    } else {
+      await removeSealedKey(VAULT_TOKENS_SECRET_KEY);
+    }
   } else {
-    await removeSealedKey(VAULT_TOKENS_SECRET_KEY);
+    webInMemoryAccountTokens.clear();
+    for (const [uid, tok] of Object.entries(tokenMap)) {
+      webInMemoryAccountTokens.set(uid, tok);
+    }
+    await removeSealedKey(VAULT_TOKENS_SECRET_KEY).catch(() => {});
   }
+
   await setKV(VAULT_NAMESPACE, VAULT_RECORDS_KEY, stripSensitiveTokensForDisplayMeta(sorted));
   persistDisplayMetaCache(sorted);
 }

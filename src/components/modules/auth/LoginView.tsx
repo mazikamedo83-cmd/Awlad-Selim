@@ -818,9 +818,13 @@ export const LoginView: React.FC = () => {
         onClose={() => setAccountToForget(null)}
         onConfirm={async () => {
           if (!accountToForget) return;
-          await removeSavedAccountFromDevice(accountToForget.userId);
+          const res = await removeSavedAccountFromDevice(accountToForget.userId);
           setAccountToForget(null);
-          setInfoNotice('تمت إزالة الحساب من هذا الجهاز فقط دون التأثير على حساباتك الأخرى أو بيانات السيرفر.');
+          setInfoNotice(
+            !res.serverRevoked && res.warning
+              ? res.warning
+              : 'تمت إزالة الحساب من هذا الجهاز فقط دون التأثير على حساباتك الأخرى أو بيانات السيرفر.'
+          );
         }}
         variant="danger"
         title="إزالة الحساب من الجهاز؟"

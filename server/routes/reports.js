@@ -15,12 +15,7 @@ router.use(requireAuth, requireStaff);
 
 function checkReportsAccess(req, res) {
   const u = req.auth.user;
-  if (
-    u.role !== 'admin' &&
-    u.role !== 'representative' &&
-    !u.permissions?.canViewReports &&
-    !u.permissions?.canManageInventory
-  ) {
+  if (u.role !== 'admin' && u.permissions?.canViewReports !== true) {
     res.status(403).json({
       ok: false,
       code: 'FORBIDDEN',

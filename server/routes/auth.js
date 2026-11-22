@@ -14,6 +14,11 @@ import { getSystemSettingsSafe } from '../db/stores/catalogStore.js';
 import {
   asyncHandler,
   checkLoginRateLimit,
+  checkRegisterRateLimit,
+  checkBootstrapRateLimit,
+  checkRefreshRateLimit,
+  parseCookieHeader,
+  verifyCookieCsrfRequest,
   recordLoginFailure,
   clearLoginFailure,
   getClientIp,
@@ -22,6 +27,40 @@ import {
 import { verifyJwt } from '../utils/crypto.js';
 
 const router = Router();
+
+function isSecureTransport(req) {
+  if (req.secure) return true;
+  if (req.app?.get('trust proxy')) {
+    const xfProto = String(req.get('x-forwarded-proto') || '').split(',')[0].trim().toLowerCase();
+    return xfProto === 'https';
+  }
+  return false;
+}
+
+function setAuthCookies(req, res, accessToken, refreshToken) {
+  if (!accessToken || !refreshToken) return;
+  const secure = isSecureTransport(req);
+  res.cookie('awlad_access_token', accessToken, {
+    httpOnly: true,
+    secure,
+    sameSite: 'lax',
+    path: '/api',
+    maxAge: 15 * 60 * 1000,
+  });
+  res.cookie('awlad_refresh_token', refreshToken, {
+    httpOnly: true,
+    secure,
+    sameSite: 'lax',
+    path: '/api/auth',
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+  });
+}
+
+function clearAuthCookies(req, res) {
+  const secure = isSecureTransport(req);
+  res.clearCookie('awlad_access_token', { httpOnly: true, secure, sameSite: 'lax', path: '/api' });
+  res.clearCookie('awlad_refresh_token', { httpOnly: true, secure, sameSite: 'lax', path: '/api/auth' });
+}
 
 router.get(
   '/status',
@@ -33,6 +72,7 @@ router.get(
 
 router.post(
   '/bootstrap-admin',
+  checkBootstrapRateLimit,
   asyncHandler(async (req, res) => {
     const user = await bootstrapAdmin(req.body || {}, {
       ipAddress: getClientIp(req),
@@ -62,6 +102,7 @@ router.post(
         deviceInfo: req.get('user-agent') || '',
       });
       clearLoginFailure(req);
+      setAuthCookies(req, res, result.accessToken, result.refreshToken);
       const sysSettings = await getSystemSettingsSafe();
       res.json({ ok: true, ...result, mobileConfig: sysSettings.mobileConfig });
     } catch (err) {
@@ -75,6 +116,7 @@ router.post(
 
 router.post(
   '/register',
+  checkRegisterRateLimit,
   asyncHandler(async (req, res) => {
     const result = await registerMobileAccount(req.body || {}, {
       deviceId: req.get('x-device-id') || req.body?.deviceId || '',
@@ -82,6 +124,7 @@ router.post(
       ipAddress: getClientIp(req),
       deviceInfo: req.get('user-agent') || '',
     });
+    setAuthCookies(req, res, result.accessToken, result.refreshToken);
     const sysSettings = await getSystemSettingsSafe();
     res.status(201).json({ ok: true, ...result, mobileConfig: sysSettings.mobileConfig });
   })
@@ -89,13 +132,25 @@ router.post(
 
 router.post(
   '/refresh',
+  checkRefreshRateLimit,
   asyncHandler(async (req, res) => {
+    const cookies = parseCookieHeader(req.get('cookie'));
+    const bodyRefresh = typeof req.body?.refreshToken === 'string' ? req.body.refreshToken.trim() : '';
+    const usingCookieRefresh = !bodyRefresh && Boolean(cookies.awlad_refresh_token);
+    if (usingCookieRefresh && !verifyCookieCsrfRequest(req)) {
+      return res.status(403).json({
+        ok: false,
+        code: 'CSRF_FORBIDDEN',
+        error: 'تم رفض تجديد الجلسة لعدم تحقق حماية CSRF.',
+      });
+    }
     const result = await refreshUserSession({
-      refreshToken: req.body?.refreshToken,
+      refreshToken: bodyRefresh || cookies.awlad_refresh_token || '',
       deviceId: req.get('x-device-id') || req.body?.deviceId || '',
       ipAddress: getClientIp(req),
       deviceInfo: req.get('user-agent') || '',
     });
+    setAuthCookies(req, res, result.accessToken, result.refreshToken);
     res.json({ ok: true, ...result });
   })
 );
@@ -103,16 +158,29 @@ router.post(
 router.post(
   '/logout',
   asyncHandler(async (req, res) => {
-    let sessionId = req.auth?.sessionId || null;
-    if (!sessionId) {
-      const authHeader = req.get('authorization') || '';
-      const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-      if (token) {
-        const payload = verifyJwt(token);
-        if (payload?.sid) sessionId = payload.sid;
-      }
+    const cookies = parseCookieHeader(req.get('cookie'));
+    const authHeader = req.get('authorization') || '';
+    const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    const bodyRefresh = typeof req.body?.refreshToken === 'string' ? req.body.refreshToken.trim() : '';
+    const usingCookieOnly = !bearerToken && !bodyRefresh && Boolean(cookies.awlad_access_token || cookies.awlad_refresh_token);
+    if (usingCookieOnly && !verifyCookieCsrfRequest(req)) {
+      return res.status(403).json({
+        ok: false,
+        code: 'CSRF_FORBIDDEN',
+        error: 'تم رفض تسجيل الخروج لعدم تحقق حماية CSRF.',
+      });
     }
-    await logoutSession({ sessionId, refreshToken: req.body?.refreshToken || null });
+    let sessionId = req.auth?.sessionId || null;
+    const accessToken = bearerToken || cookies.awlad_access_token || '';
+    if (!sessionId && accessToken) {
+      const payload = verifyJwt(accessToken);
+      if (payload?.sid) sessionId = payload.sid;
+    }
+    await logoutSession({
+      sessionId,
+      refreshToken: bodyRefresh || cookies.awlad_refresh_token || null,
+    });
+    clearAuthCookies(req, res);
     res.json({ ok: true });
   })
 );
