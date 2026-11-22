@@ -51,6 +51,8 @@ router.get(
         invoiceNumber: typeof q.invoiceNumber === 'string' ? q.invoiceNumber : undefined,
         recordId: typeof q.recordId === 'string' ? q.recordId : undefined,
         search: typeof q.search === 'string' ? q.search : undefined,
+        page: q.page !== undefined ? Number(q.page) : undefined,
+        pageSize: q.pageSize !== undefined ? Number(q.pageSize) : undefined,
       },
       req.auth.user
     );

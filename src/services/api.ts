@@ -1065,13 +1065,15 @@ export async function apiRequest<T = any>(
   return (json ?? {}) as T;
 }
 
-export async function fetchComprehensiveReport(params: Record<string, string | undefined>): Promise<import('../types').ComprehensiveReportResponse> {
+export async function fetchComprehensiveReport(
+  params: Record<string, string | number | undefined>
+): Promise<import('../types').ComprehensiveReportResponse> {
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== '' && v !== 'all') {
-      qs.set(k, v);
+      qs.set(k, String(v));
     } else if (k === 'reportType' && v) {
-      qs.set(k, v);
+      qs.set(k, String(v));
     }
   }
   const res = await apiRequest<{ ok: boolean; report: import('../types').ComprehensiveReportResponse }>(

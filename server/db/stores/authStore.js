@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { getPool, withTransaction, isPgConnectionError, sanitizePgErrorMessage } from '../postgres.js';
+import { getPool, withTransaction, isPgConnectionError, sanitizePgErrorMessage, isUsingInjectedPool } from '../postgres.js';
 import {
   withJsonTransaction,
   readJsonDatabase,
@@ -17,7 +17,13 @@ import {
   sha256Hex,
   generateServerId,
 } from '../../utils/crypto.js';
-import { AppError, nowIso, sanitizeUser } from '../../utils/errors.js';
+import {
+  AppError,
+  nowIso,
+  sanitizeUser,
+  normalizePhoneDigits,
+  buildPhoneLookupVariants,
+} from '../../utils/errors.js';
 import {
   isPgMode,
   isStrictPostgresMode,
@@ -236,7 +242,7 @@ function toAdvisoryLockInt32(key) {
   return (Number.parseInt(hex, 16) | 0) || 1;
 }
 
-async function acquirePgTxAdvisoryLock(client, namespaceInt, keyInt) {
+export async function acquirePgTxAdvisoryLock(client, namespaceInt, keyInt) {
   let savepointCreated = false;
   try {
     await client.query('SAVEPOINT sp_adv_lock');
@@ -249,8 +255,15 @@ async function acquirePgTxAdvisoryLock(client, namespaceInt, keyInt) {
       await client.query('RELEASE SAVEPOINT sp_adv_lock').catch(() => {});
     }
     const msg = String(err?.message || '').toLowerCase();
-    // Only tolerate pg-mem test-harness lack of savepoints / pg_advisory_xact_lock; rethrow real PG/connection errors
-    if (msg.includes('pg-mem') || msg.includes('pg_advisory_xact_lock')) {
+    const hasPgSqlState = /^[0-9A-Z]{5}$/i.test(String(err?.code || ''));
+    // Strictly tolerate ONLY pg-mem test-harness lack of savepoints / advisory lock; NEVER ignore real PG or SQLSTATE errors!
+    const isPgMemMissingFeature =
+      isUsingInjectedPool() &&
+      !isPgConnectionError(err) &&
+      !hasPgSqlState &&
+      !err?.severity &&
+      (msg.includes('pg-mem') || msg.includes('https://github.com/oguimbal/pg-mem'));
+    if (isPgMemMissingFeature) {
       return;
     }
     throw err;
@@ -317,9 +330,9 @@ export async function bootstrapAdmin(
           );
 
         await client.query(
-          `INSERT INTO users (id, full_name, username, password_hash, password_algo, phone, role, job_title, department, is_active, must_change_password, permissions, created_at)
-           VALUES ($1, $2, $3, $4, 'bcrypt', $5, 'admin', 'المدير العام', 'الإدارة', TRUE, FALSE, $6, $7)`,
-          [adminId, cleanName, cleanUser, passwordHash, phone || '', JSON.stringify(FULL_ADMIN_PERMISSIONS), now]
+          `INSERT INTO users (id, full_name, username, password_hash, password_algo, phone, normalized_phone, role, job_title, department, is_active, must_change_password, permissions, created_at)
+           VALUES ($1, $2, $3, $4, 'bcrypt', $5, $6, 'admin', 'المدير العام', 'الإدارة', TRUE, FALSE, $7, $8)`,
+          [adminId, cleanName, cleanUser, passwordHash, phone || '', normalizePhoneDigits(phone || ''), JSON.stringify(FULL_ADMIN_PERMISSIONS), now]
         );
 
         const whCheck = await client.query('SELECT COUNT(*)::int AS cnt FROM warehouses');
@@ -505,7 +518,15 @@ function resolveLinkedProfilesJson(db, user) {
   } else if (user.role === 'representative') {
     const rep = db.representatives.find((r) => r.userId === user.id);
     if (rep) {
-      representativeProfile = rep;
+      representativeProfile = {
+        id: rep.id,
+        name: rep.name,
+        phone: rep.phone || '',
+        vehicleNumber: rep.vehicleNumber || '',
+        warehouseId: rep.warehouseId || undefined,
+        currentBalance: Number(rep.currentBalance || 0),
+        status: rep.status || 'active',
+      };
     } else if (String(user.notes || '').includes(REP_PHONE_CONFLICT_MARKER)) {
       linkWarning = REP_PHONE_CONFLICT_WARNING;
     } else {
@@ -799,11 +820,7 @@ export async function loginUser({
 }
 
 function normalizeRegPhone(raw) {
-  let d = String(raw || '').replace(/\D/g, '');
-  if (!d) return '';
-  if (d.startsWith('0020') && d.length >= 13) d = '0' + d.slice(4);
-  else if (d.startsWith('20') && d.length >= 12) d = '0' + d.slice(2);
-  return d;
+  return normalizePhoneDigits(raw);
 }
 
 function sanitizeRegisterPhoto(raw) {
@@ -949,16 +966,49 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
         if (dupUser.rows[0]) {
           throw new AppError(409, 'اسم المستخدم مسجل مسبقًا، يرجى اختيار اسم آخر أو تسجيل الدخول', 'DUPLICATE_USERNAME');
         }
+        if (normPhone) {
+          const dupPhoneUser = await client.query(
+            `SELECT id FROM users WHERE role = $1 AND normalized_phone = $2 AND normalized_phone <> '' LIMIT 1`,
+            [role, normPhone]
+          );
+          if (dupPhoneUser.rows[0]) {
+            throw new AppError(
+              409,
+              role === 'representative' ? REP_PHONE_CONFLICT_WARNING : CUSTOMER_PHONE_CONFLICT_WARNING,
+              role === 'representative' ? 'REP_PHONE_CONFLICT' : 'CUSTOMER_PHONE_CONFLICT'
+            );
+          }
+        }
 
         let customerProfile = null;
         let representativeProfile = null;
         const userNotes = 'حساب مسجل ذاتيًا عبر الموبايل';
         let lockedUnlinkedCustomer = null;
         let lockedUnlinkedRep = null;
+        const { variants: phoneVariants, suffixPattern } = buildPhoneLookupVariants(phone);
 
         if (role === 'customer') {
           if (normPhone) {
-            const custCandRes = await client.query(`SELECT id, phone, secondary_phone, phones FROM customers`);
+            const custWhereParts = [`normalized_phone = $1`];
+            const custParams = [normPhone];
+            if (phoneVariants.length > 0) {
+              const placeholders = phoneVariants
+                .map((v) => {
+                  custParams.push(v);
+                  return `$${custParams.length}`;
+                })
+                .join(', ');
+              custWhereParts.push(`phone IN (${placeholders})`);
+              custWhereParts.push(`secondary_phone IN (${placeholders})`);
+            }
+            if (suffixPattern) {
+              custParams.push(suffixPattern);
+              custWhereParts.push(`CAST(phones AS TEXT) LIKE $${custParams.length}`);
+            }
+            const custCandRes = await client.query(
+              `SELECT id, user_id, phone, secondary_phone, phones FROM customers WHERE ${custWhereParts.join(' OR ')} ORDER BY id ASC`,
+              custParams
+            );
             const candIds = custCandRes.rows
               .filter((c) => customerHasRegPhone(c, normPhone))
               .map((c) => c.id)
@@ -981,7 +1031,21 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
           }
         } else {
           if (normPhone) {
-            const repCandRes = await client.query(`SELECT id, phone FROM representatives`);
+            const repWhereParts = [`normalized_phone = $1`];
+            const repParams = [normPhone];
+            if (phoneVariants.length > 0) {
+              const placeholders = phoneVariants
+                .map((v) => {
+                  repParams.push(v);
+                  return `$${repParams.length}`;
+                })
+                .join(', ');
+              repWhereParts.push(`phone IN (${placeholders})`);
+            }
+            const repCandRes = await client.query(
+              `SELECT id, user_id, phone FROM representatives WHERE ${repWhereParts.join(' OR ')} ORDER BY id ASC`,
+              repParams
+            );
             const candIds = repCandRes.rows
               .filter((r) => normalizeRegPhone(r.phone) === normPhone)
               .map((r) => r.id)
@@ -1008,14 +1072,15 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
         const livePermissions = resolveDefaultPermissionsForRole(role, sysPresetRes.rows[0]?.extra_settings || fallbackPermissions);
 
         await client.query(
-          `INSERT INTO users (id, full_name, username, password_hash, password_algo, phone, address, notes, role, job_title, department, is_active, must_change_password, permissions, created_at)
-           VALUES ($1,$2,$3,$4,'bcrypt',$5,$6,$7,$8,$9,$10,TRUE,FALSE,$11,$12)`,
+          `INSERT INTO users (id, full_name, username, password_hash, password_algo, phone, normalized_phone, address, notes, role, job_title, department, is_active, must_change_password, permissions, created_at)
+           VALUES ($1,$2,$3,$4,'bcrypt',$5,$6,$7,$8,$9,$10,$11,TRUE,FALSE,$12,$13)`,
           [
             userId,
             fullName,
             username,
             passwordHash,
             phone,
+            normPhone,
             address,
             userNotes,
             role,
@@ -1029,17 +1094,20 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
         if (role === 'customer') {
           if (lockedUnlinkedCustomer) {
             const target = lockedUnlinkedCustomer;
+            const mergedPhones = normalizeCustomerPhonesList(target.phones, phone || target.phone || '', target.secondary_phone || '');
+            const mergedPrimary = mergedPhones.find((p) => p.isPrimary)?.number || target.phone || phone || '';
             await client.query(
-              `UPDATE customers SET user_id = $1, shop_name = $2, shop_photo = $3, photo = $3, address = $4, governorate = $5, area = $6, geo_coordinates = $7, phones = $8, updated_at = $9 WHERE id = $10`,
+              `UPDATE customers SET user_id = $1, normalized_phone = $2, shop_name = $3, shop_photo = $4, photo = $4, address = $5, governorate = $6, area = $7, geo_coordinates = $8, phones = $9, updated_at = $10 WHERE id = $11`,
               [
                 userId,
+                normalizeRegPhone(mergedPrimary) || normPhone,
                 shopName || target.shop_name || null,
                 safeShopPhoto || target.shop_photo || target.photo || null,
                 address || target.address || '',
                 governorate || target.governorate || '',
                 area || target.area || null,
                 geoCoordinates || target.geo_coordinates || null,
-                JSON.stringify(normalizeCustomerPhonesList(target.phones, phone || target.phone || '', target.secondary_phone || '')),
+                JSON.stringify(mergedPhones),
                 now,
                 target.id,
               ]
@@ -1053,14 +1121,15 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
             const primaryRegPhone = initialPhones.find((p) => p.isPrimary)?.number || initialPhones[0]?.number || phone;
             const secondaryRegPhone = initialPhones.find((p) => !p.isPrimary && p.number !== primaryRegPhone)?.number || null;
             await client.query(
-              `INSERT INTO customers (id, code, user_id, name, phone, secondary_phone, phones, shop_name, shop_photo, photo, address, shop_address, governorate, area, geo_coordinates, opening_balance, current_balance, notes, status, created_at, updated_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10,$10,$11,$12,$13,0,0,'عميل مسجل ذاتيًا عبر التطبيق','active',$14,$14)`,
+              `INSERT INTO customers (id, code, user_id, name, phone, normalized_phone, secondary_phone, phones, shop_name, shop_photo, photo, address, shop_address, governorate, area, geo_coordinates, opening_balance, current_balance, notes, status, created_at, updated_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,$11,$12,$13,$14,0,0,'عميل مسجل ذاتيًا عبر التطبيق','active',$15,$15)`,
               [
                 custId,
                 custCode,
                 userId,
                 fullName,
                 primaryRegPhone,
+                normalizeRegPhone(primaryRegPhone) || normPhone,
                 secondaryRegPhone,
                 JSON.stringify(initialPhones),
                 shopName || null,
@@ -1089,9 +1158,10 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
                 [targetWhId, vanName, vanCode, targetRep.name || fullName, phone, now]
               );
             }
+            const nextRepPhone = phone || targetRep.phone || '';
             await client.query(
-              `UPDATE representatives SET user_id = $1, phone = COALESCE(NULLIF($2, ''), phone), vehicle_number = COALESCE(NULLIF($3, ''), vehicle_number), warehouse_id = $4 WHERE id = $5`,
-              [userId, phone, vehicleNumber, targetWhId, targetRep.id]
+              `UPDATE representatives SET user_id = $1, phone = COALESCE(NULLIF($2, ''), phone), normalized_phone = $3, vehicle_number = COALESCE(NULLIF($4, ''), vehicle_number), warehouse_id = $5 WHERE id = $6`,
+              [userId, phone, normalizeRegPhone(nextRepPhone) || normPhone, vehicleNumber, targetWhId, targetRep.id]
             );
             const refreshedRep = await client.query(`SELECT * FROM representatives WHERE id = $1 LIMIT 1`, [targetRep.id]);
             const rr = refreshedRep.rows[0];
@@ -1117,9 +1187,9 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
             const repId = generateServerId('REP');
             const repCode = `REP-${String(Date.now()).slice(-5)}`;
             await client.query(
-              `INSERT INTO representatives (id, code, user_id, name, phone, vehicle_number, address, opening_balance, current_balance, commission_rate, warehouse_id, notes, status, created_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,0,0,0,$8,'مندوب مسجل ذاتيًا عبر التطبيق','active',$9)`,
-              [repId, repCode, userId, fullName, phone, vehicleNumber, address, vanId, now]
+              `INSERT INTO representatives (id, code, user_id, name, phone, normalized_phone, vehicle_number, address, opening_balance, current_balance, commission_rate, warehouse_id, notes, status, created_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,0,0,0,$9,'مندوب مسجل ذاتيًا عبر التطبيق','active',$10)`,
+              [repId, repCode, userId, fullName, phone, normPhone, vehicleNumber, address, vanId, now]
             );
             representativeProfile = {
               id: repId,
@@ -1214,6 +1284,15 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
         }
       }
       if (err?.code === '23505') {
+        const constraint = String(err?.constraint || '').toLowerCase();
+        const detail = String(err?.detail || err?.message || '').toLowerCase();
+        if (constraint.includes('norm_phone') || detail.includes('normalized_phone')) {
+          throw new AppError(
+            409,
+            role === 'representative' ? REP_PHONE_CONFLICT_WARNING : CUSTOMER_PHONE_CONFLICT_WARNING,
+            role === 'representative' ? 'REP_PHONE_CONFLICT' : 'CUSTOMER_PHONE_CONFLICT'
+          );
+        }
         throw new AppError(409, 'اسم المستخدم مسجل مسبقًا، يرجى اختيار اسم آخر أو تسجيل الدخول', 'DUPLICATE_USERNAME');
       }
       throw err;
@@ -1249,6 +1328,13 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
 
       if ((db.users || []).some((u) => String(u.username || '').toLowerCase() === cleanUsernameLower)) {
         throw new AppError(409, 'اسم المستخدم مسجل مسبقًا، يرجى اختيار اسم آخر أو تسجيل الدخول', 'DUPLICATE_USERNAME');
+      }
+      if (normPhone && (db.users || []).some((u) => u.role === role && normalizeRegPhone(u.phone) === normPhone)) {
+        throw new AppError(
+          409,
+          role === 'representative' ? REP_PHONE_CONFLICT_WARNING : CUSTOMER_PHONE_CONFLICT_WARNING,
+          role === 'representative' ? 'REP_PHONE_CONFLICT' : 'CUSTOMER_PHONE_CONFLICT'
+        );
       }
 
       let customerProfile = null;

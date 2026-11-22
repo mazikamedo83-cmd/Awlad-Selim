@@ -21,6 +21,12 @@ import {
   sanitizeUser,
   sanitizeProductForRepresentative,
   sanitizeInvoiceForRepresentative,
+  buildPhoneLookupVariants,
+  canViewCashboxBalances,
+  sanitizeCashboxForViewer,
+  canViewAllRepresentatives,
+  canManageSyncConflictsGlobally,
+  sanitizeSyncPayload,
 } from '../../utils/errors.js';
 import {
   buildScopedIdemKey,
@@ -157,11 +163,15 @@ export async function getStaffBootstrapData(actor) {
       listInvoices(actor),
       pool.query('SELECT * FROM invoice_returns ORDER BY created_at DESC'),
       pool.query('SELECT * FROM invoice_return_items'),
-      pool.query('SELECT * FROM cashboxes ORDER BY created_at ASC'),
+      canViewCashboxBalances(actor)
+        ? pool.query('SELECT * FROM cashboxes ORDER BY created_at ASC')
+        : pool.query('SELECT id, name, type, is_default FROM cashboxes ORDER BY created_at ASC'),
       canViewTreasuryLedger ? pool.query('SELECT * FROM financial_transactions ORDER BY created_at DESC LIMIT 1000') : Promise.resolve({ rows: [] }),
       canViewChequesInstallments ? pool.query('SELECT * FROM cheques ORDER BY created_at DESC') : Promise.resolve({ rows: [] }),
       canViewChequesInstallments ? pool.query('SELECT * FROM installments ORDER BY created_at DESC') : Promise.resolve({ rows: [] }),
-      pool.query('SELECT * FROM representatives ORDER BY created_at ASC'),
+      canViewAllRepresentatives(actor)
+        ? pool.query('SELECT * FROM representatives ORDER BY created_at ASC')
+        : pool.query('SELECT * FROM representatives WHERE user_id = $1 ORDER BY created_at ASC', [actor.id]),
       pool.query('SELECT * FROM rep_transfers ORDER BY created_at DESC'),
       pool.query('SELECT * FROM rep_item_transfers ORDER BY created_at DESC'),
       pool.query('SELECT * FROM rep_item_transfer_items'),
@@ -175,9 +185,9 @@ export async function getStaffBootstrapData(actor) {
       listOrders({ user: actor, representativeProfile: repProfile }),
       canViewAuditLogs ? listAuditLogs(300) : Promise.resolve([]),
       pool.query('SELECT * FROM order_advance_payments ORDER BY created_at DESC LIMIT 1000'),
-      isAdmin || perms.canManageSales || perms.canManageAccounts
+      canManageSyncConflictsGlobally(actor)
         ? pool.query('SELECT * FROM sync_conflicts ORDER BY created_at DESC LIMIT 300')
-        : Promise.resolve({ rows: [] }),
+        : pool.query('SELECT * FROM sync_conflicts WHERE user_id = $1 ORDER BY created_at DESC LIMIT 150', [actor.id]),
       isRep && repProfile
         ? pool.query('SELECT * FROM rep_custody_operations WHERE representative_id = $1 ORDER BY created_at DESC', [repProfile.id])
         : pool.query('SELECT * FROM rep_custody_operations ORDER BY created_at DESC LIMIT 1000'),
@@ -305,14 +315,19 @@ export async function getStaffBootstrapData(actor) {
           createdBy: r.created_by,
           createdAt: isoTimestamp(r.created_at),
         })),
-      cashboxes: cbRes.rows.map((c) => ({
-        id: c.id,
-        name: c.name,
-        type: c.type,
-        openingBalance: Number(c.opening_balance || 0),
-        currentBalance: Number(c.current_balance || 0),
-        isDefault: Boolean(c.is_default),
-      })),
+      cashboxes: cbRes.rows.map((c) =>
+        sanitizeCashboxForViewer(
+          {
+            id: c.id,
+            name: c.name,
+            type: c.type,
+            openingBalance: c.opening_balance !== undefined ? Number(c.opening_balance || 0) : undefined,
+            currentBalance: c.current_balance !== undefined ? Number(c.current_balance || 0) : undefined,
+            isDefault: Boolean(c.is_default),
+          },
+          actor
+        )
+      ),
       financialTransactions: canViewTreasuryLedger
         ? ftRes.rows.map((ft) => ({
             id: ft.id,
@@ -367,19 +382,32 @@ export async function getStaffBootstrapData(actor) {
             createdAt: isoTimestamp(i.created_at),
           }))
         : [],
-      representatives: repRes.rows.map((r) => ({
-        id: r.id,
-        userId: r.user_id || undefined,
-        name: r.name,
-        phone: r.phone || '',
-        vehicleNumber: r.vehicle_number || '',
-        warehouseId: r.warehouse_id || undefined,
-        openingBalance: Number(r.opening_balance || 0),
-        currentBalance: Number(r.current_balance || 0),
-        commissionRate: Number(r.commission_rate || 0),
-        notes: r.notes || '',
-        status: r.status || 'active',
-      })),
+      representatives: repRes.rows.map((r) =>
+        canViewAllRepresentatives(actor)
+          ? {
+              id: r.id,
+              userId: r.user_id || undefined,
+              name: r.name,
+              phone: r.phone || '',
+              vehicleNumber: r.vehicle_number || '',
+              warehouseId: r.warehouse_id || undefined,
+              openingBalance: Number(r.opening_balance || 0),
+              currentBalance: Number(r.current_balance || 0),
+              commissionRate: Number(r.commission_rate || 0),
+              notes: r.notes || '',
+              status: r.status || 'active',
+            }
+          : {
+              id: r.id,
+              userId: r.user_id || undefined,
+              name: r.name,
+              phone: r.phone || '',
+              vehicleNumber: r.vehicle_number || '',
+              warehouseId: r.warehouse_id || undefined,
+              currentBalance: Number(r.current_balance || 0),
+              status: r.status || 'active',
+            }
+      ),
       repTransfers: rtRes.rows
         .filter((rt) => !isRep || (repProfile && (rt.representative_id === repProfile.id || rt.sender_id === repProfile.id || rt.receiver_id === repProfile.id)))
         .map((rt) => ({
@@ -593,8 +621,8 @@ export async function getStaffBootstrapData(actor) {
         userId: r.user_id || undefined,
         userName: r.user_name || '',
         conflictReason: r.conflict_reason,
-        localPayload: r.local_payload || {},
-        serverSnapshot: r.server_snapshot || {},
+        localPayload: sanitizeSyncPayload(r.local_payload || {}, { redactCosts: isRep }),
+        serverSnapshot: sanitizeSyncPayload(r.server_snapshot || {}, { redactCosts: isRep }),
         status: r.status,
         resolutionNotes: r.resolution_notes || '',
         resolvedBy: r.resolved_by || undefined,
@@ -638,11 +666,24 @@ export async function getStaffBootstrapData(actor) {
     invoiceReturns: isRep
       ? (db.invoiceReturns || []).filter((r) => scopedCustomerIdSet.has(r.partyId) || scopedInvIdSet.has(r.originalInvoiceId))
       : db.invoiceReturns,
-    cashboxes: db.cashboxes,
+    cashboxes: (db.cashboxes || []).map((c) => sanitizeCashboxForViewer(c, actor)),
     financialTransactions: canViewTreasuryLedger ? db.financialTransactions : [],
     cheques: canViewChequesInstallments ? db.cheques : [],
     installments: canViewChequesInstallments ? db.installments : [],
-    representatives: db.representatives,
+    representatives: canViewAllRepresentatives(actor)
+      ? db.representatives
+      : (db.representatives || [])
+          .filter((r) => r.userId === actor.id || (repProfile && r.id === repProfile.id))
+          .map((r) => ({
+            id: r.id,
+            userId: r.userId || undefined,
+            name: r.name,
+            phone: r.phone || '',
+            vehicleNumber: r.vehicleNumber || '',
+            warehouseId: r.warehouseId || undefined,
+            currentBalance: Number(r.currentBalance || 0),
+            status: r.status || 'active',
+          })),
     repTransfers: isRep
       ? (repProfile ? (db.repTransfers || []).filter((rt) => rt.senderId === repProfile.id || rt.receiverId === repProfile.id) : [])
       : db.repTransfers,
@@ -656,10 +697,14 @@ export async function getStaffBootstrapData(actor) {
     orderAdvancePayments: isRep
       ? (db.orderAdvancePayments || []).filter((a) => scopedCustomerIdSet.has(a.customerId))
       : db.orderAdvancePayments || [],
-    syncConflicts:
-      isAdmin || perms.canManageSales || perms.canManageAccounts
-        ? db.syncConflicts || []
-        : [],
+    syncConflicts: (canManageSyncConflictsGlobally(actor)
+      ? db.syncConflicts || []
+      : (db.syncConflicts || []).filter((c) => c.userId === actor.id)
+    ).map((c) => ({
+      ...c,
+      localPayload: sanitizeSyncPayload(c.localPayload || {}, { redactCosts: isRep }),
+      serverSnapshot: sanitizeSyncPayload(c.serverSnapshot || {}, { redactCosts: isRep }),
+    })),
     employees: canViewHrData ? db.employees : [],
     advancesDeductions: canViewHrData ? db.advancesDeductions : [],
     attendance: canViewHrData ? db.attendance : [],
@@ -2273,14 +2318,15 @@ export async function createAdminUser(payload, actor) {
       const dup = await client.query('SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1', [username]);
       if (dup.rows[0]) throw new AppError(409, 'اسم المستخدم مسجل مسبقًا', 'DUPLICATE_USERNAME');
       await client.query(
-        `INSERT INTO users (id, full_name, username, password_hash, password_algo, phone, address, notes, role, job_title, department, is_active, must_change_password, permissions, created_at)
-         VALUES ($1,$2,$3,$4,'bcrypt',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        `INSERT INTO users (id, full_name, username, password_hash, password_algo, phone, normalized_phone, address, notes, role, job_title, department, is_active, must_change_password, permissions, created_at)
+         VALUES ($1,$2,$3,$4,'bcrypt',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
         [
           id,
           fullName,
           username,
           passwordHash,
           payload.phone || '',
+          normalizePhoneDigits(payload.phone || ''),
           payload.address || '',
           payload.notes || '',
           targetRole,
@@ -2311,7 +2357,27 @@ export async function createAdminUser(payload, actor) {
           const normPhone = normalizePhoneDigits(payload.phone);
           let matchedExisting = null;
           if (normPhone && payload.autoMatchExisting !== false && !payload.forceNewCustomerProfile) {
-            const unlinkedCandRes = await client.query('SELECT id, phone, secondary_phone, phones FROM customers WHERE user_id IS NULL');
+            const { variants: phoneVariants, suffixPattern } = buildPhoneLookupVariants(payload.phone);
+            const whereParts = [`normalized_phone = $1`];
+            const whereParams = [normPhone];
+            if (phoneVariants.length > 0) {
+              const ph = phoneVariants
+                .map((v) => {
+                  whereParams.push(v);
+                  return `$${whereParams.length}`;
+                })
+                .join(', ');
+              whereParts.push(`phone IN (${ph})`);
+              whereParts.push(`secondary_phone IN (${ph})`);
+            }
+            if (suffixPattern) {
+              whereParams.push(suffixPattern);
+              whereParts.push(`CAST(phones AS TEXT) LIKE $${whereParams.length}`);
+            }
+            const unlinkedCandRes = await client.query(
+              `SELECT id, phone, secondary_phone, phones FROM customers WHERE user_id IS NULL AND (${whereParts.join(' OR ')}) ORDER BY id ASC`,
+              whereParams
+            );
             const candIds = unlinkedCandRes.rows
               .filter((c) => customerMatchesPhoneDigits(mapPgCustomerRow(c), normPhone))
               .map((c) => c.id)
@@ -2343,14 +2409,15 @@ export async function createAdminUser(payload, actor) {
             const autoCode = `CUS-${String(Date.now()).slice(-5)}-${Math.floor(10 + Math.random() * 89)}`;
             const initPhones = normalizeCustomerPhonesList([], payload.phone || '', '');
             await client.query(
-              `INSERT INTO customers (id, code, user_id, name, phone, phones, address, shop_address, opening_balance, current_balance, notes, status, created_at, updated_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$7,0,0,$8,$9,$10,$10)`,
+              `INSERT INTO customers (id, code, user_id, name, phone, normalized_phone, phones, address, shop_address, opening_balance, current_balance, notes, status, created_at, updated_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8,0,0,$9,$10,$11,$11)`,
               [
                 autoCustId,
                 autoCode,
                 id,
                 fullName,
                 payload.phone || '',
+                normPhone,
                 JSON.stringify(initPhones),
                 payload.address || '',
                 payload.notes || 'ملف عميل مُنشأ ومربوط تلقائيًا عند إنشاء حساب الدخول',
@@ -2372,14 +2439,15 @@ export async function createAdminUser(payload, actor) {
         const autoRepId = generateServerId('REP');
         const autoRepCode = `REP-${String(Date.now()).slice(-5)}-${Math.floor(10 + Math.random() * 89)}`;
         await client.query(
-          `INSERT INTO representatives (id, code, user_id, name, phone, vehicle_number, address, opening_balance, current_balance, commission_rate, warehouse_id, notes, status, created_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,0,0,0,$8,$9,$10,$11)`,
+          `INSERT INTO representatives (id, code, user_id, name, phone, normalized_phone, vehicle_number, address, opening_balance, current_balance, commission_rate, warehouse_id, notes, status, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,0,0,0,$9,$10,$11,$12)`,
           [
             autoRepId,
             autoRepCode,
             id,
             fullName,
             payload.phone || '',
+            normalizePhoneDigits(payload.phone || ''),
             payload.vehicleNumber || '',
             payload.address || '',
             vanId,
@@ -2555,11 +2623,13 @@ export async function updateAdminUser(userId, updates, actor) {
           : updates.role !== undefined && updates.role !== cur.role
           ? resolveDefaultPermissionsForRole(effectiveRole, liveExtraSettings)
           : (cur.permissions || resolveDefaultPermissionsForRole(effectiveRole, liveExtraSettings));
+      const nextPhoneVal = updates.phone ?? cur.phone ?? '';
       await client.query(
-        `UPDATE users SET full_name = $1, phone = $2, address = $3, notes = $4, role = $5, job_title = $6, department = $7, is_active = $8, must_change_password = $9, permissions = $10, updated_at = $11 WHERE id = $12`,
+        `UPDATE users SET full_name = $1, phone = $2, normalized_phone = $3, address = $4, notes = $5, role = $6, job_title = $7, department = $8, is_active = $9, must_change_password = $10, permissions = $11, updated_at = $12 WHERE id = $13`,
         [
           updates.fullName ?? cur.full_name,
-          updates.phone ?? cur.phone,
+          nextPhoneVal,
+          normalizePhoneDigits(nextPhoneVal),
           updates.address ?? cur.address,
           updates.notes ?? cur.notes,
           effectiveRole,
@@ -2596,7 +2666,27 @@ export async function updateAdminUser(userId, updates, actor) {
           const normPhone = normalizePhoneDigits(targetPhone);
           let matchedExisting = null;
           if (normPhone && updates.autoMatchExisting !== false && !updates.forceNewCustomerProfile) {
-            const unlinkedCandRes = await client.query('SELECT id, phone, secondary_phone, phones FROM customers WHERE user_id IS NULL');
+            const { variants: phoneVariants, suffixPattern } = buildPhoneLookupVariants(targetPhone);
+            const whereParts = [`normalized_phone = $1`];
+            const whereParams = [normPhone];
+            if (phoneVariants.length > 0) {
+              const ph = phoneVariants
+                .map((v) => {
+                  whereParams.push(v);
+                  return `$${whereParams.length}`;
+                })
+                .join(', ');
+              whereParts.push(`phone IN (${ph})`);
+              whereParts.push(`secondary_phone IN (${ph})`);
+            }
+            if (suffixPattern) {
+              whereParams.push(suffixPattern);
+              whereParts.push(`CAST(phones AS TEXT) LIKE $${whereParams.length}`);
+            }
+            const unlinkedCandRes = await client.query(
+              `SELECT id, phone, secondary_phone, phones FROM customers WHERE user_id IS NULL AND (${whereParts.join(' OR ')}) ORDER BY id ASC`,
+              whereParams
+            );
             const candIds = unlinkedCandRes.rows
               .filter((c) => customerMatchesPhoneDigits(mapPgCustomerRow(c), normPhone))
               .map((c) => c.id)
@@ -2628,14 +2718,15 @@ export async function updateAdminUser(userId, updates, actor) {
             const autoCode = `CUS-${String(Date.now()).slice(-5)}-${Math.floor(10 + Math.random() * 89)}`;
             const initPhones = normalizeCustomerPhonesList([], targetPhone, '');
             await client.query(
-              `INSERT INTO customers (id, code, user_id, name, phone, phones, address, shop_address, opening_balance, current_balance, notes, status, created_at, updated_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$7,0,0,$8,$9,$10,$10)`,
+              `INSERT INTO customers (id, code, user_id, name, phone, normalized_phone, phones, address, shop_address, opening_balance, current_balance, notes, status, created_at, updated_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8,0,0,$9,$10,$11,$11)`,
               [
                 autoCustId,
                 autoCode,
                 userId,
                 updates.fullName ?? cur.full_name,
                 targetPhone,
+                normPhone,
                 JSON.stringify(initPhones),
                 updates.address ?? cur.address ?? '',
                 'ملف عميل مُنشأ تلقائيًا',
@@ -2672,7 +2763,22 @@ export async function updateAdminUser(userId, updates, actor) {
           const normPhone = normalizePhoneDigits(repPhone);
           let matchedRep = null;
           if (normPhone && updates.autoMatchExisting !== false) {
-            const unlinkedRepsCandRes = await client.query('SELECT id, phone FROM representatives WHERE user_id IS NULL');
+            const { variants: repPhoneVariants } = buildPhoneLookupVariants(repPhone);
+            const repWhereParts = [`normalized_phone = $1`];
+            const repWhereParams = [normPhone];
+            if (repPhoneVariants.length > 0) {
+              const ph = repPhoneVariants
+                .map((v) => {
+                  repWhereParams.push(v);
+                  return `$${repWhereParams.length}`;
+                })
+                .join(', ');
+              repWhereParts.push(`phone IN (${ph})`);
+            }
+            const unlinkedRepsCandRes = await client.query(
+              `SELECT id, phone FROM representatives WHERE user_id IS NULL AND (${repWhereParts.join(' OR ')}) ORDER BY id ASC`,
+              repWhereParams
+            );
             const repCandIds = unlinkedRepsCandRes.rows
               .filter((rp) => normalizePhoneDigits(rp.phone) === normPhone)
               .map((rp) => rp.id)
@@ -2716,14 +2822,15 @@ export async function updateAdminUser(userId, updates, actor) {
             const autoRepId = generateServerId('REP');
             const repCode = `REP-${String(Date.now()).slice(-5)}`;
             await client.query(
-              `INSERT INTO representatives (id, code, user_id, name, phone, vehicle_number, address, opening_balance, current_balance, commission_rate, warehouse_id, notes, status, created_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,0,0,0,$8,$9,$10,$11)`,
+              `INSERT INTO representatives (id, code, user_id, name, phone, normalized_phone, vehicle_number, address, opening_balance, current_balance, commission_rate, warehouse_id, notes, status, created_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,0,0,0,$9,$10,$11,$12)`,
               [
                 autoRepId,
                 repCode,
                 userId,
                 repDisplayName,
                 repPhone,
+                normPhone,
                 updates.vehicleNumber || '',
                 updates.address ?? cur.address ?? '',
                 vanId,
@@ -3951,8 +4058,8 @@ export async function addRepresentative(payload, actor) {
         const nextOpening = Math.abs(Number(cur.opening_balance || 0)) < 0.001 && Math.abs(Number(cur.current_balance || 0)) < 0.001 ? opening : Number(cur.opening_balance || 0);
         const nextCurrent = Math.abs(Number(cur.opening_balance || 0)) < 0.001 && Math.abs(Number(cur.current_balance || 0)) < 0.001 ? opening : Number(cur.current_balance || 0);
         await getPool().query(
-          `UPDATE representatives SET name = COALESCE(NULLIF($1, ''), name), phone = COALESCE(NULLIF($2, ''), phone), vehicle_number = COALESCE(NULLIF($3, ''), vehicle_number), opening_balance = $4, current_balance = $5, commission_rate = $6, notes = COALESCE(NULLIF($7, ''), notes), status = COALESCE($8, status) WHERE id = $9`,
-          [payload.name || '', payload.phone || '', payload.vehicleNumber || '', nextOpening, nextCurrent, Number(payload.commissionRate ?? cur.commission_rate ?? 0), payload.notes || '', payload.status || cur.status || 'active', cur.id]
+          `UPDATE representatives SET name = COALESCE(NULLIF($1, ''), name), phone = COALESCE(NULLIF($2, ''), phone), normalized_phone = COALESCE(NULLIF($3, ''), normalized_phone), vehicle_number = COALESCE(NULLIF($4, ''), vehicle_number), opening_balance = $5, current_balance = $6, commission_rate = $7, notes = COALESCE(NULLIF($8, ''), notes), status = COALESCE($9, status) WHERE id = $10`,
+          [payload.name || '', payload.phone || '', normalizePhoneDigits(payload.phone || ''), payload.vehicleNumber || '', nextOpening, nextCurrent, Number(payload.commissionRate ?? cur.commission_rate ?? 0), payload.notes || '', payload.status || cur.status || 'active', cur.id]
         );
         return {
           ...payload,
@@ -3964,9 +4071,9 @@ export async function addRepresentative(payload, actor) {
       }
     }
     await getPool().query(
-      `INSERT INTO representatives (id, user_id, name, phone, vehicle_number, opening_balance, current_balance, commission_rate, notes, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9)`,
-      [id, payload.userId || null, payload.name, payload.phone || '', payload.vehicleNumber || '', opening, Number(payload.commissionRate || 0), payload.notes || '', payload.status || 'active']
+      `INSERT INTO representatives (id, user_id, name, phone, normalized_phone, vehicle_number, opening_balance, current_balance, commission_rate, notes, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$7,$8,$9,$10)`,
+      [id, payload.userId || null, payload.name, payload.phone || '', normalizePhoneDigits(payload.phone || ''), payload.vehicleNumber || '', opening, Number(payload.commissionRate || 0), payload.notes || '', payload.status || 'active']
     );
   } else {
     let existingRep = null;
@@ -3998,8 +4105,8 @@ export async function addRepresentative(payload, actor) {
 export async function updateRepresentative(id, updates, actor = null) {
   if (await isPgMode()) {
     await getPool().query(
-      `UPDATE representatives SET name = COALESCE($1, name), phone = COALESCE($2, phone), vehicle_number = COALESCE($3, vehicle_number), commission_rate = COALESCE($4, commission_rate), status = COALESCE($5, status), user_id = COALESCE($6, user_id), notes = COALESCE($7, notes), warehouse_id = COALESCE($8, warehouse_id) WHERE id = $9`,
-      [updates.name ?? null, updates.phone ?? null, updates.vehicleNumber ?? null, updates.commissionRate ?? null, updates.status ?? null, updates.userId ?? null, updates.notes ?? null, updates.warehouseId ?? null, id]
+      `UPDATE representatives SET name = COALESCE($1, name), phone = COALESCE($2, phone), normalized_phone = COALESCE($3, normalized_phone), vehicle_number = COALESCE($4, vehicle_number), commission_rate = COALESCE($5, commission_rate), status = COALESCE($6, status), user_id = COALESCE($7, user_id), notes = COALESCE($8, notes), warehouse_id = COALESCE($9, warehouse_id) WHERE id = $10`,
+      [updates.name ?? null, updates.phone ?? null, updates.phone !== undefined ? normalizePhoneDigits(updates.phone) : null, updates.vehicleNumber ?? null, updates.commissionRate ?? null, updates.status ?? null, updates.userId ?? null, updates.notes ?? null, updates.warehouseId ?? null, id]
     );
   } else {
     await withJsonTransaction((db) => {
@@ -4438,6 +4545,9 @@ export async function issuePayroll(payload, actor) {
 }
 
 export async function executeCashOperation(payload, actor, idempotencyKey = '') {
+  if (actor?.role === 'representative') {
+    throw new AppError(403, 'العمليات الإدارية للخزائن غير متاحة للمندوبين', 'FORBIDDEN_REP_CASHBOX_OP');
+  }
   const opType = String(payload.type || '').trim();
   const validTypes = ['cash_withdrawal', 'cash_deposit', 'cashbox_transfer', 'expense', 'profit_deposit'];
   if (!validTypes.includes(opType)) {
@@ -5983,6 +6093,7 @@ export async function getRepCustodyStatement(repIdParam, filters = {}, actor) {
 // ==============================================================================
 
 export async function getItemMovementReport(filters = {}, actor) {
+  const isRep = actor?.role === 'representative';
   const boot = await getStaffBootstrapData(actor);
   const productIdFilter = filters.productId && filters.productId !== 'all' ? String(filters.productId) : null;
   const warehouseIdFilter = filters.warehouseId && filters.warehouseId !== 'all' ? String(filters.warehouseId) : null;
@@ -5997,7 +6108,6 @@ export async function getItemMovementReport(filters = {}, actor) {
 
   if (await isPgMode()) {
     const pool = getPool();
-    const isRep = actor?.role === 'representative';
     const repProfile = isRep ? await getRepresentativeByUserId(actor.id) : null;
 
     const smQuery = productIdFilter
@@ -6028,7 +6138,7 @@ export async function getItemMovementReport(filters = {}, actor) {
         quantity: Number(sm.quantity || 0),
         unit: sm.unit || undefined,
         unitFactor: Number(sm.unit_factor || 1),
-        unitCost: Number(sm.unit_cost || 0),
+        unitCost: isRep ? 0 : Number(sm.unit_cost || 0),
         referenceId: sm.related_doc_id || undefined,
         referenceNumber: sm.related_doc_number || undefined,
         notes: sm.notes || '',
@@ -6126,15 +6236,18 @@ export async function getItemMovementReport(filters = {}, actor) {
   for (const inv of boot.invoices || []) {
     if (inv.status !== 'confirmed') continue;
     if (inv.type !== 'sales' && inv.type !== 'purchase') continue;
+    if (isRep && inv.type === 'purchase') continue;
 
     for (const it of inv.items || []) {
       const prod = productMap.get(it.productId);
       const baseQty = round3(Number(it.quantity || 0) * Number(it.unitFactor || 1));
-      const costPerBase = Number(it.purchasePriceAtTime || 0) > 0
+      const costPerBase = isRep
+        ? 0
+        : Number(it.purchasePriceAtTime || 0) > 0
         ? Number(it.purchasePriceAtTime)
         : Number(prod?.purchasePrice || 0);
       const lineTotal = round2(it.total || Number(it.unitPrice || 0) * Number(it.quantity || 0));
-      const lineCost = round2(costPerBase * baseQty);
+      const lineCost = isRep ? 0 : round2(costPerBase * baseQty);
       const row = {
         id: `${inv.id}-${it.productId}-${it.unit}`,
         date: inv.date,
@@ -6157,7 +6270,7 @@ export async function getItemMovementReport(filters = {}, actor) {
         costPrice: round2(costPerBase),
         totalValue: lineTotal,
         costValue: lineCost,
-        profitValue: inv.type === 'sales' ? round2(lineTotal - lineCost) : 0,
+        profitValue: isRep ? 0 : inv.type === 'sales' ? round2(lineTotal - lineCost) : 0,
         direction: inv.type === 'sales' ? 'out' : 'in',
         notes: inv.notes || '',
         createdBy: inv.createdBy,
@@ -6182,12 +6295,13 @@ export async function getItemMovementReport(filters = {}, actor) {
   // 2. Invoice Returns (Sales Returns & Purchase Returns)
   for (const ret of boot.invoiceReturns || []) {
     const isSalesRet = ret.type === 'sales_return';
+    if (isRep && !isSalesRet) continue;
     for (const it of ret.items || []) {
       const prod = productMap.get(it.productId);
       const baseQty = round3(Number(it.quantity || 0) * Number(it.unitFactor || 1));
-      const costPerBase = Number(prod?.purchasePrice || 0);
+      const costPerBase = isRep ? 0 : Number(prod?.purchasePrice || 0);
       const lineTotal = round2(it.total || Number(it.unitPrice || 0) * Number(it.quantity || 0));
-      const lineCost = round2(costPerBase * baseQty);
+      const lineCost = isRep ? 0 : round2(costPerBase * baseQty);
       const row = {
         id: `${ret.id}-${it.productId}-${it.unit}`,
         date: ret.date,
@@ -6208,7 +6322,7 @@ export async function getItemMovementReport(filters = {}, actor) {
         costPrice: round2(costPerBase),
         totalValue: lineTotal,
         costValue: lineCost,
-        profitValue: isSalesRet ? round2(-(lineTotal - lineCost)) : 0,
+        profitValue: isRep ? 0 : isSalesRet ? round2(-(lineTotal - lineCost)) : 0,
         direction: isSalesRet ? 'in' : 'out',
         notes: `${ret.reason || ''}${ret.notes ? ` — ${ret.notes}` : ''}`.trim(),
         createdBy: ret.createdBy,
@@ -6241,8 +6355,8 @@ export async function getItemMovementReport(filters = {}, actor) {
       if (rawQty <= 0) continue;
       const factor = resolveUnitFactor(prod, it.unit);
       const baseQty = round3(rawQty * factor);
-      const costPerBase = Number(prod?.purchasePrice || 0);
-      const val = round2(baseQty * costPerBase);
+      const costPerBase = isRep ? 0 : Number(prod?.purchasePrice || 0);
+      const val = isRep ? 0 : round2(baseQty * costPerBase);
       if (rit.status === 'executed' || rit.status === 'received') {
         const sentRow = {
           id: `${rit.id}-sent-${it.productId}-${it.unit || ''}`,
@@ -6327,8 +6441,8 @@ export async function getItemMovementReport(filters = {}, actor) {
     }
     const prod = productMap.get(op.productId);
     const bQty = Number(op.baseQuantity || op.quantity || 0);
-    const costPerBase = Number(prod?.purchasePrice || 0);
-    const val = round2(bQty * costPerBase);
+    const costPerBase = isRep ? 0 : Number(prod?.purchasePrice || 0);
+    const val = isRep ? 0 : round2(bQty * costPerBase);
     const opRep = repMap.get(op.representativeId);
     const repVanWh = opRep?.warehouseId ? warehouseMap.get(opRep.warehouseId) : null;
     const isReturn = op.operationType === 'returned_to_warehouse';
@@ -6386,7 +6500,7 @@ export async function getItemMovementReport(filters = {}, actor) {
     const isInvEditOrCancel = ['sale_edit', 'purchase_edit', 'sale_cancel', 'purchase_cancel'].includes(sm.type);
     const prod = productMap.get(sm.productId);
     const bQty = Number(sm.quantity || 0);
-    const costPerBase = Number(sm.unitCost || prod?.purchasePrice || 0);
+    const costPerBase = isRep ? 0 : Number(sm.unitCost || prod?.purchasePrice || 0);
     let direction = sm.type === 'transfer_in' || sm.type === 'opening_balance' ? 'in' : sm.type === 'adjustment' ? 'neutral' : 'out';
     if (isInvEditOrCancel) {
       if (sm.balanceBefore !== undefined && sm.balanceBefore !== null && sm.balanceAfter !== undefined && sm.balanceAfter !== null) {
@@ -6413,7 +6527,7 @@ export async function getItemMovementReport(filters = {}, actor) {
       baseQuantity: bQty,
       unitPrice: round2(costPerBase),
       costPrice: round2(costPerBase),
-      totalValue: round2(bQty * costPerBase),
+      totalValue: isRep ? 0 : round2(bQty * costPerBase),
       profitValue: 0,
       direction,
       notes: sm.notes || '',
@@ -6472,11 +6586,13 @@ export async function getItemMovementReport(filters = {}, actor) {
     for (const p of targetProducts) {
       const q = Number(p.stockPerWarehouse?.[wh.id] || 0);
       qtySum = round3(qtySum + q);
-      costVal = round2(costVal + Math.max(0, q) * Number(p.purchasePrice || 0));
+      if (!isRep) {
+        costVal = round2(costVal + Math.max(0, q) * Number(p.purchasePrice || 0));
+      }
       sellVal = round2(sellVal + Math.max(0, q) * Number(p.sellingPrice || 0));
     }
     currentBalance = round3(currentBalance + qtySum);
-    inventoryValuation = round2(inventoryValuation + costVal);
+    inventoryValuation = isRep ? 0 : round2(inventoryValuation + costVal);
     const linkedRep = vanWarehouseToRep.get(wh.id);
     if (linkedRep) {
       repCustodyBreakdown.push({
@@ -6485,7 +6601,7 @@ export async function getItemMovementReport(filters = {}, actor) {
         warehouseId: wh.id,
         warehouseName: wh.name,
         quantity: qtySum,
-        costValue: costVal,
+        costValue: isRep ? 0 : costVal,
         sellingValue: sellVal,
       });
     } else {
@@ -6494,15 +6610,15 @@ export async function getItemMovementReport(filters = {}, actor) {
         warehouseName: wh.name,
         code: wh.code,
         quantity: qtySum,
-        costValue: costVal,
+        costValue: isRep ? 0 : costVal,
         sellingValue: sellVal,
       });
     }
   }
 
   const netSalesValue = round2(totalSalesValue - totalSalesReturnValue);
-  const netCostOfGoodsSold = round2(totalSalesCost - totalSalesReturnCost);
-  const totalProfit = round2(netSalesValue - netCostOfGoodsSold);
+  const netCostOfGoodsSold = isRep ? 0 : round2(totalSalesCost - totalSalesReturnCost);
+  const totalProfit = isRep ? 0 : round2(netSalesValue - netCostOfGoodsSold);
 
   return {
     product: selectedProduct,
@@ -6521,18 +6637,18 @@ export async function getItemMovementReport(filters = {}, actor) {
     totals: {
       totalSalesQty,
       totalSalesValue,
-      totalPurchaseQty,
-      totalPurchaseValue,
+      totalPurchaseQty: isRep ? 0 : totalPurchaseQty,
+      totalPurchaseValue: isRep ? 0 : totalPurchaseValue,
       totalSalesReturnQty,
       totalSalesReturnValue,
-      totalPurchaseReturnQty,
-      totalPurchaseReturnValue,
+      totalPurchaseReturnQty: isRep ? 0 : totalPurchaseReturnQty,
+      totalPurchaseReturnValue: isRep ? 0 : totalPurchaseReturnValue,
       totalCostOfGoodsSold: netCostOfGoodsSold,
       totalProfit,
       totalQtyIn,
       totalQtyOut,
       currentBalance,
-      inventoryValuation,
+      inventoryValuation: isRep ? 0 : inventoryValuation,
     },
   };
 }

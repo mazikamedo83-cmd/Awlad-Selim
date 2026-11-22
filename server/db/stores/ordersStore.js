@@ -5,7 +5,7 @@ import {
   readJsonDatabase,
 } from '../jsonLedger.js';
 import { generateServerId } from '../../utils/crypto.js';
-import { AppError, nowIso, todayIso, round2, round3, getUnitSellingPrice, getUnitFactor } from '../../utils/errors.js';
+import { AppError, nowIso, todayIso, round2, round3, getUnitSellingPrice, getUnitFactor, canViewCashboxBalances } from '../../utils/errors.js';
 import {
   buildScopedIdemKey,
   findPgIdempotency,
@@ -1555,6 +1555,11 @@ export async function recordOrderAdvancePayment(orderId, payload, actor, idempot
       module: 'المالية',
       recordId: orderId,
     });
+  }
+  if (!canViewCashboxBalances(actor)) {
+    const sanitized = { ...out };
+    delete sanitized.cashboxBalance;
+    return sanitized;
   }
   return out;
 }

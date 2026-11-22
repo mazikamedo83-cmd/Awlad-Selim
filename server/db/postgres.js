@@ -2,6 +2,7 @@ import pg from 'pg';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { normalizePhoneDigits } from '../utils/errors.js';
 
 const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -109,6 +110,10 @@ export function isPgConnectionError(err, seen = new Set()) {
 
 export function setInjectedPool(customPool) {
   injectedPool = customPool || null;
+}
+
+export function isUsingInjectedPool() {
+  return Boolean(injectedPool);
 }
 
 export function getPostgresConfig() {
@@ -388,6 +393,9 @@ export async function initializeSchema(customPool = null) {
       "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ",
       "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS rejection_reason TEXT DEFAULT ''",
       "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS dispatch_history JSONB NOT NULL DEFAULT '[]'::jsonb",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS normalized_phone VARCHAR(32) DEFAULT ''",
+      "ALTER TABLE customers ADD COLUMN IF NOT EXISTS normalized_phone VARCHAR(32) DEFAULT ''",
+      "ALTER TABLE representatives ADD COLUMN IF NOT EXISTS normalized_phone VARCHAR(32) DEFAULT ''",
       "ALTER TABLE customer_item_orders DROP CONSTRAINT IF EXISTS customer_item_orders_status_check",
       "ALTER TABLE customer_item_orders ADD CONSTRAINT customer_item_orders_status_check CHECK (status IN ('pending', 'under_review', 'approved', 'rejected', 'preparing', 'rep_assigned', 'out_for_delivery', 'delivered', 'needs_review', 'invoiced', 'collected', 'closed', 'cancelled'))",
     ];
@@ -471,7 +479,7 @@ export async function initializeSchema(customPool = null) {
       }
     }
 
-    // Ensure v8 atomic bootstrap singleton table and composite report indexes exist on pre-existing PG DBs
+    // Ensure v8 atomic bootstrap singleton table and composite report/phone indexes exist on pre-existing PG DBs
     const v8Statements = [
       `CREATE TABLE IF NOT EXISTS system_bootstrap_lock (
         id VARCHAR(32) PRIMARY KEY,
@@ -480,7 +488,15 @@ export async function initializeSchema(customPool = null) {
       )`,
       'CREATE INDEX IF NOT EXISTS idx_invoices_date_type ON invoices(date DESC, type)',
       'CREATE INDEX IF NOT EXISTS idx_invoices_rep_date ON invoices(representative_id, date DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_invoices_cashbox_date ON invoices(cashbox_id, date DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_invoices_number ON invoices(invoice_number)',
+      'CREATE INDEX IF NOT EXISTS idx_invoice_returns_party_date ON invoice_returns(party_id, date DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_fin_tx_cashbox_date ON financial_transactions(cashbox_id, date DESC)',
       'CREATE INDEX IF NOT EXISTS idx_stock_movements_prod_date ON stock_movements(product_id, date DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_rep_custody_ops_date_prod ON rep_custody_operations(date DESC, product_id)',
+      'CREATE INDEX IF NOT EXISTS idx_users_role_norm_phone ON users(role, normalized_phone)',
+      'CREATE INDEX IF NOT EXISTS idx_customers_norm_phone ON customers(normalized_phone)',
+      'CREATE INDEX IF NOT EXISTS idx_reps_norm_phone ON representatives(normalized_phone)',
     ];
     for (const stmt of v8Statements) {
       try {
@@ -488,6 +504,32 @@ export async function initializeSchema(customPool = null) {
       } catch {
         // ignore if already present or engine-specific
       }
+    }
+
+    // Non-destructive normalized_phone backfill for pre-existing databases
+    for (const tbl of ['users', 'customers', 'representatives']) {
+      try {
+        const pending = await currentPool.query(
+          `SELECT id, phone FROM ${tbl} WHERE (normalized_phone IS NULL OR normalized_phone = '') AND phone IS NOT NULL AND phone <> ''`
+        );
+        for (const row of pending.rows || []) {
+          const norm = normalizePhoneDigits(row.phone);
+          if (norm) {
+            await currentPool.query(`UPDATE ${tbl} SET normalized_phone = $1 WHERE id = $2`, [norm, row.id]);
+          }
+        }
+      } catch {
+        // ignore non-fatal backfill errors on minimal test schemas
+      }
+    }
+
+    // Conditional partial unique index enforcing no duplicate mobile account phones across multiple instances
+    try {
+      await currentPool.query(
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_role_norm_phone_unique ON users(role, normalized_phone) WHERE role IN ('customer', 'representative') AND normalized_phone <> ''`
+      );
+    } catch {
+      // Ignore if legacy duplicate phone rows already exist or engine lacks partial unique index support
     }
 
     return { success: true, message: 'تم تطبيق هيكل الجداول والفهارس والتسلسلات في PostgreSQL بنجاح.' };

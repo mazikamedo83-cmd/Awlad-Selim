@@ -9,7 +9,13 @@ import {
   isoTimestamp,
 } from '../db/stores/mode.js';
 import { generateServerId } from '../utils/crypto.js';
-import { AppError, nowIso, sanitizeUser } from '../utils/errors.js';
+import {
+  AppError,
+  nowIso,
+  sanitizeUser,
+  canManageSyncConflictsGlobally,
+  sanitizeSyncPayload,
+} from '../utils/errors.js';
 import { requireAuth, asyncHandler } from '../middleware/auth.js';
 import { recordAuditLog } from '../db/stores/authStore.js';
 import {
@@ -53,15 +59,8 @@ import {
 const router = Router();
 router.use(requireAuth);
 
-function canManageConflictsGlobally(user) {
-  return (
-    user.role === 'admin' ||
-    Boolean(user.permissions?.canManageSales) ||
-    Boolean(user.permissions?.canManageAccounts)
-  );
-}
-
-function mapPgConflictRow(r) {
+function mapPgConflictRow(r, viewer = null) {
+  const redactCosts = viewer?.role === 'representative';
   return {
     id: r.id,
     operationId: r.operation_id,
@@ -72,8 +71,8 @@ function mapPgConflictRow(r) {
     userId: r.user_id || undefined,
     userName: r.user_name || '',
     conflictReason: r.conflict_reason,
-    localPayload: r.local_payload || {},
-    serverSnapshot: r.server_snapshot || {},
+    localPayload: sanitizeSyncPayload(r.local_payload || {}, { redactCosts }),
+    serverSnapshot: sanitizeSyncPayload(r.server_snapshot || {}, { redactCosts }),
     status: r.status,
     resolutionNotes: r.resolution_notes || '',
     resolvedBy: r.resolved_by || undefined,
@@ -83,7 +82,8 @@ function mapPgConflictRow(r) {
 }
 
 async function listUserScopedConflicts(user) {
-  const global = canManageConflictsGlobally(user);
+  const global = canManageSyncConflictsGlobally(user);
+  const redactCosts = user?.role === 'representative';
   if (await isPgMode()) {
     const pool = getPool();
     const res = global
@@ -92,11 +92,16 @@ async function listUserScopedConflicts(user) {
           `SELECT * FROM sync_conflicts WHERE user_id = $1 ORDER BY created_at DESC LIMIT 150`,
           [user.id]
         );
-    return res.rows.map(mapPgConflictRow);
+    return res.rows.map((r) => mapPgConflictRow(r, user));
   }
   const db = readJsonDatabase();
   const list = db.syncConflicts || [];
-  return global ? list : list.filter((c) => c.userId === user.id);
+  const scoped = global ? list : list.filter((c) => c.userId === user.id);
+  return scoped.map((c) => ({
+    ...c,
+    localPayload: sanitizeSyncPayload(c.localPayload || {}, { redactCosts }),
+    serverSnapshot: sanitizeSyncPayload(c.serverSnapshot || {}, { redactCosts }),
+  }));
 }
 
 async function findSyncOpDeduplication(userId, operationId) {
@@ -155,6 +160,9 @@ async function recordSyncOpLog(entry) {
 }
 
 async function createConflictRecord({ op, user, conflictReason, serverSnapshot }) {
+  const redactCosts = user?.role === 'representative';
+  const safeLocalPayload = sanitizeSyncPayload(op.payload || {}, { redactCosts });
+  const safeServerSnapshot = sanitizeSyncPayload(serverSnapshot || {}, { redactCosts });
   const conflict = {
     id: generateServerId('CONF'),
     operationId: op.operationId,
@@ -165,8 +173,8 @@ async function createConflictRecord({ op, user, conflictReason, serverSnapshot }
     userId: user.id,
     userName: user.fullName || user.username,
     conflictReason,
-    localPayload: op.payload || {},
-    serverSnapshot: serverSnapshot || {},
+    localPayload: safeLocalPayload,
+    serverSnapshot: safeServerSnapshot,
     status: 'needs_review',
     resolutionNotes: '',
     createdAt: nowIso(),
@@ -570,19 +578,31 @@ router.get(
       });
     }
 
-    const [staffData, repProfile] = await Promise.all([
+    const [staffData, rawRepProfile] = await Promise.all([
       getStaffBootstrapData(user),
       user.role === 'representative'
         ? Promise.resolve(req.auth.representativeProfile || getRepresentativeByUserId(user.id))
         : Promise.resolve(null),
     ]);
+    const safeRepProfile = rawRepProfile
+      ? {
+          id: rawRepProfile.id,
+          userId: rawRepProfile.userId || undefined,
+          name: rawRepProfile.name,
+          phone: rawRepProfile.phone || '',
+          vehicleNumber: rawRepProfile.vehicleNumber || '',
+          warehouseId: rawRepProfile.warehouseId || undefined,
+          currentBalance: Number(rawRepProfile.currentBalance || 0),
+          status: rawRepProfile.status || 'active',
+        }
+      : null;
 
     res.json({
       ok: true,
       scope: user.role === 'representative' ? 'representative' : 'staff',
       serverTime,
       user: sanitizeUser(user),
-      representativeProfile: repProfile || null,
+      representativeProfile: safeRepProfile,
       mobileConfig: settings.mobileConfig,
       ...staffData,
     });
@@ -592,16 +612,28 @@ router.get(
 router.post(
   '/push',
   asyncHandler(async (req, res) => {
-    const operations = Array.isArray(req.body?.operations) ? req.body.operations : [];
+    if (req.body?.operations !== undefined && !Array.isArray(req.body.operations)) {
+      throw new AppError(400, 'تنسيق عمليات المزامنة غير صالح', 'INVALID_SYNC_OPERATIONS');
+    }
+    const operations = Array.isArray(req.body?.operations) ? req.body.operations.slice(0, 200) : [];
     const user = req.auth.user;
     const results = [];
 
     for (const op of operations) {
-      if (!op?.operationId || !op?.operationType) {
+      if (!op || typeof op !== 'object' || Array.isArray(op) || !op.operationId || !op.operationType) {
         results.push({
           operationId: op?.operationId || 'unknown',
           status: 'failed',
           error: 'بيانات عملية المزامنة غير مكتملة',
+        });
+        continue;
+      }
+      if (op.payload !== undefined && (op.payload === null || typeof op.payload !== 'object' || Array.isArray(op.payload))) {
+        results.push({
+          operationId: String(op.operationId),
+          status: 'failed',
+          code: 'INVALID_SYNC_PAYLOAD',
+          error: 'بيانات العملية (payload) غير صالحة',
         });
         continue;
       }
@@ -691,21 +723,30 @@ router.post(
     if (await isPgMode()) {
       const pool = getPool();
       const cRes = await pool.query(`SELECT * FROM sync_conflicts WHERE id = $1 LIMIT 1`, [conflictId]);
-      if (cRes.rows[0]) conflict = mapPgConflictRow(cRes.rows[0]);
+      if (cRes.rows[0]) conflict = mapPgConflictRow(cRes.rows[0], user);
     } else {
       const db = readJsonDatabase();
-      conflict = (db.syncConflicts || []).find((c) => c.id === conflictId) || null;
+      const rawConf = (db.syncConflicts || []).find((c) => c.id === conflictId) || null;
+      if (rawConf) {
+        const redactCosts = user?.role === 'representative';
+        conflict = {
+          ...rawConf,
+          localPayload: sanitizeSyncPayload(rawConf.localPayload || {}, { redactCosts }),
+          serverSnapshot: sanitizeSyncPayload(rawConf.serverSnapshot || {}, { redactCosts }),
+        };
+      }
     }
 
     if (!conflict) {
       throw new AppError(404, 'سجل التعارض غير موجود', 'CONFLICT_NOT_FOUND');
     }
 
-    if (!canManageConflictsGlobally(user) && conflict.userId !== user.id) {
+    if (!canManageSyncConflictsGlobally(user) && conflict.userId !== user.id) {
       throw new AppError(403, 'غير مصرح لك بمعالجة تعارض مستخدم آخر', 'FORBIDDEN_CONFLICT_ACCESS');
     }
 
     if (action === 'apply_local') {
+      const safeLocalPayload = sanitizeSyncPayload(conflict.localPayload || {}, { redactCosts: false });
       await applySingleOperation(
         {
           operationId: conflict.operationId,
@@ -713,7 +754,7 @@ router.post(
           entityType: conflict.entityType,
           entityId: conflict.entityId,
           deviceId: conflict.deviceId,
-          payload: conflict.localPayload || {},
+          payload: safeLocalPayload,
         },
         req.auth,
         { ignoreVersionCheck: true }

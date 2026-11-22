@@ -2869,17 +2869,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <span>إدارة النقدية والعهدة المالية</span>
             </h3>
 
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-1 gap-2.5">
               <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200">
                 <span className="text-[11px] text-emerald-700 block">رصيد عهدة المندوب</span>
                 <strong className="text-base font-black font-mono tabular-nums text-emerald-900">
                   {(rep?.currentBalance || 0).toLocaleString()} {data.settings.currency}
-                </strong>
-              </div>
-              <div className="p-3 rounded-2xl bg-blue-50 border border-blue-200">
-                <span className="text-[11px] text-blue-700 block">إجمالي أرصدة الخزائن</span>
-                <strong className="text-base font-black font-mono tabular-nums text-blue-950">
-                  {data.cashboxes.reduce((s, c) => s + Number(c.currentBalance || 0), 0).toLocaleString()} {data.settings.currency}
                 </strong>
               </div>
             </div>
@@ -4650,7 +4644,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
           >
             {data.cashboxes.map((cb) => (
-              <option key={cb.id} value={cb.id}>{cb.name} (رصيد: {cb.currentBalance.toLocaleString()})</option>
+              <option key={cb.id} value={cb.id}>
+                {cb.name}
+                {typeof cb.currentBalance === 'number' && !cb.balanceHidden
+                  ? ` (رصيد: ${cb.currentBalance.toLocaleString()})`
+                  : ''}
+              </option>
             ))}
           </select>
           <input

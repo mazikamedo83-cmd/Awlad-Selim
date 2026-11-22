@@ -134,3 +134,171 @@ export function getUnitFactor(product, unitName) {
   const unitObj = Array.isArray(product.units) ? product.units.find((u) => u.name === unitName) : null;
   return unitObj ? Math.max(0.001, Number(unitObj.conversionFactor || 1)) : 1;
 }
+
+export function normalizePhoneDigits(raw) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.startsWith('0020') && d.length >= 13) d = '0' + d.slice(4);
+  else if (d.startsWith('20') && d.length >= 12) d = '0' + d.slice(2);
+  return d;
+}
+
+export function buildPhoneLookupVariants(raw) {
+  const trimmed = String(raw || '').trim();
+  const normPhone = normalizePhoneDigits(trimmed);
+  const set = new Set();
+  if (trimmed) set.add(trimmed);
+  if (normPhone) {
+    set.add(normPhone);
+    set.add(`+2${normPhone}`);
+    set.add(`2${normPhone}`);
+    set.add(`002${normPhone}`);
+    if (normPhone.startsWith('0') && normPhone.length > 1) {
+      const noZero = normPhone.slice(1);
+      set.add(noZero);
+      set.add(`+20${noZero}`);
+      set.add(`20${noZero}`);
+      set.add(`0020${noZero}`);
+    }
+  }
+  const suffixPattern = normPhone.length >= 7 ? `%${normPhone.slice(-7)}%` : normPhone ? `%${normPhone}%` : '';
+  return { normPhone, variants: Array.from(set), suffixPattern };
+}
+
+export function canViewCashboxBalances(user) {
+  if (!user || user.role === 'customer' || user.role === 'representative') return false;
+  if (user.role === 'admin') return true;
+  const perms = user.permissions || {};
+  return Boolean(perms.canManageCashboxes || perms.canManageAccounts || perms.canViewReports);
+}
+
+export function sanitizeCashboxForViewer(cb, user) {
+  if (!cb) return cb;
+  const id = cb.id;
+  const name = cb.name;
+  const type = cb.type || 'cashbox';
+  const isDefault = Boolean(cb.isDefault ?? cb.is_default);
+  if (canViewCashboxBalances(user)) {
+    return {
+      id,
+      name,
+      type,
+      ...(cb.accountNumber ?? cb.account_number ? { accountNumber: cb.accountNumber ?? cb.account_number } : {}),
+      openingBalance: Number(cb.openingBalance ?? cb.opening_balance ?? 0),
+      currentBalance: Number(cb.currentBalance ?? cb.current_balance ?? 0),
+      isDefault,
+    };
+  }
+  return {
+    id,
+    name,
+    type,
+    isDefault,
+    balanceHidden: true,
+  };
+}
+
+export function canViewAllRepresentatives(user) {
+  if (!user || user.role === 'customer' || user.role === 'representative') return false;
+  return true;
+}
+
+export function canManageSyncConflictsGlobally(user) {
+  if (!user || user.role === 'customer' || user.role === 'representative') return false;
+  if (user.role === 'admin') return true;
+  const perms = user.permissions || {};
+  if (perms.canManageSyncConflicts === true) return true;
+  if (user.role === 'manager' && (perms.canManageSettings === true || perms.canManageUsers === true)) {
+    return true;
+  }
+  return false;
+}
+
+const SYNC_FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+const SYNC_SECRET_KEYS = new Set([
+  'password',
+  'passwordhash',
+  'password_hash',
+  'passwordalgo',
+  'password_algo',
+  'refreshtoken',
+  'refresh_token',
+  'refreshtokenhash',
+  'refresh_token_hash',
+  'accesstoken',
+  'access_token',
+  'tokenhash',
+  'token_hash',
+  'jwtsecret',
+  'jwt_secret',
+  'bootstrapsecret',
+  'bootstrap_secret',
+  'apikey',
+  'api_key',
+  'cashboxbalance',
+  'cashbox_balance',
+  'balanceafter',
+  'balance_after',
+]);
+const SYNC_COST_KEYS = new Set([
+  'purchaseprice',
+  'purchase_price',
+  'purchasepriceattime',
+  'purchase_price_at_time',
+  'costprice',
+  'cost_price',
+  'costvalue',
+  'cost_value',
+  'profit',
+  'profitvalue',
+  'profit_value',
+  'commissionrate',
+  'commission_rate',
+]);
+
+export function sanitizeSyncPayload(
+  raw,
+  { redactCosts = false, maxDepth = 5, maxKeys = 80, maxArray = 120, maxStringLength = 50000 } = {}
+) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+
+  const cleanValue = (val, depth) => {
+    if (val === null || val === undefined) return val;
+    if (typeof val === 'boolean') return val;
+    if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
+    if (typeof val === 'string') {
+      return val.length > maxStringLength ? val.slice(0, maxStringLength) : val;
+    }
+    if (depth >= maxDepth) return undefined;
+    if (Array.isArray(val)) {
+      const outArr = [];
+      for (let i = 0; i < Math.min(val.length, maxArray); i++) {
+        const cleaned = cleanValue(val[i], depth + 1);
+        if (cleaned !== undefined) outArr.push(cleaned);
+      }
+      return outArr;
+    }
+    if (typeof val === 'object') {
+      const outObj = {};
+      let count = 0;
+      for (const [k, v] of Object.entries(val)) {
+        if (count >= maxKeys) break;
+        if (!k || SYNC_FORBIDDEN_KEYS.has(k)) continue;
+        const lowerKey = k.toLowerCase();
+        if (SYNC_SECRET_KEYS.has(lowerKey)) continue;
+        if (redactCosts && SYNC_COST_KEYS.has(lowerKey)) continue;
+        const cleaned = cleanValue(v, depth + 1);
+        if (cleaned !== undefined) {
+          outObj[k] = cleaned;
+          count++;
+        }
+      }
+      return outObj;
+    }
+    return undefined;
+  };
+
+  const result = cleanValue(raw, 0);
+  return result && typeof result === 'object' && !Array.isArray(result) ? result : {};
+}
+

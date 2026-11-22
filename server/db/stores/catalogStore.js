@@ -9,6 +9,8 @@ import {
   sanitizeProductForCustomer,
   sanitizeProductForRepresentative,
   sanitizeUser,
+  canViewCashboxBalances,
+  normalizePhoneDigits as normalizePhoneDigitsShared,
 } from '../../utils/errors.js';
 import {
   isPgMode,
@@ -249,8 +251,8 @@ export async function createCustomer(payload, actor) {
         }
       }
       await client.query(
-        `INSERT INTO customers (id, code, user_id, assigned_rep_id, allowed_rep_ids, name, phone, secondary_phone, phones, shop_name, shop_photo, photo, address, governorate, area, geo_coordinates, opening_balance, current_balance, price_history, notes, status, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
+        `INSERT INTO customers (id, code, user_id, assigned_rep_id, allowed_rep_ids, name, phone, normalized_phone, secondary_phone, phones, shop_name, shop_photo, photo, address, governorate, area, geo_coordinates, opening_balance, current_balance, price_history, notes, status, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
         [
           id,
           code,
@@ -259,6 +261,7 @@ export async function createCustomer(payload, actor) {
           JSON.stringify(repAlloc.allowedRepIds),
           name,
           primaryPhone,
+          normalizePhoneDigitsShared(primaryPhone),
           secondaryPhone || null,
           JSON.stringify(normalizedPhones),
           payload.shopName || null,
@@ -422,13 +425,14 @@ export async function updateCustomer(customerId, updates, actor) {
 
       await client.query(
         `UPDATE customers SET
-          name = $1, phone = $2, secondary_phone = $3, phones = $4, shop_name = $5, shop_photo = $6, photo = $7,
-          address = $8, governorate = $9, area = $10, geo_coordinates = $11, notes = $12, status = $13, user_id = $14,
-          assigned_rep_id = $15, allowed_rep_ids = $16, version = COALESCE(version, 1) + 1, updated_at = $17
-         WHERE id = $18`,
+          name = $1, phone = $2, normalized_phone = $3, secondary_phone = $4, phones = $5, shop_name = $6, shop_photo = $7, photo = $8,
+          address = $9, governorate = $10, area = $11, geo_coordinates = $12, notes = $13, status = $14, user_id = $15,
+          assigned_rep_id = $16, allowed_rep_ids = $17, version = COALESCE(version, 1) + 1, updated_at = $18
+         WHERE id = $19`,
         [
           updates.name ?? cur.name,
           nextPrimary,
+          normalizePhoneDigitsShared(nextPrimary),
           nextSecondary ?? null,
           JSON.stringify(nextPhones),
           updates.shopName ?? cur.shopName ?? null,
@@ -572,13 +576,14 @@ export async function updateOwnCustomerProfile(userId, customerId, updates = {},
       const nextAddress = allowedUpdates.address ?? cur.address;
       await client.query(
         `UPDATE customers SET
-          name = $1, phone = $2, secondary_phone = $3, phones = $4, shop_name = $5, shop_photo = $6, photo = $7,
-          address = $8, governorate = $9, area = $10, geo_coordinates = $11,
-          version = COALESCE(version, 1) + 1, updated_at = $12
-         WHERE id = $13`,
+          name = $1, phone = $2, normalized_phone = $3, secondary_phone = $4, phones = $5, shop_name = $6, shop_photo = $7, photo = $8,
+          address = $9, governorate = $10, area = $11, geo_coordinates = $12,
+          version = COALESCE(version, 1) + 1, updated_at = $13
+         WHERE id = $14`,
         [
           nextName,
           nextPrimary,
+          normalizePhoneDigitsShared(nextPrimary),
           nextSecondary ?? null,
           JSON.stringify(nextPhones),
           allowedUpdates.shopName !== undefined ? (allowedUpdates.shopName || null) : (cur.shopName ?? null),
@@ -593,8 +598,8 @@ export async function updateOwnCustomerProfile(userId, customerId, updates = {},
         ]
       );
       await client.query(
-        `UPDATE users SET full_name = $1, phone = $2, address = $3, updated_at = $4 WHERE id = $5`,
-        [nextName, nextPrimary, nextAddress, now, userId]
+        `UPDATE users SET full_name = $1, phone = $2, normalized_phone = $3, address = $4, updated_at = $5 WHERE id = $6`,
+        [nextName, nextPrimary, normalizePhoneDigitsShared(nextPrimary), nextAddress, now, userId]
       );
       const r = await client.query('SELECT * FROM customers WHERE id = $1', [customerId]);
       const mapped = mapPgCustomerRow(r.rows[0]);
@@ -985,6 +990,11 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
         recordId: customerId,
       });
     }
+    if (!canViewCashboxBalances(actor)) {
+      const sanitized = { ...res };
+      delete sanitized.cashboxBalance;
+      return sanitized;
+    }
     return res;
   }
 
@@ -1044,6 +1054,11 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
       module: 'العملاء',
       recordId: customerId,
     });
+  }
+  if (!canViewCashboxBalances(actor)) {
+    const sanitized = { ...res };
+    delete sanitized.cashboxBalance;
+    return sanitized;
   }
   return res;
 }
@@ -1187,14 +1202,15 @@ export async function repairUnlinkedCustomerUsers(actor) {
           const custId = generateServerId('CUS');
           const code = `CUS-${String(Date.now()).slice(-5)}-${idx + 1}`;
           await client.query(
-            `INSERT INTO customers (id, code, user_id, name, phone, address, shop_address, opening_balance, current_balance, notes, status, created_at, updated_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$6,0,0,$7,$8,$9,$9)`,
+            `INSERT INTO customers (id, code, user_id, name, phone, normalized_phone, address, shop_address, opening_balance, current_balance, notes, status, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$7,0,0,$8,$9,$10,$10)`,
             [
               custId,
               code,
               u.id,
               u.full_name || u.username,
               u.phone || '',
+              normalizePhoneDigitsShared(u.phone || ''),
               u.address || '',
               'ملف عميل مُنشأ تلقائيًا عبر أداة إصلاح الربط',
               u.is_active === false ? 'blocked' : 'active',

@@ -72,6 +72,7 @@ jobs:
           node server/tests/securityCompletionTests.mjs
           npx tsx server/tests/clientSecurityCompletionTests.mts
           node server/tests/fullCompletionSuite.mjs
+          node server/tests/finalSecurityAuditTests.mjs
 
       - name: Verify schema, concurrent bootstrap/register & store roundtrip against real PostgreSQL 16
         env:
@@ -95,10 +96,23 @@ jobs:
               const init = await initializeSchema();
               assert.equal(init.success, true, init.error || "Schema init failed");
               const pool = getPool();
-              const idx = await pool.query("SELECT indexname FROM pg_indexes WHERE tablename IN (\x27invoices\x27,\x27invoice_returns\x27,\x27financial_transactions\x27,\x27expenses_incomes\x27,\x27stock_movements\x27)");
-              assert.ok(idx.rows.some((r) => r.indexname === "idx_invoices_wh_date"));
-              assert.ok(idx.rows.some((r) => r.indexname === "idx_invoices_date_type"));
-              assert.ok(idx.rows.some((r) => r.indexname === "idx_stock_movements_prod_date"));
+              const idx = await pool.query("SELECT indexname FROM pg_indexes WHERE tablename IN (\x27users\x27,\x27customers\x27,\x27representatives\x27,\x27invoices\x27,\x27invoice_returns\x27,\x27financial_transactions\x27,\x27expenses_incomes\x27,\x27stock_movements\x27,\x27rep_custody_operations\x27)");
+              for (const expectedIdx of [
+                "idx_invoices_wh_date",
+                "idx_invoices_date_type",
+                "idx_invoices_cashbox_date",
+                "idx_invoices_number",
+                "idx_invoice_returns_party_date",
+                "idx_fin_tx_cashbox_date",
+                "idx_stock_movements_prod_date",
+                "idx_rep_custody_ops_date_prod",
+                "idx_users_role_norm_phone",
+                "idx_users_role_norm_phone_unique",
+                "idx_customers_norm_phone",
+                "idx_reps_norm_phone"
+              ]) {
+                assert.ok(idx.rows.some((r) => r.indexname === expectedIdx), "Missing expected PG index: " + expectedIdx);
+              }
 
               // Concurrent bootstrap race across PG connections: exactly one succeeds
               const [b1, b2] = await Promise.allSettled([

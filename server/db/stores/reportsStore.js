@@ -1,6 +1,6 @@
 import { getPool } from '../postgres.js';
 import { readJsonDatabase } from '../jsonLedger.js';
-import { round2, round3 } from '../../utils/errors.js';
+import { round2, round3, sanitizeCashboxForViewer } from '../../utils/errors.js';
 import {
   isPgMode,
   isoDateOnly,
@@ -106,6 +106,12 @@ async function loadFullReportDataset(actor, filterHints = {}) {
     const hintDateTo = filterHints.dateTo ? String(filterHints.dateTo).split('T')[0] : null;
     const hintWh = filterHints.warehouseId && filterHints.warehouseId !== 'all' ? String(filterHints.warehouseId) : null;
     const hintProd = filterHints.productId && filterHints.productId !== 'all' ? String(filterHints.productId) : null;
+    const hintCustomerId = filterHints.customerId && filterHints.customerId !== 'all' ? String(filterHints.customerId) : null;
+    const hintSupplierId = filterHints.supplierId && filterHints.supplierId !== 'all' ? String(filterHints.supplierId) : null;
+    const hintRepId = filterHints.representativeId && filterHints.representativeId !== 'all' ? String(filterHints.representativeId) : null;
+    const hintCashboxId = filterHints.cashboxId && filterHints.cashboxId !== 'all' ? String(filterHints.cashboxId) : null;
+    const hintInvoiceNumber = filterHints.invoiceNumber ? String(filterHints.invoiceNumber).trim() : '';
+    const includeAuditLogs = Boolean(hintProd || filterHints.includeAuditLogs);
 
     // Preserve full cross-history ONLY when product lifecycle history is requested (productId set).
     // Even then, push product_id predicate to PostgreSQL!
@@ -127,7 +133,24 @@ async function loadFullReportDataset(actor, filterHints = {}) {
     };
 
     // financial_transactions keeps date >= dateFrom (no upper dateTo cap) so summary.drawerBalance & deltaAfterDateTo stay exact
-    const ftFilter = buildRangeWhere([], false);
+    const ftClauses = [];
+    const ftParams = [];
+    if (!hintProd && hintDateFrom) {
+      ftParams.push(hintDateFrom);
+      ftClauses.push(`date >= $${ftParams.length}`);
+    }
+    if (isRep) {
+      ftParams.push(actor.fullName);
+      ftClauses.push(`created_by = $${ftParams.length}`);
+      ftClauses.push(`type NOT IN ('transfer', 'deposit', 'withdrawal', 'supplier_payment', 'advance_payout', 'salary_payout', 'expense', 'income', 'rep_transfer')`);
+    } else if (hintCashboxId) {
+      ftParams.push(hintCashboxId);
+      ftClauses.push(`(cashbox_id = $${ftParams.length} OR type = 'transfer')`);
+    }
+    const ftFilter = {
+      whereSql: ftClauses.length > 0 ? `WHERE ${ftClauses.join(' AND ')}` : '',
+      params: ftParams,
+    };
 
     // invoice_returns filter
     const retClauses = [];
@@ -147,6 +170,30 @@ async function loadFullReportDataset(actor, filterHints = {}) {
     if (hintProd) {
       retParams.push(hintProd);
       retClauses.push(`id IN (SELECT return_id FROM invoice_return_items WHERE product_id = $${retParams.length})`);
+    }
+    if (hintCustomerId) {
+      retParams.push(hintCustomerId);
+      retClauses.push(`(party_id = $${retParams.length} OR original_invoice_id IN (SELECT id FROM invoices WHERE customer_id = $${retParams.length}))`);
+    }
+    if (hintSupplierId) {
+      retParams.push(hintSupplierId);
+      retClauses.push(`(party_id = $${retParams.length} OR original_invoice_id IN (SELECT id FROM invoices WHERE supplier_id = $${retParams.length}))`);
+    }
+    if (hintRepId) {
+      retParams.push(hintRepId);
+      retClauses.push(`original_invoice_id IN (SELECT id FROM invoices WHERE representative_id = $${retParams.length})`);
+    }
+    if (hintCashboxId && !isRep) {
+      retParams.push(hintCashboxId);
+      retClauses.push(`cashbox_id = $${retParams.length}`);
+    }
+    if (hintInvoiceNumber) {
+      retParams.push(`%${hintInvoiceNumber}%`);
+      retClauses.push(`(LOWER(return_number) LIKE LOWER($${retParams.length}) OR LOWER(original_invoice_number) LIKE LOWER($${retParams.length}))`);
+    }
+    if (isRep) {
+      retParams.push(actor.fullName);
+      retClauses.push(`created_by = $${retParams.length}`);
     }
     const retWhereSql = retClauses.length > 0 ? `WHERE ${retClauses.join(' AND ')}` : '';
 
@@ -179,6 +226,38 @@ async function loadFullReportDataset(actor, filterHints = {}) {
       invParams.push(hintProd);
       invClauses.push(`id IN (SELECT ii.invoice_id FROM invoice_items ii WHERE ii.product_id = $${invParams.length})`);
     }
+    if (hintCustomerId) {
+      invParams.push(hintCustomerId);
+      invClauses.push(`customer_id = $${invParams.length}`);
+    }
+    if (hintSupplierId) {
+      invParams.push(hintSupplierId);
+      invClauses.push(`supplier_id = $${invParams.length}`);
+    }
+    if (hintRepId) {
+      invParams.push(hintRepId);
+      invClauses.push(`representative_id = $${invParams.length}`);
+    }
+    if (hintCashboxId && !isRep) {
+      invParams.push(hintCashboxId);
+      invClauses.push(`cashbox_id = $${invParams.length}`);
+    }
+    if (hintInvoiceNumber) {
+      invParams.push(`%${hintInvoiceNumber}%`);
+      invClauses.push(`LOWER(invoice_number) LIKE LOWER($${invParams.length})`);
+    }
+    if (isRep) {
+      if (repProfile?.id) {
+        invParams.push(repProfile.id);
+        const rIdx = `$${invParams.length}`;
+        invParams.push(actor.fullName);
+        const aIdx = `$${invParams.length}`;
+        invClauses.push(`(representative_id = ${rIdx} OR created_by = ${aIdx})`);
+      } else {
+        invParams.push(actor.fullName);
+        invClauses.push(`created_by = $${invParams.length}`);
+      }
+    }
     const invWhereSql = invClauses.length > 0 ? `WHERE ${invClauses.join(' AND ')}` : '';
     const invItemWhereSql = invClauses.length > 0 ? `WHERE invoice_id IN (SELECT id FROM invoices ${invWhereSql})` : '';
     const invPayWhereSql = invItemWhereSql;
@@ -202,6 +281,14 @@ async function loadFullReportDataset(actor, filterHints = {}) {
       smParams.push(hintProd);
       smClauses.push(`product_id = $${smParams.length}`);
     }
+    if (isRep) {
+      if (repProfile?.warehouseId) {
+        smParams.push(repProfile.warehouseId);
+        smClauses.push(`(warehouse_id = $${smParams.length} OR target_warehouse_id = $${smParams.length})`);
+      } else {
+        smClauses.push(`1 = 0`);
+      }
+    }
     const smWhereSql = smClauses.length > 0 ? `WHERE ${smClauses.join(' AND ')}` : '';
 
     // rep_custody_operations filter
@@ -219,11 +306,22 @@ async function loadFullReportDataset(actor, filterHints = {}) {
       rcoParams.push(hintProd);
       rcoClauses.push(`product_id = $${rcoParams.length}`);
     }
+    if (isRep) {
+      if (repProfile?.id) {
+        rcoParams.push(repProfile.id);
+        rcoClauses.push(`representative_id = $${rcoParams.length}`);
+      } else {
+        rcoClauses.push(`1 = 0`);
+      }
+    } else if (hintRepId) {
+      rcoParams.push(hintRepId);
+      rcoClauses.push(`representative_id = $${rcoParams.length}`);
+    }
     const rcoWhereSql = rcoClauses.length > 0 ? `WHERE ${rcoClauses.join(' AND ')}` : '';
 
     const expFilter = buildRangeWhere([], true);
     const advFilter = buildRangeWhere([], true);
-    const needsLinkedDocMeta = Boolean(hintWh || (!hintProd && (hintDateFrom || hintDateTo)));
+    const needsLinkedDocMeta = Boolean(!isRep && (hintWh || (!hintProd && (hintDateFrom || hintDateTo))));
     const ftLinkedSubWhere = ftFilter.whereSql
       ? `${ftFilter.whereSql} AND related_doc_id IS NOT NULL`
       : 'WHERE related_doc_id IS NOT NULL';
@@ -261,15 +359,19 @@ async function loadFullReportDataset(actor, filterHints = {}) {
       linkedRetMetaRes,
     ] = await Promise.all([
       pool.query('SELECT * FROM warehouses ORDER BY created_at ASC'),
-      pool.query('SELECT * FROM cashboxes ORDER BY created_at ASC'),
+      isRep
+        ? pool.query('SELECT id, name, type, is_default FROM cashboxes ORDER BY created_at ASC')
+        : pool.query('SELECT * FROM cashboxes ORDER BY created_at ASC'),
       pool.query('SELECT * FROM product_categories ORDER BY name ASC'),
       pool.query('SELECT * FROM products ORDER BY created_at DESC'),
       pool.query('SELECT * FROM product_units'),
       pool.query('SELECT * FROM customers ORDER BY created_at DESC'),
-      pool.query('SELECT * FROM suppliers ORDER BY created_at DESC'),
-      pool.query('SELECT * FROM representatives ORDER BY created_at ASC'),
-      pool.query('SELECT * FROM employees ORDER BY created_at ASC'),
-      pool.query('SELECT id, full_name, username, role, job_title FROM users ORDER BY full_name ASC'),
+      isRep ? Promise.resolve({ rows: [] }) : pool.query('SELECT * FROM suppliers ORDER BY created_at DESC'),
+      isRep
+        ? pool.query('SELECT id, code, name, warehouse_id, user_id FROM representatives WHERE user_id = $1 ORDER BY created_at ASC', [actor.id])
+        : pool.query('SELECT * FROM representatives ORDER BY created_at ASC'),
+      isRep ? Promise.resolve({ rows: [] }) : pool.query('SELECT * FROM employees ORDER BY created_at ASC'),
+      isRep ? Promise.resolve({ rows: [] }) : pool.query('SELECT id, full_name, username, role, job_title FROM users ORDER BY full_name ASC'),
       pool.query(`SELECT * FROM invoices ${invWhereSql} ORDER BY date DESC, created_at DESC`, invParams),
       pool.query(`SELECT * FROM invoice_items ${invItemWhereSql}`, invParams),
       pool.query(`SELECT * FROM invoice_payments ${invPayWhereSql} ORDER BY created_at ASC`, invParams),
@@ -282,17 +384,17 @@ async function loadFullReportDataset(actor, filterHints = {}) {
       ),
       pool.query(`SELECT * FROM financial_transactions ${ftFilter.whereSql} ORDER BY date DESC, created_at DESC`, ftFilter.params),
       pool.query(`SELECT * FROM stock_movements ${smWhereSql} ORDER BY date DESC, created_at DESC`, smParams),
-      pool.query('SELECT * FROM stock_counts ORDER BY date DESC, created_at DESC'),
-      pool.query('SELECT * FROM stock_count_items'),
-      pool.query('SELECT * FROM stock_transfer_requests ORDER BY date DESC, created_at DESC'),
-      pool.query('SELECT * FROM stock_transfer_request_items'),
-      pool.query('SELECT * FROM rep_item_transfers ORDER BY date DESC, created_at DESC'),
-      pool.query('SELECT * FROM rep_item_transfer_items'),
+      Promise.resolve({ rows: [] }),
+      Promise.resolve({ rows: [] }),
+      Promise.resolve({ rows: [] }),
+      Promise.resolve({ rows: [] }),
+      Promise.resolve({ rows: [] }),
+      Promise.resolve({ rows: [] }),
       pool.query(`SELECT * FROM rep_custody_operations ${rcoWhereSql} ORDER BY date DESC, created_at DESC`, rcoParams),
-      pool.query(`SELECT * FROM expenses_incomes ${expFilter.whereSql} ORDER BY date DESC, created_at DESC`, expFilter.params),
-      pool.query(`SELECT * FROM advances_deductions ${advFilter.whereSql} ORDER BY date DESC, created_at DESC`, advFilter.params),
-      pool.query('SELECT * FROM payrolls ORDER BY created_at DESC'),
-      pool.query('SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 2000'),
+      isRep ? Promise.resolve({ rows: [] }) : pool.query(`SELECT * FROM expenses_incomes ${expFilter.whereSql} ORDER BY date DESC, created_at DESC`, expFilter.params),
+      isRep ? Promise.resolve({ rows: [] }) : pool.query(`SELECT * FROM advances_deductions ${advFilter.whereSql} ORDER BY date DESC, created_at DESC`, advFilter.params),
+      Promise.resolve({ rows: [] }),
+      includeAuditLogs ? pool.query('SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 2000') : Promise.resolve({ rows: [] }),
       needsLinkedDocMeta
         ? pool.query(
             `SELECT id, warehouse_id, representative_id, representative_name, cashbox_id, customer_id, supplier_id FROM invoices WHERE id IN (SELECT related_doc_id FROM financial_transactions ${ftLinkedSubWhere})`,
@@ -475,21 +577,26 @@ async function loadFullReportDataset(actor, filterHints = {}) {
     return {
       settings,
       warehouses: whRes.rows.map((w) => ({ id: w.id, name: w.name, code: w.code, isDefault: Boolean(w.is_default), status: w.status || 'active' })),
-      cashboxes: cbRes.rows.map((c) => ({
-        id: c.id,
-        name: c.name,
-        type: c.type || 'cashbox',
-        openingBalance: Number(c.opening_balance || 0),
-        currentBalance: Number(c.current_balance || 0),
-        isDefault: Boolean(c.is_default),
-      })),
+      cashboxes: cbRes.rows.map((c) =>
+        sanitizeCashboxForViewer(
+          {
+            id: c.id,
+            name: c.name,
+            type: c.type || 'cashbox',
+            openingBalance: c.opening_balance !== undefined ? Number(c.opening_balance || 0) : undefined,
+            currentBalance: c.current_balance !== undefined ? Number(c.current_balance || 0) : undefined,
+            isDefault: Boolean(c.is_default),
+          },
+          actor
+        )
+      ),
       categories: catRes.rows.map((c) => ({ id: c.id, name: c.name })),
       products,
       customers: custRes.rows.map((c) => ({ id: c.id, code: c.code, name: c.name, phone: c.phone || '', assignedRepId: c.assigned_rep_id || undefined, currentBalance: Number(c.current_balance || 0) })),
-      suppliers: suppRes.rows.map((s) => ({ id: s.id, code: s.code, name: s.name, phone: s.phone || '', currentBalance: Number(s.current_balance || 0) })),
-      representatives: repRes.rows.map((r) => ({ id: r.id, code: r.code || '', name: r.name, phone: r.phone || '', warehouseId: r.warehouse_id || undefined })),
-      employees: empRes.rows.map((e) => ({ id: e.id, code: e.code, name: e.full_name, jobTitle: e.job_title || '', department: e.department || '' })),
-      users: userRes.rows.map((u) => ({ id: u.id, fullName: u.full_name, username: u.username, role: u.role })),
+      suppliers: isRep ? [] : suppRes.rows.map((s) => ({ id: s.id, code: s.code, name: s.name, phone: s.phone || '', currentBalance: Number(s.current_balance || 0) })),
+      representatives: repRes.rows.map((r) => ({ id: r.id, userId: r.user_id || undefined, code: r.code || '', name: r.name, phone: isRep ? '' : (r.phone || ''), warehouseId: r.warehouse_id || undefined })),
+      employees: isRep ? [] : empRes.rows.map((e) => ({ id: e.id, code: e.code, name: e.full_name, jobTitle: e.job_title || '', department: e.department || '' })),
+      users: isRep ? [] : userRes.rows.map((u) => ({ id: u.id, fullName: u.full_name, username: u.username, role: u.role })),
       invoices,
       invoiceReturns,
       financialTransactions: ftRes.rows
@@ -502,7 +609,7 @@ async function loadFullReportDataset(actor, filterHints = {}) {
           amount: Number(f.amount || 0),
           cashboxId: f.cashbox_id,
           cashboxName: f.cashbox_name,
-          balanceAfter: Number(f.balance_after || 0),
+          ...(isRep ? {} : { balanceAfter: Number(f.balance_after || 0) }),
           category: f.category || '',
           relatedEntityType: f.related_entity_type || undefined,
           relatedEntityId: f.related_entity_id || undefined,
@@ -533,7 +640,7 @@ async function loadFullReportDataset(actor, filterHints = {}) {
           quantity: Number(sm.quantity || 0),
           unit: sm.unit || '',
           unitFactor: Number(sm.unit_factor || 1),
-          unitCost: Number(sm.unit_cost || 0),
+          unitCost: isRep ? 0 : Number(sm.unit_cost || 0),
           balanceBefore: sm.balance_before !== null && sm.balance_before !== undefined ? Number(sm.balance_before) : undefined,
           balanceAfter: sm.balance_after !== null && sm.balance_after !== undefined ? Number(sm.balance_after) : undefined,
           relatedDocType: sm.related_doc_type || undefined,
@@ -657,34 +764,53 @@ async function loadFullReportDataset(actor, filterHints = {}) {
     return inv.createdBy === actor.fullName;
   });
   const invoiceReturns = (db.invoiceReturns || []).filter((r) => !isRep || r.createdBy === actor.fullName);
-  const financialTransactions = (db.financialTransactions || []).filter((f) => !isRep || f.createdBy === actor.fullName);
-  const stockMovements = (db.stockMovements || []).filter(
-    (sm) => !isRep || (repProfile?.warehouseId && (sm.warehouseId === repProfile.warehouseId || sm.targetWarehouseId === repProfile.warehouseId))
-  );
+  const financialTransactions = (db.financialTransactions || [])
+    .filter(
+      (f) =>
+        !isRep ||
+        (f.createdBy === actor.fullName &&
+          !['transfer', 'deposit', 'withdrawal', 'supplier_payment', 'advance_payout', 'salary_payout', 'expense', 'income', 'rep_transfer'].includes(
+            f.type
+          ))
+    )
+    .map((f) => {
+      if (!isRep) return f;
+      const { balanceAfter, ...rest } = f;
+      return rest;
+    });
+  const stockMovements = (db.stockMovements || [])
+    .filter((sm) => !isRep || (repProfile?.warehouseId && (sm.warehouseId === repProfile.warehouseId || sm.targetWarehouseId === repProfile.warehouseId)))
+    .map((sm) => (isRep ? { ...sm, unitCost: 0 } : sm));
 
   return {
     settings,
     warehouses: db.warehouses || [],
-    cashboxes: db.cashboxes || [],
+    cashboxes: (db.cashboxes || []).map((c) => sanitizeCashboxForViewer(c, actor)),
     categories: db.categories || [],
     products: db.products || [],
     customers: db.customers || [],
-    suppliers: db.suppliers || [],
-    representatives: db.representatives || [],
-    employees: db.employees || [],
-    users: (db.users || []).map((u) => ({ id: u.id, fullName: u.fullName, username: u.username, role: u.role })),
+    suppliers: isRep ? [] : (db.suppliers || []),
+    representatives: isRep
+      ? (db.representatives || [])
+          .filter((r) => r.userId === actor.id || (repProfile && r.id === repProfile.id))
+          .map((r) => ({ id: r.id, userId: r.userId || undefined, code: r.code || '', name: r.name, phone: '', warehouseId: r.warehouseId || undefined }))
+      : (db.representatives || []),
+    employees: isRep ? [] : (db.employees || []),
+    users: isRep ? [] : (db.users || []).map((u) => ({ id: u.id, fullName: u.fullName, username: u.username, role: u.role })),
     invoices,
     invoiceReturns,
     financialTransactions,
     stockMovements,
-    stockCounts: db.stockCounts || [],
-    stockTransferRequests: db.stockTransferRequests || [],
-    repItemTransfers: db.repItemTransfers || [],
-    repCustodyOperations: db.repCustodyOperations || [],
-    expenseIncomes: db.expenseIncomes || [],
-    advancesDeductions: db.advancesDeductions || [],
-    payrolls: db.payrolls || [],
-    auditLogs: (db.auditLogs || []).slice(0, 2000),
+    stockCounts: [],
+    stockTransferRequests: [],
+    repItemTransfers: [],
+    repCustodyOperations: isRep
+      ? (db.repCustodyOperations || []).filter((op) => repProfile && op.representativeId === repProfile.id)
+      : (db.repCustodyOperations || []),
+    expenseIncomes: isRep ? [] : (db.expenseIncomes || []),
+    advancesDeductions: isRep ? [] : (db.advancesDeductions || []),
+    payrolls: [],
+    auditLogs: filterHints.productId || filterHints.includeAuditLogs ? (db.auditLogs || []).slice(0, 2000) : [],
   };
 }
 
@@ -1929,6 +2055,45 @@ export async function getComprehensiveReport(filters = {}, actor) {
       }))
     : rawItemPnlList;
 
+  // Optional Pagination across all flattened report rows (default returns full unpaginated sections for 100% compatibility)
+  const totalUnpaginatedRows = sections.reduce((s, sec) => s + (sec.rows?.length || 0), 0);
+  const rawPage = Number(filters.page);
+  const rawPageSize = Number(filters.pageSize);
+  const hasPagination =
+    (Number.isFinite(rawPage) && rawPage >= 1) || (Number.isFinite(rawPageSize) && rawPageSize >= 1);
+  const page = hasPagination && Number.isFinite(rawPage) && rawPage >= 1 ? Math.floor(rawPage) : 1;
+  const pageSize = hasPagination
+    ? Math.min(500, Math.max(1, Number.isFinite(rawPageSize) && rawPageSize >= 1 ? Math.floor(rawPageSize) : 50))
+    : totalUnpaginatedRows;
+  const totalPages = hasPagination ? Math.max(1, Math.ceil(totalUnpaginatedRows / pageSize)) : 1;
+  const safePage = hasPagination ? Math.min(page, totalPages) : 1;
+
+  let pagedSections = sections;
+  if (hasPagination) {
+    const startIdx = (safePage - 1) * pageSize;
+    const endIdx = startIdx + pageSize;
+    let cursor = 0;
+    const sliced = [];
+    for (const sec of sections) {
+      const secRows = sec.rows || [];
+      const secStart = cursor;
+      const secEnd = cursor + secRows.length;
+      cursor = secEnd;
+      if (secEnd <= startIdx || secStart >= endIdx) continue;
+      const localFrom = Math.max(0, startIdx - secStart);
+      const localTo = Math.min(secRows.length, endIdx - secStart);
+      const pageRows = secRows.slice(localFrom, localTo);
+      if (pageRows.length > 0) {
+        sliced.push({
+          ...sec,
+          totalSectionRows: secRows.length,
+          rows: pageRows,
+        });
+      }
+    }
+    pagedSections = sliced;
+  }
+
   return {
     reportType,
     reportTypeLabel: REPORT_TYPES_LIST.find((t) => t.key === reportType)?.label || 'الكل',
@@ -1977,18 +2142,27 @@ export async function getComprehensiveReport(filters = {}, actor) {
         : (data.representatives || []).map((r) => ({ id: r.id, name: r.name, warehouseId: r.warehouseId })),
       users: isRepActor ? [] : (data.users || []).map((u) => ({ id: u.id, fullName: u.fullName, username: u.username, role: u.role })),
     },
-    sections,
+    sections: pagedSections,
+    pagination: {
+      enabled: hasPagination,
+      page: safePage,
+      pageSize,
+      totalRows: totalUnpaginatedRows,
+      totalPages,
+      hasNextPage: hasPagination && safePage < totalPages,
+      hasPrevPage: hasPagination && safePage > 1,
+    },
     summary: {
-      drawerBalance,
-      reportBalance,
-      carriedFromYesterday,
+      drawerBalance: isRepActor ? 0 : drawerBalance,
+      reportBalance: isRepActor ? 0 : reportBalance,
+      carriedFromYesterday: isRepActor ? 0 : carriedFromYesterday,
       reportProfit,
       reportProfitPercent: calcProfitPctOnCost(reportProfit, reportCost),
       filteredSalesNet,
       filteredPurchasesNet,
       filteredCashIn,
       filteredCashOut,
-      totalRows: sections.reduce((s, sec) => s + sec.rows.length, 0),
+      totalRows: totalUnpaginatedRows,
     },
     itemLifecycle,
     itemPnl: {
@@ -2781,7 +2955,7 @@ function buildProductsPnlAnalysis(data, filterOpts = {}) {
 }
 
 export async function getSourceDocumentForReport(docType, docId, actor) {
-  const data = await loadFullReportDataset(actor);
+  const data = await loadFullReportDataset(actor, { includeAuditLogs: true });
   const { resolveBranchName, resolveCashboxName } = buildBranchResolvers(data);
   const cleanType = String(docType || '').trim();
   const cleanId = String(docId || '').trim();

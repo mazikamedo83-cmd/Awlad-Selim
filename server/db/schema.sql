@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   password_algo VARCHAR(24) NOT NULL DEFAULT 'bcrypt',
   phone VARCHAR(32) DEFAULT '',
+  normalized_phone VARCHAR(32) DEFAULT '',
   address TEXT DEFAULT '',
   notes TEXT DEFAULT '',
   role VARCHAR(32) NOT NULL,
@@ -140,6 +141,7 @@ CREATE TABLE IF NOT EXISTS customers (
   allowed_rep_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
   name TEXT NOT NULL,
   phone VARCHAR(32),
+  normalized_phone VARCHAR(32) DEFAULT '',
   secondary_phone VARCHAR(32),
   phone2 VARCHAR(32),
   phones JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -322,6 +324,7 @@ CREATE TABLE IF NOT EXISTS representatives (
   user_id VARCHAR(64) UNIQUE REFERENCES users(id) ON DELETE SET NULL,
   name TEXT NOT NULL,
   phone VARCHAR(32),
+  normalized_phone VARCHAR(32) DEFAULT '',
   vehicle_number VARCHAR(64),
   address TEXT,
   opening_balance NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
@@ -994,15 +997,25 @@ CREATE TABLE IF NOT EXISTS rep_custody_operations (
 
 CREATE INDEX IF NOT EXISTS idx_rep_custody_ops_rep ON rep_custody_operations(representative_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_rep_custody_ops_prod ON rep_custody_operations(product_id);
+CREATE INDEX IF NOT EXISTS idx_rep_custody_ops_date_prod ON rep_custody_operations(date DESC, product_id);
+
+-- Phone lookup indexes for fast targeted registration & user linking
+CREATE INDEX IF NOT EXISTS idx_users_role_norm_phone ON users(role, normalized_phone);
+CREATE INDEX IF NOT EXISTS idx_customers_norm_phone ON customers(normalized_phone);
+CREATE INDEX IF NOT EXISTS idx_reps_norm_phone ON representatives(normalized_phone);
 
 -- Composite indexes for enterprise report & ledger queries
 CREATE INDEX IF NOT EXISTS idx_invoices_wh_date ON invoices(warehouse_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_invoices_cust_date ON invoices(customer_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_invoices_supp_date ON invoices(supplier_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_invoices_cashbox_date ON invoices(cashbox_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_invoices_number ON invoices(invoice_number);
 CREATE INDEX IF NOT EXISTS idx_invoices_date_type ON invoices(date DESC, type);
 CREATE INDEX IF NOT EXISTS idx_invoices_rep_date ON invoices(representative_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_invoice_returns_date_wh ON invoice_returns(date DESC, warehouse_id);
+CREATE INDEX IF NOT EXISTS idx_invoice_returns_party_date ON invoice_returns(party_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_fin_tx_date_type ON financial_transactions(date DESC, type);
+CREATE INDEX IF NOT EXISTS idx_fin_tx_cashbox_date ON financial_transactions(cashbox_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_expenses_incomes_date_type ON expenses_incomes(date DESC, type);
 CREATE INDEX IF NOT EXISTS idx_stock_movements_prod_date ON stock_movements(product_id, date DESC);
 

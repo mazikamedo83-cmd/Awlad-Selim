@@ -431,8 +431,9 @@ export interface Cashbox {
   name: string;
   type: 'cashbox' | 'bank';
   accountNumber?: string;
-  openingBalance: number;
-  currentBalance: number;
+  openingBalance?: number;
+  currentBalance?: number;
+  balanceHidden?: boolean;
   isDefault: boolean;
 }
 
@@ -523,8 +524,8 @@ export interface Representative {
   vehicleNumber?: string;
   userId?: string; // حساب الدخول المرتبط
   warehouseId?: string;
-  openingBalance: number;
-  currentBalance: number;
+  openingBalance?: number;
+  currentBalance?: number;
   commissionRate?: number;
   notes?: string;
   status: 'active' | 'inactive';
@@ -1864,6 +1865,15 @@ export interface ComprehensiveReportResponse {
     users: Array<{ id: string; fullName: string; username: string; role: string }>;
   };
   sections: ComprehensiveReportSection[];
+  pagination?: {
+    enabled: boolean;
+    page: number;
+    pageSize: number;
+    totalRows: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
+  };
   summary: {
     drawerBalance: number;
     reportBalance: number;
