@@ -24,6 +24,8 @@ import {
   createDatabaseUnavailableError,
   FULL_ADMIN_PERMISSIONS,
   CUSTOMER_DEFAULT_PERMISSIONS,
+  REP_DEFAULT_PERMISSIONS,
+  normalizeCustomerPhonesList,
   mapPgUserRow,
   mapPgCustomerRow,
   isoTimestamp,
@@ -698,26 +700,51 @@ export async function loginUser({
   };
 }
 
-const REP_SELF_REG_PERMISSIONS = {
-  ...CUSTOMER_DEFAULT_PERMISSIONS,
-  canView: true,
-  canAdd: true,
-  canEdit: true,
-  canPrint: true,
-  canManageSales: true,
-  canManageAccounts: true,
-  canManageReps: true,
-  canViewReports: true,
-  canSend: true,
-  canReceive: true,
-};
-
 function normalizeRegPhone(raw) {
   let d = String(raw || '').replace(/\D/g, '');
   if (!d) return '';
   if (d.startsWith('0020') && d.length >= 13) d = '0' + d.slice(4);
   else if (d.startsWith('20') && d.length >= 12) d = '0' + d.slice(2);
   return d;
+}
+
+function customerHasRegPhone(cust, normPhone) {
+  if (!normPhone || !cust) return false;
+  if (normalizeRegPhone(cust.phone) === normPhone) return true;
+  if (normalizeRegPhone(cust.secondary_phone ?? cust.secondaryPhone) === normPhone) return true;
+  if (Array.isArray(cust.phones)) {
+    return cust.phones.some((p) => normalizeRegPhone(typeof p === 'string' ? p : p?.number) === normPhone);
+  }
+  return false;
+}
+
+const registrationKeyLocks = new Map();
+async function withRegistrationLocks(keys, fn) {
+  const uniqueKeys = [...new Set((keys || []).filter(Boolean))].sort();
+  if (uniqueKeys.length === 0) return fn();
+
+  const acquireChain = async (idx) => {
+    if (idx >= uniqueKeys.length) return fn();
+    const key = uniqueKeys[idx];
+    const prev = registrationKeyLocks.get(key) || Promise.resolve();
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    const nextChain = prev.then(() => gate, () => gate);
+    registrationKeyLocks.set(key, nextChain);
+    await prev.catch(() => {});
+    try {
+      return await acquireChain(idx + 1);
+    } finally {
+      release();
+      if (registrationKeyLocks.get(key) === nextChain) {
+        registrationKeyLocks.delete(key);
+      }
+    }
+  };
+
+  return acquireChain(0);
 }
 
 export async function registerMobileAccount(payload = {}, meta = {}) {
@@ -768,8 +795,14 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
   const refreshHash = sha256Hex(refreshToken);
   const expiresDate = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 86400 * 1000).toISOString();
   const now = nowIso();
-  const permissions = role === 'customer' ? { ...CUSTOMER_DEFAULT_PERMISSIONS } : { ...REP_SELF_REG_PERMISSIONS };
+  const permissions = role === 'customer' ? { ...CUSTOMER_DEFAULT_PERMISSIONS } : { ...REP_DEFAULT_PERMISSIONS };
 
+  const lockKeys = [
+    `u:${cleanUsernameLower}`,
+    normPhone ? `p:${role}:${normPhone}` : '',
+  ];
+
+  return withRegistrationLocks(lockKeys, async () => {
   if (await isPgMode()) {
     const preDup = scopedIdem ? await findPgIdempotency(getPool(), scopedIdem) : null;
     if (preDup?.response && preDup.payloadDigest === payloadDigest) {
@@ -800,9 +833,7 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
         if (role === 'customer') {
           const custRes = await client.query(`SELECT * FROM customers FOR UPDATE`);
           const allMatches = normPhone
-            ? custRes.rows.filter(
-                (c) => normalizeRegPhone(c.phone) === normPhone || normalizeRegPhone(c.secondary_phone) === normPhone
-              )
+            ? custRes.rows.filter((c) => customerHasRegPhone(c, normPhone))
             : [];
           const hasAlreadyLinkedMatch = allMatches.some((c) => Boolean(c.user_id));
 
@@ -847,9 +878,7 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
         if (role === 'customer' && !conflictReason) {
           const custRes = await client.query(`SELECT * FROM customers FOR UPDATE`);
           const unlinkedMatches = normPhone
-            ? custRes.rows.filter(
-                (c) => !c.user_id && (normalizeRegPhone(c.phone) === normPhone || normalizeRegPhone(c.secondary_phone) === normPhone)
-              )
+            ? custRes.rows.filter((c) => !c.user_id && customerHasRegPhone(c, normPhone))
             : [];
 
           if (unlinkedMatches.length === 1) {
@@ -871,10 +900,11 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
           } else {
             const custId = generateServerId('CUS');
             const custCode = `CUS-${String(Date.now()).slice(-5)}-${Math.floor(10 + Math.random() * 89)}`;
+            const initialPhones = normalizeCustomerPhonesList([], phone, '');
             await client.query(
-              `INSERT INTO customers (id, code, user_id, name, phone, shop_name, address, shop_address, area, geo_coordinates, opening_balance, current_balance, notes, status, created_at, updated_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$7,$8,$9,0,0,'عميل مسجل ذاتيًا عبر التطبيق','active',$10,$10)`,
-              [custId, custCode, userId, fullName, phone, shopName || null, address, area || null, geoCoordinates || null, now]
+              `INSERT INTO customers (id, code, user_id, name, phone, phones, shop_name, address, shop_address, area, geo_coordinates, opening_balance, current_balance, notes, status, created_at, updated_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8,$9,$10,0,0,'عميل مسجل ذاتيًا عبر التطبيق','active',$11,$11)`,
+              [custId, custCode, userId, fullName, phone, JSON.stringify(initialPhones), shopName || null, address, area || null, geoCoordinates || null, now]
             );
             const refreshed = await client.query(`SELECT * FROM customers WHERE id = $1 LIMIT 1`, [custId]);
             customerProfile = mapPgCustomerRow(refreshed.rows[0]);
@@ -1006,6 +1036,9 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
           return racedDup.response;
         }
       }
+      if (err?.code === '23505') {
+        throw new AppError(409, 'اسم المستخدم مسجل مسبقًا، يرجى اختيار اسم آخر أو تسجيل الدخول', 'DUPLICATE_USERNAME');
+      }
       throw err;
     }
 
@@ -1063,9 +1096,7 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
 
     if (role === 'customer') {
       const allMatches = normPhone
-        ? (db.customers || []).filter(
-            (c) => normalizeRegPhone(c.phone) === normPhone || normalizeRegPhone(c.secondaryPhone) === normPhone
-          )
+        ? (db.customers || []).filter((c) => customerHasRegPhone(c, normPhone))
         : [];
       const hasAlreadyLinkedMatch = allMatches.some((c) => Boolean(c.userId));
       if (allMatches.length > 1 || hasAlreadyLinkedMatch) {
@@ -1107,9 +1138,7 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
 
     if (role === 'customer' && !conflictReason) {
       const unlinkedMatches = normPhone
-        ? (db.customers || []).filter(
-            (c) => !c.userId && (normalizeRegPhone(c.phone) === normPhone || normalizeRegPhone(c.secondaryPhone) === normPhone)
-          )
+        ? (db.customers || []).filter((c) => !c.userId && customerHasRegPhone(c, normPhone))
         : [];
       if (unlinkedMatches.length === 1) {
         const target = unlinkedMatches[0];
@@ -1129,6 +1158,7 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
           userId,
           name: fullName,
           phone,
+          phones: normalizeCustomerPhonesList([], phone, ''),
           shopName: shopName || undefined,
           address,
           area: area || undefined,
@@ -1304,6 +1334,7 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
   }
 
   return found.response;
+  });
 }
 
 export async function refreshUserSession({ refreshToken, deviceId = '', deviceInfo = '', ipAddress = '' }) {

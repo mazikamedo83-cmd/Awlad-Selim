@@ -173,7 +173,7 @@ export function parseLatLngCoords(raw: string): { lat: number; lng: number } | n
 export async function reverseGeocodeCoords(
   lat: number,
   lng: number
-): Promise<{ ok: true; address: string; area?: string } | { ok: false; error: string }> {
+): Promise<{ ok: true; address: string; area?: string; governorate?: string } | { ok: false; error: string }> {
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
     return { ok: false, error: 'إحداثيات GPS غير صالحة لتحويلها إلى عنوان.' };
   }
@@ -235,7 +235,9 @@ export async function reverseGeocodeCoords(
         error: 'لم تُرجع خدمة الخرائط عنواناً وصفياً لهذه الإحداثيات؛ يمكنك كتابة العنوان يدوياً.',
       };
     }
-    return { ok: true, address, area };
+    const governorate =
+      String(addrObj.state || addrObj.governorate || addrObj.province || addrObj.region || '').trim() || undefined;
+    return { ok: true, address, area, governorate };
   } catch {
     return {
       ok: false,

@@ -1,4 +1,4 @@
-import { n as WebPlugin } from "./index-CvQMdL1U.js";
+import { n as WebPlugin } from "./index-K9IojamD.js";
 // node_modules/@capacitor/geolocation/dist/esm/web.js
 var GeolocationWeb = class extends WebPlugin {
 	constructor() {

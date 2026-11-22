@@ -53,6 +53,7 @@ import {
   requireStaff,
   requireAdmin,
   requirePermission,
+  requireAnyPermission,
   asyncHandler,
 } from '../middleware/auth.js';
 
@@ -271,7 +272,7 @@ router.get(
 );
 
 // Suppliers
-router.post('/suppliers', requirePermission('canManagePurchases'), asyncHandler(async (req, res) => {
+router.post('/suppliers', requireAnyPermission('canManagePurchases', 'canCreatePurchase'), asyncHandler(async (req, res) => {
   const supplier = await createSupplier(req.body || {}, req.auth.user);
   res.status(201).json({ ok: true, supplier });
 }));

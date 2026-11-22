@@ -734,10 +734,58 @@ export async function createInvoiceInsidePgTx(client, type, payload, actor) {
   }
 
   const invDate = payload.date || todayIso();
+  const isPurchaseDispatch = type === 'purchase';
+  const sendNow = isPurchaseDispatch && status === 'draft' && Boolean(payload.sendNow);
+  const dispatchStatus = isPurchaseDispatch
+    ? status === 'confirmed'
+      ? 'confirmed'
+      : sendNow
+      ? 'sent'
+      : 'draft'
+    : status === 'confirmed'
+    ? 'confirmed'
+    : 'draft';
+  const sentBy = sendNow ? actor.fullName : null;
+  const sentByUserId = sendNow ? actor.id : null;
+  const sentAt = sendNow ? now : null;
+  const recipientUserId = sendNow ? (payload.recipientUserId || null) : null;
+  const recipientName = sendNow ? (String(payload.recipientName || '').trim() || 'الإدارة / المشتريات') : null;
+  const dispatchHistory = [];
+  if (isPurchaseDispatch) {
+    dispatchHistory.push({
+      id: generateServerId('DSP'),
+      action: 'created',
+      at: now,
+      by: actor.fullName,
+      byUserId: actor.id,
+      notes: payload.notes ? String(payload.notes).trim() : '',
+    });
+    if (sendNow) {
+      dispatchHistory.push({
+        id: generateServerId('DSP'),
+        action: 'sent',
+        at: now,
+        by: actor.fullName,
+        byUserId: actor.id,
+        recipientUserId: recipientUserId || undefined,
+        recipientName: recipientName || undefined,
+        notes: payload.dispatchNotes ? String(payload.dispatchNotes).trim() : '',
+      });
+    } else if (status === 'confirmed') {
+      dispatchHistory.push({
+        id: generateServerId('DSP'),
+        action: 'confirmed',
+        at: now,
+        by: actor.fullName,
+        byUserId: actor.id,
+        notes: 'إنشاء واعتماد مباشر',
+      });
+    }
+  }
 
   await client.query(
-    `INSERT INTO invoices (id, invoice_number, type, date, customer_id, customer_name, supplier_id, supplier_name, representative_id, representative_name, warehouse_id, warehouse_name, subtotal, discount_total, tax_total, grand_total, paid_amount, applied_advance_amount, remaining_amount, payment_type, payment_method, cashbox_id, status, notes, linked_rep_transfer_id, linked_rep_transfer_number, linked_customer_order_id, returned_quantity_by_item, idempotency_key, origin_device_id, sync_status, review_status, version, created_by, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,'{}'::jsonb,$28,$29,$30,$31,1,$32,$33)`,
+    `INSERT INTO invoices (id, invoice_number, type, date, customer_id, customer_name, supplier_id, supplier_name, representative_id, representative_name, warehouse_id, warehouse_name, subtotal, discount_total, tax_total, grand_total, paid_amount, applied_advance_amount, remaining_amount, payment_type, payment_method, cashbox_id, status, notes, linked_rep_transfer_id, linked_rep_transfer_number, linked_customer_order_id, returned_quantity_by_item, idempotency_key, origin_device_id, sync_status, review_status, dispatch_status, sent_by, sent_by_user_id, sent_at, recipient_user_id, recipient_name, dispatch_history, version, created_by, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,'{}'::jsonb,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,1,$39,$40)`,
     [
       invoiceId,
       invoiceNumber,
@@ -770,6 +818,13 @@ export async function createInvoiceInsidePgTx(client, type, payload, actor) {
       payload.originDeviceId || null,
       payload.syncStatus || 'synced',
       reviewStatus,
+      dispatchStatus,
+      sentBy,
+      sentByUserId,
+      sentAt,
+      recipientUserId,
+      recipientName,
+      JSON.stringify(dispatchHistory),
       actor.fullName,
       now,
     ]
@@ -837,6 +892,13 @@ export async function createInvoiceInsidePgTx(client, type, payload, actor) {
     originDeviceId: payload.originDeviceId || undefined,
     syncStatus: payload.syncStatus || 'synced',
     reviewStatus,
+    dispatchStatus,
+    sentBy: sentBy || undefined,
+    sentByUserId: sentByUserId || undefined,
+    sentAt: sentAt || undefined,
+    recipientUserId: recipientUserId || undefined,
+    recipientName: recipientName || undefined,
+    dispatchHistory,
     editHistory: [],
     version: 1,
     createdBy: actor.fullName,
@@ -899,6 +961,55 @@ export function createInvoiceInsideJsonTx(db, type, payload, actor) {
     };
   });
 
+  const isPurchaseDispatch = type === 'purchase';
+  const sendNow = isPurchaseDispatch && status === 'draft' && Boolean(payload.sendNow);
+  const dispatchStatus = isPurchaseDispatch
+    ? status === 'confirmed'
+      ? 'confirmed'
+      : sendNow
+      ? 'sent'
+      : 'draft'
+    : status === 'confirmed'
+    ? 'confirmed'
+    : 'draft';
+  const sentBy = sendNow ? actor.fullName : undefined;
+  const sentByUserId = sendNow ? actor.id : undefined;
+  const sentAt = sendNow ? now : undefined;
+  const recipientUserId = sendNow ? (payload.recipientUserId || undefined) : undefined;
+  const recipientName = sendNow ? (String(payload.recipientName || '').trim() || 'الإدارة / المشتريات') : undefined;
+  const dispatchHistory = [];
+  if (isPurchaseDispatch) {
+    dispatchHistory.push({
+      id: generateServerId('DSP'),
+      action: 'created',
+      at: now,
+      by: actor.fullName,
+      byUserId: actor.id,
+      notes: payload.notes ? String(payload.notes).trim() : '',
+    });
+    if (sendNow) {
+      dispatchHistory.push({
+        id: generateServerId('DSP'),
+        action: 'sent',
+        at: now,
+        by: actor.fullName,
+        byUserId: actor.id,
+        recipientUserId,
+        recipientName,
+        notes: payload.dispatchNotes ? String(payload.dispatchNotes).trim() : '',
+      });
+    } else if (status === 'confirmed') {
+      dispatchHistory.push({
+        id: generateServerId('DSP'),
+        action: 'confirmed',
+        at: now,
+        by: actor.fullName,
+        byUserId: actor.id,
+        notes: 'إنشاء واعتماد مباشر',
+      });
+    }
+  }
+
   const newInvoice = {
     id: invoiceId,
     invoiceNumber,
@@ -933,6 +1044,13 @@ export function createInvoiceInsideJsonTx(db, type, payload, actor) {
     originDeviceId: payload.originDeviceId || undefined,
     syncStatus: payload.syncStatus || 'synced',
     reviewStatus,
+    dispatchStatus,
+    sentBy,
+    sentByUserId,
+    sentAt,
+    recipientUserId,
+    recipientName,
+    dispatchHistory,
     editHistory: [],
     version: 1,
     createdBy: actor.fullName,
@@ -1005,6 +1123,40 @@ export async function createSalesInvoice(payload, actor, idempotencyKey = '') {
 }
 
 export async function createPurchaseInvoice(payload, actor, idempotencyKey = '') {
+  let enrichedPayload = { ...(payload || {}) };
+  const isRep = actor?.role === 'representative';
+  const canFullPurchaseConfirm = actor?.role === 'admin' || Boolean(actor?.permissions?.canManagePurchases);
+
+  if (!canFullPurchaseConfirm) {
+    if (!isRep && !actor?.permissions?.canCreatePurchase) {
+      throw new AppError(403, 'ليس لديك صلاحية إنشاء فواتير الشراء', 'FORBIDDEN_PERMISSION');
+    }
+    if (enrichedPayload.status === 'confirmed') {
+      throw new AppError(
+        403,
+        'غير مصرح لك باعتماد فاتورة الشراء أو ترحيل المخزون مباشرة؛ يتم حفظها كمسودة أو إرسالها للإدارة للاستلام والاعتماد.',
+        'FORBIDDEN_PURCHASE_CONFIRM'
+      );
+    }
+    enrichedPayload.status = 'draft';
+  }
+
+  if (isRep) {
+    const settings = await getSystemSettingsSafe();
+    if (settings.mobileConfig?.enableRepApp === false) {
+      throw new AppError(403, 'بوابة المناديب متوقفة حاليًا من إعدادات الإدارة', 'REP_APP_DISABLED');
+    }
+    const rep = await getRepresentativeByUserId(actor.id);
+    if (!rep) {
+      throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
+    }
+    enrichedPayload.representativeId = rep.id;
+    enrichedPayload.representativeName = rep.name;
+    if (!enrichedPayload.warehouseId && rep.warehouseId) {
+      enrichedPayload.warehouseId = rep.warehouseId;
+    }
+  }
+
   const endpoint = 'POST /api/invoices/purchase';
   const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
 
@@ -1012,28 +1164,392 @@ export async function createPurchaseInvoice(payload, actor, idempotencyKey = '')
     ? await withTransaction(async (client) => {
         const dup = await findPgIdempotency(client, scopedIdem);
         if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice };
-        const invoice = await createInvoiceInsidePgTx(client, 'purchase', payload, actor);
+        const invoice = await createInvoiceInsidePgTx(client, 'purchase', enrichedPayload, actor);
         await savePgIdempotency(client, scopedIdem, actor, endpoint, { invoice });
         return { deduplicated: false, invoice };
       })
     : await withJsonTransaction((db) => {
         const dup = findJsonIdempotency(scopedIdem);
         if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice };
-        const invoice = createInvoiceInsideJsonTx(db, 'purchase', payload, actor);
+        const invoice = createInvoiceInsideJsonTx(db, 'purchase', enrichedPayload, actor);
         saveJsonIdempotency(scopedIdem, { invoice });
         return { deduplicated: false, invoice };
+      });
+
+  if (!out.deduplicated) {
+    const actionLabel =
+      out.invoice.status === 'draft'
+        ? out.invoice.dispatchStatus === 'sent'
+          ? `إنشاء وإرسال فاتورة شراء (${out.invoice.invoiceNumber}) للإدارة للاستلام`
+          : `إنشاء مسودة فاتورة مشتريات (${out.invoice.invoiceNumber})`
+        : `إصدار فاتورة مشتريات (${out.invoice.invoiceNumber})`;
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: actionLabel,
+      module: 'المشتريات',
+      recordId: out.invoice.id,
+    });
+  }
+  return out.invoice;
+}
+
+export async function sendPurchaseInvoice(invoiceId, payload = {}, actor, idempotencyKey = '') {
+  const perms = actor?.permissions || {};
+  const isRep = actor?.role === 'representative';
+  const canSendPurchase =
+    actor?.role === 'admin' ||
+    Boolean(perms.canManagePurchases || perms.canCreatePurchase || perms.canSend);
+  if (!canSendPurchase || actor?.role === 'customer') {
+    throw new AppError(403, 'ليس لديك صلاحية إرسال فواتير الشراء', 'FORBIDDEN_PERMISSION');
+  }
+  const repActor = isRep ? await getRepresentativeByUserId(actor.id) : null;
+  if (isRep && !repActor) {
+    throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
+  }
+
+  const now = nowIso();
+  const recipientUserId = payload.recipientUserId ? String(payload.recipientUserId).trim() : null;
+  const recipientName = String(payload.recipientName || '').trim() || 'الإدارة / المشتريات';
+  const sendNotes = String(payload.notes || '').trim();
+  const endpoint = `POST /api/invoices/purchase/${invoiceId}/send`;
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
+
+  const out = (await isPgMode())
+    ? await withTransaction(async (client) => {
+        const dup = await findPgIdempotency(client, scopedIdem);
+        if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice };
+
+        const inv = await fetchFullInvoicePg(client, invoiceId);
+        if (!inv) throw new AppError(404, 'فاتورة الشراء غير موجودة', 'INVOICE_NOT_FOUND');
+        if (inv.type !== 'purchase') throw new AppError(400, 'المستند المحدد ليس فاتورة شراء', 'NOT_PURCHASE_INVOICE');
+        if (isRep && inv.representativeId !== repActor.id && inv.sentByUserId !== actor.id) {
+          throw new AppError(403, 'غير مصرح لك بإرسال فاتورة شراء تخص مندوبًا آخر', 'FORBIDDEN_INVOICE_ACCESS');
+        }
+        if (inv.status !== 'draft') {
+          throw new AppError(409, 'لا يمكن إرسال فاتورة شراء معتمدة أو ملغاة', 'INVALID_INVOICE_STATUS');
+        }
+        if (inv.dispatchStatus === 'sent') {
+          throw new AppError(409, 'تم إرسال هذه الفاتورة بالفعل وهي بانتظار الاستلام من الإدارة', 'ALREADY_SENT');
+        }
+        if (inv.dispatchStatus === 'received') {
+          throw new AppError(409, 'تم استلام الفاتورة بالفعل من الإدارة ولا يمكن إعادة إرسالها', 'ALREADY_RECEIVED');
+        }
+
+        const isResend = inv.dispatchStatus === 'rejected';
+        const nextHistory = [
+          ...(Array.isArray(inv.dispatchHistory) ? inv.dispatchHistory : []),
+          {
+            id: generateServerId('DSP'),
+            action: isResend ? 'resent' : 'sent',
+            at: now,
+            by: actor.fullName,
+            byUserId: actor.id,
+            recipientUserId: recipientUserId || undefined,
+            recipientName,
+            notes: sendNotes || undefined,
+          },
+        ];
+
+        await client.query(
+          `UPDATE invoices SET
+            dispatch_status = 'sent',
+            sent_by = $1,
+            sent_by_user_id = $2,
+            sent_at = $3,
+            recipient_user_id = $4,
+            recipient_name = $5,
+            rejected_by = NULL,
+            rejected_by_user_id = NULL,
+            rejected_at = NULL,
+            rejection_reason = '',
+            dispatch_history = $6,
+            version = COALESCE(version, 1) + 1,
+            updated_at = $3
+           WHERE id = $7`,
+          [actor.fullName, actor.id, now, recipientUserId, recipientName, JSON.stringify(nextHistory), invoiceId]
+        );
+
+        const updatedInv = await fetchFullInvoicePg(client, invoiceId);
+        await savePgIdempotency(client, scopedIdem, actor, endpoint, { invoice: updatedInv });
+        return { deduplicated: false, invoice: updatedInv, isResend };
+      })
+    : await withJsonTransaction((db) => {
+        const dup = findJsonIdempotency(scopedIdem);
+        if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice };
+
+        const inv = db.invoices.find((i) => i.id === invoiceId);
+        if (!inv) throw new AppError(404, 'فاتورة الشراء غير موجودة', 'INVOICE_NOT_FOUND');
+        if (inv.type !== 'purchase') throw new AppError(400, 'المستند المحدد ليس فاتورة شراء', 'NOT_PURCHASE_INVOICE');
+        if (isRep && inv.representativeId !== repActor.id && inv.sentByUserId !== actor.id) {
+          throw new AppError(403, 'غير مصرح لك بإرسال فاتورة شراء تخص مندوبًا آخر', 'FORBIDDEN_INVOICE_ACCESS');
+        }
+        if (inv.status !== 'draft') {
+          throw new AppError(409, 'لا يمكن إرسال فاتورة شراء معتمدة أو ملغاة', 'INVALID_INVOICE_STATUS');
+        }
+        if (inv.dispatchStatus === 'sent') {
+          throw new AppError(409, 'تم إرسال هذه الفاتورة بالفعل وهي بانتظار الاستلام من الإدارة', 'ALREADY_SENT');
+        }
+        if (inv.dispatchStatus === 'received') {
+          throw new AppError(409, 'تم استلام الفاتورة بالفعل من الإدارة ولا يمكن إعادة إرسالها', 'ALREADY_RECEIVED');
+        }
+
+        const isResend = inv.dispatchStatus === 'rejected';
+        inv.dispatchStatus = 'sent';
+        inv.sentBy = actor.fullName;
+        inv.sentByUserId = actor.id;
+        inv.sentAt = now;
+        inv.recipientUserId = recipientUserId || undefined;
+        inv.recipientName = recipientName;
+        inv.rejectedBy = undefined;
+        inv.rejectedByUserId = undefined;
+        inv.rejectedAt = undefined;
+        inv.rejectionReason = undefined;
+        inv.dispatchHistory = [
+          ...(Array.isArray(inv.dispatchHistory) ? inv.dispatchHistory : []),
+          {
+            id: generateServerId('DSP'),
+            action: isResend ? 'resent' : 'sent',
+            at: now,
+            by: actor.fullName,
+            byUserId: actor.id,
+            recipientUserId: recipientUserId || undefined,
+            recipientName,
+            notes: sendNotes || undefined,
+          },
+        ];
+        inv.version = Number(inv.version || 1) + 1;
+        inv.updatedAt = now;
+
+        saveJsonIdempotency(scopedIdem, { invoice: inv });
+        return { deduplicated: false, invoice: inv, isResend };
       });
 
   if (!out.deduplicated) {
     await recordAuditLog({
       userId: actor.id,
       userName: actor.fullName,
-      action: out.invoice.status === 'draft' ? `إنشاء مسودة فاتورة مشتريات (${out.invoice.invoiceNumber})` : `إصدار فاتورة مشتريات (${out.invoice.invoiceNumber})`,
+      action: `${out.isResend ? 'إعادة إرسال' : 'إرسال'} فاتورة شراء (${out.invoice.invoiceNumber}) إلى (${recipientName})`,
       module: 'المشتريات',
-      recordId: out.invoice.id,
+      recordId: invoiceId,
+      notes: sendNotes,
     });
   }
   return out.invoice;
+}
+
+export async function receivePurchaseInvoice(invoiceId, payload = {}, actor, idempotencyKey = '') {
+  const perms = actor?.permissions || {};
+  if (actor?.role === 'representative' || actor?.role === 'customer') {
+    throw new AppError(403, 'غير مصرح للمندوب أو العميل باستلام فواتير الشراء الواردة', 'FORBIDDEN_RECEIVE_PURCHASE');
+  }
+  if (actor?.role !== 'admin' && !perms.canManagePurchases && !perms.canApprove && !perms.canReceive) {
+    throw new AppError(403, 'ليس لديك صلاحية استلام فواتير الشراء', 'FORBIDDEN_PERMISSION');
+  }
+
+  const now = nowIso();
+  const receiveNotes = String(payload.notes || '').trim();
+  const endpoint = `POST /api/invoices/purchase/${invoiceId}/receive`;
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
+
+  const out = (await isPgMode())
+    ? await withTransaction(async (client) => {
+        const dup = await findPgIdempotency(client, scopedIdem);
+        if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice };
+
+        const inv = await fetchFullInvoicePg(client, invoiceId);
+        if (!inv) throw new AppError(404, 'فاتورة الشراء غير موجودة', 'INVOICE_NOT_FOUND');
+        if (inv.type !== 'purchase') throw new AppError(400, 'المستند المحدد ليس فاتورة شراء', 'NOT_PURCHASE_INVOICE');
+        if (inv.status === 'confirmed') throw new AppError(409, 'تم اعتماد وترحيل الفاتورة مسبقًا', 'ALREADY_CONFIRMED');
+        if (inv.status !== 'draft') throw new AppError(409, 'لا يمكن استلام فاتورة شراء ملغاة', 'INVALID_INVOICE_STATUS');
+        if (inv.dispatchStatus === 'received') {
+          throw new AppError(409, 'تم استلام هذه الفاتورة مسبقًا', 'ALREADY_RECEIVED');
+        }
+        if (inv.dispatchStatus !== 'sent') {
+          throw new AppError(409, 'لا يمكن استلام الفاتورة إلا بعد إرسالها من المندوب', 'PURCHASE_NOT_SENT');
+        }
+
+        const nextHistory = [
+          ...(Array.isArray(inv.dispatchHistory) ? inv.dispatchHistory : []),
+          {
+            id: generateServerId('DSP'),
+            action: 'received',
+            at: now,
+            by: actor.fullName,
+            byUserId: actor.id,
+            notes: receiveNotes || 'تم الاستلام وبانتظار المراجعة والاعتماد',
+          },
+        ];
+
+        await client.query(
+          `UPDATE invoices SET
+            dispatch_status = 'received',
+            received_by = $1,
+            received_by_user_id = $2,
+            received_at = $3,
+            dispatch_history = $4,
+            version = COALESCE(version, 1) + 1,
+            updated_at = $3
+           WHERE id = $5`,
+          [actor.fullName, actor.id, now, JSON.stringify(nextHistory), invoiceId]
+        );
+
+        const updatedInv = await fetchFullInvoicePg(client, invoiceId);
+        await savePgIdempotency(client, scopedIdem, actor, endpoint, { invoice: updatedInv });
+        return { deduplicated: false, invoice: updatedInv };
+      })
+    : await withJsonTransaction((db) => {
+        const dup = findJsonIdempotency(scopedIdem);
+        if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice };
+
+        const inv = db.invoices.find((i) => i.id === invoiceId);
+        if (!inv) throw new AppError(404, 'فاتورة الشراء غير موجودة', 'INVOICE_NOT_FOUND');
+        if (inv.type !== 'purchase') throw new AppError(400, 'المستند المحدد ليس فاتورة شراء', 'NOT_PURCHASE_INVOICE');
+        if (inv.status === 'confirmed') throw new AppError(409, 'تم اعتماد وترحيل الفاتورة مسبقًا', 'ALREADY_CONFIRMED');
+        if (inv.status !== 'draft') throw new AppError(409, 'لا يمكن استلام فاتورة شراء ملغاة', 'INVALID_INVOICE_STATUS');
+        if (inv.dispatchStatus === 'received') {
+          throw new AppError(409, 'تم استلام هذه الفاتورة مسبقًا', 'ALREADY_RECEIVED');
+        }
+        if (inv.dispatchStatus !== 'sent') {
+          throw new AppError(409, 'لا يمكن استلام الفاتورة إلا بعد إرسالها من المندوب', 'PURCHASE_NOT_SENT');
+        }
+
+        inv.dispatchStatus = 'received';
+        inv.receivedBy = actor.fullName;
+        inv.receivedByUserId = actor.id;
+        inv.receivedAt = now;
+        inv.dispatchHistory = [
+          ...(Array.isArray(inv.dispatchHistory) ? inv.dispatchHistory : []),
+          {
+            id: generateServerId('DSP'),
+            action: 'received',
+            at: now,
+            by: actor.fullName,
+            byUserId: actor.id,
+            notes: receiveNotes || 'تم الاستلام وبانتظار المراجعة والاعتماد',
+          },
+        ];
+        inv.version = Number(inv.version || 1) + 1;
+        inv.updatedAt = now;
+
+        saveJsonIdempotency(scopedIdem, { invoice: inv });
+        return { deduplicated: false, invoice: inv };
+      });
+
+  if (!out.deduplicated) {
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `استلام فاتورة شراء من المندوب (${out.invoice.invoiceNumber}) دون ترحيل مخزني`,
+      module: 'المشتريات',
+      recordId: invoiceId,
+      notes: receiveNotes,
+    });
+  }
+  return out.invoice;
+}
+
+export async function rejectPurchaseInvoice(invoiceId, payload = {}, actor) {
+  const perms = actor?.permissions || {};
+  if (actor?.role === 'representative' || actor?.role === 'customer') {
+    throw new AppError(403, 'غير مصرح للمندوب أو العميل برفض فواتير الشراء', 'FORBIDDEN_REJECT_PURCHASE');
+  }
+  if (actor?.role !== 'admin' && !perms.canManagePurchases && !perms.canApprove && !perms.canReceive) {
+    throw new AppError(403, 'ليس لديك صلاحية رفض فواتير الشراء', 'FORBIDDEN_PERMISSION');
+  }
+
+  const cleanReason = String(payload.reason || '').trim();
+  if (!cleanReason) {
+    throw new AppError(400, 'يرجى إدخال سبب رفض فاتورة الشراء', 'REJECTION_REASON_REQUIRED');
+  }
+  const now = nowIso();
+
+  const updated = (await isPgMode())
+    ? await withTransaction(async (client) => {
+        const inv = await fetchFullInvoicePg(client, invoiceId);
+        if (!inv) throw new AppError(404, 'فاتورة الشراء غير موجودة', 'INVOICE_NOT_FOUND');
+        if (inv.type !== 'purchase') throw new AppError(400, 'المستند المحدد ليس فاتورة شراء', 'NOT_PURCHASE_INVOICE');
+        if (inv.status === 'confirmed') {
+          throw new AppError(409, 'لا يمكن رفض فاتورة شراء تم اعتمادها وترحيلها بالفعل', 'ALREADY_CONFIRMED');
+        }
+        if (inv.status !== 'draft') {
+          throw new AppError(409, 'لا يمكن رفض فاتورة ملغاة', 'INVALID_INVOICE_STATUS');
+        }
+        if (!['sent', 'received'].includes(inv.dispatchStatus)) {
+          throw new AppError(409, 'لا يمكن رفض الفاتورة في حالتها الحالية', 'INVALID_DISPATCH_STATUS');
+        }
+
+        const nextHistory = [
+          ...(Array.isArray(inv.dispatchHistory) ? inv.dispatchHistory : []),
+          {
+            id: generateServerId('DSP'),
+            action: 'rejected',
+            at: now,
+            by: actor.fullName,
+            byUserId: actor.id,
+            reason: cleanReason,
+          },
+        ];
+
+        await client.query(
+          `UPDATE invoices SET
+            dispatch_status = 'rejected',
+            rejected_by = $1,
+            rejected_by_user_id = $2,
+            rejected_at = $3,
+            rejection_reason = $4,
+            dispatch_history = $5,
+            version = COALESCE(version, 1) + 1,
+            updated_at = $3
+           WHERE id = $6`,
+          [actor.fullName, actor.id, now, cleanReason, JSON.stringify(nextHistory), invoiceId]
+        );
+        return fetchFullInvoicePg(client, invoiceId);
+      })
+    : await withJsonTransaction((db) => {
+        const inv = db.invoices.find((i) => i.id === invoiceId);
+        if (!inv) throw new AppError(404, 'فاتورة الشراء غير موجودة', 'INVOICE_NOT_FOUND');
+        if (inv.type !== 'purchase') throw new AppError(400, 'المستند المحدد ليس فاتورة شراء', 'NOT_PURCHASE_INVOICE');
+        if (inv.status === 'confirmed') {
+          throw new AppError(409, 'لا يمكن رفض فاتورة شراء تم اعتمادها وترحيلها بالفعل', 'ALREADY_CONFIRMED');
+        }
+        if (inv.status !== 'draft') {
+          throw new AppError(409, 'لا يمكن رفض فاتورة ملغاة', 'INVALID_INVOICE_STATUS');
+        }
+        if (!['sent', 'received'].includes(inv.dispatchStatus)) {
+          throw new AppError(409, 'لا يمكن رفض الفاتورة في حالتها الحالية', 'INVALID_DISPATCH_STATUS');
+        }
+
+        inv.dispatchStatus = 'rejected';
+        inv.rejectedBy = actor.fullName;
+        inv.rejectedByUserId = actor.id;
+        inv.rejectedAt = now;
+        inv.rejectionReason = cleanReason;
+        inv.dispatchHistory = [
+          ...(Array.isArray(inv.dispatchHistory) ? inv.dispatchHistory : []),
+          {
+            id: generateServerId('DSP'),
+            action: 'rejected',
+            at: now,
+            by: actor.fullName,
+            byUserId: actor.id,
+            reason: cleanReason,
+          },
+        ];
+        inv.version = Number(inv.version || 1) + 1;
+        inv.updatedAt = now;
+        return inv;
+      });
+
+  await recordAuditLog({
+    userId: actor.id,
+    userName: actor.fullName,
+    action: `رفض فاتورة شراء (${updated.invoiceNumber}) — السبب: ${cleanReason}`,
+    module: 'المشتريات',
+    recordId: invoiceId,
+    notes: cleanReason,
+  });
+  return updated;
 }
 
 export async function createSalesQuote(payload, actor, idempotencyKey = '') {
@@ -1192,6 +1708,26 @@ export async function confirmDraftInvoice(invoiceId, actor) {
       if (inv.status === 'confirmed') throw new AppError(409, 'تم اعتماد هذه الفاتورة مسبقًا (ممنوع تكرار خصم المخزون)', 'ALREADY_CONFIRMED');
       if (inv.status !== 'draft') throw new AppError(409, 'لا يمكن اعتماد فاتورة ملغاة', 'INVALID_INVOICE_STATUS');
 
+      if (inv.type === 'purchase') {
+        if (actor?.role === 'representative' || actor?.role === 'customer') {
+          throw new AppError(
+            403,
+            'غير مصرح للمندوب باعتماد فاتورة الشراء أو ترحيل المخزون؛ يتم الاعتماد من الإدارة أو قسم المشتريات فقط.',
+            'FORBIDDEN_PURCHASE_CONFIRM'
+          );
+        }
+        if (actor?.role !== 'admin' && !actor?.permissions?.canManagePurchases && !actor?.permissions?.canApprove) {
+          throw new AppError(403, 'ليس لديك صلاحية اعتماد وترحيل فواتير الشراء', 'FORBIDDEN_PERMISSION');
+        }
+        if (inv.dispatchStatus === 'rejected') {
+          throw new AppError(409, 'لا يمكن اعتماد فاتورة شراء مرفوضة؛ يجب تعديلها وإعادة إرسالها أولاً', 'INVOICE_REJECTED');
+        }
+      } else if (inv.type === 'sales') {
+        if (actor?.role !== 'admin' && !actor?.permissions?.canManageSales) {
+          throw new AppError(403, 'ليس لديك صلاحية اعتماد فواتير المبيعات', 'FORBIDDEN_PERMISSION');
+        }
+      }
+
       if (repActor) {
         if (inv.representativeId && inv.representativeId !== repActor.id) {
           throw new AppError(403, 'غير مصرح لك باعتماد فاتورة مندوب آخر', 'FORBIDDEN_INVOICE_ACCESS');
@@ -1222,7 +1758,35 @@ export async function confirmDraftInvoice(invoiceId, actor) {
         inv.type === 'sales' && actor?.role === 'representative'
           ? 'needs_review'
           : inv.reviewStatus || 'not_required';
-      await client.query(`UPDATE invoices SET status = 'confirmed', review_status = $1, updated_at = $2 WHERE id = $3`, [nextReviewStatus, now, invoiceId]);
+      if (inv.type === 'purchase') {
+        const nextHistory = [
+          ...(Array.isArray(inv.dispatchHistory) ? inv.dispatchHistory : []),
+          {
+            id: generateServerId('DSP'),
+            action: 'confirmed',
+            at: now,
+            by: actor.fullName,
+            byUserId: actor.id,
+            notes: 'اعتماد وترحيل للمخزون والحسابات',
+          },
+        ];
+        await client.query(
+          `UPDATE invoices SET
+            status = 'confirmed',
+            dispatch_status = 'confirmed',
+            received_by = COALESCE(received_by, $1),
+            received_by_user_id = COALESCE(received_by_user_id, $2),
+            received_at = COALESCE(received_at, $3),
+            dispatch_history = $4,
+            review_status = $5,
+            version = COALESCE(version, 1) + 1,
+            updated_at = $3
+           WHERE id = $6`,
+          [actor.fullName, actor.id, now, JSON.stringify(nextHistory), nextReviewStatus, invoiceId]
+        );
+      } else {
+        await client.query(`UPDATE invoices SET status = 'confirmed', review_status = $1, updated_at = $2 WHERE id = $3`, [nextReviewStatus, now, invoiceId]);
+      }
       if (inv.linkedCustomerOrderId && Number(inv.appliedAdvanceAmount || 0) > 0) {
         await client.query(
           `UPDATE order_advance_payments SET status = 'applied', applied_invoice_id = $1 WHERE order_id = $2 AND status = 'active'`,
@@ -1237,6 +1801,26 @@ export async function confirmDraftInvoice(invoiceId, actor) {
       if (!inv) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
       if (inv.status === 'confirmed') throw new AppError(409, 'تم اعتماد هذه الفاتورة مسبقًا (ممنوع تكرار خصم المخزون)', 'ALREADY_CONFIRMED');
       if (inv.status !== 'draft') throw new AppError(409, 'لا يمكن اعتماد فاتورة ملغاة', 'INVALID_INVOICE_STATUS');
+
+      if (inv.type === 'purchase') {
+        if (actor?.role === 'representative' || actor?.role === 'customer') {
+          throw new AppError(
+            403,
+            'غير مصرح للمندوب باعتماد فاتورة الشراء أو ترحيل المخزون؛ يتم الاعتماد من الإدارة أو قسم المشتريات فقط.',
+            'FORBIDDEN_PURCHASE_CONFIRM'
+          );
+        }
+        if (actor?.role !== 'admin' && !actor?.permissions?.canManagePurchases && !actor?.permissions?.canApprove) {
+          throw new AppError(403, 'ليس لديك صلاحية اعتماد وترحيل فواتير الشراء', 'FORBIDDEN_PERMISSION');
+        }
+        if (inv.dispatchStatus === 'rejected') {
+          throw new AppError(409, 'لا يمكن اعتماد فاتورة شراء مرفوضة؛ يجب تعديلها وإعادة إرسالها أولاً', 'INVOICE_REJECTED');
+        }
+      } else if (inv.type === 'sales') {
+        if (actor?.role !== 'admin' && !actor?.permissions?.canManageSales) {
+          throw new AppError(403, 'ليس لديك صلاحية اعتماد فواتير المبيعات', 'FORBIDDEN_PERMISSION');
+        }
+      }
 
       if (repActor) {
         if (inv.representativeId && inv.representativeId !== repActor.id) {
@@ -1263,6 +1847,24 @@ export async function confirmDraftInvoice(invoiceId, actor) {
 
       applyConfirmedEffectsJsonTx(db, inv, actor);
       inv.status = 'confirmed';
+      if (inv.type === 'purchase') {
+        inv.dispatchStatus = 'confirmed';
+        if (!inv.receivedBy) inv.receivedBy = actor.fullName;
+        if (!inv.receivedByUserId) inv.receivedByUserId = actor.id;
+        if (!inv.receivedAt) inv.receivedAt = now;
+        inv.dispatchHistory = [
+          ...(Array.isArray(inv.dispatchHistory) ? inv.dispatchHistory : []),
+          {
+            id: generateServerId('DSP'),
+            action: 'confirmed',
+            at: now,
+            by: actor.fullName,
+            byUserId: actor.id,
+            notes: 'اعتماد وترحيل للمخزون والحسابات',
+          },
+        ];
+        inv.version = Number(inv.version || 1) + 1;
+      }
       if (inv.type === 'sales' && actor?.role === 'representative') {
         inv.reviewStatus = 'needs_review';
       }
@@ -1733,8 +2335,17 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
 }
 
 export async function editPurchaseInvoice(invoiceId, updates, actor) {
-  if (actor?.role !== 'admin' && (!actor?.permissions?.canManagePurchases || !actor?.permissions?.canEdit)) {
+  const canFullPurchaseEdit =
+    actor?.role === 'admin' || (Boolean(actor?.permissions?.canManagePurchases) && Boolean(actor?.permissions?.canEdit));
+  const canRepDraftEdit =
+    (actor?.role === 'representative' || Boolean(actor?.permissions?.canCreatePurchase)) &&
+    Boolean(actor?.permissions?.canEdit);
+  if (!canFullPurchaseEdit && !canRepDraftEdit) {
     throw new AppError(403, 'ليس لديك صلاحية تعديل فواتير المشتريات', 'FORBIDDEN_PERMISSION');
+  }
+  const repActor = actor?.role === 'representative' ? await getRepresentativeByUserId(actor.id) : null;
+  if (actor?.role === 'representative' && !repActor) {
+    throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
   }
   const now = nowIso();
   const cleanReason = String(updates?.reason || '').trim();
@@ -1745,6 +2356,18 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
       if (!inv) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
       if (inv.type !== 'purchase') {
         throw new AppError(400, 'هذه الفاتورة ليست فاتورة مشتريات', 'NOT_PURCHASE_INVOICE');
+      }
+      if (!canFullPurchaseEdit) {
+        if (repActor && inv.representativeId !== repActor.id && inv.sentByUserId !== actor.id) {
+          throw new AppError(403, 'غير مصرح لك بتعديل فاتورة شراء لا تخصك', 'FORBIDDEN_INVOICE_ACCESS');
+        }
+        if (inv.status !== 'draft' || !['draft', 'rejected'].includes(inv.dispatchStatus)) {
+          throw new AppError(
+            409,
+            'لا يمكن تعديل فاتورة الشراء بعد استلامها أو اعتمادها من الإدارة',
+            'CANNOT_EDIT_AFTER_RECEIPT'
+          );
+        }
       }
       if (inv.status === 'cancelled') throw new AppError(409, 'لا يمكن تعديل فاتورة مشتريات ملغاة', 'INVOICE_CANCELLED');
       if (
@@ -1791,38 +2414,58 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
         ? await resolvePurchaseItemsWithInlineProductsPgTx(client, updates.items, now)
         : inv.items;
 
+      const nextDraftPaidAmount = inv.status === 'draft' && updates.paidAmount !== undefined
+        ? round2(Math.max(0, Number(updates.paidAmount || 0)))
+        : round2(Number(inv.paidAmount || 0));
+
       const totals = recomputeInvoiceTotals(
         {
           items: resolvedItemsRaw,
           discountTotal: updates.discountTotal ?? inv.discountTotal,
-          paidAmount: inv.paidAmount,
+          paidAmount: nextDraftPaidAmount,
           appliedAdvanceAmount: 0,
         },
         inv.items
       );
 
-      if (totals.grandTotal < round2(Number(inv.paidAmount || 0)) - 0.01) {
+      if (totals.grandTotal < nextDraftPaidAmount - 0.01) {
         throw new AppError(
           400,
-          `إجمالي فاتورة المشتريات المعدّل (${totals.grandTotal}) لا يمكن أن يكون أقل من المبلغ المدفوع مسبقاً (${inv.paidAmount})`,
+          `إجمالي فاتورة المشتريات المعدّل (${totals.grandTotal}) لا يمكن أن يكون أقل من المبلغ المدفوع (${nextDraftPaidAmount})`,
           'GRAND_TOTAL_BELOW_PAID'
         );
       }
 
-      const newQtyByProduct = new Map();
-      for (const it of totals.items) {
-        newQtyByProduct.set(it.productId, round3((newQtyByProduct.get(it.productId) || 0) + Number(it.quantity || 0)));
+      const origFactorByProduct = new Map();
+      for (const origIt of inv.items || []) {
+        if (!origFactorByProduct.has(origIt.productId)) {
+          origFactorByProduct.set(origIt.productId, Math.max(0.001, Number(origIt.unitFactor || 1)));
+        }
       }
+      const newBaseByProduct = new Map();
+      const newFactorByProduct = new Map();
+      for (const it of totals.items) {
+        const uf = Math.max(0.001, Number(it.unitFactor || 1));
+        newBaseByProduct.set(it.productId, round3((newBaseByProduct.get(it.productId) || 0) + Number(it.quantity || 0) * uf));
+        if (!newFactorByProduct.has(it.productId)) newFactorByProduct.set(it.productId, uf);
+      }
+      const nextReturnedMap = { ...(inv.returnedQuantityByItem || {}) };
       for (const [pid, retQtyRaw] of Object.entries(inv.returnedQuantityByItem || {})) {
         const retQty = round3(retQtyRaw);
         if (retQty <= 0) continue;
-        const newQty = Number(newQtyByProduct.get(pid) || 0);
-        if (newQty + 0.0001 < retQty) {
+        const origFactor = origFactorByProduct.get(pid) || 1;
+        const retBase = round3(retQty * origFactor);
+        const newBase = Number(newBaseByProduct.get(pid) || 0);
+        if (newBase + 0.0001 < retBase) {
           throw new AppError(
             400,
             `لا يمكن تقليل كمية الصنف عن الكمية المرتجعة مسبقاً (${retQty})`,
             'BELOW_RETURNED_QUANTITY'
           );
+        }
+        const newFactor = newFactorByProduct.get(pid) || origFactor;
+        if (Math.abs(newFactor - origFactor) > 0.0001) {
+          nextReturnedMap[pid] = round3(retBase / newFactor);
         }
       }
 
@@ -2038,7 +2681,7 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
 
       const itemsWithCost = totals.items.map((it) => ({
         ...it,
-        purchasePriceAtTime: it.purchasePriceAtTime || round2(Number(it.unitPrice || 0) / Math.max(0.001, Number(it.unitFactor || 1))),
+        purchasePriceAtTime: round2(Number(it.unitPrice || 0) / Math.max(0.001, Number(it.unitFactor || 1))),
       }));
 
       const afterSnapshot = {
@@ -2051,7 +2694,7 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
         subtotal: totals.subtotal,
         discountTotal: totals.discountTotal,
         grandTotal: totals.grandTotal,
-        paidAmount: inv.paidAmount,
+        paidAmount: totals.paidAmount,
         remainingAmount: totals.remainingAmount,
         paymentType: totals.paymentType,
         notes: updates.notes !== undefined ? updates.notes : (inv.notes || ''),
@@ -2068,7 +2711,7 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
       const nextEditHistory = [...(Array.isArray(inv.editHistory) ? inv.editHistory : []), editEntry];
 
       await client.query(
-        `UPDATE invoices SET date = $1, supplier_id = $2, supplier_name = $3, warehouse_id = $4, warehouse_name = $5, subtotal = $6, discount_total = $7, grand_total = $8, remaining_amount = $9, payment_type = $10, notes = $11, edited_by = $12, edited_at = $13, edit_history = $14, version = COALESCE(version, 1) + 1, updated_at = $13 WHERE id = $15`,
+        `UPDATE invoices SET date = $1, supplier_id = $2, supplier_name = $3, warehouse_id = $4, warehouse_name = $5, subtotal = $6, discount_total = $7, grand_total = $8, paid_amount = $9, remaining_amount = $10, payment_type = $11, notes = $12, edited_by = $13, edited_at = $14, edit_history = $15, returned_quantity_by_item = $16, version = COALESCE(version, 1) + 1, updated_at = $14 WHERE id = $17`,
         [
           afterSnapshot.date,
           nextSupplierId,
@@ -2078,12 +2721,14 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
           totals.subtotal,
           totals.discountTotal,
           totals.grandTotal,
+          totals.paidAmount,
           totals.remainingAmount,
           totals.paymentType,
           afterSnapshot.notes,
           actor.fullName,
           now,
           JSON.stringify(nextEditHistory),
+          JSON.stringify(nextReturnedMap),
           invoiceId,
         ]
       );
@@ -2119,6 +2764,18 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
     if (!inv) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
     if (inv.type !== 'purchase') {
       throw new AppError(400, 'هذه الفاتورة ليست فاتورة مشتريات', 'NOT_PURCHASE_INVOICE');
+    }
+    if (!canFullPurchaseEdit) {
+      if (repActor && inv.representativeId !== repActor.id && inv.sentByUserId !== actor.id) {
+        throw new AppError(403, 'غير مصرح لك بتعديل فاتورة شراء لا تخصك', 'FORBIDDEN_INVOICE_ACCESS');
+      }
+      if (inv.status !== 'draft' || !['draft', 'rejected'].includes(inv.dispatchStatus)) {
+        throw new AppError(
+          409,
+          'لا يمكن تعديل فاتورة الشراء بعد استلامها أو اعتمادها من الإدارة',
+          'CANNOT_EDIT_AFTER_RECEIPT'
+        );
+      }
     }
     if (inv.status === 'cancelled') throw new AppError(409, 'لا يمكن تعديل فاتورة مشتريات ملغاة', 'INVOICE_CANCELLED');
     if (
@@ -2163,38 +2820,58 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
       ? resolvePurchaseItemsWithInlineProductsJsonTx(db, updates.items, now)
       : inv.items;
 
+    const nextDraftPaidAmount = inv.status === 'draft' && updates.paidAmount !== undefined
+      ? round2(Math.max(0, Number(updates.paidAmount || 0)))
+      : round2(Number(inv.paidAmount || 0));
+
     const totals = recomputeInvoiceTotals(
       {
         items: resolvedItemsRaw,
         discountTotal: updates.discountTotal ?? inv.discountTotal,
-        paidAmount: inv.paidAmount,
+        paidAmount: nextDraftPaidAmount,
         appliedAdvanceAmount: 0,
       },
       inv.items
     );
 
-    if (totals.grandTotal < round2(Number(inv.paidAmount || 0)) - 0.01) {
+    if (totals.grandTotal < nextDraftPaidAmount - 0.01) {
       throw new AppError(
         400,
-        `إجمالي فاتورة المشتريات المعدّل (${totals.grandTotal}) لا يمكن أن يكون أقل من المبلغ المدفوع مسبقاً (${inv.paidAmount})`,
+        `إجمالي فاتورة المشتريات المعدّل (${totals.grandTotal}) لا يمكن أن يكون أقل من المبلغ المدفوع (${nextDraftPaidAmount})`,
         'GRAND_TOTAL_BELOW_PAID'
       );
     }
 
-    const newQtyByProduct = new Map();
-    for (const it of totals.items) {
-      newQtyByProduct.set(it.productId, round3((newQtyByProduct.get(it.productId) || 0) + Number(it.quantity || 0)));
+    const origFactorByProduct = new Map();
+    for (const origIt of inv.items || []) {
+      if (!origFactorByProduct.has(origIt.productId)) {
+        origFactorByProduct.set(origIt.productId, Math.max(0.001, Number(origIt.unitFactor || 1)));
+      }
     }
+    const newBaseByProduct = new Map();
+    const newFactorByProduct = new Map();
+    for (const it of totals.items) {
+      const uf = Math.max(0.001, Number(it.unitFactor || 1));
+      newBaseByProduct.set(it.productId, round3((newBaseByProduct.get(it.productId) || 0) + Number(it.quantity || 0) * uf));
+      if (!newFactorByProduct.has(it.productId)) newFactorByProduct.set(it.productId, uf);
+    }
+    const nextReturnedMap = { ...(inv.returnedQuantityByItem || {}) };
     for (const [pid, retQtyRaw] of Object.entries(inv.returnedQuantityByItem || {})) {
       const retQty = round3(retQtyRaw);
       if (retQty <= 0) continue;
-      const newQty = Number(newQtyByProduct.get(pid) || 0);
-      if (newQty + 0.0001 < retQty) {
+      const origFactor = origFactorByProduct.get(pid) || 1;
+      const retBase = round3(retQty * origFactor);
+      const newBase = Number(newBaseByProduct.get(pid) || 0);
+      if (newBase + 0.0001 < retBase) {
         throw new AppError(
           400,
           `لا يمكن تقليل كمية الصنف عن الكمية المرتجعة مسبقاً (${retQty})`,
           'BELOW_RETURNED_QUANTITY'
         );
+      }
+      const newFactor = newFactorByProduct.get(pid) || origFactor;
+      if (Math.abs(newFactor - origFactor) > 0.0001) {
+        nextReturnedMap[pid] = round3(retBase / newFactor);
       }
     }
 
@@ -2378,7 +3055,7 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
 
     const itemsWithCost = totals.items.map((it) => ({
       ...it,
-      purchasePriceAtTime: it.purchasePriceAtTime || round2(Number(it.unitPrice || 0) / Math.max(0.001, Number(it.unitFactor || 1))),
+      purchasePriceAtTime: round2(Number(it.unitPrice || 0) / Math.max(0.001, Number(it.unitFactor || 1))),
     }));
 
     const afterSnapshot = {
@@ -2391,7 +3068,7 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
       subtotal: totals.subtotal,
       discountTotal: totals.discountTotal,
       grandTotal: totals.grandTotal,
-      paidAmount: inv.paidAmount,
+      paidAmount: totals.paidAmount,
       remainingAmount: totals.remainingAmount,
       paymentType: totals.paymentType,
       notes: updates.notes !== undefined ? updates.notes : (inv.notes || ''),
@@ -2415,11 +3092,13 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
     inv.subtotal = totals.subtotal;
     inv.discountTotal = totals.discountTotal;
     inv.grandTotal = totals.grandTotal;
+    inv.paidAmount = totals.paidAmount;
     inv.remainingAmount = totals.remainingAmount;
     inv.paymentType = totals.paymentType;
     inv.editedBy = actor.fullName;
     inv.editedAt = now;
     inv.editHistory = [...(Array.isArray(inv.editHistory) ? inv.editHistory : []), editEntry];
+    inv.returnedQuantityByItem = nextReturnedMap;
     inv.version = Number(inv.version || 1) + 1;
     inv.updatedAt = now;
     inv.notes = afterSnapshot.notes;
@@ -3426,11 +4105,16 @@ export async function listInvoices(actor = null, filters = {}) {
 
   if (actor?.role === 'representative') {
     const rep = await getRepresentativeByUserId(actor.id);
-    if (!rep) return [];
+    if (!rep) {
+      return allInvoices.filter((inv) => inv.sentByUserId === actor.id);
+    }
     const allowedCusts = await listCustomers({ forRepId: rep.id });
     const allowedCustIds = new Set(allowedCusts.map((c) => c.id));
     return allInvoices.filter(
-      (inv) => inv.representativeId === rep.id || (inv.customerId && allowedCustIds.has(inv.customerId))
+      (inv) =>
+        inv.representativeId === rep.id ||
+        inv.sentByUserId === actor.id ||
+        (inv.customerId && allowedCustIds.has(inv.customerId))
     );
   }
 

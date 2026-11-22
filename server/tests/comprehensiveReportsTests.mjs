@@ -425,6 +425,73 @@ async function runComprehensiveScenario(modeLabel) {
       assert.equal(docRes.json.document.invoiceNumber, sale1No);
       assert.equal(docRes.json.document.items.length, 1);
     });
+
+    // 8. Verify warehouseId filter on cash_payment excludes cash transactions linked to other warehouses
+    await test(`[${modeLabel}] Warehouse filter on cash reports excludes cash linked to invoices in other warehouses`, async () => {
+      const wh2Res = await req(baseUrl, 'POST', '/api/inventory/warehouses', {
+        token: adminToken,
+        body: { name: 'مخزن الإسكندرية', code: 'WH-ALEX' },
+      });
+      assert.equal(wh2Res.status, 201);
+      const wh2Id = wh2Res.json.warehouse.id;
+
+      // Filter cash_payment_customer by wh2Id -> sale1Id (paid 500) belongs to whId, so it MUST NOT show up under wh2Id!
+      const cashWh2 = await req(
+        baseUrl,
+        'GET',
+        `/api/reports/comprehensive?reportType=cash_payment&dateFrom=2026-11-20&dateTo=2026-11-20&warehouseId=${encodeURIComponent(wh2Id)}`,
+        { token: adminToken }
+      );
+      assert.equal(cashWh2.status, 200);
+      const rows = cashWh2.json.report.sections[0].rows || [];
+      assert.equal(rows.some((r) => r.docId === sale1Id || String(r.docNumber || '') === sale1No), false);
+    });
+
+    // 9. Verify Source Document Inspection supports rep_custody operations
+    await test(`[${modeLabel}] Source document inspection loads rep_custody operations accurately`, async () => {
+      const repRes = await req(baseUrl, 'POST', '/api/admin/representatives', {
+        token: adminToken,
+        body: { name: 'مندوب العهدة للاختبار', phone: '01099887766' },
+      });
+      assert.equal(repRes.status, 201);
+      const repId = repRes.json.representative.id;
+
+      const vanRes = await req(baseUrl, 'POST', '/api/inventory/rep-van-warehouse', {
+        token: adminToken,
+        body: { repName: 'مندوب العهدة للاختبار' },
+      });
+      assert.equal(vanRes.status, 200);
+      const vanWhId = vanRes.json.warehouse.id;
+
+      const trRes = await req(baseUrl, 'POST', '/api/inventory/transfer', {
+        token: adminToken,
+        body: { productId: p1Id, fromWarehouseId: whId, toWarehouseId: vanWhId, quantity: 5, notes: 'تحويل عهدة' },
+      });
+      assert.equal(trRes.status, 200);
+
+      const adjRes = await req(baseUrl, 'POST', '/api/inventory/rep-custody/adjust', {
+        token: adminToken,
+        body: {
+          representativeId: repId,
+          productId: p1Id,
+          operationType: 'custody_adjustment',
+          quantity: 1,
+          notes: 'تسوية عهدة لفحص المستند المصدري',
+        },
+      });
+      assert.equal(adjRes.status, 201);
+      const opId = adjRes.json.operation.id;
+
+      const docRes = await req(
+        baseUrl,
+        'GET',
+        `/api/reports/source-document?docType=rep_custody&docId=${encodeURIComponent(opId)}`,
+        { token: adminToken }
+      );
+      assert.equal(docRes.status, 200);
+      assert.equal(docRes.json.document.id, opId);
+      assert.equal(docRes.json.document.productId, p1Id);
+    });
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

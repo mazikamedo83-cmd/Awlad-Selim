@@ -202,8 +202,13 @@ router.post(
 router.post(
   '/rep-custody/adjust',
   asyncHandler(async (req, res) => {
-    const operation = await recordRepCustodyAdjustment(req.body || {}, req.auth.user);
-    res.status(201).json({ ok: true, operation });
+    const idempotencyKey = req.get('Idempotency-Key') || req.body?.idempotencyKey || '';
+    const result = await recordRepCustodyAdjustment(req.body || {}, req.auth.user, idempotencyKey);
+    res.status(result.deduplicated ? 200 : 201).json({
+      ok: true,
+      operation: result.operation,
+      deduplicated: Boolean(result.deduplicated),
+    });
   })
 );
 

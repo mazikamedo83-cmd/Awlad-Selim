@@ -1,11 +1,13 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
-  Plus, Printer, Trash2, Save, CheckCircle2, XCircle, PackagePlus, AlertTriangle
+  Plus, Printer, Trash2, Save, CheckCircle2, XCircle, PackagePlus, AlertTriangle,
+  Eye, Edit, AlertCircle, History, Clock, Send, UserCheck
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
+import { useAuth } from '../../../context/AuthContext';
 import { useShortcuts } from '../../../context/ShortcutsContext';
 import { apiRequest } from '../../../services/api';
-import { Invoice, InlinePurchaseNewProduct, Product } from '../../../types';
+import { Invoice, InvoiceItem, InlinePurchaseNewProduct, Product } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
@@ -14,7 +16,7 @@ import { QuantityInput } from '../../common/QuantityInput';
 import { computeLineTotal } from '../../../utils/quantity';
 
 export interface PurchaseInvoicesViewProps {
-  initialStatusFilter?: 'all' | 'confirmed' | 'draft' | 'cancelled';
+  initialStatusFilter?: 'all' | 'rep_incoming' | 'confirmed' | 'draft' | 'cancelled';
   initialOpenNew?: boolean;
 }
 
@@ -91,21 +93,49 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 }) => {
   const {
     invoices, suppliers, products, warehouses, cashboxes,
-    settings, createPurchaseInvoice, cancelInvoice
+    settings, createPurchaseInvoice, editPurchaseInvoice, cancelInvoice,
+    receivePurchaseInvoice, rejectPurchaseInvoice, confirmDraftInvoice,
   } = useData();
+  const { currentUser, hasPermission } = useAuth();
+  const canEditPurchase = currentUser?.role === 'admin' || (hasPermission('canManagePurchases') && hasPermission('canEdit'));
+  const canApprovePurchase =
+    currentUser?.role === 'admin' ||
+    hasPermission('canManagePurchases') ||
+    hasPermission('canApprove') ||
+    hasPermission('canReviewRepInvoices');
+  const canReceivePurchase = canApprovePurchase || hasPermission('canReceive');
   const { registerHandler } = useShortcuts();
 
   const productSearchRef = useRef<HTMLInputElement | null>(null);
   const qtyInputRef = useRef<HTMLInputElement | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'confirmed' | 'draft' | 'cancelled'>(initialStatusFilter);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'rep_incoming' | 'confirmed' | 'draft' | 'cancelled'>(initialStatusFilter);
   const [isNewModalOpen, setIsNewModalOpen] = useState(initialOpenNew);
   const [printData, setPrintData] = useState<PrintData | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Invoice | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [activeInvoice, setActiveInvoice] = useState<Invoice | null>(null);
+  const [isDispatchActionBusy, setIsDispatchActionBusy] = useState(false);
+  const [isRejectBoxOpen, setIsRejectBoxOpen] = useState(false);
+  const [rejectReasonText, setRejectReasonText] = useState('');
+
+  // Edit Purchase Invoice Modal state
+  const [editModalInvoice, setEditModalInvoice] = useState<Invoice | null>(null);
+  const [editDate, setEditDate] = useState('');
+  const [editSupplierId, setEditSupplierId] = useState('');
+  const [editWarehouseId, setEditWarehouseId] = useState('');
+  const [editDiscount, setEditDiscount] = useState<number>(0);
+  const [editNotes, setEditNotes] = useState('');
+  const [editReason, setEditReason] = useState('');
+  const [editItems, setEditItems] = useState<InvoiceItem[]>([]);
+  const [editAddProdId, setEditAddProdId] = useState('');
+  const [editAddQty, setEditAddQty] = useState<number | ''>('');
+  const [editAddPrice, setEditAddPrice] = useState<number | ''>('');
+  const [editError, setEditError] = useState<string | null>(null);
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
 
   // New Purchase Form state (numeric inputs default to '' so user types explicitly)
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>(suppliers[0]?.id || '');
@@ -258,12 +288,49 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     return invoices.filter(i => i.type === 'purchase');
   }, [invoices]);
 
+  const repIncomingPendingCount = useMemo(() => {
+    return purchaseInvoices.filter(i => i.status === 'draft' && i.dispatchStatus === 'sent').length;
+  }, [purchaseInvoices]);
+
+  const displayedActiveInvoice = useMemo(() => {
+    if (!activeInvoice) return null;
+    return purchaseInvoices.find((i) => i.id === activeInvoice.id) || activeInvoice;
+  }, [activeInvoice, purchaseInvoices]);
+
+  const getPurchaseStatusBadge = (inv: Invoice) => {
+    if (inv.status === 'cancelled') {
+      return { label: 'ملغاة', cls: 'bg-red-50 text-red-700 border border-red-200' };
+    }
+    if (inv.status === 'confirmed') {
+      return { label: 'مؤكدة ومعتمدة', cls: 'bg-emerald-50 text-emerald-800 border border-emerald-200' };
+    }
+    switch (inv.dispatchStatus) {
+      case 'sent':
+        return { label: 'مرسلة بانتظار الاستلام', cls: 'bg-amber-50 text-amber-900 border border-amber-200' };
+      case 'received':
+        return { label: 'تم الاستلام (بانتظار الاعتماد)', cls: 'bg-sky-50 text-sky-900 border border-sky-200' };
+      case 'rejected':
+        return { label: 'مرفوضة', cls: 'bg-rose-50 text-rose-800 border border-rose-200' };
+      default:
+        return { label: 'مسودة', cls: 'bg-slate-100 text-slate-700 border border-slate-200' };
+    }
+  };
+
   const filteredPurchases = useMemo(() => {
     return purchaseInvoices.filter(inv => {
+      const q = searchTerm.toLowerCase();
       const matchSearch =
-        inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (inv.supplierName && inv.supplierName.toLowerCase().includes(searchTerm.toLowerCase()));
-      const matchStatus = statusFilter === 'all' ? true : inv.status === statusFilter;
+        !q ||
+        inv.invoiceNumber.toLowerCase().includes(q) ||
+        (inv.supplierName && inv.supplierName.toLowerCase().includes(q)) ||
+        (inv.representativeName && inv.representativeName.toLowerCase().includes(q)) ||
+        (inv.sentBy && inv.sentBy.toLowerCase().includes(q));
+      const matchStatus =
+        statusFilter === 'all'
+          ? true
+          : statusFilter === 'rep_incoming'
+          ? Boolean(inv.isRepPurchase || inv.representativeId || inv.sentByUserId || (inv.dispatchStatus && inv.dispatchStatus !== 'draft'))
+          : inv.status === statusFilter;
       return matchSearch && matchStatus;
     });
   }, [purchaseInvoices, searchTerm, statusFilter]);
@@ -340,7 +407,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       return;
     }
     const buyPrice = Math.max(0, Number(newProdPurchasePrice || 0));
-    const sellPrice = newProdSellingPrice === '' ? buyPrice : Math.max(0, Number(newProdSellingPrice || 0));
+    const sellPrice = newProdSellingPrice === '' ? 0 : Math.max(0, Number(newProdSellingPrice || 0));
 
     // Prevent exact duplicate creation by auto-binding to the existing product
     const exact = duplicateCheckState.exactMatch;
@@ -491,7 +558,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         paymentType,
         paymentMethod: 'bank',
         cashboxId: selectedCashboxId,
-        status: 'confirmed',
+        status: canApprovePurchase ? 'confirmed' : 'draft',
         notes,
       });
 
@@ -500,7 +567,9 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         resetPurchaseModalForm();
         setActionMessage({
           type: 'success',
-          text: `تم حفظ فاتورة المشتريات رقم (${res.invoice?.invoiceNumber || ''}) وتحديث المخزون والأصناف بنجاح.`,
+          text: canApprovePurchase
+            ? `تم حفظ فاتورة المشتريات رقم (${res.invoice?.invoiceNumber || ''}) وتحديث المخزون والأصناف بنجاح.`
+            : `تم حفظ فاتورة الشراء كمسودة (${res.invoice?.invoiceNumber || ''}) بانتظار المراجعة والاعتماد دون تعديل المخزون.`,
         });
         if (shouldPrint && res.invoice) {
           handlePrint(res.invoice);
@@ -514,7 +583,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   }, [
     isSubmitting, items, suppliers, selectedSupplierId, warehouses, selectedWarehouseId, paymentType, grandTotal,
     paidAmount, createPurchaseInvoice, invoiceDate, subtotal, numericDiscount, selectedCashboxId,
-    notes, handlePrint, resetPurchaseModalForm
+    notes, handlePrint, resetPurchaseModalForm, canApprovePurchase
   ]);
 
   const submitPurchaseRef = useRef(handleSubmitPurchase);
@@ -547,6 +616,108 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     }
   };
 
+  const handleOpenEditModal = (inv: Invoice) => {
+    setEditModalInvoice(inv);
+    setEditDate(inv.date);
+    setEditSupplierId(inv.supplierId || '');
+    setEditWarehouseId(inv.warehouseId || '');
+    setEditDiscount(inv.discountTotal || 0);
+    setEditNotes(inv.notes || '');
+    setEditReason('');
+    setEditItems(inv.items.map((it) => ({ ...it })));
+    setEditAddProdId('');
+    setEditAddQty('');
+    setEditAddPrice('');
+    setEditError(null);
+  };
+
+  const handleEditPickProduct = (p: Product) => {
+    setEditAddProdId(p.id);
+    setEditAddPrice(p.purchasePrice > 0 ? p.purchasePrice : '');
+  };
+
+  const handleAddItemToEdit = () => {
+    const prod = products.find((p) => p.id === editAddProdId);
+    if (!prod) {
+      setEditError('يرجى اختيار الصنف أولاً لإضافته للفاتورة');
+      return;
+    }
+    const qtyNum = Number(editAddQty || 0);
+    if (qtyNum <= 0) {
+      setEditError('يرجى إدخال كمية صحيحة أكبر من صفر');
+      return;
+    }
+    const priceNum = Math.max(0, Number(editAddPrice || 0));
+    setEditItems((prev) => [
+      ...prev,
+      {
+        productId: prod.id,
+        productName: prod.name,
+        barcode: prod.barcode || prod.code || '',
+        unit: prod.baseUnit,
+        unitFactor: 1,
+        quantity: qtyNum,
+        unitPrice: priceNum,
+        purchasePriceAtTime: priceNum,
+        discount: 0,
+        total: computeLineTotal(qtyNum, priceNum, 0),
+      },
+    ]);
+    setEditAddProdId('');
+    setEditAddQty('');
+    setEditAddPrice('');
+    setEditError(null);
+  };
+
+  const handleSubmitEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editModalInvoice) return;
+    if (editItems.length === 0) {
+      setEditError('يجب أن تحتوي فاتورة المشتريات على صنف واحد على الأقل.');
+      return;
+    }
+    if (editModalInvoice.status === 'confirmed' && !editReason.trim()) {
+      setEditError('يرجى كتابة سبب تعديل الفاتورة لتوثيقه في سجل المراجعة.');
+      return;
+    }
+    const subtotalNext = editItems.reduce((s, it) => s + computeLineTotal(it.quantity, it.unitPrice, it.discount || 0), 0);
+    const grandNext = Math.max(0, subtotalNext - Math.max(0, Number(editDiscount || 0)));
+    if (grandNext < Number(editModalInvoice.paidAmount || 0) - 0.01) {
+      setEditError(
+        `لا يمكن أن يكون الإجمالي المعدل (${grandNext.toLocaleString()}) أقل من المبلغ المدفوع مسبقاً (${Number(editModalInvoice.paidAmount || 0).toLocaleString()}).`
+      );
+      return;
+    }
+
+    const suppObj = suppliers.find((s) => s.id === editSupplierId);
+    const whObj = warehouses.find((w) => w.id === editWarehouseId);
+    setEditError(null);
+    setIsSubmittingEdit(true);
+    const res = await editPurchaseInvoice(editModalInvoice.id, {
+      date: editDate,
+      supplierId: editSupplierId || undefined,
+      supplierName: suppObj?.name || 'مورد نقدي',
+      warehouseId: editWarehouseId || editModalInvoice.warehouseId,
+      warehouseName: whObj?.name || editModalInvoice.warehouseName,
+      discountTotal: Math.max(0, Number(editDiscount || 0)),
+      notes: editNotes,
+      reason: editReason.trim() || 'تعديل فاتورة مشتريات',
+      items: editItems,
+    });
+    setIsSubmittingEdit(false);
+    if (!res.success) {
+      setEditError(res.error || 'تعذر تعديل فاتورة المشتريات');
+    } else {
+      setEditModalInvoice(null);
+      setActionMessage({
+        type: 'success',
+        text: res.queuedOffline
+          ? `تم حفظ تعديل فاتورة المشتريات (${editModalInvoice.invoiceNumber}) محلياً للمزامنة عند عودة الاتصال.`
+          : `تم تحديث فاتورة المشتريات رقم (${editModalInvoice.invoiceNumber}) والمخزون ورصيد المورد بنجاح.`,
+      });
+    }
+  };
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -558,16 +729,28 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            resetPurchaseModalForm();
-            setIsNewModalOpen(true);
-          }}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-md shadow-blue-900/20 active:scale-95 transition-all cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          <span>فاتورة شراء جديدة</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {repIncomingPendingCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setStatusFilter('rep_incoming')}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-black cursor-pointer hover:bg-amber-100"
+            >
+              <Send className="w-4 h-4 text-amber-700" />
+              <span>وارد من المناديب ({repIncomingPendingCount})</span>
+            </button>
+          )}
+          <button
+            onClick={() => {
+              resetPurchaseModalForm();
+              setIsNewModalOpen(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-md shadow-blue-900/20 active:scale-95 transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>فاتورة شراء جديدة</span>
+          </button>
+        </div>
       </div>
 
       {actionMessage && (
@@ -593,7 +776,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         <div className="p-3 border-b flex flex-wrap items-center gap-3">
           <input
             type="text"
-            placeholder="بحث برقم الفاتورة أو المورد..."
+            placeholder="بحث برقم الفاتورة أو المورد أو المندوب..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full max-w-sm bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs focus:border-blue-600 outline-hidden"
@@ -604,8 +787,9 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold focus:border-blue-600 outline-hidden"
           >
             <option value="all">-- جميع الحالات --</option>
-            <option value="confirmed">فواتير مؤكدة</option>
-            <option value="draft">مسودات</option>
+            <option value="rep_incoming">فواتير شراء المناديب (الواردة)</option>
+            <option value="confirmed">فواتير مؤكدة ومعتمدة</option>
+            <option value="draft">مسودات وبانتظار الاعتماد</option>
             <option value="cancelled">ملغاة / محذوفة</option>
           </select>
         </div>
@@ -616,7 +800,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               <tr className="bg-slate-50 font-bold border-b text-slate-700">
                 <th className="p-3">رقم الفاتورة</th>
                 <th className="p-3">التاريخ</th>
-                <th className="p-3">المورد</th>
+                <th className="p-3">المورد / المرسل</th>
                 <th className="p-3">المستودع المستلم</th>
                 <th className="p-3 text-center">الإجمالي</th>
                 <th className="p-3 text-center">المدفوع</th>
@@ -633,24 +817,51 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   </td>
                 </tr>
               ) : (
-                filteredPurchases.map(inv => (
+                filteredPurchases.map(inv => {
+                  const badge = getPurchaseStatusBadge(inv);
+                  return (
                   <tr key={inv.id} className="hover:bg-slate-50">
                     <td className="p-3 font-mono font-bold text-blue-900">{inv.invoiceNumber}</td>
                     <td className="p-3 font-mono text-slate-600">{inv.date}</td>
-                    <td className="p-3 font-bold text-slate-800">{inv.supplierName}</td>
+                    <td className="p-3">
+                      <div className="font-bold text-slate-800">{inv.supplierName}</div>
+                      {(inv.representativeName || inv.sentBy) && (
+                        <div className="text-[10px] text-indigo-700 font-bold mt-0.5">
+                          المندوب / المرسل: {inv.representativeName || inv.sentBy}
+                        </div>
+                      )}
+                    </td>
                     <td className="p-3 text-slate-600">{inv.warehouseName}</td>
                     <td className="p-3 text-center font-black">{inv.grandTotal.toLocaleString()} {settings.currency}</td>
                     <td className="p-3 text-center text-emerald-700 font-bold">{inv.paidAmount.toLocaleString()}</td>
                     <td className="p-3 text-center text-red-700 font-bold">{inv.remainingAmount.toLocaleString()}</td>
                     <td className="p-3 text-center">
-                      {inv.status === 'cancelled' ? (
-                        <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-[10px] font-bold">ملغاة</span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold">مؤكدة</span>
-                      )}
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-block ${badge.cls}`}>
+                        {badge.label}
+                      </span>
                     </td>
                     <td className="p-3">
                       <div className="flex items-center justify-center gap-1.5">
+                        {inv.status !== 'cancelled' && canEditPurchase && (
+                          <button
+                            onClick={() => handleOpenEditModal(inv)}
+                            className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded-lg cursor-pointer"
+                            title="تعديل فاتورة الشراء والأصناف"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            setIsRejectBoxOpen(false);
+                            setRejectReasonText('');
+                            setActiveInvoice(inv);
+                          }}
+                          className="p-1.5 text-slate-500 hover:text-blue-900 hover:bg-blue-50 rounded-lg cursor-pointer"
+                          title="عرض تفاصيل الفاتورة وسجل الإرسال والتعديلات"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
                         <button
                           onClick={() => handlePrint(inv)}
                           className="p-1.5 text-slate-500 hover:text-blue-900 hover:bg-blue-50 rounded-lg cursor-pointer"
@@ -670,7 +881,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -1208,6 +1420,667 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
           </div>
         </div>
       </Modal>
+
+      {/* Purchase Invoice Details Modal */}
+      {displayedActiveInvoice && (() => {
+        const badge = getPurchaseStatusBadge(displayedActiveInvoice);
+        return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-right max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b pb-3 mb-4">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h3 className="text-base font-black text-slate-900">
+                  تفاصيل فاتورة المشتريات: {displayedActiveInvoice.invoiceNumber}
+                </h3>
+                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${badge.cls}`}>
+                  {badge.label}
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  setActiveInvoice(null);
+                  setIsRejectBoxOpen(false);
+                  setRejectReasonText('');
+                }}
+                className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
+              >
+                إغلاق ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs mb-4 p-3 bg-slate-50 rounded-xl">
+              <div className="space-y-1">
+                <p className="text-slate-500">المورد: <strong className="text-slate-800">{displayedActiveInvoice.supplierName || 'مورد نقدي'}</strong></p>
+                <p className="text-slate-500">المستودع المستلم: <strong className="text-slate-800">{displayedActiveInvoice.warehouseName}</strong></p>
+                <p className="text-slate-500">أنشئت بواسطة: <strong className="text-slate-800">{displayedActiveInvoice.createdBy}</strong></p>
+                {(displayedActiveInvoice.sentBy || displayedActiveInvoice.representativeName) && (
+                  <p className="text-indigo-800">
+                    المرسل / المندوب: <strong>{displayedActiveInvoice.sentBy || displayedActiveInvoice.representativeName}</strong>
+                    {displayedActiveInvoice.sentAt ? ` (${new Date(displayedActiveInvoice.sentAt).toLocaleString('ar-EG')})` : ''}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-1">
+                <p className="text-slate-500">التاريخ: <strong className="font-mono text-slate-800">{displayedActiveInvoice.date}</strong></p>
+                {displayedActiveInvoice.recipientName && (
+                  <p className="text-slate-500">الموجه إليه: <strong className="text-slate-800">{displayedActiveInvoice.recipientName}</strong></p>
+                )}
+                {displayedActiveInvoice.receivedBy && (
+                  <p className="text-sky-800">
+                    تم الاستلام بواسطة: <strong>{displayedActiveInvoice.receivedBy}</strong>
+                    {displayedActiveInvoice.receivedAt ? ` (${new Date(displayedActiveInvoice.receivedAt).toLocaleString('ar-EG')})` : ''}
+                  </p>
+                )}
+                {displayedActiveInvoice.editedBy && (
+                  <p className="text-amber-700">آخر تعديل: <strong>{displayedActiveInvoice.editedBy}</strong></p>
+                )}
+                {displayedActiveInvoice.cancelledBy && (
+                  <p className="text-red-700">ألغيت بواسطة: <strong>{displayedActiveInvoice.cancelledBy}</strong> {displayedActiveInvoice.cancelReason ? `— ${displayedActiveInvoice.cancelReason}` : ''}</p>
+                )}
+              </div>
+            </div>
+
+            {displayedActiveInvoice.dispatchStatus === 'rejected' && displayedActiveInvoice.rejectionReason && (
+              <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs">
+                <strong className="block mb-0.5">
+                  سبب الرفض ({displayedActiveInvoice.rejectedBy || 'الإدارة'}):
+                </strong>
+                <span>{displayedActiveInvoice.rejectionReason}</span>
+              </div>
+            )}
+
+            <div className="awlad-table-scroll mb-4">
+              <table className="w-full text-right text-xs">
+                <thead>
+                  <tr className="bg-slate-100 font-bold border-b">
+                    <th className="p-2">الصنف</th>
+                    <th className="p-2 text-center">الوحدة</th>
+                    <th className="p-2 text-center">الكمية</th>
+                    <th className="p-2 text-center">سعر الشراء</th>
+                    <th className="p-2 text-center">الإجمالي</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {displayedActiveInvoice.items.map((it, i) => (
+                    <tr key={i}>
+                      <td className="p-2 font-semibold">{it.productName}</td>
+                      <td className="p-2 text-center">{it.unit}</td>
+                      <td className="p-2 text-center font-bold">{it.quantity}</td>
+                      <td className="p-2 text-center">{it.unitPrice}</td>
+                      <td className="p-2 text-center font-bold text-blue-900">{it.total.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-4 mb-4 p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
+              <div className="flex items-center gap-2 mb-2">
+                <History className="w-4 h-4 text-emerald-700" />
+                <h4 className="text-xs font-black text-slate-800">
+                  سجل الدفعات المسددة ({displayedActiveInvoice.payments?.length || (displayedActiveInvoice.paidAmount > 0 ? 1 : 0)})
+                </h4>
+              </div>
+              {(!displayedActiveInvoice.payments || displayedActiveInvoice.payments.length === 0) ? (
+                <p className="text-[11px] text-slate-500">
+                  {displayedActiveInvoice.paidAmount > 0
+                    ? `تم تسجيل دفعة مخططة بقيمة ${displayedActiveInvoice.paidAmount.toLocaleString()} ${settings.currency}.`
+                    : 'فاتورة آجلة بالكامل للمورد.'}
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[11px] text-right">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-600 font-bold">
+                        <th className="py-1.5 px-2">التاريخ</th>
+                        <th className="py-1.5 px-2">المبلغ</th>
+                        <th className="py-1.5 px-2">الخزينة</th>
+                        <th className="py-1.5 px-2">ملاحظات</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {displayedActiveInvoice.payments.map((p) => (
+                        <tr key={p.id}>
+                          <td className="py-1.5 px-2 font-mono">{p.date}</td>
+                          <td className="py-1.5 px-2 font-black text-emerald-700">{p.amount.toLocaleString()} {settings.currency}</td>
+                          <td className="py-1.5 px-2 text-slate-600">{p.cashboxName}</td>
+                          <td className="py-1.5 px-2 text-slate-500">{p.notes || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {Array.isArray(displayedActiveInvoice.dispatchHistory) && displayedActiveInvoice.dispatchHistory.length > 0 && (
+              <div className="mb-4 p-3.5 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-2">
+                <div className="flex items-center gap-2">
+                  <Send className="w-4 h-4 text-indigo-700" />
+                  <h4 className="text-xs font-black text-indigo-950">
+                    سجل الإرسال والاستلام والاعتماد ({displayedActiveInvoice.dispatchHistory.length})
+                  </h4>
+                </div>
+                <div className="space-y-1.5">
+                  {displayedActiveInvoice.dispatchHistory.map((h, idx) => (
+                    <div key={`${h.at}-${idx}`} className="p-2 bg-white border border-indigo-200/70 rounded-lg text-[11px] flex items-center justify-between gap-2">
+                      <div>
+                        <strong className="text-slate-900">
+                          {h.action === 'created' ? 'إنشاء الفاتورة' :
+                           h.action === 'sent' ? 'إرسال للإدارة' :
+                           h.action === 'resent' ? 'إعادة إرسال للإدارة' :
+                           h.action === 'received' ? 'استلام الفاتورة' :
+                           h.action === 'rejected' ? 'رفض الفاتورة' :
+                           h.action === 'confirmed' ? 'اعتماد وترحيل' : h.action}
+                        </strong>
+                        {h.by && <span className="text-slate-600 mr-1.5">· {h.by}</span>}
+                        {h.recipientName && <span className="text-indigo-700 mr-1.5">→ {h.recipientName}</span>}
+                        {(h.notes || h.reason) && <p className="text-slate-500 mt-0.5">{h.notes || h.reason}</p>}
+                      </div>
+                      <span className="font-mono text-[10px] text-slate-400 shrink-0" dir="ltr">
+                        {h.at ? new Date(h.at).toLocaleString('ar-EG') : ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {Array.isArray(displayedActiveInvoice.editHistory) && displayedActiveInvoice.editHistory.length > 0 && (
+              <div className="mb-4 p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-amber-700" />
+                  <h4 className="text-xs font-black text-amber-950">
+                    سجل التعديلات السابقة ({displayedActiveInvoice.editHistory.length})
+                  </h4>
+                </div>
+                <div className="space-y-1.5">
+                  {displayedActiveInvoice.editHistory.map((entry, idx) => (
+                    <div
+                      key={`${entry.editedAt}-${idx}`}
+                      className="p-2.5 bg-white border border-amber-200/80 rounded-lg text-[11px] flex flex-col sm:flex-row sm:items-center justify-between gap-1.5"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="font-bold text-slate-900">
+                          بواسطة: {entry.editedBy || 'غير محدد'}
+                          {entry.reason ? ` · السبب: ${entry.reason}` : ''}
+                        </div>
+                        {entry.before && entry.after && (
+                          <div className="text-slate-600 font-mono">
+                            الإجمالي: {Number(entry.before.grandTotal ?? 0).toLocaleString()} →{' '}
+                            <strong className="text-blue-900">{Number(entry.after.grandTotal ?? 0).toLocaleString()} {settings.currency}</strong>
+                          </div>
+                        )}
+                      </div>
+                      <span className="font-mono text-[10px] text-slate-500 shrink-0" dir="ltr">
+                        {entry.editedAt ? new Date(entry.editedAt).toLocaleString('ar-EG') : ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {displayedActiveInvoice.status === 'draft' && (canReceivePurchase || canApprovePurchase) && (
+              <div className="mb-4 p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3 text-xs">
+                <p className="text-[11px] font-bold text-slate-600">
+                  ملاحظة محاسبية: هذه الفاتورة لا تزال مسودة ولم تؤثر على أرصدة المخازن أو المورد أو الخزينة بعد. يتم الترحيل الفعلي فقط عند الضغط على «اعتماد وترحيل الفاتورة».
+                </p>
+
+                {isRejectBoxOpen && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
+                    <label className="block font-black text-rose-900">سبب رفض الفاتورة وإعادتها للمندوب:</label>
+                    <input
+                      type="text"
+                      value={rejectReasonText}
+                      onChange={(e) => setRejectReasonText(e.target.value)}
+                      placeholder="اكتب سبب الرفض بوضوح..."
+                      className="w-full p-2 rounded-xl border border-rose-300 bg-white font-semibold"
+                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsRejectBoxOpen(false);
+                          setRejectReasonText('');
+                        }}
+                        className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white font-bold cursor-pointer"
+                      >
+                        تراجع
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isDispatchActionBusy || !rejectReasonText.trim()}
+                        onClick={async () => {
+                          if (!rejectReasonText.trim()) return;
+                          setIsDispatchActionBusy(true);
+                          const res = await rejectPurchaseInvoice(displayedActiveInvoice.id, rejectReasonText.trim());
+                          setIsDispatchActionBusy(false);
+                          if (res.success) {
+                            setIsRejectBoxOpen(false);
+                            setRejectReasonText('');
+                            setActionMessage({ type: 'success', text: `تم رفض الفاتورة (${displayedActiveInvoice.invoiceNumber}) وإخطار المندوب.` });
+                          } else {
+                            setActionMessage({ type: 'error', text: res.error || 'تعذر رفض الفاتورة' });
+                          }
+                        }}
+                        className="px-4 py-1.5 rounded-lg bg-rose-700 hover:bg-rose-800 text-white font-black disabled:opacity-50 cursor-pointer"
+                      >
+                        {isDispatchActionBusy ? 'جاري الرفض...' : 'تأكيد الرفض'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {canReceivePurchase && displayedActiveInvoice.dispatchStatus === 'sent' && (
+                    <button
+                      type="button"
+                      disabled={isDispatchActionBusy}
+                      onClick={async () => {
+                        setIsDispatchActionBusy(true);
+                        const res = await receivePurchaseInvoice(displayedActiveInvoice.id);
+                        setIsDispatchActionBusy(false);
+                        if (res.success) {
+                          setActionMessage({
+                            type: 'success',
+                            text: `تم استلام فاتورة الشراء (${displayedActiveInvoice.invoiceNumber}) بنجاح وبانتظار الاعتماد النهائي.`,
+                          });
+                        } else {
+                          setActionMessage({ type: 'error', text: res.error || 'تعذر تأكيد استلام الفاتورة' });
+                        }
+                      }}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-700 hover:bg-sky-800 text-white font-bold cursor-pointer disabled:opacity-50"
+                    >
+                      <UserCheck className="w-4 h-4" />
+                      <span>تأكيد استلام الفاتورة</span>
+                    </button>
+                  )}
+
+                  {canReceivePurchase && (displayedActiveInvoice.dispatchStatus === 'sent' || displayedActiveInvoice.dispatchStatus === 'received') && !isRejectBoxOpen && (
+                    <button
+                      type="button"
+                      disabled={isDispatchActionBusy}
+                      onClick={() => setIsRejectBoxOpen(true)}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-300 font-bold cursor-pointer disabled:opacity-50"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      <span>رفض مع ذكر السبب</span>
+                    </button>
+                  )}
+
+                  {canApprovePurchase && displayedActiveInvoice.dispatchStatus !== 'rejected' && (
+                    <button
+                      type="button"
+                      disabled={isDispatchActionBusy}
+                      onClick={async () => {
+                        setIsDispatchActionBusy(true);
+                        const res = await confirmDraftInvoice(displayedActiveInvoice.id);
+                        setIsDispatchActionBusy(false);
+                        if (res.success) {
+                          setActionMessage({
+                            type: 'success',
+                            text: `تم اعتماد وترحيل فاتورة الشراء (${displayedActiveInvoice.invoiceNumber}) للمخزون وحساب المورد بنجاح.`,
+                          });
+                        } else {
+                          setActionMessage({ type: 'error', text: res.error || 'تعذر اعتماد الفاتورة' });
+                        }
+                      }}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>اعتماد وترحيل الفاتورة</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-between items-center pt-3 border-t text-xs">
+              <div className="flex items-center gap-4 text-slate-600">
+                <span>الإجمالي: <strong className="text-sm font-black text-slate-900">{displayedActiveInvoice.grandTotal.toLocaleString()} {settings.currency}</strong></span>
+                <span>المدفوع: <strong className="text-sm font-bold text-emerald-700">{displayedActiveInvoice.paidAmount.toLocaleString()}</strong></span>
+                <span>المتبقي للمورد: <strong className="text-sm font-bold text-red-600">{displayedActiveInvoice.remainingAmount.toLocaleString()}</strong></span>
+              </div>
+              <button
+                onClick={() => {
+                  const inv = displayedActiveInvoice;
+                  setActiveInvoice(null);
+                  handlePrint(inv);
+                }}
+                className="flex items-center gap-1.5 px-4 py-2 bg-blue-900 text-white rounded-xl font-bold hover:bg-blue-950 transition-colors cursor-pointer"
+              >
+                <Printer className="w-4 h-4" />
+                <span>طباعة هذه الفاتورة</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        );
+      })()}
+
+      {/* Edit Purchase Invoice Modal */}
+      {editModalInvoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-right max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b pb-3 mb-4">
+              <div>
+                <h3 className="text-base font-black text-slate-900">
+                  تعديل فاتورة المشتريات رقم: {editModalInvoice.invoiceNumber}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  المدفوع مسبقاً للمورد: <strong className="text-emerald-700">{editModalInvoice.paidAmount.toLocaleString()} {settings.currency}</strong>
+                </p>
+              </div>
+              <button
+                onClick={() => setEditModalInvoice(null)}
+                className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {editError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{editError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmitEdit} className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-slate-50 p-3 rounded-xl">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">المورد:</label>
+                  <select
+                    value={editSupplierId}
+                    onChange={(e) => setEditSupplierId(e.target.value)}
+                    className="w-full p-2 rounded-xl border border-slate-300 bg-white font-bold"
+                  >
+                    <option value="">مورد نقدي</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">المستودع المستلم:</label>
+                  <select
+                    value={editWarehouseId}
+                    onChange={(e) => setEditWarehouseId(e.target.value)}
+                    className="w-full p-2 rounded-xl border border-slate-300 bg-white font-bold"
+                  >
+                    {warehouses.map((w) => (
+                      <option key={w.id} value={w.id}>{w.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">تاريخ الفاتورة:</label>
+                  <input
+                    type="date"
+                    required
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className="w-full p-2 rounded-xl border border-slate-300 bg-white font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">إجمالي الخصم ({settings.currency}):</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.5"
+                    value={editDiscount}
+                    onChange={(e) => setEditDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
+                    className="w-full p-2 rounded-xl border border-slate-300 bg-white font-bold"
+                  />
+                </div>
+              </div>
+
+              {/* Add another item inside Edit Modal */}
+              <div className="bg-blue-50/60 p-3 rounded-xl border border-blue-200 grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+                <div className="sm:col-span-5">
+                  <label className="block font-bold text-slate-700 mb-1">إضافة صنف آخر للفاتورة:</label>
+                  <ProductSearchSelect
+                    products={products}
+                    selectedProductId={editAddProdId}
+                    warehouseId={editWarehouseId}
+                    warehouses={warehouses}
+                    priceMode="purchase"
+                    currency={settings.currency}
+                    placeholder="ابحث لإضافة صنف..."
+                    onSelect={handleEditPickProduct}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block font-bold text-slate-700 mb-1">الكمية:</label>
+                  <QuantityInput
+                    allowDecimals
+                    min={0.001}
+                    value={editAddQty}
+                    onChange={setEditAddQty}
+                    placeholder="الكمية"
+                    ariaLabel="كمية صنف مضاف"
+                    inputClassName="w-full p-2 rounded-xl border border-slate-300 bg-white text-center font-mono font-bold"
+                  />
+                </div>
+                <div className="sm:col-span-3">
+                  <label className="block font-bold text-slate-700 mb-1">سعر الشراء:</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.5"
+                    placeholder="السعر"
+                    value={editAddPrice}
+                    onChange={(e) => setEditAddPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                    className="w-full p-2 rounded-xl border border-slate-300 bg-white text-center font-mono font-bold"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <button
+                    type="button"
+                    onClick={handleAddItemToEdit}
+                    className="w-full py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-bold cursor-pointer"
+                  >
+                    + إضافة
+                  </button>
+                </div>
+              </div>
+
+              {/* Editable items table */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden awlad-table-scroll">
+                <table className="w-full text-right text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold">
+                      <th className="p-2.5">الصنف</th>
+                      <th className="p-2.5 text-center">الوحدة</th>
+                      <th className="p-2.5 text-center w-24">الكمية</th>
+                      <th className="p-2.5 text-center w-28">سعر الشراء</th>
+                      <th className="p-2.5 text-center">الإجمالي</th>
+                      <th className="p-2.5 text-center w-12">حذف</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {editItems.map((item, idx) => {
+                      const prodObj = products.find((p) => p.id === item.productId);
+                      const unitOptions = prodObj
+                        ? [
+                            { name: prodObj.baseUnit, factor: 1 },
+                            ...(prodObj.units || []).map((u) => ({ name: u.name, factor: u.conversionFactor || 1 })),
+                          ]
+                        : [{ name: item.unit, factor: item.unitFactor || 1 }];
+                      return (
+                        <tr key={`${item.productId}-${idx}`}>
+                          <td className="p-2.5 font-bold text-slate-800">{item.productName}</td>
+                          <td className="p-2.5 text-center">
+                            <select
+                              value={item.unit}
+                              onChange={(e) => {
+                                const chosen = unitOptions.find((u) => u.name === e.target.value) || { name: e.target.value, factor: 1 };
+                                setEditItems((prev) =>
+                                  prev.map((it, i) =>
+                                    i === idx
+                                      ? {
+                                          ...it,
+                                          unit: chosen.name,
+                                          unitFactor: chosen.factor,
+                                          purchasePriceAtTime: chosen.factor > 0 ? Number((it.unitPrice / chosen.factor).toFixed(2)) : it.unitPrice,
+                                        }
+                                      : it
+                                  )
+                                );
+                              }}
+                              className="p-1.5 rounded-lg border border-slate-300 bg-white font-semibold"
+                            >
+                              {unitOptions.map((u) => (
+                                <option key={u.name} value={u.name}>{u.name}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="p-2.5 text-center">
+                            <QuantityInput
+                              allowDecimals
+                              min={0.001}
+                              value={item.quantity}
+                              onChange={(newQty) => {
+                                setEditItems((prev) =>
+                                  prev.map((it, i) =>
+                                    i === idx
+                                      ? { ...it, quantity: newQty, total: computeLineTotal(newQty, it.unitPrice, it.discount || 0) }
+                                      : it
+                                  )
+                                );
+                              }}
+                              ariaLabel={`كمية ${item.productName}`}
+                              inputClassName="w-20 p-1.5 rounded-lg border border-slate-300 text-center font-bold font-mono outline-hidden focus:border-blue-700"
+                            />
+                          </td>
+                          <td className="p-2.5 text-center">
+                            <input
+                              type="number"
+                              min={0}
+                              step="0.5"
+                              value={item.unitPrice}
+                              onChange={(e) => {
+                                const newPrice = Math.max(0, parseFloat(e.target.value) || 0);
+                                setEditItems((prev) =>
+                                  prev.map((it, i) =>
+                                    i === idx
+                                      ? {
+                                          ...it,
+                                          unitPrice: newPrice,
+                                          purchasePriceAtTime: (it.unitFactor || 1) > 0 ? Number((newPrice / (it.unitFactor || 1)).toFixed(2)) : newPrice,
+                                          total: computeLineTotal(it.quantity, newPrice, it.discount || 0),
+                                        }
+                                      : it
+                                  )
+                                );
+                              }}
+                              className="w-24 p-1.5 rounded-lg border border-slate-300 text-center font-bold font-mono"
+                            />
+                          </td>
+                          <td className="p-2.5 text-center font-black text-blue-900">
+                            {computeLineTotal(item.quantity, item.unitPrice, item.discount || 0).toLocaleString()} {settings.currency}
+                          </td>
+                          <td className="p-2.5 text-center">
+                            <button
+                              type="button"
+                              disabled={editItems.length <= 1}
+                              onClick={() => setEditItems((prev) => prev.filter((_, i) => i !== idx))}
+                              className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded disabled:opacity-30 cursor-pointer"
+                              title="حذف البند"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">ملاحظات الفاتورة:</label>
+                <textarea
+                  rows={2}
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-300"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  سبب التعديل {editModalInvoice.status === 'confirmed' ? '(إلزامي للتدقيق):' : '(اختياري):'}{' '}
+                  {editModalInvoice.status === 'confirmed' && <span className="text-red-500">*</span>}
+                </label>
+                <input
+                  type="text"
+                  required={editModalInvoice.status === 'confirmed'}
+                  value={editReason}
+                  onChange={(e) => setEditReason(e.target.value)}
+                  placeholder="مثال: تعديل كميات أو أسعار التوريد من المورد..."
+                  className="w-full p-2.5 rounded-xl border border-slate-300 font-semibold focus:border-blue-600 outline-hidden"
+                />
+              </div>
+
+              {(() => {
+                const sub = editItems.reduce((acc, it) => acc + computeLineTotal(it.quantity, it.unitPrice, it.discount || 0), 0);
+                const grand = Math.max(0, sub - Math.max(0, Number(editDiscount || 0)));
+                const diff = grand - editModalInvoice.grandTotal;
+                const belowPaid = grand < Number(editModalInvoice.paidAmount || 0) - 0.01;
+                return (
+                  <div className="space-y-2">
+                    <div className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-2 text-xs ${belowPaid ? 'bg-red-50 border-red-300' : 'bg-blue-50/70 border-blue-200'}`}>
+                      <div>
+                        <span className="text-slate-600 block text-[10px]">الإجمالي المعدّل:</span>
+                        <strong className="text-sm font-black text-blue-950">{grand.toLocaleString()} {settings.currency}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 block text-[10px]">المدفوع مسبقاً:</span>
+                        <strong className="text-sm font-bold text-emerald-700">{editModalInvoice.paidAmount.toLocaleString()} {settings.currency}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 block text-[10px]">المتبقي للمورد بعد التعديل:</span>
+                        <strong className="text-sm font-bold text-red-700">{Math.max(0, grand - editModalInvoice.paidAmount).toLocaleString()} {settings.currency}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-600 block text-[10px]">الفرق عن الأصل:</span>
+                        <strong className={`text-sm font-black ${diff > 0 ? 'text-red-700' : diff < 0 ? 'text-emerald-700' : 'text-slate-600'}`}>
+                          {diff > 0 ? `+${diff.toLocaleString()}` : diff.toLocaleString()} {settings.currency}
+                        </strong>
+                      </div>
+                    </div>
+                    {belowPaid && (
+                      <div className="text-[11px] font-bold text-red-700">
+                        تحذير: الإجمالي المعدّل أقل من المبلغ المدفوع مسبقاً للمورد ولن يُسمح بالحفظ.
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setEditModalInvoice(null)}
+                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 font-bold hover:bg-slate-50 cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingEdit || editItems.length === 0 || (editItems.reduce((acc, it) => acc + computeLineTotal(it.quantity, it.unitPrice, it.discount || 0), 0) - Math.max(0, Number(editDiscount || 0))) < Number(editModalInvoice.paidAmount || 0) - 0.01}
+                  className="px-5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  {isSubmittingEdit ? 'جاري حفظ التعديل...' : 'حفظ وتحديث الفاتورة'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog
         isOpen={!!cancelTarget}

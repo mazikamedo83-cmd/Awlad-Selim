@@ -22,6 +22,8 @@ import {
 } from '../../utils/idempotency.js';
 import {
   isPgMode,
+  getDefaultPermissionsForRole,
+  normalizeCustomerPhonesList,
   mapPgUserRow,
   mapPgCustomerRow,
   mapPgProductRow,
@@ -39,6 +41,8 @@ import {
   isCustomerAllowedForRep,
   getSystemSettingsSafe,
   normalizePhoneDigits,
+  normalizeCustomerRecordShape,
+  customerMatchesPhoneDigits,
 } from './catalogStore.js';
 import { listInvoices } from './invoicesStore.js';
 import { listOrders } from './ordersStore.js';
@@ -46,14 +50,54 @@ import { listPersonalAccountsData } from './personalAccountsStore.js';
 import { listStockCounts } from './stockCountsStore.js';
 import { listStockTransferRequests } from './stockTransfersStore.js';
 
+function resolvePurchaseReceiversFromUsers(usersList = []) {
+  return (usersList || [])
+    .filter((u) => {
+      if (!u || u.isActive === false) return false;
+      if (u.role === 'customer' || u.role === 'representative') return false;
+      const p = u.permissions || {};
+      return (
+        u.role === 'admin' ||
+        u.role === 'purchases' ||
+        u.role === 'manager' ||
+        Boolean(p.canManagePurchases || p.canApprove || p.canReceive)
+      );
+    })
+    .map((u) => ({
+      id: u.id,
+      fullName: u.fullName,
+      role: u.role,
+      jobTitle: u.jobTitle || '',
+    }));
+}
+
+export async function listPurchaseReceivers() {
+  if (await isPgMode()) {
+    const pool = getPool();
+    const res = await pool.query(
+      "SELECT id, full_name, role, job_title, is_active, permissions FROM users WHERE is_active = TRUE AND role NOT IN ('customer', 'representative') ORDER BY full_name ASC"
+    );
+    return resolvePurchaseReceiversFromUsers(res.rows.map(mapPgUserRow));
+  }
+  const db = readJsonDatabase();
+  return resolvePurchaseReceiversFromUsers(db.users || []);
+}
+
 // ==============================================================================
 // Staff / Admin Bootstrap Snapshot (Strictly NO password hashes, RBAC-scoped)
 // ==============================================================================
 
 export async function getStaffBootstrapData(actor) {
-  const isAdminOrUserMgr = actor.role === 'admin' || Boolean(actor.permissions?.canManageUsers);
-  const canViewPersonal = actor.role === 'admin' || Boolean(actor.permissions?.canViewPersonalAccounts);
+  const isAdmin = actor.role === 'admin';
+  const perms = actor.permissions || {};
+  const isAdminOrUserMgr = isAdmin || Boolean(perms.canManageUsers);
+  const canViewPersonal = isAdmin || Boolean(perms.canViewPersonalAccounts);
   const isRep = actor.role === 'representative';
+  const canViewSuppliers = isAdmin || Boolean(perms.canManagePurchases || perms.canCreatePurchase || perms.canManageAccounts || perms.canViewReports);
+  const canViewTreasuryLedger = !isRep && (isAdmin || Boolean(perms.canManageCashboxes || perms.canManageAccounts || perms.canViewReports));
+  const canViewChequesInstallments = !isRep && (isAdmin || Boolean(perms.canManageAccounts || perms.canViewReports));
+  const canViewHrData = !isRep && (isAdmin || Boolean(perms.canManageEmployees || perms.canManageSalaries || perms.canViewReports));
+  const canViewAuditLogs = isAdminOrUserMgr;
   const repProfile = isRep ? await getRepresentativeByUserId(actor.id) : null;
 
   if (await isPgMode()) {
@@ -88,40 +132,42 @@ export async function getStaffBootstrapData(actor) {
       advPayRes,
       conflictsRes,
       custodyOpsRes,
+      receiversRes,
     ] = await Promise.all([
       isAdminOrUserMgr ? pool.query('SELECT * FROM users ORDER BY created_at DESC') : Promise.resolve({ rows: [] }),
       pool.query('SELECT * FROM warehouses ORDER BY created_at ASC'),
       listCategories(),
       listProducts({ forCustomer: false }),
       isRep ? (repProfile ? listCustomers({ forRepId: repProfile.id }) : Promise.resolve([])) : listCustomers(),
-      pool.query('SELECT * FROM suppliers ORDER BY created_at DESC'),
+      canViewSuppliers ? pool.query('SELECT * FROM suppliers ORDER BY created_at DESC') : Promise.resolve({ rows: [] }),
       listInvoices(actor),
       pool.query('SELECT * FROM invoice_returns ORDER BY created_at DESC'),
       pool.query('SELECT * FROM invoice_return_items'),
       pool.query('SELECT * FROM cashboxes ORDER BY created_at ASC'),
-      pool.query('SELECT * FROM financial_transactions ORDER BY created_at DESC LIMIT 1000'),
-      pool.query('SELECT * FROM cheques ORDER BY created_at DESC'),
-      pool.query('SELECT * FROM installments ORDER BY created_at DESC'),
+      canViewTreasuryLedger ? pool.query('SELECT * FROM financial_transactions ORDER BY created_at DESC LIMIT 1000') : Promise.resolve({ rows: [] }),
+      canViewChequesInstallments ? pool.query('SELECT * FROM cheques ORDER BY created_at DESC') : Promise.resolve({ rows: [] }),
+      canViewChequesInstallments ? pool.query('SELECT * FROM installments ORDER BY created_at DESC') : Promise.resolve({ rows: [] }),
       pool.query('SELECT * FROM representatives ORDER BY created_at ASC'),
       pool.query('SELECT * FROM rep_transfers ORDER BY created_at DESC'),
       pool.query('SELECT * FROM rep_item_transfers ORDER BY created_at DESC'),
       pool.query('SELECT * FROM rep_item_transfer_items'),
-      pool.query('SELECT * FROM employees ORDER BY created_at DESC'),
-      pool.query('SELECT * FROM advances_deductions ORDER BY created_at DESC'),
-      pool.query('SELECT * FROM attendance ORDER BY date DESC LIMIT 1000'),
-      pool.query('SELECT * FROM payrolls ORDER BY created_at DESC'),
-      pool.query('SELECT * FROM expenses_incomes ORDER BY created_at DESC'),
+      canViewHrData ? pool.query('SELECT * FROM employees ORDER BY created_at DESC') : Promise.resolve({ rows: [] }),
+      canViewHrData ? pool.query('SELECT * FROM advances_deductions ORDER BY created_at DESC') : Promise.resolve({ rows: [] }),
+      canViewHrData ? pool.query('SELECT * FROM attendance ORDER BY date DESC LIMIT 1000') : Promise.resolve({ rows: [] }),
+      canViewHrData ? pool.query('SELECT * FROM payrolls ORDER BY created_at DESC') : Promise.resolve({ rows: [] }),
+      canViewTreasuryLedger ? pool.query('SELECT * FROM expenses_incomes ORDER BY created_at DESC') : Promise.resolve({ rows: [] }),
       pool.query('SELECT * FROM stock_movements ORDER BY created_at DESC LIMIT 1500'),
       pool.query('SELECT * FROM system_settings LIMIT 1'),
       listOrders({ user: actor, representativeProfile: repProfile }),
-      isAdminOrUserMgr ? listAuditLogs(300) : Promise.resolve([]),
+      canViewAuditLogs ? listAuditLogs(300) : Promise.resolve([]),
       pool.query('SELECT * FROM order_advance_payments ORDER BY created_at DESC LIMIT 1000'),
-      actor.role === 'admin' || actor.permissions?.canManageSales || actor.permissions?.canManageAccounts
+      isAdmin || perms.canManageSales || perms.canManageAccounts
         ? pool.query('SELECT * FROM sync_conflicts ORDER BY created_at DESC LIMIT 300')
         : Promise.resolve({ rows: [] }),
       isRep && repProfile
         ? pool.query('SELECT * FROM rep_custody_operations WHERE representative_id = $1 ORDER BY created_at DESC', [repProfile.id])
         : pool.query('SELECT * FROM rep_custody_operations ORDER BY created_at DESC LIMIT 1000'),
+      pool.query("SELECT id, full_name, role, job_title, is_active, permissions FROM users WHERE is_active = TRUE AND role NOT IN ('customer', 'representative') ORDER BY full_name ASC"),
     ]);
 
     const retItemsMap = new Map();
@@ -186,6 +232,7 @@ export async function getStaffBootstrapData(actor) {
     return {
       mode: 'postgresql-enterprise',
       users: usersRes.rows.map((r) => sanitizeUser(mapPgUserRow(r))),
+      purchaseReceivers: resolvePurchaseReceiversFromUsers(receiversRes.rows.map(mapPgUserRow)),
       warehouses: whRes.rows.map((w) => ({
         id: w.id,
         name: w.name,
@@ -199,9 +246,8 @@ export async function getStaffBootstrapData(actor) {
       categories: cats,
       products: prods,
       customers: custs,
-      suppliers: isRep
-        ? []
-        : suppRes.rows.map((s) => ({
+      suppliers: canViewSuppliers
+        ? suppRes.rows.map((s) => ({
             id: s.id,
             code: s.code,
             name: s.name,
@@ -212,7 +258,8 @@ export async function getStaffBootstrapData(actor) {
             notes: s.notes || '',
             status: s.status || 'active',
             createdAt: isoTimestamp(s.created_at),
-          })),
+          }))
+        : [],
       invoices: invs,
       invoiceReturns: retRes.rows
         .filter((r) => !isRep || (allowedCustIdSet?.has(r.party_id) || visibleInvIdSet?.has(r.original_invoice_id)))
@@ -244,9 +291,8 @@ export async function getStaffBootstrapData(actor) {
         currentBalance: Number(c.current_balance || 0),
         isDefault: Boolean(c.is_default),
       })),
-      financialTransactions: isRep
-        ? []
-        : ftRes.rows.map((ft) => ({
+      financialTransactions: canViewTreasuryLedger
+        ? ftRes.rows.map((ft) => ({
             id: ft.id,
             transactionNumber: ft.transaction_number,
             date: isoDateOnly(ft.date),
@@ -264,10 +310,10 @@ export async function getStaffBootstrapData(actor) {
             notes: ft.notes || '',
             createdBy: ft.created_by,
             createdAt: isoTimestamp(ft.created_at),
-          })),
-      cheques: isRep
-        ? []
-        : chRes.rows.map((ch) => ({
+          }))
+        : [],
+      cheques: canViewChequesInstallments
+        ? chRes.rows.map((ch) => ({
             id: ch.id,
             chequeNumber: ch.cheque_number,
             type: ch.type,
@@ -281,10 +327,10 @@ export async function getStaffBootstrapData(actor) {
             cashboxId: ch.cashbox_id || undefined,
             notes: ch.notes || '',
             createdAt: isoTimestamp(ch.created_at),
-          })),
-      installments: isRep
-        ? []
-        : instRes.rows.map((i) => ({
+          }))
+        : [],
+      installments: canViewChequesInstallments
+        ? instRes.rows.map((i) => ({
             id: i.id,
             scheduleNumber: i.schedule_number,
             customerId: i.customer_id,
@@ -297,7 +343,8 @@ export async function getStaffBootstrapData(actor) {
             items: i.installments_data || [],
             notes: i.notes || '',
             createdAt: isoTimestamp(i.created_at),
-          })),
+          }))
+        : [],
       representatives: repRes.rows.map((r) => ({
         id: r.id,
         userId: r.user_id || undefined,
@@ -389,7 +436,7 @@ export async function getStaffBootstrapData(actor) {
         createdAt: isoTimestamp(op.created_at),
       })),
       customerItemOrders: orders,
-      employees: isRep
+      employees: !canViewHrData
         ? []
         : empRes.rows.map((e) => ({
             id: e.id,
@@ -404,7 +451,7 @@ export async function getStaffBootstrapData(actor) {
             status: e.status || 'active',
             notes: e.notes || '',
           })),
-      advancesDeductions: isRep
+      advancesDeductions: !canViewHrData
         ? []
         : advRes.rows.map((a) => ({
             id: a.id,
@@ -418,7 +465,7 @@ export async function getStaffBootstrapData(actor) {
             isSettled: Boolean(a.is_settled),
             createdAt: isoTimestamp(a.created_at),
           })),
-      attendance: isRep
+      attendance: !canViewHrData
         ? []
         : attRes.rows.map((a) => ({
             id: a.id,
@@ -430,7 +477,7 @@ export async function getStaffBootstrapData(actor) {
             checkOut: a.check_out_time || undefined,
             notes: a.notes || '',
           })),
-      payrolls: isRep
+      payrolls: !canViewHrData
         ? []
         : payRes.rows.map((p) => ({
             id: p.id,
@@ -449,7 +496,7 @@ export async function getStaffBootstrapData(actor) {
             cashboxId: p.cashbox_id || undefined,
             notes: p.notes || '',
           })),
-      expenseIncomes: isRep
+      expenseIncomes: !canViewTreasuryLedger
         ? []
         : expRes.rows.map((ex) => ({
             id: ex.id,
@@ -497,7 +544,7 @@ export async function getStaffBootstrapData(actor) {
       stockCounts: stockCountsList,
       stockTransferRequests: stockTransferRequestsList,
       orderAdvancePayments: advPayRes.rows
-        .filter((r) => !isRep || (customers && customers.some((c) => c.id === r.customer_id)))
+        .filter((r) => !isRep || allowedCustIdSet?.has(r.customer_id))
         .map((r) => ({
           id: r.id,
           paymentNumber: r.payment_number,
@@ -539,34 +586,40 @@ export async function getStaffBootstrapData(actor) {
 
   // JSON Ledger fallback
   const db = readJsonDatabase();
-  const audits = isAdminOrUserMgr ? await listAuditLogs(300) : [];
-  const scopedCustomers = isRep
+  const audits = canViewAuditLogs ? await listAuditLogs(300) : [];
+  const scopedCustomersRaw = isRep
     ? (repProfile ? (db.customers || []).filter((c) => isCustomerAllowedForRep(c, repProfile.id)) : [])
     : db.customers;
+  const scopedCustomers = scopedCustomersRaw.map(normalizeCustomerRecordShape);
   const scopedCustomerIdSet = new Set(scopedCustomers.map((c) => c.id));
   const scopedInvoices = isRep
-    ? (repProfile
-        ? (db.invoices || []).filter((inv) => inv.representativeId === repProfile.id || (inv.customerId && scopedCustomerIdSet.has(inv.customerId)))
-        : [])
+    ? (db.invoices || []).filter(
+        (inv) =>
+          (repProfile && inv.representativeId === repProfile.id) ||
+          inv.createdBy === actor.id ||
+          inv.sentByUserId === actor.id ||
+          (inv.customerId && scopedCustomerIdSet.has(inv.customerId))
+      )
     : db.invoices;
   const scopedInvIdSet = new Set(scopedInvoices.map((i) => i.id));
 
   return {
     mode: 'local-json-ledger',
     users: isAdminOrUserMgr ? db.users.map(sanitizeUser) : [],
+    purchaseReceivers: resolvePurchaseReceiversFromUsers(db.users || []),
     warehouses: db.warehouses,
     categories: db.categories,
     products: db.products,
     customers: scopedCustomers,
-    suppliers: isRep ? [] : db.suppliers,
+    suppliers: canViewSuppliers ? db.suppliers : [],
     invoices: scopedInvoices,
     invoiceReturns: isRep
       ? (db.invoiceReturns || []).filter((r) => scopedCustomerIdSet.has(r.partyId) || scopedInvIdSet.has(r.originalInvoiceId))
       : db.invoiceReturns,
     cashboxes: db.cashboxes,
-    financialTransactions: isRep ? [] : db.financialTransactions,
-    cheques: isRep ? [] : db.cheques,
-    installments: isRep ? [] : db.installments,
+    financialTransactions: canViewTreasuryLedger ? db.financialTransactions : [],
+    cheques: canViewChequesInstallments ? db.cheques : [],
+    installments: canViewChequesInstallments ? db.installments : [],
     representatives: db.representatives,
     repTransfers: isRep
       ? (repProfile ? (db.repTransfers || []).filter((rt) => rt.senderId === repProfile.id || rt.receiverId === repProfile.id) : [])
@@ -582,14 +635,14 @@ export async function getStaffBootstrapData(actor) {
       ? (db.orderAdvancePayments || []).filter((a) => scopedCustomerIdSet.has(a.customerId))
       : db.orderAdvancePayments || [],
     syncConflicts:
-      actor.role === 'admin' || actor.permissions?.canManageSales || actor.permissions?.canManageAccounts
+      isAdmin || perms.canManageSales || perms.canManageAccounts
         ? db.syncConflicts || []
         : [],
-    employees: isRep ? [] : db.employees,
-    advancesDeductions: isRep ? [] : db.advancesDeductions,
-    attendance: isRep ? [] : db.attendance,
-    payrolls: isRep ? [] : db.payrolls,
-    expenseIncomes: isRep ? [] : db.expenseIncomes,
+    employees: canViewHrData ? db.employees : [],
+    advancesDeductions: canViewHrData ? db.advancesDeductions : [],
+    attendance: canViewHrData ? db.attendance : [],
+    payrolls: canViewHrData ? db.payrolls : [],
+    expenseIncomes: canViewTreasuryLedger ? db.expenseIncomes : [],
     stockMovements: isRep
       ? (db.stockMovements || []).filter((sm) => repProfile?.warehouseId && (sm.warehouseId === repProfile.warehouseId || sm.targetWarehouseId === repProfile.warehouseId))
       : db.stockMovements,
@@ -1937,11 +1990,66 @@ export async function getMobileNotifications(authContext) {
         });
       }
     }
+
+    for (const inv of boot.invoices || []) {
+      if (inv.type !== 'purchase') continue;
+      if (inv.dispatchStatus === 'received' && inv.status === 'draft') {
+        notifications.push({
+          id: `notif-rep-pur-rec-${inv.id}-${inv.receivedAt || inv.updatedAt || inv.createdAt}`,
+          type: 'purchase_invoice_status',
+          severity: 'info',
+          title: `تم استلام فاتورة الشراء (${inv.invoiceNumber})`,
+          body: `استلمها: ${inv.receivedBy || 'الإدارة'} — بانتظار المراجعة والاعتماد النهائي`,
+          relatedId: inv.id,
+          targetTab: 'purchases-list',
+          createdAt: inv.receivedAt || inv.updatedAt || inv.createdAt,
+        });
+      } else if (inv.dispatchStatus === 'rejected') {
+        notifications.push({
+          id: `notif-rep-pur-rej-${inv.id}-${inv.rejectedAt || inv.updatedAt || inv.createdAt}`,
+          type: 'purchase_invoice_status',
+          severity: 'warning',
+          title: `تم رفض فاتورة الشراء (${inv.invoiceNumber})`,
+          body: inv.rejectionReason ? `السبب: ${inv.rejectionReason}` : 'يرجى مراجعة الفاتورة وتعديلها ثم إعادة الإرسال.',
+          relatedId: inv.id,
+          targetTab: 'purchases-list',
+          createdAt: inv.rejectedAt || inv.updatedAt || inv.createdAt,
+        });
+      } else if (inv.status === 'confirmed') {
+        notifications.push({
+          id: `notif-rep-pur-conf-${inv.id}`,
+          type: 'purchase_invoice_status',
+          severity: 'success',
+          title: `تم اعتماد وترحيل فاتورة الشراء (${inv.invoiceNumber})`,
+          body: `تم ترحيل الفاتورة للمخزون والحسابات (${round2(inv.grandTotal).toLocaleString()} ${settings.currency || 'ج.م'})`,
+          relatedId: inv.id,
+          targetTab: 'purchases-list',
+          createdAt: inv.updatedAt || inv.createdAt,
+        });
+      }
+    }
   } else {
     // Admin & staff mobile/desktop notifications scoped to actual permissions
     const boot = await getStaffBootstrapData(actor);
     const isAdmin = actor.role === 'admin';
     const perms = actor.permissions || {};
+
+    if (isAdmin || perms.canManagePurchases || perms.canApprove || perms.canReceive) {
+      for (const inv of boot.invoices || []) {
+        if (inv.type === 'purchase' && inv.status === 'draft' && inv.dispatchStatus === 'sent') {
+          notifications.push({
+            id: `notif-staff-pur-sent-${inv.id}-${inv.sentAt || inv.createdAt}`,
+            type: 'rep_purchase_invoice',
+            severity: 'warning',
+            title: `فاتورة شراء من المندوب بانتظار الاستلام (${inv.invoiceNumber})`,
+            body: `المرسل: ${inv.sentBy || inv.representativeName || inv.createdBy} · المورد: ${inv.supplierName || '-'} · ${round2(inv.grandTotal).toLocaleString()} ${settings.currency || 'ج.م'}`,
+            relatedId: inv.id,
+            targetTab: 'purchase-invoices',
+            createdAt: inv.sentAt || inv.updatedAt || inv.createdAt,
+          });
+        }
+      }
+    }
 
     if (isAdmin || perms.canManageSales || perms.canReviewRepInvoices) {
       for (const inv of boot.invoices || []) {
@@ -2112,7 +2220,12 @@ export async function createAdminUser(payload, actor) {
   if (actor?.role !== 'admin' && targetRole === 'admin') {
     throw new AppError(403, 'غير مصرح لغير المدير العام بإنشاء حساب مدير عام', 'FORBIDDEN_ADMIN_ESCALATION');
   }
-  assertNoPermissionEscalation(payload.permissions, actor);
+  const hasExplicitPermissions =
+    payload.permissions && typeof payload.permissions === 'object' && Object.keys(payload.permissions).length > 0;
+  const resolvedPermissions = hasExplicitPermissions
+    ? { ...getDefaultPermissionsForRole(targetRole), ...payload.permissions }
+    : getDefaultPermissionsForRole(targetRole);
+  assertNoPermissionEscalation(resolvedPermissions, actor);
   if (!username || username.length < 3) throw new AppError(400, 'اسم المستخدم يجب أن لا يقل عن 3 أحرف', 'INVALID_USERNAME');
   if (!fullName) throw new AppError(400, 'الاسم الكامل مطلوب', 'INVALID_NAME');
   if (!password || password.length < 6) throw new AppError(400, 'كلمة المرور يجب أن لا تقل عن 6 أحرف', 'WEAK_PASSWORD');
@@ -2137,16 +2250,17 @@ export async function createAdminUser(payload, actor) {
           payload.address || '',
           payload.notes || '',
           targetRole,
-          payload.jobTitle || '',
-          payload.department || '',
+          payload.jobTitle || (targetRole === 'representative' ? 'مندوب مبيعات' : targetRole === 'customer' ? 'عميل' : ''),
+          payload.department || (targetRole === 'representative' ? 'المندوبون' : targetRole === 'customer' ? 'العملاء' : ''),
           payload.isActive ?? true,
           Boolean(payload.mustChangePassword),
-          JSON.stringify(payload.permissions || {}),
+          JSON.stringify(resolvedPermissions),
           now,
         ]
       );
 
       let resolvedLinkedCustomerId;
+      let resolvedLinkedRepId;
       if (targetRole === 'customer') {
         if (payload.linkedCustomerId) {
           const targetCustRes = await client.query('SELECT id, user_id FROM customers WHERE id = $1 FOR UPDATE', [payload.linkedCustomerId]);
@@ -2163,12 +2277,8 @@ export async function createAdminUser(payload, actor) {
           const normPhone = normalizePhoneDigits(payload.phone);
           let matchedExisting = null;
           if (normPhone && payload.autoMatchExisting !== false && !payload.forceNewCustomerProfile) {
-            const unlinkedRes = await client.query('SELECT id, name, phone, secondary_phone FROM customers WHERE user_id IS NULL FOR UPDATE');
-            const matches = unlinkedRes.rows.filter(
-              (c) =>
-                normalizePhoneDigits(c.phone) === normPhone ||
-                normalizePhoneDigits(c.secondary_phone) === normPhone
-            );
+            const unlinkedRes = await client.query('SELECT * FROM customers WHERE user_id IS NULL FOR UPDATE');
+            const matches = unlinkedRes.rows.filter((c) => customerMatchesPhoneDigits(mapPgCustomerRow(c), normPhone));
             if (matches.length > 1) {
               throw new AppError(
                 409,
@@ -2187,15 +2297,17 @@ export async function createAdminUser(payload, actor) {
           } else {
             const autoCustId = generateServerId('CUS');
             const autoCode = `CUS-${String(Date.now()).slice(-5)}-${Math.floor(10 + Math.random() * 89)}`;
+            const initPhones = normalizeCustomerPhonesList([], payload.phone || '', '');
             await client.query(
-              `INSERT INTO customers (id, code, user_id, name, phone, address, shop_address, opening_balance, current_balance, notes, status, created_at, updated_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$6,0,0,$7,$8,$9,$9)`,
+              `INSERT INTO customers (id, code, user_id, name, phone, phones, address, shop_address, opening_balance, current_balance, notes, status, created_at, updated_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$7,0,0,$8,$9,$10,$10)`,
               [
                 autoCustId,
                 autoCode,
                 id,
                 fullName,
                 payload.phone || '',
+                JSON.stringify(initPhones),
                 payload.address || '',
                 payload.notes || 'ملف عميل مُنشأ ومربوط تلقائيًا عند إنشاء حساب الدخول',
                 payload.isActive === false ? 'blocked' : 'active',
@@ -2205,11 +2317,43 @@ export async function createAdminUser(payload, actor) {
             resolvedLinkedCustomerId = autoCustId;
           }
         }
+      } else if (targetRole === 'representative' && payload.autoCreateRepProfile !== false) {
+        const vanId = generateServerId('WH');
+        const vanCode = `VAN-${String(Date.now()).slice(-4)}-${Math.floor(10 + Math.random() * 89)}`;
+        await client.query(
+          `INSERT INTO warehouses (id, name, code, location, manager_name, phone, is_default, status, created_at)
+           VALUES ($1,$2,$3,'مخزون سيارة مندوب',$4,$5,FALSE,'active',$6)`,
+          [vanId, `سيارة المندوب - ${fullName}`, vanCode, fullName, payload.phone || '', now]
+        );
+        const autoRepId = generateServerId('REP');
+        const autoRepCode = `REP-${String(Date.now()).slice(-5)}-${Math.floor(10 + Math.random() * 89)}`;
+        await client.query(
+          `INSERT INTO representatives (id, code, user_id, name, phone, vehicle_number, address, opening_balance, current_balance, commission_rate, warehouse_id, notes, status, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,0,0,0,$8,$9,$10,$11)`,
+          [
+            autoRepId,
+            autoRepCode,
+            id,
+            fullName,
+            payload.phone || '',
+            payload.vehicleNumber || '',
+            payload.address || '',
+            vanId,
+            payload.notes || 'ملف مندوب ومستودع سيارة مُنشأ تلقائيًا عند إنشاء الحساب',
+            payload.isActive === false ? 'inactive' : 'active',
+            now,
+          ]
+        );
+        resolvedLinkedRepId = autoRepId;
       }
 
       const r = await client.query('SELECT * FROM users WHERE id = $1', [id]);
       const sanitized = sanitizeUser(mapPgUserRow(r.rows[0]));
-      return resolvedLinkedCustomerId ? { ...sanitized, linkedCustomerId: resolvedLinkedCustomerId } : sanitized;
+      return {
+        ...sanitized,
+        ...(resolvedLinkedCustomerId ? { linkedCustomerId: resolvedLinkedCustomerId } : {}),
+        ...(resolvedLinkedRepId ? { linkedRepresentativeId: resolvedLinkedRepId } : {}),
+      };
     });
     await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إنشاء حساب مستخدم (${username})`, module: 'المستخدمون', recordId: id });
     return user;
@@ -2229,16 +2373,17 @@ export async function createAdminUser(payload, actor) {
       address: payload.address || '',
       notes: payload.notes || '',
       role: targetRole,
-      jobTitle: payload.jobTitle || '',
-      department: payload.department || '',
+      jobTitle: payload.jobTitle || (targetRole === 'representative' ? 'مندوب مبيعات' : targetRole === 'customer' ? 'عميل' : ''),
+      department: payload.department || (targetRole === 'representative' ? 'المندوبون' : targetRole === 'customer' ? 'العملاء' : ''),
       isActive: payload.isActive ?? true,
       mustChangePassword: Boolean(payload.mustChangePassword),
-      permissions: payload.permissions || {},
+      permissions: resolvedPermissions,
       createdAt: now,
     };
     db.users.push(newUser);
 
     let resolvedLinkedCustomerId;
+    let resolvedLinkedRepId;
     if (targetRole === 'customer') {
       if (payload.linkedCustomerId) {
         const cust = db.customers.find((c) => c.id === payload.linkedCustomerId);
@@ -2254,12 +2399,7 @@ export async function createAdminUser(payload, actor) {
         const normPhone = normalizePhoneDigits(payload.phone);
         let matchedExisting = null;
         if (normPhone && payload.autoMatchExisting !== false && !payload.forceNewCustomerProfile) {
-          const matches = (db.customers || []).filter(
-            (c) =>
-              !c.userId &&
-              (normalizePhoneDigits(c.phone) === normPhone ||
-                normalizePhoneDigits(c.secondaryPhone) === normPhone)
-          );
+          const matches = (db.customers || []).filter((c) => !c.userId && customerMatchesPhoneDigits(c, normPhone));
           if (matches.length > 1) {
             throw new AppError(
               409,
@@ -2284,6 +2424,7 @@ export async function createAdminUser(payload, actor) {
             userId: id,
             name: fullName,
             phone: payload.phone || '',
+            phones: normalizeCustomerPhonesList([], payload.phone || '', ''),
             address: payload.address || '',
             openingBalance: 0,
             currentBalance: 0,
@@ -2295,10 +2436,42 @@ export async function createAdminUser(payload, actor) {
           resolvedLinkedCustomerId = autoCustId;
         }
       }
+    } else if (targetRole === 'representative' && payload.autoCreateRepProfile !== false) {
+      const vanId = generateServerId('WH');
+      const vanCode = `VAN-${String(Date.now()).slice(-4)}-${Math.floor(10 + Math.random() * 89)}`;
+      db.warehouses.push({
+        id: vanId,
+        name: `سيارة المندوب - ${fullName}`,
+        code: vanCode,
+        location: 'مخزون سيارة مندوب',
+        managerName: fullName,
+        phone: payload.phone || '',
+        isDefault: false,
+        status: 'active',
+      });
+      const autoRepId = generateServerId('REP');
+      db.representatives.push({
+        id: autoRepId,
+        userId: id,
+        name: fullName,
+        phone: payload.phone || '',
+        vehicleNumber: payload.vehicleNumber || '',
+        warehouseId: vanId,
+        openingBalance: 0,
+        currentBalance: 0,
+        commissionRate: 0,
+        notes: payload.notes || 'ملف مندوب ومستودع سيارة مُنشأ تلقائيًا عند إنشاء الحساب',
+        status: payload.isActive === false ? 'inactive' : 'active',
+      });
+      resolvedLinkedRepId = autoRepId;
     }
 
     const sanitized = sanitizeUser(newUser);
-    return resolvedLinkedCustomerId ? { ...sanitized, linkedCustomerId: resolvedLinkedCustomerId } : sanitized;
+    return {
+      ...sanitized,
+      ...(resolvedLinkedCustomerId ? { linkedCustomerId: resolvedLinkedCustomerId } : {}),
+      ...(resolvedLinkedRepId ? { linkedRepresentativeId: resolvedLinkedRepId } : {}),
+    };
   });
   await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إنشاء حساب مستخدم (${username})`, module: 'المستخدمون', recordId: id });
   return user;
@@ -2327,6 +2500,12 @@ export async function updateAdminUser(userId, updates, actor) {
         throw new AppError(403, 'غير مصرح لغير المدير العام بتعديل بيانات أو صلاحيات حساب المدير العام', 'FORBIDDEN_ADMIN_ESCALATION');
       }
       const effectiveRole = updates.role ?? cur.role;
+      const resolvedPerms =
+        updates.permissions !== undefined
+          ? updates.permissions
+          : updates.role !== undefined && updates.role !== cur.role
+          ? getDefaultPermissionsForRole(effectiveRole)
+          : (cur.permissions || getDefaultPermissionsForRole(effectiveRole));
       await client.query(
         `UPDATE users SET full_name = $1, phone = $2, address = $3, notes = $4, role = $5, job_title = $6, department = $7, is_active = $8, must_change_password = $9, permissions = $10, updated_at = $11 WHERE id = $12`,
         [
@@ -2339,7 +2518,7 @@ export async function updateAdminUser(userId, updates, actor) {
           updates.department ?? cur.department,
           updates.isActive ?? cur.is_active,
           updates.mustChangePassword ?? cur.must_change_password,
-          JSON.stringify(updates.permissions ?? cur.permissions ?? {}),
+          JSON.stringify(resolvedPerms),
           now,
           userId,
         ]
@@ -2368,12 +2547,8 @@ export async function updateAdminUser(userId, updates, actor) {
           const normPhone = normalizePhoneDigits(targetPhone);
           let matchedExisting = null;
           if (normPhone && updates.autoMatchExisting !== false && !updates.forceNewCustomerProfile) {
-            const unlinkedRes = await client.query('SELECT id, name, phone, secondary_phone FROM customers WHERE user_id IS NULL FOR UPDATE');
-            const matches = unlinkedRes.rows.filter(
-              (c) =>
-                normalizePhoneDigits(c.phone) === normPhone ||
-                normalizePhoneDigits(c.secondary_phone) === normPhone
-            );
+            const unlinkedRes = await client.query('SELECT * FROM customers WHERE user_id IS NULL FOR UPDATE');
+            const matches = unlinkedRes.rows.filter((c) => customerMatchesPhoneDigits(mapPgCustomerRow(c), normPhone));
             if (matches.length > 1) {
               throw new AppError(
                 409,
@@ -2392,15 +2567,17 @@ export async function updateAdminUser(userId, updates, actor) {
           } else {
             const autoCustId = generateServerId('CUS');
             const autoCode = `CUS-${String(Date.now()).slice(-5)}-${Math.floor(10 + Math.random() * 89)}`;
+            const initPhones = normalizeCustomerPhonesList([], targetPhone, '');
             await client.query(
-              `INSERT INTO customers (id, code, user_id, name, phone, address, shop_address, opening_balance, current_balance, notes, status, created_at, updated_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$6,0,0,$7,$8,$9,$9)`,
+              `INSERT INTO customers (id, code, user_id, name, phone, phones, address, shop_address, opening_balance, current_balance, notes, status, created_at, updated_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$7,0,0,$8,$9,$10,$10)`,
               [
                 autoCustId,
                 autoCode,
                 userId,
                 updates.fullName ?? cur.full_name,
                 targetPhone,
+                JSON.stringify(initPhones),
                 updates.address ?? cur.address ?? '',
                 'ملف عميل مُنشأ تلقائيًا',
                 (updates.isActive ?? cur.is_active) === false ? 'blocked' : 'active',
@@ -2428,10 +2605,17 @@ export async function updateAdminUser(userId, updates, actor) {
     }
     const { newPassword, passwordHash: _ignoredHash, linkedCustomerId, autoCreateCustomerProfile, ...rest } = updates;
     const effectiveRole = rest.role ?? cur.role;
+    const resolvedPerms =
+      updates.permissions !== undefined
+        ? updates.permissions
+        : updates.role !== undefined && updates.role !== cur.role
+        ? getDefaultPermissionsForRole(effectiveRole)
+        : (cur.permissions || getDefaultPermissionsForRole(effectiveRole));
     db.users[idx] = {
       ...cur,
       ...rest,
       id: cur.id,
+      permissions: resolvedPerms,
       passwordHash: nextPasswordHash || cur.passwordHash,
       passwordAlgo: nextPasswordHash ? 'bcrypt' : cur.passwordAlgo,
     };
@@ -2454,12 +2638,7 @@ export async function updateAdminUser(userId, updates, actor) {
         const normPhone = normalizePhoneDigits(targetPhone);
         let matchedExisting = null;
         if (normPhone && updates.autoMatchExisting !== false && !updates.forceNewCustomerProfile) {
-          const matches = (db.customers || []).filter(
-            (c) =>
-              !c.userId &&
-              (normalizePhoneDigits(c.phone) === normPhone ||
-                normalizePhoneDigits(c.secondaryPhone) === normPhone)
-          );
+          const matches = (db.customers || []).filter((c) => !c.userId && customerMatchesPhoneDigits(c, normPhone));
           if (matches.length > 1) {
             throw new AppError(
               409,
@@ -2484,6 +2663,7 @@ export async function updateAdminUser(userId, updates, actor) {
             userId,
             name: db.users[idx].fullName,
             phone: targetPhone,
+            phones: normalizeCustomerPhonesList([], targetPhone, ''),
             address: db.users[idx].address || '',
             openingBalance: 0,
             currentBalance: 0,
@@ -3217,15 +3397,53 @@ export async function addRepresentative(payload, actor) {
   const id = generateServerId('REP');
   const opening = round2(payload.openingBalance || 0);
   if (await isPgMode()) {
+    if (payload.userId) {
+      const existingRes = await getPool().query('SELECT * FROM representatives WHERE user_id = $1 LIMIT 1', [payload.userId]);
+      if (existingRes.rows[0]) {
+        const cur = existingRes.rows[0];
+        const nextOpening = Math.abs(Number(cur.opening_balance || 0)) < 0.001 && Math.abs(Number(cur.current_balance || 0)) < 0.001 ? opening : Number(cur.opening_balance || 0);
+        const nextCurrent = Math.abs(Number(cur.opening_balance || 0)) < 0.001 && Math.abs(Number(cur.current_balance || 0)) < 0.001 ? opening : Number(cur.current_balance || 0);
+        await getPool().query(
+          `UPDATE representatives SET name = COALESCE(NULLIF($1, ''), name), phone = COALESCE(NULLIF($2, ''), phone), vehicle_number = COALESCE(NULLIF($3, ''), vehicle_number), opening_balance = $4, current_balance = $5, commission_rate = $6, notes = COALESCE(NULLIF($7, ''), notes), status = COALESCE($8, status) WHERE id = $9`,
+          [payload.name || '', payload.phone || '', payload.vehicleNumber || '', nextOpening, nextCurrent, Number(payload.commissionRate ?? cur.commission_rate ?? 0), payload.notes || '', payload.status || cur.status || 'active', cur.id]
+        );
+        return {
+          ...payload,
+          id: cur.id,
+          warehouseId: cur.warehouse_id || payload.warehouseId || undefined,
+          openingBalance: nextOpening,
+          currentBalance: nextCurrent,
+        };
+      }
+    }
     await getPool().query(
       `INSERT INTO representatives (id, user_id, name, phone, vehicle_number, opening_balance, current_balance, commission_rate, notes, status)
        VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9)`,
       [id, payload.userId || null, payload.name, payload.phone || '', payload.vehicleNumber || '', opening, Number(payload.commissionRate || 0), payload.notes || '', payload.status || 'active']
     );
   } else {
+    let existingRep = null;
     await withJsonTransaction((db) => {
+      if (payload.userId) {
+        const idx = (db.representatives || []).findIndex((r) => r.userId === payload.userId);
+        if (idx !== -1) {
+          const cur = db.representatives[idx];
+          const canUpdateBal = Math.abs(Number(cur.openingBalance || 0)) < 0.001 && Math.abs(Number(cur.currentBalance || 0)) < 0.001;
+          db.representatives[idx] = {
+            ...cur,
+            ...payload,
+            id: cur.id,
+            warehouseId: cur.warehouseId || payload.warehouseId,
+            openingBalance: canUpdateBal ? opening : cur.openingBalance,
+            currentBalance: canUpdateBal ? opening : cur.currentBalance,
+          };
+          existingRep = db.representatives[idx];
+          return;
+        }
+      }
       db.representatives.push({ ...payload, id, openingBalance: opening, currentBalance: opening });
     });
+    if (existingRep) return existingRep;
   }
   return { ...payload, id, openingBalance: opening, currentBalance: opening };
 }
@@ -4691,7 +4909,7 @@ export async function recordRepCustodyReturn(payload, actor, idempotencyKey = ''
   return out;
 }
 
-export async function recordRepCustodyAdjustment(payload, actor) {
+export async function recordRepCustodyAdjustment(payload, actor, idempotencyKey = '') {
   if (actor.role !== 'admin' && !actor.permissions?.canManageInventory && !actor.permissions?.canApprove && !actor.permissions?.canManageTransfers) {
     throw new AppError(403, 'ليس لديك صلاحية تسجيل تسويات أو توالف عهدة المناديب', 'FORBIDDEN_CUSTODY_ADJUSTMENT');
   }
@@ -4708,21 +4926,36 @@ export async function recordRepCustodyAdjustment(payload, actor) {
   const reason = String(payload.notes || payload.reason || '').trim();
   if (!reason) throw new AppError(400, 'يجب إدخال سبب التسوية أو العجز/التالف', 'REASON_REQUIRED');
 
-  let opObj;
+  const endpoint = 'POST /api/inventory/rep-custody/adjust';
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey || payload.idempotencyKey);
+
+  let out;
   if (await isPgMode()) {
-    opObj = await withTransaction(async (client) => {
+    out = await withTransaction(async (client) => {
+      if (scopedIdem) {
+        const dup = await findPgIdempotency(client, scopedIdem);
+        if (dup?.operation) return { operation: dup.operation, deduplicated: true };
+      }
+
       const vanWh = (await client.query('SELECT id, name FROM warehouses WHERE id = $1', [rep.warehouseId])).rows[0];
       if (!vanWh) throw new AppError(404, 'مخزن سيارة المندوب غير موجود', 'WAREHOUSE_NOT_FOUND');
       const pRes = await client.query('SELECT * FROM products WHERE id = $1 FOR UPDATE', [payload.productId]);
       const prod = pRes.rows[0];
       if (!prod) throw new AppError(404, 'الصنف غير موجود', 'PRODUCT_NOT_FOUND');
 
+      const unitName = String(payload.unit || prod.base_unit);
+      const unitObj = (prod.units || []).find((u) => u.name === unitName);
+      const factor = unitObj
+        ? Math.max(0.001, Number(unitObj.conversionFactor || 1))
+        : Math.max(0.001, Number(payload.unitFactor || 1));
+      const baseQty = round3(qty * factor);
+
       const stockMap = { ...(prod.stock_per_warehouse || {}) };
       const avail = Number(stockMap[vanWh.id] || 0);
-      if (avail < qty) {
-        throw new AppError(409, `الرصيد المتاح بعهدة المندوب (${avail}) أقل من الكمية المطلوب تسويتها (${qty})`, 'INSUFFICIENT_CUSTODY_STOCK');
+      if (avail < baseQty) {
+        throw new AppError(409, `الرصيد المتاح بعهدة المندوب (${avail}) أقل من الكمية المطلوب تسويتها (${baseQty})`, 'INSUFFICIENT_CUSTODY_STOCK');
       }
-      stockMap[vanWh.id] = round3(avail - qty);
+      stockMap[vanWh.id] = round3(avail - baseQty);
       await client.query('UPDATE products SET stock_per_warehouse = $1, updated_at = $2 WHERE id = $3', [JSON.stringify(stockMap), now, prod.id]);
 
       const opId = generateServerId('RCO');
@@ -4730,18 +4963,18 @@ export async function recordRepCustodyAdjustment(payload, actor) {
       const opNo = `RCO-${String(seqRes.rows[0]?.n || 1).padStart(5, '0')}`;
       await client.query(
         `INSERT INTO rep_custody_operations (id, operation_number, date, representative_id, representative_name, operation_type, product_id, product_name, unit, unit_factor, quantity, base_quantity, warehouse_id, warehouse_name, notes, status, created_by, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,1,$10,$10,$11,$12,$13,'approved',$14,$15)`,
-        [opId, opNo, dateStr, rep.id, rep.name, opType, prod.id, prod.name, prod.base_unit, qty, vanWh.id, vanWh.name, reason, actor.fullName, now]
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'approved',$16,$17)`,
+        [opId, opNo, dateStr, rep.id, rep.name, opType, prod.id, prod.name, unitName, factor, qty, baseQty, vanWh.id, vanWh.name, reason, actor.fullName, now]
       );
 
       const mvId = generateServerId('SM');
       await client.query(
         `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,1,$11,$12,'rep_custody',$13,$14,$15,$16,$17)`,
-        [mvId, mvId, dateStr, prod.id, prod.name, vanWh.id, vanWh.name, opType === 'custody_damaged' ? 'damaged' : 'adjustment', qty, prod.base_unit, prod.purchase_price, stockMap[vanWh.id], opId, opNo, `تسوية عهدة مندوب (${opType}): ${reason}`, actor.fullName, now]
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'rep_custody',$14,$15,$16,$17,$18)`,
+        [mvId, mvId, dateStr, prod.id, prod.name, vanWh.id, vanWh.name, opType === 'custody_damaged' ? 'damaged' : 'adjustment', baseQty, unitName, factor, prod.purchase_price, stockMap[vanWh.id], opId, opNo, `تسوية عهدة مندوب (${opType}): ${reason}`, actor.fullName, now]
       );
 
-      return {
+      const operation = {
         id: opId,
         operationNumber: opNo,
         date: dateStr,
@@ -4750,10 +4983,10 @@ export async function recordRepCustodyAdjustment(payload, actor) {
         operationType: opType,
         productId: prod.id,
         productName: prod.name,
-        unit: prod.base_unit,
-        unitFactor: 1,
+        unit: unitName,
+        unitFactor: factor,
         quantity: qty,
-        baseQuantity: qty,
+        baseQuantity: baseQty,
         warehouseId: vanWh.id,
         warehouseName: vanWh.name,
         notes: reason,
@@ -4761,17 +4994,34 @@ export async function recordRepCustodyAdjustment(payload, actor) {
         createdBy: actor.fullName,
         createdAt: now,
       };
+      if (scopedIdem) {
+        await savePgIdempotency(client, scopedIdem, actor, endpoint, { operation });
+      }
+      return { operation, deduplicated: false };
     });
   } else {
-    opObj = await withJsonTransaction((db) => {
+    out = await withJsonTransaction((db) => {
+      if (scopedIdem) {
+        const dup = findJsonIdempotency(scopedIdem);
+        if (dup?.operation) return { operation: dup.operation, deduplicated: true };
+      }
+
       const vanWh = db.warehouses.find((w) => w.id === rep.warehouseId);
       const prod = db.products.find((p) => p.id === payload.productId);
       if (!vanWh || !prod) throw new AppError(404, 'المستودع أو الصنف غير موجود', 'NOT_FOUND');
+
+      const unitName = String(payload.unit || prod.baseUnit);
+      const unitObj = (prod.units || []).find((u) => u.name === unitName);
+      const factor = unitObj
+        ? Math.max(0.001, Number(unitObj.conversionFactor || 1))
+        : Math.max(0.001, Number(payload.unitFactor || 1));
+      const baseQty = round3(qty * factor);
+
       const avail = Number(prod.stockPerWarehouse?.[vanWh.id] || 0);
-      if (avail < qty) {
-        throw new AppError(409, `الرصيد المتاح بعهدة المندوب (${avail}) أقل من الكمية المطلوب تسويتها (${qty})`, 'INSUFFICIENT_CUSTODY_STOCK');
+      if (avail < baseQty) {
+        throw new AppError(409, `الرصيد المتاح بعهدة المندوب (${avail}) أقل من الكمية المطلوب تسويتها (${baseQty})`, 'INSUFFICIENT_CUSTODY_STOCK');
       }
-      prod.stockPerWarehouse[vanWh.id] = round3(avail - qty);
+      prod.stockPerWarehouse[vanWh.id] = round3(avail - baseQty);
       db.repCustodyOperations = db.repCustodyOperations || [];
       const seqNum = nextJsonSequence(db, 'repCustodyOpNo', db.repCustodyOperations, 'operationNumber', /(\d+)$/);
       const opNo = `RCO-${String(seqNum).padStart(5, '0')}`;
@@ -4784,10 +5034,10 @@ export async function recordRepCustodyAdjustment(payload, actor) {
         operationType: opType,
         productId: prod.id,
         productName: prod.name,
-        unit: prod.baseUnit,
-        unitFactor: 1,
+        unit: unitName,
+        unitFactor: factor,
         quantity: qty,
-        baseQuantity: qty,
+        baseQuantity: baseQty,
         warehouseId: vanWh.id,
         warehouseName: vanWh.name,
         notes: reason,
@@ -4806,10 +5056,11 @@ export async function recordRepCustodyAdjustment(payload, actor) {
         productName: prod.name,
         warehouseId: vanWh.id,
         warehouseName: vanWh.name,
-        quantity: qty,
-        unit: prod.baseUnit,
-        unitFactor: 1,
+        quantity: baseQty,
+        unit: unitName,
+        unitFactor: factor,
         unitCost: prod.purchasePrice,
+        balanceAfter: prod.stockPerWarehouse[vanWh.id],
         relatedDocType: 'rep_custody',
         referenceId: rec.id,
         referenceNumber: opNo,
@@ -4817,12 +5068,17 @@ export async function recordRepCustodyAdjustment(payload, actor) {
         createdBy: actor.fullName,
         createdAt: now,
       });
-      return rec;
+      if (scopedIdem) {
+        saveJsonIdempotency(scopedIdem, { operation: rec });
+      }
+      return { operation: rec, deduplicated: false };
     });
   }
 
-  await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تسوية عهدة المندوب (${rep.name}): ${reason}`, module: 'عهدة المنادوبين', recordId: opObj.id });
-  return opObj;
+  if (!out.deduplicated) {
+    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تسوية عهدة المندوب (${rep.name}): ${reason}`, module: 'عهدة المنادوبين', recordId: out.operation.id });
+  }
+  return out;
 }
 
 export async function getRepCustodyStatement(repIdParam, filters = {}, actor) {

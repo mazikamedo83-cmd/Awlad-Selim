@@ -152,7 +152,10 @@ export interface DataContextType extends DatabaseState {
 
   // Sales & Purchases & Quotes
   createSalesInvoice: (invoice: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'>) => Promise<{ success: boolean; error?: string; invoice?: Invoice; queuedOffline?: boolean }>;
-  createPurchaseInvoice: (invoice: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'>) => Promise<{ success: boolean; error?: string; invoice?: Invoice; queuedOffline?: boolean }>;
+  createPurchaseInvoice: (invoice: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'> & { sendNow?: boolean; recipientUserId?: string; recipientName?: string; isRepPurchase?: boolean }) => Promise<{ success: boolean; error?: string; invoice?: Invoice; queuedOffline?: boolean }>;
+  sendPurchaseInvoice: (invoiceId: string, payload?: { recipientUserId?: string; recipientName?: string; notes?: string }) => Promise<{ success: boolean; error?: string; invoice?: Invoice; queuedOffline?: boolean }>;
+  receivePurchaseInvoice: (invoiceId: string, notes?: string) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
+  rejectPurchaseInvoice: (invoiceId: string, reason: string) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
   createSalesQuote: (quoteData: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'>) => Promise<{ success: boolean; error?: string; invoice?: Invoice; queuedOffline?: boolean }>;
   convertQuoteToInvoice: (quoteId: string, payload?: Partial<Invoice> & { paidAtInvoice?: number }) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
   markInvoiceReviewed: (invoiceId: string, reviewNotes?: string) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
@@ -160,6 +163,7 @@ export interface DataContextType extends DatabaseState {
   cancelInvoice: (invoiceId: string, reason: string) => Promise<{ success: boolean; error?: string }>;
   addInvoicePayment: (invoiceId: string, payment: { amount: number; date?: string; paymentMethod: 'cash' | 'bank' | 'cheque'; cashboxId: string; notes?: string }) => Promise<{ success: boolean; queuedOffline?: boolean; error?: string }>;
   editSalesInvoice: (invoiceId: string, updates: { date?: string; items?: Invoice['items']; discountTotal?: number; notes?: string; reason?: string }) => Promise<{ success: boolean; queuedOffline?: boolean; error?: string }>;
+  editPurchaseInvoice: (invoiceId: string, updates: { date?: string; supplierId?: string; supplierName?: string; warehouseId?: string; warehouseName?: string; items?: Invoice['items']; discountTotal?: number; paidAmount?: number; paymentType?: Invoice['paymentType']; notes?: string; reason?: string }) => Promise<{ success: boolean; queuedOffline?: boolean; error?: string; invoice?: Invoice }>;
 
   // Returns
   createReturn: (returnData: Omit<InvoiceReturn, 'id' | 'returnNumber' | 'createdAt' | 'createdBy'>) => Promise<{ success: boolean; queuedOffline?: boolean; error?: string }>;
@@ -250,8 +254,8 @@ export interface DataContextType extends DatabaseState {
 
   // Users & Settings
   auditLogs: AuditLogItem[];
-  addUser: (userData: Omit<User, 'id' | 'createdAt'> & { password?: string; linkedCustomerId?: string; autoCreateCustomerProfile?: boolean }) => Promise<{ success: boolean; user?: User; linkedCustomerId?: string; error?: string }>;
-  updateUser: (id: string, updates: Partial<User> & { newPassword?: string; linkedCustomerId?: string; autoCreateCustomerProfile?: boolean }) => Promise<{ success: boolean; error?: string }>;
+  addUser: (userData: Omit<User, 'id' | 'createdAt'> & { password?: string; linkedCustomerId?: string; autoCreateCustomerProfile?: boolean; autoCreateRepProfile?: boolean }) => Promise<{ success: boolean; user?: User; linkedCustomerId?: string; error?: string }>;
+  updateUser: (id: string, updates: Partial<User> & { newPassword?: string; linkedCustomerId?: string; autoCreateCustomerProfile?: boolean; autoCreateRepProfile?: boolean }) => Promise<{ success: boolean; error?: string }>;
   deleteUser: (id: string) => Promise<{ success: boolean; error?: string }>;
   updateSettings: (newSettings: Partial<SystemSettings>) => Promise<void>;
 
@@ -449,15 +453,27 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
         const grandTotal = Math.max(0, subtotal - Number(p.discountTotal || 0));
         const paidAmount = Math.min(grandTotal, Number(p.paidAmount || 0));
         const remainingAmount = Math.max(0, grandTotal - paidAmount);
+        const isDraftOrRep = p.status === 'draft' || Boolean(p.isRepPurchase);
+        const nextDispatchStatus: Invoice['dispatchStatus'] = isDraftOrRep
+          ? (p.sendNow ? 'sent' : 'draft')
+          : 'confirmed';
 
         invoices.unshift({
           id: targetId,
           invoiceNumber: `LOC-PUR-${op.operationId.slice(-5)}`,
           type: 'purchase',
-          status: p.status === 'draft' ? 'draft' : 'confirmed',
+          status: isDraftOrRep ? 'draft' : 'confirmed',
+          dispatchStatus: nextDispatchStatus,
+          sentBy: p.sendNow ? (p.sentBy || op.userId) : undefined,
+          sentByUserId: op.userId,
+          sentAt: p.sendNow ? op.createdAt : undefined,
+          recipientUserId: p.recipientUserId,
+          recipientName: p.recipientName,
           date: p.date || op.createdAt.slice(0, 10),
           supplierId: p.supplierId,
           supplierName: p.supplierName || supp?.name || 'مورد',
+          representativeId: p.representativeId,
+          representativeName: p.representativeName,
           warehouseId: p.warehouseId,
           warehouseName: p.warehouseName || '',
           items: p.items || [],
@@ -480,7 +496,7 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
           originDeviceId: op.deviceId,
         });
 
-        if (p.status !== 'draft') {
+        if (!isDraftOrRep) {
           if (supp) supp.currentBalance = Number(supp.currentBalance || 0) + remainingAmount;
           const cb = cashboxes.find((c) => c.id === p.cashboxId);
           if (cb && paidAmount > 0) cb.currentBalance = Number(cb.currentBalance || 0) - paidAmount;
@@ -494,6 +510,17 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
             }
           }
         }
+      }
+    } else if (op.operationType === 'send_purchase_invoice') {
+      const targetId = p.invoiceId || op.entityId;
+      const inv = invoices.find((i) => i.id === targetId || i.localId === targetId);
+      if (inv && inv.status === 'draft') {
+        inv.dispatchStatus = 'sent';
+        inv.sentByUserId = op.userId;
+        inv.sentAt = op.createdAt;
+        if (p.recipientUserId !== undefined) inv.recipientUserId = p.recipientUserId;
+        if (p.recipientName !== undefined) inv.recipientName = p.recipientName;
+        inv.syncStatus = op.status;
       }
     } else if (op.operationType === 'edit_sales_invoice') {
       const targetId = p.invoiceId || op.entityId;
@@ -546,6 +573,86 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
           });
           inv.editHistory = hist;
         }
+        inv.syncStatus = op.status;
+      }
+    } else if (op.operationType === 'edit_purchase_invoice') {
+      const targetId = p.invoiceId || op.entityId;
+      const inv = invoices.find((i) => i.id === targetId || i.localId === targetId);
+      if (inv && inv.status !== 'cancelled') {
+        const oldGrand = Number(inv.grandTotal || 0);
+        const oldRem = Number(inv.remainingAmount || 0);
+        const oldWhId = inv.warehouseId;
+        const nextWhId = p.warehouseId || oldWhId;
+        const oldSuppId = inv.supplierId;
+        const nextSuppId = p.supplierId !== undefined ? p.supplierId : oldSuppId;
+        const nextItems = Array.isArray(p.items) ? p.items : inv.items;
+        const nextSubtotal = nextItems.reduce((s: number, it: any) => s + Number(it.total || 0), 0);
+        const nextDiscount = p.discountTotal !== undefined ? Number(p.discountTotal || 0) : Number(inv.discountTotal || 0);
+        const nextGrand = Math.max(0, nextSubtotal - nextDiscount);
+        const nextPaid = inv.status === 'draft' && p.paidAmount !== undefined ? Number(p.paidAmount || 0) : Number(inv.paidAmount || 0);
+        const nextRem = Math.max(0, nextGrand - nextPaid);
+
+        if (inv.status === 'confirmed') {
+          if (oldWhId) {
+            for (const oldIt of inv.items || []) {
+              const prod = products.find((pr) => pr.id === oldIt.productId);
+              if (prod) {
+                const qtyBase = Number(oldIt.quantity || 0) * Number(oldIt.unitFactor || 1);
+                prod.stockPerWarehouse[oldWhId] = Number(prod.stockPerWarehouse[oldWhId] || 0) - qtyBase;
+              }
+            }
+          }
+          if (nextWhId) {
+            for (const newIt of nextItems || []) {
+              const prod = products.find((pr) => pr.id === newIt.productId);
+              if (prod) {
+                const qtyBase = Number(newIt.quantity || 0) * Number(newIt.unitFactor || 1);
+                prod.stockPerWarehouse[nextWhId] = Number(prod.stockPerWarehouse[nextWhId] || 0) + qtyBase;
+              }
+            }
+          }
+          if ((oldSuppId || null) === (nextSuppId || null)) {
+            const diffRem = nextRem - oldRem;
+            if (nextSuppId && diffRem !== 0) {
+              const supp = suppliers.find((s) => s.id === nextSuppId);
+              if (supp) supp.currentBalance = Number(supp.currentBalance || 0) + diffRem;
+            }
+          } else {
+            if (oldSuppId && oldRem !== 0) {
+              const oldSupp = suppliers.find((s) => s.id === oldSuppId);
+              if (oldSupp) oldSupp.currentBalance = Number(oldSupp.currentBalance || 0) - oldRem;
+            }
+            if (nextSuppId && nextRem !== 0) {
+              const newSupp = suppliers.find((s) => s.id === nextSuppId);
+              if (newSupp) newSupp.currentBalance = Number(newSupp.currentBalance || 0) + nextRem;
+            }
+          }
+        }
+
+        const hist = Array.isArray(inv.editHistory) ? [...inv.editHistory] : [];
+        if (p.reason) {
+          hist.push({
+            editedBy: op.userId,
+            editedAt: op.createdAt,
+            reason: String(p.reason),
+            before: { grandTotal: oldGrand, discountTotal: Number(inv.discountTotal || 0), itemsCount: (inv.items || []).length },
+            after: { date: p.date || inv.date, grandTotal: nextGrand, discountTotal: nextDiscount, itemsCount: nextItems.length },
+          });
+        }
+        inv.items = nextItems;
+        inv.warehouseId = nextWhId;
+        if (p.warehouseName) inv.warehouseName = p.warehouseName;
+        inv.supplierId = nextSuppId;
+        if (p.supplierName !== undefined) inv.supplierName = p.supplierName;
+        inv.subtotal = nextSubtotal;
+        inv.discountTotal = nextDiscount;
+        inv.grandTotal = nextGrand;
+        inv.paidAmount = nextPaid;
+        inv.remainingAmount = nextRem;
+        if (p.paymentType) inv.paymentType = p.paymentType;
+        if (p.date) inv.date = p.date;
+        if (p.notes !== undefined) inv.notes = p.notes;
+        inv.editHistory = hist;
         inv.syncStatus = op.status;
       }
     } else if (op.operationType === 'add_invoice_payment') {
@@ -643,12 +750,20 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
     } else if (op.operationType === 'create_customer') {
       const targetId = op.localId || op.operationId;
       if (!customers.some((c) => c.id === targetId)) {
+        const nextPhones = Array.isArray(p.phones) ? p.phones : undefined;
+        const primaryPhone = p.phone || nextPhones?.[0]?.phone || '';
+        const secondaryPhone = p.secondaryPhone || nextPhones?.[1]?.phone || undefined;
         customers.unshift({
           id: targetId,
           code: p.code || `LOC-${op.operationId.slice(-4)}`,
           name: p.name || '',
           shopName: p.shopName || '',
-          phone: p.phone || '',
+          shopPhoto: p.shopPhoto || p.photo || undefined,
+          photo: p.shopPhoto || p.photo || undefined,
+          phone: primaryPhone,
+          secondaryPhone,
+          phones: nextPhones,
+          governorate: p.governorate || '',
           address: p.address || '',
           area: p.area || '',
           geoCoordinates: p.geoCoordinates || '',
@@ -673,8 +788,25 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
       const cust = customers.find((c) => c.id === targetId);
       if (cust) {
         if (p.name !== undefined) cust.name = p.name;
-        if (p.phone !== undefined) cust.phone = p.phone;
-        if (p.secondaryPhone !== undefined) cust.secondaryPhone = p.secondaryPhone;
+        if (Array.isArray(p.phones)) {
+          cust.phones = p.phones;
+          const primaryEntry = p.phones.find((x: any) => x?.isPrimary) || p.phones[0];
+          const secondEntry = p.phones.find((x: any) => x !== primaryEntry);
+          cust.phone = primaryEntry?.phone || p.phone || '';
+          cust.secondaryPhone = secondEntry?.phone || '';
+        } else {
+          if (p.phone !== undefined) cust.phone = p.phone;
+          if (p.secondaryPhone !== undefined) cust.secondaryPhone = p.secondaryPhone;
+        }
+        if (p.clearShopPhoto === true) {
+          cust.shopPhoto = '';
+          cust.photo = '';
+        } else if (p.shopPhoto || p.photo) {
+          const nextPhoto = p.shopPhoto || p.photo;
+          cust.shopPhoto = nextPhoto;
+          cust.photo = nextPhoto;
+        }
+        if (p.governorate !== undefined) cust.governorate = p.governorate;
         if (p.address !== undefined) cust.address = p.address;
         if (p.shopName !== undefined) cust.shopName = p.shopName;
         if (p.area !== undefined) cust.area = p.area;
@@ -1153,6 +1285,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ...empty,
           ...pullData,
           repCustodyOperations: pullData.repCustodyOperations || [],
+          purchaseReceivers: pullData.purchaseReceivers || [],
           serverSettings: hydratedServerSettings,
         };
       }
@@ -1942,15 +2075,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           operationType: 'create_customer',
           entityType: 'customer',
           localId,
-          summaryAr: `إضافة عميل محليًا: ${custData.name}`,
+          summaryAr: `إضافة عميل محليًا: ${custData.shopName || custData.name}`,
           payload: { ...custData, localId },
         });
         return {
           id: localId,
           code: custData.code || `LOC-${op.operationId.slice(-4)}`,
           name: custData.name,
+          shopName: custData.shopName,
+          shopPhoto: custData.shopPhoto || custData.photo,
+          photo: custData.shopPhoto || custData.photo,
           phone: custData.phone,
+          secondaryPhone: custData.secondaryPhone,
+          phones: custData.phones,
+          governorate: custData.governorate,
+          area: custData.area,
+          geoCoordinates: custData.geoCoordinates,
           address: custData.address,
+          assignedRepId: custData.assignedRepId,
+          allowedRepIds: custData.allowedRepIds,
           status: custData.status || 'active',
           openingBalance: custData.openingBalance,
           currentBalance: custData.openingBalance,
@@ -1977,12 +2120,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           operationType: 'update_customer',
           entityType: 'customer',
           entityId: id,
-          summaryAr: `تحديث بيانات العميل: ${current?.name || id}`,
+          summaryAr: `تحديث بيانات العميل: ${current?.shopName || current?.name || id}`,
           payload: { customerId: id, ...body },
         });
         setData((prev) => ({
           ...prev,
-          customers: prev.customers.map((c) => (c.id === id ? { ...c, ...updates, syncStatus: 'pending' } : c)),
+          customers: prev.customers.map((c) => {
+            if (c.id !== id) return c;
+            const nextPhoto = updates.clearShopPhoto ? '' : (updates.shopPhoto || updates.photo || c.shopPhoto || c.photo);
+            return {
+              ...c,
+              ...updates,
+              shopPhoto: nextPhoto,
+              photo: nextPhoto,
+              syncStatus: 'pending',
+            };
+          }),
         }));
         return { success: true, queuedOffline: true };
       }
@@ -2225,11 +2378,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const createPurchaseInvoice = async (invoiceData: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'>) => {
+  const createPurchaseInvoice = async (
+    invoiceData: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'> & {
+      sendNow?: boolean;
+      recipientUserId?: string;
+      recipientName?: string;
+      isRepPurchase?: boolean;
+    }
+  ) => {
+    const forceRepDraft = currentUser?.role === 'representative' || Boolean(invoiceData.isRepPurchase);
+    const bodyPayload = forceRepDraft ? { ...invoiceData, status: 'draft' as const, isRepPurchase: true } : invoiceData;
     try {
       const res = await apiRequest<{ ok: boolean; invoice: Invoice }>('/api/invoices/purchase', {
         method: 'POST',
-        body: invoiceData,
+        body: bodyPayload,
         idempotencyKey: (invoiceData as any)?.idempotencyKey || generateId('IDEMP'),
       });
       await loadRoleScopedData();
@@ -2241,18 +2403,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           operationType: 'create_purchase_invoice',
           entityType: 'invoice',
           localId,
-          summaryAr: `فاتورة مشتريات محلية (${invoiceData.supplierName || 'مورد'})`,
-          payload: { ...invoiceData, localId },
+          summaryAr: `${forceRepDraft ? 'فاتورة شراء مندوب محلية' : 'فاتورة مشتريات محلية'} (${invoiceData.supplierName || 'مورد'})`,
+          payload: { ...bodyPayload, localId, sentBy: currentUser.fullName, sentByUserId: currentUser.id },
         });
         const supp = data.suppliers.find((s) => s.id === invoiceData.supplierId);
+        const isDraft = bodyPayload.status === 'draft' || forceRepDraft;
         const optimisticPurchase: Invoice = {
           id: localId,
           invoiceNumber: `LOC-PUR-${op.operationId.slice(-5)}`,
           type: 'purchase',
-          status: invoiceData.status === 'draft' ? 'draft' : 'confirmed',
+          status: isDraft ? 'draft' : 'confirmed',
+          dispatchStatus: isDraft ? (invoiceData.sendNow ? 'sent' : 'draft') : 'confirmed',
+          sentBy: invoiceData.sendNow ? currentUser.fullName : undefined,
+          sentByUserId: currentUser.id,
+          sentAt: invoiceData.sendNow ? op.createdAt : undefined,
+          recipientUserId: invoiceData.recipientUserId,
+          recipientName: invoiceData.recipientName,
           date: invoiceData.date || op.createdAt.slice(0, 10),
           supplierId: invoiceData.supplierId,
           supplierName: invoiceData.supplierName || supp?.name,
+          representativeId: invoiceData.representativeId,
+          representativeName: invoiceData.representativeName,
           warehouseId: invoiceData.warehouseId,
           warehouseName: invoiceData.warehouseName || '',
           items: invoiceData.items || [],
@@ -2276,6 +2447,59 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: true, invoice: optimisticPurchase, queuedOffline: true };
       }
       return { success: false, error: err?.message || 'تعذر إنشاء فاتورة المشتريات' };
+    }
+  };
+
+  const sendPurchaseInvoice = async (
+    invoiceId: string,
+    payload: { recipientUserId?: string; recipientName?: string; notes?: string } = {}
+  ) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; invoice: Invoice }>(`/api/invoices/purchase/${invoiceId}/send`, {
+        method: 'POST',
+        body: payload,
+      });
+      await loadRoleScopedData();
+      return { success: true, invoice: res.invoice };
+    } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const existing = data.invoices.find((i) => i.id === invoiceId);
+        await queueOfflineOp({
+          operationType: 'send_purchase_invoice',
+          entityType: 'invoice',
+          entityId: invoiceId,
+          summaryAr: `إرسال فاتورة شراء للإدارة (${existing?.invoiceNumber || invoiceId})`,
+          payload: { invoiceId, ...payload },
+        });
+        return { success: true, queuedOffline: true };
+      }
+      return { success: false, error: err?.message || 'تعذر إرسال فاتورة الشراء' };
+    }
+  };
+
+  const receivePurchaseInvoice = async (invoiceId: string, notes = '') => {
+    try {
+      const res = await apiRequest<{ ok: boolean; invoice: Invoice }>(`/api/invoices/purchase/${invoiceId}/receive`, {
+        method: 'POST',
+        body: { notes },
+      });
+      await loadRoleScopedData();
+      return { success: true, invoice: res.invoice };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تسجيل استلام فاتورة الشراء' };
+    }
+  };
+
+  const rejectPurchaseInvoice = async (invoiceId: string, reason: string) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; invoice: Invoice }>(`/api/invoices/purchase/${invoiceId}/reject`, {
+        method: 'POST',
+        body: { reason },
+      });
+      await loadRoleScopedData();
+      return { success: true, invoice: res.invoice };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر رفض فاتورة الشراء' };
     }
   };
 
@@ -2438,6 +2662,46 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: true, queuedOffline: true };
       }
       return { success: false, error: err?.message || 'تعذر تعديل الفاتورة' };
+    }
+  };
+
+  const editPurchaseInvoice = async (
+    invoiceId: string,
+    updates: {
+      date?: string;
+      supplierId?: string;
+      supplierName?: string;
+      warehouseId?: string;
+      warehouseName?: string;
+      items?: Invoice['items'];
+      discountTotal?: number;
+      paidAmount?: number;
+      paymentType?: Invoice['paymentType'];
+      notes?: string;
+      reason?: string;
+    }
+  ) => {
+    const existing = data.invoices.find((i) => i.id === invoiceId);
+    const body = { ...updates, baseVersion: existing?.version ?? 1 };
+    try {
+      const res = await apiRequest<{ ok: boolean; invoice: Invoice }>(`/api/invoices/purchase/${invoiceId}`, {
+        method: 'PUT',
+        body,
+      });
+      await loadRoleScopedData();
+      return { success: true, invoice: res.invoice };
+    } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        await queueOfflineOp({
+          operationType: 'edit_purchase_invoice',
+          entityType: 'invoice',
+          entityId: invoiceId,
+          summaryAr: `تعديل فاتورة مشتريات (${existing?.invoiceNumber || invoiceId})`,
+          payload: { invoiceId, ...body },
+        });
+        return { success: true, queuedOffline: true };
+      }
+      return { success: false, error: err?.message || 'تعذر تعديل فاتورة المشتريات' };
     }
   };
 
@@ -3622,6 +3886,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         settleSupplierAdvance,
         createSalesInvoice,
         createPurchaseInvoice,
+        sendPurchaseInvoice,
+        receivePurchaseInvoice,
+        rejectPurchaseInvoice,
         createSalesQuote,
         convertQuoteToInvoice,
         markInvoiceReviewed,
@@ -3629,6 +3896,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         cancelInvoice,
         addInvoicePayment,
         editSalesInvoice,
+        editPurchaseInvoice,
         createReturn,
         addCashbox,
         updateCashbox,
@@ -3690,6 +3958,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         approveStockCount,
         rejectStockCount,
         stockTransferRequests: data.stockTransferRequests || [],
+        purchaseReceivers: data.purchaseReceivers || [],
         createStockTransferRequest,
         submitStockTransferRequest,
         approveStockTransferRequest,

@@ -126,6 +126,7 @@ export const FULL_ADMIN_PERMISSIONS = {
   canExport: true,
   canViewReports: true,
   canManageSales: true,
+  canCreatePurchase: true,
   canManagePurchases: true,
   canManageInventory: true,
   canManageWarehouses: true,
@@ -163,6 +164,7 @@ export const CUSTOMER_DEFAULT_PERMISSIONS = {
   canExport: false,
   canViewReports: false,
   canManageSales: false,
+  canCreatePurchase: false,
   canManagePurchases: false,
   canManageInventory: false,
   canManageWarehouses: false,
@@ -190,6 +192,101 @@ export const CUSTOMER_DEFAULT_PERMISSIONS = {
   canReceive: false,
   canReviewRepInvoices: false,
 };
+
+export const REP_DEFAULT_PERMISSIONS = {
+  ...CUSTOMER_DEFAULT_PERMISSIONS,
+  canView: true,
+  canAdd: true,
+  canEdit: true,
+  canPrint: true,
+  canManageSales: true,
+  canCreatePurchase: true,
+  canManagePurchases: false,
+  canManageTransfers: true,
+  canManageAccounts: true,
+  canManageReps: true,
+  canViewReports: true,
+  canSend: true,
+  canReceive: true,
+};
+
+export function getDefaultPermissionsForRole(role) {
+  switch (String(role || '').trim()) {
+    case 'admin':
+      return { ...FULL_ADMIN_PERMISSIONS };
+    case 'customer':
+      return { ...CUSTOMER_DEFAULT_PERMISSIONS };
+    case 'representative':
+      return { ...REP_DEFAULT_PERMISSIONS };
+    case 'purchases':
+      return {
+        ...CUSTOMER_DEFAULT_PERMISSIONS,
+        canView: true,
+        canAdd: true,
+        canEdit: true,
+        canPrint: true,
+        canExport: true,
+        canViewReports: true,
+        canCreatePurchase: true,
+        canManagePurchases: true,
+        canApprove: true,
+        canSend: true,
+        canReceive: true,
+      };
+    case 'sales':
+      return {
+        ...CUSTOMER_DEFAULT_PERMISSIONS,
+        canView: true,
+        canAdd: true,
+        canEdit: true,
+        canPrint: true,
+        canManageSales: true,
+        canSend: true,
+        canReceive: true,
+      };
+    case 'warehouse':
+      return {
+        ...CUSTOMER_DEFAULT_PERMISSIONS,
+        canView: true,
+        canAdd: true,
+        canEdit: true,
+        canPrint: true,
+        canManageInventory: true,
+        canManageWarehouses: true,
+        canCreateStockCount: true,
+        canCreateStockTransfer: true,
+        canExecuteStockTransfer: true,
+        canSend: true,
+        canReceive: true,
+      };
+    case 'accountant':
+      return {
+        ...CUSTOMER_DEFAULT_PERMISSIONS,
+        canView: true,
+        canAdd: true,
+        canEdit: true,
+        canPrint: true,
+        canExport: true,
+        canViewReports: true,
+        canManageCashboxes: true,
+        canManageAccounts: true,
+        canApprove: true,
+        canReviewRepInvoices: true,
+      };
+    case 'manager':
+      return {
+        ...FULL_ADMIN_PERMISSIONS,
+        canManageUsers: false,
+        canManageSettings: false,
+        canViewPersonalAccounts: false,
+        canCreatePersonalTx: false,
+        canEditPersonalTx: false,
+        canApprovePersonalAdjustment: false,
+      };
+    default:
+      return { ...CUSTOMER_DEFAULT_PERMISSIONS };
+  }
+}
 
 export function setPgActive(val) {
   pgActiveCache = val === null ? null : Boolean(val);
@@ -258,12 +355,72 @@ export function mapPgUserRow(r) {
   };
 }
 
+export function normalizeCustomerPhoneDigits(raw) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.startsWith('0020') && d.length >= 13) d = '0' + d.slice(4);
+  else if (d.startsWith('20') && d.length >= 12) d = '0' + d.slice(2);
+  return d;
+}
+
+export function normalizeCustomerPhonesList(inputPhones, fallbackPrimary = '', fallbackSecondary = '') {
+  const entries = [];
+  const seenDigits = new Set();
+
+  const pushEntry = (rawNumber, label = '', isPrimary = false, id = '') => {
+    const num = String(rawNumber || '').trim();
+    if (!num) return;
+    const digits = normalizeCustomerPhoneDigits(num) || num;
+    if (seenDigits.has(digits)) return;
+    seenDigits.add(digits);
+    entries.push({
+      id: String(id || `ph-${entries.length + 1}`),
+      number: num,
+      label: String(label || (entries.length === 0 ? 'رئيسي' : `رقم ${entries.length + 1}`)).trim(),
+      isPrimary: Boolean(isPrimary),
+    });
+  };
+
+  if (Array.isArray(inputPhones)) {
+    for (const item of inputPhones) {
+      if (typeof item === 'string') {
+        pushEntry(item);
+      } else if (item && typeof item === 'object') {
+        pushEntry(item.number ?? item.phone ?? '', item.label || '', Boolean(item.isPrimary), item.id || '');
+      }
+    }
+  }
+
+  // Always preserve fallback primary/secondary if not present yet
+  if (fallbackPrimary) pushEntry(fallbackPrimary, 'رئيسي', entries.length === 0);
+  if (fallbackSecondary) pushEntry(fallbackSecondary, 'إضافي', false);
+
+  if (entries.length > 0 && !entries.some((e) => e.isPrimary)) {
+    entries[0].isPrimary = true;
+  } else if (entries.filter((e) => e.isPrimary).length > 1) {
+    let kept = false;
+    for (const e of entries) {
+      if (e.isPrimary && !kept) kept = true;
+      else e.isPrimary = false;
+    }
+  }
+
+  // Sort primary phone first for consistent legacy display
+  entries.sort((a, b) => (a.isPrimary === b.isPrimary ? 0 : a.isPrimary ? -1 : 1));
+  return entries;
+}
+
 export function mapPgCustomerRow(r) {
   if (!r) return null;
   const rawAllowed = Array.isArray(r.allowed_rep_ids) ? r.allowed_rep_ids.filter(Boolean) : [];
   const mergedAllowed = Array.from(
     new Set([...(r.assigned_rep_id ? [String(r.assigned_rep_id)] : []), ...rawAllowed.map(String)])
   );
+  const phones = normalizeCustomerPhonesList(r.phones, r.phone || '', r.secondary_phone || r.phone2 || '');
+  const primaryPhone = phones.find((p) => p.isPrimary)?.number || phones[0]?.number || r.phone || '';
+  const secondaryEntry = phones.find((p) => !p.isPrimary && p.number !== primaryPhone) || phones[1];
+  const resolvedPhoto = r.shop_photo || r.photo || undefined;
+
   return {
     id: r.id,
     code: r.code,
@@ -271,12 +428,14 @@ export function mapPgCustomerRow(r) {
     assignedRepId: r.assigned_rep_id || mergedAllowed[0] || undefined,
     allowedRepIds: mergedAllowed,
     name: r.name,
-    phone: r.phone || '',
-    secondaryPhone: r.secondary_phone || r.phone2 || undefined,
+    phone: primaryPhone,
+    secondaryPhone: secondaryEntry?.number || r.secondary_phone || r.phone2 || undefined,
+    phones,
     shopName: r.shop_name || undefined,
-    shopPhoto: r.shop_photo || undefined,
-    photo: r.photo || undefined,
+    shopPhoto: resolvedPhoto,
+    photo: resolvedPhoto,
     address: r.address || r.shop_address || '',
+    governorate: r.governorate || undefined,
     area: r.area || undefined,
     geoCoordinates: r.geo_coordinates || r.map_location || undefined,
     openingBalance: Number(r.opening_balance || 0),
@@ -474,6 +633,23 @@ export function mapPgInvoiceRow(r, items = [], payments = []) {
     cancelledBy: r.cancelled_by || undefined,
     cancelledAt: r.cancelled_at ? isoTimestamp(r.cancelled_at) : undefined,
     cancelReason: r.cancel_reason || undefined,
+    dispatchStatus:
+      r.status === 'confirmed'
+        ? 'confirmed'
+        : r.dispatch_status || (r.status === 'cancelled' ? 'cancelled' : 'draft'),
+    sentBy: r.sent_by || undefined,
+    sentByUserId: r.sent_by_user_id || undefined,
+    sentAt: r.sent_at ? isoTimestamp(r.sent_at) : undefined,
+    recipientUserId: r.recipient_user_id || undefined,
+    recipientName: r.recipient_name || undefined,
+    receivedBy: r.received_by || undefined,
+    receivedByUserId: r.received_by_user_id || undefined,
+    receivedAt: r.received_at ? isoTimestamp(r.received_at) : undefined,
+    rejectedBy: r.rejected_by || undefined,
+    rejectedByUserId: r.rejected_by_user_id || undefined,
+    rejectedAt: r.rejected_at ? isoTimestamp(r.rejected_at) : undefined,
+    rejectionReason: r.rejection_reason || undefined,
+    dispatchHistory: Array.isArray(r.dispatch_history) ? r.dispatch_history : [],
     version: Number(r.version || 1),
     updatedAt: r.updated_at ? isoTimestamp(r.updated_at) : isoTimestamp(r.created_at),
     createdBy: r.created_by,

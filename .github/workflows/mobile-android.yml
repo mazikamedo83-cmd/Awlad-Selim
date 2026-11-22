@@ -46,6 +46,12 @@ jobs:
       - name: Run TypeScript lint check
         run: bun run lint
 
+      - name: Run automated verification tests
+        run: |
+          node --experimental-strip-types server/tests/masterRepairVerificationTests.mjs
+          node --experimental-strip-types server/tests/comprehensiveReportsTests.mjs
+          node --experimental-strip-types server/tests/pairingVerificationTests.mts
+
       - name: Build web bundle
         run: bun run build
 

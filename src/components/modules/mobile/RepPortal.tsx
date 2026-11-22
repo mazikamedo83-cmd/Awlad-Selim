@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import {
   Users, FilePlus2, FileText, Truck, Search, Plus,
   Trash2, CheckCircle2, AlertCircle, AlertTriangle, Phone, MapPin,
@@ -6,12 +6,13 @@ import {
   CloudOff, CloudCheck, Camera, ShoppingBag, RotateCcw, ArrowDownCircle,
   ArrowUpCircle, UserPlus, Building2, Receipt, CreditCard, FileSpreadsheet,
   Wallet, Settings, LogOut, ChevronLeft, Lock, Warehouse as WarehouseIcon,
-  Barcode, X, Eye, Calculator, ClipboardCheck
+  Barcode, X, Eye, Calculator, ClipboardCheck, Send, Clock, Edit, Upload, ExternalLink, Store
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
 import {
   Customer,
+  CustomerPhoneEntry,
   CustomerItemOrderRequest,
   CustomerPriceHistoryEntry,
   Invoice,
@@ -87,10 +88,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const isAdmin = currentUser?.role === 'admin';
   const canSales = isAdmin || hasPermission('canManageSales');
   const canPurchases = isAdmin || hasPermission('canManagePurchases');
+  const canCreatePurchase = canPurchases || hasPermission('canCreatePurchase');
   const canCashOps = isAdmin || hasPermission('canManageCashboxes') || hasPermission('canManageAccounts');
-  const canTransfers = isAdmin || hasPermission('canManageTransfers') || canSales;
+  const canTransfers = isAdmin || hasPermission('canManageTransfers');
   const canCash = canCashOps || canTransfers;
-  const canAccounts = isAdmin || hasPermission('canManageAccounts') || canSales;
+  const canAccounts = isAdmin || hasPermission('canManageAccounts');
   const canInventory = isAdmin || hasPermission('canManageInventory') || canTransfers;
   const canAddCustomer = isAdmin || canSales || hasPermission('canAdd');
 
@@ -153,12 +155,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [actualDrawerCash, setActualDrawerCash] = useState<string>('');
 
   // ==================== 2. PURCHASE INVOICE STATE ====================
+  const [purEditingInvoiceId, setPurEditingInvoiceId] = useState<string | null>(null);
   const [purSupplierId, setPurSupplierId] = useState<string>('');
   const [purWarehouseId, setPurWarehouseId] = useState<string>('');
   const [purProductId, setPurProductId] = useState<string>('');
   const [purUnitName, setPurUnitName] = useState<string>('');
-  const [purQty, setPurQty] = useState<number>(1);
-  const [purPrice, setPurPrice] = useState<number>(0);
+  const [purQty, setPurQty] = useState<number | ''>('');
+  const [purPrice, setPurPrice] = useState<number | ''>('');
+  const [purDiscount, setPurDiscount] = useState<number>(0);
   const [purPaymentType, setPurPaymentType] = useState<'cash' | 'credit' | 'partial'>('cash');
   const [purPaidAmount, setPurPaidAmount] = useState<number>(0);
   const [purCashboxId, setPurCashboxId] = useState<string>(data.cashboxes[0]?.id || 'CASH-01');
@@ -176,6 +180,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     total: number;
   }>>([]);
   const [isSubmittingPurchase, setIsSubmittingPurchase] = useState(false);
+  const [purReviewOpen, setPurReviewOpen] = useState(false);
+  const [purRecipientUserId, setPurRecipientUserId] = useState('');
+  const [purListFilter, setPurListFilter] = useState<'all' | 'draft' | 'sent' | 'received' | 'rejected' | 'confirmed'>('all');
+  const [sendingPurchaseTarget, setSendingPurchaseTarget] = useState<Invoice | null>(null);
+  const [sendingRecipientUserId, setSendingRecipientUserId] = useState('');
+  const [isSendingPurchase, setIsSendingPurchase] = useState(false);
+  const [historyPurchaseTarget, setHistoryPurchaseTarget] = useState<Invoice | null>(null);
+  const [previewShopPhoto, setPreviewShopPhoto] = useState<string | null>(null);
 
   // ==================== 3. RETURNS STATE (Sales Return & Purchase Return) ====================
   const [sRetCustomerId, setSRetCustomerId] = useState('');
@@ -238,14 +250,21 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [newCustName, setNewCustName] = useState('');
   const [newCustShop, setNewCustShop] = useState('');
   const [newCustPhone, setNewCustPhone] = useState('');
+  const [newCustExtraPhones, setNewCustExtraPhones] = useState<Array<{ id: string; phone: string; label: string }>>([]);
+  const [newCustGovernorate, setNewCustGovernorate] = useState('');
   const [newCustArea, setNewCustArea] = useState('');
   const [newCustAddress, setNewCustAddress] = useState('');
   const [newCustGeo, setNewCustGeo] = useState('');
+  const [newCustShopPhoto, setNewCustShopPhoto] = useState('');
+  const [newCustNotes, setNewCustNotes] = useState('');
   const [newCustOpening, setNewCustOpening] = useState<number>(0);
   const [isLocatingCust, setIsLocatingCust] = useState(false);
+  const [isUploadingCustPhoto, setIsUploadingCustPhoto] = useState(false);
   const [custPhoneNotice, setCustPhoneNotice] = useState<{ type: 'info' | 'error'; text: string } | null>(null);
   const [custMapNotice, setCustMapNotice] = useState<string | null>(null);
   const [isSavingCustomer, setIsSavingCustomer] = useState(false);
+  const custCameraInputRef = useRef<HTMLInputElement | null>(null);
+  const custGalleryInputRef = useRef<HTMLInputElement | null>(null);
 
   const [newSupName, setNewSupName] = useState('');
   const [newSupCompany, setNewSupCompany] = useState('');
@@ -705,20 +724,42 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   };
 
   // ==================== PURCHASE INVOICE HANDLERS ====================
-  const purTotal = useMemo(() => purItems.reduce((s, i) => s + i.total, 0), [purItems]);
+  const purSubtotal = useMemo(() => purItems.reduce((s, i) => s + i.total, 0), [purItems]);
+  const purTotal = useMemo(() => Math.max(0, purSubtotal - Math.max(0, Number(purDiscount || 0))), [purSubtotal, purDiscount]);
+
+  const getPurchaseDispatchMeta = (inv: Invoice) => {
+    if (inv.status === 'cancelled') {
+      return { key: 'cancelled', label: 'ملغاة', badgeClass: 'bg-red-50 text-red-700 border border-red-200' };
+    }
+    if (inv.status === 'confirmed') {
+      return { key: 'confirmed', label: 'معتمدة ومرحّلة', badgeClass: 'bg-emerald-50 text-emerald-800 border border-emerald-200' };
+    }
+    switch (inv.dispatchStatus) {
+      case 'sent':
+        return { key: 'sent', label: 'مرسلة بانتظار الاستلام', badgeClass: 'bg-amber-50 text-amber-900 border border-amber-200' };
+      case 'received':
+        return { key: 'received', label: 'تم الاستلام (بانتظار الاعتماد)', badgeClass: 'bg-sky-50 text-sky-900 border border-sky-200' };
+      case 'rejected':
+        return { key: 'rejected', label: 'مرفوضة', badgeClass: 'bg-rose-50 text-rose-800 border border-rose-200' };
+      default:
+        return { key: 'draft', label: 'مسودة', badgeClass: 'bg-slate-100 text-slate-700 border border-slate-200' };
+    }
+  };
 
   const handleSelectPurProduct = (prodId: string) => {
     setPurProductId(prodId);
     const prod = activeProducts.find((p) => p.id === prodId);
     if (!prod) return;
     setPurUnitName(prod.baseUnit);
-    setPurPrice(prod.purchasePrice);
-    setPurQty(1);
+    setPurPrice(prod.purchasePrice > 0 ? prod.purchasePrice : '');
+    setPurQty('');
   };
 
   const handleAddPurItem = () => {
     const prod = activeProducts.find((p) => p.id === purProductId);
-    if (!prod || purQty <= 0) return;
+    const qtyNum = Number(purQty || 0);
+    if (!prod || qtyNum <= 0) return;
+    const priceNum = Math.max(0, Number(purPrice || 0));
     let factor = 1;
     if (purUnitName !== prod.baseUnit) {
       const u = prod.units.find((x) => x.name === purUnitName);
@@ -732,20 +773,56 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         barcode: prod.barcode,
         unit: purUnitName || prod.baseUnit,
         unitFactor: factor,
-        quantity: purQty,
-        unitPrice: purPrice,
-        purchasePriceAtTime: purPrice,
+        quantity: qtyNum,
+        unitPrice: priceNum,
+        purchasePriceAtTime: priceNum,
         discount: 0,
-        total: computeLineTotal(purQty, purPrice),
+        total: computeLineTotal(qtyNum, priceNum),
       },
     ]);
     setPurProductId('');
-    setPurQty(1);
-    setPurPrice(0);
+    setPurQty('');
+    setPurPrice('');
   };
 
-  const handleCreatePurchaseInvoice = async (e: React.FormEvent) => {
+  const handleStartEditPurchase = (inv: Invoice) => {
+    setPurEditingInvoiceId(inv.id);
+    setPurSupplierId(inv.supplierId || '');
+    setPurWarehouseId(inv.warehouseId || mainWarehouse?.id || '');
+    setPurItems(
+      (inv.items || []).map((it) => ({
+        productId: it.productId,
+        productName: it.productName,
+        barcode: it.barcode || '',
+        unit: it.unit,
+        unitFactor: it.unitFactor || 1,
+        quantity: it.quantity,
+        unitPrice: it.unitPrice,
+        purchasePriceAtTime: it.purchasePriceAtTime ?? it.unitPrice,
+        discount: it.discount || 0,
+        total: it.total,
+      }))
+    );
+    setPurDiscount(Number(inv.discountTotal || 0));
+    setPurPaymentType(inv.paymentType || 'cash');
+    setPurPaidAmount(Number(inv.paidAmount || 0));
+    setPurCashboxId(inv.cashboxId || data.cashboxes[0]?.id || 'CASH-01');
+    setPurNotes(inv.notes || '');
+    setPurRecipientUserId(inv.recipientUserId || '');
+    onTabChange('new-purchase');
+  };
+
+  const handleOpenPurchaseReview = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!purSupplierId || !purItems.length) {
+      setFeedback({ type: 'error', text: 'يرجى اختيار المورد وإضافة صنف واحد على الأقل.' });
+      return;
+    }
+    setFeedback(null);
+    setPurReviewOpen(true);
+  };
+
+  const handleSubmitPurchaseInvoice = async (sendNow: boolean) => {
     if (!purSupplierId || !purItems.length) {
       setFeedback({ type: 'error', text: 'يرجى اختيار المورد وإضافة صنف واحد على الأقل.' });
       return;
@@ -759,9 +836,60 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         : purPaymentType === 'credit'
         ? 0
         : Math.min(purTotal, Math.max(0, purPaidAmount));
+    const chosenRecipient = (data.purchaseReceivers || []).find((r) => r.id === purRecipientUserId);
 
     setIsSubmittingPurchase(true);
     setFeedback(null);
+
+    if (purEditingInvoiceId) {
+      const editRes = await data.editPurchaseInvoice(purEditingInvoiceId, {
+        date: new Date().toISOString().split('T')[0],
+        supplierId: purSupplierId,
+        supplierName: sup?.name || 'مورد',
+        warehouseId: whId,
+        warehouseName: wh?.name || 'المخزن الرئيسي',
+        discountTotal: Math.max(0, Number(purDiscount || 0)),
+        paidAmount: paid,
+        paymentType: purPaymentType,
+        notes: purNotes.trim() || undefined,
+        reason: 'تعديل فاتورة الشراء قبل الإرسال',
+        items: purItems,
+      });
+      if (!editRes.success) {
+        setIsSubmittingPurchase(false);
+        setFeedback({ type: 'error', text: editRes.error || 'تعذر حفظ تعديلات فاتورة الشراء' });
+        return;
+      }
+
+      if (sendNow) {
+        const sendRes = await data.sendPurchaseInvoice(purEditingInvoiceId, {
+          recipientUserId: chosenRecipient?.id || undefined,
+          recipientName: chosenRecipient?.fullName || 'الإدارة العامة',
+        });
+        setIsSubmittingPurchase(false);
+        if (!sendRes.success) {
+          setFeedback({ type: 'error', text: sendRes.error || 'تم حفظ التعديل لكن تعذر إرسال الفاتورة للإدارة' });
+          return;
+        }
+      } else {
+        setIsSubmittingPurchase(false);
+      }
+
+      setPurEditingInvoiceId(null);
+      setPurItems([]);
+      setPurDiscount(0);
+      setPurNotes('');
+      setPurReviewOpen(false);
+      setFeedback({
+        type: editRes.queuedOffline ? 'warning' : 'success',
+        text: sendNow
+          ? 'تم تحديث فاتورة الشراء وإرسالها للإدارة بانتظار الاستلام والمراجعة.'
+          : 'تم تحديث وحفظ فاتورة الشراء كمسودة دون تعديل أرصدة المخازن.',
+      });
+      onTabChange('purchases-list');
+      return;
+    }
+
     const res = await data.createPurchaseInvoice({
       date: new Date().toISOString().split('T')[0],
       supplierId: purSupplierId,
@@ -771,8 +899,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       warehouseId: whId,
       warehouseName: wh?.name || 'المخزن الرئيسي',
       items: purItems,
-      subtotal: purTotal,
-      discountTotal: 0,
+      subtotal: purSubtotal,
+      discountTotal: Math.max(0, Number(purDiscount || 0)),
       taxTotal: 0,
       grandTotal: purTotal,
       paidAmount: paid,
@@ -780,18 +908,27 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       paymentType: purPaymentType,
       paymentMethod: 'cash',
       cashboxId: purCashboxId,
-      status: 'confirmed',
+      status: 'draft',
+      dispatchStatus: sendNow ? 'sent' : 'draft',
+      sendNow,
+      recipientUserId: sendNow ? chosenRecipient?.id : undefined,
+      recipientName: sendNow ? (chosenRecipient?.fullName || 'الإدارة العامة') : undefined,
+      isRepPurchase: true,
       notes: purNotes.trim() || undefined,
     });
     setIsSubmittingPurchase(false);
     if (res.success) {
       setPurItems([]);
+      setPurDiscount(0);
       setPurNotes('');
+      setPurReviewOpen(false);
       setFeedback({
         type: res.queuedOffline ? 'warning' : 'success',
         text: res.queuedOffline
-          ? `تم حفظ فاتورة الشراء (${res.invoice?.invoiceNumber || ''}) محلياً بانتظار المزامنة.`
-          : `تم تسجيل فاتورة الشراء (${res.invoice?.invoiceNumber || ''}) بنجاح.`,
+          ? `تم حفظ فاتورة الشراء كمسودة (${res.invoice?.invoiceNumber || ''}) محلياً للمزامنة عبر REFRESH.`
+          : sendNow
+          ? `تم إرسال فاتورة الشراء (${res.invoice?.invoiceNumber || ''}) للإدارة بانتظار الاستلام والاعتماد.`
+          : `تم حفظ فاتورة الشراء كمسودة (${res.invoice?.invoiceNumber || ''}) دون ترحيل للمخزون.`,
       });
       onTabChange('purchases-list');
     } else {
@@ -991,6 +1128,20 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   };
 
   // ==================== NEW CUSTOMER & SUPPLIER HANDLERS ====================
+  const handleCustPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsUploadingCustPhoto(true);
+      const dataUrl = await compressImageFileToDataUrl(file);
+      setNewCustShopPhoto(dataUrl);
+    } catch (err: any) {
+      setFeedback({ type: 'error', text: err?.message || 'تعذر معالجة صورة المحل' });
+    } finally {
+      setIsUploadingCustPhoto(false);
+    }
+  };
+
   const handleCaptureCustLocation = async () => {
     setIsLocatingCust(true);
     try {
@@ -1004,7 +1155,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           if (rev.ok) {
             setNewCustAddress((prev) => prev.trim() || rev.address);
             if (rev.area) setNewCustArea((prev) => prev.trim() || rev.area || '');
-            setFeedback({ type: 'success', text: 'تم التقاط إحداثيات GPS وجلب العنوان تلقائياً.' });
+            if (rev.governorate) setNewCustGovernorate((prev) => prev.trim() || rev.governorate || '');
+            setFeedback({ type: 'success', text: 'تم التقاط إحداثيات GPS وجلب العنوان والمحافظة تلقائياً.' });
             return;
           }
           setCustMapNotice(rev.error);
@@ -1022,10 +1174,26 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
   const handleSaveNewCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCustName.trim() || !newCustPhone.trim()) {
-      setFeedback({ type: 'error', text: 'يرجى إدخال اسم العميل ورقم الهاتف.' });
+    const primaryPhoneClean = newCustPhone.trim();
+    const extraClean = newCustExtraPhones
+      .map((p, idx) => ({
+        id: p.id || `ph-${idx + 1}`,
+        phone: p.phone.trim(),
+        label: p.label.trim() || 'إضافي',
+        isPrimary: false,
+      }))
+      .filter((p) => p.phone && p.phone !== primaryPhoneClean);
+
+    if (!newCustName.trim() || !primaryPhoneClean) {
+      setFeedback({ type: 'error', text: 'يرجى إدخال اسم العميل ورقم الهاتف الرئيسي.' });
       return;
     }
+
+    const consolidatedPhones: CustomerPhoneEntry[] = [
+      { id: 'ph-primary', phone: primaryPhoneClean, label: 'رئيسي', isPrimary: true },
+      ...extraClean,
+    ];
+
     setIsSavingCustomer(true);
     setFeedback(null);
     try {
@@ -1033,10 +1201,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         code: `C-${Date.now().toString().slice(-5)}`,
         name: newCustName.trim(),
         shopName: newCustShop.trim() || newCustName.trim(),
-        phone: newCustPhone.trim(),
+        phone: primaryPhoneClean,
+        secondaryPhone: extraClean[0]?.phone || undefined,
+        phones: consolidatedPhones,
+        governorate: newCustGovernorate.trim() || undefined,
         address: newCustAddress.trim() || newCustArea.trim() || '-',
         area: newCustArea.trim() || undefined,
         geoCoordinates: newCustGeo.trim() || undefined,
+        photo: newCustShopPhoto || undefined,
+        shopPhoto: newCustShopPhoto || undefined,
+        notes: newCustNotes.trim() || undefined,
         openingBalance: Number(newCustOpening) || 0,
         status: 'active',
         allowedRepIds: rep ? [rep.id] : [],
@@ -1044,12 +1218,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setNewCustName('');
       setNewCustShop('');
       setNewCustPhone('');
+      setNewCustExtraPhones([]);
+      setNewCustGovernorate('');
       setNewCustArea('');
       setNewCustAddress('');
       setNewCustGeo('');
+      setNewCustShopPhoto('');
+      setNewCustNotes('');
       setNewCustOpening(0);
+      if (custCameraInputRef.current) custCameraInputRef.current.value = '';
+      if (custGalleryInputRef.current) custGalleryInputRef.current.value = '';
       setInvCustomerId(cust.id);
-      setFeedback({ type: 'success', text: `تم إضافة العميل (${cust.name}) بنجاح.` });
+      setFeedback({ type: 'success', text: `تم إضافة العميل (${cust.shopName || cust.name}) بجميع بياناته وصورته بنجاح.` });
       onTabChange('customers');
     } catch (err: any) {
       setFeedback({ type: 'error', text: err?.message || 'تعذر إضافة العميل' });
@@ -1728,7 +1908,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       key: 'new-purchase',
       label: 'فاتورة شراء',
       icon: ShoppingBag,
-      allowed: canPurchases,
+      allowed: canCreatePurchase,
       tone: 'bg-indigo-50 text-indigo-900 border-indigo-200',
     },
     {
@@ -1750,7 +1930,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       key: 'cash-deposit',
       label: 'إيداع نقدي',
       icon: ArrowDownCircle,
-      allowed: canCashOps || canSales,
+      allowed: canCashOps || canAccounts || canSales,
       tone: 'bg-emerald-50 text-emerald-900 border-emerald-200',
     },
     {
@@ -1786,7 +1966,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       key: 'new-supplier',
       label: 'مورد جديد',
       icon: Building2,
-      allowed: canPurchases,
+      allowed: canCreatePurchase,
       tone: 'bg-purple-50 text-purple-900 border-purple-200',
     },
     // Row 4
@@ -2253,10 +2433,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       {activeTab === 'more' && (
         <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs divide-y divide-slate-100 text-xs">
           {[
-            { key: 'purchases-list' as RepTabKey, label: 'فواتير الشراء', icon: ShoppingBag, allowed: canPurchases },
+            { key: 'purchases-list' as RepTabKey, label: 'فواتير الشراء', icon: ShoppingBag, allowed: canCreatePurchase },
             { key: 'sales-returns-list' as RepTabKey, label: 'مرتجع البيع', icon: RotateCcw, allowed: canSales },
             { key: 'invoices' as RepTabKey, label: 'فواتير البيع', icon: FileText, allowed: canSales },
-            { key: 'customers' as RepTabKey, label: 'الحسابات والعملاء', icon: Users, allowed: canAccounts },
+            { key: 'customers' as RepTabKey, label: 'الحسابات والعملاء', icon: Users, allowed: canAccounts || canSales },
             { key: 'custody' as RepTabKey, label: 'المخزن والعهدة', icon: WarehouseIcon, allowed: canInventory },
             { key: 'purchase-returns-list' as RepTabKey, label: 'مرتجع الشراء', icon: RotateCcw, allowed: canPurchases },
             { key: 'orders' as RepTabKey, label: 'الطلبات والتسليمات', icon: Truck, allowed: canSales },
@@ -2365,16 +2545,46 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   >
                     <div
                       onClick={() => setSelectedCustomerDetail(c)}
-                      className="flex items-start justify-between gap-2 cursor-pointer"
+                      className="flex items-start justify-between gap-2.5 cursor-pointer"
                     >
-                      <div>
-                        <h3 className="font-black text-sm text-slate-900 flex items-center gap-1.5">
-                          <span>{c.shopName || c.name}</span>
-                          <Eye className="w-3.5 h-3.5 text-blue-700 shrink-0" />
-                        </h3>
-                        <p className="text-[11px] text-slate-500">
-                          {c.name} · {c.code} {c.area ? `· ${c.area}` : ''}
-                        </p>
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        {(c.shopPhoto || c.photo) ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPreviewShopPhoto(c.shopPhoto || c.photo || null);
+                            }}
+                            className="shrink-0 cursor-pointer"
+                            title="عرض صورة المحل"
+                          >
+                            <img
+                              src={c.shopPhoto || c.photo}
+                              alt={c.shopName || c.name}
+                              className="w-12 h-12 rounded-xl object-cover border border-slate-200 bg-slate-50"
+                            />
+                          </button>
+                        ) : (
+                          <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-800 shrink-0">
+                            <Store className="w-5 h-5" />
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <h3 className="font-black text-sm text-slate-900 flex items-center gap-1.5 truncate">
+                            <span className="truncate">{c.shopName || c.name}</span>
+                            <Eye className="w-3.5 h-3.5 text-blue-700 shrink-0" />
+                          </h3>
+                          <p className="text-[11px] text-slate-500 truncate">
+                            {c.name} · {c.code}
+                            {c.governorate ? ` · ${c.governorate}` : ''}
+                            {c.area ? ` · ${c.area}` : ''}
+                          </p>
+                          {Array.isArray(c.phones) && c.phones.length > 1 && (
+                            <span className="inline-block mt-0.5 text-[10px] font-bold text-teal-800 bg-teal-50 border border-teal-200 rounded-md px-1.5 py-0.5">
+                              {c.phones.length} أرقام مسجلة
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="text-left shrink-0">
                         <span className="block text-[10px] text-slate-500">
@@ -2869,16 +3079,40 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
       {/* ==================== NEW PURCHASE INVOICE ==================== */}
       {activeTab === 'new-purchase' && (
-        <form onSubmit={handleCreatePurchaseInvoice} className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-black text-slate-900">إنشاء فاتورة مشتريات جديدة</h3>
-            <button
-              type="button"
-              onClick={() => onTabChange('new-supplier')}
-              className="min-h-[40px] px-3 rounded-xl bg-purple-50 text-purple-900 border border-purple-200 font-bold cursor-pointer"
-            >
-              + مورد جديد
-            </button>
+        <form onSubmit={handleOpenPurchaseReview} className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <h3 className="text-sm font-black text-slate-900">
+                {purEditingInvoiceId ? 'تعديل فاتورة مشتريات قبل الإرسال' : 'إنشاء فاتورة مشتريات جديدة'}
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                لا يتم تعديل المخزن أو حسابات المورد حتى استلام الإدارة واعتمادها للفاتورة
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {purEditingInvoiceId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPurEditingInvoiceId(null);
+                    setPurItems([]);
+                    setPurDiscount(0);
+                    setPurNotes('');
+                    onTabChange('purchases-list');
+                  }}
+                  className="min-h-[40px] px-3 rounded-xl bg-slate-100 text-slate-700 font-bold cursor-pointer"
+                >
+                  إلغاء التعديل
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => onTabChange('new-supplier')}
+                className="min-h-[40px] px-3 rounded-xl bg-purple-50 text-purple-900 border border-purple-200 font-bold cursor-pointer"
+              >
+                + مورد جديد
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2940,6 +3174,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   min={0.001}
                   value={purQty}
                   onChange={setPurQty}
+                  placeholder="الكمية"
                   ariaLabel="كمية الشراء"
                   inputClassName="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
                 />
@@ -2947,8 +3182,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   type="number"
                   step="0.5"
                   min={0}
+                  placeholder="سعر الشراء"
                   value={purPrice}
-                  onChange={(e) => setPurPrice(Math.max(0, Number(e.target.value)))}
+                  onChange={(e) => setPurPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                   className="min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
                 />
               </div>
@@ -3033,16 +3269,28 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </select>
           )}
 
-          <input
-            type="text"
-            value={purNotes}
-            onChange={(e) => setPurNotes(e.target.value)}
-            placeholder="ملاحظات فاتورة الشراء..."
-            className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
-          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <input
+              type="number"
+              min={0}
+              max={purSubtotal}
+              step="0.5"
+              value={purDiscount || ''}
+              onChange={(e) => setPurDiscount(Math.max(0, Number(e.target.value)))}
+              placeholder={`الخصم (${data.settings.currency}) - اختياري`}
+              className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-mono font-bold"
+            />
+            <input
+              type="text"
+              value={purNotes}
+              onChange={(e) => setPurNotes(e.target.value)}
+              placeholder="ملاحظات فاتورة الشراء..."
+              className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+            />
+          </div>
 
           <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between font-black">
-            <span>إجمالي فاتورة الشراء:</span>
+            <span>صافي إجمالي فاتورة الشراء:</span>
             <strong className="font-mono text-indigo-950">
               {purTotal.toLocaleString()} {data.settings.currency}
             </strong>
@@ -3051,9 +3299,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           <button
             type="submit"
             disabled={isSubmittingPurchase || purItems.length === 0}
-            className="w-full min-h-[48px] rounded-2xl bg-indigo-900 hover:bg-indigo-950 text-white font-black disabled:opacity-50 cursor-pointer"
+            className="w-full min-h-[48px] rounded-2xl bg-indigo-900 hover:bg-indigo-950 text-white font-black disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
           >
-            {isSubmittingPurchase ? 'جاري الحفظ...' : 'اعتماد وحفظ فاتورة الشراء'}
+            <Eye className="w-4 h-4" />
+            <span>{isSubmittingPurchase ? 'جاري المعالجة...' : 'مراجعة وإرسال الفاتورة'}</span>
           </button>
         </form>
       )}
@@ -3513,7 +3762,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         </form>
       )}
 
-      {/* ==================== NEW CUSTOMER (with Safe Call & Maps Icon Buttons) ==================== */}
+      {/* ==================== NEW CUSTOMER (10-Part Store Profile, Multi-Phone, Camera/Gallery & GPS) ==================== */}
       {activeTab === 'new-customer' && (() => {
         const helper = renderPhoneAndMapsActionRow(
           newCustPhone,
@@ -3523,20 +3772,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           setCustMapNotice
         );
         return (
-          <form onSubmit={handleSaveNewCustomer} className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs">
-            <h3 className="text-sm font-black text-slate-900">إضافة عميل جديد</h3>
+          <form onSubmit={handleSaveNewCustomer} className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3.5 text-xs">
+            <h3 className="text-sm font-black text-slate-900">إضافة عميل / محل جديد</h3>
+
+            {/* 1. Shop Name & 2. Customer Name */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">اسم العميل *</label>
-                <input
-                  type="text"
-                  required
-                  value={newCustName}
-                  onChange={(e) => setNewCustName(e.target.value)}
-                  placeholder="الاسم الكامل للعميل"
-                  className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold"
-                />
-              </div>
               <div>
                 <label className="block font-bold text-slate-700 mb-1">اسم المحل / النشاط</label>
                 <input
@@ -3547,57 +3787,83 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold"
                 />
               </div>
-            </div>
-
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">رقم الهاتف *</label>
-              <div className="flex items-center gap-2">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">اسم العميل / المسؤول *</label>
                 <input
-                  type="tel"
+                  type="text"
                   required
-                  value={newCustPhone}
-                  onChange={(e) => {
-                    setNewCustPhone(e.target.value);
-                    if (custPhoneNotice) setCustPhoneNotice(null);
-                  }}
-                  placeholder="01012345678"
-                  className="flex-1 min-h-[44px] rounded-xl border border-slate-300 px-3 font-mono font-bold"
+                  value={newCustName}
+                  onChange={(e) => setNewCustName(e.target.value)}
+                  placeholder="الاسم الكامل للعميل"
+                  className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold"
                 />
-                {helper.isPhoneValid ? (
-                  <a
-                    href={`tel:${helper.cleanedPhone}`}
-                    onClick={() =>
-                      setCustPhoneNotice({ type: 'info', text: `جاري الاتصال بالرقم (${helper.cleanedPhone}).` })
-                    }
-                    className="min-h-[44px] px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold inline-flex items-center gap-1.5 shrink-0"
-                    title="اتصال هاتفي مباشر"
-                  >
-                    <Phone className="w-4 h-4" />
-                    <span>اتصال</span>
-                  </a>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setCustPhoneNotice({ type: 'error', text: 'يرجى إدخال رقم هاتف صحيح (7 أرقام على الأقل) أولاً.' })
-                    }
-                    className="min-h-[44px] px-3 rounded-xl bg-slate-100 text-slate-600 border border-slate-300 font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer"
-                  >
-                    <Phone className="w-4 h-4" />
-                    <span>اتصال</span>
-                  </button>
-                )}
               </div>
-              {custPhoneNotice && (
-                <p className={`text-[11px] font-bold mt-1 ${custPhoneNotice.type === 'error' ? 'text-red-600' : 'text-emerald-700'}`}>
-                  {custPhoneNotice.text}
-                </p>
-              )}
             </div>
 
+            {/* 3. Shop Photo (Camera + Gallery + Preview + Replace/Delete) */}
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+              <label className="block font-black text-slate-800">صورة المحل / الواجهة</label>
+              <div className="flex items-center gap-3">
+                <div className="w-20 h-20 rounded-2xl border-2 border-slate-300 bg-white overflow-hidden flex items-center justify-center shrink-0">
+                  {newCustShopPhoto ? (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewShopPhoto(newCustShopPhoto)}
+                      className="w-full h-full cursor-pointer"
+                      title="عرض الصورة"
+                    >
+                      <img src={newCustShopPhoto} alt="صورة المحل" className="w-full h-full object-cover" />
+                    </button>
+                  ) : (
+                    <Store className="w-7 h-7 text-slate-300" />
+                  )}
+                </div>
+                <div className="flex-1 flex flex-wrap gap-2">
+                  <label className="min-h-[40px] px-3 rounded-xl bg-blue-900 text-white font-bold inline-flex items-center gap-1.5 cursor-pointer">
+                    <Camera className="w-4 h-4" />
+                    <span>{newCustShopPhoto ? 'التقاط صورة جديدة' : 'التقاط بالكاميرا'}</span>
+                    <input
+                      ref={custCameraInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleCustPhotoUpload}
+                      className="hidden"
+                    />
+                  </label>
+                  <label className="min-h-[40px] px-3 rounded-xl bg-white text-slate-800 border border-slate-300 font-bold inline-flex items-center gap-1.5 cursor-pointer">
+                    <Upload className="w-4 h-4" />
+                    <span>من المعرض</span>
+                    <input
+                      ref={custGalleryInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleCustPhotoUpload}
+                      className="hidden"
+                    />
+                  </label>
+                  {newCustShopPhoto && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewCustShopPhoto('');
+                        if (custCameraInputRef.current) custCameraInputRef.current.value = '';
+                        if (custGalleryInputRef.current) custGalleryInputRef.current.value = '';
+                      }}
+                      className="min-h-[40px] px-3 rounded-xl bg-red-50 text-red-700 border border-red-200 font-bold cursor-pointer"
+                    >
+                      حذف الصورة
+                    </button>
+                  )}
+                </div>
+              </div>
+              {isUploadingCustPhoto && <p className="text-[11px] font-bold text-blue-900">جاري ضغط وتجهيز الصورة...</p>}
+            </div>
+
+            {/* 4. Address + adjacent GPS Icon Button + Maps Preview */}
             <div>
               <label className="block font-bold text-slate-700 mb-1">العنوان التفصيلي</label>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <input
                   type="text"
                   value={newCustAddress}
@@ -3608,69 +3874,215 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   placeholder="الشارع، المنطقة، علامة مميزة..."
                   className="flex-1 min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold"
                 />
-                {helper.mapQuery ? (
+                <button
+                  type="button"
+                  disabled={isLocatingCust}
+                  onClick={handleCaptureCustLocation}
+                  className="min-h-[44px] px-3 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer disabled:opacity-50"
+                  title="تحديد الموقع الحالي GPS وجلب العنوان تلقائياً"
+                >
+                  <MapPin className="w-4 h-4" />
+                  <span>{isLocatingCust ? 'تحديد...' : 'GPS'}</span>
+                </button>
+                {helper.mapQuery && (
                   <a
                     href={helper.mapsHref}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="min-h-[44px] px-3 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1.5 shrink-0"
+                    className="min-h-[44px] px-3 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1 shrink-0"
                     title="فتح على خرائط Google"
                   >
-                    <MapPin className="w-4 h-4 text-red-600" />
-                    <span>خريطة</span>
+                    <ExternalLink className="w-4 h-4" />
                   </a>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setCustMapNotice('يرجى كتابة العنوان أو تحديد إحداثيات GPS أولاً لفتح الخريطة.')}
-                    className="min-h-[44px] px-3 rounded-xl bg-slate-100 text-slate-600 border border-slate-300 font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer"
-                  >
-                    <MapPin className="w-4 h-4" />
-                    <span>خريطة</span>
-                  </button>
                 )}
               </div>
+              {newCustGeo && (
+                <p className="text-[10px] font-mono text-emerald-700 mt-1" dir="ltr">
+                  GPS: {newCustGeo}
+                </p>
+              )}
               {custMapNotice && <p className="text-[11px] font-bold text-red-600 mt-1">{custMapNotice}</p>}
             </div>
 
+            {/* 5. Governorate & Area */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">المحافظة</label>
+                <input
+                  type="text"
+                  value={newCustGovernorate}
+                  onChange={(e) => setNewCustGovernorate(e.target.value)}
+                  placeholder="مثال: القاهرة / الجيزة / الغربية"
+                  className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-semibold"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">المنطقة / خط السير</label>
+                <input
+                  type="text"
+                  value={newCustArea}
+                  onChange={(e) => setNewCustArea(e.target.value)}
+                  placeholder="المنطقة / الحي / خط السير"
+                  className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-semibold"
+                />
+              </div>
+            </div>
+
+            {/* 6. Primary Phone + 7. Unlimited Additional Phones */}
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">رقم التليفون الرئيسي *</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="tel"
+                    required
+                    value={newCustPhone}
+                    onChange={(e) => {
+                      setNewCustPhone(e.target.value);
+                      if (custPhoneNotice) setCustPhoneNotice(null);
+                    }}
+                    placeholder="01012345678"
+                    className="flex-1 min-h-[44px] rounded-xl border border-slate-300 px-3 font-mono font-bold bg-white"
+                  />
+                  {helper.isPhoneValid ? (
+                    <a
+                      href={`tel:${helper.cleanedPhone}`}
+                      onClick={() =>
+                        setCustPhoneNotice({ type: 'info', text: `جاري الاتصال بالرقم (${helper.cleanedPhone}).` })
+                      }
+                      className="min-h-[44px] px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold inline-flex items-center gap-1.5 shrink-0"
+                      title="اتصال هاتفي مباشر"
+                    >
+                      <Phone className="w-4 h-4" />
+                      <span>اتصال</span>
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCustPhoneNotice({ type: 'error', text: 'يرجى إدخال رقم هاتف صحيح (7 أرقام على الأقل) أولاً.' })
+                      }
+                      className="min-h-[44px] px-3 rounded-xl bg-slate-100 text-slate-600 border border-slate-300 font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer"
+                    >
+                      <Phone className="w-4 h-4" />
+                      <span>اتصال</span>
+                    </button>
+                  )}
+                </div>
+                {custPhoneNotice && (
+                  <p className={`text-[11px] font-bold mt-1 ${custPhoneNotice.type === 'error' ? 'text-red-600' : 'text-emerald-700'}`}>
+                    {custPhoneNotice.text}
+                  </p>
+                )}
+              </div>
+
+              {newCustExtraPhones.length > 0 && (
+                <div className="space-y-2">
+                  <label className="block font-bold text-slate-600 text-[11px]">أرقام تليفون إضافية:</label>
+                  {newCustExtraPhones.map((extra, idx) => {
+                    const cleanEx = extra.phone.replace(/[^\d+]/g, '');
+                    const validEx = cleanEx.replace(/\D/g, '').length >= 7;
+                    return (
+                      <div key={extra.id || idx} className="flex flex-wrap sm:flex-nowrap items-center gap-1.5">
+                        <input
+                          type="tel"
+                          value={extra.phone}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setNewCustExtraPhones((prev) => prev.map((row, i) => (i === idx ? { ...row, phone: v } : row)));
+                          }}
+                          placeholder="رقم إضافي..."
+                          className="flex-1 min-w-[120px] min-h-[40px] rounded-xl border border-slate-300 px-3 font-mono font-bold bg-white"
+                        />
+                        <select
+                          value={extra.label}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setNewCustExtraPhones((prev) => prev.map((row, i) => (i === idx ? { ...row, label: v } : row)));
+                          }}
+                          className="min-h-[40px] rounded-xl border border-slate-300 px-2 font-bold bg-white"
+                        >
+                          <option value="موبايل">موبايل</option>
+                          <option value="محل">تليفون المحل</option>
+                          <option value="واتساب">واتساب</option>
+                          <option value="إضافي">إضافي</option>
+                        </select>
+                        {validEx && (
+                          <a
+                            href={`tel:${cleanEx}`}
+                            className="min-h-[40px] px-2.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center"
+                            title="اتصال"
+                          >
+                            <Phone className="w-4 h-4" />
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const val = extra.phone.trim();
+                            if (!val) return;
+                            const prevPrimary = newCustPhone.trim();
+                            setNewCustPhone(val);
+                            setNewCustExtraPhones((prev) =>
+                              prev
+                                .map((row, i) => (i === idx ? { ...row, phone: prevPrimary } : row))
+                                .filter((row) => row.phone.trim() !== '')
+                            );
+                          }}
+                          className="min-h-[40px] px-2.5 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 text-[10px] font-bold cursor-pointer shrink-0"
+                        >
+                          رئيسي
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setNewCustExtraPhones((prev) => prev.filter((_, i) => i !== idx))}
+                          className="min-h-[40px] px-2.5 rounded-xl bg-red-50 text-red-600 border border-red-200 cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() =>
+                  setNewCustExtraPhones((prev) => [
+                    ...prev,
+                    { id: `ph-${Date.now()}-${prev.length}`, phone: '', label: 'موبايل' },
+                  ])
+                }
+                className="min-h-[38px] px-3 rounded-xl bg-white hover:bg-blue-50 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ إضافة رقم تليفون آخر</span>
+              </button>
+            </div>
+
+            {/* 8. Notes & 9. Opening Balance (optional) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input
                 type="text"
-                value={newCustArea}
-                onChange={(e) => setNewCustArea(e.target.value)}
-                placeholder="المنطقة / خط السير"
+                value={newCustNotes}
+                onChange={(e) => setNewCustNotes(e.target.value)}
+                placeholder="ملاحظات عن المحل أو المواعيد (اختياري)"
                 className="min-h-[42px] rounded-xl border border-slate-300 px-3"
               />
               <input
                 type="number"
                 value={newCustOpening || ''}
                 onChange={(e) => setNewCustOpening(Number(e.target.value))}
-                placeholder={`رصيد افتتاحي (${data.settings.currency})`}
+                placeholder={`رصيد افتتاحي (${data.settings.currency}) - اختياري`}
                 className="min-h-[42px] rounded-xl border border-slate-300 px-3 font-mono font-bold"
               />
             </div>
 
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={newCustGeo}
-                onChange={(e) => setNewCustGeo(e.target.value)}
-                placeholder="إحداثيات GPS (اختياري)"
-                className="flex-1 min-h-[42px] rounded-xl border border-slate-300 px-3 font-mono"
-              />
-              <button
-                type="button"
-                disabled={isLocatingCust}
-                onClick={handleCaptureCustLocation}
-                className="min-h-[42px] px-3 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 font-bold cursor-pointer shrink-0"
-              >
-                {isLocatingCust ? 'تحديد...' : 'موقعي GPS'}
-              </button>
-            </div>
-
+            {/* 10. Save Customer */}
             <button
               type="submit"
-              disabled={isSavingCustomer}
+              disabled={isSavingCustomer || isUploadingCustPhoto}
               className="w-full min-h-[48px] rounded-2xl bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
             >
               {isSavingCustomer ? 'جاري الحفظ...' : 'حفظ العميل الجديد'}
@@ -4151,45 +4563,143 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         </div>
       )}
 
-      {/* ==================== PURCHASES LIST & RETURNS LISTS (FROM "المزيد") ==================== */}
-      {activeTab === 'purchases-list' && (
+      {/* ==================== PURCHASES LIST & DISPATCH TRACKING (FROM "المزيد") ==================== */}
+      {activeTab === 'purchases-list' && (() => {
+        const filteredPurchases = myPurchases.filter((inv) => {
+          if (purListFilter === 'all') return true;
+          return getPurchaseDispatchMeta(inv).key === purListFilter;
+        });
+        return (
         <div className="space-y-3 text-xs">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-black text-slate-900">فواتير الشراء ({myPurchases.length})</h3>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <h3 className="text-sm font-black text-slate-900">فواتير الشراء ({filteredPurchases.length})</h3>
             <button
               type="button"
-              onClick={() => onTabChange('new-purchase')}
+              onClick={() => {
+                setPurEditingInvoiceId(null);
+                onTabChange('new-purchase');
+              }}
               className="min-h-[40px] px-3 rounded-xl bg-indigo-900 text-white font-bold cursor-pointer"
             >
               + فاتورة شراء
             </button>
           </div>
-          {myPurchases.length === 0 ? (
+
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              { id: 'all' as const, label: 'الكل' },
+              { id: 'draft' as const, label: 'مسودة' },
+              { id: 'sent' as const, label: 'مرسلة' },
+              { id: 'received' as const, label: 'تم الاستلام' },
+              { id: 'rejected' as const, label: 'مرفوضة' },
+              { id: 'confirmed' as const, label: 'معتمدة' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setPurListFilter(tab.id)}
+                className={`px-3 py-1.5 rounded-xl font-bold border cursor-pointer ${
+                  purListFilter === tab.id
+                    ? 'bg-indigo-900 text-white border-indigo-900'
+                    : 'bg-white text-slate-700 border-slate-200'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {filteredPurchases.length === 0 ? (
             <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center text-slate-400">
-              لا توجد فواتير مشتريات مسجلة.
+              لا توجد فواتير مشتريات في هذا التصنيف.
             </div>
           ) : (
-            myPurchases.map((inv) => (
-              <div key={inv.id} className="bg-white rounded-2xl border border-slate-200 p-4 flex items-center justify-between">
-                <div>
-                  <span className="font-mono font-black text-indigo-950">{inv.invoiceNumber}</span>
-                  <p className="text-[11px] text-slate-500">{inv.supplierName} · {inv.date}</p>
+            filteredPurchases.map((inv) => {
+              const meta = getPurchaseDispatchMeta(inv);
+              const canSendOrEdit = inv.status === 'draft' && (meta.key === 'draft' || meta.key === 'rejected');
+              return (
+              <div key={inv.id} className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono font-black text-indigo-950">{inv.invoiceNumber}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${meta.badgeClass}`}>
+                        {meta.label}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 mt-0.5">
+                      {inv.supplierName} · {inv.date} · {inv.warehouseName}
+                    </p>
+                  </div>
+                  <strong className="font-mono text-sm text-slate-900 shrink-0">
+                    {inv.grandTotal.toLocaleString()} {data.settings.currency}
+                  </strong>
                 </div>
-                <div className="flex items-center gap-2">
-                  <strong className="font-mono text-slate-900">{inv.grandTotal.toLocaleString()} {data.settings.currency}</strong>
+
+                {inv.recipientName && (
+                  <p className="text-[11px] text-slate-600">
+                    المستلم الموجه إليه: <strong className="text-slate-800">{inv.recipientName}</strong>
+                  </p>
+                )}
+                {inv.receivedBy && (
+                  <p className="text-[11px] text-sky-800 font-bold">
+                    تم الاستلام بواسطة: {inv.receivedBy}
+                    {inv.receivedAt ? ` (${new Date(inv.receivedAt).toLocaleString('ar-EG')})` : ''}
+                  </p>
+                )}
+                {inv.dispatchStatus === 'rejected' && inv.rejectionReason && (
+                  <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-[11px]">
+                    <strong>سبب الرفض ({inv.rejectedBy || 'الإدارة'}):</strong> {inv.rejectionReason}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  {canSendOrEdit && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSendingPurchaseTarget(inv);
+                          setSendingRecipientUserId(inv.recipientUserId || '');
+                        }}
+                        className="min-h-[38px] px-3 rounded-xl bg-indigo-900 text-white font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>إرسال للإدارة</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleStartEditPurchase(inv)}
+                        className="min-h-[38px] px-3 rounded-xl bg-amber-50 text-amber-900 border border-amber-200 font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                        <span>تعديل</span>
+                      </button>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setHistoryPurchaseTarget(inv)}
+                    className="min-h-[38px] px-3 rounded-xl bg-slate-100 text-slate-800 font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <History className="w-3.5 h-3.5" />
+                    <span>سجل الحالات</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => exportInvoiceDocument(inv)}
-                    className="min-h-[40px] px-3 rounded-xl bg-slate-100 text-slate-800 font-bold cursor-pointer"
+                    className="min-h-[38px] px-3 rounded-xl bg-slate-100 text-slate-800 font-bold cursor-pointer"
                   >
                     PDF
                   </button>
                 </div>
               </div>
-            ))
+              );
+            })
           )}
         </div>
-      )}
+        );
+      })()}
 
       {activeTab === 'sales-returns-list' && (
         <div className="space-y-3 text-xs">
@@ -5028,8 +5538,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         const latestPaymentTx = (data.financialTransactions || []).find(
           (tx) => tx.partyId === c.id || tx.notes?.includes(c.name)
         );
-        const cleanedPhone = String(c.phone || '').replace(/[^\d+]/g, '');
-        const hasValidPhone = cleanedPhone.replace(/\D/g, '').length >= 7;
+        const allPhones: CustomerPhoneEntry[] =
+          Array.isArray(c.phones) && c.phones.length > 0
+            ? c.phones
+            : [
+                ...(c.phone ? [{ id: 'p-1', phone: c.phone, label: 'رئيسي', isPrimary: true }] : []),
+                ...(c.secondaryPhone ? [{ id: 'p-2', phone: c.secondaryPhone, label: 'إضافي', isPrimary: false }] : []),
+              ];
+        const parsedMap = parseLatLngCoords(c.geoCoordinates || '');
         const mapRaw = (c.geoCoordinates || c.address || '').trim();
         const hasValidMap = Boolean(mapRaw && mapRaw !== '-');
         const mapsHref =
@@ -5038,21 +5554,46 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapRaw)}`;
         return (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
-            <div className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 max-h-[85vh] flex flex-col gap-3 text-xs pb-safe">
+            <div className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 max-h-[88vh] overflow-y-auto flex flex-col gap-3 text-xs pb-safe">
               <div className="flex items-start justify-between gap-2 border-b pb-3">
-                <div>
-                  <h4 className="font-black text-base text-slate-900">{c.shopName || c.name}</h4>
-                  <p className="text-slate-500">
-                    {c.name} · {c.code} {c.area ? `· ${c.area}` : ''}
-                  </p>
-                  {c.address && c.address !== '-' && (
-                    <p className="text-[11px] text-slate-600 mt-0.5">{c.address}</p>
+                <div className="flex items-start gap-3">
+                  {(c.shopPhoto || c.photo) ? (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewShopPhoto(c.shopPhoto || c.photo || null)}
+                      className="shrink-0 cursor-pointer"
+                      title="عرض صورة المحل بالحجم الكامل"
+                    >
+                      <img
+                        src={c.shopPhoto || c.photo}
+                        alt={c.shopName || c.name}
+                        className="w-16 h-16 rounded-2xl object-cover border border-slate-200 shadow-xs"
+                      />
+                    </button>
+                  ) : (
+                    <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-800 shrink-0">
+                      <Store className="w-7 h-7" />
+                    </div>
                   )}
+                  <div>
+                    <h4 className="font-black text-base text-slate-900">{c.shopName || c.name}</h4>
+                    <p className="text-slate-500">
+                      {c.name} · {c.code}
+                      {c.governorate ? ` · ${c.governorate}` : ''}
+                      {c.area ? ` · ${c.area}` : ''}
+                    </p>
+                    {c.address && c.address !== '-' && (
+                      <p className="text-[11px] text-slate-600 mt-0.5">{c.address}</p>
+                    )}
+                    {c.notes && (
+                      <p className="text-[11px] text-slate-500 mt-0.5">{c.notes}</p>
+                    )}
+                  </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setSelectedCustomerDetail(null)}
-                  className="min-h-[38px] px-3 rounded-xl bg-slate-100 font-bold text-slate-700 cursor-pointer"
+                  className="min-h-[38px] px-3 rounded-xl bg-slate-100 font-bold text-slate-700 cursor-pointer shrink-0"
                 >
                   إغلاق
                 </button>
@@ -5082,27 +5623,25 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               </div>
 
               <div className="flex flex-wrap gap-2">
-                {hasValidPhone && (
-                  <a
-                    href={`tel:${cleanedPhone}`}
-                    className="min-h-[42px] px-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono font-bold inline-flex items-center gap-1.5"
-                  >
-                    <Phone className="w-4 h-4" />
-                    <span>{c.phone}</span>
-                  </a>
-                )}
-                {(() => {
-                  const cleanedSec = String(c.secondaryPhone || '').replace(/[^\d+]/g, '');
-                  return cleanedSec.replace(/\D/g, '').length >= 7 ? (
+                {allPhones.map((ph, idx) => {
+                  const clean = String(ph.phone || '').replace(/[^\d+]/g, '');
+                  if (clean.replace(/\D/g, '').length < 5) return null;
+                  return (
                     <a
-                      href={`tel:${cleanedSec}`}
-                      className="min-h-[42px] px-3 rounded-xl bg-teal-50 text-teal-800 border border-teal-200 font-mono font-bold inline-flex items-center gap-1.5"
+                      key={ph.id || idx}
+                      href={`tel:${clean}`}
+                      className={`min-h-[42px] px-3 rounded-xl font-mono font-bold inline-flex items-center gap-1.5 border ${
+                        ph.isPrimary || idx === 0
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          : 'bg-teal-50 text-teal-800 border-teal-200'
+                      }`}
                     >
                       <Phone className="w-4 h-4" />
-                      <span>{c.secondaryPhone}</span>
+                      <span>{ph.phone}</span>
+                      {ph.label && <span className="font-sans text-[10px]">({ph.label})</span>}
                     </a>
-                  ) : null;
-                })()}
+                  );
+                })}
                 {hasValidMap && (
                   <a
                     href={mapsHref}
@@ -5110,11 +5649,26 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     rel="noopener noreferrer"
                     className="min-h-[42px] px-3 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1.5"
                   >
-                    <MapPin className="w-4 h-4" />
-                    <span>فتح الخريطة</span>
+                    <MapPin className="w-4 h-4 text-red-600" />
+                    <span>فتح في الخرائط</span>
                   </a>
                 )}
               </div>
+
+              {parsedMap && (() => {
+                const delta = 0.005;
+                const bbox = `${parsedMap.lng - delta},${parsedMap.lat - delta},${parsedMap.lng + delta},${parsedMap.lat + delta}`;
+                return (
+                  <div className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-50">
+                    <iframe
+                      title="معاينة موقع العميل"
+                      src={`https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${parsedMap.lat},${parsedMap.lng}`}
+                      className="w-full h-36 border-0"
+                      loading="lazy"
+                    />
+                  </div>
+                );
+              })()}
 
               <div className="flex-1 overflow-y-auto space-y-1.5 border border-slate-200 rounded-2xl p-3">
                 <span className="font-black text-slate-800 block mb-1">آخر فواتير العميل ({custInvoices.length})</span>
@@ -5242,6 +5796,224 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               {isNative ? <Share2 className="w-4 h-4" /> : <FileDown className="w-4 h-4" />}
               <span>{isNative ? 'مشاركة / حفظ الفاتورة' : 'طباعة / PDF'}</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Purchase Invoice Review & Dispatch Modal */}
+      {purReviewOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
+          <div className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 max-h-[88vh] overflow-y-auto space-y-3 text-xs pb-safe">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h4 className="font-black text-base text-slate-900">معاينة ومراجعة فاتورة الشراء قبل الإرسال</h4>
+              <button
+                type="button"
+                onClick={() => setPurReviewOpen(false)}
+                className="min-h-[36px] px-3 rounded-xl bg-slate-100 font-bold text-slate-700 cursor-pointer"
+              >
+                تعديل
+              </button>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+              <p>المورد: <strong>{data.suppliers.find((s) => s.id === purSupplierId)?.name || 'مورد'}</strong></p>
+              <p>المستودع المقترح: <strong>{data.warehouses.find((w) => w.id === (purWarehouseId || mainWarehouse?.id))?.name || 'المخزن الرئيسي'}</strong></p>
+              <p>عدد الأصناف: <strong>{purItems.length}</strong> · طريقة السداد: <strong>{purPaymentType === 'cash' ? 'نقدي' : purPaymentType === 'credit' ? 'آجل' : 'جزئي'}</strong></p>
+            </div>
+
+            <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl px-3">
+              {purItems.map((it, idx) => (
+                <div key={idx} className="py-2 flex items-center justify-between">
+                  <span className="font-bold text-slate-800">{it.productName} ({it.quantity} {it.unit} × {it.unitPrice})</span>
+                  <strong className="font-mono text-indigo-950">{it.total.toLocaleString()}</strong>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-3 rounded-2xl bg-indigo-50 border border-indigo-200 space-y-1">
+              <div className="flex justify-between">
+                <span>الإجمالي الفرعي:</span>
+                <strong className="font-mono">{purSubtotal.toLocaleString()} {data.settings.currency}</strong>
+              </div>
+              {purDiscount > 0 && (
+                <div className="flex justify-between text-rose-700">
+                  <span>الخصم:</span>
+                  <strong className="font-mono">-{Number(purDiscount).toLocaleString()} {data.settings.currency}</strong>
+                </div>
+              )}
+              <div className="flex justify-between font-black text-indigo-950 text-sm pt-1 border-t border-indigo-200">
+                <span>صافي الإجمالي:</span>
+                <strong className="font-mono">{purTotal.toLocaleString()} {data.settings.currency}</strong>
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">المستلم الموجه إليه (اختياري عند الإرسال للإدارة):</label>
+              <select
+                value={purRecipientUserId}
+                onChange={(e) => setPurRecipientUserId(e.target.value)}
+                className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 bg-white font-bold"
+              >
+                <option value="">الإدارة العامة (جميع المسؤولين المختصين)</option>
+                {(data.purchaseReceivers || []).map((r) => (
+                  <option key={r.id} value={r.id}>{r.fullName} ({r.role})</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
+              لن يتغير رصيد المخزن أو المورد أو الخزينة إلا بعد استلام الفاتورة واعتمادها من الإدارة.
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isSubmittingPurchase}
+                onClick={() => handleSubmitPurchaseInvoice(false)}
+                className="min-h-[46px] rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-900 font-black cursor-pointer disabled:opacity-50"
+              >
+                {isSubmittingPurchase ? 'جاري الحفظ...' : 'حفظ كمسودة'}
+              </button>
+              <button
+                type="button"
+                disabled={isSubmittingPurchase}
+                onClick={() => handleSubmitPurchaseInvoice(true)}
+                className="min-h-[46px] rounded-xl bg-indigo-900 hover:bg-indigo-950 text-white font-black inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Send className="w-4 h-4" />
+                <span>{isSubmittingPurchase ? 'جاري الإرسال...' : 'حفظ وإرسال للإدارة'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Send Draft Purchase Modal */}
+      {sendingPurchaseTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl border border-slate-200 space-y-3 text-xs">
+            <h4 className="font-black text-sm text-slate-900">
+              إرسال فاتورة الشراء ({sendingPurchaseTarget.invoiceNumber}) للإدارة
+            </h4>
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">توجيه إلى:</label>
+              <select
+                value={sendingRecipientUserId}
+                onChange={(e) => setSendingRecipientUserId(e.target.value)}
+                className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 bg-white font-bold"
+              >
+                <option value="">الإدارة العامة (جميع المسؤولين المختصين)</option>
+                {(data.purchaseReceivers || []).map((r) => (
+                  <option key={r.id} value={r.id}>{r.fullName} ({r.role})</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setSendingPurchaseTarget(null)}
+                className="min-h-[42px] rounded-xl bg-slate-100 text-slate-700 font-bold cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                disabled={isSendingPurchase}
+                onClick={async () => {
+                  const chosen = (data.purchaseReceivers || []).find((r) => r.id === sendingRecipientUserId);
+                  setIsSendingPurchase(true);
+                  const res = await data.sendPurchaseInvoice(sendingPurchaseTarget.id, {
+                    recipientUserId: chosen?.id,
+                    recipientName: chosen?.fullName || 'الإدارة العامة',
+                  });
+                  setIsSendingPurchase(false);
+                  if (res.success) {
+                    setSendingPurchaseTarget(null);
+                    setFeedback({
+                      type: res.queuedOffline ? 'warning' : 'success',
+                      text: res.queuedOffline
+                        ? `تم وضع طلب إرسال الفاتورة (${sendingPurchaseTarget.invoiceNumber}) في طابور المزامنة.`
+                        : `تم إرسال الفاتورة (${sendingPurchaseTarget.invoiceNumber}) للإدارة بانتظار الاستلام.`,
+                    });
+                  } else {
+                    setFeedback({ type: 'error', text: res.error || 'تعذر إرسال الفاتورة' });
+                  }
+                }}
+                className="min-h-[42px] rounded-xl bg-indigo-900 text-white font-black cursor-pointer disabled:opacity-50"
+              >
+                {isSendingPurchase ? 'جاري الإرسال...' : 'تأكيد الإرسال'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Purchase Dispatch History Modal */}
+      {historyPurchaseTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-white rounded-3xl p-5 shadow-2xl border border-slate-200 space-y-3 text-xs max-h-[82vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b pb-2.5">
+              <h4 className="font-black text-sm text-slate-900">
+                سجل الإرسال والاستلام — {historyPurchaseTarget.invoiceNumber}
+              </h4>
+              <button
+                type="button"
+                onClick={() => setHistoryPurchaseTarget(null)}
+                className="px-3 py-1 rounded-xl bg-slate-100 font-bold text-slate-700 cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+            {(!historyPurchaseTarget.dispatchHistory || historyPurchaseTarget.dispatchHistory.length === 0) ? (
+              <p className="text-slate-400 text-center py-6">لا توجد حركات إرسال مسجلة بعد.</p>
+            ) : (
+              <div className="space-y-2">
+                {historyPurchaseTarget.dispatchHistory.map((h, idx) => (
+                  <div key={`${h.at}-${idx}`} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start justify-between gap-2">
+                    <div>
+                      <strong className="text-slate-900">
+                        {h.action === 'created' ? 'إنشاء المسودة' :
+                         h.action === 'sent' ? 'إرسال للإدارة' :
+                         h.action === 'resent' ? 'إعادة إرسال للإدارة' :
+                         h.action === 'received' ? 'استلام الفاتورة' :
+                         h.action === 'rejected' ? 'رفض الفاتورة' :
+                         h.action === 'confirmed' ? 'اعتماد وترحيل' : h.action}
+                      </strong>
+                      {h.by && <span className="text-slate-600 mr-1.5">· {h.by}</span>}
+                      {h.recipientName && <span className="text-indigo-800 mr-1.5">→ {h.recipientName}</span>}
+                      {(h.notes || h.reason) && <p className="text-slate-600 mt-0.5">{h.notes || h.reason}</p>}
+                    </div>
+                    <span className="font-mono text-[10px] text-slate-400 shrink-0" dir="ltr">
+                      {h.at ? new Date(h.at).toLocaleString('ar-EG') : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Shop Photo Lightbox Modal */}
+      {previewShopPhoto && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs"
+          onClick={() => setPreviewShopPhoto(null)}
+        >
+          <div className="w-full max-w-lg bg-white rounded-3xl overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b bg-slate-50 text-xs">
+              <strong className="text-slate-900">معاينة صورة المحل</strong>
+              <button
+                type="button"
+                onClick={() => setPreviewShopPhoto(null)}
+                className="px-3 py-1 rounded-xl bg-slate-200 font-bold text-slate-800 cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+            <div className="p-3 bg-slate-900 flex items-center justify-center">
+              <img src={previewShopPhoto} alt="صورة المحل" className="max-h-[75vh] w-auto object-contain rounded-xl" />
+            </div>
           </div>
         </div>
       )}

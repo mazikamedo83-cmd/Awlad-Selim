@@ -630,6 +630,301 @@ async function runMasterRepairSuite(label) {
         'itemLifecycle must exclude raw sale_edit/purchase_edit/sale_cancel/purchase_cancel adjustment rows'
       );
     });
+
+    await test(`${label} | 5. Purchase Invoice Edit (unit factor, returned rescaling, warehouse/supplier swap, 409 version conflict & offline sync push)`, async () => {
+      // Create a 2nd warehouse & 2nd supplier for warehouse/supplier swap test
+      const wh2Res = await req(baseUrl, 'POST', '/api/inventory/warehouses', {
+        token: adminToken,
+        body: { name: 'المستودع الفرعي للاختبار', code: 'WH-S2' },
+      });
+      assert.equal(wh2Res.status, 201);
+      const whSecId = wh2Res.json.warehouse.id;
+
+      const s2Res = await req(baseUrl, 'POST', '/api/admin/suppliers', {
+        token: adminToken,
+        body: { code: 'S-REPAIR-2', name: 'مورد الأمل الجديد', phone: '01500000002' },
+      });
+      assert.equal(s2Res.status, 201);
+      const supp2Id = s2Res.json.supplier.id;
+
+      const bootPre = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const startWh1Stock = Number(bootPre.products.find((p) => p.id === prodId).stockPerWarehouse[whMainId] || 0);
+      const startSupp1Bal = Number(bootPre.suppliers.find((s) => s.id === suppId).currentBalance || 0);
+
+      // Create confirmed purchase invoice in cartons (1 كرتونة = 10 عبوة @ 420 => 42/عبوة):
+      // 3 كرتونة = 30 عبوة, total 1260, paid 400, remaining 860
+      const pInvRes = await req(baseUrl, 'POST', '/api/invoices/purchase', {
+        token: adminToken,
+        body: {
+          date: '2026-11-20',
+          supplierId: suppId,
+          warehouseId: whMainId,
+          cashboxId: cbMainId,
+          status: 'confirmed',
+          paymentType: 'partial',
+          paidAmount: 400,
+          items: [
+            { productId: prodId, productName: 'شاي أحمد ناعم 250 جم', unit: 'كرتونة', unitFactor: 10, quantity: 3, unitPrice: 420 },
+          ],
+        },
+      });
+      assert.equal(pInvRes.status, 201);
+      const pInv = pInvRes.json.invoice;
+
+      // Guard 1: grandTotal < paidAmount (400) -> 400 GRAND_TOTAL_BELOW_PAID
+      const belowPaid = await req(baseUrl, 'PUT', `/api/invoices/purchase/${pInv.id}`, {
+        token: adminToken,
+        body: {
+          reason: 'اختبار رفض أقل من المدفوع',
+          items: [{ productId: prodId, productName: 'شاي أحمد ناعم 250 جم', unit: 'عبوة', unitFactor: 1, quantity: 5, unitPrice: 50 }],
+        },
+      });
+      assert.equal(belowPaid.status, 400);
+      assert.equal(belowPaid.json.code, 'GRAND_TOTAL_BELOW_PAID');
+
+      // Test warehouse & supplier swap before any returns: move 3 cartons to whSecId & supp2Id, change unit price to 450 (base 45/عبوة), discount 50 => total 1300, remaining 900
+      const swapRes = await req(baseUrl, 'PUT', `/api/invoices/purchase/${pInv.id}`, {
+        token: adminToken,
+        body: {
+          reason: 'نقل الفاتورة للمخزن الفرعي وتصحيح المورد والسعر',
+          baseVersion: pInv.version || 1,
+          warehouseId: whSecId,
+          supplierId: supp2Id,
+          discountTotal: 50,
+          items: [{ productId: prodId, productName: 'شاي أحمد ناعم 250 جم', unit: 'كرتونة', unitFactor: 10, quantity: 3, unitPrice: 450 }],
+        },
+      });
+      assert.equal(swapRes.status, 200);
+      assert.equal(swapRes.json.invoice.warehouseId, whSecId);
+      assert.equal(swapRes.json.invoice.supplierId, supp2Id);
+      assert.equal(swapRes.json.invoice.grandTotal, 1300);
+      assert.equal(swapRes.json.invoice.remainingAmount, 900);
+      assert.equal(swapRes.json.invoice.items[0].purchasePriceAtTime, 45);
+      assert.equal(swapRes.json.invoice.editHistory.length, 1);
+
+      let bootPost = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      assert.equal(Number(bootPost.products.find((p) => p.id === prodId).stockPerWarehouse[whMainId] || 0), startWh1Stock);
+      assert.equal(Number(bootPost.products.find((p) => p.id === prodId).stockPerWarehouse[whSecId] || 0), 30);
+      assert.equal(Number(bootPost.products.find((p) => p.id === prodId).purchasePrice), 45);
+      assert.equal(Number(bootPost.suppliers.find((s) => s.id === suppId).currentBalance || 0), startSupp1Bal);
+      assert.equal(Number(bootPost.suppliers.find((s) => s.id === supp2Id).currentBalance || 0), 900);
+
+      // Guard 2: Stale baseVersion (1 instead of 2) -> 409 VERSION_CONFLICT
+      const staleRes = await req(baseUrl, 'PUT', `/api/invoices/purchase/${pInv.id}`, {
+        token: adminToken,
+        body: {
+          reason: 'تعديل بإصدار قديم',
+          baseVersion: 1,
+          items: [{ productId: prodId, productName: 'شاي أحمد ناعم 250 جم', unit: 'كرتونة', unitFactor: 10, quantity: 4, unitPrice: 450 }],
+        },
+      });
+      assert.equal(staleRes.status, 409);
+      assert.equal(staleRes.json.code, 'VERSION_CONFLICT');
+
+      // Record partial purchase return of 1 carton (= 10 base units) from whSecId (total 450)
+      const retPur = await req(baseUrl, 'POST', '/api/invoices/returns', {
+        token: adminToken,
+        body: {
+          type: 'purchase_return',
+          originalInvoiceId: pInv.id,
+          originalInvoiceNumber: swapRes.json.invoice.invoiceNumber,
+          partyId: supp2Id,
+          warehouseId: whSecId,
+          refundType: 'balance',
+          reason: 'مرتجع كرتونة واحدة',
+          items: [{ productId: prodId, productName: 'شاي أحمد ناعم 250 جم', unit: 'كرتونة', unitFactor: 10, quantity: 1, unitPrice: 450, total: 450 }],
+          grandTotal: 450,
+        },
+      });
+      assert.equal(retPur.status, 201);
+
+      // Guard 3: Changing to base units with only 8 عبوة (< 10 returned) -> 400 BELOW_RETURNED_QUANTITY
+      const belowRetPur = await req(baseUrl, 'PUT', `/api/invoices/purchase/${pInv.id}`, {
+        token: adminToken,
+        body: {
+          reason: 'محاولة تقليل أقل من المرتجع',
+          items: [{ productId: prodId, productName: 'شاي أحمد ناعم 250 جم', unit: 'عبوة', unitFactor: 1, quantity: 8, unitPrice: 60 }],
+        },
+      });
+      assert.equal(belowRetPur.status, 400);
+      assert.equal(belowRetPur.json.code, 'BELOW_RETURNED_QUANTITY');
+
+      // Offline Sync Push for edit_purchase_invoice: switch item from 3 cartons (30 base) to 25 base units @ 46 (rescale returned 1 carton -> 10 base units!)
+      const syncEdit = await req(baseUrl, 'POST', '/api/sync/push', {
+        token: adminToken,
+        body: {
+          deviceId: 'DEV-PUR-EDIT',
+          operations: [
+            {
+              operationId: `OP-PUR-EDIT-${Date.now()}`,
+              operationType: 'edit_purchase_invoice',
+              entityType: 'purchase_invoice',
+              entityId: pInv.id,
+              payload: {
+                invoiceId: pInv.id,
+                baseVersion: 2,
+                reason: 'مزامنة تعديل المشتريات بالعبوة',
+                discountTotal: 0,
+                items: [{ productId: prodId, productName: 'شاي أحمد ناعم 250 جم', unit: 'عبوة', unitFactor: 1, quantity: 25, unitPrice: 46 }],
+              },
+            },
+          ],
+        },
+      });
+      assert.equal(syncEdit.status, 200);
+      assert.equal(syncEdit.json.results[0].status, 'synced');
+      const syncedInv = syncEdit.json.results[0].result;
+      assert.equal(syncedInv.grandTotal, 1150);
+      assert.equal(Number(syncedInv.returnedQuantityByItem[prodId]), 10);
+
+      bootPost = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      // whSecId: 30 - 10 returned - 5 reduced on edit = 15
+      assert.equal(Number(bootPost.products.find((p) => p.id === prodId).stockPerWarehouse[whSecId]), 15);
+      // Verify purchase_edit stock movement & audit log with oldValues/newValues
+      const purEditMv = (bootPost.stockMovements || []).find(
+        (m) => m.referenceId === pInv.id && (m.type === 'purchase_edit' || m.movementType === 'purchase_edit')
+      );
+      assert.ok(purEditMv, 'purchase_edit movement must exist');
+      const auditPur = await req(baseUrl, 'GET', '/api/admin/audit-logs?limit=30', { token: adminToken });
+      assert.ok(auditPur.json.logs.some((l) => l.recordId === pInv.id && String(l.action).includes('تعديل فاتورة مشتريات')));
+    });
+
+    await test(`${label} | 6. Concurrent 2-device self-registration serializes cleanly without 500/23505 or duplicate customer records`, async () => {
+      const sharedPhone = '01299998888';
+      const [r1, r2] = await Promise.all([
+        req(baseUrl, 'POST', '/api/auth/register', {
+          body: {
+            role: 'customer',
+            fullName: 'عميل سباق أول',
+            username: 'race_cust_1',
+            password: 'CustPass!123',
+            phone: sharedPhone,
+            deviceId: 'DEV-RACE-1',
+          },
+        }),
+        req(baseUrl, 'POST', '/api/auth/register', {
+          body: {
+            role: 'customer',
+            fullName: 'عميل سباق ثانٍ',
+            username: 'race_cust_2',
+            password: 'CustPass!123',
+            phone: sharedPhone,
+            deviceId: 'DEV-RACE-2',
+          },
+        }),
+      ]);
+      assert.equal(r1.status, 201);
+      assert.equal(r2.status, 201);
+      const boot = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const matchedCusts = (boot.customers || []).filter((c) => c.phone === sharedPhone);
+      assert.equal(matchedCusts.length, 1, 'Concurrent registration on same phone must create exactly 1 customer profile');
+      const conflictCount = [r1.json.linkWarning, r2.json.linkWarning].filter(Boolean).length;
+      assert.equal(conflictCount, 1, 'Second concurrent registration with same phone must flag linkWarning cleanly');
+
+      // Duplicate username race across 2 devices -> one 201 and one 409 DUPLICATE_USERNAME (never 500!)
+      const [u1, u2] = await Promise.all([
+        req(baseUrl, 'POST', '/api/auth/register', {
+          body: { role: 'customer', fullName: 'تجربة اسم مكرر 1', username: 'same_user_race', password: 'CustPass!123', phone: '01277770001' },
+        }),
+        req(baseUrl, 'POST', '/api/auth/register', {
+          body: { role: 'customer', fullName: 'تجربة اسم مكرر 2', username: 'same_user_race', password: 'CustPass!123', phone: '01277770002' },
+        }),
+      ]);
+      const statuses = [u1.status, u2.status].sort((a, b) => a - b);
+      assert.deepEqual(statuses, [201, 409]);
+      const failed = u1.status === 409 ? u1 : u2;
+      assert.equal(failed.json.code, 'DUPLICATE_USERNAME');
+    });
+
+    await test(`${label} | 7. RBAC bootstrap tightening hides sensitive domains from unpermitted staff & blocks unauthorized mutations`, async () => {
+      const vBootRes = await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: viewerToken });
+      assert.equal(vBootRes.status, 200);
+      const vData = vBootRes.json.data;
+      assert.equal((vData.suppliers || []).length, 0);
+      assert.equal((vData.financialTransactions || []).length, 0);
+      assert.equal((vData.expenseIncomes || []).length, 0);
+      assert.equal((vData.cheques || []).length, 0);
+      assert.equal((vData.installments || []).length, 0);
+      assert.equal((vData.employees || []).length, 0);
+      assert.equal((vData.payrolls || []).length, 0);
+      assert.equal((vData.auditLogs || []).length, 0);
+
+      const repBootRes = await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: rep1Token });
+      assert.equal(repBootRes.status, 200);
+      assert.equal((repBootRes.json.data.suppliers || []).length, 0);
+      assert.equal((repBootRes.json.data.financialTransactions || []).length, 0);
+      assert.equal((repBootRes.json.data.employees || []).length, 0);
+
+      const unauthCustody = await req(baseUrl, 'POST', '/api/inventory/rep-custody/adjust', {
+        token: viewerToken,
+        body: { representativeId: rep1Id, productId: prodId, quantity: 1, notes: 'غير مصرح' },
+      });
+      assert.equal(unauthCustody.status, 403);
+    });
+
+    await test(`${label} | 8. Rep Custody Adjustment supports secondary unitFactor conversion & Idempotency-Key replay`, async () => {
+      // Ensure van warehouse exists for rep1 and dispatch 2 cartons (= 20 base units) to rep1
+      const vanRes = await req(baseUrl, 'POST', '/api/inventory/rep-van-warehouse', {
+        token: adminToken,
+        body: { repName: 'مندوب أول' },
+      });
+      assert.equal(vanRes.status, 200);
+      const vanWhId = vanRes.json.warehouse.id;
+
+      // Transfer 2 cartons (= 20 base units) from whMainId to vanWhId
+      const trRes = await req(baseUrl, 'POST', '/api/inventory/transfer', {
+        token: adminToken,
+        body: {
+          productId: prodId,
+          fromWarehouseId: whMainId,
+          toWarehouseId: vanWhId,
+          quantity: 20,
+          notes: 'شحن عهدة سيارة المندوب للاختبار',
+        },
+      });
+      assert.equal(trRes.status, 200);
+
+      const idemKey = `CUST-ADJ-${Date.now()}`;
+      const adj1 = await req(baseUrl, 'POST', '/api/inventory/rep-custody/adjust', {
+        token: adminToken,
+        headers: { 'Idempotency-Key': idemKey },
+        body: {
+          representativeId: rep1Id,
+          productId: prodId,
+          operationType: 'custody_shortage',
+          unit: 'كرتونة',
+          unitFactor: 10,
+          quantity: 1,
+          notes: 'عجز كرتونة عند الجرد',
+        },
+      });
+      assert.equal(adj1.status, 201);
+      assert.equal(adj1.json.deduplicated, false);
+      assert.equal(adj1.json.operation.unit, 'كرتونة');
+      assert.equal(adj1.json.operation.unitFactor, 10);
+      assert.equal(adj1.json.operation.baseQuantity, 10);
+
+      // Replay exact same Idempotency-Key -> 200 deduplicated=true, NO double deduction
+      const adjReplay = await req(baseUrl, 'POST', '/api/inventory/rep-custody/adjust', {
+        token: adminToken,
+        headers: { 'Idempotency-Key': idemKey },
+        body: {
+          representativeId: rep1Id,
+          productId: prodId,
+          operationType: 'custody_shortage',
+          unit: 'كرتونة',
+          unitFactor: 10,
+          quantity: 1,
+          notes: 'عجز كرتونة عند الجرد',
+        },
+      });
+      assert.equal(adjReplay.status, 200);
+      assert.equal(adjReplay.json.deduplicated, true);
+      assert.equal(adjReplay.json.operation.id, adj1.json.operation.id);
+
+      const bootAfter = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      assert.equal(Number(bootAfter.products.find((p) => p.id === prodId).stockPerWarehouse[vanWhId]), 10);
+    });
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

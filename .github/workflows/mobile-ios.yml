@@ -2,9 +2,6 @@ name: Build AWLAD SELIM iOS Production Release
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
 
 permissions:
   contents: read

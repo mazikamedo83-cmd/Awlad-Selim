@@ -12,6 +12,7 @@ import {
 import {
   isPgMode,
   CUSTOMER_DEFAULT_PERMISSIONS,
+  normalizeCustomerPhonesList,
   mapPgCustomerRow,
   mapPgProductRow,
   mapPgUserRow,
@@ -39,6 +40,60 @@ export function normalizePhoneDigits(rawPhone) {
   if (digits.startsWith('0020') && digits.length >= 13) digits = '0' + digits.slice(4);
   else if (digits.startsWith('20') && digits.length >= 12) digits = '0' + digits.slice(2);
   return digits;
+}
+
+export function sanitizeSafeImageUrl(raw) {
+  if (raw === undefined || raw === null) return undefined;
+  const trimmed = String(raw).trim();
+  if (!trimmed) return undefined;
+  if (/^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=\s]+$/i.test(trimmed)) {
+    return trimmed;
+  }
+  if (/^\/api\/[A-Za-z0-9_./-]+$/.test(trimmed) || /^https:\/\/[^\s"'<>]+$/i.test(trimmed)) {
+    return trimmed;
+  }
+  throw new AppError(
+    400,
+    'صيغة صورة المحل غير مدعومة أو غير آمنة (يُسمح بصور PNG أو JPG أو WEBP أو رابط HTTPS فقط)',
+    'INVALID_CUSTOMER_PHOTO'
+  );
+}
+
+export function sanitizeGeoCoordinates(raw) {
+  if (raw === undefined || raw === null) return undefined;
+  const trimmed = String(raw).trim();
+  if (!trimmed) return undefined;
+  if (/^(javascript|data|vbscript):/i.test(trimmed) || /[<>]/.test(trimmed)) {
+    throw new AppError(400, 'إحداثيات الموقع الجغرافي غير صالحة', 'INVALID_GEO_COORDINATES');
+  }
+  return trimmed;
+}
+
+export function normalizeCustomerRecordShape(c) {
+  if (!c) return null;
+  const phones = normalizeCustomerPhonesList(c.phones, c.phone || '', c.secondaryPhone || '');
+  const primaryPhone = phones.find((p) => p.isPrimary)?.number || phones[0]?.number || c.phone || '';
+  const secondaryEntry = phones.find((p) => !p.isPrimary && p.number !== primaryPhone) || phones[1];
+  const resolvedPhoto = c.shopPhoto || c.photo || undefined;
+  return {
+    ...c,
+    phone: primaryPhone,
+    secondaryPhone: secondaryEntry?.number || c.secondaryPhone || undefined,
+    phones,
+    governorate: c.governorate || undefined,
+    shopPhoto: resolvedPhoto,
+    photo: resolvedPhoto,
+  };
+}
+
+export function customerMatchesPhoneDigits(customer, normDigits) {
+  if (!customer || !normDigits) return false;
+  if (normalizePhoneDigits(customer.phone) === normDigits) return true;
+  if (normalizePhoneDigits(customer.secondaryPhone) === normDigits) return true;
+  if (Array.isArray(customer.phones)) {
+    return customer.phones.some((p) => normalizePhoneDigits(typeof p === 'string' ? p : p?.number) === normDigits);
+  }
+  return false;
 }
 
 export function normalizeAllowedRepIds(assignedRepId, allowedRepIds) {
@@ -123,7 +178,9 @@ export async function listCustomers({ forRepId = null } = {}) {
     rows = res.rows.map(mapPgCustomerRow);
   } else {
     const db = readJsonDatabase();
-    rows = [...db.customers].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    rows = [...db.customers]
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+      .map(normalizeCustomerRecordShape);
   }
   if (forRepId) {
     return rows.filter((c) => isCustomerAllowedForRep(c, forRepId));
@@ -138,7 +195,8 @@ export async function getCustomerById(customerId) {
     return mapPgCustomerRow(res.rows[0]);
   }
   const db = readJsonDatabase();
-  return db.customers.find((c) => c.id === customerId) || null;
+  const found = db.customers.find((c) => c.id === customerId) || null;
+  return normalizeCustomerRecordShape(found);
 }
 
 export async function getCustomerByUserId(userId) {
@@ -148,7 +206,8 @@ export async function getCustomerByUserId(userId) {
     return mapPgCustomerRow(res.rows[0]);
   }
   const db = readJsonDatabase();
-  return db.customers.find((c) => c.userId === userId) || null;
+  const found = db.customers.find((c) => c.userId === userId) || null;
+  return normalizeCustomerRecordShape(found);
 }
 
 export async function createCustomer(payload, actor) {
@@ -161,6 +220,18 @@ export async function createCustomer(payload, actor) {
   const currentBalance = round2(payload.currentBalance ?? openingBalance);
   const now = nowIso();
   const userId = payload.userId || null;
+
+  const normalizedPhones = Array.isArray(payload.phones)
+    ? normalizeCustomerPhonesList(payload.phones, payload.phone || '', payload.secondaryPhone || '')
+    : normalizeCustomerPhonesList([], payload.phone || '', payload.secondaryPhone || '');
+  const primaryPhone = normalizedPhones.find((p) => p.isPrimary)?.number || normalizedPhones[0]?.number || String(payload.phone || '').trim();
+  const secondaryEntry = normalizedPhones.find((p) => !p.isPrimary && p.number !== primaryPhone) || normalizedPhones[1];
+  const secondaryPhone = secondaryEntry?.number || (payload.secondaryPhone ? String(payload.secondaryPhone).trim() : null);
+
+  const safePhoto = sanitizeSafeImageUrl(payload.shopPhoto ?? payload.photo);
+  const safeGeo = sanitizeGeoCoordinates(payload.geoCoordinates);
+  const governorate = payload.governorate ? String(payload.governorate).trim() : '';
+
   let repAlloc = normalizeAllowedRepIds(payload.assignedRepId, payload.allowedRepIds);
   if (actor?.role === 'representative') {
     const repProfile = await getRepresentativeByUserId(actor.id);
@@ -179,8 +250,8 @@ export async function createCustomer(payload, actor) {
         }
       }
       await client.query(
-        `INSERT INTO customers (id, code, user_id, assigned_rep_id, allowed_rep_ids, name, phone, secondary_phone, shop_name, shop_photo, photo, address, area, geo_coordinates, opening_balance, current_balance, price_history, notes, status, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+        `INSERT INTO customers (id, code, user_id, assigned_rep_id, allowed_rep_ids, name, phone, secondary_phone, phones, shop_name, shop_photo, photo, address, governorate, area, geo_coordinates, opening_balance, current_balance, price_history, notes, status, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
         [
           id,
           code,
@@ -188,14 +259,16 @@ export async function createCustomer(payload, actor) {
           repAlloc.assignedRepId || null,
           JSON.stringify(repAlloc.allowedRepIds),
           name,
-          payload.phone || '',
-          payload.secondaryPhone || null,
+          primaryPhone,
+          secondaryPhone || null,
+          JSON.stringify(normalizedPhones),
           payload.shopName || null,
-          payload.shopPhoto || null,
-          payload.photo || null,
+          safePhoto || null,
+          safePhoto || null,
           payload.address || '',
+          governorate,
           payload.area || null,
-          payload.geoCoordinates || null,
+          safeGeo || null,
           openingBalance,
           currentBalance,
           JSON.stringify(payload.priceHistory || {}),
@@ -225,28 +298,30 @@ export async function createCustomer(payload, actor) {
     if (db.customers.some((c) => c.code === code)) {
       throw new AppError(409, 'كود العميل مستخدم مسبقًا', 'DUPLICATE_CODE');
     }
-    const item = {
+    const item = normalizeCustomerRecordShape({
       id,
       code,
       userId: userId || undefined,
       assignedRepId: repAlloc.assignedRepId,
       allowedRepIds: repAlloc.allowedRepIds,
       name,
-      phone: payload.phone || '',
-      secondaryPhone: payload.secondaryPhone || undefined,
+      phone: primaryPhone,
+      secondaryPhone: secondaryPhone || undefined,
+      phones: normalizedPhones,
       shopName: payload.shopName || undefined,
-      shopPhoto: payload.shopPhoto || undefined,
-      photo: payload.photo || undefined,
+      shopPhoto: safePhoto,
+      photo: safePhoto,
       address: payload.address || '',
+      governorate: governorate || undefined,
       area: payload.area || undefined,
-      geoCoordinates: payload.geoCoordinates || undefined,
+      geoCoordinates: safeGeo,
       openingBalance,
       currentBalance,
       priceHistory: payload.priceHistory || {},
       notes: payload.notes || '',
       status: payload.status || 'active',
       createdAt: now,
-    };
+    });
     db.customers.unshift(item);
     return item;
   });
@@ -259,6 +334,46 @@ export async function createCustomer(payload, actor) {
     recordId: created.id,
   });
   return created;
+}
+
+function resolveUpdatedCustomerPhonesAndPhoto(cur, updates) {
+  let nextPhones;
+  if (Array.isArray(updates.phones)) {
+    nextPhones = normalizeCustomerPhonesList(updates.phones, '', '');
+  } else if (updates.phone !== undefined || updates.secondaryPhone !== undefined) {
+    const baseOtherPhones = (cur.phones || []).filter((p) => !p.isPrimary && p.number !== cur.secondaryPhone);
+    const mergedList = [
+      ...(updates.phone !== undefined ? [{ number: updates.phone, label: 'رئيسي', isPrimary: true }] : cur.phone ? [{ number: cur.phone, label: 'رئيسي', isPrimary: true }] : []),
+      ...(updates.secondaryPhone !== undefined ? (updates.secondaryPhone ? [{ number: updates.secondaryPhone, label: 'إضافي', isPrimary: false }] : []) : cur.secondaryPhone ? [{ number: cur.secondaryPhone, label: 'إضافي', isPrimary: false }] : []),
+      ...baseOtherPhones,
+    ];
+    nextPhones = normalizeCustomerPhonesList(mergedList, '', '');
+  } else {
+    nextPhones = normalizeCustomerPhonesList(cur.phones, cur.phone || '', cur.secondaryPhone || '');
+  }
+
+  const nextPrimary = nextPhones.find((p) => p.isPrimary)?.number || nextPhones[0]?.number || (updates.phone !== undefined ? String(updates.phone || '') : cur.phone || '');
+  const nextSecondaryEntry = nextPhones.find((p) => !p.isPrimary && p.number !== nextPrimary) || nextPhones[1];
+  const nextSecondary = nextSecondaryEntry?.number || (updates.phones !== undefined ? undefined : (updates.secondaryPhone !== undefined ? (updates.secondaryPhone || undefined) : cur.secondaryPhone));
+
+  let nextPhoto;
+  if (updates.clearShopPhoto === true) {
+    nextPhoto = undefined;
+  } else if (updates.shopPhoto !== undefined || updates.photo !== undefined) {
+    const incomingPhoto = updates.shopPhoto !== undefined ? updates.shopPhoto : updates.photo;
+    if (incomingPhoto === null || incomingPhoto === '') {
+      // Preserve existing photo unless clearShopPhoto is explicitly set to true
+      nextPhoto = cur.shopPhoto || cur.photo || undefined;
+    } else {
+      nextPhoto = sanitizeSafeImageUrl(incomingPhoto);
+    }
+  } else {
+    nextPhoto = cur.shopPhoto || cur.photo || undefined;
+  }
+
+  const nextGeo = updates.geoCoordinates !== undefined ? sanitizeGeoCoordinates(updates.geoCoordinates) : cur.geoCoordinates;
+
+  return { nextPhones, nextPrimary, nextSecondary, nextPhoto, nextGeo };
 }
 
 export async function updateCustomer(customerId, updates, actor) {
@@ -288,22 +403,26 @@ export async function updateCustomer(customerId, updates, actor) {
             )
           : normalizeAllowedRepIds(cur.assignedRepId, cur.allowedRepIds);
 
+      const { nextPhones, nextPrimary, nextSecondary, nextPhoto, nextGeo } = resolveUpdatedCustomerPhonesAndPhoto(cur, updates);
+
       await client.query(
         `UPDATE customers SET
-          name = $1, phone = $2, secondary_phone = $3, shop_name = $4, shop_photo = $5, photo = $6,
-          address = $7, area = $8, geo_coordinates = $9, notes = $10, status = $11, user_id = $12,
-          assigned_rep_id = $13, allowed_rep_ids = $14, version = COALESCE(version, 1) + 1, updated_at = $15
-         WHERE id = $16`,
+          name = $1, phone = $2, secondary_phone = $3, phones = $4, shop_name = $5, shop_photo = $6, photo = $7,
+          address = $8, governorate = $9, area = $10, geo_coordinates = $11, notes = $12, status = $13, user_id = $14,
+          assigned_rep_id = $15, allowed_rep_ids = $16, version = COALESCE(version, 1) + 1, updated_at = $17
+         WHERE id = $18`,
         [
           updates.name ?? cur.name,
-          updates.phone ?? cur.phone,
-          updates.secondaryPhone ?? cur.secondaryPhone ?? null,
+          nextPrimary,
+          nextSecondary ?? null,
+          JSON.stringify(nextPhones),
           updates.shopName ?? cur.shopName ?? null,
-          updates.shopPhoto ?? cur.shopPhoto ?? null,
-          updates.photo ?? cur.photo ?? null,
+          nextPhoto ?? null,
+          nextPhoto ?? null,
           updates.address ?? cur.address,
+          updates.governorate !== undefined ? (updates.governorate || '') : (cur.governorate || ''),
           updates.area ?? cur.area ?? null,
-          updates.geoCoordinates ?? cur.geoCoordinates ?? null,
+          nextGeo ?? null,
           updates.notes ?? cur.notes ?? '',
           updates.status ?? cur.status,
           nextUserId,
@@ -330,7 +449,7 @@ export async function updateCustomer(customerId, updates, actor) {
   const updated = await withJsonTransaction(async (db) => {
     const idx = db.customers.findIndex((c) => c.id === customerId);
     if (idx === -1) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
-    const cur = db.customers[idx];
+    const cur = normalizeCustomerRecordShape(db.customers[idx]);
     if (updates.userId && updates.userId !== cur.userId && db.customers.some((c) => c.userId === updates.userId && c.id !== customerId)) {
       throw new AppError(409, 'حساب المستخدم المختار مرتبط بعميل آخر', 'USER_ALREADY_LINKED');
     }
@@ -341,16 +460,25 @@ export async function updateCustomer(customerId, updates, actor) {
             updates.allowedRepIds !== undefined ? updates.allowedRepIds : cur.allowedRepIds
           )
         : normalizeAllowedRepIds(cur.assignedRepId, cur.allowedRepIds);
-    const merged = {
+    const { nextPhones, nextPrimary, nextSecondary, nextPhoto, nextGeo } = resolveUpdatedCustomerPhonesAndPhoto(cur, updates);
+    const { clearShopPhoto: _ignoreClear, ...cleanUpdates } = updates;
+    const merged = normalizeCustomerRecordShape({
       ...cur,
-      ...updates,
+      ...cleanUpdates,
       id: cur.id,
+      phone: nextPrimary,
+      secondaryPhone: nextSecondary,
+      phones: nextPhones,
+      shopPhoto: nextPhoto,
+      photo: nextPhoto,
+      geoCoordinates: nextGeo,
+      governorate: updates.governorate !== undefined ? (updates.governorate || undefined) : cur.governorate,
       assignedRepId: repAlloc.assignedRepId,
       allowedRepIds: repAlloc.allowedRepIds,
       currentBalance: cur.currentBalance, // Prevent direct balance override via profile edit
       version: Number(cur.version || 1) + 1,
       updatedAt: now,
-    };
+    });
     db.customers[idx] = merged;
     return merged;
   });
@@ -772,8 +900,15 @@ export async function detectCustomerUserConflicts() {
 
   const phoneCounts = new Map();
   for (const c of customers) {
-    const p = String(c.phone || '').trim();
-    if (p) phoneCounts.set(p, (phoneCounts.get(p) || 0) + 1);
+    const seenOnRow = new Set();
+    const candidates = [c.phone, c.secondaryPhone, ...((c.phones || []).map((p) => (typeof p === 'string' ? p : p?.number)))];
+    for (const candidate of candidates) {
+      const norm = normalizePhoneDigits(candidate);
+      if (norm && !seenOnRow.has(norm)) {
+        seenOnRow.add(norm);
+        phoneCounts.set(norm, (phoneCounts.get(norm) || 0) + 1);
+      }
+    }
   }
   const duplicatePhones = [...phoneCounts.entries()].filter(([, cnt]) => cnt > 1).map(([phone, count]) => ({ phone, count }));
 

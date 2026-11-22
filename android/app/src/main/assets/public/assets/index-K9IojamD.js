@@ -12061,7 +12061,7 @@ var __vitePreload = function preload(baseModule, deps, importerUrl) {
 	});
 };
 // node_modules/@capacitor/preferences/dist/esm/index.js
-var Preferences = registerPlugin("Preferences", { web: () => __vitePreload(() => import("./web-Bz3I7L5I.js").then((m) => new m.PreferencesWeb()), []) });
+var Preferences = registerPlugin("Preferences", { web: () => __vitePreload(() => import("./web-T48WjA4e.js").then((m) => new m.PreferencesWeb()), []) });
 // node_modules/@capacitor/synapse/dist/synapse.mjs
 function s(t) {
 	t.CapacitorUtils.Synapse = new Proxy({}, { get(e, n) {
@@ -12096,7 +12096,7 @@ function f(t = !1) {
 	typeof window > "u" || (window.CapacitorUtils = window.CapacitorUtils || {}, window.Capacitor !== void 0 && !t ? s(window) : window.cordova !== void 0 && u(window));
 }
 // node_modules/@capacitor/geolocation/dist/esm/index.js
-var Geolocation = registerPlugin("Geolocation", { web: () => __vitePreload(() => import("./web-BpQYfH9O.js").then((m) => new m.GeolocationWeb()), []) });
+var Geolocation = registerPlugin("Geolocation", { web: () => __vitePreload(() => import("./web-Bd1mkG1W.js").then((m) => new m.GeolocationWeb()), []) });
 f();
 // node_modules/@capacitor/filesystem/dist/esm/definitions.js
 var Directory;
@@ -12213,10 +12213,10 @@ var Encoding;
 	Encoding["UTF16"] = "utf16";
 })(Encoding || (Encoding = {}));
 // node_modules/@capacitor/filesystem/dist/esm/index.js
-var Filesystem = registerPlugin("Filesystem", { web: () => __vitePreload(() => import("./web-CAxTWuFy.js").then((m) => new m.FilesystemWeb()), []) });
+var Filesystem = registerPlugin("Filesystem", { web: () => __vitePreload(() => import("./web-CGeKK_nF.js").then((m) => new m.FilesystemWeb()), []) });
 f();
 // node_modules/@capacitor/share/dist/esm/index.js
-var Share = registerPlugin("Share", { web: () => __vitePreload(() => import("./web-BNtHvc8Z.js").then((m) => new m.ShareWeb()), []) });
+var Share = registerPlugin("Share", { web: () => __vitePreload(() => import("./web-CONEX9tX.js").then((m) => new m.ShareWeb()), []) });
 // node_modules/@capacitor/local-notifications/dist/esm/definitions.js
 /**
 * Day of the week. Used for scheduling notifications on a particular weekday.
@@ -12232,11 +12232,11 @@ var Weekday;
 	Weekday[Weekday["Saturday"] = 7] = "Saturday";
 })(Weekday || (Weekday = {}));
 // node_modules/@capacitor/local-notifications/dist/esm/index.js
-var LocalNotifications = registerPlugin("LocalNotifications", { web: () => __vitePreload(() => import("./web-CeVoj2eD.js").then((m) => new m.LocalNotificationsWeb()), []) });
+var LocalNotifications = registerPlugin("LocalNotifications", { web: () => __vitePreload(() => import("./web-Dj4MC0PC.js").then((m) => new m.LocalNotificationsWeb()), []) });
 // node_modules/@capacitor/network/dist/esm/index.js
-var Network = registerPlugin("Network", { web: () => __vitePreload(() => import("./web-pZgAHnl9.js").then((m) => new m.NetworkWeb()), []) });
+var Network = registerPlugin("Network", { web: () => __vitePreload(() => import("./web-tAhqTxF6.js").then((m) => new m.NetworkWeb()), []) });
 // node_modules/@capacitor/app/dist/esm/index.js
-var App$1 = registerPlugin("App", { web: () => __vitePreload(() => import("./web-CsEz8ocK.js").then((m) => new m.AppWeb()), []) });
+var App$1 = registerPlugin("App", { web: () => __vitePreload(() => import("./web-D1xUdi4c.js").then((m) => new m.AppWeb()), []) });
 // src/services/native.ts
 function isNativeCapacitor() {
 	try {
@@ -12340,6 +12340,68 @@ async function getCurrentLocationSafe() {
 		ok: false,
 		error: "خدمة تحديد الموقع غير مدعومة على هذا الجهاز."
 	};
+}
+function parseLatLngCoords(raw) {
+	const m = String(raw || "").trim().match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+	if (!m) return null;
+	const lat = Number(m[1]);
+	const lng = Number(m[2]);
+	if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+	if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+	return {
+		lat,
+		lng
+	};
+}
+async function reverseGeocodeCoords(lat, lng) {
+	if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return {
+		ok: false,
+		error: "إحداثيات GPS غير صالحة لتحويلها إلى عنوان."
+	};
+	if (typeof navigator !== "undefined" && navigator.onLine === false) return {
+		ok: false,
+		error: "الجهاز غير متصل بالإنترنت؛ تم حفظ الإحداثيات فقط ويمكنك كتابة العنوان يدوياً."
+	};
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), 6e3);
+	try {
+		const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(String(lat))}&lon=${encodeURIComponent(String(lng))}&accept-language=ar`;
+		const res = await fetch(url, {
+			method: "GET",
+			headers: { Accept: "application/json" },
+			signal: controller.signal
+		});
+		if (!res.ok) return {
+			ok: false,
+			error: "تعذر تحويل الإحداثيات لعنوان تلقائياً الآن؛ تم حفظ الإحداثيات ويمكنك كتابة العنوان يدوياً."
+		};
+		const json = await res.json().catch(() => null);
+		const addrObj = json?.address && typeof json.address === "object" ? json.address : {};
+		const area = String(addrObj.suburb || addrObj.neighbourhood || addrObj.city_district || addrObj.city || addrObj.town || addrObj.village || addrObj.state || "").trim() || void 0;
+		const parts = [
+			addrObj.road,
+			addrObj.neighbourhood || addrObj.suburb,
+			addrObj.city || addrObj.town || addrObj.village,
+			addrObj.state
+		].map((p) => String(p || "").trim()).filter(Boolean);
+		const address = parts.length > 0 ? Array.from(new Set(parts)).join("، ") : String(json?.display_name || "").trim();
+		if (!address) return {
+			ok: false,
+			error: "لم تُرجع خدمة الخرائط عنواناً وصفياً لهذه الإحداثيات؛ يمكنك كتابة العنوان يدوياً."
+		};
+		return {
+			ok: true,
+			address,
+			area
+		};
+	} catch {
+		return {
+			ok: false,
+			error: "تعذر جلب العنوان من الخرائط (انتهت المهلة أو تعذر الاتصال)؛ تم الاحتفاظ بالإحداثيات فقط."
+		};
+	} finally {
+		clearTimeout(timer);
+	}
 }
 async function saveAndShareDocument(params) {
 	const safeName = params.filename.replace(/[^\w.\-\u0600-\u06FF]/g, "_");
@@ -12617,6 +12679,94 @@ function subscribeDeepLinks(onUrl, options) {
 		if (activeDeepLinkDispatcher === dispatchUrl) activeDeepLinkDispatcher = null;
 	};
 }
+// src/services/diagnostics.ts
+var DIAGNOSTICS_STORAGE_KEY = "awlad_selim_diagnostic_logs_v1";
+var MAX_DIAGNOSTIC_ENTRIES = 300;
+var SENSITIVE_KEY_RE = /token|password|secret|authorization|cookie|refresh|pin|credential|apikey|api_key/i;
+var BEARER_JWT_RE = /Bearer\s+[A-Za-z0-9\-_=]+\.[A-Za-z0-9\-_=]+(?:\.[A-Za-z0-9\-_=]+)?/gi;
+var RAW_JWT_RE = /\beyJ[A-Za-z0-9\-_]{8,}\.[A-Za-z0-9\-_]{8,}\.[A-Za-z0-9\-_]{4,}\b/g;
+var QUERY_SECRET_RE = /([?&](?:pair_token|token|access_token|refresh_token|password|secret)=)([^&\s]+)/gi;
+var listeners = /* @__PURE__ */ new Set();
+function notifyListeners() {
+	for (const listener of listeners) try {
+		listener();
+	} catch {}
+}
+function redactDiagnosticString(value) {
+	return String(value ?? "").replace(BEARER_JWT_RE, "Bearer [REDACTED]").replace(RAW_JWT_RE, "[REDACTED_JWT]").replace(QUERY_SECRET_RE, "$1[REDACTED]");
+}
+function redactDiagnosticData(input, depth = 0) {
+	if (input === null || input === void 0) return input;
+	if (depth > 5) return "[TRUNCATED]";
+	if (typeof input === "string") return redactDiagnosticString(input);
+	if (typeof input === "number" || typeof input === "boolean") return input;
+	if (input instanceof Error) return {
+		name: input.name,
+		message: redactDiagnosticString(input.message || "")
+	};
+	if (Array.isArray(input)) return input.slice(0, 30).map((item) => redactDiagnosticData(item, depth + 1));
+	if (typeof input === "object") {
+		const out = {};
+		for (const [key, val] of Object.entries(input)) if (SENSITIVE_KEY_RE.test(key)) out[key] = "[REDACTED]";
+		else out[key] = redactDiagnosticData(val, depth + 1);
+		return out;
+	}
+	return String(input);
+}
+function readStorageEntries() {
+	try {
+		if (typeof localStorage === "undefined") return [];
+		const raw = localStorage.getItem(DIAGNOSTICS_STORAGE_KEY);
+		if (!raw) return [];
+		const parsed = JSON.parse(raw);
+		return Array.isArray(parsed) ? parsed : [];
+	} catch {
+		return [];
+	}
+}
+function writeStorageEntries(entries) {
+	try {
+		if (typeof localStorage === "undefined") return;
+		localStorage.setItem(DIAGNOSTICS_STORAGE_KEY, JSON.stringify(entries.slice(0, MAX_DIAGNOSTIC_ENTRIES)));
+	} catch {}
+}
+function logDiagnostic(params) {
+	const entry = {
+		id: `DIAG-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+		timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+		category: params.category,
+		severity: params.severity,
+		source: redactDiagnosticString(String(params.source || "app").trim()),
+		message: redactDiagnosticString(String(params.message || "").trim()),
+		details: params.details ? redactDiagnosticData(params.details) : void 0
+	};
+	writeStorageEntries([entry, ...readStorageEntries()].slice(0, MAX_DIAGNOSTIC_ENTRIES));
+	notifyListeners();
+	return entry;
+}
+function getDiagnostics() {
+	return readStorageEntries();
+}
+function clearDiagnostics() {
+	try {
+		if (typeof localStorage !== "undefined") localStorage.removeItem(DIAGNOSTICS_STORAGE_KEY);
+	} catch {}
+	notifyListeners();
+}
+function subscribeDiagnostics(callback) {
+	listeners.add(callback);
+	return () => {
+		listeners.delete(callback);
+	};
+}
+function formatDiagnosticsExport() {
+	const entries = getDiagnostics();
+	return JSON.stringify({
+		exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
+		count: entries.length,
+		entries
+	}, null, 2);
+}
 // src/services/api.ts
 var TOKENS_KEY = "awlad_selim_auth_tokens_v3";
 var SERVER_URL_KEY = "awlad_selim_server_base_url";
@@ -12630,6 +12780,24 @@ function setAuthExpiredHandler(cb) {
 function triggerAuthExpired(message) {
 	saveStoredTokens(null);
 	if (onAuthExpiredHandler) onAuthExpiredHandler(message);
+}
+function isDatabaseUnavailableError(err) {
+	const code = String(err?.code || "");
+	return err?.status === 503 || code === "DATABASE_UNAVAILABLE";
+}
+var onServerDbStatusHandler = null;
+var serverDbStatusListeners = /* @__PURE__ */ new Set();
+function subscribeServerDbStatus(cb) {
+	serverDbStatusListeners.add(cb);
+	return () => {
+		serverDbStatusListeners.delete(cb);
+	};
+}
+function notifyServerDbStatus(available, message) {
+	if (onServerDbStatusHandler) onServerDbStatusHandler(available, message);
+	for (const listener of serverDbStatusListeners) try {
+		listener(available, message);
+	} catch {}
 }
 async function hydrateServerUrlFromNative() {
 	await hydrateNativePreferences([
@@ -13019,12 +13187,13 @@ async function testServerHealth(baseUrl) {
 	try {
 		const res = await fetchWithTimeout(`${effectiveBase}/api/health`, { method: "GET" }, 7e3);
 		const latencyMs = Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt);
-		if (!res.ok) return {
+		const data = await res.json().catch(() => ({}));
+		if (!res.ok || data?.ok === false) return {
 			ok: false,
 			latencyMs,
-			error: `السيرفر استجاب برمز خطأ (${res.status})`
+			mode: data?.mode,
+			error: data?.error || data?.postgres?.message || `السيرفر استجاب برمز خطأ (${res.status})`
 		};
-		const data = await res.json().catch(() => ({}));
 		return {
 			ok: true,
 			latencyMs,
@@ -13056,10 +13225,10 @@ async function refreshAccessToken() {
 	if (refreshPromise) return refreshPromise;
 	refreshPromise = (async () => {
 		const current = getStoredTokens();
-		if (!current?.refreshToken) return null;
+		if (!current?.refreshToken) return { tokens: null };
 		try {
 			const base = getConfiguredApiBaseUrl();
-			if (isNativeCapacitor() && !base) return null;
+			if (isNativeCapacitor() && !base) return { tokens: null };
 			const res = await fetch(`${base}/api/auth/refresh`, {
 				method: "POST",
 				headers: {
@@ -13068,23 +13237,73 @@ async function refreshAccessToken() {
 				},
 				body: JSON.stringify({ refreshToken: current.refreshToken })
 			});
-			if (!res.ok) {
-				saveStoredTokens(null);
-				return null;
+			const data = await res.json().catch(() => null);
+			if (res.status === 503 || data?.code === "DATABASE_UNAVAILABLE") {
+				const message = data?.error || "قاعدة البيانات المركزية (PostgreSQL) غير متاحة مؤقتًا. تم إيقاف العمليات لحماية البيانات ومنع انقسامها.";
+				notifyServerDbStatus(false, message);
+				logDiagnostic({
+					category: "network_error",
+					severity: "error",
+					source: "api.refreshAccessToken",
+					message,
+					details: {
+						status: 503,
+						code: "DATABASE_UNAVAILABLE"
+					}
+				});
+				return {
+					tokens: null,
+					dbUnavailableError: new ApiError(503, message, "DATABASE_UNAVAILABLE", data?.details)
+				};
 			}
-			const data = await res.json();
+			if (!res.ok) {
+				if (res.status >= 500) {
+					logDiagnostic({
+						category: "network_error",
+						severity: "error",
+						source: "api.refreshAccessToken",
+						message: data?.error || `خطأ مؤقت في الخادم (${res.status})`,
+						details: {
+							status: res.status,
+							code: data?.code
+						}
+					});
+					return {
+						tokens: null,
+						transientError: new ApiError(res.status, data?.error || `خطأ مؤقت في الخادم (${res.status})`, data?.code || `HTTP_${res.status}`, data?.details)
+					};
+				}
+				saveStoredTokens(null);
+				logDiagnostic({
+					category: "auth",
+					severity: "warning",
+					source: "api.refreshAccessToken",
+					message: data?.error || "تعذر تجديد جلسة المصادقة",
+					details: {
+						status: res.status,
+						code: data?.code
+					}
+				});
+				return {
+					tokens: null,
+					authErrorMessage: data?.error
+				};
+			}
 			if (data?.ok && data.accessToken && data.refreshToken) {
 				const nextTokens = {
 					accessToken: data.accessToken,
 					refreshToken: data.refreshToken
 				};
 				saveStoredTokens(nextTokens);
-				return nextTokens;
+				return { tokens: nextTokens };
 			}
 			saveStoredTokens(null);
-			return null;
+			return { tokens: null };
 		} catch {
-			return null;
+			return {
+				tokens: null,
+				networkError: new ApiError(0, "تعذر الاتصال بالسيرفر، تحقق من الشبكة أو تشغيل الخادم", "NETWORK_ERROR")
+			};
 		} finally {
 			refreshPromise = null;
 		}
@@ -13094,7 +13313,20 @@ async function refreshAccessToken() {
 async function apiRequest(path, options = {}) {
 	const method = options.method || "GET";
 	const base = getConfiguredApiBaseUrl();
-	if (isNativeCapacitor() && !base) throw new ApiError(0, "لم يتم تحديد عنوان السيرفر المركزي (لابتوب المحل) بعد. يرجى ضبط عنوان السيرفر أولاً أو مسح رمز QR.", "SERVER_URL_NOT_CONFIGURED");
+	if (isNativeCapacitor() && !base) {
+		const err = new ApiError(0, "لم يتم تحديد عنوان السيرفر المركزي (لابتوب المحل) بعد. يرجى ضبط عنوان السيرفر أولاً أو مسح رمز QR.", "SERVER_URL_NOT_CONFIGURED");
+		logDiagnostic({
+			category: "network_error",
+			severity: "warning",
+			source: `api.${method}`,
+			message: err.message,
+			details: {
+				path,
+				code: err.code
+			}
+		});
+		throw err;
+	}
 	assertSafeHttpTransport(base);
 	const url = `${base}${path.startsWith("/") ? path : `/${path}`}`;
 	const buildHeaders = (accessToken) => {
@@ -13114,20 +13346,48 @@ async function apiRequest(path, options = {}) {
 				body: options.body !== void 0 ? JSON.stringify(options.body) : void 0
 			}, options.timeoutMs || 2e4);
 		} catch (err) {
-			if (err?.name === "AbortError") throw new ApiError(0, "انتهت مهلة الاتصال بالسيرفر، يرجى المحاولة مرة أخرى", "TIMEOUT");
+			if (err?.name === "AbortError") {
+				logDiagnostic({
+					category: "network_error",
+					severity: "error",
+					source: `api.${method}`,
+					message: "انتهت مهلة الاتصال بالسيرفر، يرجى المحاولة مرة أخرى",
+					details: {
+						path,
+						code: "TIMEOUT",
+						timeoutMs: options.timeoutMs || 2e4
+					}
+				});
+				throw new ApiError(0, "انتهت مهلة الاتصال بالسيرفر، يرجى المحاولة مرة أخرى", "TIMEOUT");
+			}
+			logDiagnostic({
+				category: "network_error",
+				severity: "error",
+				source: `api.${method}`,
+				message: "تعذر الاتصال بالسيرفر، تحقق من الشبكة أو تشغيل الخادم",
+				details: {
+					path,
+					code: "NETWORK_ERROR"
+				}
+			});
 			throw new ApiError(0, "تعذر الاتصال بالسيرفر، تحقق من الشبكة أو تشغيل الخادم", "NETWORK_ERROR");
 		}
 	};
 	const tokens = getStoredTokens();
 	let res = await executeFetch(tokens?.accessToken);
+	let refreshAuthErrorMessage;
 	if (res.status === 401 && !options.skipAuth) {
 		if (tokens?.refreshToken) {
-			const refreshed = await refreshAccessToken();
-			if (refreshed?.accessToken) res = await executeFetch(refreshed.accessToken);
+			const refreshOutcome = await refreshAccessToken();
+			if (refreshOutcome.dbUnavailableError) throw refreshOutcome.dbUnavailableError;
+			if (refreshOutcome.networkError) throw refreshOutcome.networkError;
+			if (refreshOutcome.transientError) throw refreshOutcome.transientError;
+			if (refreshOutcome.tokens?.accessToken) res = await executeFetch(refreshOutcome.tokens.accessToken);
+			else refreshAuthErrorMessage = refreshOutcome.authErrorMessage;
 		}
 		if (res.status === 401) {
 			saveStoredTokens(null);
-			if (onAuthExpiredHandler) onAuthExpiredHandler("انتهت صلاحية جلسة الدخول، يرجى تسجيل الدخول مجدداً.");
+			if (onAuthExpiredHandler) onAuthExpiredHandler(refreshAuthErrorMessage || "انتهت صلاحية جلسة الدخول، يرجى تسجيل الدخول مجدداً.");
 		}
 	}
 	let json = null;
@@ -13136,16 +13396,42 @@ async function apiRequest(path, options = {}) {
 	} catch {
 		json = null;
 	}
-	if (res.status === 403 && json?.code === "DEVICE_REVOKED" && !options.skipAuth) {
+	if (res.status === 403 && (json?.code === "DEVICE_REVOKED" || json?.code === "ACCOUNT_DEACTIVATED" || json?.code === "ACCOUNT_SUSPENDED") && !options.skipAuth) {
 		saveStoredTokens(null);
 		if (onAuthExpiredHandler) onAuthExpiredHandler(json?.error || "تم إلغاء ربط هذا الجهاز من قِبل الإدارة.");
 	}
 	if (!res.ok || json && json.ok === false) {
-		const message = json?.error || `خطأ في الاستجابة (${res.status})`;
-		const code = json?.code || `HTTP_${res.status}`;
+		const isDb503 = res.status === 503 || json?.code === "DATABASE_UNAVAILABLE";
+		const message = json?.error || (isDb503 ? "قاعدة البيانات المركزية (PostgreSQL) غير متاحة مؤقتًا. تم إيقاف العمليات لحماية البيانات ومنع انقسامها." : `خطأ في الاستجابة (${res.status})`);
+		const code = json?.code || (isDb503 ? "DATABASE_UNAVAILABLE" : `HTTP_${res.status}`);
+		if (isDb503) notifyServerDbStatus(false, message);
+		logDiagnostic({
+			category: code === "DEVICE_REVOKED" || code === "ACCOUNT_DEACTIVATED" || code === "ACCOUNT_SUSPENDED" || code === "SESSION_REVOKED" || res.status === 401 ? "auth" : "network_error",
+			severity: res.status >= 500 || isDb503 ? "error" : "warning",
+			source: `api.${method}`,
+			message,
+			details: {
+				path,
+				status: res.status,
+				code
+			}
+		});
 		throw new ApiError(res.status, message, code, json?.details);
 	}
+	notifyServerDbStatus(true);
 	return json ?? {};
+}
+async function fetchComprehensiveReport(params) {
+	const qs = new URLSearchParams();
+	for (const [k, v] of Object.entries(params)) if (v !== void 0 && v !== "" && v !== "all") qs.set(k, v);
+	else if (k === "reportType" && v) qs.set(k, v);
+	return (await apiRequest(`/api/reports/comprehensive?${qs.toString()}`)).report;
+}
+async function fetchReportSourceDocument(docType, docId) {
+	return apiRequest(`/api/reports/source-document?${new URLSearchParams({
+		docType,
+		docId
+	}).toString()}`);
 }
 // src/services/storage.ts
 function generateId(prefix = "AS") {
@@ -13167,6 +13453,7 @@ function getEmptyClientDatabaseState() {
 		representatives: [],
 		repTransfers: [],
 		repItemTransfers: [],
+		repCustodyOperations: [],
 		customerItemOrders: [],
 		orderAdvancePayments: [],
 		syncConflicts: [],
@@ -13231,6 +13518,7 @@ function clearReadCache() {
 		localStorage.removeItem(READ_CACHE_KEY);
 	} catch {}
 }
+function purgeLegacyLocalDatabaseCache() {}
 // src/services/localDb.ts
 var DB_NAME = "awlad_selim_offline_db_v1";
 var DB_VERSION = 1;
@@ -13681,6 +13969,219 @@ var DEFAULT_MOBILE_CONFIG = {
 	allowCustomerPriceView: true,
 	requireOrderApproval: true
 };
+var DEFAULT_AUTH_SESSION_DEPS = {
+	apiRequest,
+	getConfiguredApiBaseUrl,
+	getStoredInstallationId,
+	getStoredTokens,
+	hydrateServerUrlFromNative,
+	saveStoredTokens,
+	setStoredInstallationIdAsync,
+	isNativeCapacitor,
+	clearReadCache,
+	purgeLegacyLocalDatabaseCache,
+	clearLastVerifiedOfflineSession,
+	refreshCachedUserAuthorization,
+	restoreLastVerifiedOfflineSession,
+	revokeOfflineUser
+};
+function isAuthSecurityRejectionError(err) {
+	const code = String(err?.code || "");
+	return err?.status === 401 || code === "SESSION_REVOKED" || code === "DEVICE_REVOKED" || code === "ACCOUNT_DEACTIVATED" || code === "ACCOUNT_SUSPENDED" || code === "INVALID_TOKEN" || code === "UNAUTHORIZED";
+}
+function createAuthExpiredCallback(actions, cleanup) {
+	return (message) => {
+		logDiagnostic({
+			category: "auth",
+			severity: "warning",
+			source: "auth.sessionExpired",
+			message: message || "انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً."
+		});
+		const uid = cleanup?.getCurrentUserId?.();
+		if (uid && cleanup?.revokeOfflineUser) cleanup.revokeOfflineUser(uid).catch(() => {});
+		else if (cleanup?.clearLastVerifiedOfflineSession) cleanup.clearLastVerifiedOfflineSession().catch(() => {});
+		cleanup?.clearReadCache?.();
+		actions.setCurrentUser(null);
+		actions.setCustomerProfile(null);
+		actions.setRepresentativeProfile(null);
+		actions.setLinkWarning(null);
+		actions.setIsOfflineSession(false);
+		actions.setPermissionsMayBeStale(false);
+		actions.setLastVerifiedAt(null);
+		actions.setIsDatabaseUnavailable(false);
+		actions.setDatabaseUnavailableMessage(null);
+		actions.setSessionExpiredMessage(message || "انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً.");
+	};
+}
+async function executeAuthSessionCheck(params) {
+	const { getCurrentUser, actions, isStale = () => false } = params;
+	const deps = {
+		...DEFAULT_AUTH_SESSION_DEPS,
+		...params.deps || {}
+	};
+	deps.purgeLegacyLocalDatabaseCache();
+	await deps.hydrateServerUrlFromNative();
+	if (isStale()) return;
+	const baseUrl = deps.getConfiguredApiBaseUrl();
+	const prevInstallationId = deps.getStoredInstallationId();
+	let serverInstallationId = "";
+	let serverUnreachable = false;
+	let statusDbUnavailable = false;
+	let statusDbMessage = null;
+	const resetToUnauthenticated = (setupNeeded, preserveDbAlert = false, dbMessage = null) => {
+		actions.setCurrentUser(null);
+		actions.setCustomerProfile(null);
+		actions.setRepresentativeProfile(null);
+		actions.setLinkWarning(null);
+		actions.setIsOfflineSession(false);
+		actions.setPermissionsMayBeStale(false);
+		actions.setLastVerifiedAt(null);
+		actions.setNeedsAdminSetup(setupNeeded);
+		if (preserveDbAlert) {
+			actions.setIsDatabaseUnavailable(true);
+			actions.setDatabaseUnavailableMessage(dbMessage || "قاعدة البيانات المركزية (PostgreSQL) غير متاحة مؤقتًا. تم إيقاف العمليات لحماية البيانات ومنع انقسامها.");
+			actions.setSessionExpiredMessage(null);
+		} else {
+			actions.setIsDatabaseUnavailable(false);
+			actions.setDatabaseUnavailableMessage(null);
+		}
+		actions.setIsLoading(false);
+	};
+	const handleDbUnavailable = async (dbMessage) => {
+		const resolvedMessage = dbMessage || "قاعدة البيانات المركزية (PostgreSQL) غير متاحة مؤقتًا. تم إيقاف العمليات لحماية البيانات ومنع انقسامها.";
+		actions.setSessionExpiredMessage(null);
+		actions.setIsOfflineSession(false);
+		actions.setIsDatabaseUnavailable(true);
+		actions.setDatabaseUnavailableMessage(resolvedMessage);
+		if (!getCurrentUser()) {
+			const restored = await deps.restoreLastVerifiedOfflineSession(baseUrl, serverInstallationId || prevInstallationId).catch(() => null);
+			if (isStale()) return;
+			if (restored) {
+				actions.setCurrentUser(restored.user);
+				actions.setCustomerProfile(restored.customerProfile);
+				actions.setRepresentativeProfile(restored.representativeProfile);
+				actions.setIsOfflineSession(false);
+				actions.setPermissionsMayBeStale(true);
+				actions.setLastVerifiedAt(restored.lastVerifiedAt);
+				actions.setNeedsAdminSetup(false);
+			}
+		}
+		actions.setIsLoading(false);
+	};
+	try {
+		try {
+			const statusRes = await deps.apiRequest("/api/auth/status", { skipAuth: true });
+			if (isStale()) return;
+			serverInstallationId = String(statusRes.installationId || "").trim();
+			const setupNeeded = Boolean(statusRes.needsAdminSetup);
+			actions.setNeedsAdminSetup(setupNeeded);
+			if (setupNeeded) {
+				deps.saveStoredTokens(null);
+				await deps.clearLastVerifiedOfflineSession().catch(() => {});
+				deps.clearReadCache();
+				if (serverInstallationId) await deps.setStoredInstallationIdAsync(serverInstallationId).catch(() => {});
+				resetToUnauthenticated(true);
+				return;
+			}
+			if (prevInstallationId && serverInstallationId && prevInstallationId !== serverInstallationId) {
+				deps.saveStoredTokens(null);
+				await deps.clearLastVerifiedOfflineSession().catch(() => {});
+				deps.clearReadCache();
+				await deps.setStoredInstallationIdAsync(serverInstallationId).catch(() => {});
+				resetToUnauthenticated(false);
+				return;
+			}
+		} catch (err) {
+			if (isStale()) return;
+			if (isDatabaseUnavailableError(err)) {
+				statusDbUnavailable = true;
+				statusDbMessage = err?.message || "قاعدة البيانات المركزية (PostgreSQL) غير متاحة مؤقتًا. تم إيقاف العمليات لحماية البيانات ومنع انقسامها.";
+			} else if (err?.status === 0 || typeof navigator !== "undefined" && navigator.onLine === false) serverUnreachable = true;
+		}
+		const tokens = deps.getStoredTokens();
+		if (!tokens?.accessToken) {
+			if (serverInstallationId && !prevInstallationId) await deps.setStoredInstallationIdAsync(serverInstallationId).catch(() => {});
+			resetToUnauthenticated(false, statusDbUnavailable, statusDbMessage);
+			return;
+		}
+		if (statusDbUnavailable) {
+			await handleDbUnavailable(statusDbMessage);
+			return;
+		}
+		try {
+			const me = await deps.apiRequest("/api/auth/me");
+			if (isStale()) return;
+			const resolvedInstallationId = String(me.installationId || serverInstallationId || prevInstallationId || "").trim();
+			if (resolvedInstallationId) await deps.setStoredInstallationIdAsync(resolvedInstallationId).catch(() => {});
+			actions.setCurrentUser(me.user);
+			actions.setCustomerProfile(me.customerProfile || null);
+			actions.setRepresentativeProfile(me.representativeProfile || null);
+			actions.setMobileConfig(me.mobileConfig || DEFAULT_MOBILE_CONFIG);
+			actions.setLinkWarning(me.linkWarning || null);
+			actions.setSessionExpiredMessage(null);
+			actions.setIsDatabaseUnavailable(false);
+			actions.setDatabaseUnavailableMessage(null);
+			actions.setNeedsAdminSetup(false);
+			actions.setIsOfflineSession(false);
+			actions.setPermissionsMayBeStale(false);
+			const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+			actions.setLastVerifiedAt(nowIso);
+			deps.refreshCachedUserAuthorization({
+				serverUrl: baseUrl,
+				installationId: resolvedInstallationId,
+				user: me.user,
+				customerProfile: me.customerProfile || null,
+				representativeProfile: me.representativeProfile || null
+			}).catch(() => {});
+		} catch (err) {
+			if (isStale()) return;
+			if (isAuthSecurityRejectionError(err)) {
+				const prevUid = getCurrentUser()?.id || null;
+				if (prevUid) await deps.revokeOfflineUser(prevUid).catch(() => {});
+				else await deps.clearLastVerifiedOfflineSession().catch(() => {});
+				deps.saveStoredTokens(null);
+				actions.setCurrentUser(null);
+				actions.setCustomerProfile(null);
+				actions.setRepresentativeProfile(null);
+				actions.setLinkWarning(null);
+				actions.setIsOfflineSession(false);
+				actions.setPermissionsMayBeStale(false);
+				actions.setLastVerifiedAt(null);
+				actions.setIsDatabaseUnavailable(false);
+				actions.setDatabaseUnavailableMessage(null);
+				if (err?.code === "DEVICE_REVOKED" || err?.code === "ACCOUNT_DEACTIVATED" || err?.code === "ACCOUNT_SUSPENDED" || err?.code === "SESSION_REVOKED") actions.setSessionExpiredMessage(err.message);
+				else if (err?.status === 401) actions.setSessionExpiredMessage(err?.message || "انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً.");
+			} else if (isDatabaseUnavailableError(err)) await handleDbUnavailable(err?.message || "قاعدة البيانات المركزية (PostgreSQL) غير متاحة مؤقتًا. تم إيقاف العمليات لحماية البيانات ومنع انقسامها.");
+			else if ((err?.status === 0 || serverUnreachable) && deps.isNativeCapacitor() && Boolean(tokens?.refreshToken)) {
+				actions.setIsDatabaseUnavailable(false);
+				actions.setDatabaseUnavailableMessage(null);
+				const restored = await deps.restoreLastVerifiedOfflineSession(baseUrl, serverInstallationId || prevInstallationId).catch(() => null);
+				if (isStale()) return;
+				if (restored) {
+					actions.setCurrentUser(restored.user);
+					actions.setCustomerProfile(restored.customerProfile);
+					actions.setRepresentativeProfile(restored.representativeProfile);
+					actions.setIsOfflineSession(true);
+					actions.setPermissionsMayBeStale(true);
+					actions.setLastVerifiedAt(restored.lastVerifiedAt);
+					actions.setNeedsAdminSetup(false);
+				} else resetToUnauthenticated(false);
+			} else {
+				actions.setIsDatabaseUnavailable(false);
+				actions.setDatabaseUnavailableMessage(null);
+				actions.setCurrentUser(null);
+				actions.setCustomerProfile(null);
+				actions.setRepresentativeProfile(null);
+				actions.setLinkWarning(null);
+				actions.setIsOfflineSession(false);
+				actions.setPermissionsMayBeStale(false);
+				actions.setLastVerifiedAt(null);
+			}
+		}
+	} finally {
+		if (!isStale()) actions.setIsLoading(false);
+	}
+}
 var AuthContext = (0, import_react.createContext)(void 0);
 var AuthProvider = ({ children }) => {
 	const [currentUser, setCurrentUser] = (0, import_react.useState)(null);
@@ -13689,143 +14190,91 @@ var AuthProvider = ({ children }) => {
 	const [mobileConfig, setMobileConfig] = (0, import_react.useState)(DEFAULT_MOBILE_CONFIG);
 	const [linkWarning, setLinkWarning] = (0, import_react.useState)(null);
 	const [sessionExpiredMessage, setSessionExpiredMessage] = (0, import_react.useState)(null);
+	const [isDatabaseUnavailable, setIsDatabaseUnavailable] = (0, import_react.useState)(false);
+	const [databaseUnavailableMessage, setDatabaseUnavailableMessage] = (0, import_react.useState)(null);
 	const [pairingBanner, setPairingBanner] = (0, import_react.useState)(null);
 	const [needsAdminSetup, setNeedsAdminSetup] = (0, import_react.useState)(false);
 	const [isLoading, setIsLoading] = (0, import_react.useState)(true);
 	const [isOfflineSession, setIsOfflineSession] = (0, import_react.useState)(false);
 	const [lastVerifiedAt, setLastVerifiedAt] = (0, import_react.useState)(null);
 	const [permissionsMayBeStale, setPermissionsMayBeStale] = (0, import_react.useState)(false);
+	const currentUserRef = (0, import_react.useRef)(null);
+	currentUserRef.current = currentUser;
 	const currentUserIdRef = (0, import_react.useRef)(null);
 	currentUserIdRef.current = currentUser?.id || null;
+	const isDatabaseUnavailableRef = (0, import_react.useRef)(false);
+	isDatabaseUnavailableRef.current = isDatabaseUnavailable;
 	const checkSeqRef = (0, import_react.useRef)(0);
+	const isCheckingRef = (0, import_react.useRef)(false);
 	const checkStatusAndSession = (0, import_react.useCallback)(async () => {
 		const seq = ++checkSeqRef.current;
-		await hydrateServerUrlFromNative();
-		if (seq !== checkSeqRef.current) return;
-		const baseUrl = getConfiguredApiBaseUrl();
-		const prevInstallationId = getStoredInstallationId();
-		let serverInstallationId = "";
-		let serverUnreachable = false;
-		const resetToUnauthenticated = (setupNeeded) => {
-			setCurrentUser(null);
-			setCustomerProfile(null);
-			setRepresentativeProfile(null);
-			setLinkWarning(null);
-			setIsOfflineSession(false);
-			setPermissionsMayBeStale(false);
-			setLastVerifiedAt(null);
-			setNeedsAdminSetup(setupNeeded);
-			setIsLoading(false);
-		};
+		isCheckingRef.current = true;
 		try {
-			const statusRes = await apiRequest("/api/auth/status", { skipAuth: true });
-			if (seq !== checkSeqRef.current) return;
-			serverInstallationId = String(statusRes.installationId || "").trim();
-			const setupNeeded = Boolean(statusRes.needsAdminSetup);
-			setNeedsAdminSetup(setupNeeded);
-			if (setupNeeded) {
-				saveStoredTokens(null);
-				await clearLastVerifiedOfflineSession().catch(() => {});
-				clearReadCache();
-				if (serverInstallationId) await setStoredInstallationIdAsync(serverInstallationId).catch(() => {});
-				resetToUnauthenticated(true);
-				return;
-			}
-			if (prevInstallationId && serverInstallationId && prevInstallationId !== serverInstallationId) {
-				saveStoredTokens(null);
-				await clearLastVerifiedOfflineSession().catch(() => {});
-				clearReadCache();
-				await setStoredInstallationIdAsync(serverInstallationId).catch(() => {});
-				resetToUnauthenticated(false);
-				return;
-			}
-		} catch (err) {
-			if (err?.status === 0 || typeof navigator !== "undefined" && navigator.onLine === false) serverUnreachable = true;
-		}
-		const tokens = getStoredTokens();
-		if (!tokens?.accessToken) {
-			if (serverInstallationId && !prevInstallationId) await setStoredInstallationIdAsync(serverInstallationId).catch(() => {});
-			resetToUnauthenticated(false);
-			return;
-		}
-		try {
-			const me = await apiRequest("/api/auth/me");
-			if (seq !== checkSeqRef.current) return;
-			const resolvedInstallationId = String(me.installationId || serverInstallationId || prevInstallationId || "").trim();
-			if (resolvedInstallationId) await setStoredInstallationIdAsync(resolvedInstallationId).catch(() => {});
-			setCurrentUser(me.user);
-			setCustomerProfile(me.customerProfile || null);
-			setRepresentativeProfile(me.representativeProfile || null);
-			setMobileConfig(me.mobileConfig || DEFAULT_MOBILE_CONFIG);
-			setLinkWarning(me.linkWarning || null);
-			setSessionExpiredMessage(null);
-			setNeedsAdminSetup(false);
-			setIsOfflineSession(false);
-			setPermissionsMayBeStale(false);
-			const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-			setLastVerifiedAt(nowIso);
-			refreshCachedUserAuthorization({
-				serverUrl: baseUrl,
-				installationId: resolvedInstallationId,
-				user: me.user,
-				customerProfile: me.customerProfile || null,
-				representativeProfile: me.representativeProfile || null
-			}).catch(() => {});
-		} catch (err) {
-			if (seq !== checkSeqRef.current) return;
-			if (err?.status === 401 || err?.code === "DEVICE_REVOKED" || err?.code === "ACCOUNT_DEACTIVATED") {
-				const prevUid = currentUserIdRef.current;
-				if (prevUid) revokeOfflineUser(prevUid).catch(() => {});
-				else clearLastVerifiedOfflineSession().catch(() => {});
-				saveStoredTokens(null);
-				setCurrentUser(null);
-				setCustomerProfile(null);
-				setRepresentativeProfile(null);
-				setLinkWarning(null);
-				setIsOfflineSession(false);
-				setPermissionsMayBeStale(false);
-				setLastVerifiedAt(null);
-				if (err?.code === "DEVICE_REVOKED" || err?.code === "ACCOUNT_DEACTIVATED") setSessionExpiredMessage(err.message);
-			} else if ((err?.status === 0 || serverUnreachable) && isNativeCapacitor() && Boolean(tokens?.refreshToken)) {
-				const restored = await restoreLastVerifiedOfflineSession(baseUrl, serverInstallationId || prevInstallationId).catch(() => null);
-				if (seq !== checkSeqRef.current) return;
-				if (restored) {
-					setCurrentUser(restored.user);
-					setCustomerProfile(restored.customerProfile);
-					setRepresentativeProfile(restored.representativeProfile);
-					setIsOfflineSession(true);
-					setPermissionsMayBeStale(true);
-					setLastVerifiedAt(restored.lastVerifiedAt);
-					setNeedsAdminSetup(false);
-				} else resetToUnauthenticated(false);
-			} else {
-				setCurrentUser(null);
-				setCustomerProfile(null);
-				setRepresentativeProfile(null);
-				setLinkWarning(null);
-				setIsOfflineSession(false);
-				setPermissionsMayBeStale(false);
-				setLastVerifiedAt(null);
-			}
+			await executeAuthSessionCheck({
+				getCurrentUser: () => currentUserRef.current,
+				isStale: () => seq !== checkSeqRef.current,
+				actions: {
+					setCurrentUser,
+					setCustomerProfile,
+					setRepresentativeProfile,
+					setMobileConfig,
+					setLinkWarning,
+					setSessionExpiredMessage,
+					setIsDatabaseUnavailable,
+					setDatabaseUnavailableMessage,
+					setNeedsAdminSetup,
+					setIsOfflineSession,
+					setPermissionsMayBeStale,
+					setLastVerifiedAt,
+					setIsLoading
+				}
+			});
 		} finally {
-			if (seq === checkSeqRef.current) setIsLoading(false);
+			if (seq === checkSeqRef.current) isCheckingRef.current = false;
 		}
 	}, []);
 	(0, import_react.useEffect)(() => {
-		setAuthExpiredHandler((message) => {
-			setCurrentUser(null);
-			setCustomerProfile(null);
-			setRepresentativeProfile(null);
-			setLinkWarning(null);
-			setIsOfflineSession(false);
-			setPermissionsMayBeStale(false);
-			setSessionExpiredMessage(message || "انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً.");
+		setAuthExpiredHandler(createAuthExpiredCallback({
+			setCurrentUser,
+			setCustomerProfile,
+			setRepresentativeProfile,
+			setLinkWarning,
+			setIsOfflineSession,
+			setPermissionsMayBeStale,
+			setLastVerifiedAt,
+			setIsDatabaseUnavailable,
+			setDatabaseUnavailableMessage,
+			setSessionExpiredMessage
+		}, {
+			getCurrentUserId: () => currentUserIdRef.current,
+			revokeOfflineUser,
+			clearLastVerifiedOfflineSession,
+			clearReadCache
+		}));
+		const unsubscribeDbStatus = subscribeServerDbStatus((available, message) => {
+			if (!available) {
+				isDatabaseUnavailableRef.current = true;
+				setIsDatabaseUnavailable(true);
+				setDatabaseUnavailableMessage(message || "قاعدة البيانات المركزية (PostgreSQL) غير متاحة مؤقتًا. تم إيقاف العمليات لحماية البيانات ومنع انقسامها.");
+				setSessionExpiredMessage(null);
+			} else if (isDatabaseUnavailableRef.current) {
+				if (!isCheckingRef.current) checkStatusAndSession().catch(() => {});
+			}
 		});
 		checkStatusAndSession();
 		return () => {
 			setAuthExpiredHandler(null);
+			unsubscribeDbStatus();
 		};
 	}, [checkStatusAndSession]);
+	(0, import_react.useEffect)(() => {
+		if (!isDatabaseUnavailable) return;
+		const timer = window.setInterval(() => {
+			if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+			if (!isCheckingRef.current) checkStatusAndSession().catch(() => {});
+		}, 1e4);
+		return () => window.clearInterval(timer);
+	}, [isDatabaseUnavailable, checkStatusAndSession]);
 	const login = async (username, password) => {
 		const descriptor = getClientDeviceDescriptor();
 		const baseUrl = getConfiguredApiBaseUrl();
@@ -13863,6 +14312,8 @@ var AuthProvider = ({ children }) => {
 			setMobileConfig(res.mobileConfig || DEFAULT_MOBILE_CONFIG);
 			setLinkWarning(res.linkWarning || null);
 			setSessionExpiredMessage(null);
+			setIsDatabaseUnavailable(false);
+			setDatabaseUnavailableMessage(null);
 			setNeedsAdminSetup(false);
 			setIsOfflineSession(false);
 			setPermissionsMayBeStale(false);
@@ -13886,6 +14337,8 @@ var AuthProvider = ({ children }) => {
 					setMobileConfig(DEFAULT_MOBILE_CONFIG);
 					setLinkWarning(null);
 					setSessionExpiredMessage(null);
+					setIsDatabaseUnavailable(false);
+					setDatabaseUnavailableMessage(null);
 					setNeedsAdminSetup(false);
 					setIsOfflineSession(true);
 					setPermissionsMayBeStale(true);
@@ -13900,9 +14353,79 @@ var AuthProvider = ({ children }) => {
 					error: offlineRes.error
 				};
 			}
+			if (isDatabaseUnavailableError(err)) {
+				setIsDatabaseUnavailable(true);
+				setDatabaseUnavailableMessage(err?.message || "قاعدة البيانات المركزية (PostgreSQL) غير متاحة مؤقتًا. تم إيقاف العمليات لحماية البيانات ومنع انقسامها.");
+				setSessionExpiredMessage(null);
+			}
+			logDiagnostic({
+				category: "auth",
+				severity: "warning",
+				source: "auth.login",
+				message: err?.message || "تعذر تسجيل الدخول",
+				details: {
+					username: username.trim(),
+					status: err?.status,
+					code: err?.code
+				}
+			});
 			return {
 				success: false,
 				error: err?.message || "تعذر تسجيل الدخول"
+			};
+		}
+	};
+	const registerAccount = async (payload) => {
+		const descriptor = getClientDeviceDescriptor();
+		const baseUrl = getConfiguredApiBaseUrl();
+		try {
+			const res = await apiRequest("/api/auth/register", {
+				method: "POST",
+				body: {
+					...payload,
+					username: payload.username.trim(),
+					fullName: payload.fullName.trim(),
+					phone: payload.phone.trim(),
+					...descriptor
+				},
+				skipAuth: true
+			});
+			const resolvedInstallationId = String(res.installationId || getStoredInstallationId() || "").trim();
+			if (resolvedInstallationId) await setStoredInstallationIdAsync(resolvedInstallationId).catch(() => {});
+			saveStoredTokens({
+				accessToken: res.accessToken,
+				refreshToken: res.refreshToken
+			});
+			await saveVerifiedOnlineCredentials({
+				serverUrl: baseUrl,
+				installationId: resolvedInstallationId,
+				username: payload.username.trim(),
+				password: payload.password,
+				user: res.user,
+				customerProfile: res.customerProfile || null,
+				representativeProfile: res.representativeProfile || null
+			}).catch(() => {});
+			setCurrentUser(res.user);
+			setCustomerProfile(res.customerProfile || null);
+			setRepresentativeProfile(res.representativeProfile || null);
+			setMobileConfig(res.mobileConfig || DEFAULT_MOBILE_CONFIG);
+			setLinkWarning(res.linkWarning || null);
+			setSessionExpiredMessage(null);
+			setIsDatabaseUnavailable(false);
+			setDatabaseUnavailableMessage(null);
+			setNeedsAdminSetup(false);
+			setIsOfflineSession(false);
+			setPermissionsMayBeStale(false);
+			setLastVerifiedAt((/* @__PURE__ */ new Date()).toISOString());
+			return { success: true };
+		} catch (err) {
+			if (isDatabaseUnavailableError(err)) {
+				setIsDatabaseUnavailable(true);
+				setDatabaseUnavailableMessage(err?.message || "قاعدة البيانات المركزية (PostgreSQL) غير متاحة مؤقتًا. تم إيقاف العمليات لحماية البيانات ومنع انقسامها.");
+			}
+			return {
+				success: false,
+				error: err?.message || "تعذر إنشاء الحساب الجديد"
 			};
 		}
 	};
@@ -13945,11 +14468,19 @@ var AuthProvider = ({ children }) => {
 		setMobileConfig(DEFAULT_MOBILE_CONFIG);
 		setLinkWarning(null);
 		setSessionExpiredMessage(null);
+		setIsDatabaseUnavailable(false);
+		setDatabaseUnavailableMessage(null);
 		setIsOfflineSession(false);
 		setPermissionsMayBeStale(false);
 		setLastVerifiedAt(null);
 	};
 	const handleServerAuthRevoked = (0, import_react.useCallback)(async (reason) => {
+		logDiagnostic({
+			category: "auth",
+			severity: "error",
+			source: "auth.serverRevoked",
+			message: reason || "تم إيقاف الحساب أو سحب الصلاحية من السيرفر المركزي."
+		});
 		const uid = currentUserIdRef.current;
 		if (uid) await revokeOfflineUser(uid).catch(() => {});
 		else await clearLastVerifiedOfflineSession().catch(() => {});
@@ -13963,6 +14494,8 @@ var AuthProvider = ({ children }) => {
 		setIsOfflineSession(false);
 		setPermissionsMayBeStale(false);
 		setLastVerifiedAt(null);
+		setIsDatabaseUnavailable(false);
+		setDatabaseUnavailableMessage(null);
 		setSessionExpiredMessage(reason || "تم إيقاف الحساب أو سحب الصلاحية من السيرفر المركزي.");
 	}, []);
 	const updatePassword = async (newPassword, currentPassword) => {
@@ -14043,6 +14576,8 @@ var AuthProvider = ({ children }) => {
 			mobileConfig,
 			linkWarning,
 			sessionExpiredMessage,
+			isDatabaseUnavailable,
+			databaseUnavailableMessage,
 			pairingBanner,
 			setPairingBanner,
 			clearPairingBanner: () => setPairingBanner(null),
@@ -14053,6 +14588,7 @@ var AuthProvider = ({ children }) => {
 			lastVerifiedAt,
 			permissionsMayBeStale,
 			login,
+			registerAccount,
 			bootstrapAdmin,
 			logout,
 			handleServerAuthRevoked,
@@ -14359,13 +14895,14 @@ async function syncConnectionConfigFromServer(options) {
 			signal: controller.signal
 		}).finally(() => clearTimeout(timer));
 		const data = await res.json().catch(() => null);
-		if (res.status === 403 && data?.code === "DEVICE_REVOKED") {
+		if (res.status === 403 && (data?.code === "DEVICE_REVOKED" || data?.code === "ACCOUNT_DEACTIVATED" || data?.code === "ACCOUNT_SUSPENDED")) {
 			triggerAuthExpired(data?.error || "تم فصل هذا الجهاز من الإدارة.");
 			return {
 				updated: false,
 				revoked: true
 			};
 		}
+		if (res.status === 503 || data?.code === "DATABASE_UNAVAILABLE") return { updated: false };
 		if (!data) continue;
 		if (data.profiles) saveStoredConnectionProfiles(data.profiles);
 		if (Array.isArray(data.fallbackEndpoints)) saveFallbackEndpoints(data.fallbackEndpoints);
@@ -14501,16 +15038,24 @@ async function enqueueSyncOperation(params) {
 }
 function isAuthRevokedError(err) {
 	const code = String(err?.code || "");
-	return err?.status === 401 || code === "DEVICE_REVOKED" || code === "ACCOUNT_DEACTIVATED" || code === "SESSION_REVOKED" || code === "INVALID_TOKEN" || code === "UNAUTHORIZED";
+	return err?.status === 401 || code === "DEVICE_REVOKED" || code === "ACCOUNT_DEACTIVATED" || code === "ACCOUNT_SUSPENDED" || code === "SESSION_REVOKED" || code === "INVALID_TOKEN" || code === "UNAUTHORIZED";
 }
 function isUnreachableError(err) {
+	if (err?.status === 503 || String(err?.code || "") === "DATABASE_UNAVAILABLE") return false;
 	return err?.status === 0 || typeof navigator !== "undefined" && navigator.onLine === false;
 }
+async function getSyncRefreshStats() {
+	const [lastSendSummary, lastReceiveSummary] = await Promise.all([localDb.getMeta("last_send_summary"), localDb.getMeta("last_receive_summary")]);
+	return {
+		lastSendSummary: lastSendSummary || null,
+		lastReceiveSummary: lastReceiveSummary || null
+	};
+}
 async function executeSyncCycle(params) {
-	const { userId, forceAll = false } = params;
+	const { userId, forceAll = false, mode = "full" } = params;
 	const nowMs = Date.now();
 	const queue = await localDb.listSyncQueue(userId);
-	const dueOperations = queue.filter((item) => {
+	const dueOperations = mode === "receive_only" ? [] : queue.filter((item) => {
 		if (item.status === "pending" || item.status === "local") return true;
 		if (item.status === "syncing") return true;
 		if (item.status === "failed") {
@@ -14523,68 +15068,158 @@ async function executeSyncCycle(params) {
 	let syncedCount = 0;
 	let failedCount = queue.filter((q) => q.status === "failed").length;
 	let conflictCount = queue.filter((q) => q.status === "needs_review").length;
-	if (dueOperations.length > 0) {
-		const orderedOps = [...dueOperations].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
-		try {
-			const pushRes = await apiRequest("/api/sync/push", {
-				method: "POST",
-				body: { operations: orderedOps }
-			});
-			const resultMap = new Map((Array.isArray(pushRes?.results) ? pushRes.results : []).map((r) => [r.operationId, r]));
-			const updatedQueue = [...queue];
-			const newConflicts = [];
-			const updateTimestamp = (/* @__PURE__ */ new Date()).toISOString();
-			for (let i = 0; i < updatedQueue.length; i += 1) {
-				const item = updatedQueue[i];
-				const res = resultMap.get(item.operationId);
-				if (!res) continue;
-				pushedCount += 1;
-				if (res.status === "synced") {
-					syncedCount += 1;
-					updatedQueue[i] = {
-						...item,
-						status: "synced",
-						lastError: void 0,
-						nextRetryAt: void 0,
-						updatedAt: updateTimestamp
-					};
-				} else if (res.status === "needs_review") {
-					if (res.conflict) newConflicts.push(res.conflict);
-					updatedQueue[i] = {
-						...item,
-						status: "needs_review",
-						attempts: (item.attempts || 0) + 1,
-						lastError: res.error || res.conflict?.conflictReason || "تعارض يحتاج مراجعة يدوية",
-						conflictId: res.conflictId || res.conflict?.id || item.conflictId,
-						nextRetryAt: void 0,
-						updatedAt: updateTimestamp
-					};
-				} else {
-					const attempts = (item.attempts || 0) + 1;
-					const backoffMs = Math.min(3e5, Math.pow(2, Math.min(attempts, 6)) * 5e3);
-					updatedQueue[i] = {
-						...item,
-						status: "failed",
-						attempts,
-						lastError: res.error || "تعذر تنفيذ العملية على السيرفر",
-						nextRetryAt: Date.now() + backoffMs,
-						updatedAt: updateTimestamp
-					};
+	if (mode !== "receive_only") {
+		if (dueOperations.length > 0) {
+			const orderedOps = [...dueOperations].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+			try {
+				const pushRes = await apiRequest("/api/sync/push", {
+					method: "POST",
+					body: { operations: orderedOps }
+				});
+				const resultMap = new Map((Array.isArray(pushRes?.results) ? pushRes.results : []).map((r) => [r.operationId, r]));
+				const updatedQueue = [...queue];
+				const newConflicts = [];
+				const updateTimestamp = (/* @__PURE__ */ new Date()).toISOString();
+				for (let i = 0; i < updatedQueue.length; i += 1) {
+					const item = updatedQueue[i];
+					const res = resultMap.get(item.operationId);
+					if (!res) continue;
+					pushedCount += 1;
+					if (res.status === "synced") {
+						syncedCount += 1;
+						updatedQueue[i] = {
+							...item,
+							status: "synced",
+							lastError: void 0,
+							nextRetryAt: void 0,
+							updatedAt: updateTimestamp
+						};
+					} else if (res.status === "needs_review") {
+						if (res.conflict) newConflicts.push(res.conflict);
+						updatedQueue[i] = {
+							...item,
+							status: "needs_review",
+							attempts: (item.attempts || 0) + 1,
+							lastError: res.error || res.conflict?.conflictReason || "تعارض يحتاج مراجعة يدوية",
+							conflictId: res.conflictId || res.conflict?.id || item.conflictId,
+							nextRetryAt: void 0,
+							updatedAt: updateTimestamp
+						};
+					} else {
+						const attempts = (item.attempts || 0) + 1;
+						const backoffMs = Math.min(3e5, Math.pow(2, Math.min(attempts, 6)) * 5e3);
+						updatedQueue[i] = {
+							...item,
+							status: "failed",
+							attempts,
+							lastError: res.error || "تعذر تنفيذ العملية على السيرفر",
+							nextRetryAt: Date.now() + backoffMs,
+							updatedAt: updateTimestamp
+						};
+					}
 				}
+				await localDb.saveSyncQueue(userId, updatedQueue);
+				if (newConflicts.length > 0) {
+					const existingConflicts = await localDb.listConflicts(userId);
+					const merged = [...newConflicts];
+					for (const oldCf of existingConflicts) if (!merged.some((c) => c.id === oldCf.id)) merged.push(oldCf);
+					await localDb.saveConflicts(userId, merged);
+				}
+				failedCount = updatedQueue.filter((q) => q.status === "failed").length;
+				conflictCount = updatedQueue.filter((q) => q.status === "needs_review").length;
+				await localDb.setMeta("last_send_summary", {
+					at: updateTimestamp,
+					count: syncedCount,
+					failedCount,
+					conflictCount,
+					ok: failedCount === 0 && conflictCount === 0,
+					error: failedCount > 0 ? "تعذر إرسال بعض العمليات وبقيت محفوظة لإعادة المحاولة." : void 0
+				});
+				if (failedCount > 0 || newConflicts.length > 0) logDiagnostic({
+					category: "sync_issue",
+					severity: failedCount > 0 ? "error" : "warning",
+					source: "syncEngine.push",
+					message: failedCount > 0 ? `فشل إرسال (${failedCount}) عملية من طابور المزامنة وبقيت محفوظة لإعادة المحاولة` : `تم رصد (${newConflicts.length}) تعارض مزامنة يحتاج مراجعة`,
+					details: {
+						pushedCount,
+						syncedCount,
+						failedCount,
+						conflictCount,
+						mode
+					}
+				});
+			} catch (err) {
+				const errMsg = err?.message || "تعذر مزامنة العمليات مع قاعدة البيانات المركزية";
+				logDiagnostic({
+					category: isAuthRevokedError(err) ? "auth" : "sync_issue",
+					severity: "error",
+					source: "syncEngine.push",
+					message: errMsg,
+					details: {
+						status: err?.status,
+						code: err?.code,
+						pendingCount: dueOperations.length,
+						mode
+					}
+				});
+				if (isAuthRevokedError(err)) return {
+					ok: false,
+					serverReachable: true,
+					mode,
+					authRevoked: true,
+					revokeReason: err?.message,
+					pushedCount: 0,
+					syncedCount: 0,
+					failedCount,
+					conflictCount,
+					error: err?.message
+				};
+				await localDb.setMeta("last_send_summary", {
+					at: (/* @__PURE__ */ new Date()).toISOString(),
+					count: 0,
+					failedCount: dueOperations.length,
+					conflictCount,
+					ok: false,
+					error: errMsg
+				});
+				if (isUnreachableError(err)) return {
+					ok: false,
+					serverReachable: false,
+					mode,
+					pushedCount: 0,
+					syncedCount: 0,
+					failedCount,
+					conflictCount,
+					error: err?.message || "الخادم غير متاح حالياً"
+				};
+				return {
+					ok: false,
+					serverReachable: true,
+					mode,
+					pushedCount: 0,
+					syncedCount: 0,
+					failedCount,
+					conflictCount,
+					error: errMsg
+				};
 			}
-			await localDb.saveSyncQueue(userId, updatedQueue);
-			if (newConflicts.length > 0) {
-				const existingConflicts = await localDb.listConflicts(userId);
-				const merged = [...newConflicts];
-				for (const oldCf of existingConflicts) if (!merged.some((c) => c.id === oldCf.id)) merged.push(oldCf);
-				await localDb.saveConflicts(userId, merged);
-			}
-			failedCount = updatedQueue.filter((q) => q.status === "failed").length;
-			conflictCount = updatedQueue.filter((q) => q.status === "needs_review").length;
+		} else if (mode === "send_only") try {
+			await apiRequest("/api/sync/push", {
+				method: "POST",
+				body: { operations: [] }
+			});
+			await localDb.setMeta("last_send_summary", {
+				at: (/* @__PURE__ */ new Date()).toISOString(),
+				count: 0,
+				failedCount: 0,
+				conflictCount,
+				ok: true
+			});
 		} catch (err) {
 			if (isAuthRevokedError(err)) return {
 				ok: false,
 				serverReachable: true,
+				mode,
 				authRevoked: true,
 				revokeReason: err?.message,
 				pushedCount: 0,
@@ -14593,16 +15228,26 @@ async function executeSyncCycle(params) {
 				conflictCount,
 				error: err?.message
 			};
-			if (isUnreachableError(err)) return {
+			return {
 				ok: false,
-				serverReachable: false,
+				serverReachable: !isUnreachableError(err),
+				mode,
 				pushedCount: 0,
 				syncedCount: 0,
 				failedCount,
 				conflictCount,
-				error: err?.message || "الخادم غير متاح حالياً"
+				error: err?.message || "تعذر الاتصال بالسيرفر"
 			};
 		}
+		if (mode === "send_only") return {
+			ok: true,
+			serverReachable: true,
+			mode,
+			pushedCount,
+			syncedCount,
+			failedCount,
+			conflictCount
+		};
 	}
 	try {
 		const pullData = await apiRequest("/api/sync/pull");
@@ -14611,19 +15256,39 @@ async function executeSyncCycle(params) {
 		const serverConflicts = Array.isArray(pullData?.syncConflicts) ? pullData.syncConflicts : [];
 		await localDb.saveConflicts(userId, serverConflicts);
 		const unresolvedConflicts = serverConflicts.filter((c) => c.status === "needs_review").length;
+		const receivedCount = (Array.isArray(pullData?.products) ? pullData.products.length : 0) + (Array.isArray(pullData?.repItemTransfers) ? pullData.repItemTransfers.filter((r) => r.status === "executed").length : 0);
+		await localDb.setMeta("last_receive_summary", {
+			at: nowTime,
+			count: receivedCount,
+			ok: true
+		});
 		return {
 			ok: true,
 			serverReachable: true,
+			mode,
 			pushedCount,
 			syncedCount,
 			failedCount,
 			conflictCount: Math.max(conflictCount, unresolvedConflicts),
-			pullData
+			pullData,
+			receivedCount
 		};
 	} catch (err) {
+		logDiagnostic({
+			category: isAuthRevokedError(err) ? "auth" : "sync_issue",
+			severity: "error",
+			source: "syncEngine.pull",
+			message: err?.message || "تعذر سحب أحدث بيانات من السيرفر",
+			details: {
+				status: err?.status,
+				code: err?.code,
+				mode
+			}
+		});
 		if (isAuthRevokedError(err)) return {
 			ok: false,
 			serverReachable: true,
+			mode,
 			authRevoked: true,
 			revokeReason: err?.message,
 			pushedCount,
@@ -14632,9 +15297,16 @@ async function executeSyncCycle(params) {
 			conflictCount,
 			error: err?.message
 		};
+		await localDb.setMeta("last_receive_summary", {
+			at: (/* @__PURE__ */ new Date()).toISOString(),
+			count: 0,
+			ok: false,
+			error: err?.message || "تعذر سحب أحدث بيانات من السيرفر"
+		});
 		return {
 			ok: false,
 			serverReachable: !isUnreachableError(err),
+			mode,
 			pushedCount,
 			syncedCount,
 			failedCount,
@@ -14644,17 +15316,20 @@ async function executeSyncCycle(params) {
 	}
 }
 function runSyncCycle(params) {
-	const existing = activeLocks.get(params.userId);
+	const lockKey = `${params.userId}:${params.mode || "full"}`;
+	const existing = activeLocks.get(lockKey);
 	if (existing) return existing;
 	const job = executeSyncCycle(params).finally(() => {
-		activeLocks.delete(params.userId);
+		activeLocks.delete(lockKey);
 	});
-	activeLocks.set(params.userId, job);
+	activeLocks.set(lockKey, job);
 	return job;
 }
 // src/context/DataContext.tsx
 var DataContext = (0, import_react.createContext)(void 0);
 function isNetworkFailure(err) {
+	if (err?.status === 503 || String(err?.code || "") === "DATABASE_UNAVAILABLE") return false;
+	if (typeof err?.status === "number" && err.status >= 400) return false;
 	return err?.status === 0 || typeof navigator !== "undefined" && navigator.onLine === false;
 }
 /**
@@ -14669,6 +15344,7 @@ function overlayPendingQueueOnState(base, queue) {
 		stockPerWarehouse: { ...p.stockPerWarehouse || {} }
 	}));
 	const customers = (base.customers || []).map((c) => ({ ...c }));
+	const representatives = (base.representatives || []).map((r) => ({ ...r }));
 	const suppliers = (base.suppliers || []).map((s) => ({ ...s }));
 	const cashboxes = (base.cashboxes || []).map((cb) => ({ ...cb }));
 	const invoices = (base.invoices || []).map((inv) => ({
@@ -14681,6 +15357,8 @@ function overlayPendingQueueOnState(base, queue) {
 	const returns = (base.invoiceReturns || []).map((r) => ({ ...r }));
 	const financialTransactions = [...base.financialTransactions || []];
 	const expenseIncomes = [...base.expenseIncomes || []];
+	const repItemTransfers = (base.repItemTransfers || []).map((t) => ({ ...t }));
+	const repCustodyOperations = [...base.repCustodyOperations || []];
 	for (const op of pending) {
 		const p = op.payload || {};
 		if (op.operationType === "create_order") {
@@ -14724,6 +15402,9 @@ function overlayPendingQueueOnState(base, queue) {
 					date: p.date || op.createdAt.slice(0, 10),
 					customerId: p.customerId,
 					customerName: p.customerName || cust?.name || "عميل",
+					representativeId: p.representativeId,
+					representativeName: p.representativeName,
+					reviewStatus: p.status !== "draft" && p.representativeId ? "needs_review" : "not_required",
 					warehouseId: p.warehouseId,
 					warehouseName: p.warehouseName || "",
 					items: p.items || [],
@@ -14749,6 +15430,10 @@ function overlayPendingQueueOnState(base, queue) {
 					if (cust) cust.currentBalance = Number(cust.currentBalance || 0) + remainingAmount;
 					const cb = cashboxes.find((c) => c.id === p.cashboxId);
 					if (cb && paidAmount > 0) cb.currentBalance = Number(cb.currentBalance || 0) + paidAmount;
+					if (p.representativeId && paidAmount > 0) {
+						const repTarget = representatives.find((r) => r.id === p.representativeId);
+						if (repTarget) repTarget.currentBalance = Number(repTarget.currentBalance || 0) + paidAmount;
+					}
 					if (p.warehouseId) for (const it of p.items || []) {
 						const prod = products.find((pr) => pr.id === it.productId);
 						if (prod) {
@@ -14845,6 +15530,104 @@ function overlayPendingQueueOnState(base, queue) {
 				inv.remainingAmount = Math.max(0, nextGrand - Number(inv.paidAmount || 0));
 				if (p.date) inv.date = p.date;
 				if (p.notes !== void 0) inv.notes = p.notes;
+				if (p.reason) {
+					const hist = Array.isArray(inv.editHistory) ? [...inv.editHistory] : [];
+					hist.push({
+						editedBy: op.userId,
+						editedAt: op.createdAt,
+						reason: String(p.reason),
+						before: {
+							grandTotal: oldGrand,
+							discountTotal: Number(inv.discountTotal || 0),
+							itemsCount: (inv.items || []).length
+						},
+						after: {
+							date: inv.date,
+							grandTotal: nextGrand,
+							discountTotal: nextDiscount,
+							itemsCount: nextItems.length
+						}
+					});
+					inv.editHistory = hist;
+				}
+				inv.syncStatus = op.status;
+			}
+		} else if (op.operationType === "edit_purchase_invoice") {
+			const targetId = p.invoiceId || op.entityId;
+			const inv = invoices.find((i) => i.id === targetId || i.localId === targetId);
+			if (inv && inv.status !== "cancelled") {
+				const oldGrand = Number(inv.grandTotal || 0);
+				const oldRem = Number(inv.remainingAmount || 0);
+				const oldWhId = inv.warehouseId;
+				const nextWhId = p.warehouseId || oldWhId;
+				const oldSuppId = inv.supplierId;
+				const nextSuppId = p.supplierId !== void 0 ? p.supplierId : oldSuppId;
+				const nextItems = Array.isArray(p.items) ? p.items : inv.items;
+				const nextSubtotal = nextItems.reduce((s, it) => s + Number(it.total || 0), 0);
+				const nextDiscount = p.discountTotal !== void 0 ? Number(p.discountTotal || 0) : Number(inv.discountTotal || 0);
+				const nextGrand = Math.max(0, nextSubtotal - nextDiscount);
+				const nextRem = Math.max(0, nextGrand - Number(inv.paidAmount || 0));
+				if (inv.status === "confirmed") {
+					if (oldWhId) for (const oldIt of inv.items || []) {
+						const prod = products.find((pr) => pr.id === oldIt.productId);
+						if (prod) {
+							const qtyBase = Number(oldIt.quantity || 0) * Number(oldIt.unitFactor || 1);
+							prod.stockPerWarehouse[oldWhId] = Number(prod.stockPerWarehouse[oldWhId] || 0) - qtyBase;
+						}
+					}
+					if (nextWhId) for (const newIt of nextItems || []) {
+						const prod = products.find((pr) => pr.id === newIt.productId);
+						if (prod) {
+							const qtyBase = Number(newIt.quantity || 0) * Number(newIt.unitFactor || 1);
+							prod.stockPerWarehouse[nextWhId] = Number(prod.stockPerWarehouse[nextWhId] || 0) + qtyBase;
+						}
+					}
+					if ((oldSuppId || null) === (nextSuppId || null)) {
+						const diffRem = nextRem - oldRem;
+						if (nextSuppId && diffRem !== 0) {
+							const supp = suppliers.find((s) => s.id === nextSuppId);
+							if (supp) supp.currentBalance = Number(supp.currentBalance || 0) + diffRem;
+						}
+					} else {
+						if (oldSuppId && oldRem !== 0) {
+							const oldSupp = suppliers.find((s) => s.id === oldSuppId);
+							if (oldSupp) oldSupp.currentBalance = Number(oldSupp.currentBalance || 0) - oldRem;
+						}
+						if (nextSuppId && nextRem !== 0) {
+							const newSupp = suppliers.find((s) => s.id === nextSuppId);
+							if (newSupp) newSupp.currentBalance = Number(newSupp.currentBalance || 0) + nextRem;
+						}
+					}
+				}
+				const hist = Array.isArray(inv.editHistory) ? [...inv.editHistory] : [];
+				if (p.reason) hist.push({
+					editedBy: op.userId,
+					editedAt: op.createdAt,
+					reason: String(p.reason),
+					before: {
+						grandTotal: oldGrand,
+						discountTotal: Number(inv.discountTotal || 0),
+						itemsCount: (inv.items || []).length
+					},
+					after: {
+						date: p.date || inv.date,
+						grandTotal: nextGrand,
+						discountTotal: nextDiscount,
+						itemsCount: nextItems.length
+					}
+				});
+				inv.items = nextItems;
+				inv.warehouseId = nextWhId;
+				if (p.warehouseName) inv.warehouseName = p.warehouseName;
+				inv.supplierId = nextSuppId;
+				if (p.supplierName !== void 0) inv.supplierName = p.supplierName;
+				inv.subtotal = nextSubtotal;
+				inv.discountTotal = nextDiscount;
+				inv.grandTotal = nextGrand;
+				inv.remainingAmount = nextRem;
+				if (p.date) inv.date = p.date;
+				if (p.notes !== void 0) inv.notes = p.notes;
+				inv.editHistory = hist;
 				inv.syncStatus = op.status;
 			}
 		} else if (op.operationType === "add_invoice_payment") {
@@ -14942,8 +15725,13 @@ function overlayPendingQueueOnState(base, queue) {
 				id: targetId,
 				code: p.code || `LOC-${op.operationId.slice(-4)}`,
 				name: p.name || "",
+				shopName: p.shopName || "",
 				phone: p.phone || "",
 				address: p.address || "",
+				area: p.area || "",
+				geoCoordinates: p.geoCoordinates || "",
+				assignedRepId: p.assignedRepId || void 0,
+				allowedRepIds: Array.isArray(p.allowedRepIds) ? p.allowedRepIds : p.assignedRepId ? [p.assignedRepId] : [],
 				status: p.status || "active",
 				openingBalance: Number(p.openingBalance || 0),
 				currentBalance: Number(p.openingBalance || 0),
@@ -15072,12 +15860,178 @@ function overlayPendingQueueOnState(base, queue) {
 					createdAt: op.createdAt
 				});
 			}
+		} else if (op.operationType === "create_supplier") {
+			const targetId = op.localId || op.operationId;
+			if (!suppliers.some((s) => s.id === targetId)) suppliers.unshift({
+				id: targetId,
+				code: p.code || `SUP-LOC-${op.operationId.slice(-4)}`,
+				name: p.name || "",
+				phone: p.phone || "",
+				address: p.address || "",
+				status: p.status || "active",
+				openingBalance: Number(p.openingBalance || 0),
+				currentBalance: Number(p.openingBalance || 0),
+				notes: p.notes || "",
+				createdAt: op.createdAt
+			});
+		} else if (op.operationType === "create_sales_quote") {
+			const targetId = op.localId || op.entityId || op.operationId;
+			if (!invoices.some((i) => i.id === targetId || i.localId === targetId)) {
+				const cust = customers.find((c) => c.id === p.customerId);
+				const subtotal = (p.items || []).reduce((s, it) => s + Number(it.total || 0), 0);
+				const grandTotal = Math.max(0, subtotal - Number(p.discountTotal || 0));
+				invoices.unshift({
+					id: targetId,
+					invoiceNumber: `LOC-QUO-${op.operationId.slice(-5)}`,
+					type: "quote",
+					status: "draft",
+					date: p.date || op.createdAt.slice(0, 10),
+					customerId: p.customerId,
+					customerName: p.customerName || cust?.name || "عميل",
+					warehouseId: p.warehouseId,
+					warehouseName: p.warehouseName || "",
+					items: p.items || [],
+					subtotal,
+					discountTotal: Number(p.discountTotal || 0),
+					taxTotal: Number(p.taxTotal || 0),
+					grandTotal,
+					paidAmount: 0,
+					remainingAmount: grandTotal,
+					paymentType: "credit",
+					paymentMethod: "cash",
+					cashboxId: p.cashboxId || "",
+					notes: p.notes || "",
+					createdBy: op.userId,
+					createdAt: op.createdAt,
+					payments: [],
+					localId: targetId,
+					operationId: op.operationId,
+					syncStatus: op.status,
+					originDeviceId: op.deviceId
+				});
+			}
+		} else if (op.operationType === "create_purchase_return") {
+			const targetId = op.localId || op.operationId;
+			if (!returns.some((r) => r.id === targetId)) {
+				const partyId = p.partyId || p.supplierId || "";
+				const partyName = p.partyName || p.supplierName || "";
+				const totalAmt = Number(p.grandTotal ?? p.totalAmount ?? 0);
+				returns.unshift({
+					id: targetId,
+					returnNumber: `LOC-PRET-${op.operationId.slice(-5)}`,
+					originalInvoiceId: p.originalInvoiceId || "",
+					originalInvoiceNumber: p.originalInvoiceNumber || "",
+					date: p.date || op.createdAt.slice(0, 10),
+					type: "purchase_return",
+					partyId,
+					partyName,
+					warehouseId: p.warehouseId || "",
+					warehouseName: p.warehouseName || "",
+					items: p.items || [],
+					grandTotal: totalAmt,
+					refundType: p.refundType || "balance",
+					cashboxId: p.cashboxId,
+					reason: p.reason || "",
+					createdBy: op.userId,
+					createdAt: op.createdAt,
+					syncStatus: op.status
+				});
+				if (p.warehouseId) for (const it of p.items || []) {
+					const prod = products.find((pr) => pr.id === it.productId);
+					if (prod) {
+						const qtyBase = Number(it.quantity || 0) * Number(it.unitFactor || 1);
+						prod.stockPerWarehouse[p.warehouseId] = Number(prod.stockPerWarehouse[p.warehouseId] || 0) - qtyBase;
+					}
+				}
+				if (p.refundType === "balance" && partyId) {
+					const supp = suppliers.find((s) => s.id === partyId);
+					if (supp) supp.currentBalance = Number(supp.currentBalance || 0) - totalAmt;
+				} else if (p.refundType === "cash" && p.cashboxId) {
+					const cb = cashboxes.find((c) => c.id === p.cashboxId);
+					if (cb) cb.currentBalance = Number(cb.currentBalance || 0) + totalAmt;
+				}
+			}
+		} else if (op.operationType === "confirm_custody_receipt") {
+			const reqId = p.requestId || op.entityId;
+			const req = repItemTransfers.find((r) => r.id === reqId);
+			if (req && req.status === "executed") {
+				req.status = "received";
+				req.receivedAt = op.createdAt;
+				if (req.transferMode === "custody_dispatch" && req.targetWarehouseId) for (const it of req.items || []) {
+					const prod = products.find((pr) => pr.id === it.productId);
+					const qty = Number(it.executedQty ?? it.approvedQty ?? it.requestedQty ?? 0);
+					if (prod && qty > 0) prod.stockPerWarehouse[req.targetWarehouseId] = Number(prod.stockPerWarehouse[req.targetWarehouseId] || 0) + qty;
+				}
+			}
+		} else if (op.operationType === "record_custody_delivery") {
+			const targetId = op.localId || op.operationId;
+			if (!repCustodyOperations.some((c) => c.id === targetId)) {
+				const bQty = Number(p.quantity || 0) * Number(p.unitFactor || 1);
+				const prod = products.find((pr) => pr.id === p.productId);
+				const whId = p.warehouseId || "";
+				if (prod && whId) prod.stockPerWarehouse[whId] = Math.max(0, Number(prod.stockPerWarehouse[whId] || 0) - bQty);
+				repCustodyOperations.unshift({
+					id: targetId,
+					operationNumber: `LOC-CDL-${op.operationId.slice(-5)}`,
+					representativeId: p.representativeId || "",
+					representativeName: p.representativeName || "",
+					warehouseId: whId,
+					warehouseName: p.warehouseName || "",
+					customerId: p.customerId,
+					customerName: p.customerName,
+					productId: p.productId,
+					productName: prod?.name || p.productName || "",
+					operationType: "delivered_to_customer",
+					quantity: Number(p.quantity || 0),
+					unit: p.unit || prod?.baseUnit || "قطعة",
+					unitFactor: Number(p.unitFactor || 1),
+					baseQuantity: bQty,
+					date: p.date || op.createdAt.slice(0, 10),
+					status: "approved",
+					notes: p.notes || "",
+					createdBy: op.userId,
+					createdAt: op.createdAt
+				});
+			}
+		} else if (op.operationType === "record_custody_return") {
+			const targetId = op.localId || op.operationId;
+			if (!repCustodyOperations.some((c) => c.id === targetId)) {
+				const bQty = Number(p.quantity || 0) * Number(p.unitFactor || 1);
+				const prod = products.find((pr) => pr.id === p.productId);
+				const whId = p.warehouseId || "";
+				const targetWhId = p.targetWarehouseId || "";
+				if (prod && whId) prod.stockPerWarehouse[whId] = Math.max(0, Number(prod.stockPerWarehouse[whId] || 0) - bQty);
+				if (prod && targetWhId) prod.stockPerWarehouse[targetWhId] = Number(prod.stockPerWarehouse[targetWhId] || 0) + bQty;
+				repCustodyOperations.unshift({
+					id: targetId,
+					operationNumber: `LOC-CRET-${op.operationId.slice(-5)}`,
+					representativeId: p.representativeId || "",
+					representativeName: p.representativeName || "",
+					warehouseId: whId,
+					warehouseName: p.warehouseName || "",
+					targetWarehouseId: targetWhId || void 0,
+					targetWarehouseName: p.targetWarehouseName || void 0,
+					productId: p.productId,
+					productName: prod?.name || p.productName || "",
+					operationType: "returned_to_warehouse",
+					quantity: Number(p.quantity || 0),
+					unit: p.unit || prod?.baseUnit || "قطعة",
+					unitFactor: Number(p.unitFactor || 1),
+					baseQuantity: bQty,
+					date: p.date || op.createdAt.slice(0, 10),
+					status: "approved",
+					notes: p.notes || "",
+					createdBy: op.userId,
+					createdAt: op.createdAt
+				});
+			}
 		}
 	}
 	return {
 		...base,
 		products,
 		customers,
+		representatives,
 		suppliers,
 		cashboxes,
 		invoices,
@@ -15085,7 +16039,9 @@ function overlayPendingQueueOnState(base, queue) {
 		orderAdvancePayments: advancePayments,
 		invoiceReturns: returns,
 		financialTransactions,
-		expenseIncomes
+		expenseIncomes,
+		repItemTransfers,
+		repCustodyOperations
 	};
 }
 var DataProvider = ({ children }) => {
@@ -15106,7 +16062,38 @@ var DataProvider = ({ children }) => {
 	const [customerStatement, setCustomerStatement] = (0, import_react.useState)(null);
 	const [mobileNotifications, setMobileNotifications] = (0, import_react.useState)([]);
 	const [readNotificationIds, setReadNotificationIds] = (0, import_react.useState)([]);
+	const [lastSendSummary, setLastSendSummary] = (0, import_react.useState)(null);
+	const [lastReceiveSummary, setLastReceiveSummary] = (0, import_react.useState)(null);
 	const hydratedUserRef = (0, import_react.useRef)(null);
+	const isDbUnavailableRef = (0, import_react.useRef)(false);
+	const isSyncingRef = (0, import_react.useRef)(false);
+	const loadRoleScopedDataRef = (0, import_react.useRef)(null);
+	const refreshSyncStatsFromLocal = (0, import_react.useCallback)(async () => {
+		const stats = await getSyncRefreshStats().catch(() => ({
+			lastSendSummary: null,
+			lastReceiveSummary: null
+		}));
+		setLastSendSummary(stats.lastSendSummary);
+		setLastReceiveSummary(stats.lastReceiveSummary);
+	}, []);
+	(0, import_react.useEffect)(() => {
+		refreshSyncStatsFromLocal();
+	}, [refreshSyncStatsFromLocal]);
+	(0, import_react.useEffect)(() => {
+		return subscribeServerDbStatus((available, message) => {
+			if (!available) {
+				isDbUnavailableRef.current = true;
+				setIsServerReachable(true);
+				setNetworkStatus("error");
+				setLastError(message || "قاعدة البيانات المركزية (PostgreSQL) غير متاحة مؤقتًا. تم إيقاف العمليات لحماية البيانات ومنع انقسامها.");
+			} else if (isDbUnavailableRef.current) {
+				isDbUnavailableRef.current = false;
+				setLastError(null);
+				setNetworkStatus((prev) => prev === "error" ? "connected" : prev);
+				if (!isSyncingRef.current && loadRoleScopedDataRef.current) loadRoleScopedDataRef.current().catch(() => {});
+			}
+		});
+	}, []);
 	const refreshQueueAndConflictsFromLocal = (0, import_react.useCallback)(async (uid) => {
 		const targetUid = uid || currentUser?.id;
 		if (!targetUid) {
@@ -15190,6 +16177,7 @@ var DataProvider = ({ children }) => {
 			nextStateBase = {
 				...empty,
 				...pullData,
+				repCustodyOperations: pullData.repCustodyOperations || [],
 				serverSettings: hydratedServerSettings
 			};
 		}
@@ -15299,6 +16287,7 @@ var DataProvider = ({ children }) => {
 			setIsInitialLoaded(true);
 			return;
 		}
+		isSyncingRef.current = true;
 		setIsSyncing(true);
 		try {
 			const outcome = await runSyncCycle({
@@ -15327,10 +16316,12 @@ var DataProvider = ({ children }) => {
 				if (outcome.error) setLastError(outcome.error);
 			}
 		} catch (err) {
-			setIsServerReachable(false);
-			setNetworkStatus(isNetworkFailure(err) ? "disconnected" : "error");
+			const networkDown = isNetworkFailure(err);
+			setIsServerReachable(!networkDown);
+			setNetworkStatus(networkDown ? "disconnected" : "error");
 			setLastError(err?.message || "تعذر مزامنة البيانات مع السيرفر");
 		} finally {
+			isSyncingRef.current = false;
 			setIsSyncing(false);
 			setIsInitialLoaded(true);
 		}
@@ -15342,9 +16333,11 @@ var DataProvider = ({ children }) => {
 		handleServerAuthRevoked,
 		refreshAuthContext
 	]);
+	loadRoleScopedDataRef.current = loadRoleScopedData;
 	const triggerSync = (0, import_react.useCallback)(async (forceAll = false) => {
 		if (!isAuthenticated || !currentUser) return;
 		setNetworkStatus("synchronizing");
+		isSyncingRef.current = true;
 		setIsSyncing(true);
 		try {
 			await syncConnectionConfigFromServer({ triggerHeartbeat: true }).catch(() => {});
@@ -15366,7 +16359,13 @@ var DataProvider = ({ children }) => {
 				setNetworkStatus(outcome.serverReachable ? "error" : "disconnected");
 				if (outcome.error) setLastError(outcome.error);
 			}
+		} catch (err) {
+			const networkDown = isNetworkFailure(err);
+			setIsServerReachable(!networkDown);
+			setNetworkStatus(networkDown ? "disconnected" : "error");
+			setLastError(err?.message || "تعذر مزامنة البيانات مع السيرفر");
 		} finally {
+			isSyncingRef.current = false;
 			setIsSyncing(false);
 		}
 	}, [
@@ -15377,6 +16376,125 @@ var DataProvider = ({ children }) => {
 		applyServerPullPayload
 	]);
 	const triggerManualSync = (0, import_react.useCallback)(() => triggerSync(true), [triggerSync]);
+	const syncSendOnly = (0, import_react.useCallback)(async () => {
+		if (!isAuthenticated || !currentUser) return {
+			ok: false,
+			count: 0,
+			failedCount: 0,
+			conflictCount: 0,
+			error: "المستخدم غير مسجل"
+		};
+		setNetworkStatus("synchronizing");
+		isSyncingRef.current = true;
+		setIsSyncing(true);
+		try {
+			const outcome = await runSyncCycle({
+				userId: currentUser.id,
+				forceAll: true,
+				mode: "send_only"
+			});
+			await refreshQueueAndConflictsFromLocal(currentUser.id);
+			await refreshSyncStatsFromLocal();
+			if (outcome.authRevoked) {
+				await handleServerAuthRevoked(outcome.revokeReason);
+				return {
+					ok: false,
+					count: 0,
+					failedCount: outcome.failedCount,
+					conflictCount: outcome.conflictCount,
+					error: outcome.revokeReason
+				};
+			}
+			setIsServerReachable(outcome.serverReachable);
+			setNetworkStatus(!outcome.serverReachable ? "disconnected" : outcome.ok ? outcome.failedCount > 0 || outcome.conflictCount > 0 ? "pending" : "connected" : "error");
+			if (outcome.error) setLastError(outcome.error);
+			else setLastError(null);
+			return {
+				ok: outcome.ok,
+				count: outcome.syncedCount,
+				failedCount: outcome.failedCount,
+				conflictCount: outcome.conflictCount,
+				error: outcome.error
+			};
+		} catch (err) {
+			return {
+				ok: false,
+				count: 0,
+				failedCount: 0,
+				conflictCount: 0,
+				error: err?.message || "فشل الإرسال"
+			};
+		} finally {
+			isSyncingRef.current = false;
+			setIsSyncing(false);
+		}
+	}, [
+		isAuthenticated,
+		currentUser,
+		refreshQueueAndConflictsFromLocal,
+		refreshSyncStatsFromLocal,
+		handleServerAuthRevoked
+	]);
+	const syncReceiveOnly = (0, import_react.useCallback)(async () => {
+		if (!isAuthenticated || !currentUser) return {
+			ok: false,
+			count: 0,
+			error: "المستخدم غير مسجل"
+		};
+		setNetworkStatus("synchronizing");
+		isSyncingRef.current = true;
+		setIsSyncing(true);
+		try {
+			const outcome = await runSyncCycle({
+				userId: currentUser.id,
+				forceAll: true,
+				mode: "receive_only"
+			});
+			await refreshQueueAndConflictsFromLocal(currentUser.id);
+			await refreshSyncStatsFromLocal();
+			if (outcome.authRevoked) {
+				await handleServerAuthRevoked(outcome.revokeReason);
+				return {
+					ok: false,
+					count: 0,
+					error: outcome.revokeReason
+				};
+			}
+			setIsServerReachable(outcome.serverReachable);
+			if (outcome.ok && outcome.pullData) {
+				await applyServerPullPayload(outcome.pullData, currentUser);
+				setNetworkStatus(outcome.conflictCount > 0 || outcome.failedCount > 0 ? "pending" : "connected");
+				setLastError(null);
+				return {
+					ok: true,
+					count: outcome.receivedCount || 0
+				};
+			}
+			setNetworkStatus(outcome.serverReachable ? "error" : "disconnected");
+			if (outcome.error) setLastError(outcome.error);
+			return {
+				ok: false,
+				count: 0,
+				error: outcome.error || "تعذر الاستلام من السيرفر"
+			};
+		} catch (err) {
+			return {
+				ok: false,
+				count: 0,
+				error: err?.message || "تعذر الاستلام من السيرفر"
+			};
+		} finally {
+			isSyncingRef.current = false;
+			setIsSyncing(false);
+		}
+	}, [
+		isAuthenticated,
+		currentUser,
+		refreshQueueAndConflictsFromLocal,
+		refreshSyncStatsFromLocal,
+		handleServerAuthRevoked,
+		applyServerPullPayload
+	]);
 	(0, import_react.useEffect)(() => {
 		loadRoleScopedData();
 	}, [loadRoleScopedData]);
@@ -15492,7 +16610,14 @@ var DataProvider = ({ children }) => {
 				if (outcome.ok && outcome.pullData) {
 					await applyServerPullPayload(outcome.pullData, currentUser);
 					setNetworkStatus(outcome.conflictCount > 0 || outcome.failedCount > 0 ? "pending" : "connected");
-				} else if (!outcome.serverReachable) setNetworkStatus("disconnected");
+					setLastError(null);
+				} else if (!outcome.serverReachable) {
+					setNetworkStatus("disconnected");
+					if (outcome.error) setLastError(outcome.error);
+				} else {
+					setNetworkStatus("error");
+					if (outcome.error) setLastError(outcome.error);
+				}
 			}).catch(() => {});
 		}, 2e4);
 		const notifTimer = window.setInterval(() => {
@@ -16007,12 +17132,41 @@ var DataProvider = ({ children }) => {
 		}
 	};
 	const addSupplier = async (suppData) => {
-		const res = await apiRequest("/api/admin/suppliers", {
-			method: "POST",
-			body: suppData
-		});
-		await loadRoleScopedData();
-		return res.supplier;
+		try {
+			const res = await apiRequest("/api/admin/suppliers", {
+				method: "POST",
+				body: suppData
+			});
+			await loadRoleScopedData();
+			return res.supplier;
+		} catch (err) {
+			if (isNetworkFailure(err) && currentUser) {
+				const localId = generateId("SUP-LOC");
+				const op = await queueOfflineOp({
+					operationType: "create_supplier",
+					entityType: "supplier",
+					localId,
+					summaryAr: `إضافة مورد محليًا: ${suppData.name}`,
+					payload: {
+						...suppData,
+						localId
+					}
+				});
+				return {
+					id: localId,
+					code: suppData.code || `SUP-LOC-${op.operationId.slice(-4)}`,
+					name: suppData.name,
+					phone: suppData.phone,
+					address: suppData.address,
+					status: suppData.status || "active",
+					openingBalance: suppData.openingBalance,
+					currentBalance: suppData.openingBalance,
+					notes: suppData.notes,
+					createdAt: op.createdAt
+				};
+			}
+			throw err;
+		}
 	};
 	const updateSupplier = async (id, updates) => {
 		await apiRequest(`/api/admin/suppliers/${id}`, {
@@ -16067,7 +17221,7 @@ var DataProvider = ({ children }) => {
 		}
 	};
 	const createSalesInvoice = async (invoiceData) => {
-		const idempotencyKey = generateId("IDEMP");
+		const idempotencyKey = invoiceData?.idempotencyKey || generateId("IDEMP");
 		try {
 			const res = await apiRequest("/api/invoices/sales", {
 				method: "POST",
@@ -16146,7 +17300,7 @@ var DataProvider = ({ children }) => {
 			const res = await apiRequest("/api/invoices/purchase", {
 				method: "POST",
 				body: invoiceData,
-				idempotencyKey: generateId("IDEMP")
+				idempotencyKey: invoiceData?.idempotencyKey || generateId("IDEMP")
 			});
 			await loadRoleScopedData();
 			return {
@@ -16206,6 +17360,109 @@ var DataProvider = ({ children }) => {
 			};
 		}
 	};
+	const createSalesQuote = async (quoteData) => {
+		const idempotencyKey = quoteData?.idempotencyKey || generateId("QUO");
+		try {
+			const res = await apiRequest("/api/invoices/quotes", {
+				method: "POST",
+				body: quoteData,
+				idempotencyKey
+			});
+			await loadRoleScopedData();
+			return {
+				success: true,
+				invoice: res.invoice
+			};
+		} catch (err) {
+			if (isNetworkFailure(err) && currentUser) {
+				const localId = generateId("QUO-LOC");
+				const op = await queueOfflineOp({
+					operationType: "create_sales_quote",
+					entityType: "quote",
+					localId,
+					summaryAr: `عرض سعر محلي (${quoteData.customerName || "عميل"}) بمبلغ ${quoteData.grandTotal || 0} ج.م`,
+					payload: {
+						...quoteData,
+						localId
+					}
+				});
+				const cust = data.customers.find((c) => c.id === quoteData.customerId);
+				return {
+					success: true,
+					invoice: {
+						id: localId,
+						invoiceNumber: `LOC-QUO-${op.operationId.slice(-5)}`,
+						type: "quote",
+						status: "draft",
+						date: quoteData.date || op.createdAt.slice(0, 10),
+						customerId: quoteData.customerId,
+						customerName: quoteData.customerName || cust?.name,
+						warehouseId: quoteData.warehouseId,
+						warehouseName: quoteData.warehouseName || "",
+						items: quoteData.items || [],
+						subtotal: quoteData.subtotal || 0,
+						discountTotal: quoteData.discountTotal || 0,
+						taxTotal: quoteData.taxTotal || 0,
+						grandTotal: quoteData.grandTotal || 0,
+						paidAmount: 0,
+						remainingAmount: quoteData.grandTotal || 0,
+						paymentType: "credit",
+						paymentMethod: "cash",
+						cashboxId: quoteData.cashboxId || "",
+						notes: quoteData.notes,
+						createdBy: currentUser.id,
+						createdAt: op.createdAt,
+						payments: [],
+						localId,
+						operationId: op.operationId,
+						syncStatus: op.status
+					},
+					queuedOffline: true
+				};
+			}
+			return {
+				success: false,
+				error: err?.message || "تعذر إنشاء عرض السعر"
+			};
+		}
+	};
+	const convertQuoteToInvoice = async (quoteId, payload = {}) => {
+		try {
+			const res = await apiRequest(`/api/invoices/quotes/${quoteId}/convert`, {
+				method: "POST",
+				body: payload,
+				idempotencyKey: generateId("QCV")
+			});
+			await loadRoleScopedData();
+			return {
+				success: true,
+				invoice: res.invoice
+			};
+		} catch (err) {
+			return {
+				success: false,
+				error: err?.message || "تعذر تحويل عرض السعر إلى فاتورة بيع"
+			};
+		}
+	};
+	const markInvoiceReviewed = async (invoiceId, reviewNotes = "") => {
+		try {
+			const res = await apiRequest(`/api/invoices/${invoiceId}/mark-reviewed`, {
+				method: "POST",
+				body: { reviewNotes }
+			});
+			await loadRoleScopedData();
+			return {
+				success: true,
+				invoice: res.invoice
+			};
+		} catch (err) {
+			return {
+				success: false,
+				error: err?.message || "تعذر تأكيد مراجعة الفاتورة"
+			};
+		}
+	};
 	const confirmDraftInvoice = async (invoiceId) => {
 		if (typeof navigator !== "undefined" && navigator.onLine === false) return {
 			success: false,
@@ -16245,7 +17502,7 @@ var DataProvider = ({ children }) => {
 			await apiRequest(`/api/invoices/${invoiceId}/payments`, {
 				method: "POST",
 				body: paymentData,
-				idempotencyKey: generateId("IDEMP")
+				idempotencyKey: paymentData?.idempotencyKey || generateId("IDEMP")
 			});
 			await loadRoleScopedData();
 			return { success: true };
@@ -16308,6 +17565,45 @@ var DataProvider = ({ children }) => {
 			};
 		}
 	};
+	const editPurchaseInvoice = async (invoiceId, updates) => {
+		const existing = data.invoices.find((i) => i.id === invoiceId);
+		const body = {
+			...updates,
+			baseVersion: existing?.version ?? 1
+		};
+		try {
+			const res = await apiRequest(`/api/invoices/purchase/${invoiceId}`, {
+				method: "PUT",
+				body
+			});
+			await loadRoleScopedData();
+			return {
+				success: true,
+				invoice: res.invoice
+			};
+		} catch (err) {
+			if (isNetworkFailure(err) && currentUser) {
+				await queueOfflineOp({
+					operationType: "edit_purchase_invoice",
+					entityType: "invoice",
+					entityId: invoiceId,
+					summaryAr: `تعديل فاتورة مشتريات (${existing?.invoiceNumber || invoiceId})`,
+					payload: {
+						invoiceId,
+						...body
+					}
+				});
+				return {
+					success: true,
+					queuedOffline: true
+				};
+			}
+			return {
+				success: false,
+				error: err?.message || "تعذر تعديل فاتورة المشتريات"
+			};
+		}
+	};
 	const createReturn = async (returnData) => {
 		try {
 			await apiRequest("/api/invoices/returns", {
@@ -16320,11 +17616,12 @@ var DataProvider = ({ children }) => {
 		} catch (err) {
 			if (isNetworkFailure(err) && currentUser) {
 				const localId = generateId("RET-LOC");
+				const opType = returnData.type === "purchase_return" ? "create_purchase_return" : "create_invoice_return";
 				await queueOfflineOp({
-					operationType: "create_invoice_return",
+					operationType: opType,
 					entityType: "invoice_return",
 					localId,
-					summaryAr: `مرتجع محلي للفاتورة (${returnData.originalInvoiceNumber || returnData.originalInvoiceId})`,
+					summaryAr: `${returnData.type === "purchase_return" ? "مرتجع شراء محلي" : "مرتجع بيع محلي"} (${returnData.originalInvoiceNumber || returnData.partyName || returnData.originalInvoiceId || ""})`,
 					payload: {
 						...returnData,
 						localId
@@ -16534,10 +17831,6 @@ var DataProvider = ({ children }) => {
 		}
 	};
 	const updateRepItemTransferStatus = async (requestId, newStatus, approvedItems, notes) => {
-		if (typeof navigator !== "undefined" && navigator.onLine === false) return {
-			success: false,
-			error: "تحديث حالة تحويل الأصناف يتطلب اتصالاً بالسيرفر المركزي."
-		};
 		try {
 			await apiRequest(`/api/inventory/rep-item-transfers/${requestId}/status`, {
 				method: "POST",
@@ -16550,9 +17843,169 @@ var DataProvider = ({ children }) => {
 			await loadRoleScopedData();
 			return { success: true };
 		} catch (err) {
+			if (newStatus === "received" && isNetworkFailure(err) && currentUser) {
+				const req = (data.repItemTransfers || []).find((r) => r.id === requestId);
+				await queueOfflineOp({
+					operationType: "confirm_custody_receipt",
+					entityType: "rep_item_transfer",
+					entityId: requestId,
+					summaryAr: `تأكيد استلام عهدة محلياً (${req?.requestNumber || requestId})`,
+					payload: {
+						requestId,
+						notes
+					}
+				});
+				return {
+					success: true,
+					queuedOffline: true
+				};
+			}
 			return {
 				success: false,
 				error: err?.message || "تعذر تحديث طلب التحويل"
+			};
+		}
+	};
+	const recordRepCustodyDelivery = async (payload) => {
+		const idempotencyKey = payload.idempotencyKey || generateId("CDLV");
+		try {
+			const res = await apiRequest("/api/inventory/rep-custody/deliver", {
+				method: "POST",
+				body: payload,
+				idempotencyKey
+			});
+			await loadRoleScopedData();
+			return {
+				success: true,
+				operation: res.operation
+			};
+		} catch (err) {
+			if (isNetworkFailure(err) && currentUser) {
+				const localId = generateId("CDL-LOC");
+				const prod = data.products.find((p) => p.id === payload.productId);
+				const rep = (data.representatives || []).find((r) => r.id === payload.representativeId || r.userId === currentUser.id);
+				await queueOfflineOp({
+					operationType: "record_custody_delivery",
+					entityType: "rep_custody_operation",
+					localId,
+					summaryAr: `تسليم من العهدة (${prod?.name || payload.productId}): ${payload.quantity}`,
+					payload: {
+						...payload,
+						representativeId: rep?.id || payload.representativeId,
+						representativeName: rep?.name || currentUser.fullName,
+						warehouseId: rep?.warehouseId,
+						productName: prod?.name
+					}
+				});
+				return {
+					success: true,
+					queuedOffline: true
+				};
+			}
+			return {
+				success: false,
+				error: err?.message || "تعذر تسجيل التسليم من العهدة"
+			};
+		}
+	};
+	const recordRepCustodyReturn = async (payload) => {
+		const idempotencyKey = payload.idempotencyKey || generateId("CRET");
+		try {
+			const res = await apiRequest("/api/inventory/rep-custody/return", {
+				method: "POST",
+				body: payload,
+				idempotencyKey
+			});
+			await loadRoleScopedData();
+			return {
+				success: true,
+				operation: res.operation
+			};
+		} catch (err) {
+			if (isNetworkFailure(err) && currentUser) {
+				const localId = generateId("CRET-LOC");
+				const prod = data.products.find((p) => p.id === payload.productId);
+				const rep = (data.representatives || []).find((r) => r.id === payload.representativeId || r.userId === currentUser.id);
+				const targetWh = (data.warehouses || []).find((w) => w.id === payload.targetWarehouseId) || data.warehouses[0];
+				await queueOfflineOp({
+					operationType: "record_custody_return",
+					entityType: "rep_custody_operation",
+					localId,
+					summaryAr: `إرجاع عهدة للمخزن (${prod?.name || payload.productId}): ${payload.quantity}`,
+					payload: {
+						...payload,
+						representativeId: rep?.id || payload.representativeId,
+						representativeName: rep?.name || currentUser.fullName,
+						warehouseId: rep?.warehouseId,
+						targetWarehouseId: targetWh?.id || payload.targetWarehouseId,
+						targetWarehouseName: targetWh?.name,
+						productName: prod?.name
+					}
+				});
+				return {
+					success: true,
+					queuedOffline: true
+				};
+			}
+			return {
+				success: false,
+				error: err?.message || "تعذر إرجاع الصنف للمخزن"
+			};
+		}
+	};
+	const recordRepCustodyAdjustment = async (payload) => {
+		try {
+			const res = await apiRequest("/api/inventory/rep-custody/adjust", {
+				method: "POST",
+				body: payload
+			});
+			await loadRoleScopedData();
+			return {
+				success: true,
+				operation: res.operation
+			};
+		} catch (err) {
+			return {
+				success: false,
+				error: err?.message || "تعذر تسجيل تسوية العهدة"
+			};
+		}
+	};
+	const getRepCustodyStatement = async (repId, filters) => {
+		try {
+			const qs = new URLSearchParams();
+			if (repId) qs.set("repId", repId);
+			if (filters?.dateFrom) qs.set("dateFrom", filters.dateFrom);
+			if (filters?.dateTo) qs.set("dateTo", filters.dateTo);
+			return {
+				success: true,
+				statement: (await apiRequest(`/api/inventory/rep-custody/statement${qs.toString() ? `?${qs.toString()}` : ""}`)).statement
+			};
+		} catch (err) {
+			return {
+				success: false,
+				error: err?.message || "تعذر تحميل كشف عهدة المندوب"
+			};
+		}
+	};
+	const getItemMovementReport = async (filters = {}) => {
+		try {
+			const qs = new URLSearchParams();
+			if (filters.productId) qs.set("productId", filters.productId);
+			if (filters.warehouseId) qs.set("warehouseId", filters.warehouseId);
+			if (filters.movementType) qs.set("movementType", filters.movementType);
+			if (filters.representativeId) qs.set("representativeId", filters.representativeId);
+			if (filters.dateFrom) qs.set("dateFrom", filters.dateFrom);
+			if (filters.dateTo) qs.set("dateTo", filters.dateTo);
+			if (filters.search) qs.set("search", filters.search);
+			return {
+				success: true,
+				report: (await apiRequest(`/api/inventory/item-movement-report${qs.toString() ? `?${qs.toString()}` : ""}`)).report
+			};
+		} catch (err) {
+			return {
+				success: false,
+				error: err?.message || "تعذر تحميل تقرير حركة الصنف"
 			};
 		}
 	};
@@ -16730,6 +18183,25 @@ var DataProvider = ({ children }) => {
 			return {
 				success: false,
 				error: err?.message || "تعذر تحديث حالة التوصيل"
+			};
+		}
+	};
+	const advanceOrderStage = async (orderId, payload) => {
+		try {
+			const res = await apiRequest(`/api/orders/${orderId}/stage`, {
+				method: "POST",
+				body: payload,
+				idempotencyKey: generateId("ORDSTG")
+			});
+			await loadRoleScopedData();
+			return {
+				success: true,
+				order: res.order
+			};
+		} catch (err) {
+			return {
+				success: false,
+				error: err?.message || "تعذر تحديث مرحلة الطلب"
 			};
 		}
 	};
@@ -17384,6 +18856,10 @@ var DataProvider = ({ children }) => {
 			getCustomerPriceHistory,
 			triggerSync,
 			triggerManualSync,
+			lastSendSummary,
+			lastReceiveSummary,
+			syncSendOnly,
+			syncReceiveOnly,
 			resolveSyncConflict,
 			exportBackup,
 			importBackup,
@@ -17419,10 +18895,14 @@ var DataProvider = ({ children }) => {
 			settleSupplierAdvance,
 			createSalesInvoice,
 			createPurchaseInvoice,
+			createSalesQuote,
+			convertQuoteToInvoice,
+			markInvoiceReviewed,
 			confirmDraftInvoice,
 			cancelInvoice,
 			addInvoicePayment,
 			editSalesInvoice,
+			editPurchaseInvoice,
 			createReturn,
 			addCashbox,
 			updateCashbox,
@@ -17439,12 +18919,19 @@ var DataProvider = ({ children }) => {
 			rejectRepTransfer,
 			createRepItemTransfer,
 			updateRepItemTransferStatus,
+			repCustodyOperations: data.repCustodyOperations || [],
+			recordRepCustodyDelivery,
+			recordRepCustodyReturn,
+			recordRepCustodyAdjustment,
+			getRepCustodyStatement,
+			getItemMovementReport,
 			createCustomerItemOrder,
 			reviewCustomerItemOrder,
 			approveCustomerItemOrder,
 			rejectCustomerItemOrder,
 			assignOrderDeliveryRep,
 			updateOrderDeliveryStatus,
+			advanceOrderStage,
 			recordOrderAdvancePayment,
 			convertOrderToInvoice,
 			updateCustomerItemOrder,
@@ -18360,6 +19847,26 @@ var ArrowDownRight = createLucideIcon("arrow-down-right", [["path", {
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var ArrowDownToLine = createLucideIcon("arrow-down-to-line", [
+	["path", {
+		d: "M12 17V3",
+		key: "1cwfxf"
+	}],
+	["path", {
+		d: "m6 11 6 6 6-6",
+		key: "12ii2o"
+	}],
+	["path", {
+		d: "M19 21H5",
+		key: "150jfl"
+	}]
+]);
+/**
+* @license lucide-react v0.546.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var ArrowLeftRight = createLucideIcon("arrow-left-right", [
 	["path", {
 		d: "M8 3 4 7l4 4",
@@ -18404,6 +19911,50 @@ var ArrowRight = createLucideIcon("arrow-right", [["path", {
 	d: "m12 5 7 7-7 7",
 	key: "xquz4c"
 }]]);
+/**
+* @license lucide-react v0.546.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var ArrowUpDown = createLucideIcon("arrow-up-down", [
+	["path", {
+		d: "m21 16-4 4-4-4",
+		key: "f6ql7i"
+	}],
+	["path", {
+		d: "M17 20V4",
+		key: "1ejh1v"
+	}],
+	["path", {
+		d: "m3 8 4-4 4 4",
+		key: "11wl7u"
+	}],
+	["path", {
+		d: "M7 4v16",
+		key: "1glfcx"
+	}]
+]);
+/**
+* @license lucide-react v0.546.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var ArrowUpFromLine = createLucideIcon("arrow-up-from-line", [
+	["path", {
+		d: "m18 9-6-6-6 6",
+		key: "kcunyi"
+	}],
+	["path", {
+		d: "M12 3v14",
+		key: "7cf3v8"
+	}],
+	["path", {
+		d: "M5 21h14",
+		key: "11awu3"
+	}]
+]);
 /**
 * @license lucide-react v0.546.0 - ISC
 *
@@ -18540,6 +20091,64 @@ var Building2 = createLucideIcon("building-2", [
 	["path", {
 		d: "M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16",
 		key: "16ra0t"
+	}]
+]);
+/**
+* @license lucide-react v0.546.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var Calculator = createLucideIcon("calculator", [
+	["rect", {
+		width: "16",
+		height: "20",
+		x: "4",
+		y: "2",
+		rx: "2",
+		key: "1nb95v"
+	}],
+	["line", {
+		x1: "8",
+		x2: "16",
+		y1: "6",
+		y2: "6",
+		key: "x4nwl0"
+	}],
+	["line", {
+		x1: "16",
+		x2: "16",
+		y1: "14",
+		y2: "18",
+		key: "wjye3r"
+	}],
+	["path", {
+		d: "M16 10h.01",
+		key: "1m94wz"
+	}],
+	["path", {
+		d: "M12 10h.01",
+		key: "1nrarc"
+	}],
+	["path", {
+		d: "M8 10h.01",
+		key: "19clt8"
+	}],
+	["path", {
+		d: "M12 14h.01",
+		key: "1etili"
+	}],
+	["path", {
+		d: "M8 14h.01",
+		key: "6423bh"
+	}],
+	["path", {
+		d: "M12 18h.01",
+		key: "mhygvu"
+	}],
+	["path", {
+		d: "M8 18h.01",
+		key: "lrp35t"
 	}]
 ]);
 /**
@@ -19629,6 +21238,26 @@ var Maximize = createLucideIcon("maximize", [
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var Menu = createLucideIcon("menu", [
+	["path", {
+		d: "M4 5h16",
+		key: "1tepv9"
+	}],
+	["path", {
+		d: "M4 12h16",
+		key: "1lakjw"
+	}],
+	["path", {
+		d: "M4 19h16",
+		key: "1djgab"
+	}]
+]);
+/**
+* @license lucide-react v0.546.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var Minimize = createLucideIcon("minimize", [
 	["path", {
 		d: "M8 3v3a2 2 0 0 1-2 2H3",
@@ -19685,6 +21314,37 @@ var Monitor = createLucideIcon("monitor", [
 		y1: "17",
 		y2: "21",
 		key: "vw1qmm"
+	}]
+]);
+/**
+* @license lucide-react v0.546.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var PackageCheck = createLucideIcon("package-check", [
+	["path", {
+		d: "m16 16 2 2 4-4",
+		key: "gfu2re"
+	}],
+	["path", {
+		d: "M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14",
+		key: "e7tb2h"
+	}],
+	["path", {
+		d: "m7.5 4.27 9 5.15",
+		key: "1c824w"
+	}],
+	["polyline", {
+		points: "3.29 7 12 12 20.71 7",
+		key: "ousv84"
+	}],
+	["line", {
+		x1: "12",
+		x2: "12",
+		y1: "22",
+		y2: "12",
+		key: "a4e8g8"
 	}]
 ]);
 /**
@@ -20191,6 +21851,26 @@ var Shield = createLucideIcon("shield", [["path", {
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var ShoppingBag = createLucideIcon("shopping-bag", [
+	["path", {
+		d: "M16 10a4 4 0 0 1-8 0",
+		key: "1ltviw"
+	}],
+	["path", {
+		d: "M3.103 6.034h17.794",
+		key: "awc11p"
+	}],
+	["path", {
+		d: "M3.4 5.467a2 2 0 0 0-.4 1.2V20a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6.667a2 2 0 0 0-.4-1.2l-2-2.667A2 2 0 0 0 17 2H7a2 2 0 0 0-1.6.8z",
+		key: "o988cm"
+	}]
+]);
+/**
+* @license lucide-react v0.546.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var ShoppingCart = createLucideIcon("shopping-cart", [
 	["circle", {
 		cx: "8",
@@ -20207,6 +21887,50 @@ var ShoppingCart = createLucideIcon("shopping-cart", [
 	["path", {
 		d: "M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12",
 		key: "9zh506"
+	}]
+]);
+/**
+* @license lucide-react v0.546.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var SlidersHorizontal = createLucideIcon("sliders-horizontal", [
+	["path", {
+		d: "M10 5H3",
+		key: "1qgfaw"
+	}],
+	["path", {
+		d: "M12 19H3",
+		key: "yhmn1j"
+	}],
+	["path", {
+		d: "M14 3v4",
+		key: "1sua03"
+	}],
+	["path", {
+		d: "M16 17v4",
+		key: "1q0r14"
+	}],
+	["path", {
+		d: "M21 12h-9",
+		key: "1o4lsq"
+	}],
+	["path", {
+		d: "M21 19h-5",
+		key: "1rlt1p"
+	}],
+	["path", {
+		d: "M21 5h-7",
+		key: "1oszz2"
+	}],
+	["path", {
+		d: "M8 10v4",
+		key: "tgpxqk"
+	}],
+	["path", {
+		d: "M8 12H3",
+		key: "a7s4jb"
 	}]
 ]);
 /**
@@ -20286,6 +22010,16 @@ var Store = createLucideIcon("store", [
 		key: "wn3emo"
 	}]
 ]);
+/**
+* @license lucide-react v0.546.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var Table2 = createLucideIcon("table-2", [["path", {
+	d: "M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18",
+	key: "gugj83"
+}]]);
 /**
 * @license lucide-react v0.546.0 - ISC
 *
@@ -32179,12 +33913,17 @@ var MobileServerModal = ({ isOpen, onClose, onSaved }) => {
 };
 // src/components/modules/auth/LoginView.tsx
 var LoginView = () => {
-	const { login, bootstrapAdmin, needsAdminSetup, refreshAuthContext, sessionExpiredMessage, clearSessionExpiredMessage, pairingBanner, setPairingBanner, clearPairingBanner } = useAuth();
+	const { login, registerAccount, bootstrapAdmin, needsAdminSetup, refreshAuthContext, sessionExpiredMessage, clearSessionExpiredMessage, isDatabaseUnavailable, databaseUnavailableMessage, pairingBanner, setPairingBanner, clearPairingBanner } = useAuth();
+	const [authMode, setAuthMode] = (0, import_react.useState)("login");
 	const [username, setUsername] = (0, import_react.useState)("");
 	const [password, setPassword] = (0, import_react.useState)("");
 	const [fullName, setFullName] = (0, import_react.useState)("");
 	const [companyName, setCompanyName] = (0, import_react.useState)("");
 	const [phone, setPhone] = (0, import_react.useState)("");
+	const [address, setAddress] = (0, import_react.useState)("");
+	const [shopName, setShopName] = (0, import_react.useState)("");
+	const [area, setArea] = (0, import_react.useState)("");
+	const [vehicleNumber, setVehicleNumber] = (0, import_react.useState)("");
 	const [confirmPassword, setConfirmPassword] = (0, import_react.useState)("");
 	const [showPassword, setShowPassword] = (0, import_react.useState)(false);
 	const [error, setError] = (0, import_react.useState)(null);
@@ -32265,6 +34004,43 @@ var LoginView = () => {
 			});
 			setIsLoading(false);
 			if (!res.success) setError(res.error || "تعذر تهيئة حساب المدير العام");
+			return;
+		}
+		if (!needsAdminSetup && (authMode === "register_customer" || authMode === "register_rep")) {
+			if (fullName.trim().length < 2) {
+				setError("يرجى إدخال الاسم الكامل (حرفين على الأقل)");
+				return;
+			}
+			if (!phone.trim()) {
+				setError("يرجى إدخال رقم الهاتف للتسجيل");
+				return;
+			}
+			if (username.trim().length < 3) {
+				setError("اسم المستخدم يجب أن لا يقل عن 3 أحرف");
+				return;
+			}
+			if (password.length < 6) {
+				setError("كلمة المرور يجب أن لا تقل عن 6 أحرف أو أرقام");
+				return;
+			}
+			if (password !== confirmPassword) {
+				setError("كلمتا المرور غير متطابقتين");
+				return;
+			}
+			setIsLoading(true);
+			const res = await registerAccount({
+				role: authMode === "register_customer" ? "customer" : "representative",
+				fullName: fullName.trim(),
+				phone: phone.trim(),
+				username: username.trim(),
+				password,
+				address: address.trim(),
+				shopName: authMode === "register_customer" ? shopName.trim() : void 0,
+				area: authMode === "register_customer" ? area.trim() : void 0,
+				vehicleNumber: authMode === "register_rep" ? vehicleNumber.trim() : void 0
+			});
+			setIsLoading(false);
+			if (!res.success) setError(res.error || "تعذر إنشاء الحساب الجديد");
 			return;
 		}
 		setIsLoading(true);
@@ -32384,6 +34160,10 @@ var LoginView = () => {
 									})]
 								})]
 							}),
+							isDatabaseUnavailable && databaseUnavailableMessage && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs font-bold text-red-800",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleAlert, { className: "w-4 h-4 shrink-0 text-red-600" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: databaseUnavailableMessage })]
+							}),
 							sessionExpiredMessage && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 								className: "flex items-center gap-2.5 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs font-bold text-amber-800",
 								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleAlert, { className: "w-4 h-4 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: sessionExpiredMessage })]
@@ -32402,6 +34182,38 @@ var LoginView = () => {
 							error && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 								className: "flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs font-bold text-red-700 animate-shake",
 								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleAlert, { className: "w-4 h-4 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: error })]
+							}),
+							!needsAdminSetup && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-slate-100 border border-slate-200",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+										type: "button",
+										onClick: () => {
+											setAuthMode("login");
+											setError(null);
+										},
+										className: `min-h-[42px] px-2 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${authMode === "login" ? "bg-blue-900 text-white shadow-xs font-black" : "text-slate-700 hover:bg-white"}`,
+										children: "تسجيل الدخول"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+										type: "button",
+										onClick: () => {
+											setAuthMode("register_customer");
+											setError(null);
+										},
+										className: `min-h-[42px] px-2 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${authMode === "register_customer" ? "bg-blue-900 text-white shadow-xs font-black" : "text-slate-700 hover:bg-white"}`,
+										children: "تسجيل عميل جديد"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+										type: "button",
+										onClick: () => {
+											setAuthMode("register_rep");
+											setError(null);
+										},
+										className: `min-h-[42px] px-2 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${authMode === "register_rep" ? "bg-blue-900 text-white shadow-xs font-black" : "text-slate-700 hover:bg-white"}`,
+										children: "تسجيل مندوب جديد"
+									})
+								]
 							}),
 							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
 								onSubmit: handleSubmit,
@@ -32440,6 +34252,80 @@ var LoginView = () => {
 											className: "w-full rounded-xl border border-slate-300 py-3 px-4 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
 										})] })
 									] }),
+									!needsAdminSetup && (authMode === "register_customer" || authMode === "register_rep") && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "space-y-3 p-3.5 rounded-2xl bg-blue-50/60 border border-blue-200/80",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+											className: "text-xs font-black text-blue-950",
+											children: authMode === "register_customer" ? "بيانات العميل الجديد (تُفعّل مباشرة للدخول والطلب)" : "بيانات المندوب الجديد (تُفعّل مباشرة مع مخزن سيارة خاص)"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "grid grid-cols-1 sm:grid-cols-2 gap-3",
+											children: [
+												/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+													className: "block text-xs font-bold text-slate-700 mb-1",
+													children: "الاسم الكامل *"
+												}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+													type: "text",
+													required: true,
+													value: fullName,
+													onChange: (e) => setFullName(e.target.value),
+													placeholder: authMode === "register_customer" ? "اسم العميل أو المسؤول" : "اسم المندوب الثلاثي",
+													className: "w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+												})] }),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+													className: "block text-xs font-bold text-slate-700 mb-1",
+													children: "رقم الهاتف *"
+												}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+													type: "tel",
+													required: true,
+													value: phone,
+													onChange: (e) => setPhone(e.target.value),
+													placeholder: "01xxxxxxxxx",
+													className: "w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+												})] }),
+												authMode === "register_customer" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+													className: "block text-xs font-bold text-slate-700 mb-1",
+													children: "اسم المحل / النشاط"
+												}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+													type: "text",
+													value: shopName,
+													onChange: (e) => setShopName(e.target.value),
+													placeholder: "مثال: سوبر ماركت النور",
+													className: "w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+												})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+													className: "block text-xs font-bold text-slate-700 mb-1",
+													children: "المنطقة"
+												}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+													type: "text",
+													value: area,
+													onChange: (e) => setArea(e.target.value),
+													placeholder: "مثال: الجيزة / شبرا",
+													className: "w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+												})] })] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+													className: "block text-xs font-bold text-slate-700 mb-1",
+													children: "رقم السيارة / الخط"
+												}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+													type: "text",
+													value: vehicleNumber,
+													onChange: (e) => setVehicleNumber(e.target.value),
+													placeholder: "مثال: أ ب ج 1234",
+													className: "w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+												})] }),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+													className: authMode === "register_customer" ? "sm:col-span-2" : "",
+													children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+														className: "block text-xs font-bold text-slate-700 mb-1",
+														children: "العنوان"
+													}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+														type: "text",
+														value: address,
+														onChange: (e) => setAddress(e.target.value),
+														placeholder: "العنوان التفصيلي",
+														className: "w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+													})]
+												})
+											]
+										})]
+									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
 										className: "block text-xs font-bold text-slate-700 mb-1.5",
 										children: "اسم المستخدم (أو رقم الهاتف):"
@@ -32486,7 +34372,7 @@ var LoginView = () => {
 											})
 										]
 									})] }),
-									needsAdminSetup && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+									(needsAdminSetup || authMode === "register_customer" || authMode === "register_rep") && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
 										className: "block text-xs font-bold text-slate-700 mb-1.5",
 										children: "تأكيد كلمة المرور:"
 									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
@@ -32501,7 +34387,7 @@ var LoginView = () => {
 										type: "submit",
 										disabled: isLoading,
 										className: "w-full py-3.5 px-4 bg-blue-900 hover:bg-blue-950 text-white font-bold text-sm rounded-xl shadow-lg shadow-blue-900/25 transition-all active:scale-98 disabled:opacity-60 flex items-center justify-center gap-2 cursor-pointer min-h-[46px]",
-										children: [needsAdminSetup ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(UserPlus, { className: "w-4 h-4" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ShieldCheck, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isLoading ? "جاري التحقق والمصادقة..." : needsAdminSetup ? "إنشاء حساب المدير العام والدخول" : "دخول النظام" })]
+										children: [needsAdminSetup || authMode !== "login" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(UserPlus, { className: "w-4 h-4" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ShieldCheck, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isLoading ? "جاري التحقق والمصادقة..." : needsAdminSetup ? "إنشاء حساب المدير العام والدخول" : authMode === "register_customer" ? "إنشاء حساب العميل والدخول" : authMode === "register_rep" ? "إنشاء حساب المندوب والدخول" : "دخول النظام" })]
 									})
 								]
 							})
@@ -32865,7 +34751,7 @@ var SyncCenterModal = ({ isOpen, onClose }) => {
 							children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Wifi, { className: "w-5 h-5" })
 						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 							className: "font-black text-slate-900",
-							children: networkStatus === "connected" ? "متصل بالسيرفر المركزي" : networkStatus === "synchronizing" ? "جاري المزامنة مع السيرفر..." : networkStatus === "disconnected" ? "وضع العمل المحلي دون اتصال" : "توجد عمليات معلقة أو تعارضات"
+							children: networkStatus === "connected" ? "متصل بالسيرفر المركزي" : networkStatus === "synchronizing" ? "جاري المزامنة مع السيرفر..." : networkStatus === "disconnected" ? "وضع العمل المحلي دون اتصال" : networkStatus === "error" ? "قاعدة البيانات غير متاحة مؤقتاً أو تعذرت المزامنة" : "توجد عمليات معلقة أو تعارضات"
 						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
 							className: "text-[11px] text-slate-500 mt-0.5",
 							children: [
@@ -33103,8 +34989,8 @@ var SyncCenterModal = ({ isOpen, onClose }) => {
 };
 // src/components/layout/OfflineIndicator.tsx
 var OfflineIndicator = ({ variant = "light" }) => {
-	const { isOfflineSession, permissionsMayBeStale } = useAuth();
-	const { networkStatus, pendingSyncCount, conflictsCount, lastSyncTime, hasTentativeLocalBalances, triggerSync } = useData();
+	const { isOfflineSession, permissionsMayBeStale, isDatabaseUnavailable } = useAuth();
+	const { networkStatus, pendingSyncCount, conflictsCount, lastSyncTime, lastError, hasTentativeLocalBalances, triggerSync } = useData();
 	const [isSyncModalOpen, setIsSyncModalOpen] = (0, import_react.useState)(false);
 	const isDark = variant === "dark";
 	const getStatusConfig = () => {
@@ -33143,7 +35029,7 @@ var OfflineIndicator = ({ variant = "light" }) => {
 				icon: CircleAlert,
 				color: isDark ? "text-rose-100 bg-rose-500/25 border-rose-300/40" : "text-rose-600 bg-rose-500/10 border-rose-500/20",
 				dot: "bg-rose-400",
-				label: "تعذر المزامنة مع السيرفر"
+				label: isDatabaseUnavailable ? "قاعدة البيانات غير متاحة مؤقتًا" : "تعذر المزامنة مع السيرفر"
 			};
 		}
 	};
@@ -33156,7 +35042,7 @@ var OfflineIndicator = ({ variant = "light" }) => {
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
 				type: "button",
 				onClick: () => setIsSyncModalOpen(true),
-				title: `مركز المزامنة: ${config.label} | آخر فحص: ${lastSyncTime}${hasTentativeLocalBalances ? " | توجد عمليات غير متزامنة (أرصدة محلية مبدئية)" : ""}`,
+				title: `مركز المزامنة: ${config.label}${lastError ? ` | ${lastError}` : ""} | آخر فحص: ${lastSyncTime}${hasTentativeLocalBalances ? " | توجد عمليات غير متزامنة (أرصدة محلية مبدئية)" : ""}`,
 				className: `flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold ${config.color} transition-all cursor-pointer hover:opacity-90 whitespace-nowrap`,
 				children: [
 					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
@@ -33174,7 +35060,7 @@ var OfflineIndicator = ({ variant = "light" }) => {
 					})
 				]
 			}),
-			(isOfflineSession || permissionsMayBeStale) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+			!isDatabaseUnavailable && (isOfflineSession || permissionsMayBeStale) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
 				type: "button",
 				onClick: () => setIsSyncModalOpen(true),
 				title: "جلسة محلية موثقة — الصلاحيات المطبقة من آخر تحقق وقد تتحدث عند الاتصال",
@@ -33614,6 +35500,11 @@ var Sidebar = ({ currentPage, onNavigate, isOpen, onClose, onOpenCashOp }) => {
 					label: "فواتير المبيعات"
 				},
 				{
+					key: "quotes",
+					label: "عروض الأسعار",
+					badge: "جديد"
+				},
+				{
 					key: "new-sale",
 					label: "فاتورة مبيعات جديدة (+)",
 					badge: "جديد"
@@ -33726,6 +35617,12 @@ var Sidebar = ({ currentPage, onNavigate, isOpen, onClose, onOpenCashOp }) => {
 				{
 					key: "stock-movements",
 					label: "سجل حركة الأصناف"
+				},
+				{
+					key: "item-movement-report",
+					label: "تقرير حركة الصنف المفصل",
+					badge: "مفصل",
+					permission: ["canManageInventory", "canViewReports"]
 				}
 			]
 		},
@@ -33836,6 +35733,10 @@ var Sidebar = ({ currentPage, onNavigate, isOpen, onClose, onOpenCashOp }) => {
 			items: [{
 				key: "reports",
 				label: "جميع التقارير والأرباح"
+			}, {
+				key: "item-movement-report",
+				label: "تقرير حركة الصنف المفصل",
+				badge: "جديد"
 			}]
 		},
 		{
@@ -33897,6 +35798,10 @@ var Sidebar = ({ currentPage, onNavigate, isOpen, onClose, onOpenCashOp }) => {
 				{
 					key: "server-settings",
 					label: "إعدادات السيرفر والاتصال"
+				},
+				{
+					key: "diagnostics-settings",
+					label: "سجل التشخيص والأخطاء"
 				},
 				{
 					key: "backup",
@@ -34445,12 +36350,16 @@ function formatQuantity(value) {
 }
 // src/components/common/QuantityInput.tsx
 var QuantityInput = ({ value, onChange, min = 0, max, step = 1, allowDecimals = true, showSteppers = false, onRemoveWhenZero, ariaLabel = "الكمية", inputClassName, className = "", inputRef, onKeyDown, disabled = false, placeholder }) => {
-	const [text, setText] = (0, import_react.useState)(() => formatQuantity(value));
+	const [text, setText] = (0, import_react.useState)(() => value === "" ? "" : formatQuantity(value));
 	const [isFocused, setIsFocused] = (0, import_react.useState)(false);
 	(0, import_react.useEffect)(() => {
-		if (!isFocused) setText(formatQuantity(value));
+		if (!isFocused) setText(value === "" ? "" : formatQuantity(value));
 	}, [value, isFocused]);
 	const commitValue = (rawValue) => {
+		if (rawValue.trim() === "" && value === "") {
+			setText("");
+			return;
+		}
 		const clamped = clampQuantity(parseQuantity(rawValue, allowDecimals, min), min, max, allowDecimals);
 		setText(formatQuantity(clamped));
 		if (clamped !== value) onChange(clamped);
@@ -34520,7 +36429,7 @@ var QuantityInput = ({ value, onChange, min = 0, max, step = 1, allowDecimals = 
 			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 				type: "button",
 				onClick: handleDecrement,
-				disabled: disabled || value <= min && !onRemoveWhenZero,
+				disabled: disabled || (Number(value) || 0) <= min && !onRemoveWhenZero,
 				"aria-label": `إنقاص ${ariaLabel}`,
 				className: "min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold disabled:opacity-40 cursor-pointer",
 				children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Minus, { className: "w-3.5 h-3.5" })
@@ -34549,7 +36458,7 @@ var QuantityInput = ({ value, onChange, min = 0, max, step = 1, allowDecimals = 
 			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 				type: "button",
 				onClick: handleIncrement,
-				disabled: disabled || max !== void 0 && value >= max,
+				disabled: disabled || max !== void 0 && (Number(value) || 0) >= max,
 				"aria-label": `زيادة ${ariaLabel}`,
 				className: "min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold disabled:opacity-40 cursor-pointer",
 				children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Plus, { className: "w-3.5 h-3.5" })
@@ -39201,6 +41110,14 @@ var STATUS_META = {
 		label: "معتمد",
 		cls: "bg-emerald-50 text-emerald-800 border-emerald-200"
 	},
+	invoiced: {
+		label: "تمت الفوترة",
+		cls: "bg-sky-50 text-sky-900 border-sky-200"
+	},
+	preparing: {
+		label: "قيد التجهيز",
+		cls: "bg-cyan-50 text-cyan-800 border-cyan-200"
+	},
 	rep_assigned: {
 		label: "مُسند لمندوب",
 		cls: "bg-indigo-50 text-indigo-800 border-indigo-200"
@@ -39213,9 +41130,13 @@ var STATUS_META = {
 		label: "تم التسليم",
 		cls: "bg-teal-50 text-teal-800 border-teal-200"
 	},
-	invoiced: {
-		label: "تمت الفوترة",
-		cls: "bg-slate-100 text-slate-800 border-slate-300"
+	collected: {
+		label: "تم التحصيل",
+		cls: "bg-emerald-100 text-emerald-900 border-emerald-300"
+	},
+	closed: {
+		label: "مغلق",
+		cls: "bg-slate-200 text-slate-900 border-slate-300"
 	},
 	rejected: {
 		label: "مرفوض",
@@ -39231,7 +41152,7 @@ var STATUS_META = {
 	}
 };
 var CustomerRepOrdersView = () => {
-	const { customerItemOrders = [], representatives, warehouses, cashboxes, settings, triggerManualSync, reviewCustomerItemOrder, approveCustomerItemOrder, rejectCustomerItemOrder, assignOrderDeliveryRep, updateOrderDeliveryStatus, recordOrderAdvancePayment, convertOrderToInvoice } = useData();
+	const { customerItemOrders = [], representatives, warehouses, cashboxes, settings, triggerManualSync, reviewCustomerItemOrder, approveCustomerItemOrder, rejectCustomerItemOrder, assignOrderDeliveryRep, advanceOrderStage, recordOrderAdvancePayment, convertOrderToInvoice } = useData();
 	const { hasPermission } = useAuth();
 	const canManageSales = hasPermission("canManageSales");
 	const [search, setSearch] = (0, import_react.useState)("");
@@ -39250,6 +41171,11 @@ var CustomerRepOrdersView = () => {
 	const [advanceCashboxId, setAdvanceCashboxId] = (0, import_react.useState)(() => cashboxes[0]?.id || "cb-main");
 	const [advanceMethod, setAdvanceMethod] = (0, import_react.useState)("cash");
 	const [advanceNotes, setAdvanceNotes] = (0, import_react.useState)("");
+	const [collectStageOrder, setCollectStageOrder] = (0, import_react.useState)(null);
+	const [collectAmount, setCollectAmount] = (0, import_react.useState)(0);
+	const [collectCashboxId, setCollectCashboxId] = (0, import_react.useState)(() => cashboxes[0]?.id || "cb-main");
+	const [collectMethod, setCollectMethod] = (0, import_react.useState)("cash");
+	const [collectNotes, setCollectNotes] = (0, import_react.useState)("");
 	const [convertModalOrder, setConvertModalOrder] = (0, import_react.useState)(null);
 	const [convertWarehouseId, setConvertWarehouseId] = (0, import_react.useState)(() => warehouses[0]?.id || "wh-main");
 	const [convertCashboxId, setConvertCashboxId] = (0, import_react.useState)(() => cashboxes[0]?.id || "cb-main");
@@ -39284,9 +41210,21 @@ var CustomerRepOrdersView = () => {
 	const stats = (0, import_react.useMemo)(() => {
 		return {
 			pending: customerItemOrders.filter((o) => o.status === "pending").length,
-			inProgress: customerItemOrders.filter((o) => ["under_review", "approved"].includes(o.status)).length,
-			delivery: customerItemOrders.filter((o) => ["rep_assigned", "out_for_delivery"].includes(o.status)).length,
-			done: customerItemOrders.filter((o) => ["delivered", "invoiced"].includes(o.status)).length
+			inProgress: customerItemOrders.filter((o) => [
+				"under_review",
+				"approved",
+				"invoiced"
+			].includes(o.status)).length,
+			delivery: customerItemOrders.filter((o) => [
+				"preparing",
+				"rep_assigned",
+				"out_for_delivery"
+			].includes(o.status)).length,
+			done: customerItemOrders.filter((o) => [
+				"delivered",
+				"collected",
+				"closed"
+			].includes(o.status)).length
 		};
 	}, [customerItemOrders]);
 	const runAction = async (fn, okText) => {
@@ -39508,16 +41446,22 @@ var CustomerRepOrdersView = () => {
 										children: ord.items?.length || 0
 									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
-										className: "p-3 text-center font-mono font-black text-blue-950",
-										children: [
-											total.toLocaleString(),
+										className: "p-3 text-center font-mono font-black text-blue-950 tabular-nums",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+											(ord.invoiceTotal ?? total).toLocaleString(),
 											" ",
 											settings.currency
-										]
+										] }), ord.invoiceNumber && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "text-[10px] font-normal text-blue-700",
+											children: ["فاتورة: ", ord.invoiceNumber]
+										})]
 									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-										className: "p-3 text-center font-mono font-bold text-emerald-700",
-										children: advance > 0 ? `${advance.toLocaleString()} ${settings.currency}` : "-"
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
+										className: "p-3 text-center font-mono font-bold text-emerald-700 tabular-nums",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: (ord.invoicePaidAmount ?? advance) > 0 ? `${(ord.invoicePaidAmount ?? advance).toLocaleString()} ${settings.currency}` : "-" }), typeof ord.invoiceRemainingAmount === "number" && ord.invoiceRemainingAmount > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "text-[10px] text-red-600",
+											children: ["متبقي: ", ord.invoiceRemainingAmount.toLocaleString()]
+										})]
 									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
 										className: "p-3 text-center",
@@ -39535,7 +41479,7 @@ var CustomerRepOrdersView = () => {
 													type: "button",
 													onClick: () => setSelectedOrderId(ord.id),
 													className: "p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer",
-													title: "عرض التفاصيل",
+													title: "عرض التفاصيل وسجل التحصيلات",
 													children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Eye, { className: "w-4 h-4" })
 												}),
 												canManageSales && ord.status === "pending" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
@@ -39563,11 +41507,60 @@ var CustomerRepOrdersView = () => {
 												})] }),
 												canManageSales && [
 													"approved",
+													"invoiced",
+													"preparing",
 													"rep_assigned",
 													"out_for_delivery",
-													"delivered"
+													"delivered",
+													"collected"
 												].includes(ord.status) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+													["approved", "invoiced"].includes(ord.status) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+														type: "button",
+														disabled: busy,
+														onClick: () => runAction(() => advanceOrderStage(ord.id, { status: "preparing" }), "تم بدء تجهيز الطلب"),
+														className: "px-2 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white font-bold cursor-pointer",
+														children: "بدء التجهيز"
+													}),
+													["preparing", "rep_assigned"].includes(ord.status) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+														type: "button",
+														disabled: busy,
+														onClick: () => runAction(() => advanceOrderStage(ord.id, { status: "out_for_delivery" }), "تم إخراج الطلب للتوصيل"),
+														className: "px-2 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold cursor-pointer",
+														children: "خروج للتوصيل"
+													}),
+													ord.status === "out_for_delivery" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+														type: "button",
+														disabled: busy,
+														onClick: () => runAction(() => advanceOrderStage(ord.id, { status: "delivered" }), "تم تسليم الطلب بنجاح"),
+														className: "px-2 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer",
+														children: "تم التسليم"
+													}),
+													ord.status === "delivered" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+														type: "button",
+														onClick: () => {
+															setCollectStageOrder(ord);
+															setCollectAmount(Number(ord.invoiceRemainingAmount ?? ord.remainingAmount ?? 0));
+															setCollectCashboxId(cashboxes[0]?.id || "cb-main");
+															setCollectMethod("cash");
+															setCollectNotes("");
+														},
+														className: "px-2 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer",
+														children: "تحصيل الدفعة"
+													}),
+													["delivered", "collected"].includes(ord.status) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+														type: "button",
+														disabled: busy,
+														onClick: () => runAction(() => advanceOrderStage(ord.id, { status: "closed" }), "تم إغلاق دورة الطلب بنجاح"),
+														className: "px-2 py-1 rounded-lg bg-slate-800 hover:bg-black text-white font-bold cursor-pointer",
+														children: "إغلاق الطلب"
+													}),
+													[
+														"approved",
+														"invoiced",
+														"preparing",
+														"rep_assigned",
+														"out_for_delivery"
+													].includes(ord.status) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 														type: "button",
 														onClick: () => {
 															setAssignModalOrder(ord);
@@ -39578,7 +41571,7 @@ var CustomerRepOrdersView = () => {
 														title: "تعيين مندوب توصيل",
 														children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(UserCheck, { className: "w-4 h-4" })
 													}),
-													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+													!ord.invoiceId && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 														type: "button",
 														onClick: () => {
 															setAdvanceModalOrder(ord);
@@ -39589,8 +41582,7 @@ var CustomerRepOrdersView = () => {
 														className: "p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 cursor-pointer",
 														title: "تسجيل دفعة مقدمة",
 														children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DollarSign, { className: "w-4 h-4" })
-													}),
-													!ord.invoiceId && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+													}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
 														type: "button",
 														onClick: () => {
 															setConvertModalOrder(ord);
@@ -39603,7 +41595,7 @@ var CustomerRepOrdersView = () => {
 														},
 														className: "px-2 py-1 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-bold flex items-center gap-1 cursor-pointer",
 														children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FileText, { className: "w-3.5 h-3.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "تحويل لفاتورة" })]
-													})
+													})] })
 												] })
 											]
 										})
@@ -39738,24 +41730,270 @@ var CustomerRepOrdersView = () => {
 								selectedOrder.notes
 							]
 						}),
+						(selectedOrder.invoiceId || selectedOrder.paymentsHistory && selectedOrder.paymentsHistory.length > 0) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex flex-wrap items-center justify-between gap-2",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+										className: "font-black text-slate-900",
+										children: ["ملخص سداد الفاتورة ", selectedOrder.invoiceNumber ? `(${selectedOrder.invoiceNumber})` : ""]
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: `px-2 py-0.5 rounded-md text-[10px] font-bold border ${selectedOrder.paymentStatus === "paid" ? "bg-emerald-50 text-emerald-800 border-emerald-200" : selectedOrder.paymentStatus === "partial" ? "bg-blue-50 text-blue-800 border-blue-200" : "bg-amber-50 text-amber-800 border-amber-200"}`,
+										children: selectedOrder.paymentStatus === "paid" ? "مسدد بالكامل" : selectedOrder.paymentStatus === "partial" ? "مدفوع جزئياً" : "غير مسدد"
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "grid grid-cols-3 gap-2 text-center bg-white p-2.5 rounded-xl border border-slate-200 tabular-nums",
+									children: [
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "block text-[10px] text-slate-500",
+											children: "إجمالي الفاتورة"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+											className: "font-mono text-slate-900",
+											children: [
+												Number(selectedOrder.invoiceTotal ?? getOrderTotal(selectedOrder)).toLocaleString(),
+												" ",
+												settings.currency
+											]
+										})] }),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "block text-[10px] text-slate-500",
+											children: "المدفوع"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+											className: "font-mono text-emerald-700",
+											children: [
+												Number(selectedOrder.invoicePaidAmount ?? selectedOrder.advancePaidAmount ?? 0).toLocaleString(),
+												" ",
+												settings.currency
+											]
+										})] }),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "block text-[10px] text-slate-500",
+											children: "المتبقي"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+											className: "font-mono text-red-600",
+											children: [
+												Number(selectedOrder.invoiceRemainingAmount ?? selectedOrder.remainingAmount ?? 0).toLocaleString(),
+												" ",
+												settings.currency
+											]
+										})] })
+									]
+								}),
+								selectedOrder.paymentsHistory && selectedOrder.paymentsHistory.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "overflow-x-auto",
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
+										className: "w-full text-[11px] text-right",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
+											className: "border-b border-slate-200 text-slate-600 font-bold",
+											children: [
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+													className: "py-1 px-2",
+													children: "رقم الدفعة"
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+													className: "py-1 px-2",
+													children: "التاريخ"
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+													className: "py-1 px-2",
+													children: "المبلغ"
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+													className: "py-1 px-2",
+													children: "الخزينة / الطريقة"
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+													className: "py-1 px-2",
+													children: "ملاحظات"
+												})
+											]
+										}) }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tbody", {
+											className: "divide-y divide-slate-100",
+											children: selectedOrder.paymentsHistory.map((ph) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "py-1 px-2 font-mono",
+													children: ph.paymentNumber
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "py-1 px-2 font-mono",
+													children: ph.date
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
+													className: "py-1 px-2 font-bold text-emerald-700 tabular-nums",
+													children: [
+														ph.amount.toLocaleString(),
+														" ",
+														settings.currency
+													]
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "py-1 px-2",
+													children: ph.cashboxName || ph.paymentMethod
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "py-1 px-2 text-slate-500",
+													children: ph.notes || "-"
+												})
+											] }, ph.id))
+										})]
+									})
+								})
+							]
+						}),
 						canManageSales && [
+							"approved",
+							"invoiced",
+							"preparing",
 							"rep_assigned",
 							"out_for_delivery",
-							"approved"
+							"delivered",
+							"collected"
 						].includes(selectedOrder.status) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 							className: "flex flex-wrap gap-2 pt-2 border-t border-slate-200",
-							children: [selectedOrder.status !== "out_for_delivery" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							children: [
+								["approved", "invoiced"].includes(selectedOrder.status) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									disabled: busy,
+									onClick: () => runAction(() => advanceOrderStage(selectedOrder.id, { status: "preparing" }), "تم تحديث الحالة إلى قيد التجهيز"),
+									className: "px-3 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-bold cursor-pointer",
+									children: "بدء التجهيز"
+								}),
+								[
+									"preparing",
+									"rep_assigned",
+									"approved"
+								].includes(selectedOrder.status) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									disabled: busy,
+									onClick: () => runAction(() => advanceOrderStage(selectedOrder.id, { status: "out_for_delivery" }), "تم تحديث الحالة إلى خرج للتوصيل"),
+									className: "px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold cursor-pointer",
+									children: "خروج للتوصيل"
+								}),
+								["out_for_delivery", "rep_assigned"].includes(selectedOrder.status) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									disabled: busy,
+									onClick: () => runAction(() => advanceOrderStage(selectedOrder.id, { status: "delivered" }), "تم تأكيد تسليم الطلب"),
+									className: "px-3 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer",
+									children: "تم التسليم"
+								}),
+								selectedOrder.status === "delivered" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									onClick: () => {
+										setCollectStageOrder(selectedOrder);
+										setCollectAmount(Number(selectedOrder.invoiceRemainingAmount ?? selectedOrder.remainingAmount ?? 0));
+										setCollectCashboxId(cashboxes[0]?.id || "cb-main");
+										setCollectMethod("cash");
+										setCollectNotes("");
+									},
+									className: "px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer",
+									children: "تحصيل الدفعة"
+								}),
+								["delivered", "collected"].includes(selectedOrder.status) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									disabled: busy,
+									onClick: () => runAction(() => advanceOrderStage(selectedOrder.id, { status: "closed" }), "تم إغلاق الطلب"),
+									className: "px-3 py-2 rounded-xl bg-slate-800 hover:bg-black text-white font-bold cursor-pointer",
+									children: "إغلاق الطلب"
+								})
+							]
+						})
+					]
+				})
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Modal, {
+				isOpen: Boolean(collectStageOrder),
+				onClose: () => setCollectStageOrder(null),
+				title: collectStageOrder ? `تحصيل دفعة للطلب ${collectStageOrder.requestNumber}` : "",
+				maxWidth: "md",
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+					onSubmit: async (e) => {
+						e.preventDefault();
+						if (!collectStageOrder) return;
+						if (await runAction(() => advanceOrderStage(collectStageOrder.id, {
+							status: "collected",
+							collectedAmount: collectAmount,
+							cashboxId: collectCashboxId,
+							paymentMethod: collectMethod,
+							notes: collectNotes
+						}), "تم تسجيل التحصيل وتحديث مرحلة الطلب")) setCollectStageOrder(null);
+					},
+					className: "space-y-3 text-xs",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+							className: "block font-bold text-slate-700 mb-1",
+							children: [
+								"المبلغ المحصل (",
+								settings.currency,
+								"):"
+							]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+							type: "number",
+							min: 0,
+							step: "0.01",
+							required: true,
+							value: collectAmount,
+							onChange: (e) => setCollectAmount(Number(e.target.value)),
+							className: "w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
+						})] }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "grid grid-cols-2 gap-2",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+								className: "block font-bold text-slate-700 mb-1",
+								children: "الخزينة:"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", {
+								value: collectCashboxId,
+								onChange: (e) => setCollectCashboxId(e.target.value),
+								className: "w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold",
+								children: cashboxes.map((cb) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: cb.id,
+									children: cb.name
+								}, cb.id))
+							})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+								className: "block font-bold text-slate-700 mb-1",
+								children: "طريقة الدفع:"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+								value: collectMethod,
+								onChange: (e) => setCollectMethod(e.target.value),
+								className: "w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+										value: "cash",
+										children: "نقدي"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+										value: "bank",
+										children: "تحويل بنكي"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+										value: "cheque",
+										children: "شيك"
+									})
+								]
+							})] })]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+							className: "block font-bold text-slate-700 mb-1",
+							children: "ملاحظات:"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+							type: "text",
+							value: collectNotes,
+							onChange: (e) => setCollectNotes(e.target.value),
+							className: "w-full p-2.5 rounded-xl border border-slate-300"
+						})] }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex justify-end gap-2",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 								type: "button",
-								disabled: busy,
-								onClick: () => runAction(() => updateOrderDeliveryStatus(selectedOrder.id, { status: "out_for_delivery" }), "تم تحديث الحالة إلى خرج للتوصيل"),
-								className: "px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold cursor-pointer",
-								children: "بدء التوصيل"
+								onClick: () => setCollectStageOrder(null),
+								className: "px-4 py-2 rounded-xl bg-slate-100 font-bold cursor-pointer",
+								children: "إلغاء"
 							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-								type: "button",
+								type: "submit",
 								disabled: busy,
-								onClick: () => runAction(() => updateOrderDeliveryStatus(selectedOrder.id, { status: "delivered" }), "تم تأكيد تسليم الطلب"),
-								className: "px-3 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer",
-								children: "تأكيد التسليم"
+								className: "px-4 py-2 rounded-xl bg-emerald-700 text-white font-bold cursor-pointer",
+								children: "تأكيد التحصيل"
 							})]
 						})
 					]
@@ -40204,17 +42442,23 @@ var ConfirmDialog = ({ isOpen, onClose, onConfirm, title, message, confirmLabel 
 	});
 };
 // src/components/modules/sales/SalesInvoicesView.tsx
-var SalesInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = false }) => {
-	const { invoices, customers, cashboxes, settings, cancelInvoice, confirmDraftInvoice, addInvoicePayment, editSalesInvoice } = useData();
-	const { hasPermission } = useAuth();
+var SalesInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = false, initialTab = "invoices" }) => {
+	const { invoices, customers, products, warehouses, representatives, cashboxes, settings, cancelInvoice, confirmDraftInvoice, addInvoicePayment, editSalesInvoice, createSalesQuote, convertQuoteToInvoice, markInvoiceReviewed } = useData();
+	const { currentUser, hasPermission } = useAuth();
 	const { registerHandler } = useShortcuts();
+	const canReviewInvoices = currentUser?.role === "admin" || hasPermission("canReviewRepInvoices") || hasPermission("canManageSales") || hasPermission("canApprove");
+	const [activeTab, setActiveTab] = (0, import_react.useState)(initialTab);
 	const [isNewModalOpen, setIsNewModalOpen] = (0, import_react.useState)(initialOpenNew);
 	const [actionMessage, setActionMessage] = (0, import_react.useState)(null);
 	const [searchTerm, setSearchTerm] = (0, import_react.useState)("");
 	const [selectedCustomerFilter, setSelectedCustomerFilter] = (0, import_react.useState)("");
 	const [statusFilter, setStatusFilter] = (0, import_react.useState)(initialStatusFilter);
+	const [reviewFilter, setReviewFilter] = (0, import_react.useState)("all");
 	const [dateFrom, setDateFrom] = (0, import_react.useState)("");
 	const [dateTo, setDateTo] = (0, import_react.useState)("");
+	(0, import_react.useEffect)(() => {
+		setActiveTab(initialTab);
+	}, [initialTab]);
 	(0, import_react.useEffect)(() => {
 		setStatusFilter(initialStatusFilter);
 	}, [initialStatusFilter]);
@@ -40242,39 +42486,87 @@ var SalesInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = false }
 	const [editDate, setEditDate] = (0, import_react.useState)("");
 	const [editDiscount, setEditDiscount] = (0, import_react.useState)(0);
 	const [editNotes, setEditNotes] = (0, import_react.useState)("");
+	const [editReason, setEditReason] = (0, import_react.useState)("");
 	const [editItems, setEditItems] = (0, import_react.useState)([]);
 	const [isSubmittingEdit, setIsSubmittingEdit] = (0, import_react.useState)(false);
 	const [editError, setEditError] = (0, import_react.useState)(null);
+	const [reviewTarget, setReviewTarget] = (0, import_react.useState)(null);
+	const [reviewNotesInput, setReviewNotesInput] = (0, import_react.useState)("");
+	const [isSubmittingReview, setIsSubmittingReview] = (0, import_react.useState)(false);
+	const [isNewQuoteOpen, setIsNewQuoteOpen] = (0, import_react.useState)(false);
+	const [quoteCustomerId, setQuoteCustomerId] = (0, import_react.useState)("");
+	const [quoteWarehouseId, setQuoteWarehouseId] = (0, import_react.useState)(warehouses[0]?.id || "wh-main");
+	const [quoteRepId, setQuoteRepId] = (0, import_react.useState)("");
+	const [quoteDate, setQuoteDate] = (0, import_react.useState)((/* @__PURE__ */ new Date()).toISOString().split("T")[0]);
+	const [quoteDiscountTotal, setQuoteDiscountTotal] = (0, import_react.useState)(0);
+	const [quoteNotes, setQuoteNotes] = (0, import_react.useState)("");
+	const [quoteItems, setQuoteItems] = (0, import_react.useState)([]);
+	const [quoteSelectedProductId, setQuoteSelectedProductId] = (0, import_react.useState)("");
+	const [quoteQty, setQuoteQty] = (0, import_react.useState)(1);
+	const [quoteError, setQuoteError] = (0, import_react.useState)(null);
+	const [isSubmittingQuote, setIsSubmittingQuote] = (0, import_react.useState)(false);
+	const [convertQuoteTarget, setConvertQuoteTarget] = (0, import_react.useState)(null);
+	const [convertWarehouseId, setConvertWarehouseId] = (0, import_react.useState)(warehouses[0]?.id || "wh-main");
+	const [convertCashboxId, setConvertCashboxId] = (0, import_react.useState)(cashboxes[0]?.id || "cb-main");
+	const [convertPaymentType, setConvertPaymentType] = (0, import_react.useState)("cash");
+	const [convertPaidAtInvoice, setConvertPaidAtInvoice] = (0, import_react.useState)(0);
+	const [convertDiscountTotal, setConvertDiscountTotal] = (0, import_react.useState)(0);
+	const [convertNotes, setConvertNotes] = (0, import_react.useState)("");
+	const [isConvertingQuote, setIsConvertingQuote] = (0, import_react.useState)(false);
 	const salesInvoices = (0, import_react.useMemo)(() => {
 		return invoices.filter((i) => i.type === "sales");
 	}, [invoices]);
+	const quotesList = (0, import_react.useMemo)(() => {
+		return invoices.filter((i) => i.type === "quote");
+	}, [invoices]);
+	const convertedQuoteIds = (0, import_react.useMemo)(() => {
+		return new Set(invoices.filter((i) => i.type === "sales" && i.status !== "cancelled" && i.convertedFromQuoteId).map((i) => String(i.convertedFromQuoteId)));
+	}, [invoices]);
 	const filteredInvoices = (0, import_react.useMemo)(() => {
 		return salesInvoices.filter((inv) => {
-			const matchSearch = inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) || inv.customerName && inv.customerName.toLowerCase().includes(searchTerm.toLowerCase()) || inv.representativeName && inv.representativeName.toLowerCase().includes(searchTerm.toLowerCase());
+			const matchSearch = inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) || inv.customerName && inv.customerName.toLowerCase().includes(searchTerm.toLowerCase()) || inv.representativeName && inv.representativeName.toLowerCase().includes(searchTerm.toLowerCase()) || inv.convertedFromQuoteNumber && inv.convertedFromQuoteNumber.toLowerCase().includes(searchTerm.toLowerCase());
 			const matchCustomer = selectedCustomerFilter ? inv.customerId === selectedCustomerFilter : true;
 			const matchStatus = statusFilter === "all" ? true : inv.status === statusFilter;
+			const matchReview = reviewFilter === "all" ? true : reviewFilter === "needs_review" ? inv.reviewStatus === "needs_review" : inv.reviewStatus === "reviewed";
 			const matchDateFrom = dateFrom ? inv.date >= dateFrom : true;
 			const matchDateTo = dateTo ? inv.date <= dateTo : true;
-			return matchSearch && matchCustomer && matchStatus && matchDateFrom && matchDateTo;
+			return matchSearch && matchCustomer && matchStatus && matchReview && matchDateFrom && matchDateTo;
 		});
 	}, [
 		salesInvoices,
 		searchTerm,
 		selectedCustomerFilter,
 		statusFilter,
+		reviewFilter,
+		dateFrom,
+		dateTo
+	]);
+	const filteredQuotes = (0, import_react.useMemo)(() => {
+		return quotesList.filter((q) => {
+			const matchSearch = q.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) || q.customerName && q.customerName.toLowerCase().includes(searchTerm.toLowerCase()) || q.representativeName && q.representativeName.toLowerCase().includes(searchTerm.toLowerCase());
+			const matchCustomer = selectedCustomerFilter ? q.customerId === selectedCustomerFilter : true;
+			const matchDateFrom = dateFrom ? q.date >= dateFrom : true;
+			const matchDateTo = dateTo ? q.date <= dateTo : true;
+			return matchSearch && matchCustomer && matchDateFrom && matchDateTo;
+		});
+	}, [
+		quotesList,
+		searchTerm,
+		selectedCustomerFilter,
 		dateFrom,
 		dateTo
 	]);
 	const handlePrint = (inv) => {
+		const isQuote = inv.type === "quote";
 		setPrintData({
-			title: "فاتورة مبيعات أولاد سليم",
+			title: isQuote ? "عرض سعر — أولاد سليم" : "فاتورة مبيعات أولاد سليم",
 			docNumber: inv.invoiceNumber,
-			docType: "فاتورة مبيعات",
+			docType: isQuote ? "عرض سعر" : "فاتورة مبيعات",
 			date: inv.date,
 			partyName: inv.customerName,
 			warehouseName: inv.warehouseName,
 			representativeName: inv.representativeName,
-			paymentType: inv.paymentType === "cash" ? "نقدي" : inv.paymentType === "credit" ? "آجل" : "جزئي",
+			paymentType: isQuote ? "عرض سعر استرشادي (بلا أثر مخزني أو مالي)" : inv.paymentType === "cash" ? "نقدي" : inv.paymentType === "credit" ? "آجل" : "جزئي",
 			items: inv.items.map((it) => ({
 				name: it.productName,
 				unit: it.unit,
@@ -40286,8 +42578,8 @@ var SalesInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = false }
 			subtotal: inv.subtotal,
 			discountTotal: inv.discountTotal,
 			grandTotal: inv.grandTotal,
-			paidAmount: inv.paidAmount,
-			remainingAmount: inv.remainingAmount,
+			paidAmount: isQuote ? void 0 : inv.paidAmount,
+			remainingAmount: isQuote ? void 0 : inv.remainingAmount,
 			notes: inv.notes
 		});
 		setIsPrintModalOpen(true);
@@ -40397,23 +42689,152 @@ var SalesInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = false }
 		setEditDate(inv.date);
 		setEditDiscount(inv.discountTotal || 0);
 		setEditNotes(inv.notes || "");
+		setEditReason("");
 		setEditItems(inv.items.map((it) => ({ ...it })));
 		setEditError(null);
 	};
 	const handleSubmitEdit = async (e) => {
 		e.preventDefault();
 		if (!editModalInvoice) return;
+		if (!editReason.trim()) {
+			setEditError("يرجى كتابة سبب تعديل الفاتورة لتوثيقه في سجل المراجعة.");
+			return;
+		}
 		setEditError(null);
 		setIsSubmittingEdit(true);
 		const res = await editSalesInvoice(editModalInvoice.id, {
 			date: editDate,
 			discountTotal: editDiscount,
 			notes: editNotes,
+			reason: editReason.trim(),
 			items: editItems
 		});
 		setIsSubmittingEdit(false);
 		if (!res.success) setEditError(res.error || "تعذر تعديل الفاتورة");
 		else setEditModalInvoice(null);
+	};
+	const handleAddQuoteItem = (prodId) => {
+		const pid = prodId || quoteSelectedProductId;
+		const prod = products.find((p) => p.id === pid);
+		if (!prod) return;
+		const qty = Math.max(.001, Number(quoteQty || 1));
+		const unitPrice = Number(prod.sellingPrice || 0);
+		setQuoteItems((prev) => {
+			const existingIdx = prev.findIndex((i) => i.productId === prod.id && i.unit === prod.baseUnit);
+			if (existingIdx >= 0) return prev.map((it, idx) => idx === existingIdx ? {
+				...it,
+				quantity: it.quantity + qty,
+				total: computeLineTotal(it.quantity + qty, it.unitPrice, it.discount || 0)
+			} : it);
+			return [...prev, {
+				productId: prod.id,
+				productName: prod.name,
+				barcode: prod.barcode || prod.code || "",
+				unit: prod.baseUnit,
+				unitFactor: 1,
+				quantity: qty,
+				unitPrice,
+				purchasePriceAtTime: Number(prod.purchasePrice || 0),
+				discount: 0,
+				total: computeLineTotal(qty, unitPrice, 0)
+			}];
+		});
+		setQuoteSelectedProductId("");
+		setQuoteQty(1);
+	};
+	const handleSubmitQuote = async (e) => {
+		e.preventDefault();
+		setQuoteError(null);
+		if (quoteItems.length === 0) {
+			setQuoteError("أضف صنفاً واحداً على الأقل لعرض السعر");
+			return;
+		}
+		const cust = customers.find((c) => c.id === quoteCustomerId);
+		const wh = warehouses.find((w) => w.id === quoteWarehouseId) || warehouses[0];
+		const rep = representatives.find((r) => r.id === quoteRepId);
+		const subtotal = quoteItems.reduce((s, it) => s + computeLineTotal(it.quantity, it.unitPrice, it.discount || 0), 0);
+		const grandTotal = Math.max(0, subtotal - Number(quoteDiscountTotal || 0));
+		setIsSubmittingQuote(true);
+		const res = await createSalesQuote({
+			date: quoteDate,
+			customerId: cust?.id,
+			customerName: cust?.name || "عميل نقدي / عرض سعر عام",
+			representativeId: rep?.id,
+			representativeName: rep?.name,
+			warehouseId: wh?.id || "wh-main",
+			warehouseName: wh?.name || "المخزن الرئيسي",
+			items: quoteItems,
+			subtotal,
+			discountTotal: Number(quoteDiscountTotal || 0),
+			taxTotal: 0,
+			grandTotal,
+			paidAmount: 0,
+			remainingAmount: grandTotal,
+			paymentType: "credit",
+			paymentMethod: "cash",
+			cashboxId: cashboxes[0]?.id || "cb-main",
+			status: "draft",
+			notes: quoteNotes.trim() || void 0
+		});
+		setIsSubmittingQuote(false);
+		if (!res.success) {
+			setQuoteError(res.error || "تعذر إنشاء عرض السعر");
+			return;
+		}
+		setIsNewQuoteOpen(false);
+		setQuoteItems([]);
+		setQuoteNotes("");
+		setQuoteDiscountTotal(0);
+		setActionMessage({
+			type: "success",
+			text: `تم إنشاء عرض السعر (${res.invoice?.invoiceNumber || ""}) بنجاح دون أي تأثير على المخزون أو الحسابات.`
+		});
+	};
+	const handleSubmitReview = async (e) => {
+		e.preventDefault();
+		if (!reviewTarget) return;
+		setIsSubmittingReview(true);
+		const res = await markInvoiceReviewed(reviewTarget.id, reviewNotesInput.trim() || void 0);
+		setIsSubmittingReview(false);
+		if (!res.success) setActionMessage({
+			type: "error",
+			text: res.error || "تعذر تأكيد مراجعة الفاتورة"
+		});
+		else {
+			setActionMessage({
+				type: "success",
+				text: `تم اعتماد مراجعة فاتورة المندوب (${reviewTarget.invoiceNumber}) بنجاح دون تكرار القيد أو المخزون.`
+			});
+			setReviewTarget(null);
+			setReviewNotesInput("");
+		}
+	};
+	const handleSubmitConvertQuote = async (e) => {
+		e.preventDefault();
+		if (!convertQuoteTarget) return;
+		setIsConvertingQuote(true);
+		const res = await convertQuoteToInvoice(convertQuoteTarget.id, {
+			warehouseId: convertWarehouseId,
+			cashboxId: convertCashboxId,
+			paymentType: convertPaymentType,
+			paidAtInvoice: convertPaidAtInvoice,
+			discountTotal: convertDiscountTotal,
+			notes: convertNotes.trim() || void 0
+		});
+		setIsConvertingQuote(false);
+		if (!res.success) {
+			setActionMessage({
+				type: "error",
+				text: res.error || "تعذر تحويل عرض السعر لفاتورة"
+			});
+			return;
+		}
+		setConvertQuoteTarget(null);
+		setActiveTab("invoices");
+		setActionMessage({
+			type: "success",
+			text: `تم تحويل عرض السعر (${convertQuoteTarget.invoiceNumber}) إلى فاتورة بيع (${res.invoice?.invoiceNumber || ""}) بنجاح.`
+		});
 	};
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 		className: "space-y-5",
@@ -40422,21 +42843,64 @@ var SalesInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = false }
 				className: "flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs",
 				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
 					className: "text-lg font-black text-slate-900 tracking-tight",
-					children: "إدارة فواتير المبيعات"
+					children: "إدارة فواتير المبيعات وعروض الأسعار"
 				}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 					className: "text-xs text-slate-500 mt-0.5",
-					children: "عرض وتوليد وطباعة فواتير مبيعات المواد الغذائية ومتابعة التحصيلات والديون"
+					children: "عرض وتوليد وطباعة فواتير المبيعات ومراجعة فواتير المناديب وإصدار عروض الأسعار وتحويلها 1:1"
 				})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-					className: "flex items-center gap-2",
-					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
-						onClick: handleExportExcel,
-						className: "flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors",
-						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Download, { className: "w-4 h-4 text-emerald-600" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "تصدير Excel" })]
-					}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
-						onClick: () => setIsNewModalOpen(true),
-						className: "flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-md shadow-blue-900/20 transition-all active:scale-95 cursor-pointer",
-						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Plus, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "فاتورة بيع جديدة" })]
-					})]
+					className: "flex flex-wrap items-center gap-2",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center bg-slate-100 p-1 rounded-xl text-xs font-bold",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+								type: "button",
+								onClick: () => setActiveTab("invoices"),
+								className: `px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${activeTab === "invoices" ? "bg-blue-900 text-white shadow-xs" : "text-slate-700 hover:text-slate-900"}`,
+								children: [
+									"فواتير المبيعات (",
+									salesInvoices.length,
+									")"
+								]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+								type: "button",
+								onClick: () => setActiveTab("quotes"),
+								className: `px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${activeTab === "quotes" ? "bg-blue-900 text-white shadow-xs" : "text-slate-700 hover:text-slate-900"}`,
+								children: [
+									"عروض الأسعار (",
+									quotesList.length,
+									")"
+								]
+							})]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+							type: "button",
+							onClick: handleExportExcel,
+							className: "flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Download, { className: "w-4 h-4 text-emerald-600" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "تصدير Excel" })]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+							type: "button",
+							onClick: () => {
+								setQuoteCustomerId("");
+								setQuoteWarehouseId(warehouses[0]?.id || "wh-main");
+								setQuoteRepId("");
+								setQuoteDate((/* @__PURE__ */ new Date()).toISOString().split("T")[0]);
+								setQuoteDiscountTotal(0);
+								setQuoteNotes("");
+								setQuoteItems([]);
+								setQuoteError(null);
+								setIsNewQuoteOpen(true);
+							},
+							className: "flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold transition-all cursor-pointer",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FileText, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "عرض سعر جديد" })]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+							type: "button",
+							onClick: () => setIsNewModalOpen(true),
+							className: "flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-md shadow-blue-900/20 transition-all active:scale-95 cursor-pointer",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Plus, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "فاتورة بيع جديدة" })]
+						})
+					]
 				})]
 			}),
 			actionMessage && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
@@ -40448,13 +42912,13 @@ var SalesInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = false }
 				})]
 			}),
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-				className: "bg-white p-4 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs",
+				className: "bg-white p-4 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 text-xs",
 				children: [
 					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 						className: "relative",
 						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
 							type: "text",
-							placeholder: "بحث برقم الفاتورة أو العميل أو المندوب...",
+							placeholder: "بحث برقم المستند أو العميل أو المندوب...",
 							value: searchTerm,
 							onChange: (e) => setSearchTerm(e.target.value),
 							className: "w-full bg-slate-50 border border-slate-300 rounded-xl py-2 pr-9 pl-3 text-xs focus:bg-white focus:border-blue-600 outline-hidden"
@@ -40472,7 +42936,7 @@ var SalesInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = false }
 							children: c.name
 						}, c.id))]
 					}) }),
-					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+					activeTab === "invoices" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
 						value: statusFilter,
 						onChange: (e) => setStatusFilter(e.target.value),
 						className: "w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold focus:bg-white focus:border-blue-600 outline-hidden",
@@ -40495,6 +42959,25 @@ var SalesInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = false }
 							})
 						]
 					}) }),
+					activeTab === "invoices" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+						value: reviewFilter,
+						onChange: (e) => setReviewFilter(e.target.value),
+						className: "w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold focus:bg-white focus:border-blue-600 outline-hidden",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: "all",
+								children: "-- حالة المراجعة --"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: "needs_review",
+								children: "تحتاج مراجعة الإدارة"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: "reviewed",
+								children: "تمت المراجعة"
+							})
+						]
+					}) }),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
 						type: "date",
 						value: dateFrom,
@@ -40511,7 +42994,7 @@ var SalesInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = false }
 					}) })
 				]
 			}),
-			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+			activeTab === "invoices" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 				className: "bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden",
 				children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 					className: "overflow-x-auto",
@@ -40558,7 +43041,7 @@ var SalesInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = false }
 								}),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
 									className: "p-3.5",
-									children: "الحالة"
+									children: "الحالة والمراجعة"
 								}),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
 									className: "p-3.5 text-center",
@@ -40585,6 +43068,19 @@ var SalesInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = false }
 											inv.linkedCustomerOrderId && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 												className: "inline-flex items-center gap-1 mt-0.5 mr-1 px-1.5 py-0.5 bg-blue-50 border border-blue-200 text-blue-800 rounded text-[9px] font-sans font-bold",
 												children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "طلب عميل" })
+											}),
+											inv.convertedFromQuoteNumber && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												className: "inline-flex items-center gap-1 mt-0.5 mr-1 px-1.5 py-0.5 bg-slate-100 border border-slate-300 text-slate-700 rounded text-[9px] font-sans font-bold",
+												children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: ["من عرض سعر: ", inv.convertedFromQuoteNumber] })
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+												className: "text-[10px] font-sans font-normal text-slate-500 mt-0.5",
+												children: [
+													"بواسطة: ",
+													inv.createdBy,
+													inv.editedBy ? ` · تعديل: ${inv.editedBy}` : "",
+													inv.cancelledBy ? ` · إلغاء: ${inv.cancelledBy}` : ""
+												]
 											})
 										]
 									}),
@@ -40605,7 +43101,7 @@ var SalesInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = false }
 										children: inv.warehouseName
 									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
-										className: "p-3.5 font-black text-slate-900",
+										className: "p-3.5 font-black text-slate-900 tabular-nums",
 										children: [
 											inv.grandTotal.toLocaleString(),
 											" ",
@@ -40613,11 +43109,11 @@ var SalesInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = false }
 										]
 									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-										className: "p-3.5 font-bold text-emerald-700",
+										className: "p-3.5 font-bold text-emerald-700 tabular-nums",
 										children: inv.paidAmount.toLocaleString()
 									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-										className: "p-3.5 font-bold text-red-600",
+										className: "p-3.5 font-bold text-red-600 tabular-nums",
 										children: inv.remainingAmount.toLocaleString()
 									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
@@ -40629,22 +43125,45 @@ var SalesInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = false }
 									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
 										className: "p-3.5",
-										children: inv.status === "confirmed" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-											className: "px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold",
-											children: "مؤكدة"
-										}) : inv.status === "draft" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-											className: "px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold",
-											children: "مسودة (بلا خصم)"
-										}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-											className: "px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold",
-											children: "ملغاة"
+										children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "flex flex-col items-start gap-1",
+											children: [
+												inv.status === "confirmed" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+													className: "px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold",
+													children: "مؤكدة"
+												}) : inv.status === "draft" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+													className: "px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold",
+													children: "مسودة (بلا خصم)"
+												}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+													className: "px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold",
+													children: "ملغاة"
+												}),
+												inv.reviewStatus === "needs_review" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+													className: "px-2 py-0.5 rounded-md bg-orange-50 text-orange-800 border border-orange-200 text-[10px] font-bold",
+													children: "تحتاج مراجعة الإدارة"
+												}),
+												inv.reviewStatus === "reviewed" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+													className: "px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-bold",
+													children: ["تمت المراجعة ", inv.reviewedBy ? `(${inv.reviewedBy})` : ""]
+												})
+											]
 										})
 									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
 										className: "p-3.5",
 										children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-											className: "flex items-center justify-center gap-1.5",
+											className: "flex items-center justify-center gap-1.5 flex-wrap",
 											children: [
+												inv.reviewStatus === "needs_review" && canReviewInvoices && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+													type: "button",
+													onClick: () => {
+														setReviewTarget(inv);
+														setReviewNotesInput(inv.reviewNotes || "");
+													},
+													className: "px-2 py-1 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer",
+													title: "تأكيد مراجعة فاتورة المندوب بدون تكرار القيد",
+													children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Check, { className: "w-3.5 h-3.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "تأكيد المراجعة" })]
+												}),
 												inv.status === "draft" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 													onClick: () => setConfirmDraftTarget(inv),
 													className: "p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50 border border-emerald-200 transition-colors cursor-pointer",
@@ -40689,6 +43208,160 @@ var SalesInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = false }
 						})]
 					})
 				})
+			}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "p-3.5 bg-blue-50/70 border-b border-blue-200 text-xs text-blue-950 font-bold flex items-center justify-between",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "عروض الأسعار لا تخصم من المخزون ولا تُقيد مالياً حتى يتم تحويلها لفاتورة بيع معتمدة." }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						onClick: () => setIsNewQuoteOpen(true),
+						className: "px-3 py-1.5 rounded-lg bg-blue-900 text-white text-[11px] font-bold cursor-pointer",
+						children: "+ إنشاء عرض سعر"
+					})]
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					className: "overflow-x-auto",
+					children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
+						className: "w-full text-right text-xs",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
+							className: "bg-slate-50 text-slate-700 font-bold border-b border-slate-200",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+									className: "p-3.5",
+									children: "رقم عرض السعر"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+									className: "p-3.5",
+									children: "التاريخ"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+									className: "p-3.5",
+									children: "العميل"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+									className: "p-3.5",
+									children: "المستودع"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+									className: "p-3.5 text-center",
+									children: "الأصناف"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+									className: "p-3.5",
+									children: "الإجمالي"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+									className: "p-3.5",
+									children: "الحالة"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+									className: "p-3.5 text-center",
+									children: "الإجراءات"
+								})
+							]
+						}) }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tbody", {
+							className: "divide-y divide-slate-100",
+							children: filteredQuotes.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tr", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+								colSpan: 8,
+								className: "p-8 text-center text-slate-400",
+								children: "لا توجد عروض أسعار مسجلة بعد."
+							}) }) : filteredQuotes.map((quote) => {
+								const isConverted = convertedQuoteIds.has(quote.id);
+								return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
+									className: "hover:bg-slate-50/80 transition-colors",
+									children: [
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
+											className: "p-3.5 font-mono font-bold text-blue-900",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: quote.invoiceNumber }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+												className: "text-[10px] font-sans font-normal text-slate-500",
+												children: ["بواسطة: ", quote.createdBy]
+											})]
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "p-3.5 font-mono text-slate-600",
+											children: quote.date
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "p-3.5 font-bold text-slate-800",
+											children: quote.customerName || "عميل نقدي / عرض سعر عام"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "p-3.5 text-slate-600",
+											children: quote.warehouseName
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "p-3.5 text-center font-mono font-bold",
+											children: quote.items.length
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
+											className: "p-3.5 font-black text-slate-900 tabular-nums",
+											children: [
+												quote.grandTotal.toLocaleString(),
+												" ",
+												settings.currency
+											]
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "p-3.5",
+											children: quote.status === "cancelled" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												className: "px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold",
+												children: "ملغي"
+											}) : isConverted ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												className: "px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold",
+												children: "تم التحويل لفاتورة"
+											}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												className: "px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-bold",
+												children: "عرض سعر (بلا خصم مخزني)"
+											})
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "p-3.5",
+											children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+												className: "flex items-center justify-center gap-1.5 flex-wrap",
+												children: [
+													quote.status !== "cancelled" && !isConverted && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+														type: "button",
+														onClick: () => {
+															setConvertQuoteTarget(quote);
+															setConvertWarehouseId(quote.warehouseId || warehouses[0]?.id || "wh-main");
+															setConvertCashboxId(cashboxes[0]?.id || "cb-main");
+															setConvertPaymentType("cash");
+															setConvertPaidAtInvoice(quote.grandTotal);
+															setConvertDiscountTotal(quote.discountTotal || 0);
+															setConvertNotes(quote.notes || "");
+														},
+														className: "px-2.5 py-1 rounded-lg bg-blue-900 hover:bg-blue-950 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer",
+														children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(ArrowLeftRight, { className: "w-3.5 h-3.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "تحويل لفاتورة بيع" })]
+													}),
+													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+														type: "button",
+														onClick: () => handlePrint(quote),
+														className: "p-1.5 rounded-lg text-slate-600 hover:text-blue-900 hover:bg-blue-50 transition-colors cursor-pointer",
+														title: "طباعة عرض السعر",
+														children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Printer, { className: "w-4 h-4" })
+													}),
+													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+														type: "button",
+														onClick: () => setActiveInvoice(quote),
+														className: "p-1.5 rounded-lg text-slate-600 hover:text-blue-900 hover:bg-blue-50 transition-colors cursor-pointer",
+														title: "عرض التفاصيل",
+														children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Eye, { className: "w-4 h-4" })
+													}),
+													quote.status !== "cancelled" && !isConverted && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+														type: "button",
+														onClick: () => setCancelTarget(quote),
+														className: "p-1.5 rounded-lg text-red-400 hover:text-red-700 hover:bg-red-50 transition-colors cursor-pointer",
+														title: "إلغاء عرض السعر",
+														children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleX, { className: "w-4 h-4" })
+													})
+												]
+											})
+										})
+									]
+								}, quote.id);
+							})
+						})]
+					})
+				})]
 			}),
 			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(NewSaleInvoiceModal, {
 				isOpen: isNewModalOpen,
@@ -40746,32 +43419,74 @@ var SalesInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = false }
 							})]
 						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "grid grid-cols-2 gap-4 text-xs mb-4 p-3 bg-slate-50 rounded-xl",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
-								className: "text-slate-500",
-								children: ["العميل: ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
-									className: "text-slate-800",
-									children: activeInvoice.customerName
-								})]
-							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
-								className: "text-slate-500",
-								children: ["المستودع: ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
-									className: "text-slate-800",
-									children: activeInvoice.warehouseName
-								})]
-							})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
-								className: "text-slate-500",
-								children: ["التاريخ: ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
-									className: "font-mono text-slate-800",
-									children: activeInvoice.date
-								})]
-							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
-								className: "text-slate-500",
-								children: ["المندوب: ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
-									className: "text-slate-800",
-									children: activeInvoice.representativeName || "-"
-								})]
-							})] })]
+							className: "grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs mb-4 p-3 bg-slate-50 rounded-xl",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+									className: "text-slate-500",
+									children: ["العميل: ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+										className: "text-slate-800",
+										children: activeInvoice.customerName
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+									className: "text-slate-500",
+									children: ["المستودع: ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+										className: "text-slate-800",
+										children: activeInvoice.warehouseName
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+									className: "text-slate-500",
+									children: ["أنشئت بواسطة: ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+										className: "text-slate-800",
+										children: activeInvoice.createdBy
+									})]
+								}),
+								activeInvoice.convertedFromQuoteNumber && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+									className: "text-slate-500",
+									children: ["محولة من عرض سعر: ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+										className: "font-mono text-blue-900",
+										children: activeInvoice.convertedFromQuoteNumber
+									})]
+								})
+							] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+									className: "text-slate-500",
+									children: ["التاريخ: ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+										className: "font-mono text-slate-800",
+										children: activeInvoice.date
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+									className: "text-slate-500",
+									children: ["المندوب: ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+										className: "text-slate-800",
+										children: activeInvoice.representativeName || "-"
+									})]
+								}),
+								activeInvoice.reviewedBy && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+									className: "text-emerald-700",
+									children: [
+										"مراجعة الإدارة: ",
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: activeInvoice.reviewedBy }),
+										" ",
+										activeInvoice.reviewNotes ? `(${activeInvoice.reviewNotes})` : ""
+									]
+								}),
+								activeInvoice.editedBy && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+									className: "text-amber-700",
+									children: ["آخر تعديل: ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: activeInvoice.editedBy })]
+								}),
+								activeInvoice.cancelledBy && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+									className: "text-red-700",
+									children: [
+										"ألغيت بواسطة: ",
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: activeInvoice.cancelledBy }),
+										" ",
+										activeInvoice.cancelReason ? `— ${activeInvoice.cancelReason}` : ""
+									]
+								})
+							] })]
 						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 							className: "awlad-table-scroll mb-4",
@@ -40934,6 +43649,56 @@ var SalesInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = false }
 										] }, p.id))
 									})]
 								})
+							})]
+						}),
+						Array.isArray(activeInvoice.editHistory) && activeInvoice.editHistory.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "mb-4 p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center gap-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Clock, { className: "w-4 h-4 text-amber-700" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h4", {
+									className: "text-xs font-black text-amber-950",
+									children: [
+										"سجل التعديلات السابقة (",
+										activeInvoice.editHistory.length,
+										")"
+									]
+								})]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "space-y-1.5",
+								children: activeInvoice.editHistory.map((entry, idx) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "p-2.5 bg-white border border-amber-200/80 rounded-lg text-[11px] flex flex-col sm:flex-row sm:items-center justify-between gap-1.5",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "space-y-0.5",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "font-bold text-slate-900",
+											children: [
+												"بواسطة: ",
+												entry.editedBy || "غير محدد",
+												entry.reason ? ` · السبب: ${entry.reason}` : ""
+											]
+										}), entry.before && entry.after && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "text-slate-600 font-mono",
+											children: [
+												"الإجمالي: ",
+												Number(entry.before.grandTotal ?? 0).toLocaleString(),
+												" →",
+												" ",
+												/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+													className: "text-blue-900",
+													children: [
+														Number(entry.after.grandTotal ?? 0).toLocaleString(),
+														" ",
+														settings.currency
+													]
+												})
+											]
+										})]
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "font-mono text-[10px] text-slate-500 shrink-0",
+										dir: "ltr",
+										children: entry.editedAt ? new Date(entry.editedAt).toLocaleString("ar-EG") : ""
+									})]
+								}, `${entry.editedAt}-${idx}`))
 							})]
 						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
@@ -41294,6 +44059,20 @@ var SalesInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = false }
 									onChange: (e) => setEditNotes(e.target.value),
 									className: "w-full p-2.5 rounded-xl border border-slate-300"
 								})] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+									className: "block font-bold text-slate-700 mb-1",
+									children: ["سبب التعديل (إلزامي للتدقيق): ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-red-500",
+										children: "*"
+									})]
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+									type: "text",
+									required: true,
+									value: editReason,
+									onChange: (e) => setEditReason(e.target.value),
+									placeholder: "مثال: تصحيح كمية الصنف أو تعديل السعر المتفق عليه...",
+									className: "w-full p-2.5 rounded-xl border border-slate-300 font-semibold focus:border-blue-600 outline-hidden"
+								})] }),
 								(() => {
 									const subtotal = editItems.reduce((acc, it) => acc + it.quantity * it.unitPrice, 0);
 									const grand = Math.max(0, subtotal - editDiscount);
@@ -41340,6 +44119,474 @@ var SalesInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = false }
 							]
 						})
 					]
+				})
+			}),
+			reviewTarget && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				className: "fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs",
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-right",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center justify-between border-b pb-3 mb-4",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h3", {
+								className: "text-base font-black text-slate-900",
+								children: [
+									"تأكيد مراجعة فاتورة المندوب (",
+									reviewTarget.invoiceNumber,
+									")"
+								]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								type: "button",
+								onClick: () => setReviewTarget(null),
+								className: "text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer",
+								children: "✕"
+							})]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+							className: "text-xs text-slate-600 mb-3",
+							children: [
+								"هذه الفاتورة نُفذت وقُيدت بالفعل في المخزون والحسابات من تطبيق المندوب (",
+								reviewTarget.representativeName || reviewTarget.createdBy,
+								"). تأكيد المراجعة يحدّث حالة المراجعة فقط دون تكرار أي قيد."
+							]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+							onSubmit: handleSubmitReview,
+							className: "space-y-3 text-xs",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+								className: "block font-bold text-slate-700 mb-1",
+								children: "ملاحظات المراجعة (اختياري):"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("textarea", {
+								rows: 2,
+								value: reviewNotesInput,
+								onChange: (e) => setReviewNotesInput(e.target.value),
+								placeholder: "ملاحظة الإدارة على الفاتورة...",
+								className: "w-full p-2.5 rounded-xl border border-slate-300"
+							})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex justify-end gap-2 pt-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									onClick: () => setReviewTarget(null),
+									className: "px-4 py-2 rounded-xl border border-slate-300 font-bold cursor-pointer",
+									children: "إلغاء"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "submit",
+									disabled: isSubmittingReview,
+									className: "px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50",
+									children: isSubmittingReview ? "جاري التأكيد..." : "اعتماد المراجعة"
+								})]
+							})]
+						})
+					]
+				})
+			}),
+			isNewQuoteOpen && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				className: "fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs",
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-right max-h-[90vh] overflow-y-auto",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center justify-between border-b pb-3 mb-4",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", {
+								className: "text-base font-black text-slate-900",
+								children: "إنشاء عرض سعر جديد"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+								className: "text-xs text-slate-500",
+								children: "لا يخصم من المخزون ولا يُقيد مالياً إلا بعد التحويل لفاتورة بيع"
+							})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								type: "button",
+								onClick: () => setIsNewQuoteOpen(false),
+								className: "text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer",
+								children: "✕"
+							})]
+						}),
+						quoteError && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							className: "mb-3 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-bold",
+							children: quoteError
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+							onSubmit: handleSubmitQuote,
+							className: "space-y-4 text-xs",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "grid grid-cols-1 sm:grid-cols-3 gap-3",
+									children: [
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+											className: "block font-bold text-slate-700 mb-1",
+											children: "العميل:"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+											value: quoteCustomerId,
+											onChange: (e) => setQuoteCustomerId(e.target.value),
+											className: "w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+												value: "",
+												children: "-- عميل عام / نقدي --"
+											}), customers.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+												value: c.id,
+												children: c.name
+											}, c.id))]
+										})] }),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+											className: "block font-bold text-slate-700 mb-1",
+											children: "المستودع المقترح:"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", {
+											value: quoteWarehouseId,
+											onChange: (e) => setQuoteWarehouseId(e.target.value),
+											className: "w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold",
+											children: warehouses.map((w) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+												value: w.id,
+												children: w.name
+											}, w.id))
+										})] }),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+											className: "block font-bold text-slate-700 mb-1",
+											children: "التاريخ:"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+											type: "date",
+											value: quoteDate,
+											onChange: (e) => setQuoteDate(e.target.value),
+											className: "w-full p-2.5 rounded-xl border border-slate-300 font-mono"
+										})] })
+									]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+										className: "block font-bold text-slate-700",
+										children: "إضافة أصناف لعرض السعر:"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "flex flex-col sm:flex-row gap-2",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+											className: "flex-1",
+											children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ProductSearchSelect, {
+												products,
+												warehouses,
+												warehouseId: quoteWarehouseId,
+												selectedProductId: quoteSelectedProductId,
+												onSelect: (p) => {
+													setQuoteSelectedProductId(p.id);
+													handleAddQuoteItem(p.id);
+												},
+												clearOnSelect: true,
+												currency: settings.currency
+											})
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+											className: "w-28",
+											children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(QuantityInput, {
+												allowDecimals: true,
+												min: .001,
+												value: quoteQty,
+												onChange: setQuoteQty,
+												ariaLabel: "الكمية",
+												inputClassName: "w-full p-2.5 rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+											})
+										})]
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "border border-slate-200 rounded-xl overflow-hidden awlad-table-scroll",
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
+										className: "w-full text-right text-xs",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
+											className: "bg-slate-100 font-bold text-slate-700 border-b",
+											children: [
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+													className: "p-2.5",
+													children: "الصنف"
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+													className: "p-2.5 text-center",
+													children: "الوحدة"
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+													className: "p-2.5 text-center",
+													children: "الكمية"
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+													className: "p-2.5 text-center",
+													children: "السعر"
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+													className: "p-2.5 text-center",
+													children: "الإجمالي"
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+													className: "p-2.5 text-center",
+													children: "حذف"
+												})
+											]
+										}) }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tbody", {
+											className: "divide-y",
+											children: quoteItems.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tr", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												colSpan: 6,
+												className: "p-5 text-center text-slate-400",
+												children: "لم تُضف أصناف بعد"
+											}) }) : quoteItems.map((it, idx) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "p-2.5 font-bold",
+													children: it.productName
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "p-2.5 text-center",
+													children: it.unit
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "p-2.5 text-center",
+													children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(QuantityInput, {
+														allowDecimals: true,
+														min: .001,
+														value: it.quantity,
+														onChange: (val) => setQuoteItems((prev) => prev.map((row, i) => i === idx ? {
+															...row,
+															quantity: val,
+															total: computeLineTotal(val, row.unitPrice, row.discount || 0)
+														} : row)),
+														ariaLabel: `كمية ${it.productName}`,
+														inputClassName: "w-20 p-1 rounded-lg border border-slate-300 text-center font-mono font-bold"
+													})
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "p-2.5 text-center",
+													children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+														type: "number",
+														min: 0,
+														step: "0.5",
+														value: it.unitPrice,
+														onChange: (e) => {
+															const price = parseFloat(e.target.value) || 0;
+															setQuoteItems((prev) => prev.map((row, i) => i === idx ? {
+																...row,
+																unitPrice: price,
+																total: computeLineTotal(row.quantity, price, row.discount || 0)
+															} : row));
+														},
+														className: "w-24 p-1 rounded-lg border border-slate-300 text-center font-mono font-bold"
+													})
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
+													className: "p-2.5 text-center font-black text-blue-900 tabular-nums",
+													children: [
+														it.total.toLocaleString(),
+														" ",
+														settings.currency
+													]
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "p-2.5 text-center",
+													children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+														type: "button",
+														onClick: () => setQuoteItems((prev) => prev.filter((_, i) => i !== idx)),
+														className: "text-red-500 hover:text-red-700 font-bold cursor-pointer",
+														children: "حذف"
+													})
+												})
+											] }, `${it.productId}-${idx}`))
+										})]
+									})
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "grid grid-cols-1 sm:grid-cols-3 gap-3",
+									children: [
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+											className: "block font-bold text-slate-700 mb-1",
+											children: "المندوب (اختياري):"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+											value: quoteRepId,
+											onChange: (e) => setQuoteRepId(e.target.value),
+											className: "w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+												value: "",
+												children: "-- بدون مندوب --"
+											}), representatives.map((r) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+												value: r.id,
+												children: r.name
+											}, r.id))]
+										})] }),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+											className: "block font-bold text-slate-700 mb-1",
+											children: [
+												"الخصم الإجمالي (",
+												settings.currency,
+												"):"
+											]
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+											type: "number",
+											min: 0,
+											step: "0.01",
+											value: quoteDiscountTotal,
+											onChange: (e) => setQuoteDiscountTotal(parseFloat(e.target.value) || 0),
+											className: "w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
+										})] }),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+											className: "block font-bold text-slate-700 mb-1",
+											children: "ملاحظات عرض السعر:"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+											type: "text",
+											value: quoteNotes,
+											onChange: (e) => setQuoteNotes(e.target.value),
+											placeholder: "مدة الصلاحية أو شروط السداد...",
+											className: "w-full p-2.5 rounded-xl border border-slate-300"
+										})] })
+									]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-center justify-between pt-3 border-t",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "text-sm font-black text-blue-950 tabular-nums",
+										children: [
+											"الصافي المقترح: ",
+											Math.max(0, quoteItems.reduce((s, it) => s + it.total, 0) - quoteDiscountTotal).toLocaleString(),
+											" ",
+											settings.currency
+										]
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "flex gap-2",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+											type: "button",
+											onClick: () => setIsNewQuoteOpen(false),
+											className: "px-4 py-2 rounded-xl border border-slate-300 font-bold cursor-pointer",
+											children: "إلغاء"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+											type: "submit",
+											disabled: isSubmittingQuote || quoteItems.length === 0,
+											className: "px-5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50",
+											children: isSubmittingQuote ? "جاري الحفظ..." : "حفظ عرض السعر"
+										})]
+									})]
+								})
+							]
+						})
+					]
+				})
+			}),
+			convertQuoteTarget && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				className: "fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs",
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-right",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "flex items-center justify-between border-b pb-3 mb-4",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h3", {
+							className: "text-base font-black text-slate-900",
+							children: [
+								"تحويل عرض السعر ",
+								convertQuoteTarget.invoiceNumber,
+								" إلى فاتورة بيع"
+							]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							type: "button",
+							onClick: () => setConvertQuoteTarget(null),
+							className: "text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer",
+							children: "✕"
+						})]
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+						onSubmit: handleSubmitConvertQuote,
+						className: "space-y-3 text-xs",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "grid grid-cols-2 gap-3",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+									className: "block font-bold text-slate-700 mb-1",
+									children: "مستودع الصرف:"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", {
+									value: convertWarehouseId,
+									onChange: (e) => setConvertWarehouseId(e.target.value),
+									className: "w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold",
+									children: warehouses.map((w) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+										value: w.id,
+										children: w.name
+									}, w.id))
+								})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+									className: "block font-bold text-slate-700 mb-1",
+									children: "الخزينة:"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", {
+									value: convertCashboxId,
+									onChange: (e) => setConvertCashboxId(e.target.value),
+									className: "w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold",
+									children: cashboxes.map((cb) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+										value: cb.id,
+										children: cb.name
+									}, cb.id))
+								})] })]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "grid grid-cols-3 gap-2",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+										className: "block font-bold text-slate-700 mb-1",
+										children: "نوع الدفع:"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+										value: convertPaymentType,
+										onChange: (e) => {
+											const nextType = e.target.value;
+											setConvertPaymentType(nextType);
+											if (nextType === "cash") setConvertPaidAtInvoice(Math.max(0, convertQuoteTarget.subtotal - convertDiscountTotal));
+											else if (nextType === "credit") setConvertPaidAtInvoice(0);
+										},
+										className: "w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold",
+										children: [
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+												value: "cash",
+												children: "نقدي"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+												value: "partial",
+												children: "جزئي"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+												value: "credit",
+												children: "آجل"
+											})
+										]
+									})] }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+										className: "block font-bold text-slate-700 mb-1",
+										children: "المدفوع:"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+										type: "number",
+										min: 0,
+										step: "0.01",
+										value: convertPaidAtInvoice,
+										onChange: (e) => setConvertPaidAtInvoice(parseFloat(e.target.value) || 0),
+										className: "w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
+									})] }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+										className: "block font-bold text-slate-700 mb-1",
+										children: "الخصم:"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+										type: "number",
+										min: 0,
+										step: "0.01",
+										value: convertDiscountTotal,
+										onChange: (e) => setConvertDiscountTotal(parseFloat(e.target.value) || 0),
+										className: "w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
+									})] })
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+								className: "block font-bold text-slate-700 mb-1",
+								children: "ملاحظات الفاتورة:"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								type: "text",
+								value: convertNotes,
+								onChange: (e) => setConvertNotes(e.target.value),
+								className: "w-full p-2.5 rounded-xl border border-slate-300"
+							})] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex justify-end gap-2 pt-3 border-t",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									onClick: () => setConvertQuoteTarget(null),
+									className: "px-4 py-2 rounded-xl border border-slate-300 font-bold cursor-pointer",
+									children: "إلغاء"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "submit",
+									disabled: isConvertingQuote,
+									className: "px-5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50",
+									children: isConvertingQuote ? "جاري التحويل..." : "تأكيد التحويل لفاتورة بيع"
+								})]
+							})
+						]
+					})]
 				})
 			})
 		]
@@ -41691,6 +44938,7 @@ var CustomersView = ({ onNavigate }) => {
 	const [customerBanner, setCustomerBanner] = (0, import_react.useState)(null);
 	const [phoneActionNotice, setPhoneActionNotice] = (0, import_react.useState)(null);
 	const [mapActionWarning, setMapActionWarning] = (0, import_react.useState)(null);
+	const [isLocatingGeo, setIsLocatingGeo] = (0, import_react.useState)(false);
 	const [customerFormError, setCustomerFormError] = (0, import_react.useState)(null);
 	const [previewInvoice, setPreviewInvoice] = (0, import_react.useState)(null);
 	const [printData, setPrintData] = (0, import_react.useState)(null);
@@ -42033,6 +45281,34 @@ var CustomersView = ({ onNavigate }) => {
 			photo: ""
 		}));
 		if (fileInputRef.current) fileInputRef.current.value = "";
+	};
+	const handleCaptureCustomerGeo = async () => {
+		setIsLocatingGeo(true);
+		setMapActionWarning(null);
+		try {
+			const res = await getCurrentLocationSafe();
+			if (!res.ok || !res.coords) {
+				setMapActionWarning(res.error || "تعذر الحصول على إحداثيات GPS من الجهاز.");
+				return;
+			}
+			setFormData((prev) => ({
+				...prev,
+				geoCoordinates: res.coords
+			}));
+			const parsed = parseLatLngCoords(res.coords);
+			if (parsed) {
+				const rev = await reverseGeocodeCoords(parsed.lat, parsed.lng);
+				if (rev.ok) setFormData((prev) => ({
+					...prev,
+					geoCoordinates: res.coords,
+					address: rev.address,
+					area: prev.area.trim() ? prev.area : rev.area || prev.area
+				}));
+				else setMapActionWarning(rev.error);
+			}
+		} finally {
+			setIsLocatingGeo(false);
+		}
 	};
 	const handleSaveCustomer = async (e) => {
 		e.preventDefault();
@@ -42470,26 +45746,38 @@ var CustomersView = ({ onNavigate }) => {
 											}),
 											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 												className: "flex flex-wrap items-center gap-2 text-xs",
-												children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", {
-													href: `tel:${selectedCustomer.phone}`,
-													className: "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-mono font-black border border-emerald-200 shadow-xs transition-all active:scale-95 cursor-pointer",
-													title: "اتصال هاتفي مباشر بالمحل",
-													children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Phone, { className: "w-4 h-4 text-emerald-600" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: selectedCustomer.phone })]
-												}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", {
-													href: selectedCustomer.geoCoordinates?.trim() ? selectedCustomer.geoCoordinates.startsWith("http") ? selectedCustomer.geoCoordinates : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedCustomer.geoCoordinates)}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedCustomer.address)}`,
-													target: "_blank",
-													rel: "noopener noreferrer",
-													className: "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 font-semibold border border-blue-200 shadow-xs transition-all active:scale-95 cursor-pointer",
-													title: "فتح موقع المحل على خرائط Google Maps",
-													children: [
-														/* @__PURE__ */ (0, import_jsx_runtime.jsx)(MapPin, { className: "w-4 h-4 text-red-600 shrink-0" }),
-														/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-															className: "max-w-[280px] truncate",
-															children: selectedCustomer.address || selectedCustomer.geoCoordinates || "موقع الخريطة"
-														}),
-														/* @__PURE__ */ (0, import_jsx_runtime.jsx)(ExternalLink, { className: "w-3.5 h-3.5 text-blue-700" })
-													]
-												})]
+												children: [
+													/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", {
+														href: `tel:${selectedCustomer.phone}`,
+														className: "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-mono font-black border border-emerald-200 shadow-xs transition-all active:scale-95 cursor-pointer",
+														title: "اتصال هاتفي مباشر بالمحل",
+														children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Phone, { className: "w-4 h-4 text-emerald-600" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: selectedCustomer.phone })]
+													}),
+													(() => {
+														const secClean = String(selectedCustomer.secondaryPhone || "").replace(/[^\d+]/g, "");
+														return secClean.replace(/\D/g, "").length >= 7 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", {
+															href: `tel:${secClean}`,
+															className: "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 font-mono font-black border border-teal-200 shadow-xs transition-all active:scale-95 cursor-pointer",
+															title: "اتصال بالهاتف الإضافي",
+															children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Phone, { className: "w-4 h-4 text-teal-600" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: selectedCustomer.secondaryPhone })]
+														}) : null;
+													})(),
+													/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", {
+														href: selectedCustomer.geoCoordinates?.trim() ? selectedCustomer.geoCoordinates.startsWith("http") ? selectedCustomer.geoCoordinates : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedCustomer.geoCoordinates)}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedCustomer.address)}`,
+														target: "_blank",
+														rel: "noopener noreferrer",
+														className: "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 font-semibold border border-blue-200 shadow-xs transition-all active:scale-95 cursor-pointer",
+														title: "فتح موقع المحل على خرائط Google Maps",
+														children: [
+															/* @__PURE__ */ (0, import_jsx_runtime.jsx)(MapPin, { className: "w-4 h-4 text-red-600 shrink-0" }),
+															/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+																className: "max-w-[280px] truncate",
+																children: selectedCustomer.address || selectedCustomer.geoCoordinates || "موقع الخريطة"
+															}),
+															/* @__PURE__ */ (0, import_jsx_runtime.jsx)(ExternalLink, { className: "w-3.5 h-3.5 text-blue-700" })
+														]
+													})
+												]
 											}),
 											selectedCustomer.notes && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
 												className: "text-xs text-slate-500 bg-slate-50 p-2 rounded-xl border border-slate-100 max-w-xl",
@@ -44246,15 +47534,42 @@ var CustomersView = ({ onNavigate }) => {
 								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
 									className: "block font-bold text-slate-700 mb-1",
 									children: "رقم هاتف إضافي:"
-								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
-									type: "tel",
-									placeholder: "مثال: 01123456789",
-									value: formData.secondaryPhone,
-									onChange: (e) => setFormData({
-										...formData,
-										secondaryPhone: e.target.value
-									}),
-									className: "w-full bg-white border border-slate-300 rounded-xl p-2.5 font-mono font-bold focus:border-blue-600 outline-hidden"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-center gap-2",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+										type: "tel",
+										placeholder: "مثال: 01123456789",
+										value: formData.secondaryPhone,
+										onChange: (e) => {
+											setFormData({
+												...formData,
+												secondaryPhone: e.target.value
+											});
+											if (phoneActionNotice) setPhoneActionNotice(null);
+										},
+										className: "flex-1 bg-white border border-slate-300 rounded-xl p-2.5 font-mono font-bold focus:border-blue-600 outline-hidden"
+									}), (() => {
+										const cleanedSec = formData.secondaryPhone.replace(/[^\d+]/g, "");
+										return cleanedSec.replace(/\D/g, "").length >= 7 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", {
+											href: `tel:${cleanedSec}`,
+											onClick: () => setPhoneActionNotice({
+												type: "info",
+												text: `جاري فتح الاتصال بالرقم الإضافي (${cleanedSec}) عبر تطبيق الهاتف.`
+											}),
+											className: "inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold shrink-0 transition-colors",
+											title: "اتصال هاتفي بالرقم الإضافي",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Phone, { className: "w-4 h-4 text-emerald-700" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "اتصال" })]
+										}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+											type: "button",
+											onClick: () => setPhoneActionNotice({
+												type: "error",
+												text: "يرجى إدخال رقم هاتف إضافي صحيح (7 أرقام على الأقل) لإجراء الاتصال."
+											}),
+											className: "inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300 font-bold shrink-0 cursor-pointer transition-colors",
+											title: "اتصال هاتفي بالرقم الإضافي",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Phone, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "اتصال" })]
+										});
+									})()]
 								})] }),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
 									className: "block font-bold text-slate-700 mb-1",
@@ -44272,15 +47587,28 @@ var CustomersView = ({ onNavigate }) => {
 								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
 									className: "block font-bold text-slate-700 mb-1",
 									children: "الموقع الجغرافي / إحداثيات GPS (أو رابط خرائط):"
-								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
-									type: "text",
-									placeholder: "مثال: 30.0444, 31.2357 أو رابط خرائط",
-									value: formData.geoCoordinates,
-									onChange: (e) => setFormData({
-										...formData,
-										geoCoordinates: e.target.value
-									}),
-									className: "w-full bg-white border border-slate-300 rounded-xl p-2.5 font-mono text-xs focus:border-blue-600 outline-hidden"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-center gap-2",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+										type: "text",
+										placeholder: "مثال: 30.0444, 31.2357 أو رابط خرائط",
+										value: formData.geoCoordinates,
+										onChange: (e) => {
+											setFormData({
+												...formData,
+												geoCoordinates: e.target.value
+											});
+											if (mapActionWarning) setMapActionWarning(null);
+										},
+										className: "flex-1 bg-white border border-slate-300 rounded-xl p-2.5 font-mono text-xs focus:border-blue-600 outline-hidden"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+										type: "button",
+										disabled: isLocatingGeo,
+										onClick: handleCaptureCustomerGeo,
+										className: "inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 font-bold shrink-0 cursor-pointer disabled:opacity-50 transition-colors",
+										title: "تحديد موقعي الحالي عبر GPS وجلب العنوان تلقائياً",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(MapPin, { className: "w-4 h-4 text-blue-700" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isLocatingGeo ? "تحديد..." : "موقعي GPS" })]
+									})]
 								})] })
 							]
 						}),
@@ -44686,9 +48014,13 @@ var CustomersView = ({ onNavigate }) => {
 							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 								className: "pt-2",
 								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-									onClick: () => {
-										updateCustomer(customerToDelete.id, { status: "blocked" });
-										setCustomerToDelete(null);
+									onClick: async () => {
+										try {
+											await updateCustomer(customerToDelete.id, { status: "blocked" });
+											setCustomerToDelete(null);
+										} catch (err) {
+											setDeleteErrorMessage(err?.message || "تعذر تغيير حالة العميل.");
+										}
 									},
 									className: "w-full py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl",
 									children: "تغيير حالة العميل إلى \"محظور\" بدلاً من الحذف"
@@ -44973,8 +48305,57 @@ var CustomersView = ({ onNavigate }) => {
 	});
 };
 // src/components/modules/purchases/PurchaseInvoicesView.tsx
+function normalizeArabicNameForDup(text) {
+	return String(text || "").trim().toLowerCase().replace(/[\u064B-\u065F\u0670]/g, "").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/\s+/g, " ");
+}
+function checkLocalProductDuplicates(products, payload) {
+	const bc = payload.barcode.trim().toLowerCase();
+	const cd = payload.code.trim().toLowerCase();
+	const normName = normalizeArabicNameForDup(payload.name);
+	const normCat = normalizeArabicNameForDup(payload.category);
+	const normUnit = normalizeArabicNameForDup(payload.baseUnit);
+	if (bc) {
+		const byBarcode = products.find((p) => String(p.barcode || "").trim().toLowerCase() === bc || Array.isArray(p.units) && p.units.some((u) => String(u.barcode || "").trim().toLowerCase() === bc));
+		if (byBarcode) return {
+			exactMatch: byBarcode,
+			matchedBy: "barcode",
+			similarMatches: []
+		};
+	}
+	if (cd) {
+		const byCode = products.find((p) => String(p.code || "").trim().toLowerCase() === cd);
+		if (byCode) return {
+			exactMatch: byCode,
+			matchedBy: "code",
+			similarMatches: []
+		};
+	}
+	if (normName) {
+		const exactFull = products.find((p) => normalizeArabicNameForDup(p.name) === normName && normalizeArabicNameForDup(p.category || "") === normCat && normalizeArabicNameForDup(p.baseUnit || "") === normUnit);
+		if (exactFull) return {
+			exactMatch: exactFull,
+			matchedBy: "name_category_unit",
+			similarMatches: []
+		};
+		return {
+			exactMatch: null,
+			matchedBy: null,
+			similarMatches: products.filter((p) => {
+				const pNorm = normalizeArabicNameForDup(p.name);
+				return pNorm && (pNorm === normName || pNorm.includes(normName) || normName.includes(pNorm));
+			}).slice(0, 5)
+		};
+	}
+	return {
+		exactMatch: null,
+		matchedBy: null,
+		similarMatches: []
+	};
+}
 var PurchaseInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = false }) => {
-	const { invoices, suppliers, products, warehouses, cashboxes, settings, createPurchaseInvoice, cancelInvoice } = useData();
+	const { invoices, suppliers, products, warehouses, cashboxes, settings, createPurchaseInvoice, editPurchaseInvoice, cancelInvoice } = useData();
+	const { currentUser, hasPermission } = useAuth();
+	const canEditPurchase = currentUser?.role === "admin" || hasPermission("canManagePurchases") && hasPermission("canEdit");
 	const { registerHandler } = useShortcuts();
 	const productSearchRef = (0, import_react.useRef)(null);
 	const qtyInputRef = (0, import_react.useRef)(null);
@@ -44986,26 +48367,81 @@ var PurchaseInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = fals
 	const [actionMessage, setActionMessage] = (0, import_react.useState)(null);
 	const [cancelTarget, setCancelTarget] = (0, import_react.useState)(null);
 	const [isCancelling, setIsCancelling] = (0, import_react.useState)(false);
-	(0, import_react.useEffect)(() => {
-		setStatusFilter(initialStatusFilter);
-	}, [initialStatusFilter]);
-	(0, import_react.useEffect)(() => {
-		if (initialOpenNew) {
-			setItems([]);
-			setError(null);
-			setIsNewModalOpen(true);
-		}
-	}, [initialOpenNew]);
+	const [activeInvoice, setActiveInvoice] = (0, import_react.useState)(null);
+	const [editModalInvoice, setEditModalInvoice] = (0, import_react.useState)(null);
+	const [editDate, setEditDate] = (0, import_react.useState)("");
+	const [editSupplierId, setEditSupplierId] = (0, import_react.useState)("");
+	const [editWarehouseId, setEditWarehouseId] = (0, import_react.useState)("");
+	const [editDiscount, setEditDiscount] = (0, import_react.useState)(0);
+	const [editNotes, setEditNotes] = (0, import_react.useState)("");
+	const [editReason, setEditReason] = (0, import_react.useState)("");
+	const [editItems, setEditItems] = (0, import_react.useState)([]);
+	const [editAddProdId, setEditAddProdId] = (0, import_react.useState)("");
+	const [editAddQty, setEditAddQty] = (0, import_react.useState)("");
+	const [editAddPrice, setEditAddPrice] = (0, import_react.useState)("");
+	const [editError, setEditError] = (0, import_react.useState)(null);
+	const [isSubmittingEdit, setIsSubmittingEdit] = (0, import_react.useState)(false);
 	const [selectedSupplierId, setSelectedSupplierId] = (0, import_react.useState)(suppliers[0]?.id || "");
 	const [selectedWarehouseId, setSelectedWarehouseId] = (0, import_react.useState)(warehouses[0]?.id || "");
 	const [selectedCashboxId, setSelectedCashboxId] = (0, import_react.useState)(cashboxes[0]?.id || "");
 	const [invoiceDate, setInvoiceDate] = (0, import_react.useState)((/* @__PURE__ */ new Date()).toISOString().split("T")[0]);
 	const [paymentType, setPaymentType] = (0, import_react.useState)("partial");
-	const [paidAmount, setPaidAmount] = (0, import_react.useState)(0);
-	const [discountTotal, setDiscountTotal] = (0, import_react.useState)(0);
+	const [paidAmount, setPaidAmount] = (0, import_react.useState)("");
+	const [discountTotal, setDiscountTotal] = (0, import_react.useState)("");
 	const [notes, setNotes] = (0, import_react.useState)("");
 	const [isSubmitting, setIsSubmitting] = (0, import_react.useState)(false);
 	const [error, setError] = (0, import_react.useState)(null);
+	const [items, setItems] = (0, import_react.useState)([]);
+	const [itemProdId, setItemProdId] = (0, import_react.useState)("");
+	const [itemQty, setItemQty] = (0, import_react.useState)("");
+	const [itemPrice, setItemPrice] = (0, import_react.useState)("");
+	const [showInlineNewProduct, setShowInlineNewProduct] = (0, import_react.useState)(false);
+	const [newProdName, setNewProdName] = (0, import_react.useState)("");
+	const [newProdBarcode, setNewProdBarcode] = (0, import_react.useState)("");
+	const [newProdCode, setNewProdCode] = (0, import_react.useState)("");
+	const [newProdCategory, setNewProdCategory] = (0, import_react.useState)("أصناف عامة");
+	const [newProdBaseUnit, setNewProdBaseUnit] = (0, import_react.useState)("قطعة");
+	const [newProdQty, setNewProdQty] = (0, import_react.useState)("");
+	const [newProdPurchasePrice, setNewProdPurchasePrice] = (0, import_react.useState)("");
+	const [newProdSellingPrice, setNewProdSellingPrice] = (0, import_react.useState)("");
+	const [duplicateCheckState, setDuplicateCheckState] = (0, import_react.useState)({
+		checking: false,
+		exactMatch: null,
+		matchedBy: null,
+		similarMatches: []
+	});
+	const resetPurchaseModalForm = (0, import_react.useCallback)(() => {
+		setItems([]);
+		setItemProdId("");
+		setItemQty("");
+		setItemPrice("");
+		setPaidAmount("");
+		setDiscountTotal("");
+		setNotes("");
+		setError(null);
+		setShowInlineNewProduct(false);
+		setNewProdName("");
+		setNewProdBarcode("");
+		setNewProdCode("");
+		setNewProdQty("");
+		setNewProdPurchasePrice("");
+		setNewProdSellingPrice("");
+		setDuplicateCheckState({
+			checking: false,
+			exactMatch: null,
+			matchedBy: null,
+			similarMatches: []
+		});
+	}, []);
+	(0, import_react.useEffect)(() => {
+		setStatusFilter(initialStatusFilter);
+	}, [initialStatusFilter]);
+	(0, import_react.useEffect)(() => {
+		if (initialOpenNew) {
+			resetPurchaseModalForm();
+			setIsNewModalOpen(true);
+		}
+	}, [initialOpenNew, resetPurchaseModalForm]);
 	(0, import_react.useEffect)(() => {
 		if (!suppliers.some((s) => s.id === selectedSupplierId) && suppliers[0]?.id) setSelectedSupplierId(suppliers[0].id);
 	}, [suppliers, selectedSupplierId]);
@@ -45015,10 +48451,71 @@ var PurchaseInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = fals
 	(0, import_react.useEffect)(() => {
 		if (!cashboxes.some((c) => c.id === selectedCashboxId) && cashboxes[0]?.id) setSelectedCashboxId(cashboxes[0].id);
 	}, [cashboxes, selectedCashboxId]);
-	const [items, setItems] = (0, import_react.useState)([]);
-	const [itemProdId, setItemProdId] = (0, import_react.useState)("");
-	const [itemQty, setItemQty] = (0, import_react.useState)(1);
-	const [itemPrice, setItemPrice] = (0, import_react.useState)(0);
+	(0, import_react.useEffect)(() => {
+		if (!showInlineNewProduct) return;
+		if (!Boolean(newProdName.trim() || newProdBarcode.trim() || newProdCode.trim())) {
+			setDuplicateCheckState({
+				checking: false,
+				exactMatch: null,
+				matchedBy: null,
+				similarMatches: []
+			});
+			return;
+		}
+		let cancelled = false;
+		setDuplicateCheckState((prev) => ({
+			...prev,
+			checking: true
+		}));
+		const timer = window.setTimeout(async () => {
+			try {
+				const res = await apiRequest("/api/products/check-duplicate", {
+					method: "POST",
+					body: {
+						name: newProdName.trim(),
+						barcode: newProdBarcode.trim(),
+						code: newProdCode.trim(),
+						category: newProdCategory.trim(),
+						baseUnit: newProdBaseUnit.trim()
+					}
+				});
+				if (!cancelled) setDuplicateCheckState({
+					checking: false,
+					exactMatch: res?.exactMatch || null,
+					matchedBy: res?.matchedBy || null,
+					similarMatches: Array.isArray(res?.similarMatches) ? res.similarMatches : []
+				});
+			} catch {
+				if (!cancelled) {
+					const localRes = checkLocalProductDuplicates(products, {
+						name: newProdName,
+						barcode: newProdBarcode,
+						code: newProdCode,
+						category: newProdCategory,
+						baseUnit: newProdBaseUnit
+					});
+					setDuplicateCheckState({
+						checking: false,
+						exactMatch: localRes.exactMatch,
+						matchedBy: localRes.matchedBy,
+						similarMatches: localRes.similarMatches
+					});
+				}
+			}
+		}, 250);
+		return () => {
+			cancelled = true;
+			window.clearTimeout(timer);
+		};
+	}, [
+		showInlineNewProduct,
+		newProdName,
+		newProdBarcode,
+		newProdCode,
+		newProdCategory,
+		newProdBaseUnit,
+		products
+	]);
 	const purchaseInvoices = (0, import_react.useMemo)(() => {
 		return invoices.filter((i) => i.type === "purchase");
 	}, [invoices]);
@@ -45036,10 +48533,18 @@ var PurchaseInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = fals
 	const handleProductPick = (prodId) => {
 		setItemProdId(prodId);
 		const p = products.find((prod) => prod.id === prodId);
-		if (p) {
-			setItemPrice(p.purchasePrice);
-			setItemQty(1);
-		}
+		if (p) setItemPrice(p.purchasePrice > 0 ? p.purchasePrice : "");
+	};
+	const handleUseExistingDuplicateProduct = (prod) => {
+		setShowInlineNewProduct(false);
+		setItemProdId(prod.id);
+		setItemPrice(prod.purchasePrice > 0 ? prod.purchasePrice : "");
+		if (newProdQty !== "" && Number(newProdQty) > 0) setItemQty(Number(newProdQty));
+		setError(null);
+		window.setTimeout(() => {
+			qtyInputRef.current?.focus();
+			qtyInputRef.current?.select();
+		}, 30);
 	};
 	const handleAddItem = () => {
 		const prod = products.find((p) => p.id === itemProdId);
@@ -45047,43 +48552,131 @@ var PurchaseInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = fals
 			setError("يرجى اختيار الصنف أولاً");
 			return;
 		}
-		if (itemQty <= 0) {
+		const qtyNum = Number(itemQty || 0);
+		if (qtyNum <= 0) {
 			setError("يرجى إدخال كمية صحيحة أكبر من صفر");
 			return;
 		}
-		const total = computeLineTotal(itemQty, itemPrice);
+		const priceNum = Math.max(0, Number(itemPrice || 0));
+		const total = computeLineTotal(qtyNum, priceNum);
 		setItems((prev) => [...prev, {
 			productId: prod.id,
 			productName: prod.name,
 			barcode: prod.barcode,
 			unit: prod.baseUnit,
 			unitFactor: 1,
-			quantity: itemQty,
-			unitPrice: itemPrice,
-			purchasePriceAtTime: itemPrice,
+			quantity: qtyNum,
+			unitPrice: priceNum,
+			purchasePriceAtTime: priceNum,
 			discount: 0,
 			total
 		}]);
 		setItemProdId("");
-		setItemQty(1);
-		setItemPrice(0);
+		setItemQty("");
+		setItemPrice("");
 		setError(null);
 		window.setTimeout(() => {
 			productSearchRef.current?.focus();
 		}, 30);
 	};
+	const handleAddInlineNewProductItem = () => {
+		const cleanName = newProdName.trim();
+		if (!cleanName) {
+			setError("يرجى إدخال اسم الصنف الجديد");
+			return;
+		}
+		const qtyNum = Number(newProdQty || 0);
+		if (qtyNum <= 0) {
+			setError("يرجى إدخال كمية الشراء للصنف الجديد أكبر من صفر");
+			return;
+		}
+		const buyPrice = Math.max(0, Number(newProdPurchasePrice || 0));
+		const sellPrice = newProdSellingPrice === "" ? 0 : Math.max(0, Number(newProdSellingPrice || 0));
+		const exact = duplicateCheckState.exactMatch;
+		if (exact) {
+			const total = computeLineTotal(qtyNum, buyPrice || exact.purchasePrice || 0);
+			const effectiveBuy = buyPrice || exact.purchasePrice || 0;
+			setItems((prev) => [...prev, {
+				productId: exact.id,
+				productName: exact.name,
+				barcode: exact.barcode || "",
+				unit: exact.baseUnit,
+				unitFactor: 1,
+				quantity: qtyNum,
+				unitPrice: effectiveBuy,
+				purchasePriceAtTime: effectiveBuy,
+				discount: 0,
+				total
+			}]);
+			setActionMessage({
+				type: "success",
+				text: `تم ربط البند بالصنف المسجل مسبقاً (${exact.name}) لمنع التكرار في المخزن.`
+			});
+		} else {
+			const cleanCategory = newProdCategory.trim() || "أصناف عامة";
+			const cleanUnit = newProdBaseUnit.trim() || "قطعة";
+			const cleanBarcode = newProdBarcode.trim();
+			const cleanCode = newProdCode.trim();
+			const total = computeLineTotal(qtyNum, buyPrice);
+			setItems((prev) => [...prev, {
+				productId: "",
+				productName: cleanName,
+				barcode: cleanBarcode || cleanCode,
+				unit: cleanUnit,
+				unitFactor: 1,
+				quantity: qtyNum,
+				unitPrice: buyPrice,
+				purchasePriceAtTime: buyPrice,
+				discount: 0,
+				total,
+				newProduct: {
+					name: cleanName,
+					barcode: cleanBarcode || void 0,
+					code: cleanCode || void 0,
+					category: cleanCategory,
+					baseUnit: cleanUnit,
+					purchasePrice: buyPrice,
+					sellingPrice: sellPrice
+				}
+			}]);
+		}
+		setNewProdName("");
+		setNewProdBarcode("");
+		setNewProdCode("");
+		setNewProdQty("");
+		setNewProdPurchasePrice("");
+		setNewProdSellingPrice("");
+		setDuplicateCheckState({
+			checking: false,
+			exactMatch: null,
+			matchedBy: null,
+			similarMatches: []
+		});
+		setShowInlineNewProduct(false);
+		setError(null);
+	};
 	const subtotal = (0, import_react.useMemo)(() => items.reduce((a, b) => a + b.total, 0), [items]);
-	const grandTotal = (0, import_react.useMemo)(() => Math.max(0, subtotal - discountTotal), [subtotal, discountTotal]);
+	const numericDiscount = (0, import_react.useMemo)(() => Math.max(0, Number(discountTotal || 0)), [discountTotal]);
+	const grandTotal = (0, import_react.useMemo)(() => Math.max(0, subtotal - numericDiscount), [subtotal, numericDiscount]);
 	(0, import_react.useEffect)(() => {
-		if (paymentType === "cash") setPaidAmount(grandTotal);
-		else if (paymentType === "credit") setPaidAmount(0);
+		if (paymentType === "cash") setPaidAmount(grandTotal > 0 ? grandTotal : "");
+		else if (paymentType === "credit") setPaidAmount("");
 	}, [paymentType, grandTotal]);
-	const remainingAmount = (0, import_react.useMemo)(() => {
-		if (paymentType === "cash") return 0;
-		return Math.max(0, grandTotal - paidAmount);
+	const numericPaid = (0, import_react.useMemo)(() => {
+		if (paymentType === "cash") return grandTotal;
+		if (paymentType === "credit") return 0;
+		return Math.min(grandTotal, Math.max(0, Number(paidAmount || 0)));
 	}, [
 		grandTotal,
 		paidAmount,
+		paymentType
+	]);
+	const remainingAmount = (0, import_react.useMemo)(() => {
+		if (paymentType === "cash") return 0;
+		return Math.max(0, grandTotal - numericPaid);
+	}, [
+		grandTotal,
+		numericPaid,
 		paymentType
 	]);
 	const handlePrint = (0, import_react.useCallback)((inv) => {
@@ -45119,7 +48712,7 @@ var PurchaseInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = fals
 		try {
 			const supp = suppliers.find((s) => s.id === selectedSupplierId);
 			const wh = warehouses.find((w) => w.id === selectedWarehouseId);
-			const rawPaid = Number(paidAmount) || 0;
+			const rawPaid = Number(paidAmount || 0);
 			if (paymentType === "partial" && rawPaid < 0) {
 				setError("المبلغ المدفوع لا يمكن أن يكون سالباً");
 				return;
@@ -45133,7 +48726,7 @@ var PurchaseInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = fals
 				warehouseName: wh?.name || "المستودع الرئيسي",
 				items,
 				subtotal,
-				discountTotal,
+				discountTotal: numericDiscount,
 				taxTotal: 0,
 				grandTotal,
 				paidAmount: effectivePaid,
@@ -45146,12 +48739,10 @@ var PurchaseInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = fals
 			});
 			if (res.success) {
 				setIsNewModalOpen(false);
-				setItems([]);
-				setDiscountTotal(0);
-				setNotes("");
+				resetPurchaseModalForm();
 				setActionMessage({
 					type: "success",
-					text: `تم حفظ فاتورة المشتريات رقم (${res.invoice?.invoiceNumber || ""}) وتحديث المخزون بنجاح.`
+					text: `تم حفظ فاتورة المشتريات رقم (${res.invoice?.invoiceNumber || ""}) وتحديث المخزون والأصناف بنجاح.`
 				});
 				if (shouldPrint && res.invoice) handlePrint(res.invoice);
 			} else setError(res.error || "فشل حفظ فاتورة الشراء");
@@ -45171,10 +48762,11 @@ var PurchaseInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = fals
 		createPurchaseInvoice,
 		invoiceDate,
 		subtotal,
-		discountTotal,
+		numericDiscount,
 		selectedCashboxId,
 		notes,
-		handlePrint
+		handlePrint,
+		resetPurchaseModalForm
 	]);
 	const submitPurchaseRef = (0, import_react.useRef)(handleSubmitPurchase);
 	submitPurchaseRef.current = handleSubmitPurchase;
@@ -45208,6 +48800,95 @@ var PurchaseInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = fals
 			setCancelTarget(null);
 		}
 	};
+	const handleOpenEditModal = (inv) => {
+		setEditModalInvoice(inv);
+		setEditDate(inv.date);
+		setEditSupplierId(inv.supplierId || "");
+		setEditWarehouseId(inv.warehouseId || "");
+		setEditDiscount(inv.discountTotal || 0);
+		setEditNotes(inv.notes || "");
+		setEditReason("");
+		setEditItems(inv.items.map((it) => ({ ...it })));
+		setEditAddProdId("");
+		setEditAddQty("");
+		setEditAddPrice("");
+		setEditError(null);
+	};
+	const handleEditPickProduct = (p) => {
+		setEditAddProdId(p.id);
+		setEditAddPrice(p.purchasePrice > 0 ? p.purchasePrice : "");
+	};
+	const handleAddItemToEdit = () => {
+		const prod = products.find((p) => p.id === editAddProdId);
+		if (!prod) {
+			setEditError("يرجى اختيار الصنف أولاً لإضافته للفاتورة");
+			return;
+		}
+		const qtyNum = Number(editAddQty || 0);
+		if (qtyNum <= 0) {
+			setEditError("يرجى إدخال كمية صحيحة أكبر من صفر");
+			return;
+		}
+		const priceNum = Math.max(0, Number(editAddPrice || 0));
+		setEditItems((prev) => [...prev, {
+			productId: prod.id,
+			productName: prod.name,
+			barcode: prod.barcode || prod.code || "",
+			unit: prod.baseUnit,
+			unitFactor: 1,
+			quantity: qtyNum,
+			unitPrice: priceNum,
+			purchasePriceAtTime: priceNum,
+			discount: 0,
+			total: computeLineTotal(qtyNum, priceNum, 0)
+		}]);
+		setEditAddProdId("");
+		setEditAddQty("");
+		setEditAddPrice("");
+		setEditError(null);
+	};
+	const handleSubmitEdit = async (e) => {
+		e.preventDefault();
+		if (!editModalInvoice) return;
+		if (editItems.length === 0) {
+			setEditError("يجب أن تحتوي فاتورة المشتريات على صنف واحد على الأقل.");
+			return;
+		}
+		if (editModalInvoice.status === "confirmed" && !editReason.trim()) {
+			setEditError("يرجى كتابة سبب تعديل الفاتورة لتوثيقه في سجل المراجعة.");
+			return;
+		}
+		const subtotalNext = editItems.reduce((s, it) => s + computeLineTotal(it.quantity, it.unitPrice, it.discount || 0), 0);
+		const grandNext = Math.max(0, subtotalNext - Math.max(0, Number(editDiscount || 0)));
+		if (grandNext < Number(editModalInvoice.paidAmount || 0) - .01) {
+			setEditError(`لا يمكن أن يكون الإجمالي المعدل (${grandNext.toLocaleString()}) أقل من المبلغ المدفوع مسبقاً (${Number(editModalInvoice.paidAmount || 0).toLocaleString()}).`);
+			return;
+		}
+		const suppObj = suppliers.find((s) => s.id === editSupplierId);
+		const whObj = warehouses.find((w) => w.id === editWarehouseId);
+		setEditError(null);
+		setIsSubmittingEdit(true);
+		const res = await editPurchaseInvoice(editModalInvoice.id, {
+			date: editDate,
+			supplierId: editSupplierId || void 0,
+			supplierName: suppObj?.name || "مورد نقدي",
+			warehouseId: editWarehouseId || editModalInvoice.warehouseId,
+			warehouseName: whObj?.name || editModalInvoice.warehouseName,
+			discountTotal: Math.max(0, Number(editDiscount || 0)),
+			notes: editNotes,
+			reason: editReason.trim() || "تعديل فاتورة مشتريات",
+			items: editItems
+		});
+		setIsSubmittingEdit(false);
+		if (!res.success) setEditError(res.error || "تعذر تعديل فاتورة المشتريات");
+		else {
+			setEditModalInvoice(null);
+			setActionMessage({
+				type: "success",
+				text: res.queuedOffline ? `تم حفظ تعديل فاتورة المشتريات (${editModalInvoice.invoiceNumber}) محلياً للمزامنة عند عودة الاتصال.` : `تم تحديث فاتورة المشتريات رقم (${editModalInvoice.invoiceNumber}) والمخزون ورصيد المورد بنجاح.`
+			});
+		}
+	};
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 		className: "space-y-5",
 		children: [
@@ -45221,8 +48902,7 @@ var PurchaseInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = fals
 					children: "توثيق توريدات البضائع الغذائية من المصانع والمطاحن وزيادة أرصدة المخازن آلياً"
 				})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
 					onClick: () => {
-						setItems([]);
-						setError(null);
+						resetPurchaseModalForm();
 						setIsNewModalOpen(true);
 					},
 					className: "flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-md shadow-blue-900/20 active:scale-95 transition-all cursor-pointer",
@@ -45372,17 +49052,32 @@ var PurchaseInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = fals
 										className: "p-3",
 										children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 											className: "flex items-center justify-center gap-1.5",
-											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-												onClick: () => handlePrint(inv),
-												className: "p-1.5 text-slate-500 hover:text-blue-900 hover:bg-blue-50 rounded-lg cursor-pointer",
-												title: "طباعة الفاتورة",
-												children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Printer, { className: "w-4 h-4" })
-											}), inv.status !== "cancelled" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-												onClick: () => setCancelTarget(inv),
-												className: "p-1.5 text-red-400 hover:text-red-700 hover:bg-red-50 rounded-lg cursor-pointer",
-												title: "إلغاء فاتورة الشراء",
-												children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleX, { className: "w-4 h-4" })
-											})]
+											children: [
+												inv.status !== "cancelled" && canEditPurchase && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+													onClick: () => handleOpenEditModal(inv),
+													className: "p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded-lg cursor-pointer",
+													title: "تعديل فاتورة الشراء والأصناف",
+													children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SquarePen, { className: "w-4 h-4" })
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+													onClick: () => setActiveInvoice(inv),
+													className: "p-1.5 text-slate-500 hover:text-blue-900 hover:bg-blue-50 rounded-lg cursor-pointer",
+													title: "عرض تفاصيل الفاتورة وسجل التعديلات",
+													children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Eye, { className: "w-4 h-4" })
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+													onClick: () => handlePrint(inv),
+													className: "p-1.5 text-slate-500 hover:text-blue-900 hover:bg-blue-50 rounded-lg cursor-pointer",
+													title: "طباعة الفاتورة",
+													children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Printer, { className: "w-4 h-4" })
+												}),
+												inv.status !== "cancelled" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+													onClick: () => setCancelTarget(inv),
+													className: "p-1.5 text-red-400 hover:text-red-700 hover:bg-red-50 rounded-lg cursor-pointer",
+													title: "إلغاء فاتورة الشراء",
+													children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleX, { className: "w-4 h-4" })
+												})
+											]
 										})
 									})
 								]
@@ -45445,79 +49140,260 @@ var PurchaseInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = fals
 							]
 						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end bg-blue-50/60 p-3 rounded-xl border border-blue-200",
-							children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "sm:col-span-6",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
-										className: "block font-bold text-slate-700 mb-1",
-										children: "ابحث واختر السلعة المشتراة:"
-									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ProductSearchSelect, {
-										products,
-										selectedProductId: itemProdId,
-										warehouseId: selectedWarehouseId,
-										warehouses,
-										priceMode: "purchase",
-										currency: settings.currency,
-										inputRef: productSearchRef,
-										placeholder: "ابحث بالاسم أو الكود أو الباركود...",
-										onSelect: (prod) => handleProductPick(prod.id),
-										onAfterSelect: () => {
-											qtyInputRef.current?.focus();
-											qtyInputRef.current?.select();
-										}
-									})]
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "sm:col-span-2",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
-										className: "block font-bold text-slate-700 mb-1",
-										children: "الكمية:"
-									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(QuantityInput, {
-										inputRef: qtyInputRef,
-										allowDecimals: true,
-										min: .001,
-										value: itemQty,
-										onChange: setItemQty,
-										onKeyDown: (e) => {
-											if (e.key === "Enter") {
-												e.preventDefault();
-												handleAddItem();
+							className: "bg-blue-50/60 p-3 rounded-xl border border-blue-200 space-y-3",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex flex-wrap items-center justify-between gap-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "font-black text-slate-800",
+									children: "إضافة أصناف لفاتورة الشراء:"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: () => {
+										setShowInlineNewProduct((prev) => !prev);
+										setError(null);
+									},
+									className: `inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold border transition-colors cursor-pointer ${showInlineNewProduct ? "bg-slate-800 text-white border-slate-800" : "bg-white text-blue-900 border-blue-300 hover:bg-blue-50"}`,
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(PackagePlus, { className: "w-3.5 h-3.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: showInlineNewProduct ? "إغلاق إنشاء الصنف الجديد" : "إنشاء صنف جديد داخل الفاتورة" })]
+								})]
+							}), !showInlineNewProduct ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "sm:col-span-6",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+											className: "block font-bold text-slate-700 mb-1",
+											children: "ابحث واختر السلعة المشتراة:"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ProductSearchSelect, {
+											products,
+											selectedProductId: itemProdId,
+											warehouseId: selectedWarehouseId,
+											warehouses,
+											priceMode: "purchase",
+											currency: settings.currency,
+											inputRef: productSearchRef,
+											placeholder: "ابحث بالاسم أو الكود أو الباركود...",
+											onSelect: (prod) => handleProductPick(prod.id),
+											onAfterSelect: () => {
+												qtyInputRef.current?.focus();
+												qtyInputRef.current?.select();
 											}
-										},
-										ariaLabel: "كمية الشراء",
-										inputClassName: "w-full bg-white border border-slate-300 rounded-xl p-2.5 text-center font-mono font-bold outline-hidden focus:border-blue-700"
-									})]
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "sm:col-span-2",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
-										className: "block font-bold text-slate-700 mb-1",
-										children: "سعر الشراء:"
-									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
-										type: "number",
-										step: "0.5",
-										value: itemPrice,
-										onChange: (e) => setItemPrice(Number(e.target.value)),
-										onKeyDown: (e) => {
-											if (e.key === "Enter") {
-												e.preventDefault();
-												handleAddItem();
-											}
-										},
-										className: "w-full bg-white border border-slate-300 rounded-xl p-2.5 text-center font-mono font-bold"
-									})]
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-									className: "sm:col-span-2",
-									children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-										type: "button",
-										onClick: handleAddItem,
-										className: "w-full py-2.5 px-3 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-bold cursor-pointer",
-										children: "+ إضافة"
+										})]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "sm:col-span-2",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+											className: "block font-bold text-slate-700 mb-1",
+											children: "الكمية:"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(QuantityInput, {
+											inputRef: qtyInputRef,
+											allowDecimals: true,
+											min: .001,
+											value: itemQty,
+											placeholder: "الكمية",
+											onChange: setItemQty,
+											onKeyDown: (e) => {
+												if (e.key === "Enter") {
+													e.preventDefault();
+													handleAddItem();
+												}
+											},
+											ariaLabel: "كمية الشراء",
+											inputClassName: "w-full bg-white border border-slate-300 rounded-xl p-2.5 text-center font-mono font-bold outline-hidden focus:border-blue-700"
+										})]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "sm:col-span-2",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+											className: "block font-bold text-slate-700 mb-1",
+											children: "سعر الشراء:"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+											type: "number",
+											step: "0.5",
+											min: "0",
+											placeholder: "السعر",
+											value: itemPrice,
+											onChange: (e) => {
+												const raw = e.target.value;
+												setItemPrice(raw === "" ? "" : Number(raw));
+											},
+											onKeyDown: (e) => {
+												if (e.key === "Enter") {
+													e.preventDefault();
+													handleAddItem();
+												}
+											},
+											className: "w-full bg-white border border-slate-300 rounded-xl p-2.5 text-center font-mono font-bold"
+										})]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "sm:col-span-2",
+										children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+											type: "button",
+											onClick: handleAddItem,
+											className: "w-full py-2.5 px-3 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-bold cursor-pointer",
+											children: "+ إضافة"
+										})
 									})
-								})
-							]
+								]
+							}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "bg-white p-3.5 rounded-xl border border-blue-200 space-y-3",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "grid grid-cols-1 sm:grid-cols-3 gap-2.5",
+										children: [
+											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+												className: "sm:col-span-2",
+												children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+													className: "block font-bold text-slate-700 mb-1",
+													children: "اسم الصنف الجديد: *"
+												}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+													type: "text",
+													value: newProdName,
+													onChange: (e) => setNewProdName(e.target.value),
+													placeholder: "مثال: سكر الضحى 1 كجم",
+													className: "w-full border border-slate-300 rounded-xl p-2 font-bold focus:border-blue-600 outline-hidden"
+												})]
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+												className: "block font-bold text-slate-700 mb-1",
+												children: "الباركود (اختياري):"
+											}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+												type: "text",
+												value: newProdBarcode,
+												onChange: (e) => setNewProdBarcode(e.target.value),
+												placeholder: "622...",
+												className: "w-full border border-slate-300 rounded-xl p-2 font-mono focus:border-blue-600 outline-hidden"
+											})] }),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+												className: "block font-bold text-slate-700 mb-1",
+												children: "الكود (اختياري):"
+											}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+												type: "text",
+												value: newProdCode,
+												onChange: (e) => setNewProdCode(e.target.value),
+												placeholder: "PRD-...",
+												className: "w-full border border-slate-300 rounded-xl p-2 font-mono focus:border-blue-600 outline-hidden"
+											})] }),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+												className: "block font-bold text-slate-700 mb-1",
+												children: "التصنيف:"
+											}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+												type: "text",
+												value: newProdCategory,
+												onChange: (e) => setNewProdCategory(e.target.value),
+												className: "w-full border border-slate-300 rounded-xl p-2 font-semibold focus:border-blue-600 outline-hidden"
+											})] }),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+												className: "block font-bold text-slate-700 mb-1",
+												children: "الوحدة الأساسية:"
+											}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+												type: "text",
+												value: newProdBaseUnit,
+												onChange: (e) => setNewProdBaseUnit(e.target.value),
+												placeholder: "قطعة / كرتونة / كجم",
+												className: "w-full border border-slate-300 rounded-xl p-2 font-semibold focus:border-blue-600 outline-hidden"
+											})] }),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+												className: "block font-bold text-slate-700 mb-1",
+												children: "الكمية المشتراة: *"
+											}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(QuantityInput, {
+												allowDecimals: true,
+												min: .001,
+												value: newProdQty,
+												placeholder: "الكمية",
+												onChange: setNewProdQty,
+												ariaLabel: "كمية الصنف الجديد",
+												inputClassName: "w-full bg-white border border-slate-300 rounded-xl p-2 text-center font-mono font-bold outline-hidden focus:border-blue-700"
+											})] }),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+												className: "block font-bold text-slate-700 mb-1",
+												children: "سعر الشراء: *"
+											}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+												type: "number",
+												step: "0.5",
+												min: "0",
+												placeholder: "سعر الشراء",
+												value: newProdPurchasePrice,
+												onChange: (e) => {
+													const raw = e.target.value;
+													setNewProdPurchasePrice(raw === "" ? "" : Number(raw));
+												},
+												className: "w-full border border-slate-300 rounded-xl p-2 text-center font-mono font-bold"
+											})] }),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+												className: "block font-bold text-slate-700 mb-1",
+												children: "سعر البيع المقترح:"
+											}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+												type: "number",
+												step: "0.5",
+												min: "0",
+												placeholder: "سعر البيع",
+												value: newProdSellingPrice,
+												onChange: (e) => {
+													const raw = e.target.value;
+													setNewProdSellingPrice(raw === "" ? "" : Number(raw));
+												},
+												className: "w-full border border-slate-300 rounded-xl p-2 text-center font-mono font-bold"
+											})] })
+										]
+									}),
+									duplicateCheckState.exactMatch && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "p-2.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-950 flex flex-wrap items-center justify-between gap-2",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "flex items-center gap-2 font-bold",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(TriangleAlert, { className: "w-4 h-4 text-amber-700 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+												"هذا الصنف مسجل مسبقاً (",
+												duplicateCheckState.exactMatch.name,
+												" — ",
+												duplicateCheckState.exactMatch.code,
+												")! لن يُنشأ صنف مكرر."
+											] })]
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+											type: "button",
+											onClick: () => handleUseExistingDuplicateProduct(duplicateCheckState.exactMatch),
+											className: "px-3 py-1 rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-bold cursor-pointer",
+											children: "استخدام الصنف الموجود"
+										})]
+									}),
+									!duplicateCheckState.exactMatch && duplicateCheckState.similarMatches.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "p-2.5 rounded-xl border border-blue-200 bg-blue-50/70 text-blue-950 space-y-1.5",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "font-bold flex items-center gap-1.5",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(TriangleAlert, { className: "w-3.5 h-3.5 text-blue-700" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "توجد أصناف متشابهة بالاسم (اختر منها إن كان نفس الصنف):" })]
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+											className: "flex flex-wrap gap-1.5",
+											children: duplicateCheckState.similarMatches.map((sim) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+												type: "button",
+												onClick: () => handleUseExistingDuplicateProduct(sim),
+												className: "px-2.5 py-1 rounded-lg bg-white border border-blue-300 hover:bg-blue-100 text-blue-900 font-bold text-[11px] cursor-pointer",
+												children: [
+													sim.name,
+													" (",
+													sim.baseUnit,
+													") — ",
+													sim.purchasePrice,
+													" ",
+													settings.currency
+												]
+											}, sim.id))
+										})]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "flex items-center justify-end gap-2",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+											type: "button",
+											onClick: () => setShowInlineNewProduct(false),
+											className: "px-3 py-2 rounded-xl border border-slate-300 font-bold text-slate-600 cursor-pointer",
+											children: "إلغاء"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+											type: "button",
+											onClick: handleAddInlineNewProductItem,
+											className: "px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer",
+											children: duplicateCheckState.exactMatch ? "ربط بالصنف الموجود وإضافته" : "+ إضافة الصنف للفاتورة"
+										})]
+									})
+								]
+							})]
 						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 							className: "border rounded-xl awlad-table-scroll",
@@ -45552,11 +49428,21 @@ var PurchaseInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = fals
 									children: items.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tr", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
 										colSpan: 5,
 										className: "p-6 text-center text-slate-400",
-										children: "لم تتم إضافة أصناف بعد. ابحث عن صنف أعلاه لإضافته."
+										children: "لم تتم إضافة أصناف بعد. ابحث عن صنف أعلاه أو أنشئ صنفاً جديداً لإضافته."
 									}) }) : items.map((it, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
 										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
 											className: "p-2 font-bold",
-											children: it.productName
+											children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+												className: "flex items-center gap-1.5 flex-wrap",
+												children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: it.productName }), it.newProduct && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+													className: "px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold",
+													children: [
+														"صنف جديد (",
+														it.unit,
+														")"
+													]
+												})]
+											})
 										}),
 										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
 											className: "p-2 text-center",
@@ -45588,7 +49474,11 @@ var PurchaseInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = fals
 														...row,
 														unitPrice: p,
 														purchasePriceAtTime: p,
-														total: row.quantity * p
+														total: row.quantity * p,
+														newProduct: row.newProduct ? {
+															...row.newProduct,
+															purchasePrice: p
+														} : void 0
 													} : row));
 												},
 												className: "w-24 border rounded-lg px-2 py-1 text-center font-mono font-bold"
@@ -45666,8 +49556,12 @@ var PurchaseInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = fals
 										type: "number",
 										min: "0",
 										max: grandTotal,
+										placeholder: "أدخل المبلغ المدفوع",
 										value: paidAmount,
-										onChange: (e) => setPaidAmount(Number(e.target.value)),
+										onChange: (e) => {
+											const raw = e.target.value;
+											setPaidAmount(raw === "" ? "" : Number(raw));
+										},
 										className: "w-full bg-white border rounded-xl p-2 font-mono font-bold"
 									})] }),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
@@ -45697,8 +49591,12 @@ var PurchaseInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = fals
 										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "الخصم المكتسب:" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
 											type: "number",
 											min: "0",
+											placeholder: "0",
 											value: discountTotal,
-											onChange: (e) => setDiscountTotal(Math.max(0, Number(e.target.value))),
+											onChange: (e) => {
+												const raw = e.target.value;
+												setDiscountTotal(raw === "" ? "" : Math.max(0, Number(raw)));
+											},
 											className: "w-24 border rounded-lg px-2 py-1 text-center font-mono text-red-600"
 										})]
 									}),
@@ -45712,7 +49610,7 @@ var PurchaseInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = fals
 									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 										className: "flex justify-between text-emerald-700",
-										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "المدفوع:" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: paidAmount.toLocaleString() })]
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "المدفوع:" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: numericPaid.toLocaleString() })]
 									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 										className: "flex justify-between text-red-700 border-t pt-1",
@@ -45748,6 +49646,669 @@ var PurchaseInvoicesView = ({ initialStatusFilter = "all", initialOpenNew = fals
 									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Printer, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "حفظ وطباعة الفاتورة" })]
 								})]
 							})]
+						})
+					]
+				})
+			}),
+			activeInvoice && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				className: "fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs",
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-right max-h-[90vh] overflow-y-auto",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center justify-between border-b pb-3 mb-4",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h3", {
+								className: "text-base font-black text-slate-900",
+								children: ["تفاصيل فاتورة المشتريات: ", activeInvoice.invoiceNumber]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								onClick: () => setActiveInvoice(null),
+								className: "text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer",
+								children: "إغلاق ✕"
+							})]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs mb-4 p-3 bg-slate-50 rounded-xl",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+									className: "text-slate-500",
+									children: ["المورد: ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+										className: "text-slate-800",
+										children: activeInvoice.supplierName || "مورد نقدي"
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+									className: "text-slate-500",
+									children: ["المستودع المستلم: ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+										className: "text-slate-800",
+										children: activeInvoice.warehouseName
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+									className: "text-slate-500",
+									children: ["أنشئت بواسطة: ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+										className: "text-slate-800",
+										children: activeInvoice.createdBy
+									})]
+								})
+							] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+									className: "text-slate-500",
+									children: ["التاريخ: ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+										className: "font-mono text-slate-800",
+										children: activeInvoice.date
+									})]
+								}),
+								activeInvoice.editedBy && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+									className: "text-amber-700",
+									children: ["آخر تعديل: ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: activeInvoice.editedBy })]
+								}),
+								activeInvoice.cancelledBy && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+									className: "text-red-700",
+									children: [
+										"ألغيت بواسطة: ",
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: activeInvoice.cancelledBy }),
+										" ",
+										activeInvoice.cancelReason ? `— ${activeInvoice.cancelReason}` : ""
+									]
+								})
+							] })]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							className: "awlad-table-scroll mb-4",
+							children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
+								className: "w-full text-right text-xs",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
+									className: "bg-slate-100 font-bold border-b",
+									children: [
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+											className: "p-2",
+											children: "الصنف"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+											className: "p-2 text-center",
+											children: "الوحدة"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+											className: "p-2 text-center",
+											children: "الكمية"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+											className: "p-2 text-center",
+											children: "سعر الشراء"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+											className: "p-2 text-center",
+											children: "الإجمالي"
+										})
+									]
+								}) }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tbody", {
+									className: "divide-y",
+									children: activeInvoice.items.map((it, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "p-2 font-semibold",
+											children: it.productName
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "p-2 text-center",
+											children: it.unit
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "p-2 text-center font-bold",
+											children: it.quantity
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "p-2 text-center",
+											children: it.unitPrice
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "p-2 text-center font-bold text-blue-900",
+											children: it.total.toLocaleString()
+										})
+									] }, i))
+								})]
+							})
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "mt-4 mb-4 p-3.5 bg-slate-50 border border-slate-200 rounded-xl",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center gap-2 mb-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(History, { className: "w-4 h-4 text-emerald-700" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h4", {
+									className: "text-xs font-black text-slate-800",
+									children: [
+										"سجل الدفعات المسددة (",
+										activeInvoice.payments?.length || (activeInvoice.paidAmount > 0 ? 1 : 0),
+										")"
+									]
+								})]
+							}), !activeInvoice.payments || activeInvoice.payments.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+								className: "text-[11px] text-slate-500",
+								children: activeInvoice.paidAmount > 0 ? `تم سداد دفعة بقيمة ${activeInvoice.paidAmount.toLocaleString()} ${settings.currency} عند إنشاء الفاتورة.` : "فاتورة آجلة بالكامل للمورد."
+							}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "overflow-x-auto",
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
+									className: "w-full text-[11px] text-right",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
+										className: "border-b border-slate-200 text-slate-600 font-bold",
+										children: [
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "py-1.5 px-2",
+												children: "التاريخ"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "py-1.5 px-2",
+												children: "المبلغ"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "py-1.5 px-2",
+												children: "الخزينة"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "py-1.5 px-2",
+												children: "ملاحظات"
+											})
+										]
+									}) }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tbody", {
+										className: "divide-y divide-slate-200",
+										children: activeInvoice.payments.map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "py-1.5 px-2 font-mono",
+												children: p.date
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
+												className: "py-1.5 px-2 font-black text-emerald-700",
+												children: [
+													p.amount.toLocaleString(),
+													" ",
+													settings.currency
+												]
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "py-1.5 px-2 text-slate-600",
+												children: p.cashboxName
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "py-1.5 px-2 text-slate-500",
+												children: p.notes || "-"
+											})
+										] }, p.id))
+									})]
+								})
+							})]
+						}),
+						Array.isArray(activeInvoice.editHistory) && activeInvoice.editHistory.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "mb-4 p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center gap-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Clock, { className: "w-4 h-4 text-amber-700" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h4", {
+									className: "text-xs font-black text-amber-950",
+									children: [
+										"سجل التعديلات السابقة (",
+										activeInvoice.editHistory.length,
+										")"
+									]
+								})]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "space-y-1.5",
+								children: activeInvoice.editHistory.map((entry, idx) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "p-2.5 bg-white border border-amber-200/80 rounded-lg text-[11px] flex flex-col sm:flex-row sm:items-center justify-between gap-1.5",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "space-y-0.5",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "font-bold text-slate-900",
+											children: [
+												"بواسطة: ",
+												entry.editedBy || "غير محدد",
+												entry.reason ? ` · السبب: ${entry.reason}` : ""
+											]
+										}), entry.before && entry.after && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "text-slate-600 font-mono",
+											children: [
+												"الإجمالي: ",
+												Number(entry.before.grandTotal ?? 0).toLocaleString(),
+												" →",
+												" ",
+												/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+													className: "text-blue-900",
+													children: [
+														Number(entry.after.grandTotal ?? 0).toLocaleString(),
+														" ",
+														settings.currency
+													]
+												})
+											]
+										})]
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "font-mono text-[10px] text-slate-500 shrink-0",
+										dir: "ltr",
+										children: entry.editedAt ? new Date(entry.editedAt).toLocaleString("ar-EG") : ""
+									})]
+								}, `${entry.editedAt}-${idx}`))
+							})]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex justify-between items-center pt-3 border-t text-xs",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center gap-4 text-slate-600",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: ["الإجمالي: ", /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+										className: "text-sm font-black text-slate-900",
+										children: [
+											activeInvoice.grandTotal.toLocaleString(),
+											" ",
+											settings.currency
+										]
+									})] }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: ["المدفوع: ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+										className: "text-sm font-bold text-emerald-700",
+										children: activeInvoice.paidAmount.toLocaleString()
+									})] }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: ["المتبقي للمورد: ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+										className: "text-sm font-bold text-red-600",
+										children: activeInvoice.remainingAmount.toLocaleString()
+									})] })
+								]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+								onClick: () => {
+									const inv = activeInvoice;
+									setActiveInvoice(null);
+									handlePrint(inv);
+								},
+								className: "flex items-center gap-1.5 px-4 py-2 bg-blue-900 text-white rounded-xl font-bold hover:bg-blue-950 transition-colors cursor-pointer",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Printer, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "طباعة هذه الفاتورة" })]
+							})]
+						})
+					]
+				})
+			}),
+			editModalInvoice && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				className: "fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs",
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-right max-h-[90vh] overflow-y-auto",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center justify-between border-b pb-3 mb-4",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h3", {
+								className: "text-base font-black text-slate-900",
+								children: ["تعديل فاتورة المشتريات رقم: ", editModalInvoice.invoiceNumber]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+								className: "text-xs text-slate-500 mt-0.5",
+								children: ["المدفوع مسبقاً للمورد: ", /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+									className: "text-emerald-700",
+									children: [
+										editModalInvoice.paidAmount.toLocaleString(),
+										" ",
+										settings.currency
+									]
+								})]
+							})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								onClick: () => setEditModalInvoice(null),
+								className: "text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer",
+								children: "✕"
+							})]
+						}),
+						editError && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-center gap-2",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleAlert, { className: "w-4 h-4 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: editError })]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+							onSubmit: handleSubmitEdit,
+							className: "space-y-4 text-xs",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "grid grid-cols-1 sm:grid-cols-4 gap-3 bg-slate-50 p-3 rounded-xl",
+									children: [
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+											className: "block font-bold text-slate-700 mb-1",
+											children: "المورد:"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+											value: editSupplierId,
+											onChange: (e) => setEditSupplierId(e.target.value),
+											className: "w-full p-2 rounded-xl border border-slate-300 bg-white font-bold",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+												value: "",
+												children: "مورد نقدي"
+											}), suppliers.map((s) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+												value: s.id,
+												children: s.name
+											}, s.id))]
+										})] }),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+											className: "block font-bold text-slate-700 mb-1",
+											children: "المستودع المستلم:"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", {
+											value: editWarehouseId,
+											onChange: (e) => setEditWarehouseId(e.target.value),
+											className: "w-full p-2 rounded-xl border border-slate-300 bg-white font-bold",
+											children: warehouses.map((w) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+												value: w.id,
+												children: w.name
+											}, w.id))
+										})] }),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+											className: "block font-bold text-slate-700 mb-1",
+											children: "تاريخ الفاتورة:"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+											type: "date",
+											required: true,
+											value: editDate,
+											onChange: (e) => setEditDate(e.target.value),
+											className: "w-full p-2 rounded-xl border border-slate-300 bg-white font-mono"
+										})] }),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+											className: "block font-bold text-slate-700 mb-1",
+											children: [
+												"إجمالي الخصم (",
+												settings.currency,
+												"):"
+											]
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+											type: "number",
+											min: 0,
+											step: "0.5",
+											value: editDiscount,
+											onChange: (e) => setEditDiscount(Math.max(0, parseFloat(e.target.value) || 0)),
+											className: "w-full p-2 rounded-xl border border-slate-300 bg-white font-bold"
+										})] })
+									]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "bg-blue-50/60 p-3 rounded-xl border border-blue-200 grid grid-cols-1 sm:grid-cols-12 gap-2 items-end",
+									children: [
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "sm:col-span-5",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+												className: "block font-bold text-slate-700 mb-1",
+												children: "إضافة صنف آخر للفاتورة:"
+											}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ProductSearchSelect, {
+												products,
+												selectedProductId: editAddProdId,
+												warehouseId: editWarehouseId,
+												warehouses,
+												priceMode: "purchase",
+												currency: settings.currency,
+												placeholder: "ابحث لإضافة صنف...",
+												onSelect: handleEditPickProduct
+											})]
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "sm:col-span-2",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+												className: "block font-bold text-slate-700 mb-1",
+												children: "الكمية:"
+											}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(QuantityInput, {
+												allowDecimals: true,
+												min: .001,
+												value: editAddQty,
+												onChange: setEditAddQty,
+												placeholder: "الكمية",
+												ariaLabel: "كمية صنف مضاف",
+												inputClassName: "w-full p-2 rounded-xl border border-slate-300 bg-white text-center font-mono font-bold"
+											})]
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "sm:col-span-3",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+												className: "block font-bold text-slate-700 mb-1",
+												children: "سعر الشراء:"
+											}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+												type: "number",
+												min: 0,
+												step: "0.5",
+												placeholder: "السعر",
+												value: editAddPrice,
+												onChange: (e) => setEditAddPrice(e.target.value === "" ? "" : Math.max(0, Number(e.target.value))),
+												className: "w-full p-2 rounded-xl border border-slate-300 bg-white text-center font-mono font-bold"
+											})]
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+											className: "sm:col-span-2",
+											children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+												type: "button",
+												onClick: handleAddItemToEdit,
+												className: "w-full py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-bold cursor-pointer",
+												children: "+ إضافة"
+											})
+										})
+									]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "border border-slate-200 rounded-xl overflow-hidden awlad-table-scroll",
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
+										className: "w-full text-right text-xs",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
+											className: "bg-slate-50 border-b border-slate-200 text-slate-700 font-bold",
+											children: [
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+													className: "p-2.5",
+													children: "الصنف"
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+													className: "p-2.5 text-center",
+													children: "الوحدة"
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+													className: "p-2.5 text-center w-24",
+													children: "الكمية"
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+													className: "p-2.5 text-center w-28",
+													children: "سعر الشراء"
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+													className: "p-2.5 text-center",
+													children: "الإجمالي"
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+													className: "p-2.5 text-center w-12",
+													children: "حذف"
+												})
+											]
+										}) }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tbody", {
+											className: "divide-y divide-slate-100",
+											children: editItems.map((item, idx) => {
+												const prodObj = products.find((p) => p.id === item.productId);
+												const unitOptions = prodObj ? [{
+													name: prodObj.baseUnit,
+													factor: 1
+												}, ...(prodObj.units || []).map((u) => ({
+													name: u.name,
+													factor: u.conversionFactor || 1
+												}))] : [{
+													name: item.unit,
+													factor: item.unitFactor || 1
+												}];
+												return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+														className: "p-2.5 font-bold text-slate-800",
+														children: item.productName
+													}),
+													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+														className: "p-2.5 text-center",
+														children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", {
+															value: item.unit,
+															onChange: (e) => {
+																const chosen = unitOptions.find((u) => u.name === e.target.value) || {
+																	name: e.target.value,
+																	factor: 1
+																};
+																setEditItems((prev) => prev.map((it, i) => i === idx ? {
+																	...it,
+																	unit: chosen.name,
+																	unitFactor: chosen.factor,
+																	purchasePriceAtTime: chosen.factor > 0 ? Number((it.unitPrice / chosen.factor).toFixed(2)) : it.unitPrice
+																} : it));
+															},
+															className: "p-1.5 rounded-lg border border-slate-300 bg-white font-semibold",
+															children: unitOptions.map((u) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+																value: u.name,
+																children: u.name
+															}, u.name))
+														})
+													}),
+													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+														className: "p-2.5 text-center",
+														children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(QuantityInput, {
+															allowDecimals: true,
+															min: .001,
+															value: item.quantity,
+															onChange: (newQty) => {
+																setEditItems((prev) => prev.map((it, i) => i === idx ? {
+																	...it,
+																	quantity: newQty,
+																	total: computeLineTotal(newQty, it.unitPrice, it.discount || 0)
+																} : it));
+															},
+															ariaLabel: `كمية ${item.productName}`,
+															inputClassName: "w-20 p-1.5 rounded-lg border border-slate-300 text-center font-bold font-mono outline-hidden focus:border-blue-700"
+														})
+													}),
+													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+														className: "p-2.5 text-center",
+														children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+															type: "number",
+															min: 0,
+															step: "0.5",
+															value: item.unitPrice,
+															onChange: (e) => {
+																const newPrice = Math.max(0, parseFloat(e.target.value) || 0);
+																setEditItems((prev) => prev.map((it, i) => i === idx ? {
+																	...it,
+																	unitPrice: newPrice,
+																	purchasePriceAtTime: (it.unitFactor || 1) > 0 ? Number((newPrice / (it.unitFactor || 1)).toFixed(2)) : newPrice,
+																	total: computeLineTotal(it.quantity, newPrice, it.discount || 0)
+																} : it));
+															},
+															className: "w-24 p-1.5 rounded-lg border border-slate-300 text-center font-bold font-mono"
+														})
+													}),
+													/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
+														className: "p-2.5 text-center font-black text-blue-900",
+														children: [
+															computeLineTotal(item.quantity, item.unitPrice, item.discount || 0).toLocaleString(),
+															" ",
+															settings.currency
+														]
+													}),
+													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+														className: "p-2.5 text-center",
+														children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+															type: "button",
+															disabled: editItems.length <= 1,
+															onClick: () => setEditItems((prev) => prev.filter((_, i) => i !== idx)),
+															className: "p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded disabled:opacity-30 cursor-pointer",
+															title: "حذف البند",
+															children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { className: "w-4 h-4" })
+														})
+													})
+												] }, `${item.productId}-${idx}`);
+											})
+										})]
+									})
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+									className: "block font-bold text-slate-700 mb-1",
+									children: "ملاحظات الفاتورة:"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("textarea", {
+									rows: 2,
+									value: editNotes,
+									onChange: (e) => setEditNotes(e.target.value),
+									className: "w-full p-2.5 rounded-xl border border-slate-300"
+								})] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+									className: "block font-bold text-slate-700 mb-1",
+									children: [
+										"سبب التعديل ",
+										editModalInvoice.status === "confirmed" ? "(إلزامي للتدقيق):" : "(اختياري):",
+										" ",
+										editModalInvoice.status === "confirmed" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-red-500",
+											children: "*"
+										})
+									]
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+									type: "text",
+									required: editModalInvoice.status === "confirmed",
+									value: editReason,
+									onChange: (e) => setEditReason(e.target.value),
+									placeholder: "مثال: تعديل كميات أو أسعار التوريد من المورد...",
+									className: "w-full p-2.5 rounded-xl border border-slate-300 font-semibold focus:border-blue-600 outline-hidden"
+								})] }),
+								(() => {
+									const sub = editItems.reduce((acc, it) => acc + computeLineTotal(it.quantity, it.unitPrice, it.discount || 0), 0);
+									const grand = Math.max(0, sub - Math.max(0, Number(editDiscount || 0)));
+									const diff = grand - editModalInvoice.grandTotal;
+									const belowPaid = grand < Number(editModalInvoice.paidAmount || 0) - .01;
+									return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "space-y-2",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: `p-3 rounded-xl border flex flex-wrap items-center justify-between gap-2 text-xs ${belowPaid ? "bg-red-50 border-red-300" : "bg-blue-50/70 border-blue-200"}`,
+											children: [
+												/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+													className: "text-slate-600 block text-[10px]",
+													children: "الإجمالي المعدّل:"
+												}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+													className: "text-sm font-black text-blue-950",
+													children: [
+														grand.toLocaleString(),
+														" ",
+														settings.currency
+													]
+												})] }),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+													className: "text-slate-600 block text-[10px]",
+													children: "المدفوع مسبقاً:"
+												}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+													className: "text-sm font-bold text-emerald-700",
+													children: [
+														editModalInvoice.paidAmount.toLocaleString(),
+														" ",
+														settings.currency
+													]
+												})] }),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+													className: "text-slate-600 block text-[10px]",
+													children: "المتبقي للمورد بعد التعديل:"
+												}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+													className: "text-sm font-bold text-red-700",
+													children: [
+														Math.max(0, grand - editModalInvoice.paidAmount).toLocaleString(),
+														" ",
+														settings.currency
+													]
+												})] }),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+													className: "text-slate-600 block text-[10px]",
+													children: "الفرق عن الأصل:"
+												}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+													className: `text-sm font-black ${diff > 0 ? "text-red-700" : diff < 0 ? "text-emerald-700" : "text-slate-600"}`,
+													children: [
+														diff > 0 ? `+${diff.toLocaleString()}` : diff.toLocaleString(),
+														" ",
+														settings.currency
+													]
+												})] })
+											]
+										}), belowPaid && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+											className: "text-[11px] font-bold text-red-700",
+											children: "تحذير: الإجمالي المعدّل أقل من المبلغ المدفوع مسبقاً للمورد ولن يُسمح بالحفظ."
+										})]
+									});
+								})(),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-center justify-end gap-2 pt-3 border-t",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+										type: "button",
+										onClick: () => setEditModalInvoice(null),
+										className: "px-4 py-2 rounded-xl border border-slate-300 text-slate-600 font-bold hover:bg-slate-50 cursor-pointer",
+										children: "إلغاء"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+										type: "submit",
+										disabled: isSubmittingEdit || editItems.length === 0 || editItems.reduce((acc, it) => acc + computeLineTotal(it.quantity, it.unitPrice, it.discount || 0), 0) - Math.max(0, Number(editDiscount || 0)) < Number(editModalInvoice.paidAmount || 0) - .01,
+										className: "px-5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black transition-colors disabled:opacity-50 cursor-pointer",
+										children: isSubmittingEdit ? "جاري حفظ التعديل..." : "حفظ وتحديث الفاتورة"
+									})]
+								})
+							]
 						})
 					]
 				})
@@ -46170,10 +50731,10 @@ var SuppliersView = () => {
 									className: "flex items-center justify-between",
 									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 										className: "font-bold text-slate-600",
-										children: "مستحقات المورد:"
+										children: supp.currentBalance < 0 ? "دفعة مقدمة للمورد / رصيد لنا:" : "مستحقات المورد:"
 									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-										className: `font-mono font-black text-sm ${supp.currentBalance < 0 ? "text-emerald-700" : "text-purple-800"}`,
-										children: supp.currentBalance < 0 ? `لنا ${Math.abs(supp.currentBalance).toLocaleString()} ${settings.currency}` : `${supp.currentBalance.toLocaleString()} ${settings.currency}`
+										className: `font-mono font-black text-sm tabular-nums ${supp.currentBalance < 0 ? "text-emerald-700" : "text-purple-800"}`,
+										children: supp.currentBalance < 0 ? `دفعة مقدمة للمورد / رصيد لنا (${Math.abs(supp.currentBalance).toLocaleString()} ${settings.currency})` : `${supp.currentBalance.toLocaleString()} ${settings.currency}`
 									})]
 								}), availableAdvance > 0 && openInvoices.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 									className: "flex items-center justify-between text-[11px] text-emerald-700 font-bold pt-1 border-t border-slate-200",
@@ -46218,7 +50779,7 @@ var SuppliersView = () => {
 				isOpen: !!statementSupplier,
 				onClose: () => setStatementSupplier(null),
 				title: `كشف حساب المورد: ${statementSupplier.name} (${statementSupplier.code})`,
-				subtitle: `الرصيد المستحق الحالي للمورد: ${statementSupplier.currentBalance.toLocaleString()} ${settings.currency}`,
+				subtitle: statementSupplier.currentBalance < 0 ? `دفعة مقدمة للمورد / رصيد لنا: ${Math.abs(statementSupplier.currentBalance).toLocaleString()} ${settings.currency}` : `الرصيد المستحق الحالي للمورد: ${statementSupplier.currentBalance.toLocaleString()} ${settings.currency}`,
 				maxWidth: "4xl",
 				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 					className: "space-y-4 text-xs",
@@ -48199,7 +52760,7 @@ var StockCountView = () => {
 	});
 };
 // src/components/modules/inventory/InventoryView.tsx
-var InventoryView = ({ initialTab = "products" }) => {
+var InventoryView = ({ initialTab = "products", onOpenItemMovementReport }) => {
 	const { products, warehouses, categories: categoryList, stockMovements, settings, addProduct, updateProduct, deleteProduct, toggleProductStatus, transferStock, adjustStock, recordDamagedStock, addCategory, renameCategoryGlobal, toggleCategoryStatus, addWarehouse, updateWarehouse, toggleWarehouseStatus, updateSettings } = useData();
 	const { hasPermission } = useAuth();
 	const { registerHandler, consumePendingAction } = useShortcuts();
@@ -49789,8 +54350,15 @@ var InventoryView = ({ initialTab = "products" }) => {
 										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
 											className: "p-3.5",
 											children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-												className: "flex items-center justify-center gap-1",
+												className: "flex items-center justify-center gap-1 flex-wrap",
 												children: [
+													onOpenItemMovementReport && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+														type: "button",
+														onClick: () => onOpenItemMovementReport(prod.id),
+														className: "px-2 py-1 rounded-lg bg-blue-50 text-blue-900 hover:bg-blue-100 border border-blue-200 text-[11px] font-bold cursor-pointer",
+														title: "تقرير حركة الصنف المفصل",
+														children: "حركة الصنف"
+													}),
 													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 														type: "button",
 														onClick: () => {
@@ -53092,7 +57660,7 @@ var ChequesView = ({ initialTab }) => {
 };
 // src/components/modules/representatives/RepTransferView.tsx
 var RepTransferView = ({ initialTab = "cash-transfers" }) => {
-	const { repTransfers, repItemTransfers = [], representatives, products, warehouses, invoices, cashboxes, settings, createRepTransfer, confirmRepTransferReceipt, rejectRepTransfer, createRepItemTransfer, updateRepItemTransferStatus, addRepresentative, updateRepresentative } = useData();
+	const { repTransfers, repItemTransfers = [], representatives, customers, products, warehouses, invoices, cashboxes, settings, createRepTransfer, confirmRepTransferReceipt, rejectRepTransfer, createRepItemTransfer, updateRepItemTransferStatus, addRepresentative, updateRepresentative, getRepCustodyStatement, recordRepCustodyDelivery, recordRepCustodyReturn, recordRepCustodyAdjustment } = useData();
 	const { currentUser, hasPermission } = useAuth();
 	const [activeTab, setActiveTab] = (0, import_react.useState)(initialTab);
 	const [statusBanner, setStatusBanner] = (0, import_react.useState)(null);
@@ -53121,6 +57689,7 @@ var RepTransferView = ({ initialTab = "cash-transfers" }) => {
 	const [itemReqInvoiceId, setItemReqInvoiceId] = (0, import_react.useState)("");
 	const [itemReqSourceWhId, setItemReqSourceWhId] = (0, import_react.useState)(warehouses[0]?.id || "");
 	const [itemReqTargetWhId, setItemReqTargetWhId] = (0, import_react.useState)(warehouses[1]?.id || warehouses[0]?.id || "");
+	const [itemReqTransferMode, setItemReqTransferMode] = (0, import_react.useState)("transfer");
 	const [itemReqNotes, setItemReqNotes] = (0, import_react.useState)("");
 	const [selectedItemsForReq, setSelectedItemsForReq] = (0, import_react.useState)([]);
 	const [tempProdId, setTempProdId] = (0, import_react.useState)("");
@@ -53136,15 +57705,38 @@ var RepTransferView = ({ initialTab = "cash-transfers" }) => {
 	const [isSavingRep, setIsSavingRep] = (0, import_react.useState)(false);
 	const [repFormError, setRepFormError] = (0, import_react.useState)(null);
 	const [isConfirmBusy, setIsConfirmBusy] = (0, import_react.useState)(false);
+	const [custodyRepId, setCustodyRepId] = (0, import_react.useState)(representatives[0]?.id || "");
+	const [custodyDateFrom, setCustodyDateFrom] = (0, import_react.useState)("");
+	const [custodyDateTo, setCustodyDateTo] = (0, import_react.useState)("");
+	const [custodyStatement, setCustodyStatement] = (0, import_react.useState)(null);
+	const [isCustodyLoading, setIsCustodyLoading] = (0, import_react.useState)(false);
+	const [custodyError, setCustodyError] = (0, import_react.useState)(null);
+	const [custodyActionModal, setCustodyActionModal] = (0, import_react.useState)(null);
+	const [custodyOpProductId, setCustodyOpProductId] = (0, import_react.useState)("");
+	const [custodyOpQty, setCustodyOpQty] = (0, import_react.useState)(1);
+	const [custodyOpCustomerId, setCustodyOpCustomerId] = (0, import_react.useState)("");
+	const [custodyOpCustomerName, setCustodyOpCustomerName] = (0, import_react.useState)("");
+	const [custodyOpTargetWhId, setCustodyOpTargetWhId] = (0, import_react.useState)(warehouses[0]?.id || "wh-main");
+	const [custodyOpType, setCustodyOpType] = (0, import_react.useState)("custody_damaged");
+	const [custodyOpDate, setCustodyOpDate] = (0, import_react.useState)((/* @__PURE__ */ new Date()).toISOString().split("T")[0]);
+	const [custodyOpNotes, setCustodyOpNotes] = (0, import_react.useState)("");
+	const [isSubmittingCustodyOp, setIsSubmittingCustodyOp] = (0, import_react.useState)(false);
+	const isRepUser = currentUser?.role === "representative";
+	const myRepProfile = (0, import_react.useMemo)(() => {
+		return representatives.find((r) => r.userId === currentUser?.id || r.name === currentUser?.fullName);
+	}, [representatives, currentUser]);
 	(0, import_react.useEffect)(() => {
 		if (representatives.length > 0) {
 			if (!selectedRepId) setSelectedRepId(representatives[0].id);
 			if (!itemReqRepId) setItemReqRepId(representatives[0].id);
+			if (isRepUser && myRepProfile) setCustodyRepId(myRepProfile.id);
+			else if (!custodyRepId) setCustodyRepId(representatives[0].id);
 		}
 		if (cashboxes.length > 0 && !selectedCashboxId) setSelectedCashboxId(cashboxes[0].id);
 		if (warehouses.length > 0) {
 			if (!itemReqSourceWhId) setItemReqSourceWhId(warehouses[0].id);
 			if (!itemReqTargetWhId) setItemReqTargetWhId((warehouses[1] || warehouses[0]).id);
+			if (!custodyOpTargetWhId) setCustodyOpTargetWhId(warehouses[0].id);
 		}
 	}, [
 		representatives,
@@ -53152,14 +57744,39 @@ var RepTransferView = ({ initialTab = "cash-transfers" }) => {
 		warehouses,
 		selectedRepId,
 		itemReqRepId,
+		custodyRepId,
 		selectedCashboxId,
 		itemReqSourceWhId,
-		itemReqTargetWhId
+		itemReqTargetWhId,
+		custodyOpTargetWhId,
+		isRepUser,
+		myRepProfile
 	]);
-	const isRepUser = currentUser?.role === "representative";
-	const myRepProfile = (0, import_react.useMemo)(() => {
-		return representatives.find((r) => r.userId === currentUser?.id || r.name === currentUser?.fullName);
-	}, [representatives, currentUser]);
+	const loadCustodyStatement = (0, import_react.useCallback)(async (targetRepId) => {
+		const rid = targetRepId || custodyRepId;
+		if (!rid) return;
+		setIsCustodyLoading(true);
+		setCustodyError(null);
+		const res = await getRepCustodyStatement(rid, {
+			dateFrom: custodyDateFrom || void 0,
+			dateTo: custodyDateTo || void 0
+		});
+		setIsCustodyLoading(false);
+		if (!res.success || !res.statement) setCustodyError(res.error || "تعذر تحميل كشف حساب وعهدة المندوب");
+		else setCustodyStatement(res.statement);
+	}, [
+		custodyRepId,
+		custodyDateFrom,
+		custodyDateTo,
+		getRepCustodyStatement
+	]);
+	(0, import_react.useEffect)(() => {
+		if (activeTab === "rep-custody-statement" && custodyRepId) loadCustodyStatement(custodyRepId);
+	}, [
+		activeTab,
+		custodyRepId,
+		loadCustodyStatement
+	]);
 	const filteredTransfers = (0, import_react.useMemo)(() => {
 		return repTransfers.filter((t) => {
 			if (isRepUser && myRepProfile) {
@@ -53347,6 +57964,7 @@ var RepTransferView = ({ initialTab = "cash-transfers" }) => {
 			sourceWarehouseName: sourceWh?.name || "المستودع الرئيسي",
 			targetWarehouseId: targetWh?.id || "WH-VAN",
 			targetWarehouseName: targetWh?.name || `سيارة المندوب (${rep.name})`,
+			transferMode: itemReqTransferMode,
 			items: selectedItemsForReq.map((it) => ({
 				...it,
 				approvedQty: it.requestedQty
@@ -53358,14 +57976,155 @@ var RepTransferView = ({ initialTab = "cash-transfers" }) => {
 			setIsNewItemReqModalOpen(false);
 			setSelectedItemsForReq([]);
 			setItemReqNotes("");
+			setItemReqTransferMode("transfer");
+			setStatusBanner({
+				type: "success",
+				text: itemReqTransferMode === "custody_dispatch" ? "تم صرف العهدة من المخزن الرئيسي — بانتظار تأكيد استلام المندوب." : "تم إرسال طلب تحويل الأصناف للمراجعة بنجاح."
+			});
 		} else setItemReqError(res.error || "فشل إرسال طلب التحويل");
+	};
+	const handleConfirmCustodyReceipt = (req) => {
+		setConfirmState({
+			isOpen: true,
+			title: "تأكيد استلام العهدة في سيارة المندوب",
+			message: `هل تؤكد استلام الأصناف الفعلية الخاصة بالإذن (${req.requestNumber})؟ لن تُضاف الأصناف لعهدة السيارة إلا بعد تأكيد الاستلام.`,
+			confirmLabel: "تأكيد الاستلام الفعلي",
+			variant: "success",
+			onConfirm: async () => {
+				setConfirmState(null);
+				const res = await updateRepItemTransferStatus(req.id, "received");
+				if (!res.success) setStatusBanner({
+					type: "error",
+					text: res.error || "فشل تأكيد استلام العهدة"
+				});
+				else {
+					setStatusBanner({
+						type: "success",
+						text: `تم تأكيد استلام العهدة (${req.requestNumber}) وإضافتها لسيارة المندوب.`
+					});
+					setActiveItemReqDetail(null);
+				}
+			}
+		});
+	};
+	const handleSubmitCustodyOp = async (e) => {
+		e.preventDefault();
+		if (!custodyActionModal || !custodyOpProductId || custodyOpQty <= 0) return;
+		setIsSubmittingCustodyOp(true);
+		let res = { success: false };
+		if (custodyActionModal === "deliver") {
+			const cust = customers.find((c) => c.id === custodyOpCustomerId);
+			res = await recordRepCustodyDelivery({
+				representativeId: custodyRepId,
+				customerId: cust?.id,
+				customerName: cust?.name || custodyOpCustomerName.trim() || void 0,
+				productId: custodyOpProductId,
+				quantity: custodyOpQty,
+				date: custodyOpDate,
+				notes: custodyOpNotes.trim() || void 0
+			});
+		} else if (custodyActionModal === "return") res = await recordRepCustodyReturn({
+			representativeId: custodyRepId,
+			targetWarehouseId: custodyOpTargetWhId,
+			productId: custodyOpProductId,
+			quantity: custodyOpQty,
+			date: custodyOpDate,
+			notes: custodyOpNotes.trim() || void 0
+		});
+		else res = await recordRepCustodyAdjustment({
+			representativeId: custodyRepId,
+			productId: custodyOpProductId,
+			operationType: custodyOpType,
+			quantity: custodyOpQty,
+			date: custodyOpDate,
+			notes: custodyOpNotes.trim() || void 0
+		});
+		setIsSubmittingCustodyOp(false);
+		if (!res.success) setStatusBanner({
+			type: "error",
+			text: res.error || "تعذر تنفيذ عملية العهدة"
+		});
+		else {
+			setCustodyActionModal(null);
+			setCustodyOpNotes("");
+			setCustodyOpCustomerName("");
+			setStatusBanner({
+				type: "success",
+				text: "تم تسجيل حركة العهدة وتحديث رصيد المندوب بنجاح."
+			});
+			await loadCustodyStatement(custodyRepId);
+		}
+	};
+	const handleExportCustodyExcel = () => {
+		if (!custodyStatement) return;
+		const headers = [
+			"كود الصنف",
+			"اسم الصنف",
+			"الوحدة",
+			"المستلم فعلياً",
+			"قيد الاستلام",
+			"مسلم للعملاء",
+			"مرتجع للمخزن",
+			"تسويات/تالف",
+			"المتبقي بالعهدة",
+			"رصيد السيارة الفعلي",
+			"القيمة بالتكلفة"
+		];
+		const rows = custodyStatement.itemsSummary.map((it) => [
+			it.productCode,
+			it.productName,
+			it.baseUnit,
+			it.receivedQty,
+			it.pendingReceiveQty,
+			it.deliveredToCustomersQty,
+			it.returnedToWarehouseQty,
+			it.approvedReductionsQty,
+			it.remainingCustodyQty,
+			it.vanPhysicalStockQty,
+			it.custodyValueAtCost
+		]);
+		exportToExcel(`كشف_عهدة_${custodyStatement.representative.name}_${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}`, headers, rows);
+	};
+	const handlePrintCustodyStatement = () => {
+		if (!custodyStatement) return;
+		setPrintData({
+			title: `كشف حساب وعهدة المندوب — ${custodyStatement.representative.name}`,
+			docNumber: custodyStatement.representative.id,
+			docType: "كشف حساب",
+			date: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+			partyName: custodyStatement.representative.name,
+			partyPhone: custodyStatement.representative.phone,
+			representativeName: custodyStatement.representative.name,
+			tableHeaders: [
+				"م",
+				"الصنف",
+				"الوحدة",
+				"مستلم",
+				"مسلم للعملاء",
+				"مرتجع",
+				"المتبقي بالعهدة"
+			],
+			items: custodyStatement.itemsSummary.map((it) => ({
+				name: it.productName,
+				unit: it.baseUnit,
+				quantity: it.receivedQty,
+				price: it.deliveredToCustomersQty,
+				discount: it.returnedToWarehouseQty,
+				total: it.remainingCustodyQty
+			})),
+			grandTotal: custodyStatement.totals.totalCustodyCostValue,
+			paidAmount: custodyStatement.financialSummary.totalSalesPaidAmount,
+			remainingAmount: custodyStatement.financialSummary.currentCashCustodyBalance,
+			notes: `إجمالي المبيعات: ${custodyStatement.financialSummary.totalSalesAmount.toLocaleString()} ${settings.currency} | إجمالي المسلم للعملاء: ${custodyStatement.totals.totalDeliveredQty} | المتبقي بالعهدة: ${custodyStatement.totals.totalRemainingCustodyQty}`
+		});
+		setIsPrintModalOpen(true);
 	};
 	const handleExecuteItemTransfer = (req) => {
 		setConfirmState({
 			isOpen: true,
-			title: "اعتماد وتنفيذ تحويل العهدة",
-			message: `هل أنت متأكد من اعتماد ونقل بضاعة الطلب (${req.requestNumber}) من ${req.sourceWarehouseName} إلى عهدة سيارة المندوب ${req.representativeName}؟ سيتم خصم المستودع الرئيسي فوراً.`,
-			confirmLabel: "اعتماد وتنفيذ النقل",
+			title: "اعتماد وتنفيذ صرف العهدة من المخزن الرئيسي",
+			message: `سيتم خصم البضاعة من (${req.sourceWarehouseName}) للطلب (${req.requestNumber}). لن تُضاف الكمية إلى سيارة المندوب إلا بعد تأكيد استلام المندوب لها.`,
+			confirmLabel: "اعتماد وصرف من المخزن",
 			variant: "success",
 			onConfirm: async () => {
 				setConfirmState(null);
@@ -53377,7 +58136,7 @@ var RepTransferView = ({ initialTab = "cash-transfers" }) => {
 				else {
 					setStatusBanner({
 						type: "success",
-						text: "تم تنفيذ التحويل المخزني بنجاح وتحديث عهدة سيارة المندوب."
+						text: "تم الصرف من المخزن الرئيسي — بانتظار تأكيد استلام المندوب لإضافتها لعهدة السيارة."
 					});
 					setActiveItemReqDetail(null);
 				}
@@ -53485,11 +58244,11 @@ var RepTransferView = ({ initialTab = "cash-transfers" }) => {
 		switch (status) {
 			case "received": return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
 				className: "flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold",
-				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleCheck, { className: "w-3 h-3" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "تم الاستلام الفعلي بواسطة المندوب" })]
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleCheck, { className: "w-3 h-3" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "تم الاستلام الفعلي في سيارة المندوب" })]
 			});
 			case "executed": return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
 				className: "flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-teal-50 text-teal-800 border border-teal-200 text-[10px] font-bold",
-				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Check, { className: "w-3 h-3" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "تم التنفيذ من المخزن — بانتظار استلام المندوب" })]
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Check, { className: "w-3 h-3" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "تم الصرف من المخزن — بانتظار تأكيد استلام المندوب" })]
 			});
 			case "approved": return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
 				className: "flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold",
@@ -53587,6 +58346,11 @@ var RepTransferView = ({ initialTab = "cash-transfers" }) => {
 							representatives.length,
 							")"
 						] })]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+						onClick: () => setActiveTab("rep-custody-statement"),
+						className: `flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer whitespace-nowrap ${activeTab === "rep-custody-statement" ? "bg-white text-blue-950 shadow-xs font-black" : "text-slate-600 hover:text-slate-900"}`,
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FileSpreadsheet, { className: "w-4 h-4 text-blue-900" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "كشف حساب وعهدة المندوب" })]
 					})
 				]
 			}),
@@ -53830,9 +58594,12 @@ var RepTransferView = ({ initialTab = "cash-transfers" }) => {
 								}) }) : filteredItemTransfers.map((req) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
 									className: "hover:bg-slate-50/80 transition-colors",
 									children: [
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
 											className: "p-3.5 font-bold font-mono text-blue-900",
-											children: req.requestNumber
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: req.requestNumber }), req.transferMode === "custody_dispatch" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												className: "inline-block mt-0.5 px-1.5 py-0.5 rounded bg-purple-50 text-purple-800 border border-purple-200 text-[9px] font-sans font-bold",
+												children: "صرف عهدة مباشر"
+											})]
 										}),
 										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
 											className: "p-3.5 font-mono text-slate-600",
@@ -53865,17 +58632,26 @@ var RepTransferView = ({ initialTab = "cash-transfers" }) => {
 										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
 											className: "p-3.5",
 											children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-												className: "flex items-center justify-center gap-1.5",
-												children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
-													onClick: () => setActiveItemReqDetail(req),
-													className: "px-2.5 py-1 bg-blue-50 text-blue-900 hover:bg-blue-100 rounded-lg font-bold text-[11px] flex items-center gap-1 cursor-pointer",
-													children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Eye, { className: "w-3.5 h-3.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "فحص الأصناف" })]
-												}), req.status === "pending" && (currentUser?.role === "admin" || hasPermission("canManageTransfers")) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-													onClick: () => handleExecuteItemTransfer(req),
-													className: "px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] cursor-pointer",
-													title: "موافقة ونقل البضاعة لسيارة المندوب",
-													children: "اعتماد ونقل"
-												})]
+												className: "flex items-center justify-center gap-1.5 flex-wrap",
+												children: [
+													/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+														onClick: () => setActiveItemReqDetail(req),
+														className: "px-2.5 py-1 bg-blue-50 text-blue-900 hover:bg-blue-100 rounded-lg font-bold text-[11px] flex items-center gap-1 cursor-pointer",
+														children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Eye, { className: "w-3.5 h-3.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "فحص الأصناف" })]
+													}),
+													req.status === "pending" && (currentUser?.role === "admin" || hasPermission("canManageTransfers")) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+														onClick: () => handleExecuteItemTransfer(req),
+														className: "px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] cursor-pointer",
+														title: "موافقة وصرف البضاعة من المخزن الرئيسي",
+														children: "اعتماد وصرف"
+													}),
+													req.status === "executed" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+														onClick: () => handleConfirmCustodyReceipt(req),
+														className: "px-2.5 py-1 bg-blue-900 hover:bg-blue-950 text-white rounded-lg font-bold text-[11px] cursor-pointer",
+														title: "تأكيد استلام المندوب وإضافة البضاعة لعهدة السيارة",
+														children: "تأكيد استلام المندوب"
+													})
+												]
 											})
 										})
 									]
@@ -53930,31 +58706,498 @@ var RepTransferView = ({ initialTab = "cash-transfers" }) => {
 							})]
 						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "flex items-center justify-between pt-2 border-t text-[11px]",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-								onClick: () => {
-									setSelectedRepId(rep.id);
-									setDirection("rep_to_owner");
-									setIsNewCashModalOpen(true);
-								},
-								className: "text-blue-900 font-bold hover:underline cursor-pointer",
-								children: "توريد نقدية للمحل"
-							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-								onClick: () => {
-									setEditingRep(rep);
-									setRepName(rep.name);
-									setRepPhone(rep.phone);
-									setRepVehicle(rep.vehicleNumber || "");
-									setRepOpening(rep.openingBalance);
-									setIsAddRepModalOpen(true);
-								},
-								className: "p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 cursor-pointer",
-								title: "تعديل بيانات المندوب",
-								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SquarePen, { className: "w-4 h-4" })
-							})]
+							className: "flex items-center justify-between gap-2 pt-2 border-t text-[11px]",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									onClick: () => {
+										setSelectedRepId(rep.id);
+										setDirection("rep_to_owner");
+										setIsNewCashModalOpen(true);
+									},
+									className: "text-blue-900 font-bold hover:underline cursor-pointer",
+									children: "توريد نقدية للمحل"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									onClick: () => {
+										setCustodyRepId(rep.id);
+										setActiveTab("rep-custody-statement");
+									},
+									className: "text-emerald-700 font-bold hover:underline cursor-pointer",
+									children: "كشف العهدة والحساب"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									onClick: () => {
+										setEditingRep(rep);
+										setRepName(rep.name);
+										setRepPhone(rep.phone);
+										setRepVehicle(rep.vehicleNumber || "");
+										setRepOpening(rep.openingBalance);
+										setIsAddRepModalOpen(true);
+									},
+									className: "p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 cursor-pointer",
+									title: "تعديل بيانات المندوب",
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SquarePen, { className: "w-4 h-4" })
+								})
+							]
 						})
 					]
 				}, rep.id))
+			}),
+			activeTab === "rep-custody-statement" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "space-y-4",
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-end justify-between gap-3 text-xs",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex flex-wrap items-end gap-3",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+									className: "block font-bold text-slate-600 mb-1",
+									children: "المندوب:"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", {
+									value: custodyRepId,
+									disabled: isRepUser,
+									onChange: (e) => setCustodyRepId(e.target.value),
+									className: "p-2 rounded-xl border border-slate-300 bg-slate-50 font-bold min-w-[200px]",
+									children: representatives.map((r) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+										value: r.id,
+										children: r.name
+									}, r.id))
+								})] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+									className: "block font-bold text-slate-600 mb-1",
+									children: "من تاريخ:"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+									type: "date",
+									value: custodyDateFrom,
+									onChange: (e) => setCustodyDateFrom(e.target.value),
+									className: "p-2 rounded-xl border border-slate-300 font-mono bg-slate-50"
+								})] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+									className: "block font-bold text-slate-600 mb-1",
+									children: "إلى تاريخ:"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+									type: "date",
+									value: custodyDateTo,
+									onChange: (e) => setCustodyDateTo(e.target.value),
+									className: "p-2 rounded-xl border border-slate-300 font-mono bg-slate-50"
+								})] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: () => loadCustodyStatement(custodyRepId),
+									disabled: isCustodyLoading,
+									className: "flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-bold cursor-pointer disabled:opacity-50",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(RefreshCw, { className: `w-4 h-4 ${isCustodyLoading ? "animate-spin" : ""}` }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "تحديث الكشف" })]
+								})
+							]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex flex-wrap items-center gap-2",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: () => {
+										const defaultProd = custodyStatement?.itemsSummary?.[0]?.productId || products[0]?.id || "";
+										setCustodyOpProductId(defaultProd);
+										setCustodyOpQty(1);
+										setCustodyOpCustomerId("");
+										setCustodyOpCustomerName("");
+										setCustodyOpNotes("");
+										setCustodyActionModal("deliver");
+									},
+									className: "flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(PackageCheck, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "تسليم جزئي للعميل" })]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: () => {
+										const defaultProd = custodyStatement?.itemsSummary?.[0]?.productId || products[0]?.id || "";
+										setCustodyOpProductId(defaultProd);
+										setCustodyOpQty(1);
+										setCustodyOpTargetWhId(warehouses.find((w) => !w.id.includes("van"))?.id || warehouses[0]?.id || "wh-main");
+										setCustodyOpNotes("");
+										setCustodyActionModal("return");
+									},
+									className: "flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold cursor-pointer",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(RotateCcw, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "إرجاع للمخزن الرئيسي" })]
+								}),
+								(currentUser?.role === "admin" || hasPermission("canApprove") || hasPermission("canManageReps")) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: () => {
+										const defaultProd = custodyStatement?.itemsSummary?.[0]?.productId || products[0]?.id || "";
+										setCustodyOpProductId(defaultProd);
+										setCustodyOpQty(1);
+										setCustodyOpType("custody_damaged");
+										setCustodyOpNotes("");
+										setCustodyActionModal("adjust");
+									},
+									className: "flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-black text-white font-bold cursor-pointer",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(TriangleAlert, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "تسوية / تالف / عجز" })]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: handleExportCustodyExcel,
+									disabled: !custodyStatement,
+									className: "flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-700 cursor-pointer disabled:opacity-50",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Download, { className: "w-4 h-4 text-emerald-600" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Excel" })]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: handlePrintCustodyStatement,
+									disabled: !custodyStatement,
+									className: "flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-700 cursor-pointer disabled:opacity-50",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Printer, { className: "w-4 h-4 text-blue-900" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "طباعة" })]
+								})
+							]
+						})]
+					}),
+					custodyError && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+						className: "p-3 bg-red-50 border border-red-200 text-red-800 rounded-xl text-xs font-bold",
+						children: custodyError
+					}),
+					custodyStatement && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "bg-white p-4 rounded-2xl border border-blue-200 shadow-xs",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+										className: "text-slate-500 font-bold flex items-center gap-1",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Wallet, { className: "w-4 h-4 text-blue-800" }), " رصيد العهدة النقدية الحالية"]
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+										className: "text-xl font-black text-blue-950 font-mono tabular-nums mt-1",
+										children: [
+											custodyStatement.financialSummary.currentCashCustodyBalance.toLocaleString(),
+											" ",
+											settings.currency
+										]
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "bg-white p-4 rounded-2xl border border-slate-200 shadow-xs",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-slate-500 font-bold",
+										children: "إجمالي مبيعات المندوب"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+										className: "text-xl font-black text-slate-900 font-mono tabular-nums mt-1",
+										children: [
+											custodyStatement.financialSummary.totalSalesAmount.toLocaleString(),
+											" ",
+											settings.currency
+										]
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "bg-white p-4 rounded-2xl border border-emerald-200 shadow-xs",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-emerald-700 font-bold",
+										children: "المحصّل من الفواتير"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+										className: "text-xl font-black text-emerald-700 font-mono tabular-nums mt-1",
+										children: [
+											custodyStatement.financialSummary.totalSalesPaidAmount.toLocaleString(),
+											" ",
+											settings.currency
+										]
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "bg-white p-4 rounded-2xl border border-amber-200 shadow-xs",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-amber-700 font-bold",
+										children: "المتبقي بالآجل عند العملاء"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+										className: "text-xl font-black text-amber-800 font-mono tabular-nums mt-1",
+										children: [
+											custodyStatement.financialSummary.totalSalesRemainingAmount.toLocaleString(),
+											" ",
+											settings.currency
+										]
+									})]
+								})
+							]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 bg-slate-900 text-white p-3.5 rounded-2xl text-center text-[11px] tabular-nums",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-slate-400 block",
+									children: "المستلم فعلياً"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "text-sm font-mono",
+									children: custodyStatement.totals.totalReceivedQty
+								})] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-amber-300 block",
+									children: "بانتظار الاستلام"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "text-sm font-mono",
+									children: custodyStatement.totals.totalPendingReceiveQty
+								})] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-emerald-300 block",
+									children: "مسلم للعملاء"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "text-sm font-mono",
+									children: custodyStatement.totals.totalDeliveredQty
+								})] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-sky-300 block",
+									children: "مرتجع للمخزن"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "text-sm font-mono",
+									children: custodyStatement.totals.totalReturnedQty
+								})] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-rose-300 block",
+									children: "تسويات / تالف"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "text-sm font-mono",
+									children: custodyStatement.totals.totalReductionsQty
+								})] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-blue-300 block",
+									children: "المتبقي بالعهدة"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "text-sm font-mono text-white",
+									children: custodyStatement.totals.totalRemainingCustodyQty
+								})] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-slate-300 block",
+									children: "رصيد السيارة الفعلي"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "text-sm font-mono",
+									children: custodyStatement.totals.totalVanPhysicalQty
+								})] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-emerald-200 block",
+									children: "قيمة العهدة بالتكلفة"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "text-sm font-mono",
+									children: custodyStatement.totals.totalCustodyCostValue.toLocaleString()
+								})] })
+							]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "p-3.5 bg-slate-50 border-b border-slate-200 font-black text-xs text-slate-900",
+								children: "ملخص الأصناف في عهدة المندوب (المتبقي = المستلم − المسلم للعملاء − المرتجع − التسويات)"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "overflow-x-auto",
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
+									className: "w-full text-right text-xs",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
+										className: "bg-slate-100 text-slate-700 font-bold border-b border-slate-200",
+										children: [
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "p-3",
+												children: "الصنف"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "p-3 text-center",
+												children: "الوحدة"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "p-3 text-center",
+												children: "مستلم"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "p-3 text-center",
+												children: "معلّق (قيد الاستلام)"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "p-3 text-center",
+												children: "مسلم للعملاء"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "p-3 text-center",
+												children: "مفوتر"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "p-3 text-center",
+												children: "مرتجع للمخزن"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "p-3 text-center",
+												children: "تالف/عجز/تسوية"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "p-3 text-center",
+												children: "المتبقي بالعهدة"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "p-3 text-center",
+												children: "رصيد السيارة"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "p-3 text-center",
+												children: "القيمة بالتكلفة"
+											})
+										]
+									}) }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tbody", {
+										className: "divide-y divide-slate-100 tabular-nums",
+										children: custodyStatement.itemsSummary.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tr", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											colSpan: 11,
+											className: "p-6 text-center text-slate-400",
+											children: "لا توجد حركات أصناف مسجلة لهذا المندوب في الفترة المحددة"
+										}) }) : custodyStatement.itemsSummary.map((it) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
+											className: "hover:bg-slate-50/80",
+											children: [
+												/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
+													className: "p-3 font-bold text-slate-900",
+													children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: it.productName }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+														className: "text-[10px] font-mono text-slate-400",
+														children: it.productCode
+													})]
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "p-3 text-center",
+													children: it.baseUnit
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "p-3 text-center font-mono font-bold text-blue-900",
+													children: it.receivedQty
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "p-3 text-center font-mono text-amber-700",
+													children: it.pendingReceiveQty
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "p-3 text-center font-mono font-bold text-emerald-700",
+													children: it.deliveredToCustomersQty
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "p-3 text-center font-mono text-slate-700",
+													children: it.invoicedSoldQty
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "p-3 text-center font-mono text-sky-700",
+													children: it.returnedToWarehouseQty
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "p-3 text-center font-mono text-rose-700",
+													children: it.approvedReductionsQty
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "p-3 text-center font-mono font-black text-blue-950 bg-blue-50/60",
+													children: it.remainingCustodyQty
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "p-3 text-center font-mono font-bold text-slate-800",
+													children: it.vanPhysicalStockQty
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
+													className: "p-3 text-center font-mono font-bold text-slate-900",
+													children: [
+														it.custodyValueAtCost.toLocaleString(),
+														" ",
+														settings.currency
+													]
+												})
+											]
+										}, it.productId))
+									})]
+								})
+							})]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "p-3.5 bg-slate-50 border-b border-slate-200 font-black text-xs text-slate-900",
+								children: [
+									"سجل حركات العهدة التفصيلي (",
+									custodyStatement.ledger.length,
+									")"
+								]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "overflow-x-auto",
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
+									className: "w-full text-right text-xs",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
+										className: "bg-slate-100 text-slate-700 font-bold border-b border-slate-200",
+										children: [
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "p-3",
+												children: "التاريخ"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "p-3",
+												children: "نوع الحركة"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "p-3",
+												children: "رقم المستند"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "p-3",
+												children: "الصنف"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "p-3",
+												children: "العميل / الجهة"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "p-3 text-center",
+												children: "وارد للعهدة (+)"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "p-3 text-center",
+												children: "صادر من العهدة (-)"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+												className: "p-3",
+												children: "ملاحظات"
+											})
+										]
+									}) }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tbody", {
+										className: "divide-y divide-slate-100 tabular-nums",
+										children: custodyStatement.ledger.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tr", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											colSpan: 8,
+											className: "p-6 text-center text-slate-400",
+											children: "لا توجد حركات مسجلة في دفتر العهدة"
+										}) }) : custodyStatement.ledger.map((row) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
+											className: "hover:bg-slate-50/80",
+											children: [
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "p-3 font-mono text-slate-600",
+													children: row.date
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "p-3 font-bold text-slate-800",
+													children: row.docType
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "p-3 font-mono text-blue-900 font-bold",
+													children: row.docNumber
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "p-3 font-bold",
+													children: row.productName
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "p-3 text-slate-600",
+													children: row.customerName || "-"
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "p-3 text-center font-mono font-bold text-emerald-700",
+													children: row.quantityIn > 0 ? `+${row.quantityIn}` : "-"
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "p-3 text-center font-mono font-bold text-rose-700",
+													children: row.quantityOut > 0 ? `-${row.quantityOut}` : "-"
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+													className: "p-3 text-slate-500",
+													children: row.notes || "-"
+												})
+											]
+										}, row.id))
+									})]
+								})
+							})]
+						})
+					] })
+				]
 			}),
 			isNewCashModalOpen && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Modal, {
 				isOpen: isNewCashModalOpen,
@@ -54079,6 +59322,30 @@ var RepTransferView = ({ initialTab = "cash-transfers" }) => {
 							className: "p-3 bg-red-50 text-red-700 rounded-xl flex items-center gap-2 border border-red-200",
 							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleAlert, { className: "w-4 h-4 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: itemReqError })]
 						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+								className: "block font-bold mb-1",
+								children: "نوع الإذن / المسار:"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "grid grid-cols-2 gap-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									onClick: () => setItemReqTransferMode("transfer"),
+									className: `p-2 rounded-xl border font-bold cursor-pointer ${itemReqTransferMode === "transfer" ? "bg-blue-900 text-white border-blue-900" : "bg-slate-50 text-slate-700 border-slate-300"}`,
+									children: "تحويل عادي / طلب سحب"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									onClick: () => setItemReqTransferMode("custody_dispatch"),
+									className: `p-2 rounded-xl border font-bold cursor-pointer ${itemReqTransferMode === "custody_dispatch" ? "bg-emerald-700 text-white border-emerald-700" : "bg-slate-50 text-slate-700 border-slate-300"}`,
+									children: "صرف عهدة مباشرة من المخزن للمندوب"
+								})]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+								className: "text-[10px] text-slate-500 mt-1",
+								children: "في وضع صرف العهدة المباشر يُخصم المخزن الرئيسي فوراً ولا تُضاف البضاعة لرصيد سيارة المندوب إلا بعد تأكيد الاستلام."
+							})
+						] }),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 							className: "grid grid-cols-2 gap-3",
 							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
@@ -54384,22 +59651,172 @@ var RepTransferView = ({ initialTab = "cash-transfers" }) => {
 							className: "flex justify-between items-center pt-3 border-t",
 							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: getItemReqStatusBadge(activeItemReqDetail.status) }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 								className: "flex items-center gap-2",
-								children: [activeItemReqDetail.status === "pending" && (currentUser?.role === "admin" || hasPermission("canManageTransfers")) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-									type: "button",
-									onClick: () => handleRejectItemTransfer(activeItemReqDetail),
-									className: "px-4 py-2 bg-red-100 hover:bg-red-200 text-red-800 font-bold rounded-xl cursor-pointer",
-									children: "رفض الطلب"
-								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-									type: "button",
-									onClick: () => handleExecuteItemTransfer(activeItemReqDetail),
-									className: "px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-black rounded-xl shadow-md cursor-pointer",
-									children: "موافقة وتنفيذ الخصم المخزني"
-								})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-									type: "button",
-									onClick: () => setActiveItemReqDetail(null),
-									className: "px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer",
-									children: "إغلاق"
-								})]
+								children: [
+									activeItemReqDetail.status === "pending" && (currentUser?.role === "admin" || hasPermission("canManageTransfers")) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+										type: "button",
+										onClick: () => handleRejectItemTransfer(activeItemReqDetail),
+										className: "px-4 py-2 bg-red-100 hover:bg-red-200 text-red-800 font-bold rounded-xl cursor-pointer",
+										children: "رفض الطلب"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+										type: "button",
+										onClick: () => handleExecuteItemTransfer(activeItemReqDetail),
+										className: "px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-black rounded-xl shadow-md cursor-pointer",
+										children: "اعتماد وصرف من المخزن الرئيسي"
+									})] }),
+									activeItemReqDetail.status === "executed" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+										type: "button",
+										onClick: () => handleConfirmCustodyReceipt(activeItemReqDetail),
+										className: "px-5 py-2 bg-blue-900 hover:bg-blue-950 text-white font-black rounded-xl shadow-md cursor-pointer",
+										children: "تأكيد استلام المندوب"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+										type: "button",
+										onClick: () => setActiveItemReqDetail(null),
+										className: "px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer",
+										children: "إغلاق"
+									})
+								]
+							})]
+						})
+					]
+				})
+			}),
+			custodyActionModal && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Modal, {
+				isOpen: Boolean(custodyActionModal),
+				onClose: () => !isSubmittingCustodyOp && setCustodyActionModal(null),
+				title: custodyActionModal === "deliver" ? "تسجيل تسليم جزئي من العهدة للعميل" : custodyActionModal === "return" ? "تسجيل إرجاع أصناف من العهدة للمخزن الرئيسي" : "تسوية عهدة المندوب (تالف / عجز / تسوية)",
+				maxWidth: "md",
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+					onSubmit: handleSubmitCustodyOp,
+					className: "space-y-3 text-xs",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+							className: "block font-bold mb-1",
+							children: "الصنف:"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+							required: true,
+							value: custodyOpProductId,
+							onChange: (e) => setCustodyOpProductId(e.target.value),
+							className: "w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: "",
+								children: "-- اختر الصنف --"
+							}), products.map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", {
+								value: p.id,
+								children: [
+									p.name,
+									" (",
+									p.code,
+									")"
+								]
+							}, p.id))]
+						})] }),
+						custodyActionModal === "deliver" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "grid grid-cols-2 gap-2",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+								className: "block font-bold mb-1",
+								children: "العميل (من الدليل):"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+								value: custodyOpCustomerId,
+								onChange: (e) => setCustodyOpCustomerId(e.target.value),
+								className: "w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: "",
+									children: "-- عميل نقدي / إدخال يدوي --"
+								}), customers.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: c.id,
+									children: c.name
+								}, c.id))]
+							})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+								className: "block font-bold mb-1",
+								children: "أو اسم العميل:"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								type: "text",
+								value: custodyOpCustomerName,
+								onChange: (e) => setCustodyOpCustomerName(e.target.value),
+								placeholder: "اسم العميل المستلم...",
+								className: "w-full p-2.5 rounded-xl border border-slate-300"
+							})] })]
+						}),
+						custodyActionModal === "return" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+							className: "block font-bold mb-1",
+							children: "المستودع المستلم للمرتجع:"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", {
+							value: custodyOpTargetWhId,
+							onChange: (e) => setCustodyOpTargetWhId(e.target.value),
+							className: "w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold",
+							children: warehouses.map((w) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: w.id,
+								children: w.name
+							}, w.id))
+						})] }),
+						custodyActionModal === "adjust" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+							className: "block font-bold mb-1",
+							children: "نوع التسوية:"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+							value: custodyOpType,
+							onChange: (e) => setCustodyOpType(e.target.value),
+							className: "w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: "custody_damaged",
+									children: "تالف عهدة"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: "custody_shortage",
+									children: "عجز عهدة"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: "custody_adjustment",
+									children: "تسوية إدارية للعهدة"
+								})
+							]
+						})] }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "grid grid-cols-2 gap-2",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+								className: "block font-bold mb-1",
+								children: "الكمية:"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								type: "number",
+								required: true,
+								min: .001,
+								step: "0.001",
+								value: custodyOpQty,
+								onChange: (e) => setCustodyOpQty(parseFloat(e.target.value) || 0),
+								className: "w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
+							})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+								className: "block font-bold mb-1",
+								children: "التاريخ:"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								type: "date",
+								required: true,
+								value: custodyOpDate,
+								onChange: (e) => setCustodyOpDate(e.target.value),
+								className: "w-full p-2.5 rounded-xl border border-slate-300 font-mono"
+							})] })]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+							className: "block font-bold mb-1",
+							children: "ملاحظات / سبب:"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+							type: "text",
+							value: custodyOpNotes,
+							onChange: (e) => setCustodyOpNotes(e.target.value),
+							className: "w-full p-2.5 rounded-xl border border-slate-300"
+						})] }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex justify-end gap-2 pt-2 border-t",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								type: "button",
+								onClick: () => setCustodyActionModal(null),
+								className: "px-4 py-2 rounded-xl border border-slate-300 font-bold cursor-pointer",
+								children: "إلغاء"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								type: "submit",
+								disabled: isSubmittingCustodyOp || !custodyOpProductId || custodyOpQty <= 0,
+								className: "px-5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50",
+								children: isSubmittingCustodyOp ? "جاري التنفيذ..." : "حفظ وتنفيذ"
 							})]
 						})
 					]
@@ -55955,1180 +61372,2840 @@ var EmployeesView = ({ initialTab = "employees" }) => {
 		]
 	});
 };
-// src/components/modules/reports/ReportsView.tsx
-var ReportsView = () => {
-	const { invoices, products, customers, suppliers, cashboxes, repTransfers, installments, expenseIncomes, settings, employees, payrolls, ownerAccounts = [], ownerTransactions = [], stockCounts = [], stockTransferRequests = [] } = useData();
-	const { currentUser, hasPermission } = useAuth();
-	const [dateFilter, setDateFilter] = (0, import_react.useState)("thisMonth");
-	const [customStartDate, setCustomStartDate] = (0, import_react.useState)(new Date((/* @__PURE__ */ new Date()).getFullYear(), (/* @__PURE__ */ new Date()).getMonth(), 1).toISOString().split("T")[0]);
-	const [customEndDate, setCustomEndDate] = (0, import_react.useState)((/* @__PURE__ */ new Date()).toISOString().split("T")[0]);
-	const [selectedReport, setSelectedReport] = (0, import_react.useState)("pnl");
-	const [printData, setPrintData] = (0, import_react.useState)(null);
-	const [isPrintModalOpen, setIsPrintModalOpen] = (0, import_react.useState)(false);
-	const dateRange = (0, import_react.useMemo)(() => {
-		const now = /* @__PURE__ */ new Date();
-		let start = new Date(now.getFullYear(), now.getMonth(), 1);
-		let end = /* @__PURE__ */ new Date();
-		if (dateFilter === "today") start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-		else if (dateFilter === "yesterday") {
-			start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-			end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-		} else if (dateFilter === "7days") start = /* @__PURE__ */ new Date(now.getTime() - 6048e5);
-		else if (dateFilter === "prevMonth") {
-			start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-			end = new Date(now.getFullYear(), now.getMonth(), 0);
-		} else if (dateFilter === "thisYear") start = new Date(now.getFullYear(), 0, 1);
-		else if (dateFilter === "custom") {
-			start = new Date(customStartDate);
-			end = new Date(customEndDate);
-		}
-		return {
-			startStr: start.toISOString().split("T")[0],
-			endStr: end.toISOString().split("T")[0]
-		};
-	}, [
-		dateFilter,
-		customStartDate,
-		customEndDate
-	]);
-	const periodSales = invoices.filter((i) => i.type === "sales" && i.status === "confirmed" && i.date >= dateRange.startStr && i.date <= dateRange.endStr);
-	const periodPurchases = invoices.filter((i) => i.type === "purchase" && i.status === "confirmed" && i.date >= dateRange.startStr && i.date <= dateRange.endStr);
-	const periodExpenses = expenseIncomes.filter((e) => e.type === "expense" && e.date >= dateRange.startStr && e.date <= dateRange.endStr);
-	const periodIncomes = expenseIncomes.filter((e) => e.type === "income" && e.date >= dateRange.startStr && e.date <= dateRange.endStr);
-	const totalSalesVal = periodSales.reduce((a, b) => a + b.grandTotal, 0);
-	const totalPurchasesVal = periodPurchases.reduce((a, b) => a + b.grandTotal, 0);
-	const totalExpensesVal = periodExpenses.reduce((a, b) => a + b.amount, 0);
-	const totalIncomesVal = periodIncomes.reduce((a, b) => a + b.amount, 0);
-	const netProfit = totalSalesVal - totalPurchasesVal - totalExpensesVal + totalIncomesVal;
-	const getReportTableData = () => {
-		let reportTitle = "تقرير محاسبي";
-		let headers = [];
-		let rows = [];
-		if (selectedReport === "sales") {
-			reportTitle = "تقرير المبيعات المعتمدة";
-			headers = [
-				"رقم الفاتورة",
-				"التاريخ",
-				"العميل",
-				"المستودع",
-				"الإجمالي",
-				"المدفوع",
-				"المتبقي"
-			];
-			rows = periodSales.map((s) => [
-				s.invoiceNumber,
-				s.date,
-				s.customerName || "نقدي",
-				s.warehouseName,
-				s.grandTotal,
-				s.paidAmount,
-				s.remainingAmount
-			]);
-		} else if (selectedReport === "purchases") {
-			reportTitle = "تقرير المشتريات المعتمدة";
-			headers = [
-				"رقم الفاتورة",
-				"التاريخ",
-				"المورد",
-				"المستودع",
-				"الإجمالي",
-				"المدفوع",
-				"المتبقي"
-			];
-			rows = periodPurchases.map((p) => [
-				p.invoiceNumber,
-				p.date,
-				p.supplierName || "مورد",
-				p.warehouseName,
-				p.grandTotal,
-				p.paidAmount,
-				p.remainingAmount
-			]);
-		} else if (selectedReport === "customer_debts") {
-			reportTitle = "تقرير مديونيات العملاء";
-			headers = [
-				"كود العميل",
-				"اسم العميل",
-				"رقم الهاتف",
-				"الرصيد الافتتاحي",
-				"المديونية الحالية"
-			];
-			rows = customers.map((c) => [
-				c.code,
-				c.name,
-				c.phone,
-				c.openingBalance,
-				c.currentBalance
-			]);
-		} else if (selectedReport === "supplier_debts") {
-			reportTitle = "تقرير أرصدة ومستحقات الموردين";
-			headers = [
-				"كود المورد",
-				"اسم المورد",
-				"الهاتف",
-				"الرصيد الافتتاحي",
-				"الرصيد المستحق"
-			];
-			rows = suppliers.map((s) => [
-				s.code,
-				s.name,
-				s.phone,
-				s.openingBalance,
-				s.currentBalance
-			]);
-		} else if (selectedReport === "rep_transfers") {
-			reportTitle = "تقرير تحويلات المناديب بالنصف";
-			headers = [
-				"رقم التحويل",
-				"التاريخ",
-				"المرسل",
-				"المستلم",
-				"المبلغ",
-				"الحالة"
-			];
-			rows = repTransfers.map((t) => [
-				t.transferNumber,
-				t.date,
-				t.senderName,
-				t.receiverName,
-				t.amount,
-				t.status === "received" ? "تم الاستلام" : "قيد الاستلام"
-			]);
-		} else if (selectedReport === "personal_accounts") {
-			reportTitle = "تقرير الحسابات الشخصية للملاك";
-			headers = [
-				"رقم الحركة",
-				"التاريخ",
-				"الحساب الشخصي",
-				"النوع",
-				"المبلغ",
-				"الخزينة",
-				"السبب / البيان"
-			];
-			rows = ownerTransactions.filter((tx) => tx.date >= dateRange.startStr && tx.date <= dateRange.endStr).map((tx) => {
-				const acc = ownerAccounts.find((a) => a.id === tx.accountId);
-				return [
-					tx.txNumber,
-					tx.date,
-					acc ? `${acc.ownerName} - ${acc.accountName}` : tx.accountId,
-					tx.type,
-					tx.amount,
-					tx.cashboxName || "غير مرتبط بخزينة",
-					tx.reason || tx.notes || "-"
-				];
-			});
-		} else if (selectedReport === "stock_counts") {
-			reportTitle = "تقرير جلسات جرد المخزون";
-			headers = [
-				"رقم الجرد",
-				"التاريخ",
-				"المستودع",
-				"عدد الأصناف",
-				"صافي الفرق",
-				"الحالة",
-				"أنشئ بواسطة"
-			];
-			rows = stockCounts.filter((c) => c.date >= dateRange.startStr && c.date <= dateRange.endStr).map((c) => {
-				const netDiff = (c.items || []).reduce((acc, it) => acc + it.varianceQty, 0);
-				return [
-					c.countNumber,
-					c.date,
-					c.warehouseName,
-					c.items?.length || 0,
-					netDiff,
-					c.status,
-					c.counterName
-				];
-			});
-		} else if (selectedReport === "stock_transfers") {
-			reportTitle = "تقرير أوامر تحويل الأصناف بين المستودعات";
-			headers = [
-				"رقم التحويل",
-				"التاريخ",
-				"من مستودع",
-				"إلى مستودع",
-				"عدد الأصناف",
-				"الحالة",
-				"السبب"
-			];
-			rows = stockTransferRequests.filter((t) => t.date >= dateRange.startStr && t.date <= dateRange.endStr).map((t) => [
-				t.transferNumber,
-				t.date,
-				t.sourceWarehouseName,
-				t.targetWarehouseName,
-				t.items?.length || 0,
-				t.status,
-				t.reason || "-"
-			]);
-		} else {
-			reportTitle = "قائمة الدخل والأرباح والخسائر";
-			headers = ["البند", "المبلغ"];
-			rows = [
-				["إجمالي المبيعات", totalSalesVal],
-				["إجمالي المشتريات", totalPurchasesVal],
-				["إجمالي المصروفات", totalExpensesVal],
-				["إيرادات أخرى", totalIncomesVal],
-				["صافي الأرباح المقدرة", netProfit]
-			];
-		}
-		return {
-			reportTitle,
-			headers,
-			rows
-		};
-	};
-	const handlePrintCurrentReport = () => {
-		const { reportTitle } = getReportTableData();
-		setPrintData({
-			title: `${reportTitle} - أولاد سليم`,
-			docNumber: `REP-${Date.now().toString().slice(-6)}`,
-			docType: "كشف حساب",
-			date: `${dateRange.startStr} إلى ${dateRange.endStr}`,
-			grandTotal: selectedReport === "pnl" ? netProfit : selectedReport === "purchases" ? totalPurchasesVal : totalSalesVal,
-			notes: `الفترة المحددة: من ${dateRange.startStr} حتى ${dateRange.endStr}`,
-			items: selectedReport === "pnl" ? [
-				{
-					name: "إجمالي المبيعات المؤكدة",
-					unit: "إيراد",
-					quantity: 1,
-					price: totalSalesVal,
-					total: totalSalesVal
-				},
-				{
-					name: "إجمالي المشتريات والتوريدات",
-					unit: "تكلفة",
-					quantity: 1,
-					price: totalPurchasesVal,
-					total: totalPurchasesVal
-				},
-				{
-					name: "إجمالي المصروفات والنثريات",
-					unit: "مصروف",
-					quantity: 1,
-					price: totalExpensesVal,
-					total: totalExpensesVal
-				},
-				{
-					name: "إيرادات أخرى متنوعة",
-					unit: "إيراد",
-					quantity: 1,
-					price: totalIncomesVal,
-					total: totalIncomesVal
-				}
-			] : selectedReport === "purchases" ? periodPurchases.map((p) => ({
-				name: `فاتورة شراء ${p.invoiceNumber} - ${p.supplierName || "مورد"}`,
-				unit: p.paymentType,
-				quantity: 1,
-				price: p.grandTotal,
-				total: p.grandTotal
-			})) : periodSales.map((s) => ({
-				name: `فاتورة ${s.invoiceNumber} - ${s.customerName}`,
-				unit: s.paymentType,
-				quantity: 1,
-				price: s.grandTotal,
-				total: s.grandTotal
-			}))
-		});
-		setIsPrintModalOpen(true);
-	};
-	const handleExportExcel = () => {
-		const { headers, rows } = getReportTableData();
-		exportToExcel(`تقرير_أولاد_سليم_${selectedReport}_${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}`, headers, rows);
-	};
-	const handleExportPdf = () => {
-		const { reportTitle, headers, rows } = getReportTableData();
-		exportTableToPdf(reportTitle, headers, rows, {
-			subtitle: settings.companyName,
-			companyName: settings.companyName,
-			companySubtitle: settings.companySubtitle,
-			dateRangeText: `${dateRange.startStr} إلى ${dateRange.endStr}`
-		});
-	};
-	const canSeePersonalReport = currentUser?.role === "admin" || hasPermission("canViewPersonalAccounts");
+// src/components/modules/reports/SourceDocumentModal.tsx
+var SourceDocumentModal = ({ isOpen, isLoading, error, data, currency, onClose, onPrint }) => {
+	if (!isOpen) return null;
+	const doc = data?.document || {};
+	const isInvoice = data?.docType === "sales_invoice" || data?.docType === "purchase_invoice";
+	const isReturn = data?.docType === "sales_return" || data?.docType === "purchase_return";
+	const isDamaged = data?.docType === "damaged_voucher";
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+		className: "fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-5",
+		dir: "rtl",
+		children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+			className: "w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden",
+			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "flex items-center justify-between px-5 py-3.5 bg-slate-800 text-white",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flex items-center gap-2.5",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FileText, { className: "w-5 h-5 text-emerald-400" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", {
+						className: "font-extrabold text-sm sm:text-base",
+						children: isLoading ? "جاري تحميل المستند الأصلي..." : data?.title || "تفاصيل المستند الأصلي"
+					}), doc.actualDateTime && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+						className: "text-[11px] text-slate-300 font-mono",
+						children: doc.actualDateTime
+					})] })]
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flex items-center gap-2",
+					children: [data && onPrint && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+						type: "button",
+						onClick: () => onPrint(data),
+						className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Printer, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "طباعة" })]
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						onClick: onClose,
+						className: "p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 cursor-pointer",
+						children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(X, { className: "w-5 h-5" })
+					})]
+				})]
+			}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "flex-1 overflow-y-auto p-5 space-y-4",
+				children: [
+					isLoading && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+						className: "py-12 text-center text-slate-500 text-sm font-bold",
+						children: "جاري استرجاع بيانات المستند من قاعدة البيانات..."
+					}),
+					error && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm font-bold flex items-center gap-2",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(TriangleAlert, { className: "w-5 h-5 text-rose-600 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: error })]
+					}),
+					!isLoading && !error && data && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+						doc.status === "cancelled" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center justify-between",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+								"مستند ملغى بواسطة: ",
+								doc.cancelledBy || "-",
+								" (",
+								doc.cancelReason || "بدون سبب مسجل",
+								")"
+							] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "font-mono",
+								children: doc.cancelledAt ? String(doc.cancelledAt).split("T")[0] : ""
+							})]
+						}),
+						doc.editedBy && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold flex items-center justify-between",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: ["تم تعديل هذا المستند بواسطة: ", doc.editedBy] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "font-mono",
+								children: doc.editedAt ? String(doc.editedAt).split("T")[0] : ""
+							})]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-slate-500 block",
+									children: "رقم المستند"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "font-mono text-slate-900",
+									children: doc.invoiceNumber || doc.returnNumber || doc.docNumber || doc.transactionNumber || doc.movementNumber || "-"
+								})] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-slate-500 block",
+									children: "تاريخ اليومية"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "font-mono text-slate-900",
+									children: doc.date || "-"
+								})] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-slate-500 block",
+									children: "الفرع / المستودع"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+									className: "text-slate-900",
+									children: [doc.branchName || "-", doc.warehouseName ? ` — ${doc.warehouseName}` : ""]
+								})] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-slate-500 block",
+									children: "الخزنة"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "text-slate-900",
+									children: doc.cashboxName || "-"
+								})] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-slate-500 block",
+									children: "الطرف / الجهة"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "text-slate-900",
+									children: doc.customerName || doc.supplierName || doc.partyName || doc.relatedEntityName || "-"
+								})] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-slate-500 block",
+									children: "المندوب / الموظف"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "text-slate-900",
+									children: doc.representativeName || doc.createdBy || "-"
+								})] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-slate-500 block",
+									children: "المستخدم المنشئ"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "text-slate-900",
+									children: doc.createdBy || "-"
+								})] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-slate-500 block",
+									children: "الحالة / نوع السداد"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+									className: "text-emerald-700 flex items-center gap-1",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleCheck, { className: "w-3.5 h-3.5" }), doc.status === "cancelled" ? "ملغى" : doc.paymentType === "cash" ? "نقدي" : doc.paymentType === "partial" ? "سداد جزئي" : doc.paymentType === "credit" ? "آجل" : doc.refundType === "cash" ? "رد نقدي" : doc.refundType === "balance" ? "خصم من الرصيد" : "معتمد"]
+								})] })
+							]
+						}),
+						Array.isArray(doc.items) && doc.items.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							className: "border border-slate-200 rounded-xl overflow-x-auto",
+							children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
+								className: "w-full text-right text-xs border-collapse",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", {
+									className: "bg-slate-800 text-white",
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+											className: "p-2.5 border-l border-slate-700",
+											children: "#"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+											className: "p-2.5 border-l border-slate-700",
+											children: "الصنف"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+											className: "p-2.5 border-l border-slate-700 text-center",
+											children: "الوحدة"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+											className: "p-2.5 border-l border-slate-700 text-center",
+											children: "الكمية"
+										}),
+										!isDamaged && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+											className: "p-2.5 border-l border-slate-700 text-center",
+											children: "السعر"
+										}),
+										isInvoice && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+											className: "p-2.5 border-l border-slate-700 text-center",
+											children: "الخصم"
+										}),
+										!isDamaged && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+											className: "p-2.5 text-center",
+											children: "الإجمالي"
+										}),
+										isDamaged && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+											className: "p-2.5 text-center",
+											children: "التكلفة / الخسارة"
+										})
+									] })
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tbody", {
+									className: "divide-y divide-slate-200",
+									children: doc.items.map((it, idx) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
+										className: idx % 2 === 0 ? "bg-white" : "bg-slate-50",
+										children: [
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 border-l border-slate-200 text-center text-slate-500 font-mono",
+												children: idx + 1
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 border-l border-slate-200 font-bold text-slate-800",
+												children: it.productName
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 border-l border-slate-200 text-center",
+												children: it.unit
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 border-l border-slate-200 text-center font-bold",
+												children: it.quantity
+											}),
+											!isDamaged && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 border-l border-slate-200 text-center font-mono",
+												children: Number(it.unitPrice || 0).toFixed(2)
+											}),
+											isInvoice && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 border-l border-slate-200 text-center font-mono text-rose-600",
+												children: Number(it.discount || 0).toFixed(2)
+											}),
+											!isDamaged && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 text-center font-mono font-bold text-slate-900",
+												children: Number(it.total || 0).toFixed(2)
+											}),
+											isDamaged && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 text-center font-mono font-bold text-rose-700",
+												children: Number(it.totalLoss || 0).toFixed(2)
+											})
+										]
+									}, idx))
+								})]
+							})
+						}),
+						(isInvoice || isReturn || data.docType === "cash_tx") && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "grid grid-cols-2 sm:grid-cols-4 gap-3 bg-emerald-50/60 border border-emerald-200 rounded-xl p-3.5 text-xs",
+							children: [
+								doc.subtotal !== void 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-slate-600 block",
+									children: "الإجمالي الفرعي"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+									className: "font-mono text-slate-900",
+									children: [
+										Number(doc.subtotal || 0).toFixed(2),
+										" ",
+										currency
+									]
+								})] }),
+								doc.discountTotal !== void 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-slate-600 block",
+									children: "الخصم"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+									className: "font-mono text-rose-700",
+									children: [
+										Number(doc.discountTotal || 0).toFixed(2),
+										" ",
+										currency
+									]
+								})] }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-slate-600 block",
+									children: "المبلغ الصافي"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+									className: "font-mono text-base text-emerald-800",
+									children: [
+										Number(doc.grandTotal ?? doc.amount ?? 0).toFixed(2),
+										" ",
+										currency
+									]
+								})] }),
+								doc.paidAmount !== void 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-slate-600 block",
+									children: "المدفوع / الآجل"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+									className: "font-mono text-slate-900",
+									children: [
+										Number(doc.paidAmount || 0).toFixed(2),
+										" / ",
+										Number(doc.remainingAmount || 0).toFixed(2)
+									]
+								})] })
+							]
+						}),
+						(doc.notes || doc.description || doc.reason) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "text-slate-900",
+									children: "البيان والملاحظات: "
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: doc.description || doc.reason || doc.notes }),
+								doc.notes && doc.description && doc.notes !== doc.description && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+									className: "mt-1 text-slate-600",
+									children: doc.notes
+								})
+							]
+						}),
+						Array.isArray(data.auditTrail) && data.auditTrail.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "border border-slate-200 rounded-xl overflow-hidden",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "px-3.5 py-2 bg-slate-100 border-b border-slate-200 flex items-center gap-2 text-xs font-extrabold text-slate-700",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(History, { className: "w-4 h-4 text-blue-600" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "سجل التدقيق والتعديلات (Audit Trail)" })]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "divide-y divide-slate-100 text-xs",
+								children: data.auditTrail.map((log) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "p-3 flex flex-wrap items-center justify-between gap-2",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "font-bold text-slate-900",
+										children: log.action
+									}), log.notes && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+										className: "text-slate-500 mr-2",
+										children: [
+											"(",
+											log.notes,
+											")"
+										]
+									})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "text-[11px] text-slate-500 font-mono",
+										children: [
+											log.userName,
+											" · ",
+											String(log.timestamp || "").replace("T", " ").slice(0, 16)
+										]
+									})]
+								}, log.id))
+							})]
+						})
+					] })
+				]
+			})]
+		})
+	});
+};
+// src/components/modules/reports/ItemLifecycleAndPnlPanel.tsx
+var fmt = (n) => Number(n || 0).toLocaleString("en-US", {
+	minimumFractionDigits: 2,
+	maximumFractionDigits: 2
+});
+var fmtQty = (n) => Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 3 });
+var ItemLifecycleAndPnlPanel = ({ lifecycle, selectedPnl, pnlItems, portfolioTotals, currency, onSelectProduct, onInspectDocument }) => {
+	const [innerTab, setInnerTab] = (0, import_react.useState)(lifecycle ? "timeline" : "portfolio");
+	const [portfolioSearch, setPortfolioSearch] = (0, import_react.useState)("");
+	const lifecycleProductId = lifecycle?.product?.id || null;
+	const hasSelectedPnl = Boolean(selectedPnl);
+	(0, import_react.useEffect)(() => {
+		if (lifecycleProductId) setInnerTab("timeline");
+		else if (!hasSelectedPnl) setInnerTab("portfolio");
+	}, [lifecycleProductId, hasSelectedPnl]);
+	const filteredPortfolio = pnlItems.filter((it) => {
+		const q = portfolioSearch.trim().toLowerCase();
+		if (!q) return true;
+		return it.productName.toLowerCase().includes(q) || it.code.toLowerCase().includes(q) || it.barcode.toLowerCase().includes(q) || it.category.toLowerCase().includes(q);
+	});
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-		className: "space-y-5",
+		className: "space-y-4",
+		dir: "rtl",
 		children: [
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-				className: "flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs",
-				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
-					className: "text-lg font-black text-slate-900 tracking-tight",
-					children: "التقارير المالية والمحاسبية الشاملة"
-				}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-					className: "text-xs text-slate-500 mt-0.5",
-					children: "تحليل الأرباح والخسائر، حركة المبيعات والمشتريات، الجرد والتحويلات، والحسابات الشخصية"
-				})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-					className: "flex flex-wrap items-center gap-2",
+				className: "flex flex-wrap items-center justify-between gap-2 bg-white border border-slate-200 rounded-xl p-2.5 shadow-2xs",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flex flex-wrap items-center gap-1.5",
+					children: [
+						lifecycle && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+							type: "button",
+							onClick: () => setInnerTab("timeline"),
+							className: `px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-colors cursor-pointer ${innerTab === "timeline" ? "bg-emerald-700 text-white shadow-xs" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`,
+							children: [
+								"تاريخ الصنف من أول يوم لآخر حركة (",
+								lifecycle.timeline.length,
+								")"
+							]
+						}),
+						selectedPnl && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							type: "button",
+							onClick: () => setInnerTab("pnl"),
+							className: `px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-colors cursor-pointer ${innerTab === "pnl" ? "bg-blue-700 text-white shadow-xs" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`,
+							children: "تحليل الأرباح والخسائر التفصيلي للصنف"
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+							type: "button",
+							onClick: () => setInnerTab("portfolio"),
+							className: `px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-colors cursor-pointer ${innerTab === "portfolio" || !lifecycle && !selectedPnl ? "bg-slate-800 text-white shadow-xs" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`,
+							children: [
+								"أرباح وخسائر جميع الأصناف (",
+								pnlItems.length,
+								")"
+							]
+						})
+					]
+				}), lifecycle && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "text-xs text-slate-600 flex flex-wrap items-center gap-3",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: ["الصنف: ", /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+							className: "text-slate-900",
+							children: lifecycle.product.name
+						})] }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+							className: "font-mono bg-slate-100 px-2 py-0.5 rounded",
+							children: ["كود: ", lifecycle.product.code]
+						}),
+						lifecycle.product.barcode && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+							className: "font-mono bg-slate-100 px-2 py-0.5 rounded",
+							children: ["باركود: ", lifecycle.product.barcode]
+						})
+					]
+				})]
+			}),
+			lifecycle && innerTab === "timeline" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "space-y-4",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "grid grid-cols-1 lg:grid-cols-3 gap-3",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "lg:col-span-2 bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex flex-wrap items-start justify-between gap-2 border-b border-slate-100 pb-2.5",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center gap-2.5",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center",
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Package, { className: "w-5 h-5 text-emerald-700" })
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", {
+									className: "font-black text-slate-900 text-base",
+									children: lifecycle.product.name
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+									className: "text-xs text-slate-500",
+									children: [
+										"المجموعة: ",
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: lifecycle.product.category }),
+										" · تصنيف 1: ",
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: lifecycle.product.class1 || "بدون" }),
+										" · الوحدة الأساسية: ",
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: lifecycle.product.baseUnit })
+									]
+								})] })]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "text-left text-[11px] text-slate-500",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+									className: "flex items-center gap-1 justify-end",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Calendar, { className: "w-3.5 h-3.5" }), "تاريخ إضافة الصنف:"]
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "text-slate-800 font-mono",
+									children: lifecycle.product.createdAtFormatted || "-"
+								})]
+							})]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "p-2.5 rounded-lg bg-slate-50 border border-slate-200",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-slate-500 block",
+										children: "الرصيد الحالي الكلي"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+										className: "text-base font-black text-slate-900",
+										children: [
+											fmtQty(lifecycle.currentStockTotal),
+											" ",
+											lifecycle.product.baseUnit
+										]
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "p-2.5 rounded-lg bg-slate-50 border border-slate-200",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-slate-500 block",
+										children: "قيمة المخزون بالتكلفة"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+										className: "text-base font-black text-blue-800",
+										children: [
+											fmt(lifecycle.currentStockValueAtCost),
+											" ",
+											currency
+										]
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "p-2.5 rounded-lg bg-slate-50 border border-slate-200",
+									children: [
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-slate-500 block",
+											children: "آخر سعر شراء"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+											className: "text-base font-black text-amber-700",
+											children: fmt(lifecycle.lastPurchasePrice)
+										}),
+										lifecycle.lastPurchaseDate && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "block text-[10px] text-slate-400 font-mono",
+											children: lifecycle.lastPurchaseDate
+										})
+									]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "p-2.5 rounded-lg bg-slate-50 border border-slate-200",
+									children: [
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-slate-500 block",
+											children: "آخر سعر بيع"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+											className: "text-base font-black text-emerald-700",
+											children: fmt(lifecycle.lastSalePrice)
+										}),
+										lifecycle.lastSaleDate && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "block text-[10px] text-slate-400 font-mono",
+											children: lifecycle.lastSaleDate
+										})
+									]
+								})
+							]
+						})]
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "bg-white border border-slate-200 rounded-xl p-4 shadow-2xs",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-2 text-xs font-extrabold text-slate-800 mb-2.5",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Warehouse, { className: "w-4 h-4 text-blue-700" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "الرصيد الحالي حسب المخزن والعهد" })]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							className: "space-y-1.5 max-h-40 overflow-y-auto text-xs",
+							children: lifecycle.warehouseBalances.map((wb) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "text-slate-800 block",
+									children: wb.warehouseName
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-[10px] text-slate-500",
+									children: wb.branchName
+								})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "text-left font-mono",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+										className: wb.quantity > 0 ? "text-emerald-700" : wb.quantity < 0 ? "text-rose-700" : "text-slate-500",
+										children: fmtQty(wb.quantity)
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+										className: "block text-[10px] text-slate-400",
+										children: [
+											fmt(wb.costValue),
+											" ",
+											currency
+										]
+									})]
+								})]
+							}, wb.warehouseId))
+						})]
+					})]
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "bg-white border border-slate-300 rounded-xl overflow-hidden shadow-2xs",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "bg-[#5f6f52] text-white px-4 py-2 text-xs font-extrabold flex items-center justify-between",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "السجل التاريخي التسلسلي الكامل للصنف (من لحظة الإضافة حتى آخر حركة)" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: ["عدد الأحداث: ", lifecycle.timeline.length] })]
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+						className: "overflow-auto max-h-[52vh]",
+						children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
+							className: "w-full text-right text-xs border-collapse min-w-[1150px]",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", {
+								className: "bg-slate-100 text-slate-800 sticky top-0 z-10 border-b border-slate-300",
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 whitespace-nowrap",
+										children: "اليومية"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 whitespace-nowrap",
+										children: "التاريخ الفعلى"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 whitespace-nowrap",
+										children: "نوع الحركة"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 whitespace-nowrap",
+										children: "رقم المستند"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 whitespace-nowrap",
+										children: "المخزن / المسار"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 whitespace-nowrap",
+										children: "الطرف"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 whitespace-nowrap text-center",
+										children: "الوحدة"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 whitespace-nowrap text-center",
+										children: "وارد (+)"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 whitespace-nowrap text-center",
+										children: "صادر (-)"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 whitespace-nowrap text-center",
+										children: "الرصيد بعد الحركة"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 whitespace-nowrap text-center",
+										children: "السعر / التكلفة"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 whitespace-nowrap text-center",
+										children: "الإجمالي"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 whitespace-nowrap",
+										children: "المستخدم"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 whitespace-nowrap",
+										children: "ملاحظات"
+									})
+								] })
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tbody", {
+								className: "divide-y divide-slate-200",
+								children: lifecycle.timeline.map((ev) => {
+									const isPriceChg = ev.eventType === "price_change" || ev.eventType === "product_updated";
+									const isDamaged = ev.eventType === "damaged" || ev.eventType === "custody_damaged";
+									return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
+										onClick: () => {
+											if (ev.docId && ev.docType !== "product" && ev.docType !== "audit") onInspectDocument(ev.docType, ev.docId);
+										},
+										className: `transition-colors ${ev.docType !== "product" && ev.docType !== "audit" ? "cursor-pointer hover:bg-blue-50/70" : ""} ${isPriceChg ? "bg-amber-50/70" : isDamaged ? "bg-rose-50/70" : "bg-white"}`,
+										children: [
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 border-l border-slate-200 font-mono whitespace-nowrap",
+												children: ev.date.replace(/-/g, "/")
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 border-l border-slate-200 font-mono whitespace-nowrap text-[11px]",
+												children: ev.actualDateTime
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 border-l border-slate-200 font-bold whitespace-nowrap",
+												children: ev.eventLabel
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 border-l border-slate-200 font-mono whitespace-nowrap text-blue-700",
+												children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+													className: "inline-flex items-center gap-1",
+													children: [ev.docNumber, ev.docType !== "product" && ev.docType !== "audit" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ExternalLink, { className: "w-3 h-3" })]
+												})
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 border-l border-slate-200 whitespace-nowrap",
+												children: ev.warehouseName
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 border-l border-slate-200 whitespace-nowrap",
+												children: ev.partyName
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 border-l border-slate-200 text-center whitespace-nowrap",
+												children: ev.unit
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 border-l border-slate-200 text-center font-mono font-bold text-emerald-700",
+												children: ev.qtyIn > 0 ? `+${fmtQty(ev.qtyIn)}` : "-"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 border-l border-slate-200 text-center font-mono font-bold text-rose-700",
+												children: ev.qtyOut > 0 ? `-${fmtQty(ev.qtyOut)}` : "-"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 border-l border-slate-200 text-center font-mono font-black bg-slate-50 text-slate-900",
+												children: fmtQty(ev.runningBalance)
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 border-l border-slate-200 text-center font-mono",
+												children: fmt(ev.unitPrice)
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 border-l border-slate-200 text-center font-mono font-bold",
+												children: fmt(ev.totalValue)
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 border-l border-slate-200 whitespace-nowrap",
+												children: ev.userName
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 text-slate-600 whitespace-nowrap",
+												children: ev.notes || "-"
+											})
+										]
+									}, ev.id);
+								})
+							})]
+						})
+					})]
+				})]
+			}),
+			selectedPnl && innerTab === "pnl" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "space-y-4",
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 text-xs",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "p-3 bg-white border border-slate-200 rounded-xl shadow-2xs",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-slate-500 block",
+										children: "إجمالي المشتريات"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+										className: "text-base font-black text-slate-900",
+										children: [
+											fmt(selectedPnl.totalPurchaseValue),
+											" ",
+											currency
+										]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+										className: "text-[11px] text-slate-500 block",
+										children: [
+											"الكمية: ",
+											fmtQty(selectedPnl.totalPurchaseQty),
+											" ",
+											selectedPnl.baseUnit
+										]
+									})
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "p-3 bg-white border border-slate-200 rounded-xl shadow-2xs",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-slate-500 block",
+										children: "صافي المبيعات"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+										className: "text-base font-black text-blue-800",
+										children: [
+											fmt(selectedPnl.netSalesValue),
+											" ",
+											currency
+										]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+										className: "text-[11px] text-slate-500 block",
+										children: [
+											"صافي الكمية: ",
+											fmtQty(selectedPnl.netSalesQty),
+											" (خصم: ",
+											fmt(selectedPnl.totalDiscounts),
+											")"
+										]
+									})
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "p-3 bg-white border border-slate-200 rounded-xl shadow-2xs",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-slate-500 block",
+										children: "تكلفة البضاعة المباعة (COGS)"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+										className: "text-base font-black text-amber-800",
+										children: [
+											fmt(selectedPnl.cogs),
+											" ",
+											currency
+										]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+										className: "text-[11px] text-slate-500 block",
+										children: ["مرتجع بيع: ", fmt(selectedPnl.salesReturnsValue)]
+									})
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "p-3 bg-white border border-slate-200 rounded-xl shadow-2xs",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-slate-500 block",
+										children: "مجمل الربح"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+										className: `text-base font-black ${selectedPnl.grossProfit >= 0 ? "text-emerald-700" : "text-rose-700"}`,
+										children: [
+											fmt(selectedPnl.grossProfit),
+											" ",
+											currency
+										]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+										className: "text-[11px] text-slate-500 block",
+										children: ["مرتجع شراء: ", fmt(selectedPnl.purchaseReturnsValue)]
+									})
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "p-3 bg-white border border-emerald-300 rounded-xl shadow-2xs bg-emerald-50/40",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-slate-600 block",
+										children: "صافي الربح"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+										className: `text-base font-black flex items-center gap-1 ${selectedPnl.netProfit >= 0 ? "text-emerald-700" : "text-rose-700"}`,
+										children: [
+											selectedPnl.netProfit >= 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TrendingUp, { className: "w-4 h-4" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TrendingDown, { className: "w-4 h-4" }),
+											fmt(selectedPnl.netProfit),
+											" ",
+											currency
+										]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+										className: "text-[11px] text-slate-600 block",
+										children: [
+											"نسبة على التكلفة: ",
+											selectedPnl.profitPercentOnCost,
+											"% | هامش: ",
+											selectedPnl.profitMarginOnSales,
+											"%"
+										]
+									})
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "p-3 bg-white border border-rose-200 rounded-xl shadow-2xs bg-rose-50/40",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-slate-600 block",
+										children: "إجمالي الخسائر والتوالف"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+										className: "text-base font-black text-rose-700",
+										children: [
+											fmt(selectedPnl.totalLoss),
+											" ",
+											currency
+										]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+										className: "text-[11px] text-slate-500 block",
+										children: ["مصاريف/توالف محملة: ", fmt(selectedPnl.allocatedExpenses)]
+									})
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "p-3 bg-white border border-slate-200 rounded-xl shadow-2xs col-span-2 sm:col-span-4 lg:col-span-6 grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50/60",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-slate-500 block",
+										children: "عدد الوحدات المتبقية"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+										className: "text-sm font-black text-slate-900",
+										children: [
+											fmtQty(selectedPnl.currentStockQty),
+											" ",
+											selectedPnl.baseUnit
+										]
+									})] }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-slate-500 block",
+										children: "قيمة المخزون الحالي"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+										className: "text-sm font-black text-blue-800",
+										children: [
+											fmt(selectedPnl.currentStockValue),
+											" ",
+											currency
+										]
+									})] }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-slate-500 block",
+										children: "إجمالي المبيعات (قبل المرتجع)"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+										className: "text-sm font-black text-slate-900",
+										children: [
+											fmt(selectedPnl.totalSalesValue),
+											" ",
+											currency,
+											" (",
+											fmtQty(selectedPnl.totalSalesQty),
+											")"
+										]
+									})] }),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-slate-500 block",
+										children: "صافي المشتريات (بعد المرتجع)"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+										className: "text-sm font-black text-slate-900",
+										children: [
+											fmt(selectedPnl.netPurchaseValue),
+											" ",
+											currency,
+											" (",
+											fmtQty(selectedPnl.netPurchaseQty),
+											")"
+										]
+									})] })
+								]
+							})
+						]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "grid grid-cols-1 md:grid-cols-2 gap-3 text-xs",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "bg-white border border-slate-200 rounded-xl p-4 space-y-2",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h4", {
+								className: "font-extrabold text-slate-800 border-b border-slate-100 pb-2",
+								children: [
+									"تحليل أسعار الشراء (",
+									selectedPnl.baseUnit,
+									")"
+								]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "grid grid-cols-4 gap-2 text-center",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "p-2 rounded bg-slate-50",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-slate-500 block",
+											children: "المتوسط"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+											className: "font-mono",
+											children: fmt(selectedPnl.avgPurchasePrice)
+										})]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "p-2 rounded bg-slate-50",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-slate-500 block",
+											children: "الأقل"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+											className: "font-mono text-emerald-700",
+											children: fmt(selectedPnl.minPurchasePrice)
+										})]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "p-2 rounded bg-slate-50",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-slate-500 block",
+											children: "الأعلى"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+											className: "font-mono text-rose-700",
+											children: fmt(selectedPnl.maxPurchasePrice)
+										})]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "p-2 rounded bg-slate-50",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-slate-500 block",
+											children: "الآخر"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+											className: "font-mono",
+											children: fmt(selectedPnl.lastPurchasePrice)
+										})]
+									})
+								]
+							})]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "bg-white border border-slate-200 rounded-xl p-4 space-y-2",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h4", {
+								className: "font-extrabold text-slate-800 border-b border-slate-100 pb-2",
+								children: [
+									"تحليل أسعار البيع (",
+									selectedPnl.baseUnit,
+									")"
+								]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "grid grid-cols-4 gap-2 text-center",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "p-2 rounded bg-slate-50",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-slate-500 block",
+											children: "المتوسط"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+											className: "font-mono",
+											children: fmt(selectedPnl.avgSalePrice)
+										})]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "p-2 rounded bg-slate-50",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-slate-500 block",
+											children: "الأقل"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+											className: "font-mono text-rose-700",
+											children: fmt(selectedPnl.minSalePrice)
+										})]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "p-2 rounded bg-slate-50",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-slate-500 block",
+											children: "الأعلى"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+											className: "font-mono text-emerald-700",
+											children: fmt(selectedPnl.maxSalePrice)
+										})]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "p-2 rounded bg-slate-50",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-slate-500 block",
+											children: "الآخر"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+											className: "font-mono",
+											children: fmt(selectedPnl.lastSalePrice)
+										})]
+									})
+								]
+							})]
+						})]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "bg-white border border-rose-200 rounded-xl overflow-hidden",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "bg-rose-700 text-white px-4 py-2 text-xs font-extrabold flex items-center justify-between",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+								className: "flex items-center gap-1.5",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(TriangleAlert, { className: "w-4 h-4" }),
+									"الحركات الخاسرة والبيع بأقل من التكلفة (",
+									selectedPnl.lossTransactions.length,
+									")"
+								]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+								"إجمالي الخسائر: ",
+								fmt(selectedPnl.totalLoss),
+								" ",
+								currency
+							] })]
+						}), selectedPnl.lossTransactions.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							className: "p-6 text-center text-xs text-slate-500 font-bold",
+							children: "لا توجد أي عمليات بيع خاسرة أو توالف لهذا الصنف ضمن الفترة المحددة."
+						}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							className: "overflow-x-auto",
+							children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
+								className: "w-full text-right text-xs border-collapse",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", {
+									className: "bg-rose-50 text-rose-950 border-b border-rose-200",
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+											className: "p-2",
+											children: "التاريخ الفعلى"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+											className: "p-2",
+											children: "المستند"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+											className: "p-2",
+											children: "العميل / المخزن"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+											className: "p-2 text-center",
+											children: "الكمية"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+											className: "p-2 text-center",
+											children: "سعر البيع"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+											className: "p-2 text-center",
+											children: "التكلفة"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+											className: "p-2 text-center",
+											children: "الخصم"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+											className: "p-2 text-center",
+											children: "قيمة الخسارة"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+											className: "p-2",
+											children: "السبب التفصيلي"
+										})
+									] })
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tbody", {
+									className: "divide-y divide-rose-100",
+									children: selectedPnl.lossTransactions.map((lt) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
+										onClick: () => onInspectDocument(lt.docType, lt.docId),
+										className: "hover:bg-rose-50/70 cursor-pointer",
+										children: [
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 font-mono text-[11px]",
+												children: lt.actualDateTime
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 font-mono text-blue-700 font-bold",
+												children: lt.docNumber
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2",
+												children: lt.partyName
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
+												className: "p-2 text-center font-bold",
+												children: [
+													lt.quantity,
+													" ",
+													lt.unit
+												]
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 text-center font-mono",
+												children: fmt(lt.sellingPrice)
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 text-center font-mono",
+												children: fmt(lt.costPrice)
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 text-center font-mono text-amber-700",
+												children: fmt(lt.discount)
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
+												className: "p-2 text-center font-mono font-black text-rose-700",
+												children: ["-", fmt(lt.lossAmount)]
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "p-2 text-rose-900",
+												children: lt.reason
+											})
+										]
+									}, lt.id))
+								})]
+							})
+						})]
+					})
+				]
+			}),
+			(innerTab === "portfolio" || !lifecycle && !selectedPnl) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "space-y-3",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "p-3 bg-white border border-slate-200 rounded-xl",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "text-slate-500 block",
+								children: "إجمالي المشتريات"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+								className: "text-sm font-black",
+								children: fmt(portfolioTotals.totalPurchaseValue)
+							})]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "p-3 bg-white border border-slate-200 rounded-xl",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "text-slate-500 block",
+								children: "صافي المبيعات"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+								className: "text-sm font-black text-blue-800",
+								children: fmt(portfolioTotals.netSalesValue)
+							})]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "p-3 bg-white border border-slate-200 rounded-xl",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "text-slate-500 block",
+								children: "تكلفة البضاعة المباعة"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+								className: "text-sm font-black text-amber-800",
+								children: fmt(portfolioTotals.cogs)
+							})]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "p-3 bg-white border border-slate-200 rounded-xl",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "text-slate-500 block",
+								children: "صافي الربح"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+								className: `text-sm font-black ${portfolioTotals.netProfit >= 0 ? "text-emerald-700" : "text-rose-700"}`,
+								children: fmt(portfolioTotals.netProfit)
+							})]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "p-3 bg-white border border-slate-200 rounded-xl",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "text-slate-500 block",
+								children: "إجمالي الخسائر"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+								className: "text-sm font-black text-rose-700",
+								children: fmt(portfolioTotals.totalLoss)
+							})]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "p-3 bg-white border border-slate-200 rounded-xl",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "text-slate-500 block",
+								children: "قيمة المخزون الحالي"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+								className: "text-sm font-black text-slate-900",
+								children: fmt(portfolioTotals.stockValuation)
+							})]
+						})
+					]
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "bg-white border border-slate-300 rounded-xl overflow-hidden shadow-2xs",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "bg-slate-800 text-white px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							className: "font-extrabold",
+							children: "تحليل أرباح وخسائر الأصناف (اضغط على أي صنف لفتح تاريخه الكامل من أول يوم)"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "relative",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Search, { className: "w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								type: "text",
+								value: portfolioSearch,
+								onChange: (e) => setPortfolioSearch(e.target.value),
+								placeholder: "بحث باسم الصنف أو الكود...",
+								className: "bg-slate-700 text-white placeholder-slate-400 pr-8 pl-2.5 py-1 rounded-lg text-xs border border-slate-600 focus:outline-none"
+							})]
+						})]
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+						className: "overflow-auto max-h-[54vh]",
+						children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
+							className: "w-full text-right text-xs border-collapse min-w-[1300px]",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", {
+								className: "bg-slate-100 text-slate-800 sticky top-0 z-10 border-b border-slate-300",
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200",
+										children: "الصنف"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200",
+										children: "المجموعة"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 text-center",
+										children: "مشتريات"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 text-center",
+										children: "صافي المبيعات"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 text-center",
+										children: "COGS"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 text-center",
+										children: "الخصومات"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 text-center",
+										children: "مرتجعات بيع"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 text-center",
+										children: "التوالف / المصاريف"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 text-center",
+										children: "صافي الربح"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 text-center",
+										children: "نسبة الربح على التكلفة"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 text-center",
+										children: "هامش المبيعات"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 text-center",
+										children: "الخسائر"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 border-l border-slate-200 text-center",
+										children: "المخزون الحالي"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+										className: "p-2 text-center",
+										children: "قيمة المخزون"
+									})
+								] })
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tbody", {
+								className: "divide-y divide-slate-200",
+								children: filteredPortfolio.map((item) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
+									onClick: () => {
+										onSelectProduct(item.productId);
+										setInnerTab("timeline");
+									},
+									className: "hover:bg-blue-50/70 cursor-pointer transition-colors",
+									children: [
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
+											className: "p-2 border-l border-slate-200 font-bold text-slate-900",
+											children: [item.productName, /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												className: "block text-[10px] text-slate-500 font-mono",
+												children: item.code
+											})]
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "p-2 border-l border-slate-200",
+											children: item.category
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "p-2 border-l border-slate-200 text-center font-mono",
+											children: fmt(item.totalPurchaseValue)
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "p-2 border-l border-slate-200 text-center font-mono font-bold text-blue-800",
+											children: fmt(item.netSalesValue)
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "p-2 border-l border-slate-200 text-center font-mono",
+											children: fmt(item.cogs)
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "p-2 border-l border-slate-200 text-center font-mono text-amber-700",
+											children: fmt(item.totalDiscounts)
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "p-2 border-l border-slate-200 text-center font-mono text-rose-700",
+											children: fmt(item.salesReturnsValue)
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "p-2 border-l border-slate-200 text-center font-mono text-rose-700",
+											children: fmt(item.allocatedExpenses)
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: `p-2 border-l border-slate-200 text-center font-mono font-black ${item.netProfit >= 0 ? "text-emerald-700" : "text-rose-700"}`,
+											children: fmt(item.netProfit)
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
+											className: "p-2 border-l border-slate-200 text-center font-mono",
+											children: [item.profitPercentOnCost, "%"]
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
+											className: "p-2 border-l border-slate-200 text-center font-mono",
+											children: [item.profitMarginOnSales, "%"]
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "p-2 border-l border-slate-200 text-center font-mono text-rose-700",
+											children: item.totalLoss > 0 ? fmt(item.totalLoss) : "-"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
+											className: "p-2 border-l border-slate-200 text-center font-mono font-bold",
+											children: [
+												fmtQty(item.currentStockQty),
+												" ",
+												item.baseUnit
+											]
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "p-2 text-center font-mono",
+											children: fmt(item.currentStockValue)
+										})
+									]
+								}, item.productId))
+							})]
+						})
+					})]
+				})]
+			})
+		]
+	});
+};
+// src/components/modules/reports/ReportsView.tsx
+var REPORT_TYPE_OPTIONS = [
+	{
+		key: "all",
+		label: "الكل",
+		group: 1
+	},
+	{
+		key: "sales_items",
+		label: "اصناف البيع",
+		group: 1
+	},
+	{
+		key: "sales_invoices",
+		label: "فواتير بيع",
+		group: 1
+	},
+	{
+		key: "sales_items_by_unit",
+		label: "اصناف بيع/ بالوحدة",
+		group: 1
+	},
+	{
+		key: "sales_items_grouped",
+		label: "اصناف بيع/مَجمع",
+		group: 1
+	},
+	{
+		key: "sales_items_grouped_by_customer",
+		label: "اصناف بيع/مَجمع حسب العميل",
+		group: 1
+	},
+	{
+		key: "sales_items_grouped_by_category",
+		label: "اصناف بيع/مَجمع حسب المجموعة",
+		group: 1
+	},
+	{
+		key: "sales_items_grouped_by_category_class1",
+		label: "اصناف بيع/مَجمع حسب المجموعة وتصنيف 1",
+		group: 1
+	},
+	{
+		key: "sales_return_items",
+		label: "اصناف مرتجع بيع",
+		group: 2
+	},
+	{
+		key: "sales_return_invoices",
+		label: "فواتير مرتجع بيع",
+		group: 2
+	},
+	{
+		key: "purchase_items",
+		label: "اصناف شراء",
+		group: 3
+	},
+	{
+		key: "purchase_invoices",
+		label: "فواتير شراء",
+		group: 3
+	},
+	{
+		key: "purchase_return_items",
+		label: "اصناف مرتجع شراء",
+		group: 4
+	},
+	{
+		key: "purchase_return_invoices",
+		label: "فواتير مرتجع شراء",
+		group: 4
+	},
+	{
+		key: "damaged_items",
+		label: "اصناف تالف",
+		group: 5
+	},
+	{
+		key: "damaged_invoices",
+		label: "فواتير تالف",
+		group: 5
+	},
+	{
+		key: "cash_payment",
+		label: "سداد نقدى",
+		group: 6
+	},
+	{
+		key: "cash_payment_customer",
+		label: "سداد نقدى/عميل",
+		group: 6
+	},
+	{
+		key: "cash_payment_supplier",
+		label: "سداد نقدى/مورد",
+		group: 6
+	},
+	{
+		key: "cash_payment_employee",
+		label: "سداد نقدى/موظف",
+		group: 6
+	},
+	{
+		key: "cash_withdrawal",
+		label: "سحب نقدى",
+		group: 7
+	},
+	{
+		key: "cash_withdrawal_customer",
+		label: "سحب نقدى/عميل",
+		group: 7
+	},
+	{
+		key: "cash_withdrawal_supplier",
+		label: "سحب نقدى/مورد",
+		group: 7
+	}
+];
+var TABLE_COLUMNS = [
+	{
+		key: "operationLabel",
+		label: "العملية",
+		align: "right"
+	},
+	{
+		key: "quantity",
+		label: "الكمية",
+		align: "center"
+	},
+	{
+		key: "unit",
+		label: "الوحدة",
+		align: "center"
+	},
+	{
+		key: "rawCreatedAt",
+		label: "التاريخ الفعلى",
+		align: "center"
+	},
+	{
+		key: "priceOrTotal",
+		label: "السعر",
+		align: "center"
+	},
+	{
+		key: "valueOrPaid",
+		label: "القيمة",
+		align: "center"
+	},
+	{
+		key: "movementOrRemaining",
+		label: "الحركة",
+		align: "right"
+	},
+	{
+		key: "employeeName",
+		label: "الموظف",
+		align: "center"
+	},
+	{
+		key: "userName",
+		label: "المستخدم",
+		align: "center"
+	},
+	{
+		key: "businessDate",
+		label: "اليومية",
+		align: "center"
+	},
+	{
+		key: "profit",
+		label: "الربح",
+		align: "center"
+	},
+	{
+		key: "barcode",
+		label: "الباركود",
+		align: "center"
+	},
+	{
+		key: "displayId",
+		label: "ID",
+		align: "center"
+	},
+	{
+		key: "invoiceNumber",
+		label: "رقم الفاتورة",
+		align: "center"
+	},
+	{
+		key: "branchName",
+		label: "الفرع",
+		align: "center"
+	},
+	{
+		key: "cashboxName",
+		label: "الخزنة",
+		align: "center"
+	},
+	{
+		key: "notes",
+		label: "ملاحظات",
+		align: "right"
+	},
+	{
+		key: "discount",
+		label: "الخصم",
+		align: "center"
+	},
+	{
+		key: "profitPercent",
+		label: "نسبة الربح",
+		align: "center"
+	}
+];
+var fmtMoney = (v) => {
+	if (v === null || v === void 0 || Number.isNaN(Number(v))) return "0";
+	const n = Number(v);
+	return Number.isInteger(n) ? n.toLocaleString("en-US") : n.toLocaleString("en-US", {
+		minimumFractionDigits: 2,
+		maximumFractionDigits: 2
+	});
+};
+var fmtNum = (v) => {
+	if (v === null || v === void 0 || Number.isNaN(Number(v))) return "0";
+	return Number(v).toLocaleString("en-US", { maximumFractionDigits: 3 });
+};
+function todayYmd() {
+	const d = /* @__PURE__ */ new Date();
+	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function addDaysYmd(ymd, delta) {
+	const base = ymd ? /* @__PURE__ */ new Date(`${ymd}T00:00:00`) : /* @__PURE__ */ new Date();
+	if (Number.isNaN(base.getTime())) return todayYmd();
+	base.setDate(base.getDate() + delta);
+	return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, "0")}-${String(base.getDate()).padStart(2, "0")}`;
+}
+var ReportsView = ({ initialTab, initialProductId }) => {
+	const { settings } = useData();
+	const { hasPermission } = useAuth();
+	const currency = settings.currency || "ج.م";
+	const [viewMode, setViewMode] = (0, import_react.useState)(initialTab === "item_movement" ? "item_lifecycle" : "unified_grid");
+	const [reportType, setReportType] = (0, import_react.useState)("all");
+	const [periodPreset, setPeriodPreset] = (0, import_react.useState)(initialTab === "item_movement" ? "all_time" : "today");
+	const [dateFrom, setDateFrom] = (0, import_react.useState)(() => initialTab === "item_movement" ? "" : todayYmd());
+	const [useDateTo, setUseDateTo] = (0, import_react.useState)(() => initialTab !== "item_movement");
+	const [dateTo, setDateTo] = (0, import_react.useState)(() => todayYmd());
+	const [branchId, setBranchId] = (0, import_react.useState)("all");
+	const [warehouseId, setWarehouseId] = (0, import_react.useState)("all");
+	const [cashboxId, setCashboxId] = (0, import_react.useState)("all");
+	const [productId, setProductId] = (0, import_react.useState)(initialProductId || "all");
+	const [productSearch, setProductSearch] = (0, import_react.useState)("");
+	const [barcode, setBarcode] = (0, import_react.useState)("");
+	const [customerId, setCustomerId] = (0, import_react.useState)("all");
+	const [supplierId, setSupplierId] = (0, import_react.useState)("all");
+	const [employeeId, setEmployeeId] = (0, import_react.useState)("all");
+	const [userId, setUserId] = (0, import_react.useState)("all");
+	const [representativeId, setRepresentativeId] = (0, import_react.useState)("all");
+	const [invoiceNumber, setInvoiceNumber] = (0, import_react.useState)("");
+	const [recordId, setRecordId] = (0, import_react.useState)("");
+	const [search, setSearch] = (0, import_react.useState)("");
+	const [showMoreFilters, setShowMoreFilters] = (0, import_react.useState)(true);
+	const [inlineTableSearch, setInlineTableSearch] = (0, import_react.useState)("");
+	const [sortCol, setSortCol] = (0, import_react.useState)(null);
+	const [sortDir, setSortDir] = (0, import_react.useState)("desc");
+	const [reportData, setReportData] = (0, import_react.useState)(null);
+	const [isLoading, setIsLoading] = (0, import_react.useState)(false);
+	const [errorMsg, setErrorMsg] = (0, import_react.useState)(null);
+	const [isReportDropdownOpen, setIsReportDropdownOpen] = (0, import_react.useState)(false);
+	const dropdownRef = (0, import_react.useRef)(null);
+	const [sourceModalOpen, setSourceModalOpen] = (0, import_react.useState)(false);
+	const [sourceLoading, setSourceLoading] = (0, import_react.useState)(false);
+	const [sourceError, setSourceError] = (0, import_react.useState)(null);
+	const [sourceDoc, setSourceDoc] = (0, import_react.useState)(null);
+	const [printModalData, setPrintModalData] = (0, import_react.useState)(null);
+	const [exportScope, setExportScope] = (0, import_react.useState)("filtered");
+	(0, import_react.useEffect)(() => {
+		if (initialProductId) setProductId(initialProductId);
+		if (initialTab === "item_movement") setViewMode("item_lifecycle");
+	}, [initialTab, initialProductId]);
+	(0, import_react.useEffect)(() => {
+		const onDocClick = (e) => {
+			if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setIsReportDropdownOpen(false);
+		};
+		document.addEventListener("mousedown", onDocClick);
+		return () => document.removeEventListener("mousedown", onDocClick);
+	}, []);
+	const loadReport = (0, import_react.useCallback)(async (overrideType) => {
+		setIsLoading(true);
+		setErrorMsg(null);
+		try {
+			const data = await fetchComprehensiveReport({
+				reportType: overrideType ?? reportType,
+				dateFrom: dateFrom || void 0,
+				dateTo: useDateTo && dateTo ? dateTo : void 0,
+				branchId,
+				warehouseId,
+				cashboxId,
+				productId,
+				productSearch: productSearch.trim() || void 0,
+				barcode: barcode.trim() || void 0,
+				customerId,
+				supplierId,
+				employeeId,
+				userId,
+				representativeId,
+				invoiceNumber: invoiceNumber.trim() || void 0,
+				recordId: recordId.trim() || void 0,
+				search: search.trim() || void 0
+			});
+			setReportData(data);
+		} catch (err) {
+			setErrorMsg(err?.message || "تعذر تحميل بيانات التقرير");
+		} finally {
+			setIsLoading(false);
+		}
+	}, [
+		reportType,
+		dateFrom,
+		useDateTo,
+		dateTo,
+		branchId,
+		warehouseId,
+		cashboxId,
+		productId,
+		productSearch,
+		barcode,
+		customerId,
+		supplierId,
+		employeeId,
+		userId,
+		representativeId,
+		invoiceNumber,
+		recordId,
+		search
+	]);
+	(0, import_react.useEffect)(() => {
+		loadReport();
+	}, [loadReport]);
+	const applyPeriodPreset = (preset) => {
+		setPeriodPreset(preset);
+		const now = /* @__PURE__ */ new Date();
+		const y = now.getFullYear();
+		const m = now.getMonth();
+		const fmtD = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+		if (preset === "today") {
+			const t = todayYmd();
+			setDateFrom(t);
+			setUseDateTo(true);
+			setDateTo(t);
+		} else if (preset === "this_month") {
+			setDateFrom(fmtD(new Date(y, m, 1)));
+			setUseDateTo(true);
+			setDateTo(fmtD(new Date(y, m + 1, 0)));
+		} else if (preset === "prev_month") {
+			setDateFrom(fmtD(new Date(y, m - 1, 1)));
+			setUseDateTo(true);
+			setDateTo(fmtD(new Date(y, m, 0)));
+		} else if (preset === "this_year") {
+			setDateFrom(`${y}-01-01`);
+			setUseDateTo(true);
+			setDateTo(`${y}-12-31`);
+		} else if (preset === "prev_year") {
+			setDateFrom(`${y - 1}-01-01`);
+			setUseDateTo(true);
+			setDateTo(`${y - 1}-12-31`);
+		} else if (preset === "all_time") {
+			setDateFrom("");
+			setUseDateTo(false);
+		}
+	};
+	const handleResetFilters = () => {
+		setReportType("all");
+		const t = todayYmd();
+		setPeriodPreset("today");
+		setDateFrom(t);
+		setUseDateTo(true);
+		setDateTo(t);
+		setBranchId("all");
+		setWarehouseId("all");
+		setCashboxId("all");
+		setProductId("all");
+		setProductSearch("");
+		setBarcode("");
+		setCustomerId("all");
+		setSupplierId("all");
+		setEmployeeId("all");
+		setUserId("all");
+		setRepresentativeId("all");
+		setInvoiceNumber("");
+		setRecordId("");
+		setSearch("");
+		setInlineTableSearch("");
+	};
+	const handleInspectDocument = async (docType, docId) => {
+		if (!docId || docType === "product_aggregate") return;
+		setSourceModalOpen(true);
+		setSourceLoading(true);
+		setSourceError(null);
+		setSourceDoc(null);
+		try {
+			const res = await fetchReportSourceDocument(docType, docId);
+			setSourceDoc(res);
+		} catch (err) {
+			setSourceError(err?.message || "تعذر فتح تفاصيل المستند الأصلي");
+		} finally {
+			setSourceLoading(false);
+		}
+	};
+	const handleSort = (col) => {
+		if (sortCol === col) setSortDir((prev) => prev === "asc" ? "desc" : "asc");
+		else {
+			setSortCol(col);
+			setSortDir("desc");
+		}
+	};
+	const filterVisibility = (0, import_react.useMemo)(() => {
+		const isSalesOnly = reportType.startsWith("sales");
+		const isPurchaseOnly = reportType.startsWith("purchase");
+		const isDamaged = reportType.startsWith("damaged");
+		const isCashOnly = reportType.startsWith("cash_");
+		const isCashCustomer = reportType === "cash_payment_customer" || reportType === "cash_withdrawal_customer";
+		const isCashSupplier = reportType === "cash_payment_supplier" || reportType === "cash_withdrawal_supplier";
+		const isCashEmployee = reportType === "cash_payment_employee";
+		return {
+			showWarehouse: !isCashOnly,
+			showCashbox: !isDamaged,
+			showProductFilters: !isCashOnly,
+			showCustomer: reportType === "all" || isSalesOnly || isCashCustomer || reportType === "cash_payment" || reportType === "cash_withdrawal",
+			showSupplier: reportType === "all" || isPurchaseOnly || isCashSupplier || reportType === "cash_payment" || reportType === "cash_withdrawal",
+			showRepresentative: reportType === "all" || isSalesOnly || isDamaged || !isCashSupplier && !isCashEmployee,
+			showEmployee: true,
+			showUser: true,
+			showInvoiceNumber: !isCashEmployee,
+			showRecordId: true
+		};
+	}, [reportType]);
+	const processedSections = (0, import_react.useMemo)(() => {
+		const sections = reportData?.sections || [];
+		const q = inlineTableSearch.trim().toLowerCase();
+		return sections.map((sec) => {
+			let rows = sec.rows;
+			if (q) rows = rows.filter((r) => [
+				r.operationLabel,
+				r.movementOrRemaining,
+				r.employeeName,
+				r.userName,
+				r.barcode,
+				r.displayId,
+				r.invoiceNumber,
+				r.branchName,
+				r.cashboxName,
+				r.notes,
+				r.actualDateTime
+			].filter(Boolean).join(" ").toLowerCase().includes(q));
+			if (sortCol) rows = [...rows].sort((a, b) => {
+				const av = a[sortCol];
+				const bv = b[sortCol];
+				let cmp = 0;
+				if (typeof av === "number" && typeof bv === "number") cmp = av - bv;
+				else cmp = String(av ?? "").localeCompare(String(bv ?? ""), "ar");
+				return sortDir === "asc" ? cmp : -cmp;
+			});
+			const qtySum = rows.reduce((s, r) => s + Number(r.quantity || 0), 0);
+			const priceSum = sec.isInvoiceLayout ? rows.reduce((s, r) => s + Number(r.priceOrTotal || 0), 0) : null;
+			const valueSum = rows.reduce((s, r) => s + Number(r.valueOrPaid || 0), 0);
+			const remSum = sec.isInvoiceLayout ? rows.reduce((s, r) => s + Number(r.movementOrRemaining || 0), 0) : null;
+			const profitSum = rows.reduce((s, r) => s + Number(r.profit || 0), 0);
+			const costSum = rows.reduce((s, r) => s + Number(r.costValue || 0), 0);
+			const discSum = rows.reduce((s, r) => s + Number(r.discount || 0), 0);
+			const profitPct = costSum > 0 ? Math.round(profitSum / costSum * 1e3) / 10 : profitSum > 0 ? 100 : profitSum < 0 ? -100 : 0;
+			return {
+				...sec,
+				rows,
+				totals: {
+					...sec.totals,
+					count: rows.length,
+					quantity: qtySum,
+					priceOrTotal: priceSum,
+					valueOrPaid: valueSum,
+					remaining: remSum,
+					profit: profitSum,
+					costValue: costSum,
+					discount: discSum,
+					profitPercent: profitPct
+				}
+			};
+		});
+	}, [
+		reportData?.sections,
+		inlineTableSearch,
+		sortCol,
+		sortDir
+	]);
+	const activeReportOption = REPORT_TYPE_OPTIONS.find((t) => t.key === reportType) || REPORT_TYPE_OPTIONS[0];
+	const handleExportExcel = async () => {
+		const sourceReport = exportScope === "all" && (inlineTableSearch || reportType !== "all") ? await fetchComprehensiveReport({ reportType: "all" }) : null;
+		const secsToExport = sourceReport ? sourceReport.sections : processedSections;
+		const sumToExport = sourceReport ? sourceReport.summary : reportData?.summary;
+		const headers = TABLE_COLUMNS.map((c) => c.label);
+		const rows = [];
+		rows.push([
+			`AWLAD SELIM - ${settings.companyName}`,
+			`نوع التقرير: ${sourceReport ? "الكل (شامل)" : activeReportOption.label}`,
+			`الفترة: ${dateFrom || "البداية"} إلى ${useDateTo ? dateTo : "الآن"}`,
+			`تاريخ الاستخراج: ${(/* @__PURE__ */ new Date()).toLocaleString("ar-EG")}`
+		]);
+		for (const sec of secsToExport) {
+			rows.push([`=== ${sec.title} (${sec.rows.length}) ===`]);
+			if (sec.isInvoiceLayout) rows.push([
+				"",
+				"",
+				"",
+				"",
+				"اجمالى",
+				"مدفوع",
+				"آجل"
+			]);
+			for (const r of sec.rows) rows.push([
+				r.operationLabel,
+				r.quantity,
+				r.unit,
+				r.actualDateTime,
+				r.priceOrTotal,
+				r.valueOrPaid,
+				r.movementOrRemaining,
+				r.employeeName,
+				r.userName,
+				r.businessDate,
+				r.profit,
+				r.barcode,
+				r.displayId,
+				r.invoiceNumber,
+				r.branchName,
+				r.cashboxName,
+				r.notes,
+				r.discount,
+				`${r.profitPercent}%`
+			]);
+			rows.push([
+				"الإجمالي",
+				sec.totals.quantity,
+				"",
+				"",
+				sec.totals.priceOrTotal ?? "",
+				sec.totals.valueOrPaid,
+				sec.totals.remaining ?? "",
+				"",
+				"",
+				"",
+				sec.totals.profit,
+				"",
+				"",
+				"",
+				"",
+				"",
+				"",
+				sec.totals.discount,
+				`${sec.totals.profitPercent}%`
+			]);
+		}
+		if (sumToExport) {
+			rows.push([]);
+			rows.push([
+				"رصيد الدرج",
+				sumToExport.drawerBalance,
+				"رصيد التقرير",
+				sumToExport.reportBalance,
+				"مرحل من الأمس",
+				sumToExport.carriedFromYesterday,
+				"ربح التقرير",
+				sumToExport.reportProfit
+			]);
+		}
+		exportToExcel(`AWLAD_SELIM_${reportType}_${todayYmd()}`, headers, rows);
+	};
+	const handleExportPdf = async () => {
+		const sourceReport = exportScope === "all" && (inlineTableSearch || reportType !== "all") ? await fetchComprehensiveReport({ reportType: "all" }) : null;
+		const secsToExport = sourceReport ? sourceReport.sections : processedSections;
+		const sumToExport = sourceReport ? sourceReport.summary : reportData?.summary;
+		const headers = TABLE_COLUMNS.map((c) => c.label);
+		const rows = [];
+		for (const sec of secsToExport) {
+			rows.push([
+				`[ ${sec.title} ]`,
+				sec.totals.quantity,
+				"",
+				"",
+				sec.totals.priceOrTotal ?? "-",
+				sec.totals.valueOrPaid,
+				sec.totals.remaining ?? "-",
+				"",
+				sec.totals.profit,
+				"",
+				"",
+				"",
+				sec.totals.discount
+			]);
+			for (const r of sec.rows) rows.push([
+				r.operationLabel,
+				r.quantity,
+				r.unit,
+				r.actualDateTime,
+				fmtMoney(r.priceOrTotal),
+				fmtMoney(r.valueOrPaid),
+				typeof r.movementOrRemaining === "number" ? fmtMoney(r.movementOrRemaining) : r.movementOrRemaining,
+				r.userName,
+				fmtMoney(r.profit),
+				r.invoiceNumber,
+				r.branchName,
+				r.cashboxName,
+				fmtMoney(r.discount)
+			]);
+		}
+		exportTableToPdf(`تقرير ${sourceReport ? "الكل (شامل)" : activeReportOption.label}`, headers, rows, {
+			companyName: settings.companyName || "AWLAD SELIM — أولاد سليم",
+			subtitle: "نظام التقارير الشامل والموحد",
+			dateRangeText: `من: ${dateFrom || "البداية"} إلى: ${useDateTo ? dateTo : "الآن"}`,
+			summaryPairs: sumToExport ? [
+				{
+					label: "رصيد الدرج",
+					value: `${fmtMoney(sumToExport.drawerBalance)} ${currency}`
+				},
+				{
+					label: "رصيد التقرير",
+					value: `${fmtMoney(sumToExport.reportBalance)} ${currency}`
+				},
+				{
+					label: "مرحل من الأمس",
+					value: `${fmtMoney(sumToExport.carriedFromYesterday)} ${currency}`
+				},
+				{
+					label: "ربح التقرير",
+					value: `${fmtMoney(sumToExport.reportProfit)} ${currency}`,
+					highlight: true
+				}
+			] : []
+		});
+	};
+	const handleOpenThermalOrA4Print = () => {
+		const items = processedSections.flatMap((sec) => sec.rows.map((r) => ({
+			name: `[${sec.title}] ${r.operationLabel}`,
+			unit: r.unit,
+			quantity: r.quantity,
+			price: r.priceOrTotal,
+			discount: r.discount,
+			total: r.valueOrPaid
+		})));
+		setPrintModalData({
+			title: `تقرير ${activeReportOption.label}`,
+			docNumber: `RPT-${todayYmd().replace(/-/g, "")}`,
+			docType: "كشف حساب",
+			date: `${dateFrom || "البداية"} → ${useDateTo ? dateTo : "الآن"}`,
+			partyName: `تقرير: ${activeReportOption.label}`,
+			items,
+			grandTotal: reportData?.summary.reportBalance ?? 0,
+			paidAmount: reportData?.summary.drawerBalance ?? 0,
+			remainingAmount: reportData?.summary.reportProfit ?? 0,
+			notes: `مرحل من الأمس: ${fmtMoney(reportData?.summary.carriedFromYesterday)} ${currency} | ربح التقرير: ${fmtMoney(reportData?.summary.reportProfit)} ${currency}`,
+			tableHeaders: [
+				"م",
+				"القسم / العملية",
+				"الوحدة",
+				"الكمية",
+				"السعر",
+				"الخصم",
+				"القيمة"
+			]
+		});
+	};
+	const handlePrintSourceDoc = (src) => {
+		const d = src.document || {};
+		setPrintModalData({
+			title: src.title,
+			docNumber: d.invoiceNumber || d.returnNumber || d.docNumber || d.transactionNumber || "-",
+			docType: src.docType === "sales_invoice" ? "فاتورة مبيعات" : src.docType === "purchase_invoice" ? "فاتورة مشتريات" : src.docType === "sales_return" ? "مرتجع مبيعات" : src.docType === "purchase_return" ? "مرتجع مشتريات" : "سند قبض",
+			date: d.actualDateTime || d.date || todayYmd(),
+			partyName: d.customerName || d.supplierName || d.partyName || d.relatedEntityName,
+			warehouseName: d.warehouseName,
+			representativeName: d.representativeName,
+			items: Array.isArray(d.items) ? d.items.map((it) => ({
+				name: it.productName,
+				unit: it.unit,
+				quantity: Number(it.quantity || 0),
+				price: Number(it.unitPrice || it.unitCost || 0),
+				discount: Number(it.discount || 0),
+				total: Number(it.total || it.totalLoss || 0)
+			})) : void 0,
+			subtotal: d.subtotal,
+			discountTotal: d.discountTotal,
+			grandTotal: Number(d.grandTotal ?? d.amount ?? 0),
+			paidAmount: d.paidAmount,
+			remainingAmount: d.remainingAmount,
+			notes: d.notes || d.description || d.reason
+		});
+	};
+	const canExport = hasPermission("canExport");
+	const canPrint = hasPermission("canPrint");
+	const filterOpts = reportData?.filterOptions;
+	const summary = reportData?.summary;
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+		className: "flex flex-col gap-2.5 text-slate-900 select-none sm:select-text",
+		dir: "rtl",
+		children: [
+			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "bg-white border border-slate-300 rounded-xl p-2.5 shadow-2xs flex flex-wrap items-center justify-between gap-2",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flex flex-wrap items-center gap-1.5",
 					children: [
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
-							onClick: handleExportExcel,
-							className: "flex items-center gap-1.5 px-3.5 py-2 border border-slate-300 rounded-xl text-xs font-bold hover:bg-slate-50 text-slate-700 cursor-pointer",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Download, { className: "w-4 h-4 text-emerald-600" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "تصدير Excel" })]
+							type: "button",
+							onClick: () => setViewMode("unified_grid"),
+							className: `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors cursor-pointer ${viewMode === "unified_grid" ? "bg-[#22b14c] text-white shadow-xs" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`,
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Table2, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "نظام التقارير التفصيلية الموحد" })]
 						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+							type: "button",
+							onClick: () => setViewMode("item_lifecycle"),
+							className: `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors cursor-pointer ${viewMode === "item_lifecycle" ? "bg-slate-800 text-white shadow-xs" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`,
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(History, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "تاريخ الصنف والأرباح والخسائر" })]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "h-5 w-px bg-slate-300 mx-1 hidden sm:block" }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							className: "flex flex-wrap items-center gap-1 text-[11px]",
+							children: [
+								{
+									id: "today",
+									label: "تقرير اليوم"
+								},
+								{
+									id: "this_month",
+									label: "الشهر الحالي"
+								},
+								{
+									id: "prev_month",
+									label: "الشهر السابق"
+								},
+								{
+									id: "this_year",
+									label: "السنة الحالية"
+								},
+								{
+									id: "prev_year",
+									label: "السنة السابقة"
+								},
+								{
+									id: "all_time",
+									label: "كل الفترات"
+								}
+							].map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								type: "button",
+								onClick: () => applyPeriodPreset(p.id),
+								className: `px-2.5 py-1 rounded-md font-bold border transition-colors cursor-pointer ${periodPreset === p.id ? "bg-emerald-700 text-white border-emerald-700" : "bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100"}`,
+								children: p.label
+							}, p.id))
+						})
+					]
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flex flex-wrap items-center gap-1.5",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+							value: exportScope,
+							onChange: (e) => setExportScope(e.target.value),
+							"aria-label": "نطاق التصدير",
+							className: "h-8 px-2 text-[11px] font-bold bg-slate-50 border border-slate-300 rounded-md text-slate-700",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: "filtered",
+								children: "تصدير المعروض المفلتر"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: "all",
+								children: "تصدير كامل التقرير"
+							})]
+						}),
+						canPrint && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+							type: "button",
+							onClick: handleOpenThermalOrA4Print,
+							className: "flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-slate-700 hover:bg-slate-800 text-white text-[11px] font-bold cursor-pointer",
+							title: "طباعة A4 أو حراري 80/58 مم",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Printer, { className: "w-3.5 h-3.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "طباعة" })]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+							type: "button",
 							onClick: handleExportPdf,
-							className: "flex items-center gap-1.5 px-3.5 py-2 border border-red-200 bg-red-50 rounded-xl text-xs font-bold hover:bg-red-100 text-red-800 cursor-pointer",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FileDown, { className: "w-4 h-4 text-red-700" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "تصدير PDF" })]
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
-							onClick: handlePrintCurrentReport,
-							className: "flex items-center gap-1.5 px-4 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl text-xs font-black shadow-md cursor-pointer",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Printer, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "طباعة التقرير (A4 / حراري)" })]
+							className: "flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-blue-700 hover:bg-blue-800 text-white text-[11px] font-bold cursor-pointer",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FileText, { className: "w-3.5 h-3.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "PDF" })]
+						})] }),
+						canExport && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+							type: "button",
+							onClick: handleExportExcel,
+							className: "flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold cursor-pointer",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FileSpreadsheet, { className: "w-3.5 h-3.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Excel" })]
 						})
 					]
 				})]
 			}),
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-				className: "bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs",
-				children: [
-					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "flex items-center gap-2",
-						children: [
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Calendar, { className: "w-4 h-4 text-slate-500" }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+				className: "bg-[#f4f6f8] border border-slate-300 rounded-xl p-2.5 shadow-2xs space-y-2",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flex flex-wrap items-center gap-2 text-xs",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-1.5",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
 								className: "font-bold text-slate-700",
-								children: "الفترة الزمنية:"
-							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
-								value: dateFilter,
-								onChange: (e) => setDateFilter(e.target.value),
-								className: "bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 font-bold",
+								children: "الفرع"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+								value: branchId,
+								onChange: (e) => setBranchId(e.target.value),
+								className: "h-8 min-w-[125px] bg-white border border-slate-300 rounded px-2 text-xs font-semibold focus:border-emerald-600 focus:outline-none",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: "all",
+									children: "الكل"
+								}), (filterOpts?.branches || []).map((b) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: b.id,
+									children: b.name
+								}, b.id))]
+							})]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-1",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+									className: "font-bold text-slate-700 flex items-center gap-1",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Calendar, { className: "w-3.5 h-3.5 text-slate-500" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "من" })]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									onClick: () => {
+										setPeriodPreset("custom");
+										setDateFrom((prev) => addDaysYmd(prev || todayYmd(), -1));
+									},
+									className: "h-8 w-6 bg-white border border-slate-300 rounded hover:bg-slate-100 font-bold cursor-pointer",
+									title: "يوم سابق",
+									children: "-"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+									type: "date",
+									value: dateFrom,
+									onChange: (e) => {
+										setPeriodPreset("custom");
+										setDateFrom(e.target.value);
+									},
+									className: "h-8 bg-white border border-slate-300 rounded px-2 text-xs font-mono"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									onClick: () => {
+										setPeriodPreset("custom");
+										setDateFrom((prev) => addDaysYmd(prev || todayYmd(), 1));
+									},
+									className: "h-8 w-6 bg-white border border-slate-300 rounded hover:bg-slate-100 font-bold cursor-pointer",
+									title: "يوم تالٍ",
+									children: "+"
+								})
+							]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-1.5",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+								className: "flex items-center gap-1 font-bold text-slate-700 cursor-pointer",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+									type: "checkbox",
+									checked: useDateTo,
+									onChange: (e) => {
+										setPeriodPreset("custom");
+										setUseDateTo(e.target.checked);
+									},
+									className: "accent-emerald-600 w-3.5 h-3.5"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "إلى" })]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								type: "date",
+								disabled: !useDateTo,
+								value: dateTo,
+								onChange: (e) => {
+									setPeriodPreset("custom");
+									setDateTo(e.target.value);
+								},
+								className: "h-8 bg-white border border-slate-300 rounded px-2 text-xs font-mono disabled:opacity-45"
+							})]
+						}),
+						filterVisibility.showEmployee && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-1",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+								className: "font-bold text-slate-700",
+								children: "الموظف"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+								value: employeeId,
+								onChange: (e) => setEmployeeId(e.target.value),
+								className: "h-8 min-w-[115px] bg-white border border-slate-300 rounded px-2 text-xs font-semibold",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: "all",
+									children: "الكل"
+								}), (filterOpts?.employees || []).map((emp) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: emp.id,
+									children: emp.name
+								}, emp.id))]
+							})]
+						}),
+						filterVisibility.showCashbox && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-1",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+								className: "font-bold text-slate-700",
+								children: "الخزنة"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+								value: cashboxId,
+								onChange: (e) => setCashboxId(e.target.value),
+								className: "h-8 min-w-[115px] bg-white border border-slate-300 rounded px-2 text-xs font-semibold",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: "all",
+									children: "الكل"
+								}), (filterOpts?.cashboxes || []).map((cb) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: cb.id,
+									children: cb.name
+								}, cb.id))]
+							})]
+						}),
+						filterVisibility.showUser && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-1",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+								className: "font-bold text-slate-700",
+								children: "المستخدم"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+								value: userId,
+								onChange: (e) => setUserId(e.target.value),
+								className: "h-8 min-w-[115px] bg-white border border-slate-300 rounded px-2 text-xs font-semibold",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: "all",
+									children: "الكل"
+								}), (filterOpts?.users || []).map((u) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: u.id,
+									children: u.fullName
+								}, u.id))]
+							})]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-1.5 mr-auto",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+									type: "text",
+									value: search,
+									onChange: (e) => setSearch(e.target.value),
+									onKeyDown: (e) => e.key === "Enter" && loadReport(),
+									placeholder: "بحث شامل...",
+									className: "h-8 w-36 sm:w-44 bg-white border border-slate-300 rounded px-2.5 text-xs focus:border-emerald-600 focus:outline-none"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: () => loadReport(),
+									className: "h-8 px-3.5 rounded bg-[#22b14c] hover:bg-[#1a963f] text-white font-extrabold text-xs flex items-center gap-1 shadow-2xs cursor-pointer",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Search, { className: "w-3.5 h-3.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "بحث" })]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: () => setShowMoreFilters((p) => !p),
+									className: "h-8 px-2.5 rounded bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center gap-1 cursor-pointer",
+									title: "الفلاتر التفصيلية",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(SlidersHorizontal, { className: "w-3.5 h-3.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "hidden md:inline",
+										children: "فلاتر"
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									onClick: handleResetFilters,
+									className: "h-8 px-2.5 rounded bg-white border border-slate-300 hover:bg-rose-50 hover:text-rose-700 text-slate-700 font-bold text-xs flex items-center gap-1 cursor-pointer",
+									title: "عرض الكل / مسح الفلاتر",
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RotateCcw, { className: "w-3.5 h-3.5" })
+								})
+							]
+						})
+					]
+				}), showMoreFilters && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "pt-2 border-t border-slate-200/80 flex flex-wrap items-center gap-2 text-xs",
+					children: [
+						filterVisibility.showWarehouse && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-1",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+								className: "font-bold text-slate-600",
+								children: "المخزن"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+								value: warehouseId,
+								onChange: (e) => setWarehouseId(e.target.value),
+								className: "h-7 min-w-[115px] bg-white border border-slate-300 rounded px-2 text-xs",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: "all",
+									children: "الكل"
+								}), (filterOpts?.warehouses || []).map((w) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: w.id,
+									children: w.name
+								}, w.id))]
+							})]
+						}),
+						filterVisibility.showProductFilters && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center gap-1",
 								children: [
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
-										value: "thisMonth",
-										children: "الشهر الحالي (افتراضي: 1 من الشهر حتى اليوم)"
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+										className: "font-bold text-slate-600",
+										children: "الصنف"
 									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
-										value: "today",
-										children: "اليوم"
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+										value: productId,
+										onChange: (e) => setProductId(e.target.value),
+										className: "h-7 min-w-[150px] max-w-[220px] bg-white border border-slate-300 rounded px-2 text-xs",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+											value: "all",
+											children: "الكل"
+										}), (filterOpts?.products || []).map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", {
+											value: p.id,
+											children: [
+												p.name,
+												" (",
+												p.code,
+												")"
+											]
+										}, p.id))]
 									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
-										value: "yesterday",
-										children: "أمس"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
-										value: "7days",
-										children: "آخر 7 أيام"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
-										value: "prevMonth",
-										children: "الشهر السابق"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
-										value: "thisYear",
-										children: "السنة الحالية"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
-										value: "custom",
-										children: "فترة مخصصة"
+									productId !== "all" && viewMode === "unified_grid" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+										type: "button",
+										onClick: () => setViewMode("item_lifecycle"),
+										className: "h-7 px-2 rounded bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold cursor-pointer",
+										children: "تاريخ وربح الصنف"
 									})
 								]
-							})
-						]
-					}),
-					dateFilter === "custom" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "flex items-center gap-2",
-						children: [
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "من:" }),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
-								type: "date",
-								value: customStartDate,
-								onChange: (e) => setCustomStartDate(e.target.value),
-								className: "border rounded-lg p-1 font-mono"
 							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "إلى:" }),
 							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
-								type: "date",
-								value: customEndDate,
-								onChange: (e) => setCustomEndDate(e.target.value),
-								className: "border rounded-lg p-1 font-mono"
+								type: "text",
+								value: productSearch,
+								onChange: (e) => setProductSearch(e.target.value),
+								placeholder: "بحث باسم الصنف...",
+								className: "h-7 w-32 bg-white border border-slate-300 rounded px-2 text-xs"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								type: "text",
+								value: barcode,
+								onChange: (e) => setBarcode(e.target.value),
+								placeholder: "الباركود...",
+								className: "h-7 w-28 bg-white border border-slate-300 rounded px-2 text-xs font-mono"
+							})
+						] }),
+						filterVisibility.showCustomer && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-1",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+								className: "font-bold text-slate-600",
+								children: "العميل"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+								value: customerId,
+								onChange: (e) => setCustomerId(e.target.value),
+								className: "h-7 min-w-[125px] max-w-[180px] bg-white border border-slate-300 rounded px-2 text-xs",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: "all",
+									children: "الكل"
+								}), (filterOpts?.customers || []).map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: c.id,
+									children: c.name
+								}, c.id))]
+							})]
+						}),
+						filterVisibility.showSupplier && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-1",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+								className: "font-bold text-slate-600",
+								children: "المورد"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+								value: supplierId,
+								onChange: (e) => setSupplierId(e.target.value),
+								className: "h-7 min-w-[125px] max-w-[180px] bg-white border border-slate-300 rounded px-2 text-xs",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: "all",
+									children: "الكل"
+								}), (filterOpts?.suppliers || []).map((s) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: s.id,
+									children: s.name
+								}, s.id))]
+							})]
+						}),
+						filterVisibility.showRepresentative && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-1",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+								className: "font-bold text-slate-600",
+								children: "المندوب"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+								value: representativeId,
+								onChange: (e) => setRepresentativeId(e.target.value),
+								className: "h-7 min-w-[115px] bg-white border border-slate-300 rounded px-2 text-xs",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: "all",
+									children: "الكل"
+								}), (filterOpts?.representatives || []).map((r) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: r.id,
+									children: r.name
+								}, r.id))]
+							})]
+						}),
+						filterVisibility.showInvoiceNumber && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+							type: "text",
+							value: invoiceNumber,
+							onChange: (e) => setInvoiceNumber(e.target.value),
+							placeholder: "رقم الفاتورة...",
+							className: "h-7 w-28 bg-white border border-slate-300 rounded px-2 text-xs font-mono"
+						}),
+						filterVisibility.showRecordId && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+							type: "text",
+							value: recordId,
+							onChange: (e) => setRecordId(e.target.value),
+							placeholder: "الرقم التعريفي ID...",
+							className: "h-7 w-28 bg-white border border-slate-300 rounded px-2 text-xs font-mono"
+						})
+					]
+				})]
+			}),
+			errorMsg && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				className: "p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold",
+				children: errorMsg
+			}),
+			viewMode === "item_lifecycle" && reportData ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ItemLifecycleAndPnlPanel, {
+				lifecycle: reportData.itemLifecycle,
+				selectedPnl: reportData.itemPnl.selectedItem,
+				pnlItems: reportData.itemPnl.items,
+				portfolioTotals: reportData.itemPnl.portfolioTotals,
+				currency,
+				onSelectProduct: (pid) => setProductId(pid),
+				onInspectDocument: handleInspectDocument
+			}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "bg-white border border-slate-400 rounded-md overflow-hidden shadow-xs",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "bg-[#22b14c] text-white px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs font-extrabold",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "flex items-center gap-3",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: ["عرض — ", activeReportOption.label] }),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+								className: "bg-white/20 px-2 py-0.5 rounded font-mono text-[11px]",
+								children: [processedSections.reduce((s, sec) => s + sec.rows.length, 0), " حركة"]
+							}),
+							isLoading && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "text-[11px] opacity-90",
+								children: "جاري التحديث..."
 							})
 						]
-					}),
-					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "font-mono text-[11px] text-slate-500 font-bold",
-						children: [
-							"الفترة الفعلية: ",
-							dateRange.startStr,
-							" ⬅ ",
-							dateRange.endStr
-						]
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+						className: "flex items-center gap-2",
+						children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+							type: "text",
+							value: inlineTableSearch,
+							onChange: (e) => setInlineTableSearch(e.target.value),
+							placeholder: "تصفية سريعة داخل الجدول...",
+							className: "h-6 px-2 rounded bg-white text-slate-900 placeholder-slate-400 text-[11px] font-normal w-44 focus:outline-none"
+						})
+					})]
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					className: "overflow-auto max-h-[54vh] bg-white",
+					children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
+						className: "w-full border-collapse text-[11.5px] min-w-[1680px]",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", {
+							className: "sticky top-0 z-20 bg-[#eef1f4] text-slate-800 border-b-2 border-slate-400",
+							children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tr", { children: TABLE_COLUMNS.map((col) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
+								onClick: () => handleSort(col.key),
+								className: `px-2 py-2 border-l border-slate-300 font-extrabold whitespace-nowrap cursor-pointer hover:bg-slate-200/70 transition-colors ${col.align === "center" ? "text-center" : "text-right"}`,
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+									className: "inline-flex items-center gap-1",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: col.label }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ArrowUpDown, { className: `w-3 h-3 ${sortCol === col.key ? "text-emerald-700" : "text-slate-400"}` })]
+								})
+							}, col.key)) })
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tbody", { children: [processedSections.length === 0 && !isLoading && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tr", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+							colSpan: 19,
+							className: "p-10 text-center text-slate-500 font-bold text-sm",
+							children: "لا توجد حركات مطابقة لمعايير البحث والتصفية الحالية."
+						}) }), processedSections.map((section) => {
+							const headerBg = section.theme === "slate" ? "bg-[#4f5d6b] text-white" : "bg-[#8d9973] text-white";
+							return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_react.Fragment, { children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("tr", {
+									className: `${headerBg} font-extrabold text-xs`,
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+										colSpan: 19,
+										className: "px-3 py-1.5 border-y border-slate-400",
+										children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "flex items-center justify-between",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: section.title }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+												className: "text-[11px] opacity-90 font-mono",
+												children: [
+													"(",
+													section.rows.length,
+													")"
+												]
+											})]
+										})
+									})
+								}),
+								section.isInvoiceLayout && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
+									className: "bg-[#f1f3f5] text-slate-700 font-bold text-[11px] border-b border-slate-300",
+									children: [
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { className: "px-2 py-1 border-l border-slate-300" }),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { className: "px-2 py-1 border-l border-slate-300" }),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { className: "px-2 py-1 border-l border-slate-300" }),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { className: "px-2 py-1 border-l border-slate-300" }),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "px-2 py-1 border-l border-slate-300 text-center bg-slate-200/70",
+											children: "اجمالى"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "px-2 py-1 border-l border-slate-300 text-center bg-slate-200/70",
+											children: "مدفوع"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "px-2 py-1 border-l border-slate-300 text-center bg-slate-200/70",
+											children: "آجل"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											colSpan: 12,
+											className: "px-2 py-1"
+										})
+									]
+								}),
+								section.rows.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tr", {
+									className: "bg-slate-50 text-slate-400",
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
+										colSpan: 19,
+										className: "px-3 py-3 text-center text-xs",
+										children: [
+											"لا توجد سجلات في قسم (",
+											section.title,
+											") ضمن هذه الفترة"
+										]
+									})
+								}) : section.rows.map((r) => {
+									const rowBg = r.rowTone === "invoice_blue" ? "bg-[#e8eff8] hover:bg-[#d8e5f6]" : r.rowTone === "warning_rose" ? "bg-[#fff5f6] hover:bg-[#ffe8eb]" : "bg-white hover:bg-slate-50";
+									const valueCellHighlight = section.cashHighlightCol ? "bg-[#dff2d8] font-black text-emerald-900" : "font-bold text-slate-900";
+									return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
+										onClick: () => handleInspectDocument(r.docType, r.docId),
+										title: "اضغط لعرض المستند الأصلي والتدقيق",
+										className: `${rowBg} border-b border-slate-200 transition-colors cursor-pointer`,
+										children: [
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "px-2 py-1.5 border-l border-slate-200 font-bold text-slate-900 whitespace-nowrap",
+												children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+													className: "inline-flex items-center gap-1",
+													children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Receipt, { className: "w-3 h-3 text-slate-400 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: r.operationLabel })]
+												})
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "px-2 py-1.5 border-l border-slate-200 text-center font-mono font-bold whitespace-nowrap",
+												children: fmtNum(r.quantity)
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "px-2 py-1.5 border-l border-slate-200 text-center whitespace-nowrap",
+												children: r.unit
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "px-2 py-1.5 border-l border-slate-200 text-center font-mono text-[11px] whitespace-nowrap text-slate-700",
+												children: r.actualDateTime
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "px-2 py-1.5 border-l border-slate-200 text-center font-mono whitespace-nowrap",
+												children: fmtMoney(r.priceOrTotal)
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: `px-2 py-1.5 border-l border-slate-200 text-center font-mono whitespace-nowrap ${valueCellHighlight}`,
+												children: fmtMoney(r.valueOrPaid)
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "px-2 py-1.5 border-l border-slate-200 whitespace-nowrap text-slate-700",
+												children: typeof r.movementOrRemaining === "number" ? fmtMoney(r.movementOrRemaining) : r.movementOrRemaining
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "px-2 py-1.5 border-l border-slate-200 text-center whitespace-nowrap",
+												children: r.employeeName || "-"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "px-2 py-1.5 border-l border-slate-200 text-center whitespace-nowrap",
+												children: r.userName || "-"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "px-2 py-1.5 border-l border-slate-200 text-center font-mono whitespace-nowrap",
+												children: r.businessDate
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: `px-2 py-1.5 border-l border-slate-200 text-center font-mono font-bold whitespace-nowrap ${r.profit > 0 ? "text-emerald-700" : r.profit < 0 ? "text-rose-700" : "text-slate-500"}`,
+												children: fmtMoney(r.profit)
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "px-2 py-1.5 border-l border-slate-200 text-center font-mono whitespace-nowrap text-slate-600",
+												children: r.barcode || "-"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "px-2 py-1.5 border-l border-slate-200 text-center font-mono whitespace-nowrap text-slate-600",
+												children: r.displayId
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "px-2 py-1.5 border-l border-slate-200 text-center font-mono font-bold text-blue-800 whitespace-nowrap",
+												children: r.invoiceNumber || "-"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "px-2 py-1.5 border-l border-slate-200 text-center whitespace-nowrap",
+												children: r.branchName
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "px-2 py-1.5 border-l border-slate-200 text-center whitespace-nowrap",
+												children: r.cashboxName
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "px-2 py-1.5 border-l border-slate-200 whitespace-nowrap text-slate-600",
+												children: r.notes || ""
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "px-2 py-1.5 border-l border-slate-200 text-center font-mono whitespace-nowrap text-amber-800",
+												children: r.discount ? fmtMoney(r.discount) : "0"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+												className: "px-2 py-1.5 text-center font-mono whitespace-nowrap font-bold text-slate-700",
+												children: r.profitPercent !== 0 ? `(${r.profitPercent}%)` : "(0%)"
+											})
+										]
+									}, r.rowId);
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
+									className: "bg-[#e3e7ec] border-y-2 border-slate-400 font-black text-slate-900",
+									children: [
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
+											className: "px-2 py-1.5 border-l border-slate-300",
+											children: [
+												"الإجمالي (",
+												section.totals.count,
+												")"
+											]
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "px-2 py-1.5 border-l border-slate-300 text-center font-mono",
+											children: fmtNum(section.totals.quantity)
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { className: "px-2 py-1.5 border-l border-slate-300" }),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { className: "px-2 py-1.5 border-l border-slate-300" }),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "px-2 py-1.5 border-l border-slate-300 text-center font-mono",
+											children: section.totals.priceOrTotal !== null ? fmtMoney(section.totals.priceOrTotal) : ""
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "px-2 py-1.5 border-l border-slate-300 text-center font-mono bg-[#d4e8cb]",
+											children: fmtMoney(section.totals.valueOrPaid)
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "px-2 py-1.5 border-l border-slate-300 text-center font-mono",
+											children: section.totals.remaining !== null ? fmtMoney(section.totals.remaining) : ""
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											colSpan: 3,
+											className: "px-2 py-1.5 border-l border-slate-300"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: `px-2 py-1.5 border-l border-slate-300 text-center font-mono ${section.totals.profit >= 0 ? "text-emerald-800" : "text-rose-700"}`,
+											children: fmtMoney(section.totals.profit)
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											colSpan: 6,
+											className: "px-2 py-1.5 border-l border-slate-300"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
+											className: "px-2 py-1.5 border-l border-slate-300 text-center font-mono",
+											children: fmtMoney(section.totals.discount)
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
+											className: "px-2 py-1.5 text-center font-mono",
+											children: [
+												"(",
+												section.totals.profitPercent,
+												"%)"
+											]
+										})
+									]
+								})
+							] }, section.key);
+						})] })]
 					})
-				]
-			}),
-			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-				className: "grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2 text-xs font-bold",
-				children: [
-					{
-						key: "pnl",
-						label: "الأرباح والخسائر"
-					},
-					{
-						key: "sales",
-						label: "تقرير المبيعات"
-					},
-					{
-						key: "purchases",
-						label: "تقرير المشتريات"
-					},
-					{
-						key: "customer_debts",
-						label: "ديون العملاء"
-					},
-					{
-						key: "supplier_debts",
-						label: "أرصدة الموردين"
-					},
-					{
-						key: "rep_transfers",
-						label: "تحويلات المناديب بالنصف"
-					},
-					{
-						key: "stock_counts",
-						label: "تقارير جرد المخزون"
-					},
-					{
-						key: "stock_transfers",
-						label: "تقارير تحويلات الأصناف"
-					},
-					...canSeePersonalReport ? [{
-						key: "personal_accounts",
-						label: "الحسابات الشخصية للملاك"
-					}] : []
-				].map((r) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-					onClick: () => setSelectedReport(r.key),
-					className: `p-3 rounded-xl border text-center transition-all cursor-pointer ${selectedReport === r.key ? "bg-blue-900 text-white border-blue-900 shadow-md font-black" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"}`,
-					children: r.label
-				}, r.key))
+				})]
 			}),
 			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-				className: "bg-white rounded-2xl border border-slate-200 shadow-xs p-6",
-				children: [
-					selectedReport === "pnl" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "space-y-6",
-						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h3", {
-							className: "text-base font-black text-slate-900 border-b pb-3",
-							children: [
-								"قائمة الدخل والأرباح المقدرة للفترة (",
-								dateRange.startStr,
-								" - ",
-								dateRange.endStr,
-								")"
-							]
-						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "grid grid-cols-1 md:grid-cols-4 gap-4",
-							children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "p-4 rounded-xl bg-blue-50 border border-blue-200",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-										className: "text-xs font-bold text-slate-600 block",
-										children: "إجمالي المبيعات"
-									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-										className: "text-lg font-black text-blue-950 font-mono mt-1 block",
-										children: [
-											totalSalesVal.toLocaleString(),
-											" ",
-											settings.currency
-										]
-									})]
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "p-4 rounded-xl bg-slate-50 border border-slate-200",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-										className: "text-xs font-bold text-slate-600 block",
-										children: "تكلفة المشتريات"
-									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-										className: "text-lg font-black text-slate-800 font-mono mt-1 block",
-										children: [
-											totalPurchasesVal.toLocaleString(),
-											" ",
-											settings.currency
-										]
-									})]
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "p-4 rounded-xl bg-orange-50 border border-orange-200",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-										className: "text-xs font-bold text-slate-600 block",
-										children: "إجمالي المصروفات"
-									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-										className: "text-lg font-black text-orange-800 font-mono mt-1 block",
-										children: [
-											totalExpensesVal.toLocaleString(),
-											" ",
-											settings.currency
-										]
-									})]
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "p-4 rounded-xl bg-emerald-50 border border-emerald-200",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-										className: "text-xs font-bold text-slate-600 block",
-										children: "صافي الأرباح التقديرية"
-									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-										className: "text-lg font-black text-emerald-800 font-mono mt-1 block",
-										children: [
-											netProfit.toLocaleString(),
-											" ",
-											settings.currency
-										]
-									})]
-								})
-							]
-						})]
-					}),
-					selectedReport === "sales" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h3", {
-						className: "text-sm font-black mb-3",
+				className: "bg-[#eef0f3] border border-slate-400 rounded-xl p-2.5 shadow-sm flex flex-wrap items-center justify-between gap-2.5",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "grid grid-cols-2 sm:grid-cols-4 gap-2 flex-1 min-w-[280px]",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "block text-[11px] font-bold text-slate-600",
+								children: "رصيد الدرج"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+								className: "text-sm sm:text-base font-black font-mono text-slate-900",
+								children: fmtMoney(summary?.drawerBalance)
+							})]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "block text-[11px] font-bold text-slate-600",
+								children: "رصيد التقرير"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+								className: `text-sm sm:text-base font-black font-mono ${(summary?.reportBalance ?? 0) >= 0 ? "text-emerald-700" : "text-rose-700"}`,
+								children: fmtMoney(summary?.reportBalance)
+							})]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "block text-[11px] font-bold text-slate-600",
+								children: "مرحل من الأمس"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+								className: "text-sm sm:text-base font-black font-mono text-blue-900",
+								children: fmtMoney(summary?.carriedFromYesterday)
+							})]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "block text-[11px] font-bold text-slate-600",
+								children: "ربح التقرير"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+								className: `text-sm sm:text-base font-black font-mono ${(summary?.reportProfit ?? 0) >= 0 ? "text-emerald-700" : "text-rose-700"}`,
+								children: [fmtMoney(summary?.reportProfit), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+									className: "text-[10px] text-slate-500 mr-1",
+									children: [
+										"(",
+										summary?.reportProfitPercent ?? 0,
+										"%)"
+									]
+								})]
+							})]
+						})
+					]
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flex items-center gap-2 flex-wrap",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "flex items-center gap-1.5 relative",
+						ref: dropdownRef,
 						children: [
-							"فواتير المبيعات الصادرة خلال الفترة (",
-							periodSales.length,
-							" فاتورة)"
-						]
-					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-						className: "awlad-table-scroll",
-						children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
-							className: "w-full text-right text-xs",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
-								className: "bg-slate-50 font-bold border-b",
-								children: [
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "رقم الفاتورة"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "التاريخ"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "العميل"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5 text-center",
-										children: "الإجمالي"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5 text-center",
-										children: "المدفوع"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5 text-center",
-										children: "المتبقي"
-									})
-								]
-							}) }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tbody", {
-								className: "divide-y",
-								children: periodSales.map((s) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
-									className: "hover:bg-slate-50",
-									children: [
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 font-mono font-bold text-blue-900",
-											children: s.invoiceNumber
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 font-mono",
-											children: s.date
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 font-bold",
-											children: s.customerName
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 text-center font-black",
-											children: s.grandTotal.toLocaleString()
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 text-center text-emerald-700 font-bold",
-											children: s.paidAmount.toLocaleString()
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 text-center text-red-700 font-bold",
-											children: s.remainingAmount.toLocaleString()
-										})
-									]
-								}, s.id))
-							})]
-						})
-					})] }),
-					selectedReport === "customer_debts" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", {
-						className: "text-sm font-black mb-3",
-						children: "تقرير مديونيات وأرصدة العملاء المستحقة"
-					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-						className: "awlad-table-scroll",
-						children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
-							className: "w-full text-right text-xs",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
-								className: "bg-slate-50 font-bold border-b",
-								children: [
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "كود العميل"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "الاسم"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "الهاتف"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "العنوان"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5 text-center",
-										children: "المديونية الحالية للشركة"
-									})
-								]
-							}) }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tbody", {
-								className: "divide-y",
-								children: customers.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
-									className: "hover:bg-slate-50",
-									children: [
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 font-mono font-bold text-blue-900",
-											children: c.code
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 font-bold",
-											children: c.name
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 font-mono",
-											children: c.phone
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 text-slate-600",
-											children: c.address
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
-											className: "p-2.5 text-center font-mono font-black text-red-700",
-											children: [
-												c.currentBalance.toLocaleString(),
-												" ",
-												settings.currency
-											]
-										})
-									]
-								}, c.id))
-							})]
-						})
-					})] }),
-					selectedReport === "rep_transfers" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", {
-						className: "text-sm font-black mb-3",
-						children: "تقرير حركات نظام \"طلب تحويل بالنصف\" للمناديب"
-					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-						className: "awlad-table-scroll",
-						children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
-							className: "w-full text-right text-xs",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
-								className: "bg-slate-50 font-bold border-b",
-								children: [
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "رقم التحويل"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "التاريخ"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "المرسل"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "المستلم"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5 text-center",
-										children: "المبلغ"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "الحالة"
-									})
-								]
-							}) }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tbody", {
-								className: "divide-y",
-								children: repTransfers.map((t) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
-									className: "hover:bg-slate-50",
-									children: [
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 font-mono font-bold text-blue-900",
-											children: t.transferNumber
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 font-mono",
-											children: t.date
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 font-bold",
-											children: t.senderName
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 font-bold",
-											children: t.receiverName
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 text-center font-mono font-black text-blue-950",
-											children: t.amount.toLocaleString()
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 font-bold",
-											children: t.status === "received" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-												className: "text-emerald-700",
-												children: "تم الاستلام وتعديل الأرصدة"
-											}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-												className: "text-amber-700",
-												children: "قيد الاستلام"
-											})
-										})
-									]
-								}, t.id))
-							})]
-						})
-					})] }),
-					selectedReport === "purchases" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h3", {
-						className: "text-sm font-black mb-3",
-						children: [
-							"فواتير المشتريات والتوريدات خلال الفترة (",
-							periodPurchases.length,
-							" فاتورة)"
-						]
-					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-						className: "awlad-table-scroll",
-						children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
-							className: "w-full text-right text-xs",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
-								className: "bg-slate-50 font-bold border-b",
-								children: [
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "رقم الفاتورة"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "التاريخ"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "المورد"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "المستودع"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5 text-center",
-										children: "الإجمالي"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5 text-center",
-										children: "المدفوع"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5 text-center",
-										children: "المتبقي"
-									})
-								]
-							}) }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tbody", {
-								className: "divide-y",
-								children: periodPurchases.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tr", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-									colSpan: 7,
-									className: "p-6 text-center text-slate-400",
-									children: "لا توجد فواتير مشتريات في هذه الفترة."
-								}) }) : periodPurchases.map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
-									className: "hover:bg-slate-50",
-									children: [
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 font-mono font-bold text-blue-900",
-											children: p.invoiceNumber
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 font-mono",
-											children: p.date
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 font-bold",
-											children: p.supplierName
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 text-slate-600",
-											children: p.warehouseName
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 text-center font-black",
-											children: p.grandTotal.toLocaleString()
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 text-center text-emerald-700 font-bold",
-											children: p.paidAmount.toLocaleString()
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 text-center text-red-700 font-bold",
-											children: p.remainingAmount.toLocaleString()
-										})
-									]
-								}, p.id))
-							})]
-						})
-					})] }),
-					selectedReport === "supplier_debts" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", {
-						className: "text-sm font-black mb-3",
-						children: "تقرير أرصدة ومستحقات الموردين"
-					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-						className: "awlad-table-scroll",
-						children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
-							className: "w-full text-right text-xs",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
-								className: "bg-slate-50 font-bold border-b",
-								children: [
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "كود المورد"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "اسم المورد / الشركة"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "الهاتف"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5 text-center",
-										children: "الرصيد الافتتاحي"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5 text-center",
-										children: "الرصيد المستحق للمورد"
-									})
-								]
-							}) }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tbody", {
-								className: "divide-y",
-								children: suppliers.map((s) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
-									className: "hover:bg-slate-50",
-									children: [
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 font-mono font-bold text-blue-900",
-											children: s.code
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 font-bold",
-											children: s.name
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 font-mono",
-											children: s.phone
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 text-center font-mono",
-											children: s.openingBalance.toLocaleString()
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
-											className: "p-2.5 text-center font-mono font-black text-purple-800",
-											children: [
-												s.currentBalance.toLocaleString(),
-												" ",
-												settings.currency
-											]
-										})
-									]
-								}, s.id))
-							})]
-						})
-					})] }),
-					selectedReport === "stock_counts" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h3", {
-						className: "text-sm font-black mb-3",
-						children: [
-							"تقرير جلسات جرد المخزون (",
-							stockCounts.length,
-							")"
-						]
-					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-						className: "awlad-table-scroll",
-						children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
-							className: "w-full text-right text-xs",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
-								className: "bg-slate-50 font-bold border-b",
-								children: [
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "رقم الجرد"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "التاريخ"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "المستودع"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5 text-center",
-										children: "عدد الأصناف"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5 text-center",
-										children: "صافي الفرق"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5 text-center",
-										children: "الحالة"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "أنشئ بواسطة"
-									})
-								]
-							}) }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tbody", {
-								className: "divide-y",
-								children: stockCounts.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tr", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-									colSpan: 7,
-									className: "p-6 text-center text-slate-400",
-									children: "لا توجد جلسات جرد مسجلة."
-								}) }) : stockCounts.map((c) => {
-									const netDiff = (c.items || []).reduce((acc, it) => acc + it.varianceQty, 0);
-									return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
-										className: "hover:bg-slate-50",
-										children: [
-											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-												className: "p-2.5 font-mono font-bold text-blue-900",
-												children: c.countNumber
-											}),
-											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-												className: "p-2.5 font-mono",
-												children: c.date
-											}),
-											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-												className: "p-2.5 font-bold",
-												children: c.warehouseName
-											}),
-											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-												className: "p-2.5 text-center font-mono",
-												children: c.items?.length || 0
-											}),
-											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-												className: `p-2.5 text-center font-mono font-black ${netDiff < 0 ? "text-red-700" : netDiff > 0 ? "text-emerald-700" : "text-slate-600"}`,
-												children: netDiff
-											}),
-											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-												className: "p-2.5 text-center font-bold",
-												children: c.status
-											}),
-											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-												className: "p-2.5",
-												children: c.counterName
-											})
-										]
-									}, c.id);
-								})
-							})]
-						})
-					})] }),
-					selectedReport === "stock_transfers" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h3", {
-						className: "text-sm font-black mb-3",
-						children: [
-							"تقرير أوامر تحويل الأصناف المنظمة (",
-							stockTransferRequests.length,
-							")"
-						]
-					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-						className: "awlad-table-scroll",
-						children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
-							className: "w-full text-right text-xs",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
-								className: "bg-slate-50 font-bold border-b",
-								children: [
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "رقم التحويل"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "التاريخ"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "من مستودع"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "إلى مستودع"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5 text-center",
-										children: "الأصناف"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5 text-center",
-										children: "الحالة"
-									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-										className: "p-2.5",
-										children: "السبب"
-									})
-								]
-							}) }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tbody", {
-								className: "divide-y",
-								children: stockTransferRequests.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tr", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-									colSpan: 7,
-									className: "p-6 text-center text-slate-400",
-									children: "لا توجد أوامر تحويل مسجلة."
-								}) }) : stockTransferRequests.map((t) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
-									className: "hover:bg-slate-50",
-									children: [
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 font-mono font-bold text-blue-900",
-											children: t.transferNumber
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 font-mono",
-											children: t.date
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 font-bold",
-											children: t.sourceWarehouseName
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 font-bold",
-											children: t.targetWarehouseName
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 text-center font-mono",
-											children: t.items?.length || 0
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 text-center font-bold",
-											children: t.status
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											className: "p-2.5 text-slate-600",
-											children: t.reason || "-"
-										})
-									]
-								}, t.id))
-							})]
-						})
-					})] }),
-					selectedReport === "personal_accounts" && canSeePersonalReport && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "space-y-4",
-						children: [
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", {
-								className: "text-sm font-black",
-								children: "ملخص وحركات الحسابات الشخصية للملاك"
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "text-xs font-extrabold text-slate-800 whitespace-nowrap",
+								children: "نوع التقرير"
 							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-								className: "grid grid-cols-1 sm:grid-cols-3 gap-3",
-								children: ownerAccounts.map((acc) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "p-3 rounded-xl bg-slate-50 border border-slate-200",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-										className: "text-xs font-black text-slate-900",
-										children: [
-											acc.ownerName,
-											" — ",
-											acc.accountName
-										]
-									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-										className: "text-base font-black font-mono text-blue-950 mt-1",
-										children: [
-											acc.currentBalance.toLocaleString(),
-											" ",
-											settings.currency
-										]
-									})]
-								}, acc.id))
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+								type: "button",
+								onClick: () => setIsReportDropdownOpen((o) => !o),
+								"aria-haspopup": "listbox",
+								"aria-expanded": isReportDropdownOpen,
+								className: "h-9 min-w-[230px] sm:min-w-[260px] bg-white border border-slate-400 rounded px-3 text-xs font-extrabold text-slate-900 flex items-center justify-between gap-2 shadow-2xs hover:border-emerald-600 cursor-pointer",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "truncate",
+									children: activeReportOption.label
+								}), isReportDropdownOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronUp, { className: "w-4 h-4 text-slate-600" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronDown, { className: "w-4 h-4 text-slate-600" })]
 							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-								className: "awlad-table-scroll",
-								children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("table", {
-									className: "w-full text-right text-xs",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
-										className: "bg-slate-50 font-bold border-b",
-										children: [
-											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-												className: "p-2.5",
-												children: "رقم الحركة"
-											}),
-											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-												className: "p-2.5",
-												children: "التاريخ"
-											}),
-											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-												className: "p-2.5",
-												children: "الحساب"
-											}),
-											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-												className: "p-2.5",
-												children: "النوع"
-											}),
-											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-												className: "p-2.5 text-center",
-												children: "المبلغ"
-											}),
-											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-												className: "p-2.5",
-												children: "الخزينة"
-											}),
-											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("th", {
-												className: "p-2.5",
-												children: "البيان / السبب"
-											})
-										]
-									}) }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tbody", {
-										className: "divide-y",
-										children: ownerTransactions.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tr", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-											colSpan: 7,
-											className: "p-6 text-center text-slate-400",
-											children: "لا توجد معاملات مسجلة في الحسابات الشخصية."
-										}) }) : ownerTransactions.map((tx) => {
-											const acc = ownerAccounts.find((a) => a.id === tx.accountId);
-											return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", {
-												className: "hover:bg-slate-50",
-												children: [
-													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-														className: "p-2.5 font-mono font-bold text-blue-900",
-														children: tx.txNumber
-													}),
-													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-														className: "p-2.5 font-mono",
-														children: tx.date
-													}),
-													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-														className: "p-2.5 font-bold",
-														children: acc ? `${acc.ownerName} - ${acc.accountName}` : tx.accountId
-													}),
-													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-														className: "p-2.5 font-bold",
-														children: tx.type
-													}),
-													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-														className: "p-2.5 text-center font-mono font-black",
-														children: tx.amount.toLocaleString()
-													}),
-													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-														className: "p-2.5 text-slate-600",
-														children: tx.cashboxName || "مستقل (بدون خزينة)"
-													}),
-													/* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", {
-														className: "p-2.5 text-slate-600",
-														children: tx.reason || tx.notes || "-"
-													})
-												]
-											}, tx.id);
-										})
-									})]
+							isReportDropdownOpen && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								role: "listbox",
+								"aria-label": "نوع التقرير",
+								className: "absolute bottom-full mb-1.5 left-0 w-72 max-h-[60vh] overflow-y-auto bg-white border border-slate-400 rounded-lg shadow-2xl z-40 py-1 text-right",
+								children: REPORT_TYPE_OPTIONS.map((opt, idx) => {
+									const prevGroup = idx > 0 ? REPORT_TYPE_OPTIONS[idx - 1].group : opt.group;
+									const showDivider = idx > 0 && opt.group !== prevGroup;
+									const isSelected = opt.key === reportType;
+									return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_react.Fragment, { children: [showDivider && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "my-1 border-t border-slate-300",
+										role: "separator"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+										type: "button",
+										role: "option",
+										"aria-selected": isSelected,
+										"data-report-type": opt.key,
+										onClick: () => {
+											setReportType(opt.key);
+											setViewMode("unified_grid");
+											setIsReportDropdownOpen(false);
+										},
+										className: `w-full text-right px-3 py-1.5 text-xs transition-colors cursor-pointer ${isSelected ? "bg-[#22b14c] text-white font-extrabold" : "text-slate-800 font-semibold hover:bg-emerald-50"}`,
+										children: opt.label
+									})] }, opt.key);
 								})
 							})
 						]
-					})
-				]
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						onClick: () => {
+							setViewMode("unified_grid");
+							loadReport();
+						},
+						className: "h-9 px-4 rounded bg-[#22b14c] hover:bg-[#1a963f] text-white font-black text-xs shadow-xs transition-colors cursor-pointer",
+						children: "عرض التقرير"
+					})]
+				})]
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(SourceDocumentModal, {
+				isOpen: sourceModalOpen,
+				isLoading: sourceLoading,
+				error: sourceError,
+				data: sourceDoc,
+				currency,
+				onClose: () => setSourceModalOpen(false),
+				onPrint: handlePrintSourceDoc
 			}),
 			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(PrintDocumentModal, {
-				isOpen: isPrintModalOpen,
-				onClose: () => setIsPrintModalOpen(false),
-				data: printData
+				isOpen: Boolean(printModalData),
+				onClose: () => setPrintModalData(null),
+				data: printModalData
 			})
 		]
 	});
@@ -57180,6 +64257,10 @@ var UsersManagementView = ({ initialTab }) => {
 		canManageUsers: false,
 		canManageSettings: false,
 		canAllowNegativeInventory: false,
+		canApprove: false,
+		canSend: true,
+		canReceive: true,
+		canReviewRepInvoices: false,
 		canViewPersonalAccounts: false,
 		canCreatePersonalTx: false,
 		canEditPersonalTx: false,
@@ -57190,6 +64271,180 @@ var UsersManagementView = ({ initialTab }) => {
 		canApproveStockTransfer: false,
 		canExecuteStockTransfer: false,
 		canViewDeletedInvoices: false
+	};
+	const ROLE_PERMISSION_PRESETS = {
+		admin: {
+			jobTitle: "مالك / مدير عام",
+			department: "الإدارة العامة",
+			perms: {
+				canView: true,
+				canAdd: true,
+				canEdit: true,
+				canDelete: true,
+				canPrint: true,
+				canExport: true,
+				canViewReports: true,
+				canManageSales: true,
+				canManagePurchases: true,
+				canManageInventory: true,
+				canManageWarehouses: true,
+				canManageCashboxes: true,
+				canManageAccounts: true,
+				canManageReps: true,
+				canManageTransfers: true,
+				canManageEmployees: true,
+				canManageSalaries: true,
+				canManageUsers: true,
+				canManageSettings: true,
+				canApprove: true,
+				canSend: true,
+				canReceive: true,
+				canReviewRepInvoices: true,
+				canViewPersonalAccounts: true,
+				canCreatePersonalTx: true,
+				canEditPersonalTx: true,
+				canApprovePersonalAdjustment: true,
+				canCreateStockCount: true,
+				canApproveStockCount: true,
+				canCreateStockTransfer: true,
+				canApproveStockTransfer: true,
+				canExecuteStockTransfer: true,
+				canViewDeletedInvoices: true
+			}
+		},
+		manager: {
+			jobTitle: "مدير فرع",
+			department: "الإدارة",
+			perms: {
+				canView: true,
+				canAdd: true,
+				canEdit: true,
+				canDelete: false,
+				canPrint: true,
+				canExport: true,
+				canViewReports: true,
+				canManageSales: true,
+				canManagePurchases: true,
+				canManageInventory: true,
+				canManageWarehouses: true,
+				canManageCashboxes: true,
+				canManageAccounts: true,
+				canManageReps: true,
+				canManageTransfers: true,
+				canApprove: true,
+				canSend: true,
+				canReceive: true,
+				canReviewRepInvoices: true,
+				canCreateStockCount: true,
+				canApproveStockCount: true,
+				canCreateStockTransfer: true,
+				canApproveStockTransfer: true,
+				canExecuteStockTransfer: true,
+				canViewDeletedInvoices: true
+			}
+		},
+		accountant: {
+			jobTitle: "محاسب مالي",
+			department: "الحسابات والمالية",
+			perms: {
+				canView: true,
+				canAdd: true,
+				canEdit: true,
+				canPrint: true,
+				canExport: true,
+				canViewReports: true,
+				canManageSales: true,
+				canManagePurchases: true,
+				canManageCashboxes: true,
+				canManageAccounts: true,
+				canManageSalaries: true,
+				canApprove: true,
+				canSend: true,
+				canReceive: true,
+				canReviewRepInvoices: true
+			}
+		},
+		sales: {
+			jobTitle: "موظف مبيعات",
+			department: "المبيعات",
+			perms: {
+				canView: true,
+				canAdd: true,
+				canPrint: true,
+				canManageSales: true,
+				canSend: true,
+				canReceive: true
+			}
+		},
+		purchases: {
+			jobTitle: "موظف مشتريات",
+			department: "المشتريات والموردين",
+			perms: {
+				canView: true,
+				canAdd: true,
+				canEdit: true,
+				canPrint: true,
+				canExport: true,
+				canManagePurchases: true,
+				canManageInventory: true,
+				canManageSales: false,
+				canManageCashboxes: false,
+				canManageUsers: false,
+				canSend: true,
+				canReceive: true
+			}
+		},
+		warehouse: {
+			jobTitle: "أمين مستودع",
+			department: "المخازن والمستودعات",
+			perms: {
+				canView: true,
+				canAdd: true,
+				canPrint: true,
+				canManageInventory: true,
+				canManageWarehouses: true,
+				canManageSales: false,
+				canCreateStockCount: true,
+				canCreateStockTransfer: true,
+				canExecuteStockTransfer: true,
+				canSend: true,
+				canReceive: true
+			}
+		},
+		representative: {
+			jobTitle: "مندوب مبيعات ميداني",
+			department: "المبيعات الخارجية",
+			perms: {
+				canView: true,
+				canAdd: true,
+				canPrint: true,
+				canManageSales: true,
+				canManageTransfers: true,
+				canSend: true,
+				canReceive: true
+			}
+		},
+		customer: {
+			jobTitle: "عميل بوابة الطلبات",
+			department: "العملاء",
+			perms: {
+				canView: true,
+				canAdd: true,
+				canPrint: true,
+				canManageSales: false,
+				canSend: true,
+				canReceive: true
+			}
+		}
+	};
+	const buildPresetPermissions = (targetRole) => {
+		return {
+			...Object.keys(DEFAULT_PERMISSIONS).reduce((acc, key) => {
+				acc[key] = false;
+				return acc;
+			}, {}),
+			...ROLE_PERMISSION_PRESETS[targetRole]?.perms || {}
+		};
 	};
 	const [permissions, setPermissions] = (0, import_react.useState)(DEFAULT_PERMISSIONS);
 	const [resetModalUser, setResetModalUser] = (0, import_react.useState)(null);
@@ -57202,9 +64457,9 @@ var UsersManagementView = ({ initialTab }) => {
 		setPhone("");
 		setRole("sales");
 		setLinkedCustomerId("");
-		setJobTitle("موظف مبيعات");
-		setDepartment("المبيعات");
-		setPermissions(DEFAULT_PERMISSIONS);
+		setJobTitle(ROLE_PERMISSION_PRESETS.sales.jobTitle);
+		setDepartment(ROLE_PERMISSION_PRESETS.sales.department);
+		setPermissions(buildPresetPermissions("sales"));
 		setMustChangePassword(false);
 		setFormError(null);
 		setEditingUser(null);
@@ -57459,7 +64714,7 @@ var UsersManagementView = ({ initialTab }) => {
 										className: "p-3",
 										children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 											className: "px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 text-[10px] font-bold",
-											children: u.role === "admin" ? "مالك / مدير عام" : u.role === "manager" ? "مدير" : u.role === "accountant" ? "محاسب" : u.role === "representative" ? "مندوب مبيعات" : u.role === "customer" ? "عميل - تطبيق العملاء" : u.role === "warehouse" ? "أمين مستودع" : "موظف مبيعات"
+											children: u.role === "admin" ? "مالك / مدير عام" : u.role === "manager" ? "مدير" : u.role === "accountant" ? "محاسب" : u.role === "purchases" ? "موظف مشتريات" : u.role === "representative" ? "مندوب مبيعات" : u.role === "customer" ? "عميل - تطبيق العملاء" : u.role === "warehouse" ? "أمين مستودع" : "موظف مبيعات"
 										})
 									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("td", {
@@ -57661,7 +64916,15 @@ var UsersManagementView = ({ initialTab }) => {
 									children: "نوع الحساب / الدور:"
 								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
 									value: role,
-									onChange: (e) => setRole(e.target.value),
+									onChange: (e) => {
+										const nextRole = e.target.value;
+										setRole(nextRole);
+										if (!editingUser && ROLE_PERMISSION_PRESETS[nextRole]) {
+											setJobTitle(ROLE_PERMISSION_PRESETS[nextRole].jobTitle);
+											setDepartment(ROLE_PERMISSION_PRESETS[nextRole].department);
+											setPermissions(buildPresetPermissions(nextRole));
+										}
+									},
 									className: "w-full border rounded-xl p-2 font-bold",
 									children: [
 										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
@@ -57679,6 +64942,10 @@ var UsersManagementView = ({ initialTab }) => {
 										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
 											value: "sales",
 											children: "موظف مبيعات"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+											value: "purchases",
+											children: "موظف مشتريات"
 										}),
 										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
 											value: "warehouse",
@@ -57830,6 +65097,22 @@ var UsersManagementView = ({ initialTab }) => {
 									{
 										key: "canManageTransfers",
 										label: "نظام طلب تحويل بالنصف"
+									},
+									{
+										key: "canApprove",
+										label: "اعتماد العمليات والمستندات"
+									},
+									{
+										key: "canReviewRepInvoices",
+										label: "مراجعة واعتماد فواتير المناديب"
+									},
+									{
+										key: "canSend",
+										label: "صلاحية إرسال المزامنة Send"
+									},
+									{
+										key: "canReceive",
+										label: "صلاحية استلام المزامنة Receive"
 									},
 									{
 										key: "canManageEmployees",
@@ -61275,6 +68558,370 @@ var PairingAndDevicesPanel = ({ users, activeMode, activeEndpoint, profiles, onS
 		]
 	});
 };
+// src/components/modules/settings/DiagnosticLogsPanel.tsx
+var CATEGORY_LABELS = {
+	app_event: "أحداث التطبيق",
+	network_error: "أخطاء الشبكة والسيرفر",
+	sync_issue: "مشاكل المزامنة",
+	auth: "المصادقة والأجهزة"
+};
+var SEVERITY_META = {
+	error: {
+		label: "خطأ",
+		icon: CircleAlert,
+		badgeCls: "bg-rose-50 text-rose-800 border-rose-200"
+	},
+	warning: {
+		label: "تحذير",
+		icon: TriangleAlert,
+		badgeCls: "bg-amber-50 text-amber-800 border-amber-200"
+	},
+	info: {
+		label: "معلومة",
+		icon: Info,
+		badgeCls: "bg-sky-50 text-sky-800 border-sky-200"
+	}
+};
+function formatDateTimeAr(iso) {
+	try {
+		const d = new Date(iso);
+		if (Number.isNaN(d.getTime())) return iso;
+		return d.toLocaleString("ar-EG", {
+			year: "numeric",
+			month: "2-digit",
+			day: "2-digit",
+			hour: "2-digit",
+			minute: "2-digit",
+			second: "2-digit"
+		});
+	} catch {
+		return iso;
+	}
+}
+var DiagnosticLogsPanel = () => {
+	const [entries, setEntries] = (0, import_react.useState)(() => getDiagnostics());
+	const [categoryFilter, setCategoryFilter] = (0, import_react.useState)("all");
+	const [severityFilter, setSeverityFilter] = (0, import_react.useState)("all");
+	const [searchTerm, setSearchTerm] = (0, import_react.useState)("");
+	const [expandedId, setExpandedId] = (0, import_react.useState)(null);
+	const [copiedNotice, setCopiedNotice] = (0, import_react.useState)(false);
+	const [showClearConfirm, setShowClearConfirm] = (0, import_react.useState)(false);
+	const [actionNotice, setActionNotice] = (0, import_react.useState)(null);
+	(0, import_react.useEffect)(() => {
+		setEntries(getDiagnostics());
+		return subscribeDiagnostics(() => {
+			setEntries(getDiagnostics());
+		});
+	}, []);
+	const stats = (0, import_react.useMemo)(() => {
+		return {
+			total: entries.length,
+			networkErrors: entries.filter((e) => e.category === "network_error").length,
+			syncIssues: entries.filter((e) => e.category === "sync_issue").length,
+			authEvents: entries.filter((e) => e.category === "auth").length,
+			errorCount: entries.filter((e) => e.severity === "error").length
+		};
+	}, [entries]);
+	const filteredEntries = (0, import_react.useMemo)(() => {
+		const q = searchTerm.trim().toLowerCase();
+		return entries.filter((entry) => {
+			if (categoryFilter !== "all" && entry.category !== categoryFilter) return false;
+			if (severityFilter !== "all" && entry.severity !== severityFilter) return false;
+			if (!q) return true;
+			const detailsText = entry.details ? JSON.stringify(entry.details).toLowerCase() : "";
+			return entry.message.toLowerCase().includes(q) || entry.source.toLowerCase().includes(q) || CATEGORY_LABELS[entry.category].toLowerCase().includes(q) || detailsText.includes(q);
+		});
+	}, [
+		entries,
+		categoryFilter,
+		severityFilter,
+		searchTerm
+	]);
+	const handleCopyExport = async () => {
+		try {
+			const payload = formatDiagnosticsExport();
+			await navigator.clipboard.writeText(payload);
+			setCopiedNotice(true);
+			setActionNotice("تم نسخ سجل التشخيص بصيغة JSON (بعد تنقية البيانات الحساسة).");
+			window.setTimeout(() => setCopiedNotice(false), 2500);
+		} catch {
+			setActionNotice("تعذر النسخ التلقائي إلى الحافظة.");
+		}
+	};
+	const handleDownloadExport = async () => {
+		const payload = formatDiagnosticsExport();
+		const res = await saveAndShareDocument({
+			filename: `awlad-selim-diagnostics-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.json`,
+			content: payload,
+			mimeType: "application/json;charset=utf-8",
+			title: "تصدير سجل التشخيص والأخطاء — أولاد سليم"
+		});
+		if (!res.ok) setActionNotice(res.error || "تعذر تصدير ملف التشخيص.");
+	};
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+		className: "space-y-4 text-xs",
+		children: [
+			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "bg-white p-5 rounded-2xl border border-slate-200 space-y-4",
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "space-y-1",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h3", {
+								className: "text-sm font-black text-slate-900 flex items-center gap-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Activity, { className: "w-4 h-4 text-rose-700" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "سجل التشخيص والأخطاء (Diagnostics)" })]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+								className: "text-xs text-slate-500",
+								children: "يعرض أحدث أحداث التطبيق، أخطاء الاتصال بالخادم، ومشاكل المزامنة على هذا الجهاز لتسهيل الدعم الفني (يتم إخفاء التوكنات وكلمات المرور تلقائياً)."
+							})]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex flex-wrap items-center gap-2 shrink-0",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: () => setEntries(getDiagnostics()),
+									className: "inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold cursor-pointer",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(RefreshCw, { className: "w-3.5 h-3.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "تحديث" })]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: handleCopyExport,
+									disabled: entries.length === 0,
+									className: "inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold cursor-pointer disabled:opacity-50",
+									children: [copiedNotice ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Check, { className: "w-3.5 h-3.5 text-emerald-700" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Copy, { className: "w-3.5 h-3.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "نسخ JSON" })]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: handleDownloadExport,
+									disabled: entries.length === 0,
+									className: "inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-900 font-bold cursor-pointer disabled:opacity-50",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Download, { className: "w-3.5 h-3.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "تصدير" })]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: () => setShowClearConfirm(true),
+									disabled: entries.length === 0,
+									className: "inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-800 font-bold cursor-pointer disabled:opacity-50",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { className: "w-3.5 h-3.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "مسح السجل" })]
+								})
+							]
+						})]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "grid grid-cols-2 lg:grid-cols-4 gap-3",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "rounded-xl border border-slate-200 bg-slate-50/70 p-3",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-[11px] font-bold text-slate-500 block",
+									children: "إجمالي الأحداث المسجلة"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "text-lg font-black font-mono tabular-nums text-slate-900",
+									children: stats.total
+								})]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "rounded-xl border border-rose-200 bg-rose-50/60 p-3",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-[11px] font-bold text-rose-700 block",
+									children: "أخطاء الشبكة والسيرفر"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "text-lg font-black font-mono tabular-nums text-rose-900",
+									children: stats.networkErrors
+								})]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "rounded-xl border border-amber-200 bg-amber-50/60 p-3",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-[11px] font-bold text-amber-800 block",
+									children: "مشاكل وتعذر المزامنة"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "text-lg font-black font-mono tabular-nums text-amber-900",
+									children: stats.syncIssues
+								})]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "rounded-xl border border-slate-200 bg-slate-50/70 p-3",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-[11px] font-bold text-slate-600 block",
+									children: "أحداث المصادقة والأجهزة"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "text-lg font-black font-mono tabular-nums text-slate-900",
+									children: stats.authEvents
+								})]
+							})
+						]
+					}),
+					actionNotice && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "p-3 rounded-xl border border-blue-200 bg-blue-50 text-blue-900 font-bold flex items-center justify-between gap-2",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: actionNotice }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							type: "button",
+							onClick: () => setActionNotice(null),
+							className: "underline cursor-pointer",
+							children: "إغلاق"
+						})]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "grid grid-cols-1 sm:grid-cols-3 gap-2.5",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "relative",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+									type: "text",
+									value: searchTerm,
+									onChange: (e) => setSearchTerm(e.target.value),
+									placeholder: "بحث في الرسالة أو المصدر أو التفاصيل...",
+									className: "w-full rounded-xl border border-slate-300 bg-slate-50 pr-9 pl-3 py-2 font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Search, { className: "w-4 h-4 text-slate-400 absolute right-3 top-2.5" })]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+								value: categoryFilter,
+								onChange: (e) => setCategoryFilter(e.target.value),
+								className: "rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 font-bold text-slate-700 focus:bg-white focus:border-blue-600 outline-hidden",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+										value: "all",
+										children: "-- جميع التصنيفات --"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+										value: "network_error",
+										children: "أخطاء الشبكة والسيرفر"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+										value: "sync_issue",
+										children: "مشاكل المزامنة"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+										value: "auth",
+										children: "المصادقة والأجهزة"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+										value: "app_event",
+										children: "أحداث التطبيق"
+									})
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+								value: severityFilter,
+								onChange: (e) => setSeverityFilter(e.target.value),
+								className: "rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 font-bold text-slate-700 focus:bg-white focus:border-blue-600 outline-hidden",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+										value: "all",
+										children: "-- جميع المستويات --"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+										value: "error",
+										children: "خطأ (Error)"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+										value: "warning",
+										children: "تحذير (Warning)"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+										value: "info",
+										children: "معلومة (Info)"
+									})
+								]
+							})
+						]
+					})
+				]
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				className: "bg-white rounded-2xl border border-slate-200 overflow-hidden",
+				children: filteredEntries.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "p-10 text-center text-slate-400 space-y-1.5",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Activity, { className: "w-8 h-8 mx-auto text-slate-300" }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+							className: "font-bold text-slate-600",
+							children: "لا توجد سجلات تشخيص مطابقة"
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+							className: "text-[11px]",
+							children: "تُسجَّل هنا أحداث الشبكة والمزامنة وأحداث النظام الفعلية عند حدوثها على هذا الجهاز."
+						})
+					]
+				}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					className: "divide-y divide-slate-100",
+					children: filteredEntries.map((entry) => {
+						const sev = SEVERITY_META[entry.severity];
+						const SevIcon = sev.icon;
+						const isExpanded = expandedId === entry.id;
+						return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "p-3.5 hover:bg-slate-50/70 transition-colors",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex flex-col sm:flex-row sm:items-center justify-between gap-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-start gap-2.5 min-w-0",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+										className: `inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[11px] font-bold shrink-0 ${sev.badgeCls}`,
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(SevIcon, { className: "w-3.5 h-3.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: sev.label })]
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "min-w-0 space-y-0.5",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+											className: "font-bold text-slate-900 break-words",
+											children: entry.message
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "flex flex-wrap items-center gap-2 text-[11px] text-slate-500",
+											children: [
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+													className: "font-bold text-slate-700",
+													children: CATEGORY_LABELS[entry.category]
+												}),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "•" }),
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+													className: "font-mono text-slate-600",
+													dir: "ltr",
+													children: entry.source
+												})
+											]
+										})]
+									})]
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-center justify-between sm:justify-end gap-2.5 shrink-0",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "font-mono tabular-nums text-[11px] text-slate-500",
+										title: entry.timestamp,
+										dir: "ltr",
+										children: formatDateTimeAr(entry.timestamp)
+									}), entry.details && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+										type: "button",
+										onClick: () => setExpandedId(isExpanded ? null : entry.id),
+										className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-bold text-[11px] cursor-pointer",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "التفاصيل" }), isExpanded ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronUp, { className: "w-3.5 h-3.5" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronDown, { className: "w-3.5 h-3.5" })]
+									})]
+								})]
+							}), isExpanded && entry.details && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "mt-2.5 rounded-xl border border-slate-200 bg-slate-950 text-slate-100 p-3 overflow-x-auto",
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("pre", {
+									className: "text-[11px] font-mono leading-relaxed",
+									dir: "ltr",
+									children: JSON.stringify(entry.details, null, 2)
+								})
+							})]
+						}, entry.id);
+					})
+				})
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(ConfirmDialog, {
+				isOpen: showClearConfirm,
+				onClose: () => setShowClearConfirm(false),
+				onConfirm: () => {
+					clearDiagnostics();
+					setShowClearConfirm(false);
+					setActionNotice("تم مسح سجل التشخيص من هذا الجهاز.");
+				},
+				title: "مسح سجل التشخيص",
+				message: "هل تريد مسح جميع أحداث التشخيص وأخطاء الشبكة المسجلة محلياً على هذا الجهاز؟",
+				confirmLabel: "مسح السجل",
+				variant: "danger"
+			})
+		]
+	});
+};
 // src/components/modules/settings/SettingsView.tsx
 var SettingsView = ({ initialTab = "general" }) => {
 	const { settings, updateSettings, exportBackup, importBackup, serverSettings, updateServerSettings, testServerConnection, products, addProduct, deleteImportedProducts, warehouses, cashboxes, users, migrationLogs, runMigration, rollbackMigration } = useData();
@@ -61963,6 +69610,13 @@ var SettingsView = ({ initialTab = "general" }) => {
 						label: "Server & Connection Settings",
 						icon: Server,
 						color: "text-emerald-600",
+						perm: "canManageSettings"
+					},
+					{
+						key: "diagnostics",
+						label: "سجل التشخيص والأخطاء",
+						icon: Activity,
+						color: "text-rose-700",
 						perm: "canManageSettings"
 					},
 					{
@@ -64892,23 +72546,65 @@ var SettingsView = ({ initialTab = "general" }) => {
 						})
 					})
 				]
-			})
+			}),
+			activeTab === "diagnostics" && canManageSettings && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DiagnosticLogsPanel, {})
 		]
 	});
 };
 // src/components/modules/mobile/CustomerPortal.tsx
 var CUSTOMER_ORDER_STATUS_LABELS = {
-	pending: "جديد",
+	pending: "طلب جديد",
 	under_review: "قيد المراجعة",
-	approved: "مقبول",
-	rep_assigned: "تم تعيين مندوب",
-	out_for_delivery: "جاري التوصيل",
-	delivered: "تم التسليم",
-	needs_review: "يحتاج مراجعة",
+	approved: "معتمد",
 	invoiced: "تم التحويل لفاتورة",
+	preparing: "قيد التجهيز",
+	rep_assigned: "تم تعيين مندوب",
+	out_for_delivery: "خرج للتوصيل",
+	delivered: "تم التسليم",
+	collected: "تم التحصيل",
+	closed: "مغلق",
+	needs_review: "يحتاج مراجعة",
 	rejected: "مرفوض",
 	cancelled: "ملغى"
 };
+var NINE_STAGE_TIMELINE = [
+	{
+		key: "pending",
+		label: "جديد"
+	},
+	{
+		key: "under_review",
+		label: "مراجعة"
+	},
+	{
+		key: "approved",
+		label: "معتمد"
+	},
+	{
+		key: "invoiced",
+		label: "فوترة"
+	},
+	{
+		key: "preparing",
+		label: "تجهيز"
+	},
+	{
+		key: "out_for_delivery",
+		label: "توصيل"
+	},
+	{
+		key: "delivered",
+		label: "تسليم"
+	},
+	{
+		key: "collected",
+		label: "تحصيل"
+	},
+	{
+		key: "closed",
+		label: "إغلاق"
+	}
+];
 var createClientIdempotencyKey = () => `ord-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 var CustomerPortal = ({ activeTab, onTabChange }) => {
 	const { currentUser, customerProfile, mobileConfig } = useAuth();
@@ -65759,6 +73455,26 @@ var CustomerPortal = ({ activeTab, onTabChange }) => {
 								className: "p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold",
 								children: ["سبب الرفض: ", ord.rejectionReason]
 							}),
+							ord.status !== "rejected" && ord.status !== "cancelled" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "bg-slate-50 rounded-xl p-2.5 border border-slate-200",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+									className: "text-[10px] font-bold text-slate-500 mb-2",
+									children: "مسار الطلب (9 مراحل):"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "grid grid-cols-9 gap-1 text-center",
+									children: NINE_STAGE_TIMELINE.map((st, idx) => {
+										const effectiveStatus = ord.status === "rep_assigned" ? "preparing" : ord.status;
+										const reached = NINE_STAGE_TIMELINE.findIndex((s) => s.key === effectiveStatus) >= idx;
+										return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "flex flex-col items-center gap-1",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: `w-full h-1.5 rounded-full ${reached ? "bg-blue-900" : "bg-slate-200"}` }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												className: `text-[9px] leading-tight truncate max-w-full ${reached ? "font-black text-blue-950" : "text-slate-400"}`,
+												children: st.label
+											})]
+										}, st.key);
+									})
+								})]
+							}),
 							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 								className: "space-y-1.5 bg-slate-50 rounded-xl p-2.5",
 								children: [(ord.items || []).map((it, i) => {
@@ -65784,33 +73500,92 @@ var CustomerPortal = ({ activeTab, onTabChange }) => {
 											]
 										})]
 									}, i);
-								}), allowPriceView && (ord.totalAmount || 0) > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "pt-1.5 border-t border-slate-200 space-y-1 font-black text-blue-950",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-										className: "flex items-center justify-between",
-										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "الإجمالي" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-											className: "font-mono",
-											children: [
-												Number(ord.totalAmount).toLocaleString(),
-												" ",
-												data.settings.currency
-											]
-										})]
-									}), Number(ord.advancePaidAmount || 0) > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-										className: "flex items-center justify-between text-[11px] text-emerald-700",
-										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-											className: "inline-flex items-center gap-1",
-											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Wallet, { className: "w-3 h-3" }), " دفعة مقدمة مسددة:"]
-										}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-											className: "font-mono",
-											children: [
-												Number(ord.advancePaidAmount).toLocaleString(),
-												" ",
-												data.settings.currency
-											]
-										})]
-									})]
+								}), allowPriceView && (ord.invoiceTotal ?? ord.totalAmount ?? 0) > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "pt-2 border-t border-slate-200 space-y-1 font-black text-blue-950",
+									children: [
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "flex items-center justify-between",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: ord.invoiceId ? `إجمالي الفاتورة (${ord.invoiceNumber || ""})` : "الإجمالي" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+												className: "font-mono tabular-nums",
+												children: [
+													Number(ord.invoiceTotal ?? ord.totalAmount ?? 0).toLocaleString(),
+													" ",
+													data.settings.currency
+												]
+											})]
+										}),
+										Number(ord.advancePaidAmount || 0) > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "flex items-center justify-between text-[11px] text-emerald-700",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+												className: "inline-flex items-center gap-1",
+												children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Wallet, { className: "w-3 h-3" }), " دفعة مقدمة مسددة:"]
+											}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+												className: "font-mono tabular-nums",
+												children: [
+													Number(ord.advancePaidAmount).toLocaleString(),
+													" ",
+													data.settings.currency
+												]
+											})]
+										}),
+										(ord.invoiceId || ord.invoicePaidAmount != null || ord.invoiceRemainingAmount != null) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+												className: "flex items-center justify-between text-[11px] text-emerald-800",
+												children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "إجمالي المدفوع:" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+													className: "font-mono tabular-nums",
+													children: [
+														Number(ord.invoicePaidAmount ?? ord.advancePaidAmount ?? 0).toLocaleString(),
+														" ",
+														data.settings.currency
+													]
+												})]
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+												className: "flex items-center justify-between text-[11px] text-red-700",
+												children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "المتبقي:" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+													className: "font-mono tabular-nums",
+													children: [
+														Number(ord.invoiceRemainingAmount ?? ord.remainingAmount ?? 0).toLocaleString(),
+														" ",
+														data.settings.currency
+													]
+												})]
+											}),
+											ord.paymentStatus && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+												className: "flex items-center justify-between text-[11px] text-slate-600",
+												children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "حالة السداد:" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+													className: "font-black",
+													children: ord.paymentStatus === "paid" ? "مسدد بالكامل" : ord.paymentStatus === "partial" ? "سداد جزئي" : "غير مسدد"
+												})]
+											})
+										] })
+									]
 								})]
+							}),
+							allowPriceView && ord.paymentsHistory && ord.paymentsHistory.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "bg-emerald-50/60 border border-emerald-200 rounded-xl p-2.5 space-y-1 text-[11px]",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+									className: "font-black text-emerald-950",
+									children: [
+										"سجل الدفعات المسددة (",
+										ord.paymentsHistory.length,
+										"):"
+									]
+								}), ord.paymentsHistory.map((ph) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-center justify-between gap-2 text-emerald-900",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+										ph.paymentNumber,
+										" · ",
+										ph.date
+									] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+										className: "font-mono tabular-nums",
+										children: [
+											ph.amount.toLocaleString(),
+											" ",
+											data.settings.currency
+										]
+									})]
+								}, ph.id))]
 							}),
 							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 								className: "flex items-center justify-between gap-2 pt-1",
@@ -66076,23 +73851,590 @@ var CustomerPortal = ({ activeTab, onTabChange }) => {
 		]
 	});
 };
+// src/components/modules/mobile/RefreshSyncScreen.tsx
+function formatElapsedTenths(ms) {
+	const totalTenths = Math.max(0, Math.floor(ms / 100));
+	const mins = Math.floor(totalTenths / 600);
+	const secs = Math.floor(totalTenths % 600 / 10);
+	const tenths = totalTenths % 10;
+	return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}.${tenths}`;
+}
+var RefreshSyncScreen = ({ onBack }) => {
+	const data = useData();
+	const { currentUser, representativeProfile } = useAuth();
+	const rep = (0, import_react.useMemo)(() => representativeProfile || data.representatives.find((r) => r.userId && r.userId === currentUser?.id || r.name === currentUser?.fullName) || null, [
+		representativeProfile,
+		data.representatives,
+		currentUser
+	]);
+	const [isSending, setIsSending] = (0, import_react.useState)(false);
+	const [sendElapsedMs, setSendElapsedMs] = (0, import_react.useState)(0);
+	const [sendRunResult, setSendRunResult] = (0, import_react.useState)(null);
+	const sendStartRef = (0, import_react.useRef)(null);
+	const [isReceiving, setIsReceiving] = (0, import_react.useState)(false);
+	const [receiveElapsedMs, setReceiveElapsedMs] = (0, import_react.useState)(0);
+	const [receiveRunResult, setReceiveRunResult] = (0, import_react.useState)(null);
+	const receiveStartRef = (0, import_react.useRef)(null);
+	const [actionMsg, setActionMsg] = (0, import_react.useState)(null);
+	const [confirmingId, setConfirmingId] = (0, import_react.useState)(null);
+	(0, import_react.useEffect)(() => {
+		if (!isSending) return;
+		sendStartRef.current = Date.now();
+		setSendElapsedMs(0);
+		const id = window.setInterval(() => {
+			if (sendStartRef.current !== null) setSendElapsedMs(Date.now() - sendStartRef.current);
+		}, 100);
+		return () => window.clearInterval(id);
+	}, [isSending]);
+	(0, import_react.useEffect)(() => {
+		if (!isReceiving) return;
+		receiveStartRef.current = Date.now();
+		setReceiveElapsedMs(0);
+		const id = window.setInterval(() => {
+			if (receiveStartRef.current !== null) setReceiveElapsedMs(Date.now() - receiveStartRef.current);
+		}, 100);
+		return () => window.clearInterval(id);
+	}, [isReceiving]);
+	const pendingOps = (0, import_react.useMemo)(() => (data.syncQueue || []).filter((q) => q.status === "pending" || q.status === "local" || q.status === "failed" || q.status === "syncing"), [data.syncQueue]);
+	const awaitingCustodyDispatches = (0, import_react.useMemo)(() => {
+		return (data.repItemTransfers || []).filter((t) => {
+			if (t.status !== "executed") return false;
+			if (rep) return t.representativeId === rep.id;
+			return true;
+		});
+	}, [data.repItemTransfers, rep]);
+	const awaitingCashTransfers = (0, import_react.useMemo)(() => {
+		return (data.repTransfers || []).filter((t) => {
+			if (t.status !== "awaiting_receipt" || t.direction !== "owner_to_rep") return false;
+			if (rep) return t.receiverId === rep.id;
+			return true;
+		});
+	}, [data.repTransfers, rep]);
+	const incomingAwaitingCount = awaitingCustodyDispatches.length + awaitingCashTransfers.length;
+	const currentSendStatus = (0, import_react.useMemo)(() => {
+		if (isSending) return {
+			state: "sending",
+			label: "جاري الإرسال"
+		};
+		if (sendRunResult?.state === "error" || data.failedSyncCount > 0 && pendingOps.length > 0) return {
+			state: "error",
+			label: "فشل الإرسال"
+		};
+		if (pendingOps.length > 0) return {
+			state: "pending",
+			label: "توجد عمليات معلقة"
+		};
+		if (sendRunResult?.state === "success") return {
+			state: "success",
+			label: "تم الإرسال بنجاح"
+		};
+		return {
+			state: "ready",
+			label: "جاهز للإرسال"
+		};
+	}, [
+		isSending,
+		sendRunResult,
+		data.failedSyncCount,
+		pendingOps.length
+	]);
+	const currentReceiveStatus = (0, import_react.useMemo)(() => {
+		if (isReceiving) return {
+			state: "receiving",
+			label: "جاري الاستلام"
+		};
+		if (receiveRunResult?.state === "error") return {
+			state: "error",
+			label: "تعذر الاستلام"
+		};
+		if (incomingAwaitingCount > 0) return {
+			state: "new_data",
+			label: "توجد بيانات جديدة للاستلام"
+		};
+		if (receiveRunResult?.state === "success" || data.lastReceiveSummary?.ok) return {
+			state: "success",
+			label: "تم الاستلام بنجاح"
+		};
+		return {
+			state: "new_data",
+			label: "توجد بيانات جديدة للاستلام"
+		};
+	}, [
+		isReceiving,
+		receiveRunResult,
+		incomingAwaitingCount,
+		data.lastReceiveSummary
+	]);
+	const handleSendNow = async () => {
+		if (isSending) return;
+		setActionMsg(null);
+		setSendRunResult(null);
+		setIsSending(true);
+		const res = await data.syncSendOnly();
+		const finalElapsed = sendStartRef.current !== null ? Date.now() - sendStartRef.current : 0;
+		setSendElapsedMs(finalElapsed);
+		setIsSending(false);
+		if (res.ok && res.failedCount === 0) {
+			setSendRunResult({
+				state: "success",
+				confirmedCount: res.count
+			});
+			setActionMsg({
+				type: "success",
+				text: `تم إرسال واعتماد (${res.count}) عملية من السيرفر بنجاح.`
+			});
+		} else {
+			setSendRunResult({
+				state: "error",
+				confirmedCount: res.count,
+				error: res.error || `تعذر إرسال (${res.failedCount}) عملية — بقيت محفوظة محلياً.`
+			});
+			setActionMsg({
+				type: "error",
+				text: res.error || `فشل الإرسال لعدد (${res.failedCount}) عملية. لم تُحذف أي عملية محلية غير مؤكدة.`
+			});
+		}
+	};
+	const handleReceiveNow = async () => {
+		if (isReceiving) return;
+		setActionMsg(null);
+		setReceiveRunResult(null);
+		setIsReceiving(true);
+		const res = await data.syncReceiveOnly();
+		const finalElapsed = receiveStartRef.current !== null ? Date.now() - receiveStartRef.current : 0;
+		setReceiveElapsedMs(finalElapsed);
+		setIsReceiving(false);
+		if (res.ok) {
+			setReceiveRunResult({
+				state: "success",
+				receivedCount: res.count
+			});
+			setActionMsg({
+				type: "success",
+				text: `تم الاستلام بنجاح وتحديث البيانات (${res.count} سجل).`
+			});
+		} else {
+			setReceiveRunResult({
+				state: "error",
+				error: res.error || "تعذر الاتصال بالسيرفر لجلب التحديثات"
+			});
+			setActionMsg({
+				type: "error",
+				text: res.error || "تعذر استلام البيانات من السيرفر"
+			});
+		}
+	};
+	const handleConfirmCustodyDispatch = async (transferId, requestNumber) => {
+		setConfirmingId(transferId);
+		setActionMsg(null);
+		const res = await data.updateRepItemTransferStatus(transferId, "received");
+		setConfirmingId(null);
+		if (res.success) setActionMsg({
+			type: "success",
+			text: res.queuedOffline ? `تم تسجيل استلام العهدة (${requestNumber}) محلياً بانتظار الإرسال للسيرفر.` : `تم تأكيد استلام عهدة التحويل (${requestNumber}) وإضافتها لمخزون السيارة.`
+		});
+		else setActionMsg({
+			type: "error",
+			text: res.error || "تعذر تأكيد استلام العهدة"
+		});
+	};
+	const handleConfirmIncomingCash = async (transferId, transferNumber) => {
+		setConfirmingId(transferId);
+		setActionMsg(null);
+		const res = await data.confirmRepTransferReceipt(transferId, "تم تأكيد الاستلام من شاشة REFRESH");
+		setConfirmingId(null);
+		if (res.success) setActionMsg({
+			type: "success",
+			text: `تم تأكيد استلام العهدة النقدية (${transferNumber}) بنجاح.`
+		});
+		else setActionMsg({
+			type: "error",
+			text: res.error || "تعذر تأكيد الاستلام النقدي"
+		});
+	};
+	const formatTimestamp = (iso) => {
+		if (!iso) return "لم يتم بعد";
+		try {
+			return new Date(iso).toLocaleString("ar-EG");
+		} catch {
+			return iso;
+		}
+	};
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+		className: "space-y-4",
+		children: [
+			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "bg-white rounded-3xl border border-slate-200 p-4 shadow-xs flex items-center justify-between gap-3",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flex items-center gap-3 min-w-0",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+						className: "w-11 h-11 rounded-2xl bg-blue-950 text-white flex items-center justify-center shrink-0",
+						children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RefreshCw, { className: `w-5 h-5 ${isSending || isReceiving ? "animate-spin" : ""}` })
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "min-w-0",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
+							className: "text-base font-black text-slate-900",
+							children: "REFRESH · مركز الإرسال والاستلام"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+							className: "text-[11px] text-slate-500",
+							children: "مزامنة مستقلة للعمليات المحلية المعلقة واستلام عهد البضاعة والتحويلات الواردة"
+						})]
+					})]
+				}), onBack && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+					type: "button",
+					onClick: onBack,
+					className: "min-h-[44px] px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold shrink-0 cursor-pointer",
+					children: "رجوع"
+				})]
+			}),
+			actionMsg && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: `p-3.5 rounded-2xl border text-xs font-bold flex items-center gap-2 ${actionMsg.type === "success" ? "bg-emerald-50 border-emerald-200 text-emerald-900" : "bg-red-50 border-red-200 text-red-800"}`,
+				children: [actionMsg.type === "success" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleCheck, { className: "w-4 h-4 shrink-0" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleAlert, { className: "w-4 h-4 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: actionMsg.text })]
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "grid grid-cols-1 md:grid-cols-2 gap-4",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
+					className: "bg-white rounded-3xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between gap-4",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "space-y-3",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center justify-between gap-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-center gap-2",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "w-10 h-10 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 flex items-center justify-center",
+										children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ArrowUpFromLine, { className: "w-5 h-5" })
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", {
+										className: "text-sm font-black text-slate-900",
+										children: "إرسال البيانات (Send)"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+										className: "text-[11px] text-slate-500",
+										children: "رفع الفواتير والتحصيلات والعمليات المعلقة للسيرفر"
+									})] })]
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "text-left font-mono tabular-nums",
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "text-xs font-black text-blue-950 flex items-center gap-1 justify-end",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Clock, { className: "w-3.5 h-3.5 text-blue-700" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: formatElapsedTenths(sendElapsedMs) })]
+									})
+								})]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 text-xs",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "flex items-center justify-between",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-slate-600 font-bold",
+											children: "الحالة الحالية:"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+											className: `font-black ${currentSendStatus.state === "error" ? "text-red-700" : currentSendStatus.state === "pending" ? "text-amber-700" : currentSendStatus.state === "success" ? "text-emerald-700" : "text-blue-900"}`,
+											children: currentSendStatus.label
+										})]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "flex items-center justify-between",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-slate-600",
+											children: "العمليات المعلقة محلياً:"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+											className: "font-mono tabular-nums text-slate-900",
+											children: [pendingOps.length, " عملية"]
+										})]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "flex items-center justify-between",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-slate-600",
+											children: "تاريخ ووقت آخر إرسال:"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "font-mono text-[11px] text-slate-700",
+											children: formatTimestamp(data.lastSendSummary?.at)
+										})]
+									}),
+									data.lastSendSummary && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "flex items-center justify-between",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-slate-600",
+											children: "المؤكد من السيرفر في آخر إرسال:"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+											className: "font-mono tabular-nums text-emerald-700",
+											children: [data.lastSendSummary.count, " عملية"]
+										})]
+									}),
+									sendRunResult?.error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+										className: "text-[11px] font-bold text-red-700 pt-1 border-t border-slate-200",
+										children: sendRunResult.error
+									})
+								]
+							}),
+							pendingOps.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "space-y-1.5 max-h-40 overflow-y-auto border border-slate-200 rounded-2xl p-3 bg-slate-50/70",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+									className: "text-[11px] font-black text-slate-700 flex items-center gap-1.5",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CloudOff, { className: "w-3.5 h-3.5 text-amber-600" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "قائمة العمليات المحفوظة محلياً (لن تُحذف قبل اعتماد السيرفر):" })]
+								}), pendingOps.map((op) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-center justify-between gap-2 text-[11px] py-1 border-b border-slate-200/70 last:border-b-0",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "font-bold text-slate-800 truncate",
+										children: op.summaryAr
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: `font-mono shrink-0 ${op.status === "failed" ? "text-red-700 font-bold" : "text-amber-800"}`,
+										children: op.status === "failed" ? "فشل مؤقت" : "معلق"
+									})]
+								}, op.operationId))]
+							})
+						]
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+						type: "button",
+						disabled: isSending,
+						onClick: handleSendNow,
+						className: "w-full min-h-[48px] rounded-2xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-55",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(ArrowUpFromLine, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isSending ? "جاري الإرسال..." : "إرسال العمليات المعلقة الآن" })]
+					})]
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", {
+					className: "bg-white rounded-3xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between gap-4",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "space-y-3",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center justify-between gap-2",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center gap-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "w-10 h-10 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center justify-center",
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ArrowDownToLine, { className: "w-5 h-5" })
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", {
+									className: "text-sm font-black text-slate-900",
+									children: "استلام البيانات (Receive)"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+									className: "text-[11px] text-slate-500",
+									children: "جلب الأسعار والأرصدة وعهد البضاعة والتحويلات الواردة"
+								})] })]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "text-left font-mono tabular-nums",
+								children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "text-xs font-black text-emerald-800 flex items-center gap-1 justify-end",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Clock, { className: "w-3.5 h-3.5 text-emerald-700" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: formatElapsedTenths(receiveElapsedMs) })]
+								})
+							})]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 text-xs",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-center justify-between",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-slate-600 font-bold",
+										children: "الحالة الحالية:"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+										className: `font-black ${currentReceiveStatus.state === "error" ? "text-red-700" : currentReceiveStatus.state === "success" ? "text-emerald-700" : "text-blue-900"}`,
+										children: currentReceiveStatus.label
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-center justify-between",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-slate-600",
+										children: "عهد وتحويلات بانتظار تأكيدك:"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+										className: "font-mono tabular-nums text-amber-800",
+										children: [incomingAwaitingCount, " عنصر"]
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-center justify-between",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-slate-600",
+										children: "تاريخ ووقت آخر استلام:"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "font-mono text-[11px] text-slate-700",
+										children: formatTimestamp(data.lastReceiveSummary?.at)
+									})]
+								}),
+								data.lastReceiveSummary && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-center justify-between",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-slate-600",
+										children: "السجلات المستلمة في آخر تحديث:"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+										className: "font-mono tabular-nums text-emerald-700",
+										children: [data.lastReceiveSummary.count, " سجل"]
+									})]
+								}),
+								receiveRunResult?.error && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+									className: "text-[11px] font-bold text-red-700 pt-1 border-t border-slate-200",
+									children: receiveRunResult.error
+								})
+							]
+						})]
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+						type: "button",
+						disabled: isReceiving,
+						onClick: handleReceiveNow,
+						className: "w-full min-h-[48px] rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-55",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(ArrowDownToLine, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isReceiving ? "جاري الاستلام..." : "استلام التحديثات الآن" })]
+					})]
+				})]
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "bg-white rounded-3xl border border-slate-200 p-5 shadow-xs space-y-3",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flex items-center justify-between gap-2",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "flex items-center gap-2",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Server, { className: "w-4 h-4 text-blue-900" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h3", {
+							className: "text-sm font-black text-slate-900",
+							children: [
+								"العهد والتحويلات الواردة من الإدارة بانتظار تأكيد الاستلام (",
+								incomingAwaitingCount,
+								")"
+							]
+						})]
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						onClick: () => data.triggerManualSync(),
+						className: "min-h-[40px] px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer",
+						children: "مزامنة كاملة"
+					})]
+				}), incomingAwaitingCount === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+					className: "text-xs text-slate-500 py-5 text-center",
+					children: "لا توجد عهد أصناف أو تحويلات نقدية جديدة معلقة للاستلام حالياً."
+				}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "space-y-3",
+					children: [awaitingCustodyDispatches.map((tr) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "rounded-2xl border border-amber-200 bg-amber-50/40 p-4 space-y-2.5 text-xs",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center justify-between gap-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-center gap-2",
+									children: [
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)(PackageCheck, { className: "w-4 h-4 text-amber-700 shrink-0" }),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "font-mono font-black text-blue-950",
+											children: tr.requestNumber
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-slate-500",
+											children: "·"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "font-bold text-slate-700",
+											children: tr.transferMode === "custody_dispatch" ? "صرف عهدة بضاعة للمندوب" : "تحويل أصناف للسيارة"
+										})
+									]
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "font-mono text-[11px] text-slate-500",
+									children: tr.date
+								})]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "divide-y divide-amber-200/60 bg-white rounded-xl border border-amber-200/80 px-3",
+								children: (tr.items || []).map((it, idx) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "py-2 flex items-center justify-between",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "font-bold text-slate-900",
+										children: it.productName
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+										className: "font-mono font-black text-blue-950 tabular-nums",
+										children: [
+											it.approvedQty ?? it.requestedQty,
+											" ",
+											it.unit
+										]
+									})]
+								}, idx))
+							}),
+							tr.notes && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+								className: "text-[11px] text-slate-600",
+								children: tr.notes
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								type: "button",
+								disabled: confirmingId === tr.id,
+								onClick: () => handleConfirmCustodyDispatch(tr.id, tr.requestNumber),
+								className: "w-full min-h-[44px] rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50",
+								children: confirmingId === tr.id ? "جاري التأكيد..." : "تأكيد استلام العهدة وإضافتها للسيارة"
+							})
+						]
+					}, tr.id)), awaitingCashTransfers.map((ct) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "rounded-2xl border border-blue-200 bg-blue-50/40 p-4 space-y-2.5 text-xs",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center justify-between gap-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-center gap-2",
+									children: [
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Wallet, { className: "w-4 h-4 text-blue-900 shrink-0" }),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "font-mono font-black text-blue-950",
+											children: ct.transferNumber
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-slate-500",
+											children: "·"
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "font-bold text-slate-700",
+											children: "عهدة نقدية واردة من الإدارة"
+										})
+									]
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+									className: "font-mono text-sm font-black text-emerald-700 tabular-nums",
+									children: [
+										ct.amount.toLocaleString(),
+										" ",
+										data.settings.currency
+									]
+								})]
+							}),
+							ct.notes && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+								className: "text-[11px] text-slate-600",
+								children: ct.notes
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								type: "button",
+								disabled: confirmingId === ct.id,
+								onClick: () => handleConfirmIncomingCash(ct.id, ct.transferNumber),
+								className: "w-full min-h-[44px] rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50",
+								children: confirmingId === ct.id ? "جاري التأكيد..." : "تأكيد الاستلام النقدي"
+							})
+						]
+					}, ct.id))]
+				})]
+			})
+		]
+	});
+};
 // src/components/modules/mobile/RepPortal.tsx
 var REP_ORDER_STATUS_LABELS = {
 	pending: "جديد",
 	under_review: "قيد المراجعة",
 	approved: "مقبول",
+	invoiced: "مفوتر",
+	preparing: "قيد التجهيز",
 	rep_assigned: "تم تعيين مندوب",
 	out_for_delivery: "جاري التوصيل",
 	delivered: "تم التسليم",
+	collected: "تم التحصيل",
+	closed: "مغلق",
 	needs_review: "يحتاج مراجعة",
-	invoiced: "مفوتر",
 	rejected: "مرفوض",
 	cancelled: "ملغى"
 };
-var RepPortal = ({ activeTab, onTabChange }) => {
-	const { currentUser, representativeProfile, mobileConfig } = useAuth();
+var RepPortal = ({ activeTab, onTabChange, onOpenServerModal, onLogout, onUnsavedInvoiceChange }) => {
+	const { currentUser, representativeProfile, mobileConfig, hasPermission } = useAuth();
 	const data = useData();
 	const isNative = isNativeCapacitor();
+	const isAdmin = currentUser?.role === "admin";
+	const canSales = isAdmin || hasPermission("canManageSales");
+	const canPurchases = isAdmin || hasPermission("canManagePurchases");
+	const canCashOps = isAdmin || hasPermission("canManageCashboxes") || hasPermission("canManageAccounts");
+	const canTransfers = isAdmin || hasPermission("canManageTransfers");
+	const canCash = canCashOps || canTransfers;
+	const canAccounts = isAdmin || hasPermission("canManageAccounts");
+	const canInventory = isAdmin || hasPermission("canManageInventory") || canTransfers;
+	const canAddCustomer = isAdmin || canSales || hasPermission("canAdd");
 	const rep = representativeProfile || data.representatives.find((r) => r.userId && r.userId === currentUser?.id || r.name === currentUser?.fullName) || null;
 	const vanWarehouse = (0, import_react.useMemo)(() => {
 		if (!rep) return data.warehouses[0] || null;
@@ -66106,9 +74448,12 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 	const [invCustomerId, setInvCustomerId] = (0, import_react.useState)("");
 	const [invWarehouseId, setInvWarehouseId] = (0, import_react.useState)("");
 	const [invProductId, setInvProductId] = (0, import_react.useState)("");
+	const [invProdQuery, setInvProdQuery] = (0, import_react.useState)("");
+	const [invOnlyVanStock, setInvOnlyVanStock] = (0, import_react.useState)(false);
 	const [invUnitName, setInvUnitName] = (0, import_react.useState)("");
 	const [invQty, setInvQty] = (0, import_react.useState)(1);
 	const [invPrice, setInvPrice] = (0, import_react.useState)(0);
+	const [invLineDiscount, setInvLineDiscount] = (0, import_react.useState)(0);
 	const [invPaymentType, setInvPaymentType] = (0, import_react.useState)("cash");
 	const [invPaidAmount, setInvPaidAmount] = (0, import_react.useState)(0);
 	const [invCashboxId, setInvCashboxId] = (0, import_react.useState)(data.cashboxes[0]?.id || "CASH-01");
@@ -66116,11 +74461,108 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 	const [invItems, setInvItems] = (0, import_react.useState)([]);
 	const [priceHistoryMap, setPriceHistoryMap] = (0, import_react.useState)({});
 	const [isSubmittingInvoice, setIsSubmittingInvoice] = (0, import_react.useState)(false);
+	const [pendingLeaveTab, setPendingLeaveTab] = (0, import_react.useState)(null);
+	const [selectedCustomerDetail, setSelectedCustomerDetail] = (0, import_react.useState)(null);
+	const [actualDrawerCash, setActualDrawerCash] = (0, import_react.useState)("");
+	const [purSupplierId, setPurSupplierId] = (0, import_react.useState)("");
+	const [purWarehouseId, setPurWarehouseId] = (0, import_react.useState)("");
+	const [purProductId, setPurProductId] = (0, import_react.useState)("");
+	const [purUnitName, setPurUnitName] = (0, import_react.useState)("");
+	const [purQty, setPurQty] = (0, import_react.useState)("");
+	const [purPrice, setPurPrice] = (0, import_react.useState)("");
+	const [purPaymentType, setPurPaymentType] = (0, import_react.useState)("cash");
+	const [purPaidAmount, setPurPaidAmount] = (0, import_react.useState)(0);
+	const [purCashboxId, setPurCashboxId] = (0, import_react.useState)(data.cashboxes[0]?.id || "CASH-01");
+	const [purNotes, setPurNotes] = (0, import_react.useState)("");
+	const [purItems, setPurItems] = (0, import_react.useState)([]);
+	const [isSubmittingPurchase, setIsSubmittingPurchase] = (0, import_react.useState)(false);
+	const [sRetCustomerId, setSRetCustomerId] = (0, import_react.useState)("");
+	const [sRetInvoiceId, setSRetInvoiceId] = (0, import_react.useState)("");
+	const [sRetWarehouseId, setSRetWarehouseId] = (0, import_react.useState)("");
+	const [sRetProductId, setSRetProductId] = (0, import_react.useState)("");
+	const [sRetQty, setSRetQty] = (0, import_react.useState)(1);
+	const [sRetPrice, setSRetPrice] = (0, import_react.useState)(0);
+	const [sRetSettlement, setSRetSettlement] = (0, import_react.useState)("account");
+	const [sRetCashboxId, setSRetCashboxId] = (0, import_react.useState)(data.cashboxes[0]?.id || "CASH-01");
+	const [sRetReason, setSRetReason] = (0, import_react.useState)("");
+	const [sRetItems, setSRetItems] = (0, import_react.useState)([]);
+	const [isSubmittingSRet, setIsSubmittingSRet] = (0, import_react.useState)(false);
+	const [pRetSupplierId, setPRetSupplierId] = (0, import_react.useState)("");
+	const [pRetInvoiceId, setPRetInvoiceId] = (0, import_react.useState)("");
+	const [pRetWarehouseId, setPRetWarehouseId] = (0, import_react.useState)("");
+	const [pRetProductId, setPRetProductId] = (0, import_react.useState)("");
+	const [pRetQty, setPRetQty] = (0, import_react.useState)(1);
+	const [pRetPrice, setPRetPrice] = (0, import_react.useState)(0);
+	const [pRetSettlement, setPRetSettlement] = (0, import_react.useState)("account");
+	const [pRetCashboxId, setPRetCashboxId] = (0, import_react.useState)(data.cashboxes[0]?.id || "CASH-01");
+	const [pRetReason, setPRetReason] = (0, import_react.useState)("");
+	const [pRetItems, setPRetItems] = (0, import_react.useState)([]);
+	const [isSubmittingPRet, setIsSubmittingPRet] = (0, import_react.useState)(false);
+	const [depMode, setDepMode] = (0, import_react.useState)("customer_collection");
+	const [depCustomerId, setDepCustomerId] = (0, import_react.useState)("");
+	const [depCashboxId, setDepCashboxId] = (0, import_react.useState)(data.cashboxes[0]?.id || "CASH-01");
+	const [depMethod, setDepMethod] = (0, import_react.useState)("cash");
+	const [depAmount, setDepAmount] = (0, import_react.useState)(0);
+	const [depNotes, setDepNotes] = (0, import_react.useState)("");
+	const [isSubmittingDeposit, setIsSubmittingDeposit] = (0, import_react.useState)(false);
+	const [wdCashboxId, setWdCashboxId] = (0, import_react.useState)(data.cashboxes[0]?.id || "CASH-01");
+	const [wdCategory, setWdCategory] = (0, import_react.useState)("مصروف تشغيل ومندوب");
+	const [wdBeneficiary, setWdBeneficiary] = (0, import_react.useState)("");
+	const [wdAmount, setWdAmount] = (0, import_react.useState)(0);
+	const [wdNotes, setWdNotes] = (0, import_react.useState)("");
+	const [isSubmittingWithdrawal, setIsSubmittingWithdrawal] = (0, import_react.useState)(false);
+	const [newCustName, setNewCustName] = (0, import_react.useState)("");
+	const [newCustShop, setNewCustShop] = (0, import_react.useState)("");
+	const [newCustPhone, setNewCustPhone] = (0, import_react.useState)("");
+	const [newCustArea, setNewCustArea] = (0, import_react.useState)("");
+	const [newCustAddress, setNewCustAddress] = (0, import_react.useState)("");
+	const [newCustGeo, setNewCustGeo] = (0, import_react.useState)("");
+	const [newCustOpening, setNewCustOpening] = (0, import_react.useState)(0);
+	const [isLocatingCust, setIsLocatingCust] = (0, import_react.useState)(false);
+	const [custPhoneNotice, setCustPhoneNotice] = (0, import_react.useState)(null);
+	const [custMapNotice, setCustMapNotice] = (0, import_react.useState)(null);
+	const [isSavingCustomer, setIsSavingCustomer] = (0, import_react.useState)(false);
+	const [newSupName, setNewSupName] = (0, import_react.useState)("");
+	const [newSupCompany, setNewSupCompany] = (0, import_react.useState)("");
+	const [newSupPhone, setNewSupPhone] = (0, import_react.useState)("");
+	const [newSupAddress, setNewSupAddress] = (0, import_react.useState)("");
+	const [newSupOpening, setNewSupOpening] = (0, import_react.useState)(0);
+	const [supPhoneNotice, setSupPhoneNotice] = (0, import_react.useState)(null);
+	const [isSavingSupplier, setIsSavingSupplier] = (0, import_react.useState)(false);
+	const [quoteCustomerId, setQuoteCustomerId] = (0, import_react.useState)("");
+	const [quoteProductId, setQuoteProductId] = (0, import_react.useState)("");
+	const [quoteUnitName, setQuoteUnitName] = (0, import_react.useState)("");
+	const [quoteQty, setQuoteQty] = (0, import_react.useState)(1);
+	const [quotePrice, setQuotePrice] = (0, import_react.useState)(0);
+	const [quoteNotes, setQuoteNotes] = (0, import_react.useState)("");
+	const [quoteItems, setQuoteItems] = (0, import_react.useState)([]);
+	const [isSubmittingQuote, setIsSubmittingQuote] = (0, import_react.useState)(false);
+	const [convertingQuoteId, setConvertingQuoteId] = (0, import_react.useState)(null);
+	const [chqTab, setChqTab] = (0, import_react.useState)("cheques");
+	const [chqType, setChqType] = (0, import_react.useState)("incoming");
+	const [chqNumber, setChqNumber] = (0, import_react.useState)("");
+	const [chqBank, setChqBank] = (0, import_react.useState)("");
+	const [chqPartyName, setChqPartyName] = (0, import_react.useState)("");
+	const [chqAmount, setChqAmount] = (0, import_react.useState)(0);
+	const [chqDueDate, setChqDueDate] = (0, import_react.useState)((/* @__PURE__ */ new Date()).toISOString().split("T")[0]);
+	const [isSavingCheque, setIsSavingCheque] = (0, import_react.useState)(false);
+	const [payingInstKey, setPayingInstKey] = (0, import_react.useState)(null);
 	const [custodySubTab, setCustodySubTab] = (0, import_react.useState)("van");
 	const [selectedInvoice, setSelectedInvoice] = (0, import_react.useState)(null);
+	const [custodyStatement, setCustodyStatement] = (0, import_react.useState)(null);
+	const [isLoadingCustodyStmt, setIsLoadingCustodyStmt] = (0, import_react.useState)(false);
 	const [reqProdId, setReqProdId] = (0, import_react.useState)("");
 	const [reqQty, setReqQty] = (0, import_react.useState)(5);
 	const [reqItems, setReqItems] = (0, import_react.useState)([]);
+	const [delivCustomerId, setDelivCustomerId] = (0, import_react.useState)("");
+	const [delivProdId, setDelivProdId] = (0, import_react.useState)("");
+	const [delivQty, setDelivQty] = (0, import_react.useState)(1);
+	const [delivNotes, setDelivNotes] = (0, import_react.useState)("");
+	const [retCustodyProdId, setRetCustodyProdId] = (0, import_react.useState)("");
+	const [retCustodyUnit, setRetCustodyUnit] = (0, import_react.useState)("");
+	const [retCustodyQty, setRetCustodyQty] = (0, import_react.useState)(1);
+	const [retCustodyTargetWhId, setRetCustodyTargetWhId] = (0, import_react.useState)("");
+	const [retCustodyNotes, setRetCustodyNotes] = (0, import_react.useState)("");
 	const [cashAmount, setCashAmount] = (0, import_react.useState)(0);
 	const [cashNotes, setCashNotes] = (0, import_react.useState)("");
 	const [isSendingTransfer, setIsSendingTransfer] = (0, import_react.useState)(false);
@@ -66141,13 +74583,33 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 	const [isUpdatingDelivery, setIsUpdatingDelivery] = (0, import_react.useState)(false);
 	(0, import_react.useEffect)(() => {
 		if (!invWarehouseId && vanWarehouse?.id) setInvWarehouseId(vanWarehouse.id);
-		if (!invCashboxId && data.cashboxes[0]?.id) setInvCashboxId(data.cashboxes[0].id);
-		if (!deliveryCashboxId && data.cashboxes[0]?.id) setDeliveryCashboxId(data.cashboxes[0].id);
+		if (!purWarehouseId && mainWarehouse?.id) setPurWarehouseId(mainWarehouse.id);
+		if (!sRetWarehouseId && (vanWarehouse?.id || mainWarehouse?.id)) setSRetWarehouseId(vanWarehouse?.id || mainWarehouse?.id || "");
+		if (!pRetWarehouseId && mainWarehouse?.id) setPRetWarehouseId(mainWarehouse.id);
+		const defaultCb = data.cashboxes[0]?.id;
+		if (defaultCb) {
+			if (!invCashboxId) setInvCashboxId(defaultCb);
+			if (!purCashboxId) setPurCashboxId(defaultCb);
+			if (!sRetCashboxId) setSRetCashboxId(defaultCb);
+			if (!pRetCashboxId) setPRetCashboxId(defaultCb);
+			if (!depCashboxId) setDepCashboxId(defaultCb);
+			if (!wdCashboxId) setWdCashboxId(defaultCb);
+			if (!deliveryCashboxId) setDeliveryCashboxId(defaultCb);
+		}
 	}, [
 		vanWarehouse?.id,
+		mainWarehouse?.id,
 		invWarehouseId,
+		purWarehouseId,
+		sRetWarehouseId,
+		pRetWarehouseId,
 		data.cashboxes,
 		invCashboxId,
+		purCashboxId,
+		sRetCashboxId,
+		pRetCashboxId,
+		depCashboxId,
+		wdCashboxId,
 		deliveryCashboxId
 	]);
 	(0, import_react.useEffect)(() => {
@@ -66163,12 +74625,46 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 			active = false;
 		};
 	}, [invCustomerId, data.getCustomerPriceHistory]);
+	(0, import_react.useEffect)(() => {
+		onUnsavedInvoiceChange?.(activeTab === "new-invoice" && invItems.length > 0);
+	}, [
+		activeTab,
+		invItems.length,
+		onUnsavedInvoiceChange
+	]);
+	const loadCustodyStatement = (0, import_react.useCallback)(async () => {
+		setIsLoadingCustodyStmt(true);
+		const res = await data.getRepCustodyStatement(rep?.id);
+		setIsLoadingCustodyStmt(false);
+		if (res.success && res.statement) setCustodyStatement(res.statement);
+	}, [data.getRepCustodyStatement, rep?.id]);
+	(0, import_react.useEffect)(() => {
+		if (activeTab === "custody" || activeTab === "custody-transfer") loadCustodyStatement();
+	}, [activeTab, loadCustodyStatement]);
+	(0, import_react.useEffect)(() => {
+		if (!retCustodyTargetWhId && mainWarehouse?.id) setRetCustodyTargetWhId(mainWarehouse.id);
+	}, [retCustodyTargetWhId, mainWarehouse?.id]);
 	const activeProducts = (0, import_react.useMemo)(() => data.products.filter((p) => p.status === "active"), [data.products]);
 	const selectedProduct = (0, import_react.useMemo)(() => activeProducts.find((p) => p.id === invProductId) || null, [activeProducts, invProductId]);
 	const selectedProdLastPrices = (0, import_react.useMemo)(() => {
 		if (!invProductId) return [];
 		return (priceHistoryMap[invProductId] || []).slice(-3);
 	}, [priceHistoryMap, invProductId]);
+	const effectiveVanId = invWarehouseId || vanWarehouse?.id || "";
+	const normalizeSearch = (val) => String(val || "").toLowerCase().replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/[\u064B-\u065F]/g, "").trim();
+	const filteredInvoiceProducts = (0, import_react.useMemo)(() => {
+		const q = normalizeSearch(invProdQuery);
+		return activeProducts.filter((p) => {
+			if (invOnlyVanStock && (p.stockPerWarehouse?.[effectiveVanId] || 0) <= 0) return false;
+			if (!q) return true;
+			return normalizeSearch(`${p.name} ${p.code} ${p.barcode || ""} ${p.category || ""}`).includes(q);
+		});
+	}, [
+		activeProducts,
+		invProdQuery,
+		invOnlyVanStock,
+		effectiveVanId
+	]);
 	const handleSelectProduct = (prodId) => {
 		setInvProductId(prodId);
 		const prod = activeProducts.find((p) => p.id === prodId);
@@ -66181,6 +74677,23 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 			setInvPrice(prod.sellingPrice);
 		}
 		setInvQty(1);
+		setInvLineDiscount(0);
+	};
+	const handleInvoiceSearchKeyDown = (e) => {
+		if (e.key !== "Enter") return;
+		e.preventDefault();
+		const raw = invProdQuery.trim();
+		if (!raw) return;
+		const exactMatch = activeProducts.find((p) => p.barcode === raw || p.code.toLowerCase() === raw.toLowerCase());
+		if (exactMatch) {
+			handleSelectProduct(exactMatch.id);
+			setInvProdQuery("");
+			return;
+		}
+		if (filteredInvoiceProducts.length === 1) {
+			handleSelectProduct(filteredInvoiceProducts[0].id);
+			setInvProdQuery("");
+		}
 	};
 	const handleUnitChange = (unitName) => {
 		setInvUnitName(unitName);
@@ -66202,7 +74715,8 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 				purchasePriceAtTime = u.purchasePrice || selectedProduct.purchasePrice * unitFactor;
 			}
 		}
-		const total = computeLineTotal(invQty, invPrice);
+		const safeDiscount = Math.max(0, Number(invLineDiscount || 0));
+		const total = computeLineTotal(invQty, invPrice, safeDiscount);
 		setInvItems((prev) => [...prev, {
 			productId: selectedProduct.id,
 			productName: selectedProduct.name,
@@ -66212,12 +74726,14 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 			quantity: invQty,
 			unitPrice: invPrice,
 			purchasePriceAtTime,
-			discount: 0,
+			discount: safeDiscount,
 			total
 		}]);
 		setInvProductId("");
+		setInvProdQuery("");
 		setInvQty(1);
 		setInvPrice(0);
+		setInvLineDiscount(0);
 	};
 	const handleUpdateInvItemQty = (idx, nextQty) => {
 		setInvItems((prev) => prev.map((it, i) => i === idx ? {
@@ -66227,198 +74743,30 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 		} : it));
 	};
 	const invGrandTotal = (0, import_react.useMemo)(() => invItems.reduce((sum, it) => sum + it.total, 0), [invItems]);
-	const selectedOrderProduct = (0, import_react.useMemo)(() => activeProducts.find((p) => p.id === ordProductId) || null, [activeProducts, ordProductId]);
-	const handleSelectOrderProduct = (prodId) => {
-		setOrdProductId(prodId);
-		const prod = activeProducts.find((p) => p.id === prodId);
-		if (!prod) return;
-		if (prod.units && prod.units.length > 0) {
-			setOrdUnitName(prod.units[0].name);
-			setOrdPrice(prod.units[0].sellingPrice);
-		} else {
-			setOrdUnitName(prod.baseUnit);
-			setOrdPrice(prod.sellingPrice);
-		}
-		setOrdQty(1);
-	};
-	const handleOrderUnitChange = (unitName) => {
-		setOrdUnitName(unitName);
-		if (!selectedOrderProduct) return;
-		if (unitName === selectedOrderProduct.baseUnit) setOrdPrice(selectedOrderProduct.sellingPrice);
-		else {
-			const u = selectedOrderProduct.units.find((x) => x.name === unitName);
-			if (u) setOrdPrice(u.sellingPrice);
-		}
-	};
-	const handleAddOrderItem = () => {
-		if (!selectedOrderProduct || ordQty <= 0) return;
-		let unitFactor = 1;
-		if (ordUnitName !== selectedOrderProduct.baseUnit) {
-			const u = selectedOrderProduct.units.find((x) => x.name === ordUnitName);
-			if (u) unitFactor = u.conversionFactor;
-		}
-		const unitUsed = ordUnitName || selectedOrderProduct.baseUnit;
-		setOrdItems((prev) => {
-			const existingIdx = prev.findIndex((it) => it.productId === selectedOrderProduct.id && it.unit === unitUsed);
-			if (existingIdx >= 0) return prev.map((it, i) => i === existingIdx ? {
-				...it,
-				quantity: it.quantity + ordQty,
-				unitPrice: ordPrice
-			} : it);
-			return [...prev, {
-				productId: selectedOrderProduct.id,
-				productCode: selectedOrderProduct.code,
-				productName: selectedOrderProduct.name,
-				productImage: selectedOrderProduct.image,
-				unit: unitUsed,
-				unitFactor,
-				quantity: ordQty,
-				unitPrice: ordPrice
-			}];
-		});
-		setOrdProductId("");
-		setOrdQty(1);
-		setOrdPrice(0);
-	};
-	const ordTotalAmount = (0, import_react.useMemo)(() => ordItems.reduce((sum, it) => sum + computeLineTotal(it.quantity, it.unitPrice), 0), [ordItems]);
-	const handleSubmitRepOrder = async (e) => {
-		e.preventDefault();
-		if (!ordCustomerId) {
-			setFeedback({
-				type: "error",
-				text: "يرجى اختيار العميل المطلوب له الطلب."
-			});
-			return;
-		}
-		if (!ordItems.length) {
-			setFeedback({
-				type: "error",
-				text: "يرجى إضافة صنف واحد على الأقل للطلب."
-			});
-			return;
-		}
-		const cust = data.customers.find((c) => c.id === ordCustomerId);
-		setIsSubmittingOrder(true);
-		setFeedback(null);
-		const res = await data.createCustomerItemOrder({
-			customerId: ordCustomerId,
-			customerName: cust?.name || "عميل",
-			customerPhone: cust?.phone,
-			shopName: cust?.shopName || cust?.name,
-			deliveryAddress: cust?.address,
-			geoCoordinates: cust?.geoCoordinates,
-			requesterType: "representative",
-			items: ordItems,
-			totalAmount: ordTotalAmount,
-			notes: ordNotes.trim() || "طلب شراء مرسل من المندوب"
-		});
-		setIsSubmittingOrder(false);
-		if (res.queuedOffline) {
-			setOrdItems([]);
-			setOrdNotes("");
-			setFeedback({
-				type: "warning",
-				text: `تم حفظ الطلب محلياً في طابور المزامنة (${res.order?.requestNumber || ""}) وسيتم إرساله تلقائياً فور عودة الاتصال.`
-			});
-		} else if (res.success) {
-			setOrdItems([]);
-			setOrdNotes("");
-			setFeedback({
-				type: "success",
-				text: `تم إرسال الطلب رقم ${res.order?.requestNumber || ""} للإدارة للمراجعة والاعتماد.`
-			});
-		} else setFeedback({
-			type: "error",
-			text: res.error || "تعذر إرسال الطلب"
-		});
-	};
-	const assignedDeliveryOrders = (0, import_react.useMemo)(() => {
-		return [...data.customerItemOrders || []].filter((o) => rep ? o.deliveryRepId === rep.id : o.status === "rep_assigned" || o.status === "out_for_delivery" || o.status === "delivered").sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-	}, [data.customerItemOrders, rep]);
-	const handleStartDelivery = async (ord) => {
-		setFeedback(null);
-		setIsUpdatingDelivery(true);
-		try {
-			const res = await data.updateOrderDeliveryStatus(ord.id, { status: "out_for_delivery" });
-			if (res.queuedOffline) setFeedback({
-				type: "warning",
-				text: `تم تسجيل بدء التوصيل للطلب ${ord.requestNumber} محلياً بانتظار المزامنة.`
-			});
-			else if (res.success) setFeedback({
-				type: "success",
-				text: `الطلب ${ord.requestNumber} الآن في حالة (جاري التوصيل).`
-			});
-			else setFeedback({
-				type: "error",
-				text: res.error || "تعذر تحديث حالة التوصيل"
-			});
-		} finally {
-			setIsUpdatingDelivery(false);
-		}
-	};
-	const handleOpenDeliverModal = (ord) => {
-		const remainingAfterAdv = Math.max(0, Number(ord.totalAmount || 0) - Number(ord.advancePaidAmount || 0));
-		setDeliveringOrder(ord);
-		setDeliveryCollectedAmount(remainingAfterAdv);
-		setDeliveryCashboxId(data.cashboxes[0]?.id || "CASH-01");
-		setDeliveryMethod("cash");
-		setDeliveryNotes("");
-		setDeliveryProof("");
-	};
-	const handleConfirmDelivered = async (e) => {
-		e.preventDefault();
-		if (!deliveringOrder || isUpdatingDelivery) return;
-		setIsUpdatingDelivery(true);
-		setFeedback(null);
-		try {
-			const res = await data.updateOrderDeliveryStatus(deliveringOrder.id, {
-				status: "delivered",
-				collectedAmount: deliveryCollectedAmount > 0 ? deliveryCollectedAmount : 0,
-				cashboxId: deliveryCollectedAmount > 0 ? deliveryCashboxId : void 0,
-				paymentMethod: deliveryMethod,
-				deliveryNotes: deliveryNotes.trim() || void 0,
-				deliveryProof: deliveryProof || void 0
-			});
-			if (res.queuedOffline) {
-				setFeedback({
-					type: "warning",
-					text: `تم حفظ تأكيد تسليم الطلب ${deliveringOrder.requestNumber} محلياً في طابور المزامنة.`
-				});
-				setDeliveringOrder(null);
-			} else if (res.success) {
-				setFeedback({
-					type: "success",
-					text: `تم تسجيل تسليم الطلب ${deliveringOrder.requestNumber} بنجاح.`
-				});
-				setDeliveringOrder(null);
-			} else setFeedback({
-				type: "error",
-				text: res.error || "تعذر تأكيد التسليم"
-			});
-		} finally {
-			setIsUpdatingDelivery(false);
-		}
-	};
-	const mySubmittedOrders = (0, import_react.useMemo)(() => {
-		return [...data.customerItemOrders || []].filter((o) => !rep || o.representativeId === rep.id || o.requesterType === "representative").sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-	}, [data.customerItemOrders, rep]);
-	const effectiveVanId = invWarehouseId || vanWarehouse?.id || "";
 	const shortageItems = (0, import_react.useMemo)(() => {
-		const out = [];
+		const requestedByProd = /* @__PURE__ */ new Map();
 		for (const it of invItems) {
 			const prod = activeProducts.find((p) => p.id === it.productId);
 			if (!prod) continue;
 			const avail = prod.stockPerWarehouse?.[effectiveVanId] || 0;
 			const reqBase = it.quantity * (it.unitFactor || 1);
-			if (avail < reqBase) out.push({
-				productId: it.productId,
-				productName: it.productName,
+			const prev = requestedByProd.get(it.productId);
+			requestedByProd.set(it.productId, {
+				name: it.productName,
 				unit: prod.baseUnit,
-				requestedQty: reqBase,
-				availableInVanQty: avail,
-				shortageQty: reqBase - avail
+				requested: (prev?.requested || 0) + reqBase,
+				avail
 			});
 		}
+		const out = [];
+		for (const [productId, entry] of requestedByProd.entries()) if (entry.avail < entry.requested) out.push({
+			productId,
+			productName: entry.name,
+			unit: entry.unit,
+			requestedQty: entry.requested,
+			availableInVanQty: entry.avail,
+			shortageQty: entry.requested - entry.avail
+		});
 		return out;
 	}, [
 		invItems,
@@ -66444,6 +74792,13 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 			setFeedback({
 				type: "error",
 				text: "حسابك غير مرتبط بملف مندوب نشط."
+			});
+			return;
+		}
+		if (mode === "confirmed" && shortageItems.length > 0) {
+			setFeedback({
+				type: "error",
+				text: "لا يمكن اعتماد فاتورة بيع بكمية تتجاوز مخزون عهدة السيارة. اطلب تحويل الأصناف أو احفظها كمسودة."
 			});
 			return;
 		}
@@ -66506,13 +74861,9 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 			setIsSubmittingInvoice(false);
 			setInvItems([]);
 			setInvNotes("");
-			if (trRes.success) setFeedback({
-				type: "success",
-				text: `تم حفظ الفاتورة كمسودة (${res.invoice.invoiceNumber}) وإرسال طلب التحويل رقم ${trRes.request?.requestNumber || ""} للإدارة.`
-			});
-			else setFeedback({
-				type: "warning",
-				text: `تم حفظ الفاتورة كمسودة (${res.invoice.invoiceNumber}) لكن تعذر إرسال طلب التحويل: ${trRes.error}`
+			setFeedback({
+				type: trRes.success ? "success" : "warning",
+				text: trRes.success ? `تم حفظ الفاتورة كمسودة (${res.invoice.invoiceNumber}) وإرسال طلب التحويل رقم ${trRes.request?.requestNumber || ""} للإدارة.` : `تم حفظ الفاتورة كمسودة (${res.invoice.invoiceNumber}) لكن تعذر إرسال طلب التحويل: ${trRes.error}`
 			});
 			onTabChange("invoices");
 			return;
@@ -66522,10 +74873,703 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 		setInvNotes("");
 		setFeedback({
 			type: res.queuedOffline ? "warning" : "success",
-			text: res.queuedOffline ? `تم حفظ الفاتورة محلياً (${res.invoice.invoiceNumber}) في طابور المزامنة بانتظار الإرسال التلقائي للسيرفر.` : forceDraft ? `تم حفظ الفاتورة كمسودة (${res.invoice.invoiceNumber}).` : `تم اعتماد وإصدار الفاتورة (${res.invoice.invoiceNumber}) بنجاح.`
+			text: res.queuedOffline ? `تم حفظ الفاتورة محلياً (${res.invoice.invoiceNumber}) في طابور المزامنة بانتظار الإرسال من REFRESH.` : forceDraft ? `تم حفظ الفاتورة كمسودة (${res.invoice.invoiceNumber}).` : `تم اعتماد وإصدار الفاتورة (${res.invoice.invoiceNumber}) فوراً وإدراجها لمراجعة الإدارة.`
 		});
 		onTabChange("invoices");
 	};
+	const purTotal = (0, import_react.useMemo)(() => purItems.reduce((s, i) => s + i.total, 0), [purItems]);
+	const handleSelectPurProduct = (prodId) => {
+		setPurProductId(prodId);
+		const prod = activeProducts.find((p) => p.id === prodId);
+		if (!prod) return;
+		setPurUnitName(prod.baseUnit);
+		setPurPrice(prod.purchasePrice > 0 ? prod.purchasePrice : "");
+		setPurQty("");
+	};
+	const handleAddPurItem = () => {
+		const prod = activeProducts.find((p) => p.id === purProductId);
+		const qtyNum = Number(purQty || 0);
+		if (!prod || qtyNum <= 0) return;
+		const priceNum = Math.max(0, Number(purPrice || 0));
+		let factor = 1;
+		if (purUnitName !== prod.baseUnit) {
+			const u = prod.units.find((x) => x.name === purUnitName);
+			if (u) factor = u.conversionFactor;
+		}
+		setPurItems((prev) => [...prev, {
+			productId: prod.id,
+			productName: prod.name,
+			barcode: prod.barcode,
+			unit: purUnitName || prod.baseUnit,
+			unitFactor: factor,
+			quantity: qtyNum,
+			unitPrice: priceNum,
+			purchasePriceAtTime: priceNum,
+			discount: 0,
+			total: computeLineTotal(qtyNum, priceNum)
+		}]);
+		setPurProductId("");
+		setPurQty("");
+		setPurPrice("");
+	};
+	const handleCreatePurchaseInvoice = async (e) => {
+		e.preventDefault();
+		if (!purSupplierId || !purItems.length) {
+			setFeedback({
+				type: "error",
+				text: "يرجى اختيار المورد وإضافة صنف واحد على الأقل."
+			});
+			return;
+		}
+		const sup = data.suppliers.find((s) => s.id === purSupplierId);
+		const whId = purWarehouseId || mainWarehouse?.id || vanWarehouse?.id || "";
+		const wh = data.warehouses.find((w) => w.id === whId);
+		const paid = purPaymentType === "cash" ? purTotal : purPaymentType === "credit" ? 0 : Math.min(purTotal, Math.max(0, purPaidAmount));
+		setIsSubmittingPurchase(true);
+		setFeedback(null);
+		const res = await data.createPurchaseInvoice({
+			date: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+			supplierId: purSupplierId,
+			supplierName: sup?.name || "مورد",
+			representativeId: rep?.id,
+			representativeName: rep?.name,
+			warehouseId: whId,
+			warehouseName: wh?.name || "المخزن الرئيسي",
+			items: purItems,
+			subtotal: purTotal,
+			discountTotal: 0,
+			taxTotal: 0,
+			grandTotal: purTotal,
+			paidAmount: paid,
+			remainingAmount: Math.max(0, purTotal - paid),
+			paymentType: purPaymentType,
+			paymentMethod: "cash",
+			cashboxId: purCashboxId,
+			status: "confirmed",
+			notes: purNotes.trim() || void 0
+		});
+		setIsSubmittingPurchase(false);
+		if (res.success) {
+			setPurItems([]);
+			setPurNotes("");
+			setFeedback({
+				type: res.queuedOffline ? "warning" : "success",
+				text: res.queuedOffline ? `تم حفظ فاتورة الشراء (${res.invoice?.invoiceNumber || ""}) محلياً بانتظار المزامنة.` : `تم تسجيل فاتورة الشراء (${res.invoice?.invoiceNumber || ""}) بنجاح.`
+			});
+			onTabChange("purchases-list");
+		} else setFeedback({
+			type: "error",
+			text: res.error || "تعذر حفظ فاتورة الشراء"
+		});
+	};
+	const sRetTotal = (0, import_react.useMemo)(() => sRetItems.reduce((s, i) => s + i.total, 0), [sRetItems]);
+	const pRetTotal = (0, import_react.useMemo)(() => pRetItems.reduce((s, i) => s + i.total, 0), [pRetItems]);
+	const handleSubmitSalesReturn = async (e) => {
+		e.preventDefault();
+		if (!sRetCustomerId || !sRetItems.length) {
+			setFeedback({
+				type: "error",
+				text: "يرجى اختيار العميل وإضافة صنف للمرتجع."
+			});
+			return;
+		}
+		const cust = data.customers.find((c) => c.id === sRetCustomerId);
+		const whId = sRetWarehouseId || effectiveVanId;
+		const wh = data.warehouses.find((w) => w.id === whId);
+		const inv = data.invoices.find((i) => i.id === sRetInvoiceId);
+		setIsSubmittingSRet(true);
+		setFeedback(null);
+		const res = await data.createReturn({
+			type: "sales_return",
+			date: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+			originalInvoiceId: inv?.id || "",
+			originalInvoiceNumber: inv?.invoiceNumber || "",
+			partyId: sRetCustomerId,
+			partyName: cust?.name || "عميل",
+			warehouseId: whId,
+			warehouseName: wh?.name || "سيارة المندوب",
+			items: sRetItems,
+			grandTotal: sRetTotal,
+			refundType: sRetSettlement === "cash" ? "cash" : "balance",
+			cashboxId: sRetSettlement === "cash" ? sRetCashboxId : void 0,
+			reason: sRetReason.trim() || "مرتجع مبيعات من المندوب"
+		});
+		setIsSubmittingSRet(false);
+		if (res.success) {
+			setSRetItems([]);
+			setSRetReason("");
+			setFeedback({
+				type: res.queuedOffline ? "warning" : "success",
+				text: res.queuedOffline ? "تم حفظ مرتجع البيع محلياً في طابور المزامنة." : "تم تسجيل مرتجع البيع وتحديث المخزون وحساب العميل."
+			});
+			onTabChange("sales-returns-list");
+		} else setFeedback({
+			type: "error",
+			text: res.error || "تعذر تسجيل مرتجع البيع"
+		});
+	};
+	const handleSubmitPurchaseReturn = async (e) => {
+		e.preventDefault();
+		if (!pRetSupplierId || !pRetItems.length) {
+			setFeedback({
+				type: "error",
+				text: "يرجى اختيار المورد وإضافة صنف لمرتجع الشراء."
+			});
+			return;
+		}
+		const sup = data.suppliers.find((s) => s.id === pRetSupplierId);
+		const whId = pRetWarehouseId || mainWarehouse?.id || effectiveVanId;
+		const wh = data.warehouses.find((w) => w.id === whId);
+		const inv = data.invoices.find((i) => i.id === pRetInvoiceId);
+		setIsSubmittingPRet(true);
+		setFeedback(null);
+		const res = await data.createReturn({
+			type: "purchase_return",
+			date: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+			originalInvoiceId: inv?.id || "",
+			originalInvoiceNumber: inv?.invoiceNumber || "",
+			partyId: pRetSupplierId,
+			partyName: sup?.name || "مورد",
+			warehouseId: whId,
+			warehouseName: wh?.name || "المخزن الرئيسي",
+			items: pRetItems,
+			grandTotal: pRetTotal,
+			refundType: pRetSettlement === "cash" ? "cash" : "balance",
+			cashboxId: pRetSettlement === "cash" ? pRetCashboxId : void 0,
+			reason: pRetReason.trim() || "مرتجع مشتريات للمورد"
+		});
+		setIsSubmittingPRet(false);
+		if (res.success) {
+			setPRetItems([]);
+			setPRetReason("");
+			setFeedback({
+				type: res.queuedOffline ? "warning" : "success",
+				text: res.queuedOffline ? "تم حفظ مرتجع الشراء محلياً في طابور المزامنة." : "تم تسجيل مرتجع المشتريات وتحديث المخزون وحساب المورد."
+			});
+			onTabChange("purchase-returns-list");
+		} else setFeedback({
+			type: "error",
+			text: res.error || "تعذر تسجيل مرتجع الشراء"
+		});
+	};
+	const handleSubmitCashDeposit = async (e) => {
+		e.preventDefault();
+		if (depAmount <= 0) {
+			setFeedback({
+				type: "error",
+				text: "يرجى إدخال مبلغ صحيح أكبر من الصفر."
+			});
+			return;
+		}
+		setIsSubmittingDeposit(true);
+		setFeedback(null);
+		try {
+			if (depMode === "customer_collection") {
+				if (!depCustomerId) {
+					setFeedback({
+						type: "error",
+						text: "يرجى اختيار العميل للتحصيل منه."
+					});
+					return;
+				}
+				const res = await data.recordCustomerPayment(depCustomerId, depAmount, depCashboxId, depNotes.trim() || "تحصيل نقدي عبر تطبيق المندوب", depMethod);
+				if (res.success) {
+					setDepAmount(0);
+					setDepNotes("");
+					setFeedback({
+						type: res.queuedOffline ? "warning" : "success",
+						text: res.queuedOffline ? "تم حفظ التحصيل محلياً بانتظار المزامنة." : "تم تسجيل الإيداع / تحصيل العميل وتحديث الرصيد."
+					});
+				} else setFeedback({
+					type: "error",
+					text: res.error || "تعذر تسجيل التحصيل"
+				});
+			} else {
+				const res = await data.executeCashOperation({
+					type: "cash_deposit",
+					cashboxId: depCashboxId,
+					amount: depAmount,
+					date: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+					category: "إيداع نقدي",
+					recipientOrPayer: rep?.name || currentUser?.fullName || "المندوب",
+					notes: depNotes.trim() || "إيداع نقدي من الشاشة الرئيسية"
+				});
+				if (res.success) {
+					setDepAmount(0);
+					setDepNotes("");
+					setFeedback({
+						type: res.queuedOffline ? "warning" : "success",
+						text: res.queuedOffline ? "تم حفظ الإيداع النقدي محلياً في طابور المزامنة بانتظار الإرسال." : "تم تسجيل الإيداع النقدي بالخزينة بنجاح."
+					});
+				} else setFeedback({
+					type: "error",
+					text: res.error || "تعذر تسجيل الإيداع النقدي"
+				});
+			}
+		} catch (err) {
+			setFeedback({
+				type: "error",
+				text: err?.message || "تعذر تسجيل الإيداع النقدي"
+			});
+		} finally {
+			setIsSubmittingDeposit(false);
+		}
+	};
+	const handleSubmitCashWithdrawal = async (e) => {
+		e.preventDefault();
+		if (wdAmount <= 0) {
+			setFeedback({
+				type: "error",
+				text: "يرجى إدخال مبلغ سحب صحيح أكبر من الصفر."
+			});
+			return;
+		}
+		setIsSubmittingWithdrawal(true);
+		setFeedback(null);
+		try {
+			const res = await data.executeCashOperation({
+				type: "expense",
+				cashboxId: wdCashboxId,
+				amount: wdAmount,
+				date: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+				category: wdCategory.trim() || "سحب نقدي ومصروفات",
+				recipientOrPayer: wdBeneficiary.trim() || rep?.name || currentUser?.fullName || "",
+				notes: wdNotes.trim() || "سحب نقدي عبر تطبيق المندوب"
+			});
+			if (res.success) {
+				setWdAmount(0);
+				setWdNotes("");
+				setFeedback({
+					type: res.queuedOffline ? "warning" : "success",
+					text: res.queuedOffline ? "تم حفظ السحب / المصروف محلياً في طابور المزامنة بانتظار الإرسال." : "تم تسجيل السحب / المصروف النقدي بنجاح."
+				});
+			} else setFeedback({
+				type: "error",
+				text: res.error || "تعذر تسجيل السحب النقدي"
+			});
+		} catch (err) {
+			setFeedback({
+				type: "error",
+				text: err?.message || "تعذر تسجيل السحب النقدي"
+			});
+		} finally {
+			setIsSubmittingWithdrawal(false);
+		}
+	};
+	const handleCaptureCustLocation = async () => {
+		setIsLocatingCust(true);
+		try {
+			const res = await getCurrentLocationSafe();
+			if (res.ok && res.coords) {
+				setNewCustGeo(res.coords);
+				setCustMapNotice(null);
+				const parsed = parseLatLngCoords(res.coords);
+				if (parsed) {
+					const rev = await reverseGeocodeCoords(parsed.lat, parsed.lng);
+					if (rev.ok) {
+						setNewCustAddress((prev) => prev.trim() || rev.address);
+						if (rev.area) setNewCustArea((prev) => prev.trim() || rev.area || "");
+						setFeedback({
+							type: "success",
+							text: "تم التقاط إحداثيات GPS وجلب العنوان تلقائياً."
+						});
+						return;
+					}
+					setCustMapNotice(rev.error);
+					setFeedback({
+						type: "warning",
+						text: "تم التقاط إحداثيات GPS، وتعذر جلب العنوان تلقائياً — يمكنك كتابته يدوياً."
+					});
+					return;
+				}
+				setFeedback({
+					type: "success",
+					text: "تم التقاط إحداثيات GPS للعميل."
+				});
+			} else setFeedback({
+				type: "error",
+				text: res.error || "تعذر تحديد الموقع الجغرافي"
+			});
+		} finally {
+			setIsLocatingCust(false);
+		}
+	};
+	const handleSaveNewCustomer = async (e) => {
+		e.preventDefault();
+		if (!newCustName.trim() || !newCustPhone.trim()) {
+			setFeedback({
+				type: "error",
+				text: "يرجى إدخال اسم العميل ورقم الهاتف."
+			});
+			return;
+		}
+		setIsSavingCustomer(true);
+		setFeedback(null);
+		try {
+			const cust = await data.addCustomer({
+				code: `C-${Date.now().toString().slice(-5)}`,
+				name: newCustName.trim(),
+				shopName: newCustShop.trim() || newCustName.trim(),
+				phone: newCustPhone.trim(),
+				address: newCustAddress.trim() || newCustArea.trim() || "-",
+				area: newCustArea.trim() || void 0,
+				geoCoordinates: newCustGeo.trim() || void 0,
+				openingBalance: Number(newCustOpening) || 0,
+				status: "active",
+				allowedRepIds: rep ? [rep.id] : []
+			});
+			setNewCustName("");
+			setNewCustShop("");
+			setNewCustPhone("");
+			setNewCustArea("");
+			setNewCustAddress("");
+			setNewCustGeo("");
+			setNewCustOpening(0);
+			setInvCustomerId(cust.id);
+			setFeedback({
+				type: "success",
+				text: `تم إضافة العميل (${cust.name}) بنجاح.`
+			});
+			onTabChange("customers");
+		} catch (err) {
+			setFeedback({
+				type: "error",
+				text: err?.message || "تعذر إضافة العميل"
+			});
+		} finally {
+			setIsSavingCustomer(false);
+		}
+	};
+	const handleSaveNewSupplier = async (e) => {
+		e.preventDefault();
+		if (!newSupName.trim() || !newSupPhone.trim()) {
+			setFeedback({
+				type: "error",
+				text: "يرجى إدخال اسم المورد ورقم الهاتف."
+			});
+			return;
+		}
+		setIsSavingSupplier(true);
+		setFeedback(null);
+		try {
+			const sup = await data.addSupplier({
+				code: `S-${Date.now().toString().slice(-5)}`,
+				name: newSupName.trim(),
+				phone: newSupPhone.trim(),
+				address: newSupAddress.trim() || "-",
+				notes: newSupCompany.trim() ? `الشركة: ${newSupCompany.trim()}` : void 0,
+				openingBalance: Number(newSupOpening) || 0,
+				status: "active"
+			});
+			setNewSupName("");
+			setNewSupCompany("");
+			setNewSupPhone("");
+			setNewSupAddress("");
+			setNewSupOpening(0);
+			setPurSupplierId(sup.id);
+			setFeedback({
+				type: "success",
+				text: `تم تسجيل المورد (${sup.name}) بنجاح.`
+			});
+		} catch (err) {
+			setFeedback({
+				type: "error",
+				text: err?.message || "تعذر حفظ المورد"
+			});
+		} finally {
+			setIsSavingSupplier(false);
+		}
+	};
+	const quoteTotal = (0, import_react.useMemo)(() => quoteItems.reduce((s, i) => s + i.total, 0), [quoteItems]);
+	const handleSelectQuoteProduct = (prodId) => {
+		setQuoteProductId(prodId);
+		const prod = activeProducts.find((p) => p.id === prodId);
+		if (!prod) return;
+		setQuoteUnitName(prod.baseUnit);
+		setQuotePrice(prod.sellingPrice);
+		setQuoteQty(1);
+	};
+	const handleAddQuoteItem = () => {
+		const prod = activeProducts.find((p) => p.id === quoteProductId);
+		if (!prod || quoteQty <= 0) return;
+		let factor = 1;
+		if (quoteUnitName !== prod.baseUnit) {
+			const u = prod.units.find((x) => x.name === quoteUnitName);
+			if (u) factor = u.conversionFactor;
+		}
+		setQuoteItems((prev) => [...prev, {
+			productId: prod.id,
+			productName: prod.name,
+			barcode: prod.barcode,
+			unit: quoteUnitName || prod.baseUnit,
+			unitFactor: factor,
+			quantity: quoteQty,
+			unitPrice: quotePrice,
+			purchasePriceAtTime: prod.purchasePrice * factor,
+			discount: 0,
+			total: computeLineTotal(quoteQty, quotePrice)
+		}]);
+		setQuoteProductId("");
+		setQuoteQty(1);
+		setQuotePrice(0);
+	};
+	const handleCreateQuote = async (e) => {
+		e.preventDefault();
+		if (!quoteItems.length) {
+			setFeedback({
+				type: "error",
+				text: "يرجى إضافة صنف واحد على الأقل لعرض السعر."
+			});
+			return;
+		}
+		const cust = data.customers.find((c) => c.id === quoteCustomerId);
+		setIsSubmittingQuote(true);
+		setFeedback(null);
+		const res = await data.createSalesQuote({
+			date: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+			customerId: quoteCustomerId || void 0,
+			customerName: cust?.name || "عميل عام",
+			representativeId: rep?.id,
+			representativeName: rep?.name,
+			warehouseId: effectiveVanId || mainWarehouse?.id || "",
+			warehouseName: vanWarehouse?.name || mainWarehouse?.name || "",
+			items: quoteItems,
+			subtotal: quoteTotal,
+			discountTotal: 0,
+			taxTotal: 0,
+			grandTotal: quoteTotal,
+			paidAmount: 0,
+			remainingAmount: quoteTotal,
+			paymentType: "credit",
+			paymentMethod: "cash",
+			cashboxId: data.cashboxes[0]?.id || "",
+			status: "confirmed",
+			notes: quoteNotes.trim() || "عرض سعر بدون تأثير مخزني أو مالي"
+		});
+		setIsSubmittingQuote(false);
+		if (res.success) {
+			setQuoteItems([]);
+			setQuoteNotes("");
+			setFeedback({
+				type: res.queuedOffline ? "warning" : "success",
+				text: res.queuedOffline ? `تم حفظ عرض السعر (${res.invoice?.invoiceNumber || ""}) محلياً بانتظار المزامنة.` : `تم إنشاء عرض السعر (${res.invoice?.invoiceNumber || ""}) دون أي تأثير على المخزون أو الحسابات.`
+			});
+		} else setFeedback({
+			type: "error",
+			text: res.error || "تعذر حفظ عرض السعر"
+		});
+	};
+	const handleConvertQuote = async (quoteId) => {
+		setConvertingQuoteId(quoteId);
+		setFeedback(null);
+		const res = await data.convertQuoteToInvoice(quoteId);
+		setConvertingQuoteId(null);
+		if (res.success) setFeedback({
+			type: "success",
+			text: `تم تحويل عرض السعر إلى فاتورة مبيعات (${res.invoice?.invoiceNumber || ""}) بنجاح.`
+		});
+		else setFeedback({
+			type: "error",
+			text: res.error || "تعذر تحويل عرض السعر لفاتورة"
+		});
+	};
+	const handleAddCheque = async (e) => {
+		e.preventDefault();
+		if (!chqNumber.trim() || !chqPartyName.trim() || chqAmount <= 0) {
+			setFeedback({
+				type: "error",
+				text: "يرجى استكمال رقم الشيك والجهة والمبلغ."
+			});
+			return;
+		}
+		setIsSavingCheque(true);
+		setFeedback(null);
+		try {
+			await data.addCheque({
+				chequeNumber: chqNumber.trim(),
+				type: chqType,
+				partyId: "",
+				partyName: chqPartyName.trim(),
+				bankName: chqBank.trim() || "بنك",
+				amount: chqAmount,
+				dueDate: chqDueDate,
+				issueDate: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+				status: "pending"
+			});
+			setChqNumber("");
+			setChqPartyName("");
+			setChqBank("");
+			setChqAmount(0);
+			setFeedback({
+				type: "success",
+				text: "تم تسجيل الشيك بنجاح."
+			});
+		} catch (err) {
+			setFeedback({
+				type: "error",
+				text: err?.message || "تعذر حفظ الشيك"
+			});
+		} finally {
+			setIsSavingCheque(false);
+		}
+	};
+	const selectedOrderProduct = (0, import_react.useMemo)(() => activeProducts.find((p) => p.id === ordProductId) || null, [activeProducts, ordProductId]);
+	const handleSelectOrderProduct = (prodId) => {
+		setOrdProductId(prodId);
+		const prod = activeProducts.find((p) => p.id === prodId);
+		if (!prod) return;
+		if (prod.units && prod.units.length > 0) {
+			setOrdUnitName(prod.units[0].name);
+			setOrdPrice(prod.units[0].sellingPrice);
+		} else {
+			setOrdUnitName(prod.baseUnit);
+			setOrdPrice(prod.sellingPrice);
+		}
+		setOrdQty(1);
+	};
+	const handleOrderUnitChange = (unitName) => {
+		setOrdUnitName(unitName);
+		if (!selectedOrderProduct) return;
+		if (unitName === selectedOrderProduct.baseUnit) setOrdPrice(selectedOrderProduct.sellingPrice);
+		else {
+			const u = selectedOrderProduct.units.find((x) => x.name === unitName);
+			if (u) setOrdPrice(u.sellingPrice);
+		}
+	};
+	const handleAddOrderItem = () => {
+		if (!selectedOrderProduct || ordQty <= 0) return;
+		let unitFactor = 1;
+		if (ordUnitName !== selectedOrderProduct.baseUnit) {
+			const u = selectedOrderProduct.units.find((x) => x.name === ordUnitName);
+			if (u) unitFactor = u.conversionFactor;
+		}
+		const unitUsed = ordUnitName || selectedOrderProduct.baseUnit;
+		setOrdItems((prev) => {
+			const existingIdx = prev.findIndex((it) => it.productId === selectedOrderProduct.id && it.unit === unitUsed);
+			if (existingIdx >= 0) return prev.map((it, i) => i === existingIdx ? {
+				...it,
+				quantity: it.quantity + ordQty,
+				unitPrice: ordPrice
+			} : it);
+			return [...prev, {
+				productId: selectedOrderProduct.id,
+				productCode: selectedOrderProduct.code,
+				productName: selectedOrderProduct.name,
+				productImage: selectedOrderProduct.image,
+				unit: unitUsed,
+				unitFactor,
+				quantity: ordQty,
+				unitPrice: ordPrice
+			}];
+		});
+		setOrdProductId("");
+		setOrdQty(1);
+		setOrdPrice(0);
+	};
+	const ordTotalAmount = (0, import_react.useMemo)(() => ordItems.reduce((sum, it) => sum + computeLineTotal(it.quantity, it.unitPrice), 0), [ordItems]);
+	const handleSubmitRepOrder = async (e) => {
+		e.preventDefault();
+		if (!ordCustomerId || !ordItems.length) {
+			setFeedback({
+				type: "error",
+				text: "يرجى اختيار العميل وإضافة صنف واحد على الأقل."
+			});
+			return;
+		}
+		const cust = data.customers.find((c) => c.id === ordCustomerId);
+		setIsSubmittingOrder(true);
+		setFeedback(null);
+		const res = await data.createCustomerItemOrder({
+			customerId: ordCustomerId,
+			customerName: cust?.name || "عميل",
+			customerPhone: cust?.phone,
+			shopName: cust?.shopName || cust?.name,
+			deliveryAddress: cust?.address,
+			geoCoordinates: cust?.geoCoordinates,
+			requesterType: "representative",
+			items: ordItems,
+			totalAmount: ordTotalAmount,
+			notes: ordNotes.trim() || "طلب شراء مرسل من المندوب"
+		});
+		setIsSubmittingOrder(false);
+		if (res.success || res.queuedOffline) {
+			setOrdItems([]);
+			setOrdNotes("");
+			setFeedback({
+				type: res.queuedOffline ? "warning" : "success",
+				text: res.queuedOffline ? `تم حفظ الطلب محلياً (${res.order?.requestNumber || ""}) بانتظار المزامنة.` : `تم إرسال الطلب رقم ${res.order?.requestNumber || ""} للإدارة.`
+			});
+		} else setFeedback({
+			type: "error",
+			text: res.error || "تعذر إرسال الطلب"
+		});
+	};
+	const assignedDeliveryOrders = (0, import_react.useMemo)(() => {
+		return [...data.customerItemOrders || []].filter((o) => rep ? o.deliveryRepId === rep.id : [
+			"rep_assigned",
+			"preparing",
+			"out_for_delivery",
+			"delivered",
+			"collected"
+		].includes(o.status)).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+	}, [data.customerItemOrders, rep]);
+	const handleStartDelivery = async (ord) => {
+		setFeedback(null);
+		setIsUpdatingDelivery(true);
+		try {
+			const res = await data.updateOrderDeliveryStatus(ord.id, { status: "out_for_delivery" });
+			if (res.success) setFeedback({
+				type: res.queuedOffline ? "warning" : "success",
+				text: res.queuedOffline ? `تم تسجيل بدء التوصيل للطلب ${ord.requestNumber} محلياً.` : `الطلب ${ord.requestNumber} الآن في حالة (جاري التوصيل).`
+			});
+			else setFeedback({
+				type: "error",
+				text: res.error || "تعذر تحديث حالة التوصيل"
+			});
+		} finally {
+			setIsUpdatingDelivery(false);
+		}
+	};
+	const handleOpenDeliverModal = (ord) => {
+		const remainingAfterAdv = Math.max(0, Number(ord.totalAmount || 0) - Number(ord.advancePaidAmount || 0));
+		setDeliveringOrder(ord);
+		setDeliveryCollectedAmount(remainingAfterAdv);
+		setDeliveryCashboxId(data.cashboxes[0]?.id || "CASH-01");
+		setDeliveryMethod("cash");
+		setDeliveryNotes("");
+		setDeliveryProof("");
+	};
+	const handleConfirmDelivered = async (e) => {
+		e.preventDefault();
+		if (!deliveringOrder || isUpdatingDelivery) return;
+		setIsUpdatingDelivery(true);
+		setFeedback(null);
+		try {
+			const res = await data.updateOrderDeliveryStatus(deliveringOrder.id, {
+				status: "delivered",
+				collectedAmount: deliveryCollectedAmount > 0 ? deliveryCollectedAmount : 0,
+				cashboxId: deliveryCollectedAmount > 0 ? deliveryCashboxId : void 0,
+				paymentMethod: deliveryMethod,
+				deliveryNotes: deliveryNotes.trim() || void 0,
+				deliveryProof: deliveryProof || void 0
+			});
+			if (res.success) {
+				setFeedback({
+					type: res.queuedOffline ? "warning" : "success",
+					text: res.queuedOffline ? `تم حفظ تأكيد تسليم الطلب ${deliveringOrder.requestNumber} محلياً.` : `تم تسجيل تسليم الطلب ${deliveringOrder.requestNumber} بنجاح.`
+				});
+				setDeliveringOrder(null);
+			} else setFeedback({
+				type: "error",
+				text: res.error || "تعذر تأكيد التسليم"
+			});
+		} finally {
+			setIsUpdatingDelivery(false);
+		}
+	};
+	const mySubmittedOrders = (0, import_react.useMemo)(() => {
+		return [...data.customerItemOrders || []].filter((o) => !rep || o.representativeId === rep.id || o.requesterType === "representative").sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+	}, [data.customerItemOrders, rep]);
 	const myItemTransfers = (0, import_react.useMemo)(() => {
 		return (data.repItemTransfers || []).filter((t) => !rep || t.representativeId === rep.id).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
 	}, [data.repItemTransfers, rep]);
@@ -66535,6 +75579,18 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 	const myInvoices = (0, import_react.useMemo)(() => {
 		return (data.invoices || []).filter((i) => i.type === "sales").sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
 	}, [data.invoices]);
+	const myPurchases = (0, import_react.useMemo)(() => {
+		return (data.invoices || []).filter((i) => i.type === "purchase").sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+	}, [data.invoices]);
+	const myQuotes = (0, import_react.useMemo)(() => {
+		return (data.invoices || []).filter((i) => i.type === "quote").sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+	}, [data.invoices]);
+	const mySalesReturns = (0, import_react.useMemo)(() => {
+		return (data.invoiceReturns || []).filter((r) => r.type === "sales_return").sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+	}, [data.invoiceReturns]);
+	const myPurchaseReturns = (0, import_react.useMemo)(() => {
+		return (data.invoiceReturns || []).filter((r) => r.type === "purchase_return").sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+	}, [data.invoiceReturns]);
 	const draftsReadyToConfirm = (0, import_react.useMemo)(() => {
 		return myInvoices.filter((inv) => {
 			if (inv.status !== "draft") return false;
@@ -66575,12 +75631,100 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 		setFeedback(null);
 		const res = await data.updateRepItemTransferStatus(reqId, "received");
 		if (res.success) setFeedback({
-			type: "success",
-			text: `تم تأكيد استلام أصناف التحويل ${reqNum} على سيارتك.`
+			type: res.queuedOffline ? "warning" : "success",
+			text: res.queuedOffline ? `تم تسجيل استلام ${reqNum} محلياً بانتظار المزامنة.` : `تم تأكيد استلام أصناف التحويل ${reqNum} على سيارتك.`
 		});
 		else setFeedback({
 			type: "error",
 			text: res.error || "تعذر تأكيد الاستلام"
+		});
+	};
+	const handleRecordPartialCustodyDelivery = async (e) => {
+		e.preventDefault();
+		if (!delivProdId || delivQty <= 0) {
+			setFeedback({
+				type: "error",
+				text: "يرجى اختيار الصنف وكمية التسليم الجزئي."
+			});
+			return;
+		}
+		const cust = data.customers.find((c) => c.id === delivCustomerId);
+		setIsSendingTransfer(true);
+		setFeedback(null);
+		const res = await data.recordRepCustodyDelivery({
+			representativeId: rep?.id,
+			customerId: delivCustomerId || void 0,
+			customerName: cust?.name || void 0,
+			productId: delivProdId,
+			quantity: delivQty,
+			date: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+			notes: delivNotes.trim() || "تسليم عهدة جزئي لعميل من تطبيق المندوب"
+		});
+		setIsSendingTransfer(false);
+		if (res.success) {
+			setDelivProdId("");
+			setDelivQty(1);
+			setDelivNotes("");
+			setFeedback({
+				type: res.queuedOffline ? "warning" : "success",
+				text: res.queuedOffline ? "تم تسجيل تسليم العهدة محلياً بانتظار المزامنة." : "تم تسجيل تسليم العهدة وتحديث المتبقي في سيارة المندوب."
+			});
+			loadCustodyStatement();
+		} else setFeedback({
+			type: "error",
+			text: res.error || "تعذر تسجيل تسليم العهدة"
+		});
+	};
+	const handleRecordCustodyReturn = async (e) => {
+		e.preventDefault();
+		if (!retCustodyProdId || retCustodyQty <= 0) {
+			setFeedback({
+				type: "error",
+				text: "يرجى اختيار الصنف والكمية المرتجعة للمخزن."
+			});
+			return;
+		}
+		const prod = activeProducts.find((p) => p.id === retCustodyProdId);
+		let factor = 1;
+		const chosenUnit = retCustodyUnit || prod?.baseUnit || "قطعة";
+		if (prod && chosenUnit !== prod.baseUnit) {
+			const u = prod.units.find((x) => x.name === chosenUnit);
+			if (u) factor = u.conversionFactor;
+		}
+		const vanAvail = prod?.stockPerWarehouse?.[effectiveVanId] || 0;
+		if (retCustodyQty * factor > vanAvail) {
+			setFeedback({
+				type: "error",
+				text: `الكمية المطلوب إرجاعها (${retCustodyQty * factor} ${prod?.baseUnit || ""}) تتجاوز المتاح في عهدة السيارة (${vanAvail}).`
+			});
+			return;
+		}
+		setIsSendingTransfer(true);
+		setFeedback(null);
+		const res = await data.recordRepCustodyReturn({
+			representativeId: rep?.id,
+			targetWarehouseId: retCustodyTargetWhId || mainWarehouse?.id,
+			productId: retCustodyProdId,
+			quantity: retCustodyQty,
+			unit: chosenUnit,
+			unitFactor: factor,
+			date: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+			notes: retCustodyNotes.trim() || "إرجاع بضاعة من عهدة المندوب للمخزن الرئيسي"
+		});
+		setIsSendingTransfer(false);
+		if (res.success) {
+			setRetCustodyProdId("");
+			setRetCustodyUnit("");
+			setRetCustodyQty(1);
+			setRetCustodyNotes("");
+			setFeedback({
+				type: res.queuedOffline ? "warning" : "success",
+				text: res.queuedOffline ? "تم حفظ إرجاع العهدة للمخزن محلياً بانتظار المزامنة." : "تم تسجيل إرجاع العهدة إلى المخزن وتحديث الأرصدة بنجاح."
+			});
+			loadCustodyStatement();
+		} else setFeedback({
+			type: "error",
+			text: res.error || "تعذر إرجاع الصنف للمخزن"
 		});
 	};
 	const handleSendDirectItemTransfer = async (e) => {
@@ -66651,15 +75795,15 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 	};
 	const exportInvoiceDocument = (inv) => {
 		exportHtmlToPdf({
-			title: inv.status === "draft" ? "مسودة فاتورة مبيعات" : "فاتورة مبيعات",
+			title: inv.type === "quote" ? "عرض سعر" : inv.type === "purchase" ? "فاتورة مشتريات" : inv.status === "draft" ? "مسودة فاتورة مبيعات" : "فاتورة مبيعات",
 			companyName: data.settings.companyName,
 			companySubtitle: data.settings.companySubtitle,
 			docNumber: inv.invoiceNumber,
 			dateRangeText: inv.date,
 			meta: [
 				{
-					label: "العميل",
-					value: inv.customerName || "-"
+					label: inv.type === "purchase" ? "المورد" : "العميل",
+					value: inv.supplierName || inv.customerName || "-"
 				},
 				{
 					label: "المندوب",
@@ -66686,21 +75830,17 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 				it.unitPrice.toFixed(2),
 				it.total.toFixed(2)
 			]),
-			summaryPairs: [
-				{
-					label: "الصافي الإجمالي",
-					value: `${inv.grandTotal.toFixed(2)} ${data.settings.currency}`,
-					highlight: true
-				},
-				{
-					label: "المدفوع",
-					value: `${inv.paidAmount.toFixed(2)} ${data.settings.currency}`
-				},
-				{
-					label: "المتبقي",
-					value: `${inv.remainingAmount.toFixed(2)} ${data.settings.currency}`
-				}
-			],
+			summaryPairs: [{
+				label: "الصافي الإجمالي",
+				value: `${inv.grandTotal.toFixed(2)} ${data.settings.currency}`,
+				highlight: true
+			}, ...inv.type !== "quote" ? [{
+				label: "المدفوع",
+				value: `${inv.paidAmount.toFixed(2)} ${data.settings.currency}`
+			}, {
+				label: "المتبقي",
+				value: `${inv.remainingAmount.toFixed(2)} ${data.settings.currency}`
+			}] : []],
 			notes: inv.notes
 		});
 	};
@@ -66724,107 +75864,626 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 			})
 		]
 	});
+	const homeTiles = [
+		{
+			key: "new-purchase",
+			label: "فاتورة شراء",
+			icon: ShoppingBag,
+			allowed: canPurchases,
+			tone: "bg-indigo-50 text-indigo-900 border-indigo-200"
+		},
+		{
+			key: "sales-return",
+			label: "مرتجع بيع",
+			icon: RotateCcw,
+			allowed: canSales,
+			tone: "bg-rose-50 text-rose-900 border-rose-200"
+		},
+		{
+			key: "new-invoice",
+			label: "فاتورة بيع",
+			icon: FilePlus2,
+			allowed: canSales,
+			tone: "bg-blue-900 text-white border-blue-950"
+		},
+		{
+			key: "cash-deposit",
+			label: "إيداع نقدي",
+			icon: CircleArrowDown,
+			allowed: canCashOps || canAccounts || canSales,
+			tone: "bg-emerald-50 text-emerald-900 border-emerald-200"
+		},
+		{
+			key: "custody-transfer",
+			label: "تحويل",
+			icon: ArrowLeftRight,
+			allowed: canTransfers,
+			tone: "bg-cyan-50 text-cyan-900 border-cyan-200"
+		},
+		{
+			key: "purchase-return",
+			label: "مرتجع شراء",
+			icon: RotateCcw,
+			allowed: canPurchases,
+			tone: "bg-orange-50 text-orange-900 border-orange-200"
+		},
+		{
+			key: "cash-withdrawal",
+			label: "سحب نقدي",
+			icon: CircleArrowUp,
+			allowed: canCashOps,
+			tone: "bg-amber-50 text-amber-900 border-amber-200"
+		},
+		{
+			key: "new-customer",
+			label: "عميل جديد",
+			icon: UserPlus,
+			allowed: canAddCustomer,
+			tone: "bg-sky-50 text-sky-900 border-sky-200"
+		},
+		{
+			key: "new-supplier",
+			label: "مورد جديد",
+			icon: Building2,
+			allowed: canPurchases,
+			tone: "bg-purple-50 text-purple-900 border-purple-200"
+		},
+		{
+			key: "refresh",
+			label: "REFRESH",
+			icon: RefreshCw,
+			allowed: true,
+			tone: "bg-slate-900 text-white border-slate-950",
+			badgeCount: data.pendingSyncCount
+		},
+		{
+			key: "cheques-installments",
+			label: "شيك وقسط",
+			icon: CreditCard,
+			allowed: canAccounts,
+			tone: "bg-teal-50 text-teal-900 border-teal-200"
+		},
+		{
+			key: "new-quote",
+			label: "عرض سعر",
+			icon: FileSpreadsheet,
+			allowed: canSales,
+			tone: "bg-blue-50 text-blue-950 border-blue-200"
+		}
+	];
+	const renderPhoneAndMapsActionRow = (phoneVal, addressVal, geoVal, onPhoneWarn, onMapWarn) => {
+		const cleanedPhone = phoneVal.replace(/[^\d+]/g, "");
+		const isPhoneValid = cleanedPhone.replace(/\D/g, "").length >= 7;
+		const mapQuery = (geoVal || addressVal).trim();
+		return {
+			cleanedPhone,
+			isPhoneValid,
+			mapQuery,
+			mapsHref: mapQuery.startsWith("http://") || mapQuery.startsWith("https://") ? mapQuery : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`,
+			onPhoneWarn,
+			onMapWarn
+		};
+	};
+	const guardedTabChange = (nextTab) => {
+		if (activeTab === "new-invoice" && invItems.length > 0 && nextTab !== "new-invoice") {
+			setPendingLeaveTab(nextTab);
+			return;
+		}
+		onTabChange(nextTab);
+	};
+	const pendingCustodyDispatches = (0, import_react.useMemo)(() => myItemTransfers.filter((t) => t.status === "executed"), [myItemTransfers]);
+	const pendingCashReceipts = (0, import_react.useMemo)(() => myCashTransfers.filter((t) => t.status === "awaiting_receipt" && t.direction === "owner_to_rep"), [myCashTransfers]);
+	const activeAssignedOrders = (0, import_react.useMemo)(() => assignedDeliveryOrders.filter((o) => [
+		"rep_assigned",
+		"preparing",
+		"out_for_delivery",
+		"invoiced"
+	].includes(o.status)), [assignedDeliveryOrders]);
+	const todayStr = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+	const cashDrawerSummary = (0, import_react.useMemo)(() => {
+		const todayRepSalesCash = myInvoices.filter((i) => i.date === todayStr && i.status === "confirmed" && (!rep || i.representativeId === rep.id)).reduce((s, i) => s + Number(i.paidAmount || 0), 0);
+		const todayCashCollections = (data.financialTransactions || []).filter((t) => t.date === todayStr && (t.type === "deposit" || t.type === "income") && (!currentUser || t.createdBy === currentUser.fullName || t.createdBy === currentUser.username)).reduce((s, t) => s + Number(t.amount || 0), 0);
+		const todayRepRemittances = myCashTransfers.filter((t) => t.direction === "rep_to_owner" && (t.timestamp || t.sentAt || "").startsWith(todayStr) && t.status !== "rejected").reduce((s, t) => s + Number(t.amount || 0), 0);
+		const expectedBalance = Number(rep?.currentBalance || 0);
+		const parsedActual = actualDrawerCash.trim() === "" ? null : Number(actualDrawerCash);
+		return {
+			todayRepSalesCash,
+			todayCashCollections,
+			todayRepRemittances,
+			expectedBalance,
+			variance: parsedActual === null || Number.isNaN(parsedActual) ? null : parsedActual - expectedBalance
+		};
+	}, [
+		myInvoices,
+		todayStr,
+		rep,
+		data.financialTransactions,
+		currentUser,
+		myCashTransfers,
+		actualDrawerCash
+	]);
+	const selectedInvoiceCustomer = (0, import_react.useMemo)(() => data.customers.find((c) => c.id === invCustomerId) || null, [data.customers, invCustomerId]);
+	const effectiveInvPaid = (0, import_react.useMemo)(() => {
+		if (invPaymentType === "cash") return invGrandTotal;
+		if (invPaymentType === "credit") return 0;
+		return Math.min(invGrandTotal, Math.max(0, Number(invPaidAmount || 0)));
+	}, [
+		invPaymentType,
+		invGrandTotal,
+		invPaidAmount
+	]);
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 		className: "space-y-4",
 		children: [
-			feedback && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-				className: `p-3.5 rounded-2xl border text-xs font-bold flex items-center gap-2 ${feedback.type === "success" ? "bg-emerald-50 border-emerald-200 text-emerald-800" : feedback.type === "warning" ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-red-50 border-red-200 text-red-700"}`,
-				children: [feedback.type === "success" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleCheck, { className: "w-4 h-4 shrink-0" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleAlert, { className: "w-4 h-4 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: feedback.text })]
+			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "bg-white rounded-2xl border border-slate-200 p-1.5 shadow-2xs grid grid-cols-3 gap-1.5 text-xs",
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						onClick: () => guardedTabChange("home"),
+						className: `min-h-[44px] rounded-xl font-black transition-colors cursor-pointer ${activeTab === "home" ? "bg-blue-900 text-white shadow-xs" : "text-slate-700 hover:bg-slate-50"}`,
+						children: "الرئيسية"
+					}),
+					canCash ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						onClick: () => guardedTabChange("cash"),
+						className: `min-h-[44px] rounded-xl font-black transition-colors cursor-pointer ${activeTab === "cash" ? "bg-blue-900 text-white shadow-xs" : "text-slate-700 hover:bg-slate-50"}`,
+						children: "النقدية"
+					}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+						className: "min-h-[44px] rounded-xl flex items-center justify-center text-slate-400 bg-slate-50 text-[11px] font-bold",
+						children: "النقدية (مقيد)"
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						onClick: () => guardedTabChange("more"),
+						className: `min-h-[44px] rounded-xl font-black transition-colors cursor-pointer ${activeTab === "more" ? "bg-blue-900 text-white shadow-xs" : "text-slate-700 hover:bg-slate-50"}`,
+						children: "المزيد"
+					})
+				]
 			}),
-			activeTab === "home" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+			feedback && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: `p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between gap-2 ${feedback.type === "success" ? "bg-emerald-50 border-emerald-200 text-emerald-800" : feedback.type === "warning" ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-red-50 border-red-200 text-red-700"}`,
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flex items-center gap-2",
+					children: [feedback.type === "success" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleCheck, { className: "w-4 h-4 shrink-0" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleAlert, { className: "w-4 h-4 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: feedback.text })]
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+					type: "button",
+					onClick: () => setFeedback(null),
+					className: "text-[11px] underline cursor-pointer",
+					children: "إغلاق"
+				})]
+			}),
+			activeTab === "home" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				className: "space-y-4",
-				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-					className: "bg-white rounded-3xl border border-slate-200 p-5 shadow-xs space-y-4",
-					children: [
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "flex items-center justify-between gap-3",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "flex items-center justify-between gap-3",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "min-w-0",
+							children: [
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-									className: "text-xs text-slate-500",
+									className: "text-[11px] text-slate-500",
 									children: "مرحباً، مندوب المبيعات"
 								}),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
-									className: "text-lg font-black text-slate-900",
+									className: "text-base font-black text-slate-900 truncate",
 									children: rep?.name || currentUser?.fullName
 								}),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
-									className: "text-xs text-slate-500 mt-0.5",
+									className: "text-[11px] text-slate-500 mt-0.5 truncate",
 									children: [
 										vanWarehouse?.name || "سيارة المندوب",
 										" ",
 										rep?.vehicleNumber ? `· ${rep.vehicleNumber}` : ""
 									]
 								})
-							] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-								className: "w-12 h-12 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-900 shrink-0",
-								children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Truck, { className: "w-6 h-6" })
-							})]
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "grid grid-cols-2 gap-3",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-								className: "p-3.5 rounded-2xl bg-slate-50 border border-slate-200",
+							]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							className: "flex items-center gap-2 shrink-0",
+							children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "text-left px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200",
 								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-									className: "text-[11px] text-slate-500 block",
-									children: "العهدة النقدية الحالية"
+									className: "text-[10px] text-emerald-700 block",
+									children: "العهدة النقدية"
 								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
-									className: "text-lg font-black font-mono tabular-nums text-emerald-700",
+									className: "text-sm font-black font-mono tabular-nums text-emerald-800",
 									children: [
 										(rep?.currentBalance || 0).toLocaleString(),
 										" ",
 										data.settings.currency
 									]
 								})]
-							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-								className: "p-3.5 rounded-2xl bg-slate-50 border border-slate-200",
-								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-									className: "text-[11px] text-slate-500 block",
-									children: "العملاء المسموحون لك"
-								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
-									className: "text-lg font-black font-mono tabular-nums text-blue-950",
-									children: data.customers.length
-								})]
-							})]
-						}),
-						draftsReadyToConfirm.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between gap-2 text-xs",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-								className: "font-bold text-emerald-900",
-								children: [
-									"لديك (",
-									draftsReadyToConfirm.length,
-									") مسودة فاتورة جاهزة للاعتماد النهائي الآن."
-								]
-							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-								type: "button",
-								onClick: () => onTabChange("invoices"),
-								className: "min-h-[40px] px-3.5 rounded-xl bg-emerald-700 text-white font-bold shrink-0 cursor-pointer",
-								children: "اعتماد الآن"
-							})]
-						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "grid grid-cols-2 gap-3",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
-								type: "button",
-								onClick: () => onTabChange("new-invoice"),
-								className: "min-h-[48px] rounded-2xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black flex items-center justify-center gap-2 cursor-pointer",
-								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilePlus2, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "إصدار فاتورة بيع" })]
-							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
-								type: "button",
-								onClick: () => onTabChange("custody"),
-								className: "min-h-[48px] rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-black flex items-center justify-center gap-2 cursor-pointer",
-								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Boxes, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "العهدة والتحويلات" })]
-							})]
-						})
-					]
-				})
+							})
+						})]
+					}), (pendingCustodyDispatches.length > 0 || pendingCashReceipts.length > 0 || activeAssignedOrders.length > 0 || draftsReadyToConfirm.length > 0 || data.pendingSyncCount > 0) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "pt-2 border-t border-slate-100 space-y-2 text-xs",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-1.5 font-black text-blue-950",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(ClipboardCheck, { className: "w-4 h-4 text-blue-800 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "المهام اليومية المعلقة" })]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "grid grid-cols-1 sm:grid-cols-2 gap-2",
+							children: [
+								pendingCustodyDispatches.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: () => {
+										setCustodySubTab("items");
+										onTabChange("custody");
+									},
+									className: "p-2.5 rounded-xl bg-cyan-50 border border-cyan-200 text-cyan-950 flex items-center justify-between gap-2 font-bold cursor-pointer hover:bg-cyan-100",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+										"عهد بضاعة مرسلة بانتظار تأكيد الاستلام (",
+										pendingCustodyDispatches.length,
+										")"
+									] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronLeft, { className: "w-4 h-4 shrink-0" })]
+								}),
+								pendingCashReceipts.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: () => onTabChange("cash"),
+									className: "p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-950 flex items-center justify-between gap-2 font-bold cursor-pointer hover:bg-emerald-100",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+										"عهد نقدية واردة من الإدارة (",
+										pendingCashReceipts.length,
+										")"
+									] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronLeft, { className: "w-4 h-4 shrink-0" })]
+								}),
+								activeAssignedOrders.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: () => onTabChange("orders"),
+									className: "p-2.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-950 flex items-center justify-between gap-2 font-bold cursor-pointer hover:bg-indigo-100",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+										"طلبات توصيل جارية معينة لك (",
+										activeAssignedOrders.length,
+										")"
+									] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronLeft, { className: "w-4 h-4 shrink-0" })]
+								}),
+								draftsReadyToConfirm.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: () => onTabChange("invoices"),
+									className: "p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-950 flex items-center justify-between gap-2 font-bold cursor-pointer hover:bg-blue-100",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+										"مسودات فواتير جاهزة للاعتماد (",
+										draftsReadyToConfirm.length,
+										")"
+									] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronLeft, { className: "w-4 h-4 shrink-0" })]
+								}),
+								data.pendingSyncCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: () => onTabChange("refresh"),
+									className: "p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-950 flex items-center justify-between gap-2 font-bold cursor-pointer hover:bg-amber-100",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+										"عمليات محلية بانتظار الإرسال عبر REFRESH (",
+										data.pendingSyncCount,
+										")"
+									] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronLeft, { className: "w-4 h-4 shrink-0" })]
+								})
+							]
+						})]
+					})]
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					className: "grid grid-cols-3 gap-2.5",
+					children: homeTiles.map((tile) => {
+						const Icon = tile.icon;
+						return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+							type: "button",
+							onClick: () => {
+								if (!tile.allowed) {
+									setFeedback({
+										type: "error",
+										text: `صلاحيات حسابك لا تسمح بفتح "${tile.label}". راجع المدير لتفعيل الصلاحية.`
+									});
+									return;
+								}
+								onTabChange(tile.key);
+							},
+							className: `relative min-h-[88px] p-3 rounded-2xl border flex flex-col items-center justify-center gap-2 text-center transition-transform active:scale-97 cursor-pointer shadow-2xs ${tile.allowed ? tile.tone : "bg-slate-100 text-slate-400 border-slate-200 opacity-75"}`,
+							children: [
+								!tile.allowed && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Lock, { className: "w-3.5 h-3.5 absolute top-2 left-2 text-slate-400" }),
+								tile.badgeCount && tile.badgeCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "absolute top-1.5 left-1.5 min-w-[20px] h-[20px] px-1 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black font-mono flex items-center justify-center",
+									children: tile.badgeCount
+								}) : null,
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Icon, { className: "w-6 h-6 shrink-0" }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "text-xs font-black leading-tight",
+									children: tile.label
+								})
+							]
+						}, tile.key);
+					})
+				})]
 			}),
+			activeTab === "cash" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "space-y-4 text-xs",
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h3", {
+								className: "text-sm font-black text-slate-900 flex items-center gap-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Wallet, { className: "w-4 h-4 text-emerald-700" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "إدارة النقدية والعهدة المالية" })]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "grid grid-cols-2 gap-2.5",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "p-3 rounded-2xl bg-emerald-50 border border-emerald-200",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-[11px] text-emerald-700 block",
+										children: "رصيد عهدة المندوب"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+										className: "text-base font-black font-mono tabular-nums text-emerald-900",
+										children: [
+											(rep?.currentBalance || 0).toLocaleString(),
+											" ",
+											data.settings.currency
+										]
+									})]
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "p-3 rounded-2xl bg-blue-50 border border-blue-200",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-[11px] text-blue-700 block",
+										children: "إجمالي أرصدة الخزائن"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+										className: "text-base font-black font-mono tabular-nums text-blue-950",
+										children: [
+											data.cashboxes.reduce((s, c) => s + Number(c.currentBalance || 0), 0).toLocaleString(),
+											" ",
+											data.settings.currency
+										]
+									})]
+								})]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "grid grid-cols-3 gap-2",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+										type: "button",
+										disabled: !(canCashOps || canSales),
+										onClick: () => onTabChange("cash-deposit"),
+										className: "min-h-[44px] rounded-xl bg-emerald-700 text-white font-black cursor-pointer disabled:opacity-45",
+										children: "إيداع نقدي"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+										type: "button",
+										disabled: !canCashOps,
+										onClick: () => onTabChange("cash-withdrawal"),
+										className: "min-h-[44px] rounded-xl bg-amber-600 text-white font-black cursor-pointer disabled:opacity-45",
+										children: "سحب نقدي"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+										type: "button",
+										disabled: !canTransfers,
+										onClick: () => {
+											setCustodySubTab("cash");
+											onTabChange("custody-transfer");
+										},
+										className: "min-h-[44px] rounded-xl bg-blue-900 text-white font-black cursor-pointer disabled:opacity-45",
+										children: "تحويل للخزينة"
+									})
+								]
+							})
+						]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h4", {
+								className: "font-black text-slate-900 flex items-center gap-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Calculator, { className: "w-4 h-4 text-blue-900" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+									"تقفيل ومطابقة الدرج النقدي اليوم (",
+									todayStr,
+									")"
+								] })]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "grid grid-cols-3 gap-2 text-center tabular-nums",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "p-2.5 rounded-xl bg-blue-50 border border-blue-200",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-[10px] text-blue-800 block",
+											children: "مبيعات اليوم المحصلة"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+											className: "font-mono text-sm text-blue-950",
+											children: cashDrawerSummary.todayRepSalesCash.toLocaleString()
+										})]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "p-2.5 rounded-xl bg-emerald-50 border border-emerald-200",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-[10px] text-emerald-800 block",
+											children: "تحصيلات / إيداعات"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+											className: "font-mono text-sm text-emerald-900",
+											children: cashDrawerSummary.todayCashCollections.toLocaleString()
+										})]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "p-2.5 rounded-xl bg-amber-50 border border-amber-200",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-[10px] text-amber-800 block",
+											children: "توريدات للفرع اليوم"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+											className: "font-mono text-sm text-amber-900",
+											children: cashDrawerSummary.todayRepRemittances.toLocaleString()
+										})]
+									})
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-end",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+									className: "block text-[11px] font-bold text-slate-700 mb-1",
+									children: [
+										"الجرد الفعلي للنقدية بالدرج (",
+										data.settings.currency,
+										"):"
+									]
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+									type: "number",
+									min: 0,
+									step: "0.01",
+									value: actualDrawerCash,
+									onChange: (e) => setActualDrawerCash(e.target.value),
+									placeholder: "أدخل النقدية المعدودة فعلياً...",
+									className: "w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-mono font-bold text-center"
+								})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: `min-h-[42px] px-3 py-2 rounded-xl border flex items-center justify-between font-bold tabular-nums ${cashDrawerSummary.variance === null ? "bg-slate-50 border-slate-200 text-slate-600" : Math.abs(cashDrawerSummary.variance) < .01 ? "bg-emerald-50 border-emerald-300 text-emerald-900" : cashDrawerSummary.variance > 0 ? "bg-blue-50 border-blue-300 text-blue-900" : "bg-red-50 border-red-300 text-red-800"}`,
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "الفارق عن العهدة:" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+										className: "font-mono",
+										children: cashDrawerSummary.variance === null ? `الدفتر: ${cashDrawerSummary.expectedBalance.toLocaleString()}` : Math.abs(cashDrawerSummary.variance) < .01 ? "مطابق تماماً (0)" : `${cashDrawerSummary.variance > 0 ? "زيادة +" : "عجز "}${cashDrawerSummary.variance.toLocaleString()} ${data.settings.currency}`
+									})]
+								})]
+							})
+						]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-2.5",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h4", {
+							className: "font-black text-slate-900",
+							children: [
+								"حركة التحويلات النقدية للمندوب (",
+								myCashTransfers.length,
+								")"
+							]
+						}), myCashTransfers.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+							className: "text-center text-slate-400 py-5",
+							children: "لا توجد تحويلات نقدية مسجلة حالياً."
+						}) : myCashTransfers.map((t) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "rounded-2xl border border-slate-200 p-3 space-y-2",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-center justify-between",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "font-mono font-black text-blue-950",
+										children: t.transferNumber
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+										className: "font-mono text-sm text-slate-900 tabular-nums",
+										children: [
+											t.amount.toLocaleString(),
+											" ",
+											data.settings.currency
+										]
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+									className: "text-[11px] text-slate-600",
+									children: [
+										t.direction === "rep_to_owner" ? "توريد إلى الفرع" : "عهدة واردة من الإدارة",
+										" ·",
+										" ",
+										t.status === "received" ? "تم الاستلام والتسوية" : t.status === "awaiting_receipt" ? "بانتظار تأكيد الاستلام" : "مرفوض"
+									]
+								}),
+								t.status === "awaiting_receipt" && t.direction === "owner_to_rep" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									onClick: () => handleConfirmOwnerCash(t.id),
+									className: "w-full min-h-[44px] rounded-xl bg-emerald-700 text-white font-black cursor-pointer",
+									children: "تأكيد استلام العهدة النقدية"
+								})
+							]
+						}, t.id))]
+					})
+				]
+			}),
+			activeTab === "more" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs divide-y divide-slate-100 text-xs",
+				children: [
+					[
+						{
+							key: "purchases-list",
+							label: "فواتير الشراء",
+							icon: ShoppingBag,
+							allowed: canPurchases
+						},
+						{
+							key: "sales-returns-list",
+							label: "مرتجع البيع",
+							icon: RotateCcw,
+							allowed: canSales
+						},
+						{
+							key: "invoices",
+							label: "فواتير البيع",
+							icon: FileText,
+							allowed: canSales
+						},
+						{
+							key: "customers",
+							label: "الحسابات والعملاء",
+							icon: Users,
+							allowed: canAccounts
+						},
+						{
+							key: "custody",
+							label: "المخزن والعهدة",
+							icon: Warehouse,
+							allowed: canInventory
+						},
+						{
+							key: "purchase-returns-list",
+							label: "مرتجع الشراء",
+							icon: RotateCcw,
+							allowed: canPurchases
+						},
+						{
+							key: "orders",
+							label: "الطلبات والتسليمات",
+							icon: Truck,
+							allowed: canSales
+						},
+						{
+							key: "new-quote",
+							label: "عروض الأسعار",
+							icon: FileSpreadsheet,
+							allowed: canSales
+						},
+						{
+							key: "refresh",
+							label: "REFRESH · الإرسال والاستلام",
+							icon: RefreshCw,
+							allowed: true
+						}
+					].map((item) => {
+						const Icon = item.icon;
+						return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+							type: "button",
+							disabled: !item.allowed,
+							onClick: () => onTabChange(item.key),
+							className: "w-full min-h-[52px] px-4 py-3 flex items-center justify-between gap-2 text-right font-bold text-slate-800 hover:bg-slate-50 disabled:opacity-45 cursor-pointer",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center gap-3",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Icon, { className: "w-4 h-4 text-blue-900 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: item.label })]
+							}), item.allowed ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronLeft, { className: "w-4 h-4 text-slate-400" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Lock, { className: "w-4 h-4 text-slate-300" })]
+						}, item.key);
+					}),
+					onOpenServerModal && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+						type: "button",
+						onClick: onOpenServerModal,
+						className: "w-full min-h-[52px] px-4 py-3 flex items-center justify-between gap-2 text-right font-bold text-slate-800 hover:bg-slate-50 cursor-pointer",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-3",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Settings, { className: "w-4 h-4 text-slate-700 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "الإعدادات والربط المركزي" })]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronLeft, { className: "w-4 h-4 text-slate-400" })]
+					}),
+					onLogout && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+						type: "button",
+						onClick: onLogout,
+						className: "w-full min-h-[52px] px-4 py-3 flex items-center justify-between gap-2 text-right font-black text-red-700 hover:bg-red-50 cursor-pointer",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-3",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(LogOut, { className: "w-4 h-4 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "تسجيل الخروج" })]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronLeft, { className: "w-4 h-4 text-red-400" })]
+					})
+				]
+			}),
+			activeTab === "refresh" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RefreshSyncScreen, { onBack: () => onTabChange("home") }),
 			activeTab === "customers" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				className: "space-y-3",
-				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-					className: "bg-white rounded-2xl border border-slate-200 p-3 shadow-xs",
-					children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "relative",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "bg-white rounded-2xl border border-slate-200 p-3 shadow-xs flex items-center gap-2",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "relative flex-1",
 						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
 							type: "text",
 							value: customerSearch,
@@ -66832,21 +76491,31 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 							placeholder: "ابحث باسم العميل أو المحل أو المنطقة أو الهاتف...",
 							className: "w-full rounded-xl border border-slate-300 py-3 pr-10 pl-3 text-xs font-semibold outline-hidden focus:border-blue-600"
 						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Search, { className: "w-4 h-4 text-slate-400 absolute right-3 top-3.5" })]
-					})
+					}), canAddCustomer && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						onClick: () => onTabChange("new-customer"),
+						className: "min-h-[44px] px-3.5 rounded-xl bg-blue-900 text-white text-xs font-black shrink-0 cursor-pointer",
+						children: "+ عميل"
+					})]
 				}), filteredCustomers.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 					className: "bg-white rounded-3xl border border-slate-200 p-10 text-center text-xs text-slate-500",
-					children: "لا يوجد عملاء مخصصون لحسابك حالياً. راجع مدير النظام لتحديد العملاء المسموحين لك."
+					children: "لا يوجد عملاء مخصصون لحسابك حالياً."
 				}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 					className: "grid grid-cols-1 md:grid-cols-2 gap-3",
 					children: filteredCustomers.map((c) => {
-						const mapsQuery = encodeURIComponent(c.geoCoordinates || c.address || c.name);
+						const cleanedPhone = String(c.phone || "").replace(/[^\d+]/g, "");
+						const hasValidPhone = cleanedPhone.replace(/\D/g, "").length >= 7;
+						const mapRaw = (c.geoCoordinates || c.address || "").trim();
+						const hasValidMap = Boolean(mapRaw && mapRaw !== "-");
+						const mapsHref = mapRaw.startsWith("http://") || mapRaw.startsWith("https://") ? mapRaw : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapRaw)}`;
 						return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 							className: "bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs",
 							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-								className: "flex items-start justify-between gap-2",
-								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", {
-									className: "font-black text-sm text-slate-900",
-									children: c.shopName || c.name
+								onClick: () => setSelectedCustomerDetail(c),
+								className: "flex items-start justify-between gap-2 cursor-pointer",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h3", {
+									className: "font-black text-sm text-slate-900 flex items-center gap-1.5",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: c.shopName || c.name }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Eye, { className: "w-3.5 h-3.5 text-blue-700 shrink-0" })]
 								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
 									className: "text-[11px] text-slate-500",
 									children: [
@@ -66856,28 +76525,50 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 										" ",
 										c.area ? `· ${c.area}` : ""
 									]
-								})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
-									className: `font-mono text-sm tabular-nums ${c.currentBalance > 0 ? "text-red-700" : "text-emerald-700"}`,
-									children: [
-										c.currentBalance.toLocaleString(),
-										" ",
-										data.settings.currency
-									]
+								})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "text-left shrink-0",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "block text-[10px] text-slate-500",
+										children: c.currentBalance < 0 ? "رصيد دائن للعميل" : c.currentBalance > 0 ? "مديونية على العميل" : "الرصيد"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+										className: `font-mono text-sm tabular-nums ${c.currentBalance > 0 ? "text-red-700" : "text-emerald-700"}`,
+										children: [
+											Math.abs(c.currentBalance).toLocaleString(),
+											" ",
+											data.settings.currency
+										]
+									})]
 								})]
 							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 								className: "flex flex-wrap gap-2",
 								children: [
-									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", {
-										href: `tel:${c.phone}`,
+									hasValidPhone ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", {
+										href: `tel:${cleanedPhone}`,
 										className: "min-h-[42px] px-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono font-bold inline-flex items-center gap-1.5",
 										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Phone, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: c.phone })]
+									}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+										type: "button",
+										onClick: () => setFeedback({
+											type: "warning",
+											text: `رقم هاتف العميل (${c.name}) غير مكتمل أو غير صالح للاتصال.`
+										}),
+										className: "min-h-[42px] px-3 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 font-bold inline-flex items-center gap-1.5 cursor-pointer",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Phone, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: c.phone || "بدون هاتف" })]
 									}),
-									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", {
-										href: `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`,
+									hasValidMap ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", {
+										href: mapsHref,
 										target: "_blank",
 										rel: "noopener noreferrer",
 										className: "min-h-[42px] px-3 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1.5",
 										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(MapPin, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "الموقع" })]
+									}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+										type: "button",
+										onClick: () => setFeedback({
+											type: "warning",
+											text: `لا يوجد عنوان أو موقع جغرافي مسجل للعميل (${c.name}).`
+										}),
+										className: "min-h-[42px] px-3 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 font-bold inline-flex items-center gap-1.5 cursor-pointer",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(MapPin, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "بدون عنوان" })]
 									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 										type: "button",
@@ -66894,17 +76585,14 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 					})
 				})]
 			}),
-			activeTab === "new-invoice" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+			activeTab === "new-invoice" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 				className: "space-y-4",
-				children: [(data.isUsingOfflineCache || !data.isServerReachable) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-					className: "p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-xs font-bold text-amber-900",
-					children: "أنت في وضع عدم الاتصال (بيانات محلية محفوظة). يتم حفظ الفواتير والطلبات والتحصيلات محلياً في طابور المزامنة وإرسالها تلقائياً عند عودة الاتصال."
-				}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 					className: "bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs",
 					children: [
 						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", {
 							className: "text-sm font-black text-slate-900",
-							children: "إنشاء فاتورة مبيعات ميدانية"
+							children: "إنشاء فاتورة مبيعات (مقيد بمخزون عهدة السيارة)"
 						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 							className: "grid grid-cols-1 sm:grid-cols-2 gap-3",
@@ -66942,18 +76630,89 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 							className: "p-3 rounded-2xl bg-blue-50/60 border border-blue-200 space-y-2.5",
 							children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
-									className: "block font-bold text-slate-800",
-									children: "إضافة صنف:"
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex flex-wrap items-center justify-between gap-2",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+										className: "font-bold text-slate-800",
+										children: "بحث / باركود وإضافة صنف:"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+										type: "button",
+										onClick: () => setInvOnlyVanStock((prev) => !prev),
+										className: `min-h-[34px] px-2.5 rounded-xl border text-[11px] font-bold cursor-pointer ${invOnlyVanStock ? "bg-emerald-700 text-white border-emerald-800" : "bg-white text-slate-700 border-slate-300"}`,
+										children: invOnlyVanStock ? "المتاح بالسيارة فقط ✓" : "تصفية: المتاح بالسيارة"
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "relative",
+									children: [
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Barcode, { className: "w-4 h-4 text-blue-800 absolute right-3 top-3 pointer-events-none" }),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+											type: "text",
+											value: invProdQuery,
+											onChange: (e) => setInvProdQuery(e.target.value),
+											onKeyDown: handleInvoiceSearchKeyDown,
+											placeholder: "ابحث بالاسم أو الكود أو امسح الباركود واضغط Enter...",
+											className: "w-full min-h-[42px] rounded-xl border border-blue-300 pr-9 pl-8 bg-white font-semibold"
+										}),
+										invProdQuery && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+											type: "button",
+											onClick: () => setInvProdQuery(""),
+											className: "absolute left-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer",
+											children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(X, { className: "w-4 h-4" })
+										})
+									]
+								}),
+								invProdQuery.trim() && filteredInvoiceProducts.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "max-h-44 overflow-y-auto bg-white rounded-xl border border-blue-200 divide-y divide-slate-100",
+									children: filteredInvoiceProducts.slice(0, 20).map((p) => {
+										const vanQty = p.stockPerWarehouse?.[effectiveVanId] || 0;
+										const mainQty = mainWarehouse ? p.stockPerWarehouse?.[mainWarehouse.id] || 0 : 0;
+										return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+											type: "button",
+											onClick: () => {
+												handleSelectProduct(p.id);
+												setInvProdQuery("");
+											},
+											className: "w-full text-right px-3 py-2 hover:bg-blue-50 flex items-center justify-between gap-2 cursor-pointer",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+												className: "min-w-0",
+												children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+													className: "font-bold text-slate-900 block truncate",
+													children: p.name
+												}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+													className: "text-[10px] font-mono text-slate-500",
+													children: [
+														p.code,
+														" ",
+														p.barcode ? `| ${p.barcode}` : ""
+													]
+												})]
+											}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+												className: "font-mono text-[11px] font-bold text-blue-900 shrink-0",
+												children: [
+													"سيارة: ",
+													vanQty,
+													" | رئيسي: ",
+													mainQty,
+													" ",
+													p.baseUnit
+												]
+											})]
+										}, p.id);
+									})
 								}),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
 									value: invProductId,
 									onChange: (e) => handleSelectProduct(e.target.value),
 									className: "w-full min-h-[44px] rounded-xl border border-blue-300 px-3 font-bold bg-white",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", {
 										value: "",
-										children: "-- اختر الصنف --"
-									}), activeProducts.map((p) => {
+										children: [
+											"-- أو اختر الصنف من القائمة (",
+											filteredInvoiceProducts.length,
+											") --"
+										]
+									}), filteredInvoiceProducts.map((p) => {
 										const vanQty = p.stockPerWarehouse?.[effectiveVanId] || 0;
 										const mainQty = mainWarehouse ? p.stockPerWarehouse?.[mainWarehouse.id] || 0 : 0;
 										return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", {
@@ -66986,8 +76745,7 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 												entry.price,
 												" ",
 												data.settings.currency,
-												entry.date ? ` · ${entry.date}` : "",
-												entry.invoiceNumber ? ` · ${entry.invoiceNumber}` : ""
+												entry.date ? ` · ${entry.date}` : ""
 											]
 										}, idx))
 									}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
@@ -66996,7 +76754,7 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 									})]
 								}),
 								selectedProduct && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "grid grid-cols-3 gap-2",
+									className: "grid grid-cols-2 sm:grid-cols-4 gap-2",
 									children: [
 										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
 											className: "block text-[11px] font-bold text-slate-700 mb-1",
@@ -67027,7 +76785,7 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 											value: invQty,
 											onChange: setInvQty,
 											ariaLabel: "كمية الصنف",
-											inputClassName: "w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white outline-hidden focus:border-blue-600"
+											inputClassName: "w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
 										})] }),
 										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
 											className: "block text-[11px] font-bold text-slate-700 mb-1",
@@ -67038,6 +76796,17 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 											min: 0,
 											value: invPrice,
 											onChange: (e) => setInvPrice(Math.max(0, Number(e.target.value))),
+											className: "w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+										})] }),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+											className: "block text-[11px] font-bold text-slate-700 mb-1",
+											children: "خصم البند"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+											type: "number",
+											step: "0.5",
+											min: 0,
+											value: invLineDiscount,
+											onChange: (e) => setInvLineDiscount(Math.max(0, Number(e.target.value))),
 											className: "w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
 										})] })
 									]
@@ -67065,6 +76834,7 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 											it.unit,
 											" × ",
 											it.unitPrice.toLocaleString(),
+											it.discount > 0 ? ` (خصم ${it.discount.toLocaleString()})` : "",
 											" =",
 											" ",
 											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
@@ -67096,40 +76866,33 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 						}),
 						shortageItems.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 							className: "p-3.5 rounded-2xl bg-amber-50 border border-amber-300 space-y-2 text-xs text-amber-950",
-							children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "flex items-center gap-2 font-black",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(TriangleAlert, { className: "w-4 h-4 text-amber-700 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
-										"عجز في مخزون سيارتك لعدد (",
-										shortageItems.length,
-										") أصناف"
-									] })]
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-									className: "space-y-1 text-[11px]",
-									children: shortageItems.map((sh) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-										className: "flex items-center justify-between font-mono",
-										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-											className: "font-sans font-bold",
-											children: sh.productName
-										}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-											className: "text-red-700",
-											children: [
-												"المتاح: ",
-												sh.availableInVanQty,
-												" · العجز: ",
-												sh.shortageQty,
-												" ",
-												sh.unit
-											]
-										})]
-									}, sh.productId))
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-									className: "text-[11px] text-amber-800",
-									children: "سيتم حفظ الفاتورة كمسودة، ويمكنك إرسال طلب تحويل أصناف للعجز من المخزن الرئيسي الآن لاعتمادها فور التنفيذ."
-								})
-							]
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center gap-2 font-black",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(TriangleAlert, { className: "w-4 h-4 text-amber-700 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+									"عجز في مخزون سيارتك لعدد (",
+									shortageItems.length,
+									") أصناف — لا يمكن الاعتماد المباشر"
+								] })]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "space-y-1 text-[11px]",
+								children: shortageItems.map((sh) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-center justify-between font-mono",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "font-sans font-bold",
+										children: sh.productName
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+										className: "text-red-700",
+										children: [
+											"المتاح بالسيارة: ",
+											sh.availableInVanQty,
+											" · العجز: ",
+											sh.shortageQty,
+											" ",
+											sh.unit
+										]
+									})]
+								}, sh.productId))
+							})]
 						}),
 						invItems.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 							className: "space-y-3 pt-2 border-t border-slate-100",
@@ -67187,13 +76950,56 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 									className: "w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
 								}),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between font-black text-sm text-blue-950",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "إجمالي الفاتورة:" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-										className: "font-mono tabular-nums",
+									className: "p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5 tabular-nums",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "flex items-center justify-between font-black text-sm text-blue-950",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "إجمالي الفاتورة:" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+											className: "font-mono",
+											children: [
+												invGrandTotal.toLocaleString(),
+												" ",
+												data.settings.currency
+											]
+										})]
+									}), selectedInvoiceCustomer && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "pt-1.5 border-t border-slate-200 grid grid-cols-2 gap-1.5 text-[11px] text-slate-700",
 										children: [
-											invGrandTotal.toLocaleString(),
-											" ",
-											data.settings.currency
+											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+												"رصيد العميل قبل الفاتورة:",
+												" ",
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+													className: "font-mono",
+													children: selectedInvoiceCustomer.currentBalance.toLocaleString()
+												})
+											] }),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+												"المدفوع الآن:",
+												" ",
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+													className: "font-mono text-emerald-700",
+													children: effectiveInvPaid.toLocaleString()
+												})
+											] }),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+												"المتبقي المضاف للحساب:",
+												" ",
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+													className: "font-mono text-amber-800",
+													children: Math.max(0, invGrandTotal - effectiveInvPaid).toLocaleString()
+												})
+											] }),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+												"الرصيد بعد الفاتورة:",
+												" ",
+												/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+													className: "font-mono text-blue-950",
+													children: [
+														(Number(selectedInvoiceCustomer.currentBalance || 0) + Math.max(0, invGrandTotal - effectiveInvPaid)).toLocaleString(),
+														" ",
+														data.settings.currency
+													]
+												})
+											] })
 										]
 									})]
 								}),
@@ -67204,7 +77010,7 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 										disabled: isSubmittingInvoice,
 										onClick: () => handleCreateInvoice("draft_with_transfer"),
 										className: "w-full min-h-[48px] rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-black cursor-pointer disabled:opacity-50",
-										children: isSubmittingInvoice ? "جاري الحفظ والإرسال..." : "حفظ كمسودة وإرسال طلب تحويل للعجز"
+										children: isSubmittingInvoice ? "جاري الحفظ..." : "حفظ كمسودة وإرسال طلب تحويل للعجز"
 									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 										type: "button",
 										disabled: isSubmittingInvoice,
@@ -67231,13 +77037,1286 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 							]
 						})
 					]
+				})
+			}),
+			activeTab === "new-purchase" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+				onSubmit: handleCreatePurchaseInvoice,
+				className: "bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs",
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "flex items-center justify-between",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", {
+							className: "text-sm font-black text-slate-900",
+							children: "إنشاء فاتورة مشتريات جديدة"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							type: "button",
+							onClick: () => onTabChange("new-supplier"),
+							className: "min-h-[40px] px-3 rounded-xl bg-purple-50 text-purple-900 border border-purple-200 font-bold cursor-pointer",
+							children: "+ مورد جديد"
+						})]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "grid grid-cols-1 sm:grid-cols-2 gap-3",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+							className: "block font-bold text-slate-700 mb-1",
+							children: "المورد:"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+							value: purSupplierId,
+							onChange: (e) => setPurSupplierId(e.target.value),
+							className: "w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: "",
+								children: "-- اختر المورد --"
+							}), data.suppliers.map((s) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: s.id,
+								children: s.name
+							}, s.id))]
+						})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+							className: "block font-bold text-slate-700 mb-1",
+							children: "مخزن الاستلام:"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", {
+							value: purWarehouseId,
+							onChange: (e) => setPurWarehouseId(e.target.value),
+							className: "w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white",
+							children: data.warehouses.map((w) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: w.id,
+								children: w.name
+							}, w.id))
+						})] })]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "p-3 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-2.5",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+								value: purProductId,
+								onChange: (e) => handleSelectPurProduct(e.target.value),
+								className: "w-full min-h-[44px] rounded-xl border border-indigo-300 px-3 font-bold bg-white",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: "",
+									children: "-- اختر الصنف للشراء --"
+								}), activeProducts.map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", {
+									value: p.id,
+									children: [
+										p.name,
+										" (تكلفة: ",
+										p.purchasePrice,
+										" ",
+										data.settings.currency,
+										")"
+									]
+								}, p.id))]
+							}),
+							purProductId && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "grid grid-cols-3 gap-2",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+										type: "text",
+										value: purUnitName,
+										onChange: (e) => setPurUnitName(e.target.value),
+										className: "min-h-[42px] rounded-xl border border-slate-300 px-2 text-center font-bold bg-white",
+										placeholder: "الوحدة"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)(QuantityInput, {
+										allowDecimals: true,
+										min: .001,
+										value: purQty,
+										onChange: setPurQty,
+										placeholder: "الكمية",
+										ariaLabel: "كمية الشراء",
+										inputClassName: "w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+										type: "number",
+										step: "0.5",
+										min: 0,
+										placeholder: "سعر الشراء",
+										value: purPrice,
+										onChange: (e) => setPurPrice(e.target.value === "" ? "" : Math.max(0, Number(e.target.value))),
+										className: "min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+									})
+								]
+							}),
+							purProductId && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								type: "button",
+								onClick: handleAddPurItem,
+								className: "w-full min-h-[44px] rounded-xl bg-indigo-900 text-white font-black cursor-pointer",
+								children: "إضافة الصنف لفاتورة الشراء"
+							})
+						]
+					}),
+					purItems.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+						className: "divide-y divide-slate-100 border border-slate-200 rounded-2xl px-3",
+						children: purItems.map((it, idx) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "py-2 flex items-center justify-between gap-2",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+								className: "font-bold text-slate-900",
+								children: [
+									it.productName,
+									" (",
+									it.quantity,
+									" ",
+									it.unit,
+									" × ",
+									it.unitPrice,
+									")"
+								]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center gap-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "font-mono text-indigo-950",
+									children: it.total.toLocaleString()
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									onClick: () => setPurItems((prev) => prev.filter((_, i) => i !== idx)),
+									className: "text-red-600 p-1 cursor-pointer",
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { className: "w-4 h-4" })
+								})]
+							})]
+						}, idx))
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+						className: "grid grid-cols-3 gap-2",
+						children: [
+							{
+								key: "cash",
+								label: "نقدي"
+							},
+							{
+								key: "credit",
+								label: "آجل"
+							},
+							{
+								key: "partial",
+								label: "جزئي"
+							}
+						].map((pt) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							type: "button",
+							onClick: () => setPurPaymentType(pt.key),
+							className: `min-h-[42px] rounded-xl border font-bold cursor-pointer ${purPaymentType === pt.key ? "bg-indigo-900 text-white border-indigo-900" : "bg-slate-50 text-slate-700 border-slate-300"}`,
+							children: pt.label
+						}, pt.key))
+					}),
+					purPaymentType === "partial" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+						type: "number",
+						min: 0,
+						max: purTotal,
+						value: purPaidAmount,
+						onChange: (e) => setPurPaidAmount(Number(e.target.value)),
+						placeholder: "المدفوع للمورد الآن",
+						className: "w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-mono font-bold"
+					}),
+					purPaymentType !== "credit" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", {
+						value: purCashboxId,
+						onChange: (e) => setPurCashboxId(e.target.value),
+						className: "w-full min-h-[42px] rounded-xl border border-slate-300 px-3 bg-white font-bold",
+						children: data.cashboxes.map((cb) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+							value: cb.id,
+							children: cb.name
+						}, cb.id))
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+						type: "text",
+						value: purNotes,
+						onChange: (e) => setPurNotes(e.target.value),
+						placeholder: "ملاحظات فاتورة الشراء...",
+						className: "w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between font-black",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "إجمالي فاتورة الشراء:" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+							className: "font-mono text-indigo-950",
+							children: [
+								purTotal.toLocaleString(),
+								" ",
+								data.settings.currency
+							]
+						})]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "submit",
+						disabled: isSubmittingPurchase || purItems.length === 0,
+						className: "w-full min-h-[48px] rounded-2xl bg-indigo-900 hover:bg-indigo-950 text-white font-black disabled:opacity-50 cursor-pointer",
+						children: isSubmittingPurchase ? "جاري الحفظ..." : "اعتماد وحفظ فاتورة الشراء"
+					})
+				]
+			}),
+			activeTab === "sales-return" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+				onSubmit: handleSubmitSalesReturn,
+				className: "bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs",
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", {
+						className: "text-sm font-black text-rose-900",
+						children: "تسجيل مرتجع مبيعات"
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "grid grid-cols-1 sm:grid-cols-2 gap-3",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+							value: sRetCustomerId,
+							onChange: (e) => setSRetCustomerId(e.target.value),
+							className: "min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: "",
+								children: "-- اختر العميل --"
+							}), data.customers.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: c.id,
+								children: c.shopName || c.name
+							}, c.id))]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+							value: sRetInvoiceId,
+							onChange: (e) => setSRetInvoiceId(e.target.value),
+							className: "min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: "",
+								children: "-- ربط بفاتورة بيع (اختياري) --"
+							}), myInvoices.filter((i) => !sRetCustomerId || i.customerId === sRetCustomerId).map((i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", {
+								value: i.id,
+								children: [
+									i.invoiceNumber,
+									" (",
+									i.grandTotal,
+									")"
+								]
+							}, i.id))]
+						})]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "p-3 rounded-2xl bg-rose-50/70 border border-rose-200 space-y-2",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+								value: sRetProductId,
+								onChange: (e) => {
+									setSRetProductId(e.target.value);
+									const p = activeProducts.find((x) => x.id === e.target.value);
+									if (p) setSRetPrice(p.sellingPrice);
+								},
+								className: "w-full min-h-[44px] rounded-xl border border-rose-300 px-3 font-bold bg-white",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: "",
+									children: "-- اختر الصنف المرتجع --"
+								}), activeProducts.map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", {
+									value: p.id,
+									children: [
+										p.name,
+										" (",
+										p.baseUnit,
+										")"
+									]
+								}, p.id))]
+							}),
+							sRetProductId && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "grid grid-cols-2 gap-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(QuantityInput, {
+									allowDecimals: true,
+									min: .001,
+									value: sRetQty,
+									onChange: setSRetQty,
+									ariaLabel: "كمية المرتجع",
+									inputClassName: "w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+									type: "number",
+									min: 0,
+									step: "0.5",
+									value: sRetPrice,
+									onChange: (e) => setSRetPrice(Number(e.target.value)),
+									className: "min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+								})]
+							}),
+							sRetProductId && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								type: "button",
+								onClick: () => {
+									const p = activeProducts.find((x) => x.id === sRetProductId);
+									if (!p || sRetQty <= 0) return;
+									setSRetItems((prev) => [...prev, {
+										productId: p.id,
+										productName: p.name,
+										unit: p.baseUnit,
+										unitFactor: 1,
+										quantity: sRetQty,
+										unitPrice: sRetPrice,
+										total: computeLineTotal(sRetQty, sRetPrice)
+									}]);
+									setSRetProductId("");
+									setSRetQty(1);
+								},
+								className: "w-full min-h-[44px] rounded-xl bg-rose-700 text-white font-black cursor-pointer",
+								children: "إضافة لمرتجع البيع"
+							})
+						]
+					}),
+					sRetItems.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+						className: "divide-y divide-slate-100 border border-slate-200 rounded-2xl px-3",
+						children: sRetItems.map((it, idx) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "py-2 flex items-center justify-between",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+								className: "font-bold",
+								children: [
+									it.productName,
+									" (",
+									it.quantity,
+									" × ",
+									it.unitPrice,
+									")"
+								]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center gap-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "font-mono text-rose-800",
+									children: it.total.toLocaleString()
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									onClick: () => setSRetItems((prev) => prev.filter((_, i) => i !== idx)),
+									className: "text-red-600 p-1 cursor-pointer",
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { className: "w-4 h-4" })
+								})]
+							})]
+						}, idx))
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "grid grid-cols-2 gap-2",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+							value: sRetSettlement,
+							onChange: (e) => setSRetSettlement(e.target.value),
+							className: "min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold bg-white",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: "account",
+								children: "خصم من رصيد العميل"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: "cash",
+								children: "صرف نقدي من الخزينة"
+							})]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", {
+							value: sRetWarehouseId,
+							onChange: (e) => setSRetWarehouseId(e.target.value),
+							className: "min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold bg-white",
+							children: data.warehouses.map((w) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: w.id,
+								children: w.name
+							}, w.id))
+						})]
+					}),
+					sRetSettlement === "cash" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", {
+						value: sRetCashboxId,
+						onChange: (e) => setSRetCashboxId(e.target.value),
+						className: "w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold bg-white",
+						children: data.cashboxes.map((cb) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+							value: cb.id,
+							children: cb.name
+						}, cb.id))
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+						type: "text",
+						value: sRetReason,
+						onChange: (e) => setSRetReason(e.target.value),
+						placeholder: "سبب المرتجع...",
+						className: "w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "submit",
+						disabled: isSubmittingSRet || sRetItems.length === 0,
+						className: "w-full min-h-[48px] rounded-2xl bg-rose-700 hover:bg-rose-800 text-white font-black disabled:opacity-50 cursor-pointer",
+						children: isSubmittingSRet ? "جاري التسجيل..." : `اعتماد مرتجع البيع (${sRetTotal.toLocaleString()} ${data.settings.currency})`
+					})
+				]
+			}),
+			activeTab === "purchase-return" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+				onSubmit: handleSubmitPurchaseReturn,
+				className: "bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs",
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", {
+						className: "text-sm font-black text-orange-900",
+						children: "تسجيل مرتجع مشتريات"
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "grid grid-cols-1 sm:grid-cols-2 gap-3",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+							value: pRetSupplierId,
+							onChange: (e) => setPRetSupplierId(e.target.value),
+							className: "min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: "",
+								children: "-- اختر المورد --"
+							}), data.suppliers.map((s) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: s.id,
+								children: s.name
+							}, s.id))]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+							value: pRetInvoiceId,
+							onChange: (e) => setPRetInvoiceId(e.target.value),
+							className: "min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: "",
+								children: "-- ربط بفاتورة شراء (اختياري) --"
+							}), myPurchases.filter((i) => !pRetSupplierId || i.supplierId === pRetSupplierId).map((i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", {
+								value: i.id,
+								children: [
+									i.invoiceNumber,
+									" (",
+									i.grandTotal,
+									")"
+								]
+							}, i.id))]
+						})]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "p-3 rounded-2xl bg-orange-50/70 border border-orange-200 space-y-2",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+								value: pRetProductId,
+								onChange: (e) => {
+									setPRetProductId(e.target.value);
+									const p = activeProducts.find((x) => x.id === e.target.value);
+									if (p) setPRetPrice(p.purchasePrice);
+								},
+								className: "w-full min-h-[44px] rounded-xl border border-orange-300 px-3 font-bold bg-white",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: "",
+									children: "-- اختر الصنف المرتجع للمورد --"
+								}), activeProducts.map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", {
+									value: p.id,
+									children: [
+										p.name,
+										" (",
+										p.baseUnit,
+										")"
+									]
+								}, p.id))]
+							}),
+							pRetProductId && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "grid grid-cols-2 gap-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(QuantityInput, {
+									allowDecimals: true,
+									min: .001,
+									value: pRetQty,
+									onChange: setPRetQty,
+									ariaLabel: "كمية مرتجع الشراء",
+									inputClassName: "w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+									type: "number",
+									min: 0,
+									step: "0.5",
+									value: pRetPrice,
+									onChange: (e) => setPRetPrice(Number(e.target.value)),
+									className: "min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+								})]
+							}),
+							pRetProductId && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								type: "button",
+								onClick: () => {
+									const p = activeProducts.find((x) => x.id === pRetProductId);
+									if (!p || pRetQty <= 0) return;
+									setPRetItems((prev) => [...prev, {
+										productId: p.id,
+										productName: p.name,
+										unit: p.baseUnit,
+										unitFactor: 1,
+										quantity: pRetQty,
+										unitPrice: pRetPrice,
+										total: computeLineTotal(pRetQty, pRetPrice)
+									}]);
+									setPRetProductId("");
+									setPRetQty(1);
+								},
+								className: "w-full min-h-[44px] rounded-xl bg-orange-700 text-white font-black cursor-pointer",
+								children: "إضافة لمرتجع الشراء"
+							})
+						]
+					}),
+					pRetItems.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+						className: "divide-y divide-slate-100 border border-slate-200 rounded-2xl px-3",
+						children: pRetItems.map((it, idx) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "py-2 flex items-center justify-between",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+								className: "font-bold",
+								children: [
+									it.productName,
+									" (",
+									it.quantity,
+									" × ",
+									it.unitPrice,
+									")"
+								]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center gap-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "font-mono text-orange-800",
+									children: it.total.toLocaleString()
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									onClick: () => setPRetItems((prev) => prev.filter((_, i) => i !== idx)),
+									className: "text-red-600 p-1 cursor-pointer",
+									children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { className: "w-4 h-4" })
+								})]
+							})]
+						}, idx))
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "grid grid-cols-2 gap-2",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+							value: pRetSettlement,
+							onChange: (e) => setPRetSettlement(e.target.value),
+							className: "min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold bg-white",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: "account",
+								children: "خصم من رصيد المورد"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: "cash",
+								children: "استرداد نقدي للخزينة"
+							})]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", {
+							value: pRetWarehouseId,
+							onChange: (e) => setPRetWarehouseId(e.target.value),
+							className: "min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold bg-white",
+							children: data.warehouses.map((w) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: w.id,
+								children: w.name
+							}, w.id))
+						})]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+						type: "text",
+						value: pRetReason,
+						onChange: (e) => setPRetReason(e.target.value),
+						placeholder: "سبب مرتجع الشراء...",
+						className: "w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "submit",
+						disabled: isSubmittingPRet || pRetItems.length === 0,
+						className: "w-full min-h-[48px] rounded-2xl bg-orange-700 hover:bg-orange-800 text-white font-black disabled:opacity-50 cursor-pointer",
+						children: isSubmittingPRet ? "جاري التسجيل..." : `اعتماد مرتجع الشراء (${pRetTotal.toLocaleString()} ${data.settings.currency})`
+					})
+				]
+			}),
+			activeTab === "cash-deposit" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+				onSubmit: handleSubmitCashDeposit,
+				className: "bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs",
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", {
+						className: "text-sm font-black text-emerald-900",
+						children: "إيداع نقدي / تحصيل من عميل"
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "grid grid-cols-2 gap-2",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							type: "button",
+							onClick: () => setDepMode("customer_collection"),
+							className: `min-h-[42px] rounded-xl font-bold border cursor-pointer ${depMode === "customer_collection" ? "bg-emerald-700 text-white border-emerald-700" : "bg-slate-50 text-slate-700 border-slate-300"}`,
+							children: "تحصيل من عميل"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							type: "button",
+							disabled: !canCashOps,
+							onClick: () => setDepMode("cashbox_deposit"),
+							className: `min-h-[42px] rounded-xl font-bold border cursor-pointer disabled:opacity-45 ${depMode === "cashbox_deposit" ? "bg-emerald-700 text-white border-emerald-700" : "bg-slate-50 text-slate-700 border-slate-300"}`,
+							children: canCashOps ? "إيداع مباشر بالخزينة" : "إيداع بالخزينة (مقيد)"
+						})]
+					}),
+					depMode === "customer_collection" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+						value: depCustomerId,
+						onChange: (e) => setDepCustomerId(e.target.value),
+						className: "w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+							value: "",
+							children: "-- اختر العميل --"
+						}), data.customers.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", {
+							value: c.id,
+							children: [
+								c.shopName || c.name,
+								" — رصيد: ",
+								c.currentBalance
+							]
+						}, c.id))]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "grid grid-cols-2 gap-2",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", {
+							value: depCashboxId,
+							onChange: (e) => setDepCashboxId(e.target.value),
+							className: "min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white",
+							children: data.cashboxes.map((cb) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: cb.id,
+								children: cb.name
+							}, cb.id))
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+							value: depMethod,
+							onChange: (e) => setDepMethod(e.target.value),
+							className: "min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: "cash",
+									children: "نقدي"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: "bank",
+									children: "تحويل بنكي"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: "cheque",
+									children: "شيك"
+								})
+							]
+						})]
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+						type: "number",
+						min: 1,
+						step: "0.01",
+						value: depAmount || "",
+						onChange: (e) => setDepAmount(Math.max(0, Number(e.target.value))),
+						placeholder: `المبلغ (${data.settings.currency})`,
+						className: "w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-mono font-black text-center text-emerald-800"
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+						type: "text",
+						value: depNotes,
+						onChange: (e) => setDepNotes(e.target.value),
+						placeholder: "ملاحظات الإيداع / التحصيل...",
+						className: "w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "submit",
+						disabled: isSubmittingDeposit,
+						className: "w-full min-h-[48px] rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50",
+						children: isSubmittingDeposit ? "جاري التسجيل..." : "تأكيد الإيداع / التحصيل"
+					})
+				]
+			}),
+			activeTab === "cash-withdrawal" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+				onSubmit: handleSubmitCashWithdrawal,
+				className: "bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs",
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", {
+						className: "text-sm font-black text-amber-900",
+						children: "سحب نقدي / تسجيل مصروف"
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", {
+						value: wdCashboxId,
+						onChange: (e) => setWdCashboxId(e.target.value),
+						className: "w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white",
+						children: data.cashboxes.map((cb) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", {
+							value: cb.id,
+							children: [
+								cb.name,
+								" (رصيد: ",
+								cb.currentBalance.toLocaleString(),
+								")"
+							]
+						}, cb.id))
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+						type: "text",
+						value: wdCategory,
+						onChange: (e) => setWdCategory(e.target.value),
+						placeholder: "البند / التصنيف (مثال: بنزين / مصروف تشغيل)",
+						className: "w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold"
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+						type: "text",
+						value: wdBeneficiary,
+						onChange: (e) => setWdBeneficiary(e.target.value),
+						placeholder: "المستفيد (اختياري)",
+						className: "w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+						type: "number",
+						min: 1,
+						step: "0.01",
+						value: wdAmount || "",
+						onChange: (e) => setWdAmount(Math.max(0, Number(e.target.value))),
+						placeholder: `مبلغ السحب (${data.settings.currency})`,
+						className: "w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-mono font-black text-center text-red-700"
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+						type: "text",
+						value: wdNotes,
+						onChange: (e) => setWdNotes(e.target.value),
+						placeholder: "بيان السحب / المصروف...",
+						className: "w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+					}),
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "submit",
+						disabled: isSubmittingWithdrawal,
+						className: "w-full min-h-[48px] rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-black cursor-pointer disabled:opacity-50",
+						children: isSubmittingWithdrawal ? "جاري التسجيل..." : "تأكيد السحب النقدي"
+					})
+				]
+			}),
+			activeTab === "new-customer" && (() => {
+				const helper = renderPhoneAndMapsActionRow(newCustPhone, newCustAddress || newCustArea, newCustGeo, setCustPhoneNotice, setCustMapNotice);
+				return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+					onSubmit: handleSaveNewCustomer,
+					className: "bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", {
+							className: "text-sm font-black text-slate-900",
+							children: "إضافة عميل جديد"
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "grid grid-cols-1 sm:grid-cols-2 gap-3",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+								className: "block font-bold text-slate-700 mb-1",
+								children: "اسم العميل *"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								type: "text",
+								required: true,
+								value: newCustName,
+								onChange: (e) => setNewCustName(e.target.value),
+								placeholder: "الاسم الكامل للعميل",
+								className: "w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold"
+							})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+								className: "block font-bold text-slate-700 mb-1",
+								children: "اسم المحل / النشاط"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								type: "text",
+								value: newCustShop,
+								onChange: (e) => setNewCustShop(e.target.value),
+								placeholder: "مثال: سوبرماركت النور",
+								className: "w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold"
+							})] })]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+								className: "block font-bold text-slate-700 mb-1",
+								children: "رقم الهاتف *"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center gap-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+									type: "tel",
+									required: true,
+									value: newCustPhone,
+									onChange: (e) => {
+										setNewCustPhone(e.target.value);
+										if (custPhoneNotice) setCustPhoneNotice(null);
+									},
+									placeholder: "01012345678",
+									className: "flex-1 min-h-[44px] rounded-xl border border-slate-300 px-3 font-mono font-bold"
+								}), helper.isPhoneValid ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", {
+									href: `tel:${helper.cleanedPhone}`,
+									onClick: () => setCustPhoneNotice({
+										type: "info",
+										text: `جاري الاتصال بالرقم (${helper.cleanedPhone}).`
+									}),
+									className: "min-h-[44px] px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold inline-flex items-center gap-1.5 shrink-0",
+									title: "اتصال هاتفي مباشر",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Phone, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "اتصال" })]
+								}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: () => setCustPhoneNotice({
+										type: "error",
+										text: "يرجى إدخال رقم هاتف صحيح (7 أرقام على الأقل) أولاً."
+									}),
+									className: "min-h-[44px] px-3 rounded-xl bg-slate-100 text-slate-600 border border-slate-300 font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Phone, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "اتصال" })]
+								})]
+							}),
+							custPhoneNotice && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+								className: `text-[11px] font-bold mt-1 ${custPhoneNotice.type === "error" ? "text-red-600" : "text-emerald-700"}`,
+								children: custPhoneNotice.text
+							})
+						] }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
+								className: "block font-bold text-slate-700 mb-1",
+								children: "العنوان التفصيلي"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center gap-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+									type: "text",
+									value: newCustAddress,
+									onChange: (e) => {
+										setNewCustAddress(e.target.value);
+										if (custMapNotice) setCustMapNotice(null);
+									},
+									placeholder: "الشارع، المنطقة، علامة مميزة...",
+									className: "flex-1 min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold"
+								}), helper.mapQuery ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", {
+									href: helper.mapsHref,
+									target: "_blank",
+									rel: "noopener noreferrer",
+									className: "min-h-[44px] px-3 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1.5 shrink-0",
+									title: "فتح على خرائط Google",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(MapPin, { className: "w-4 h-4 text-red-600" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "خريطة" })]
+								}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: () => setCustMapNotice("يرجى كتابة العنوان أو تحديد إحداثيات GPS أولاً لفتح الخريطة."),
+									className: "min-h-[44px] px-3 rounded-xl bg-slate-100 text-slate-600 border border-slate-300 font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(MapPin, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "خريطة" })]
+								})]
+							}),
+							custMapNotice && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+								className: "text-[11px] font-bold text-red-600 mt-1",
+								children: custMapNotice
+							})
+						] }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "grid grid-cols-1 sm:grid-cols-2 gap-3",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								type: "text",
+								value: newCustArea,
+								onChange: (e) => setNewCustArea(e.target.value),
+								placeholder: "المنطقة / خط السير",
+								className: "min-h-[42px] rounded-xl border border-slate-300 px-3"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								type: "number",
+								value: newCustOpening || "",
+								onChange: (e) => setNewCustOpening(Number(e.target.value)),
+								placeholder: `رصيد افتتاحي (${data.settings.currency})`,
+								className: "min-h-[42px] rounded-xl border border-slate-300 px-3 font-mono font-bold"
+							})]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-2",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								type: "text",
+								value: newCustGeo,
+								onChange: (e) => setNewCustGeo(e.target.value),
+								placeholder: "إحداثيات GPS (اختياري)",
+								className: "flex-1 min-h-[42px] rounded-xl border border-slate-300 px-3 font-mono"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								type: "button",
+								disabled: isLocatingCust,
+								onClick: handleCaptureCustLocation,
+								className: "min-h-[42px] px-3 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 font-bold cursor-pointer shrink-0",
+								children: isLocatingCust ? "تحديد..." : "موقعي GPS"
+							})]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							type: "submit",
+							disabled: isSavingCustomer,
+							className: "w-full min-h-[48px] rounded-2xl bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50",
+							children: isSavingCustomer ? "جاري الحفظ..." : "حفظ العميل الجديد"
+						})
+					]
+				});
+			})(),
+			activeTab === "new-supplier" && (() => {
+				const cleanedSupPhone = newSupPhone.replace(/[^\d+]/g, "");
+				const supPhoneValid = cleanedSupPhone.replace(/\D/g, "").length >= 7;
+				return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+					onSubmit: handleSaveNewSupplier,
+					className: "bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", {
+							className: "text-sm font-black text-purple-950",
+							children: "إضافة مورد جديد"
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "grid grid-cols-1 sm:grid-cols-2 gap-3",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								type: "text",
+								required: true,
+								value: newSupName,
+								onChange: (e) => setNewSupName(e.target.value),
+								placeholder: "اسم المورد *",
+								className: "min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								type: "text",
+								value: newSupCompany,
+								onChange: (e) => setNewSupCompany(e.target.value),
+								placeholder: "اسم الشركة / المصنع",
+								className: "min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold"
+							})]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-2",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								type: "tel",
+								required: true,
+								value: newSupPhone,
+								onChange: (e) => {
+									setNewSupPhone(e.target.value);
+									if (supPhoneNotice) setSupPhoneNotice(null);
+								},
+								placeholder: "رقم الهاتف *",
+								className: "flex-1 min-h-[44px] rounded-xl border border-slate-300 px-3 font-mono font-bold"
+							}), supPhoneValid ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", {
+								href: `tel:${cleanedSupPhone}`,
+								className: "min-h-[44px] px-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold inline-flex items-center gap-1.5",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Phone, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "اتصال" })]
+							}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+								type: "button",
+								onClick: () => setSupPhoneNotice({
+									type: "error",
+									text: "يرجى إدخال رقم هاتف المورد (7 أرقام على الأقل)."
+								}),
+								className: "min-h-[44px] px-3 rounded-xl bg-slate-100 text-slate-600 border border-slate-300 font-bold inline-flex items-center gap-1.5 cursor-pointer",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Phone, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "اتصال" })]
+							})]
+						}), supPhoneNotice && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+							className: "text-[11px] font-bold text-red-600 mt-1",
+							children: supPhoneNotice.text
+						})] }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "grid grid-cols-1 sm:grid-cols-2 gap-3",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								type: "text",
+								value: newSupAddress,
+								onChange: (e) => setNewSupAddress(e.target.value),
+								placeholder: "عنوان المورد",
+								className: "min-h-[42px] rounded-xl border border-slate-300 px-3"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								type: "number",
+								value: newSupOpening || "",
+								onChange: (e) => setNewSupOpening(Number(e.target.value)),
+								placeholder: `رصيد افتتاحي (${data.settings.currency})`,
+								className: "min-h-[42px] rounded-xl border border-slate-300 px-3 font-mono font-bold"
+							})]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							type: "submit",
+							disabled: isSavingSupplier,
+							className: "w-full min-h-[48px] rounded-2xl bg-purple-900 hover:bg-purple-950 text-white font-black cursor-pointer disabled:opacity-50",
+							children: isSavingSupplier ? "جاري الحفظ..." : "حفظ المورد الجديد"
+						})
+					]
+				});
+			})(),
+			activeTab === "cheques-installments" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "space-y-4 text-xs",
+				children: [
+					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "grid grid-cols-2 gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-200",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+							type: "button",
+							onClick: () => setChqTab("cheques"),
+							className: `min-h-[42px] rounded-xl font-black cursor-pointer ${chqTab === "cheques" ? "bg-teal-700 text-white" : "text-slate-700"}`,
+							children: [
+								"الشيكات (",
+								data.cheques.length,
+								")"
+							]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+							type: "button",
+							onClick: () => setChqTab("installments"),
+							className: `min-h-[42px] rounded-xl font-black cursor-pointer ${chqTab === "installments" ? "bg-teal-700 text-white" : "text-slate-700"}`,
+							children: [
+								"الأقساط (",
+								data.installments.length,
+								")"
+							]
+						})]
+					}),
+					chqTab === "cheques" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "space-y-3",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+							onSubmit: handleAddCheque,
+							className: "bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-2.5",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h4", {
+									className: "font-black text-slate-900",
+									children: "تسجيل شيك جديد"
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "grid grid-cols-2 gap-2",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+										value: chqType,
+										onChange: (e) => setChqType(e.target.value),
+										className: "min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold bg-white",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+											value: "incoming",
+											children: "شيك وارد (تحصيل)"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+											value: "outgoing",
+											children: "شيك صادر (سداد)"
+										})]
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+										type: "text",
+										value: chqNumber,
+										onChange: (e) => setChqNumber(e.target.value),
+										placeholder: "رقم الشيك",
+										className: "min-h-[42px] rounded-xl border border-slate-300 px-3 font-mono font-bold"
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "grid grid-cols-2 gap-2",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+										type: "text",
+										value: chqPartyName,
+										onChange: (e) => setChqPartyName(e.target.value),
+										placeholder: "اسم العميل / المورد",
+										className: "min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+										type: "text",
+										value: chqBank,
+										onChange: (e) => setChqBank(e.target.value),
+										placeholder: "اسم البنك",
+										className: "min-h-[42px] rounded-xl border border-slate-300 px-3"
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "grid grid-cols-2 gap-2",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+										type: "number",
+										min: 1,
+										value: chqAmount || "",
+										onChange: (e) => setChqAmount(Number(e.target.value)),
+										placeholder: "المبلغ",
+										className: "min-h-[42px] rounded-xl border border-slate-300 px-3 font-mono font-bold"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+										type: "date",
+										value: chqDueDate,
+										onChange: (e) => setChqDueDate(e.target.value),
+										className: "min-h-[42px] rounded-xl border border-slate-300 px-3 font-mono"
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "submit",
+									disabled: isSavingCheque,
+									className: "w-full min-h-[44px] rounded-xl bg-teal-700 text-white font-black cursor-pointer",
+									children: isSavingCheque ? "جاري التسجيل..." : "حفظ الشيك"
+								})
+							]
+						}), data.cheques.map((chq) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "bg-white rounded-2xl border border-slate-200 p-3.5 flex items-center justify-between gap-2",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+								className: "font-mono font-black text-blue-950",
+								children: chq.chequeNumber
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+								className: "text-[11px] text-slate-600",
+								children: [
+									chq.partyName,
+									" · ",
+									chq.bankName,
+									" · استحقاق ",
+									chq.dueDate
+								]
+							})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "text-left",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+									className: "font-mono font-black text-slate-900",
+									children: [
+										chq.amount.toLocaleString(),
+										" ",
+										data.settings.currency
+									]
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "block text-[10px] font-bold text-slate-500",
+									children: chq.status === "collected" ? "محصل" : chq.status === "rejected" || chq.status === "returned" ? "مرتد / مرفوض" : "قيد الانتظار"
+								})]
+							})]
+						}, chq.id))]
+					}),
+					chqTab === "installments" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+						className: "space-y-3",
+						children: data.installments.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							className: "bg-white rounded-3xl border border-slate-200 p-8 text-center text-slate-400",
+							children: "لا توجد جداول أقساط نشطة حالياً."
+						}) : data.installments.map((sched) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "bg-white rounded-2xl border border-slate-200 p-4 space-y-2.5",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center justify-between",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "font-mono font-black text-blue-950",
+									children: sched.scheduleNumber
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+									className: "text-[11px] text-slate-600",
+									children: sched.customerName
+								})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+									className: "font-mono text-red-700",
+									children: ["متبقي: ", sched.remainingAmount.toLocaleString()]
+								})]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "divide-y divide-slate-100",
+								children: (sched.items || []).filter((it) => it.status !== "paid").slice(0, 3).map((it) => {
+									const key = `${sched.id}:${it.id}`;
+									return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "py-2 flex items-center justify-between gap-2",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+											className: "font-mono",
+											children: [
+												it.dueDate,
+												" · ",
+												(it.amount - it.paidAmount).toLocaleString(),
+												" ",
+												data.settings.currency
+											]
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+											type: "button",
+											disabled: payingInstKey === key,
+											onClick: async () => {
+												setPayingInstKey(key);
+												await data.payInstallment(sched.id, it.id, it.amount - it.paidAmount, data.cashboxes[0]?.id || "CASH-01", "تحصيل قسط عبر تطبيق المندوب");
+												setPayingInstKey(null);
+												setFeedback({
+													type: "success",
+													text: "تم تحصيل القسط وتحديث الجدول."
+												});
+											},
+											className: "min-h-[38px] px-3 rounded-xl bg-emerald-700 text-white font-bold cursor-pointer",
+											children: payingInstKey === key ? "جاري التحصيل..." : "تحصيل القسط"
+										})]
+									}, it.id);
+								})
+							})]
+						}, sched.id))
+					})
+				]
+			}),
+			activeTab === "new-quote" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "space-y-4 text-xs",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+					onSubmit: handleCreateQuote,
+					className: "bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", {
+							className: "text-sm font-black text-blue-950",
+							children: "إنشاء عرض سعر (بدون خصم مخزني أو قيد مالي)"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+							className: "text-[11px] text-slate-500",
+							children: "يمكن تحويل عرض السعر لاحقاً لفاتورة مبيعات معتمدة بضغطة واحدة."
+						})] }),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+							value: quoteCustomerId,
+							onChange: (e) => setQuoteCustomerId(e.target.value),
+							className: "w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: "",
+								children: "-- اختر العميل (أو عميل عام) --"
+							}), data.customers.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+								value: c.id,
+								children: c.shopName || c.name
+							}, c.id))]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "p-3 rounded-2xl bg-blue-50/70 border border-blue-200 space-y-2",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+									value: quoteProductId,
+									onChange: (e) => handleSelectQuoteProduct(e.target.value),
+									className: "w-full min-h-[44px] rounded-xl border border-blue-300 px-3 font-bold bg-white",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+										value: "",
+										children: "-- اختر الصنف لعرض السعر --"
+									}), activeProducts.map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", {
+										value: p.id,
+										children: [
+											p.name,
+											" (",
+											p.sellingPrice,
+											" ",
+											data.settings.currency,
+											")"
+										]
+									}, p.id))]
+								}),
+								quoteProductId && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "grid grid-cols-2 gap-2",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(QuantityInput, {
+										allowDecimals: true,
+										min: .001,
+										value: quoteQty,
+										onChange: setQuoteQty,
+										ariaLabel: "كمية عرض السعر",
+										inputClassName: "w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+										type: "number",
+										min: 0,
+										step: "0.5",
+										value: quotePrice,
+										onChange: (e) => setQuotePrice(Number(e.target.value)),
+										className: "min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+									})]
+								}),
+								quoteProductId && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									onClick: handleAddQuoteItem,
+									className: "w-full min-h-[44px] rounded-xl bg-blue-900 text-white font-black cursor-pointer",
+									children: "إضافة للعرض"
+								})
+							]
+						}),
+						quoteItems.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+							className: "divide-y divide-slate-100 border border-slate-200 rounded-2xl px-3",
+							children: quoteItems.map((it, idx) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "py-2 flex items-center justify-between",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+									className: "font-bold",
+									children: [
+										it.productName,
+										" (",
+										it.quantity,
+										" × ",
+										it.unitPrice,
+										")"
+									]
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+									className: "font-mono text-blue-950",
+									children: it.total.toLocaleString()
+								})]
+							}, idx))
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+							type: "text",
+							value: quoteNotes,
+							onChange: (e) => setQuoteNotes(e.target.value),
+							placeholder: "صلاحية العرض وملاحظات...",
+							className: "w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							type: "submit",
+							disabled: isSubmittingQuote || quoteItems.length === 0,
+							className: "w-full min-h-[48px] rounded-2xl bg-blue-900 hover:bg-blue-950 text-white font-black disabled:opacity-50 cursor-pointer",
+							children: isSubmittingQuote ? "جاري الحفظ..." : `حفظ عرض السعر (${quoteTotal.toLocaleString()} ${data.settings.currency})`
+						})
+					]
+				}), myQuotes.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "space-y-2.5",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h4", {
+						className: "font-black text-slate-900 px-1",
+						children: [
+							"عروض الأسعار المسجلة (",
+							myQuotes.length,
+							")"
+						]
+					}), myQuotes.map((q) => {
+						const isConverted = myInvoices.some((inv) => inv.convertedFromQuoteId === q.id);
+						return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "bg-white rounded-2xl border border-slate-200 p-4 space-y-2.5",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center justify-between",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "font-mono font-black text-blue-950",
+									children: q.invoiceNumber
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+									className: "text-[11px] text-slate-500",
+									children: [
+										q.customerName,
+										" · ",
+										q.date
+									]
+								})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+									className: "font-mono font-black text-slate-900",
+									children: [
+										q.grandTotal.toLocaleString(),
+										" ",
+										data.settings.currency
+									]
+								})]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center gap-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									disabled: isConverted || convertingQuoteId === q.id,
+									onClick: () => handleConvertQuote(q.id),
+									className: "flex-1 min-h-[42px] rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black disabled:opacity-50 cursor-pointer",
+									children: isConverted ? "تم التحويل لفاتورة" : convertingQuoteId === q.id ? "جاري التحويل..." : "تحويل لفاتورة بيع"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: () => exportInvoiceDocument(q),
+									className: "min-h-[42px] px-3.5 rounded-xl bg-blue-900 text-white font-bold flex items-center gap-1 cursor-pointer",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(FileDown, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "PDF" })]
+								})]
+							})]
+						}, q.id);
+					})]
 				})]
 			}),
 			activeTab === "invoices" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 				className: "space-y-3",
 				children: myInvoices.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 					className: "bg-white rounded-3xl border border-slate-200 p-10 text-center text-xs text-slate-500",
-					children: "لا توجد فواتير مسجلة لك حتى الآن."
+					children: "لا توجد فواتير مبيعات مسجلة حتى الآن."
 				}) : myInvoices.map((inv) => {
 					const confirmCheck = inv.status === "draft" ? canConfirmDraft(inv) : { ready: false };
 					return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
@@ -67265,14 +78344,25 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 											data.settings.currency
 										]
 									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-										className: "flex items-center justify-end gap-1.5 mt-0.5",
-										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-											className: `text-[11px] font-bold ${inv.status === "confirmed" ? "text-emerald-700" : inv.status === "draft" ? "text-amber-700" : "text-red-700"}`,
-											children: inv.status === "confirmed" ? "معتمدة" : inv.status === "draft" ? "مسودة" : "ملغاة"
-										}), inv.syncStatus && inv.syncStatus !== "synced" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-											className: "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200",
-											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CloudOff, { className: "w-2.5 h-2.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "محلي" })]
-										})]
+										className: "flex items-center justify-end gap-1.5 mt-0.5 text-[11px]",
+										children: [
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												className: `font-bold ${inv.status === "confirmed" ? "text-emerald-700" : inv.status === "draft" ? "text-amber-700" : "text-red-700"}`,
+												children: inv.status === "confirmed" ? "معتمدة" : inv.status === "draft" ? "مسودة" : "ملغاة"
+											}),
+											inv.reviewStatus === "needs_review" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												className: "text-amber-700 font-bold",
+												children: "· بانتظار مراجعة الإدارة"
+											}),
+											inv.reviewStatus === "reviewed" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												className: "text-blue-800 font-bold",
+												children: "· تمت المراجعة"
+											}),
+											inv.syncStatus && inv.syncStatus !== "synced" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+												className: "inline-flex items-center gap-0.5 text-amber-800 font-bold",
+												children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CloudOff, { className: "w-3 h-3" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "محلي" })]
+											})
+										]
 									})]
 								})]
 							}),
@@ -67312,59 +78402,470 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 					}, inv.id);
 				})
 			}),
-			activeTab === "custody" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+			activeTab === "purchases-list" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "space-y-3 text-xs",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flex items-center justify-between",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h3", {
+						className: "text-sm font-black text-slate-900",
+						children: [
+							"فواتير الشراء (",
+							myPurchases.length,
+							")"
+						]
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						onClick: () => onTabChange("new-purchase"),
+						className: "min-h-[40px] px-3 rounded-xl bg-indigo-900 text-white font-bold cursor-pointer",
+						children: "+ فاتورة شراء"
+					})]
+				}), myPurchases.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					className: "bg-white rounded-3xl border border-slate-200 p-8 text-center text-slate-400",
+					children: "لا توجد فواتير مشتريات مسجلة."
+				}) : myPurchases.map((inv) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "bg-white rounded-2xl border border-slate-200 p-4 flex items-center justify-between",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+						className: "font-mono font-black text-indigo-950",
+						children: inv.invoiceNumber
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+						className: "text-[11px] text-slate-500",
+						children: [
+							inv.supplierName,
+							" · ",
+							inv.date
+						]
+					})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "flex items-center gap-2",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+							className: "font-mono text-slate-900",
+							children: [
+								inv.grandTotal.toLocaleString(),
+								" ",
+								data.settings.currency
+							]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							type: "button",
+							onClick: () => exportInvoiceDocument(inv),
+							className: "min-h-[40px] px-3 rounded-xl bg-slate-100 text-slate-800 font-bold cursor-pointer",
+							children: "PDF"
+						})]
+					})]
+				}, inv.id))]
+			}),
+			activeTab === "sales-returns-list" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "space-y-3 text-xs",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flex items-center justify-between",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h3", {
+						className: "text-sm font-black text-rose-950",
+						children: [
+							"مرتجعات البيع (",
+							mySalesReturns.length,
+							")"
+						]
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						onClick: () => onTabChange("sales-return"),
+						className: "min-h-[40px] px-3 rounded-xl bg-rose-700 text-white font-bold cursor-pointer",
+						children: "+ مرتجع بيع"
+					})]
+				}), mySalesReturns.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					className: "bg-white rounded-3xl border border-slate-200 p-8 text-center text-slate-400",
+					children: "لا توجد مرتجعات مبيعات."
+				}) : mySalesReturns.map((r) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "bg-white rounded-2xl border border-slate-200 p-4 flex items-center justify-between",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+						className: "font-mono font-black text-rose-900",
+						children: r.returnNumber
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+						className: "text-[11px] text-slate-500",
+						children: [
+							r.partyName,
+							" · ",
+							r.date
+						]
+					})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+						className: "font-mono text-rose-800",
+						children: [
+							r.grandTotal.toLocaleString(),
+							" ",
+							data.settings.currency
+						]
+					})]
+				}, r.id))]
+			}),
+			activeTab === "purchase-returns-list" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+				className: "space-y-3 text-xs",
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flex items-center justify-between",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h3", {
+						className: "text-sm font-black text-orange-950",
+						children: [
+							"مرتجعات الشراء (",
+							myPurchaseReturns.length,
+							")"
+						]
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						onClick: () => onTabChange("purchase-return"),
+						className: "min-h-[40px] px-3 rounded-xl bg-orange-700 text-white font-bold cursor-pointer",
+						children: "+ مرتجع شراء"
+					})]
+				}), myPurchaseReturns.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					className: "bg-white rounded-3xl border border-slate-200 p-8 text-center text-slate-400",
+					children: "لا توجد مرتجعات مشتريات."
+				}) : myPurchaseReturns.map((r) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "bg-white rounded-2xl border border-slate-200 p-4 flex items-center justify-between",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+						className: "font-mono font-black text-orange-900",
+						children: r.returnNumber
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+						className: "text-[11px] text-slate-500",
+						children: [
+							r.partyName,
+							" · ",
+							r.date
+						]
+					})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+						className: "font-mono text-orange-800",
+						children: [
+							r.grandTotal.toLocaleString(),
+							" ",
+							data.settings.currency
+						]
+					})]
+				}, r.id))]
+			}),
+			(activeTab === "custody" || activeTab === "custody-transfer") && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				className: "space-y-4",
 				children: [
 					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-						className: "grid grid-cols-3 gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-200 text-xs",
+						className: "grid grid-cols-5 gap-1 bg-white p-1.5 rounded-2xl border border-slate-200 text-[11px]",
 						children: [
 							{
 								key: "van",
-								label: "مخزون سيارتي"
+								label: "السيارة"
 							},
 							{
 								key: "items",
-								label: `تحويل الأصناف (${myItemTransfers.length})`
+								label: `تحويل (${myItemTransfers.length})`
+							},
+							{
+								key: "deliver",
+								label: "تسليم"
+							},
+							{
+								key: "return",
+								label: "إرجاع مخزن"
 							},
 							{
 								key: "cash",
-								label: `النقدي (${myCashTransfers.length})`
+								label: `نقدي (${myCashTransfers.length})`
 							}
 						].map((st) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 							type: "button",
 							onClick: () => setCustodySubTab(st.key),
-							className: `min-h-[42px] rounded-xl font-bold cursor-pointer ${custodySubTab === st.key ? "bg-blue-900 text-white" : "text-slate-600"}`,
+							className: `min-h-[42px] rounded-xl font-bold px-1 cursor-pointer truncate ${custodySubTab === st.key ? "bg-blue-900 text-white" : "text-slate-600"}`,
 							children: st.label
 						}, st.key))
 					}),
 					custodySubTab === "van" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-2.5 text-xs",
-						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h4", {
-							className: "font-black text-slate-900",
-							children: ["أرصدة البضاعة في: ", vanWarehouse?.name || "سيارة المندوب"]
-						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "divide-y divide-slate-100",
-							children: [activeProducts.filter((p) => (p.stockPerWarehouse?.[effectiveVanId] || 0) > 0).map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-								className: "py-2.5 flex items-center justify-between",
-								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-									className: "font-bold text-slate-900",
-									children: p.name
-								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-									className: "text-[11px] text-slate-500",
-									children: p.category
-								})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
-									className: "font-mono text-sm text-blue-950 tabular-nums",
+						className: "space-y-3 text-xs",
+						children: [custodyStatement && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "bg-slate-900 text-white rounded-2xl p-4 space-y-3 shadow-xs tabular-nums",
+							children: [
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-center justify-between",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h4", {
+										className: "font-black text-sm",
+										children: "كشف عهدة السيارة التراكمي"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+										type: "button",
+										onClick: loadCustodyStatement,
+										disabled: isLoadingCustodyStmt,
+										className: "px-2.5 py-1 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold flex items-center gap-1 cursor-pointer",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(RefreshCw, { className: `w-3.5 h-3.5 ${isLoadingCustodyStmt ? "animate-spin" : ""}` }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "تحديث" })]
+									})]
+								}),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "grid grid-cols-2 sm:grid-cols-5 gap-2 text-center",
 									children: [
-										p.stockPerWarehouse?.[effectiveVanId] || 0,
-										" ",
-										p.baseUnit
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "p-2 rounded-xl bg-white/10",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												className: "text-[10px] text-slate-300 block",
+												children: "إجمالي المستلم"
+											}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+												className: "font-mono text-sm",
+												children: custodyStatement.totals.totalReceivedQty
+											})]
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "p-2 rounded-xl bg-white/10",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												className: "text-[10px] text-slate-300 block",
+												children: "المسلم للعملاء"
+											}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+												className: "font-mono text-sm text-sky-300",
+												children: custodyStatement.totals.totalDeliveredQty
+											})]
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "p-2 rounded-xl bg-white/10",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												className: "text-[10px] text-slate-300 block",
+												children: "المرتجع للمخزن"
+											}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+												className: "font-mono text-sm text-amber-300",
+												children: custodyStatement.totals.totalReturnedQty
+											})]
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "p-2 rounded-xl bg-emerald-800/70",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												className: "text-[10px] text-emerald-200 block",
+												children: "المتبقي الفعلي"
+											}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+												className: "font-mono text-sm",
+												children: custodyStatement.totals.totalRemainingCustodyQty
+											})]
+										}),
+										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+											className: "p-2 rounded-xl bg-blue-800/70 col-span-2 sm:col-span-1",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												className: "text-[10px] text-blue-200 block",
+												children: "القيمة بالتكلفة"
+											}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+												className: "font-mono text-sm",
+												children: [
+													custodyStatement.totals.totalCustodyCostValue.toLocaleString(),
+													" ",
+													data.settings.currency
+												]
+											})]
+										})
 									]
+								}),
+								custodyStatement.itemsSummary.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "bg-white/5 rounded-xl p-2.5 space-y-1.5",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-[10px] text-slate-300 font-bold block",
+										children: "تفاصيل حركة العهدة لكل صنف:"
+									}), custodyStatement.itemsSummary.map((item) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "flex items-center justify-between gap-2 text-[11px] border-b border-white/10 pb-1 last:border-0 last:pb-0",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "font-bold truncate",
+											children: item.productName
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+											className: "font-mono text-slate-200 shrink-0",
+											children: [
+												"مستلم ",
+												item.receivedQty,
+												" | مباع ",
+												item.deliveredToCustomersQty,
+												" | مرتجع ",
+												item.returnedToWarehouseQty,
+												" | متبقي",
+												" ",
+												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+													className: "text-emerald-300",
+													children: item.remainingCustodyQty
+												})
+											]
+										})]
+									}, item.productId))]
+								})
+							]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-2.5",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center justify-between",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h4", {
+									className: "font-black text-slate-900",
+									children: ["أرصدة البضاعة الحالية في: ", vanWarehouse?.name || "سيارة المندوب"]
+								}), !custodyStatement && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: loadCustodyStatement,
+									disabled: isLoadingCustodyStmt,
+									className: "text-blue-900 font-bold flex items-center gap-1 cursor-pointer",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(RefreshCw, { className: `w-3.5 h-3.5 ${isLoadingCustodyStmt ? "animate-spin" : ""}` }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "كشف العهدة" })]
 								})]
-							}, p.id)), activeProducts.every((p) => (p.stockPerWarehouse?.[effectiveVanId] || 0) <= 0) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-								className: "py-6 text-center text-slate-400",
-								children: "لا توجد بضاعة متوفرة حالياً داخل مستودع السيارة."
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "divide-y divide-slate-100",
+								children: [activeProducts.filter((p) => (p.stockPerWarehouse?.[effectiveVanId] || 0) > 0).map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "py-2.5 flex items-center justify-between",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+										className: "font-bold text-slate-900",
+										children: p.name
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+										className: "text-[11px] text-slate-500",
+										children: p.category
+									})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+										className: "font-mono text-sm text-blue-950 tabular-nums",
+										children: [
+											p.stockPerWarehouse?.[effectiveVanId] || 0,
+											" ",
+											p.baseUnit
+										]
+									})]
+								}, p.id)), activeProducts.every((p) => (p.stockPerWarehouse?.[effectiveVanId] || 0) <= 0) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+									className: "py-6 text-center text-slate-400",
+									children: "لا توجد بضاعة متوفرة حالياً داخل مستودع السيارة."
+								})]
 							})]
 						})]
+					}),
+					custodySubTab === "deliver" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+						onSubmit: handleRecordPartialCustodyDelivery,
+						className: "bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h4", {
+								className: "font-black text-slate-900",
+								children: "تسليم جزئي من عهدة السيارة إلى عميل"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+								value: delivCustomerId,
+								onChange: (e) => setDelivCustomerId(e.target.value),
+								className: "w-full min-h-[44px] rounded-xl border border-slate-300 px-3 bg-white font-bold",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: "",
+									children: "-- اختر العميل المستلم (اختياري) --"
+								}), data.customers.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: c.id,
+									children: c.shopName || c.name
+								}, c.id))]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+								value: delivProdId,
+								onChange: (e) => setDelivProdId(e.target.value),
+								className: "w-full min-h-[44px] rounded-xl border border-slate-300 px-3 bg-white font-bold",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: "",
+									children: "-- اختر الصنف من العهدة --"
+								}), activeProducts.filter((p) => (p.stockPerWarehouse?.[effectiveVanId] || 0) > 0).map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", {
+									value: p.id,
+									children: [
+										p.name,
+										" (متاح: ",
+										p.stockPerWarehouse?.[effectiveVanId] || 0,
+										" ",
+										p.baseUnit,
+										")"
+									]
+								}, p.id))]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(QuantityInput, {
+								allowDecimals: true,
+								min: .001,
+								value: delivQty,
+								onChange: setDelivQty,
+								ariaLabel: "الكمية المسلمة",
+								inputClassName: "w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								type: "text",
+								value: delivNotes,
+								onChange: (e) => setDelivNotes(e.target.value),
+								placeholder: "ملاحظات التسليم...",
+								className: "w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								type: "submit",
+								disabled: isSendingTransfer,
+								className: "w-full min-h-[46px] rounded-xl bg-emerald-700 text-white font-black cursor-pointer disabled:opacity-50",
+								children: isSendingTransfer ? "جاري التسجيل..." : "تأكيد تسليم العهدة"
+							})
+						]
+					}),
+					custodySubTab === "return" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", {
+						onSubmit: handleRecordCustodyReturn,
+						className: "bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h4", {
+								className: "font-black text-slate-900",
+								children: "إرجاع بضاعة من عهدة السيارة إلى المخزن"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+								value: retCustodyProdId,
+								onChange: (e) => {
+									const pId = e.target.value;
+									setRetCustodyProdId(pId);
+									const prod = activeProducts.find((p) => p.id === pId);
+									setRetCustodyUnit(prod?.baseUnit || "");
+								},
+								className: "w-full min-h-[44px] rounded-xl border border-slate-300 px-3 bg-white font-bold",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+									value: "",
+									children: "-- اختر الصنف المرتجع من السيارة --"
+								}), activeProducts.filter((p) => (p.stockPerWarehouse?.[effectiveVanId] || 0) > 0).map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", {
+									value: p.id,
+									children: [
+										p.name,
+										" (متاح بالسيارة: ",
+										p.stockPerWarehouse?.[effectiveVanId] || 0,
+										" ",
+										p.baseUnit,
+										")"
+									]
+								}, p.id))]
+							}),
+							(() => {
+								const retProd = activeProducts.find((p) => p.id === retCustodyProdId);
+								return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "grid grid-cols-2 gap-2",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", {
+										value: retCustodyUnit || retProd?.baseUnit || "",
+										onChange: (e) => setRetCustodyUnit(e.target.value),
+										disabled: !retProd,
+										className: "min-h-[42px] rounded-xl border border-slate-300 px-2 bg-white font-bold disabled:opacity-50",
+										children: retProd ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+											value: retProd.baseUnit,
+											children: retProd.baseUnit
+										}), retProd.units.map((u) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", {
+											value: u.name,
+											children: [
+												u.name,
+												" (",
+												u.conversionFactor,
+												")"
+											]
+										}, u.id))] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
+											value: "",
+											children: "الوحدة"
+										})
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(QuantityInput, {
+										allowDecimals: true,
+										min: .001,
+										value: retCustodyQty,
+										onChange: setRetCustodyQty,
+										ariaLabel: "الكمية المرتجعة للمخزن",
+										inputClassName: "w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+									})]
+								});
+							})(),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", {
+								value: retCustodyTargetWhId,
+								onChange: (e) => setRetCustodyTargetWhId(e.target.value),
+								className: "w-full min-h-[44px] rounded-xl border border-slate-300 px-3 bg-white font-bold",
+								children: data.warehouses.filter((w) => w.id !== effectiveVanId).map((w) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", {
+									value: w.id,
+									children: ["إرجاع إلى: ", w.name]
+								}, w.id))
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+								type: "text",
+								value: retCustodyNotes,
+								onChange: (e) => setRetCustodyNotes(e.target.value),
+								placeholder: "سبب الإرجاع أو ملاحظات...",
+								className: "w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								type: "submit",
+								disabled: isSendingTransfer || !retCustodyProdId,
+								className: "w-full min-h-[46px] rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black cursor-pointer disabled:opacity-50",
+								children: isSendingTransfer ? "جاري تسجيل الإرجاع..." : "تأكيد إرجاع البضاعة للمخزن"
+							})
+						]
 					}),
 					custodySubTab === "items" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 						className: "space-y-3 text-xs",
@@ -67467,10 +78968,6 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 										children: tr.status === "pending" ? "قيد مراجعة الإدارة" : tr.status === "approved" ? "معتمد — بانتظار الصرف" : tr.status === "executed" ? "تم الصرف — بانتظار تأكيد استلامك" : tr.status === "received" ? "تم الاستلام الفعلي" : "مرفوض"
 									})]
 								}),
-								tr.invoiceNumber && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
-									className: "text-[11px] text-blue-800 font-bold",
-									children: ["مرتبط بفاتورة: ", tr.invoiceNumber]
-								}),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 									className: "space-y-1 text-[11px] text-slate-600",
 									children: tr.items.map((it, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
@@ -67478,7 +78975,7 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: it.productName }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
 											className: "font-mono",
 											children: [
-												it.requestedQty,
+												it.approvedQty ?? it.requestedQty,
 												" ",
 												it.unit
 											]
@@ -67586,9 +79083,10 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 						}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 							className: "space-y-3",
 							children: assignedDeliveryOrders.map((ord) => {
-								const total = Number(ord.totalAmount || 0);
-								const adv = Number(ord.advancePaidAmount || 0);
-								const remainingDue = Math.max(0, total - adv);
+								const total = Number(ord.invoiceTotal ?? ord.totalAmount ?? 0);
+								const adv = Number(ord.invoicePaidAmount ?? ord.advancePaidAmount ?? 0);
+								const remainingDue = Math.max(0, Number(ord.invoiceRemainingAmount ?? total - adv));
+								const mapQ = encodeURIComponent(ord.geoCoordinates || ord.deliveryAddress || ord.customerName);
 								return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 									className: "rounded-2xl border border-slate-200 p-3.5 bg-slate-50/70 space-y-2.5",
 									children: [
@@ -67607,18 +79105,9 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 													className: "text-[11px] text-slate-600 flex items-center gap-1 mt-0.5",
 													children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(MapPin, { className: "w-3 h-3 text-red-600 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: ord.deliveryAddress })]
 												})
-											] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-												className: "flex flex-col items-end gap-1",
-												children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-													className: "px-2.5 py-1 rounded-full text-[11px] font-black bg-indigo-100 text-indigo-900",
-													children: REP_ORDER_STATUS_LABELS[ord.status] || ord.status
-												}), ord.syncStatus && ord.syncStatus !== "synced" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-													className: "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200",
-													children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CloudOff, { className: "w-2.5 h-2.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "محلي بانتظار المزامنة" })]
-												}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-													className: "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200",
-													children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CloudCheck, { className: "w-2.5 h-2.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "متزامن" })]
-												})]
+											] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+												className: "font-black text-xs text-indigo-900",
+												children: REP_ORDER_STATUS_LABELS[ord.status] || ord.status
 											})]
 										}),
 										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
@@ -67629,13 +79118,13 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 													" ",
 													data.settings.currency
 												] })] }),
-												adv > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+												/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
 													className: "text-emerald-700 font-bold",
-													children: ["مدفوع مقدماً: ", adv.toLocaleString()]
+													children: ["مدفوع: ", adv.toLocaleString()]
 												}),
 												/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
 													className: "text-blue-950 font-black",
-													children: ["المطلوب عند التسليم: ", remainingDue.toLocaleString()]
+													children: ["متبقي: ", remainingDue.toLocaleString()]
 												})
 											]
 										}),
@@ -67644,21 +79133,28 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 											children: [
 												ord.customerPhone && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", {
 													href: `tel:${ord.customerPhone}`,
-													className: "min-h-[40px] px-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono font-bold inline-flex items-center gap-1.5",
-													children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Phone, { className: "w-3.5 h-3.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: ord.customerPhone })]
+													className: "min-h-[42px] px-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono font-bold inline-flex items-center gap-1.5",
+													children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Phone, { className: "w-3.5 h-3.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "اتصال" })]
 												}),
-												ord.status === "rep_assigned" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+												(ord.deliveryAddress || ord.geoCoordinates) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", {
+													href: `https://www.google.com/maps/search/?api=1&query=${mapQ}`,
+													target: "_blank",
+													rel: "noopener noreferrer",
+													className: "min-h-[42px] px-3 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1.5",
+													children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(MapPin, { className: "w-3.5 h-3.5 text-red-600" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "خريطة" })]
+												}),
+												(ord.status === "rep_assigned" || ord.status === "preparing" || ord.status === "invoiced") && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 													type: "button",
 													disabled: isUpdatingDelivery,
 													onClick: () => handleStartDelivery(ord),
-													className: "flex-1 min-h-[40px] px-3 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-black cursor-pointer disabled:opacity-50",
+													className: "flex-1 min-h-[42px] px-3 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-black cursor-pointer disabled:opacity-50",
 													children: "بدء التوصيل"
 												}),
-												(ord.status === "rep_assigned" || ord.status === "out_for_delivery") && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+												(ord.status === "rep_assigned" || ord.status === "out_for_delivery" || ord.status === "preparing") && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 													type: "button",
 													disabled: isUpdatingDelivery,
 													onClick: () => handleOpenDeliverModal(ord),
-													className: "flex-1 min-h-[40px] px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50",
+													className: "flex-1 min-h-[42px] px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50",
 													children: "تم التسليم"
 												})
 											]
@@ -67676,10 +79172,7 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 								className: "text-sm font-black text-slate-900",
 								children: "إرسال طلب شراء للإدارة"
 							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
-								className: "block font-bold text-slate-700 mb-1",
-								children: "العميل المسموح:"
-							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
 								value: ordCustomerId,
 								onChange: (e) => setOrdCustomerId(e.target.value),
 								className: "w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white",
@@ -67690,21 +79183,17 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 									value: c.id,
 									children: c.shopName ? `${c.shopName} (${c.name})` : c.name
 								}, c.id))]
-							})] }),
+							}),
 							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 								className: "p-3 rounded-2xl bg-blue-50/60 border border-blue-200 space-y-2.5",
 								children: [
-									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
-										className: "block font-bold text-slate-800",
-										children: "إضافة صنف للطلب:"
-									}),
 									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
 										value: ordProductId,
 										onChange: (e) => handleSelectOrderProduct(e.target.value),
 										className: "w-full min-h-[44px] rounded-xl border border-blue-300 px-3 font-bold bg-white",
 										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
 											value: "",
-											children: "-- اختر الصنف --"
+											children: "-- اختر الصنف للطلب --"
 										}), activeProducts.map((p) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("option", {
 											value: p.id,
 											children: [
@@ -67718,10 +79207,7 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 									selectedOrderProduct && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 										className: "grid grid-cols-3 gap-2",
 										children: [
-											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
-												className: "block text-[11px] font-bold text-slate-700 mb-1",
-												children: "الوحدة"
-											}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
+											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
 												value: ordUnitName,
 												onChange: (e) => handleOrderUnitChange(e.target.value),
 												className: "w-full min-h-[42px] rounded-xl border border-slate-300 px-2 bg-white font-bold",
@@ -67732,29 +79218,23 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 													value: selectedOrderProduct.baseUnit,
 													children: selectedOrderProduct.baseUnit
 												})]
-											})] }),
-											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
-												className: "block text-[11px] font-bold text-slate-700 mb-1",
-												children: "الكمية"
-											}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(QuantityInput, {
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)(QuantityInput, {
 												allowDecimals: true,
 												min: .001,
 												value: ordQty,
 												onChange: setOrdQty,
 												ariaLabel: "كمية الصنف في الطلب",
-												inputClassName: "w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white outline-hidden focus:border-blue-600"
-											})] }),
-											/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
-												className: "block text-[11px] font-bold text-slate-700 mb-1",
-												children: "السعر"
-											}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+												inputClassName: "w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+											}),
+											/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
 												type: "number",
 												step: "0.5",
 												min: 0,
 												value: ordPrice,
 												onChange: (e) => setOrdPrice(Math.max(0, Number(e.target.value))),
 												className: "w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
-											})] })
+											})
 										]
 									}),
 									selectedOrderProduct && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
@@ -67768,70 +79248,31 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 							ordItems.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 								className: "divide-y divide-slate-100 border border-slate-200 rounded-2xl px-3",
 								children: ordItems.map((it, idx) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "py-2.5 flex flex-wrap items-center justify-between gap-2",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-										className: "min-w-0 flex-1",
-										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-											className: "font-bold text-slate-900 truncate",
-											children: it.productName
-										}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
-											className: "text-[11px] text-slate-500 font-mono",
-											children: [
-												it.unit,
-												" × ",
-												it.unitPrice.toLocaleString(),
-												" =",
-												" ",
-												/* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
-													className: "text-blue-950",
-													children: computeLineTotal(it.quantity, it.unitPrice).toLocaleString()
-												}),
-												" ",
-												data.settings.currency
-											]
-										})]
-									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-										className: "flex items-center gap-1.5",
-										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(QuantityInput, {
-											showSteppers: true,
-											allowDecimals: true,
-											min: .001,
-											value: it.quantity,
-											onChange: (q) => setOrdItems((prev) => prev.map((row, i) => i === idx ? {
-												...row,
-												quantity: q
-											} : row)),
-											onRemoveWhenZero: () => setOrdItems((prev) => prev.filter((_, i) => i !== idx)),
-											ariaLabel: `كمية ${it.productName}`
-										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
-											type: "button",
-											onClick: () => setOrdItems((prev) => prev.filter((_, i) => i !== idx)),
-											className: "min-h-[40px] min-w-[40px] flex items-center justify-center text-red-600 cursor-pointer",
-											children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { className: "w-4 h-4" })
-										})]
+									className: "py-2 flex items-center justify-between gap-2",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+										className: "font-bold text-slate-900 truncate",
+										children: [
+											it.productName,
+											" (",
+											it.quantity,
+											" ",
+											it.unit,
+											")"
+										]
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+										type: "button",
+										onClick: () => setOrdItems((prev) => prev.filter((_, i) => i !== idx)),
+										className: "text-red-600 p-1 cursor-pointer",
+										children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Trash2, { className: "w-4 h-4" })
 									})]
 								}, `${it.productId}-${it.unit}-${idx}`))
 							}),
-							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
-								className: "block font-bold text-slate-700 mb-1",
-								children: "ملاحظات الطلب:"
-							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
 								type: "text",
 								value: ordNotes,
 								onChange: (e) => setOrdNotes(e.target.value),
-								placeholder: "ملاحظات للمراجعة أو التوصيل...",
+								placeholder: "ملاحظات الطلب...",
 								className: "w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
-							})] }),
-							ordItems.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-								className: "p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between font-black text-blue-950",
-								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "إجمالي الطلب التقديري:" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-									className: "font-mono text-sm",
-									children: [
-										ordTotalAmount.toLocaleString(),
-										" ",
-										data.settings.currency
-									]
-								})]
 							}),
 							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 								type: "submit",
@@ -67841,8 +79282,8 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 							})
 						]
 					}),
-					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-						className: "space-y-3",
+					mySubmittedOrders.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "space-y-2.5",
 						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h4", {
 							className: "font-black text-slate-900 px-1",
 							children: [
@@ -67850,85 +79291,26 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 								mySubmittedOrders.length,
 								")"
 							]
-						}), mySubmittedOrders.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-							className: "bg-white rounded-3xl border border-slate-200 p-8 text-center text-slate-400",
-							children: "لم تقم بإرسال أي طلبات شراء حتى الآن."
-						}) : mySubmittedOrders.map((ord) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-							className: "bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-2.5",
-							children: [
-								/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "flex items-start justify-between gap-2",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-											className: "font-mono font-black text-sm text-blue-950",
-											children: ord.requestNumber
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
-											className: "text-slate-700 font-bold mt-0.5",
-											children: [
-												"العميل: ",
-												ord.customerName,
-												ord.shopName ? ` (${ord.shopName})` : ""
-											]
-										}),
-										/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
-											className: "text-[11px] text-slate-500",
-											children: new Date(ord.createdAt).toLocaleString("ar-EG")
-										})
-									] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-										className: "flex flex-col items-end gap-1",
-										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-											className: `font-black text-xs px-2.5 py-1 rounded-full ${ord.status === "invoiced" ? "bg-blue-100 text-blue-900" : ord.status === "approved" || ord.status === "delivered" ? "bg-emerald-100 text-emerald-800" : ord.status === "under_review" || ord.status === "rep_assigned" || ord.status === "out_for_delivery" ? "bg-indigo-100 text-indigo-800" : ord.status === "rejected" || ord.status === "needs_review" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"}`,
-											children: ord.status === "invoiced" ? `مفوتر (${ord.invoiceNumber || ""})` : REP_ORDER_STATUS_LABELS[ord.status] || ord.status
-										}), ord.syncStatus && ord.syncStatus !== "synced" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-											className: "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200",
-											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CloudOff, { className: "w-2.5 h-2.5" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "محلي بانتظار المزامنة" })]
-										})]
-									})]
-								}),
-								ord.status === "rejected" && ord.rejectionReason && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold",
-									children: ["سبب الرفض من الإدارة: ", ord.rejectionReason]
-								}),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-									className: "space-y-1 bg-slate-50 rounded-xl p-2.5",
-									children: (ord.items || []).map((it, i) => {
-										const imgSrc = data.cachedMediaMap?.[it.productId] || it.productImage;
-										return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-											className: "flex items-center justify-between gap-2",
-											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-												className: "flex items-center gap-2 min-w-0",
-												children: [imgSrc && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", {
-													src: imgSrc,
-													alt: it.productName,
-													className: "w-7 h-7 rounded-lg object-cover border border-slate-200 shrink-0"
-												}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
-													className: "font-bold text-slate-800 truncate",
-													children: it.productName
-												})]
-											}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-												className: "font-mono text-slate-600 shrink-0",
-												children: [
-													it.quantity,
-													" ",
-													it.unit
-												]
-											})]
-										}, i);
-									})
-								}),
-								(ord.totalAmount || 0) > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
-									className: "flex items-center justify-between font-black text-blue-950 pt-1",
-									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "الإجمالي" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
-										className: "font-mono",
-										children: [
-											Number(ord.totalAmount).toLocaleString(),
-											" ",
-											data.settings.currency
-										]
-									})]
-								})
-							]
+						}), mySubmittedOrders.map((ord) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "bg-white rounded-2xl border border-slate-200 p-4 space-y-1.5",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center justify-between",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "font-mono font-black text-blue-950",
+									children: ord.requestNumber
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+									className: "font-bold text-indigo-800",
+									children: REP_ORDER_STATUS_LABELS[ord.status] || ord.status
+								})]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+								className: "text-[11px] text-slate-600",
+								children: [
+									ord.customerName,
+									" · ",
+									ord.items?.length || 0,
+									" أصناف"
+								]
+							})]
 						}, ord.id))]
 					})
 				]
@@ -67971,24 +79353,18 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 						})] }),
 						deliveryCollectedAmount > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 							className: "grid grid-cols-2 gap-2",
-							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
-								className: "block font-bold text-slate-700 mb-1",
-								children: "الخزينة:"
-							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", {
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", {
 								value: deliveryCashboxId,
 								onChange: (e) => setDeliveryCashboxId(e.target.value),
-								className: "w-full min-h-[42px] rounded-xl border border-slate-300 px-2 bg-white font-bold",
+								className: "min-h-[42px] rounded-xl border border-slate-300 px-2 bg-white font-bold",
 								children: data.cashboxes.map((cb) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
 									value: cb.id,
 									children: cb.name
 								}, cb.id))
-							})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
-								className: "block font-bold text-slate-700 mb-1",
-								children: "وسيلة الدفع:"
 							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", {
 								value: deliveryMethod,
 								onChange: (e) => setDeliveryMethod(e.target.value),
-								className: "w-full min-h-[42px] rounded-xl border border-slate-300 px-2 bg-white font-bold",
+								className: "min-h-[42px] rounded-xl border border-slate-300 px-2 bg-white font-bold",
 								children: [
 									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", {
 										value: "cash",
@@ -68003,26 +79379,20 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 										children: "شيك"
 									})
 								]
-							})] })]
+							})]
 						}),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
-							className: "block font-bold text-slate-700 mb-1",
-							children: "ملاحظات التسليم:"
-						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
 							type: "text",
 							value: deliveryNotes,
 							onChange: (e) => setDeliveryNotes(e.target.value),
-							placeholder: "استلم البضاعة بحالة سليمة...",
+							placeholder: "ملاحظات التسليم...",
 							className: "w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
-						})] }),
-						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", {
-							className: "block font-bold text-slate-700 mb-1",
-							children: "صورة إثبات التسليم (اختياري):"
-						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", {
 							className: "min-h-[42px] px-3 rounded-xl border border-blue-200 bg-blue-50 text-blue-900 font-bold inline-flex items-center gap-2 cursor-pointer",
 							children: [
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Camera, { className: "w-4 h-4" }),
-								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: deliveryProof ? "تم التقاط الصورة (اضغط للتغيير)" : "التقاط أو إرفاق صورة" }),
+								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: deliveryProof ? "تم التقاط الصورة (اضغط للتغيير)" : "التقاط إثبات تسليم (اختياري)" }),
 								/* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", {
 									type: "file",
 									accept: "image/*",
@@ -68038,12 +79408,214 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 									}
 								})
 							]
-						})] }),
+						}),
 						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 							type: "submit",
 							disabled: isUpdatingDelivery,
 							className: "w-full min-h-[46px] rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black disabled:opacity-50 cursor-pointer",
 							children: isUpdatingDelivery ? "جاري التسجيل..." : "اعتماد تسليم الطلب"
+						})
+					]
+				})
+			}),
+			selectedCustomerDetail && (() => {
+				const c = selectedCustomerDetail;
+				const custInvoices = myInvoices.filter((inv) => inv.customerId === c.id).slice(0, 5);
+				const latestInvoice = custInvoices[0];
+				const latestPaymentTx = (data.financialTransactions || []).find((tx) => tx.partyId === c.id || tx.notes?.includes(c.name));
+				const cleanedPhone = String(c.phone || "").replace(/[^\d+]/g, "");
+				const hasValidPhone = cleanedPhone.replace(/\D/g, "").length >= 7;
+				const mapRaw = (c.geoCoordinates || c.address || "").trim();
+				const hasValidMap = Boolean(mapRaw && mapRaw !== "-");
+				const mapsHref = mapRaw.startsWith("http://") || mapRaw.startsWith("https://") ? mapRaw : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapRaw)}`;
+				return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					className: "fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs",
+					children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 max-h-[85vh] flex flex-col gap-3 text-xs pb-safe",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-start justify-between gap-2 border-b pb-3",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h4", {
+										className: "font-black text-base text-slate-900",
+										children: c.shopName || c.name
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+										className: "text-slate-500",
+										children: [
+											c.name,
+											" · ",
+											c.code,
+											" ",
+											c.area ? `· ${c.area}` : ""
+										]
+									}),
+									c.address && c.address !== "-" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+										className: "text-[11px] text-slate-600 mt-0.5",
+										children: c.address
+									})
+								] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									onClick: () => setSelectedCustomerDetail(null),
+									className: "min-h-[38px] px-3 rounded-xl bg-slate-100 font-bold text-slate-700 cursor-pointer",
+									children: "إغلاق"
+								})]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "grid grid-cols-3 gap-2 text-center tabular-nums",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "p-2.5 rounded-xl bg-slate-50 border border-slate-200",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-[10px] text-slate-500 block",
+											children: c.currentBalance < 0 ? "رصيد دائن للعميل" : "الرصيد المستحق"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+											className: `font-mono text-sm ${c.currentBalance > 0 ? "text-red-700" : "text-emerald-700"}`,
+											children: [
+												Math.abs(c.currentBalance).toLocaleString(),
+												" ",
+												data.settings.currency
+											]
+										})]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "p-2.5 rounded-xl bg-blue-50 border border-blue-200",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-[10px] text-blue-800 block",
+											children: "آخر تعامل"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+											className: "font-mono text-[11px] text-blue-950",
+											children: latestInvoice ? `${latestInvoice.date} (${latestInvoice.invoiceNumber})` : "لا يوجد"
+										})]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "p-2.5 rounded-xl bg-emerald-50 border border-emerald-200",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "text-[10px] text-emerald-800 block",
+											children: "آخر سداد"
+										}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", {
+											className: "font-mono text-[11px] text-emerald-950",
+											children: latestPaymentTx ? `${latestPaymentTx.amount.toLocaleString()} (${latestPaymentTx.date})` : "لا يوجد"
+										})]
+									})
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex flex-wrap gap-2",
+								children: [
+									hasValidPhone && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", {
+										href: `tel:${cleanedPhone}`,
+										className: "min-h-[42px] px-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono font-bold inline-flex items-center gap-1.5",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Phone, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: c.phone })]
+									}),
+									(() => {
+										const cleanedSec = String(c.secondaryPhone || "").replace(/[^\d+]/g, "");
+										return cleanedSec.replace(/\D/g, "").length >= 7 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", {
+											href: `tel:${cleanedSec}`,
+											className: "min-h-[42px] px-3 rounded-xl bg-teal-50 text-teal-800 border border-teal-200 font-mono font-bold inline-flex items-center gap-1.5",
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Phone, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: c.secondaryPhone })]
+										}) : null;
+									})(),
+									hasValidMap && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", {
+										href: mapsHref,
+										target: "_blank",
+										rel: "noopener noreferrer",
+										className: "min-h-[42px] px-3 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1.5",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(MapPin, { className: "w-4 h-4" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "فتح الخريطة" })]
+									})
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex-1 overflow-y-auto space-y-1.5 border border-slate-200 rounded-2xl p-3",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+									className: "font-black text-slate-800 block mb-1",
+									children: [
+										"آخر فواتير العميل (",
+										custInvoices.length,
+										")"
+									]
+								}), custInvoices.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+									className: "text-slate-400 text-center py-3",
+									children: "لا توجد فواتير مسجلة لهذا العميل."
+								}) : custInvoices.map((inv) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "font-mono font-bold text-blue-950",
+										children: inv.invoiceNumber
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+										className: "text-[10px] text-slate-500 mr-2",
+										children: inv.date
+									})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", {
+										className: "font-mono text-slate-900 tabular-nums",
+										children: [
+											inv.grandTotal.toLocaleString(),
+											" ",
+											data.settings.currency
+										]
+									})]
+								}, inv.id))]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "grid grid-cols-2 gap-2",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									onClick: () => {
+										setInvCustomerId(c.id);
+										setSelectedCustomerDetail(null);
+										onTabChange("new-invoice");
+									},
+									className: "min-h-[46px] rounded-xl bg-blue-900 text-white font-black cursor-pointer",
+									children: "+ فاتورة جديدة"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+									type: "button",
+									onClick: () => {
+										setDepMode("customer_collection");
+										setDepCustomerId(c.id);
+										setSelectedCustomerDetail(null);
+										onTabChange("cash-deposit");
+									},
+									className: "min-h-[46px] rounded-xl bg-emerald-700 text-white font-black cursor-pointer",
+									children: "+ تحصيل دفعة"
+								})]
+							})
+						]
+					})
+				});
+			})(),
+			pendingLeaveTab && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				className: "fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs",
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl border border-slate-200 space-y-3 text-xs",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-2 font-black text-sm text-amber-800",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(TriangleAlert, { className: "w-5 h-5 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "توجد أصناف غير محفوظة في الفاتورة" })]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+							className: "text-slate-600 leading-relaxed",
+							children: [
+								"لديك (",
+								invItems.length,
+								") أصناف في الفاتورة الحالية ولم يتم حفظها أو اعتمادها بعد. هل تريد المغادرة مع الاحتفاظ بها أم البقاء لإكمال الفاتورة؟"
+							]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "grid grid-cols-2 gap-2 pt-1",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								type: "button",
+								onClick: () => setPendingLeaveTab(null),
+								className: "min-h-[44px] rounded-xl bg-blue-900 text-white font-black cursor-pointer",
+								children: "البقاء في الفاتورة"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								type: "button",
+								onClick: () => {
+									const target = pendingLeaveTab;
+									setPendingLeaveTab(null);
+									onTabChange(target);
+								},
+								className: "min-h-[44px] rounded-xl bg-slate-100 text-slate-800 font-bold cursor-pointer",
+								children: "الانتقال (مع حفظ المسودة)"
+							})]
 						})
 					]
 				})
@@ -68112,7 +79684,7 @@ var RepPortal = ({ activeTab, onTabChange }) => {
 };
 // src/components/modules/mobile/MobilePortal.tsx
 var MobilePortal = () => {
-	const { currentUser, isOfflineSession, permissionsMayBeStale, linkWarning, logout, refreshAuthContext } = useAuth();
+	const { currentUser, isOfflineSession, permissionsMayBeStale, isDatabaseUnavailable, databaseUnavailableMessage, linkWarning, logout, refreshAuthContext } = useAuth();
 	const data = useData();
 	const isRep = currentUser?.role === "representative";
 	const [customerTab, setCustomerTab] = (0, import_react.useState)("home");
@@ -68121,9 +79693,22 @@ var MobilePortal = () => {
 	const [isNotificationsOpen, setIsNotificationsOpen] = (0, import_react.useState)(false);
 	const [isServerModalOpen, setIsServerModalOpen] = (0, import_react.useState)(false);
 	const [isSyncCenterOpen, setIsSyncCenterOpen] = (0, import_react.useState)(false);
+	const [hasUnsavedRepInvoice, setHasUnsavedRepInvoice] = (0, import_react.useState)(false);
+	const [pendingRepTab, setPendingRepTab] = (0, import_react.useState)(null);
+	const requestRepTabChange = (nextTab) => {
+		if (isRep && repTab === "new-invoice" && hasUnsavedRepInvoice && nextTab !== "new-invoice") {
+			setPendingRepTab(nextTab);
+			return;
+		}
+		setRepTab(nextTab);
+	};
 	const syncBadgeCount = data.pendingSyncCount + data.conflictsCount;
 	(0, import_react.useEffect)(() => {
 		return registerAndroidBackButton(() => {
+			if (pendingRepTab) {
+				setPendingRepTab(null);
+				return true;
+			}
 			if (isSyncCenterOpen) {
 				setIsSyncCenterOpen(false);
 				return true;
@@ -68141,7 +79726,7 @@ var MobilePortal = () => {
 				return true;
 			}
 			if (isRep && repTab !== "home") {
-				setRepTab("home");
+				requestRepTabChange("home");
 				return true;
 			}
 			if (!isRep && customerTab !== "home") {
@@ -68151,13 +79736,15 @@ var MobilePortal = () => {
 			return false;
 		});
 	}, [
+		pendingRepTab,
 		isSyncCenterOpen,
 		isNotificationsOpen,
 		isServerModalOpen,
 		isDrawerOpen,
 		isRep,
 		repTab,
-		customerTab
+		customerTab,
+		hasUnsavedRepInvoice
 	]);
 	(0, import_react.useEffect)(() => {
 		if (!isDrawerOpen) return;
@@ -68169,8 +79756,8 @@ var MobilePortal = () => {
 	}, [isDrawerOpen]);
 	const handleSelectNotification = (item) => {
 		if (isRep) {
-			if (item.targetTab === "custody" || item.targetTab === "invoices" || item.targetTab === "customers" || item.targetTab === "new-invoice" || item.targetTab === "orders") setRepTab(item.targetTab);
-			else setRepTab("home");
+			if (item.targetTab === "custody" || item.targetTab === "invoices" || item.targetTab === "customers" || item.targetTab === "new-invoice" || item.targetTab === "orders" || item.targetTab === "refresh" || item.targetTab === "cash") requestRepTabChange(item.targetTab);
+			else requestRepTabChange("home");
 		} else if (item.targetTab === "account" || item.targetTab === "orders" || item.targetTab === "catalog" || item.targetTab === "cart") setCustomerTab(item.targetTab);
 		else setCustomerTab("orders");
 	};
@@ -68180,28 +79767,28 @@ var MobilePortal = () => {
 			label: "الرئيسية",
 			icon: House,
 			active: repTab === "home",
-			onSelect: () => setRepTab("home")
+			onSelect: () => requestRepTabChange("home")
+		},
+		{
+			key: "cash",
+			label: "النقدية",
+			icon: Receipt,
+			active: repTab === "cash",
+			onSelect: () => requestRepTabChange("cash")
 		},
 		{
 			key: "custody",
 			label: "العهدة",
 			icon: ArrowLeftRight,
 			active: repTab === "custody",
-			onSelect: () => setRepTab("custody")
+			onSelect: () => requestRepTabChange("custody")
 		},
 		{
-			key: "invoices",
-			label: "الفواتير",
-			icon: FileText,
-			active: repTab === "invoices",
-			onSelect: () => setRepTab("invoices")
-		},
-		{
-			key: "new-invoice",
-			label: "المبيعات",
-			icon: FilePlus2,
-			active: repTab === "new-invoice",
-			onSelect: () => setRepTab("new-invoice")
+			key: "more",
+			label: "المزيد",
+			icon: LayoutGrid,
+			active: repTab === "more",
+			onSelect: () => requestRepTabChange("more")
 		}
 	] : [
 		{
@@ -68236,45 +79823,73 @@ var MobilePortal = () => {
 	const allPortalDestinations = isRep ? [
 		{
 			key: "home",
-			label: "الرئيسية",
+			label: "الرئيسية (الشبكة السريعة)",
 			icon: House,
 			active: repTab === "home",
-			onSelect: () => setRepTab("home")
+			onSelect: () => requestRepTabChange("home")
 		},
 		{
-			key: "customers",
-			label: "دليل العملاء",
-			icon: Users,
-			active: repTab === "customers",
-			onSelect: () => setRepTab("customers")
+			key: "cash",
+			label: "النقدية والعهدة المالية",
+			icon: Receipt,
+			active: repTab === "cash",
+			onSelect: () => requestRepTabChange("cash")
+		},
+		{
+			key: "refresh",
+			label: "REFRESH · الإرسال والاستلام",
+			icon: RefreshCw,
+			active: repTab === "refresh",
+			onSelect: () => requestRepTabChange("refresh")
 		},
 		{
 			key: "new-invoice",
 			label: "إصدار فاتورة بيع",
 			icon: FilePlus2,
 			active: repTab === "new-invoice",
-			onSelect: () => setRepTab("new-invoice")
+			onSelect: () => requestRepTabChange("new-invoice")
+		},
+		{
+			key: "new-quote",
+			label: "عرض سعر",
+			icon: FileText,
+			active: repTab === "new-quote",
+			onSelect: () => requestRepTabChange("new-quote")
+		},
+		{
+			key: "customers",
+			label: "دليل العملاء",
+			icon: Users,
+			active: repTab === "customers",
+			onSelect: () => requestRepTabChange("customers")
 		},
 		{
 			key: "orders",
 			label: "الطلبات والتسليمات",
 			icon: ClipboardList,
 			active: repTab === "orders",
-			onSelect: () => setRepTab("orders")
+			onSelect: () => requestRepTabChange("orders")
 		},
 		{
 			key: "invoices",
-			label: "سجل الفواتير",
+			label: "سجل فواتير المبيعات",
 			icon: FileText,
 			active: repTab === "invoices",
-			onSelect: () => setRepTab("invoices")
+			onSelect: () => requestRepTabChange("invoices")
 		},
 		{
 			key: "custody",
-			label: "العهدة والتحويلات",
+			label: "المخزن والعهدة والتحويلات",
 			icon: ArrowLeftRight,
 			active: repTab === "custody",
-			onSelect: () => setRepTab("custody")
+			onSelect: () => requestRepTabChange("custody")
+		},
+		{
+			key: "more",
+			label: "المزيد والإعدادات",
+			icon: LayoutGrid,
+			active: repTab === "more",
+			onSelect: () => requestRepTabChange("more")
 		}
 	] : [
 		{
@@ -68488,11 +80103,27 @@ var MobilePortal = () => {
 						className: "p-3.5 rounded-2xl bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900",
 						children: linkWarning
 					}),
-					(isOfflineSession || permissionsMayBeStale) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					(isDatabaseUnavailable || data.networkStatus === "error" && data.lastError) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "p-3 rounded-2xl bg-red-50 border border-red-200 text-xs font-bold text-red-800 flex items-center justify-between gap-2",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-2",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleAlert, { className: "w-4 h-4 text-red-600 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isDatabaseUnavailable ? databaseUnavailableMessage || data.lastError : data.lastError })]
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+							type: "button",
+							disabled: data.isSyncing,
+							onClick: () => {
+								refreshAuthContext().catch(() => {});
+								data.triggerManualSync();
+							},
+							className: "px-3 py-1.5 rounded-xl bg-red-600 text-white text-[11px] font-bold shrink-0 disabled:opacity-50 cursor-pointer",
+							children: data.isSyncing ? "جاري الفحص..." : "إعادة المحاولة"
+						})]
+					}),
+					!isDatabaseUnavailable && (isOfflineSession || permissionsMayBeStale) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 						className: "p-3 rounded-2xl bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-center gap-2",
 						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(ShieldAlert, { className: "w-4 h-4 text-amber-700 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "وضع الدخول المحلي الموثق — يتم تطبيق آخر صلاحيات موثقة من السيرفر وقد تتحدث فور عودة الاتصال." })]
 					}),
-					(data.isUsingOfflineCache || data.networkStatus === "disconnected") && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					!isDatabaseUnavailable && data.networkStatus !== "error" && (data.isUsingOfflineCache || data.networkStatus === "disconnected") && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 						className: "p-3 rounded-2xl bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-center justify-between gap-2",
 						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 							className: "flex items-center gap-2",
@@ -68523,12 +80154,49 @@ var MobilePortal = () => {
 					}),
 					isRep ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RepPortal, {
 						activeTab: repTab,
-						onTabChange: setRepTab
+						onTabChange: setRepTab,
+						onOpenServerModal: () => setIsServerModalOpen(true),
+						onLogout: logout,
+						onUnsavedInvoiceChange: setHasUnsavedRepInvoice
 					}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CustomerPortal, {
 						activeTab: customerTab,
 						onTabChange: setCustomerTab
 					})
 				]
+			}),
+			pendingRepTab && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				className: "fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs",
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl border border-slate-200 space-y-3 text-xs",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "flex items-center gap-2 font-black text-sm text-amber-800",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleAlert, { className: "w-5 h-5 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "توجد أصناف غير محفوظة في الفاتورة" })]
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+							className: "text-slate-600 leading-relaxed",
+							children: "توجد أصناف مضافة في شاشة فاتورة البيع لم تُحفظ بعد. هل تود البقاء لإكمال الفاتورة أم الانتقال مع الاحتفاظ بالبيانات مؤقتاً؟"
+						}),
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "grid grid-cols-2 gap-2 pt-1",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								type: "button",
+								onClick: () => setPendingRepTab(null),
+								className: "min-h-[44px] rounded-xl bg-blue-900 text-white font-black cursor-pointer",
+								children: "البقاء في الفاتورة"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+								type: "button",
+								onClick: () => {
+									const target = pendingRepTab;
+									setPendingRepTab(null);
+									setRepTab(target);
+								},
+								className: "min-h-[44px] rounded-xl bg-slate-100 text-slate-800 font-bold cursor-pointer",
+								children: "الانتقال مؤقتاً"
+							})]
+						})
+					]
+				})
 			}),
 			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(MobileNotificationsSheet, {
 				isOpen: isNotificationsOpen,
@@ -68553,6 +80221,865 @@ var MobilePortal = () => {
 		]
 	});
 };
+// src/components/modules/mobile/StaffMobileShell.tsx
+var StaffMobileShell = ({ currentPage, onNavigate, onOpenCashOp, children }) => {
+	const { currentUser, hasPermission, logout, refreshAuthContext } = useAuth();
+	const data = useData();
+	const [isLauncherOpen, setIsLauncherOpen] = (0, import_react.useState)(false);
+	const [collapsedSectionIds, setCollapsedSectionIds] = (0, import_react.useState)({});
+	const [isNotificationsOpen, setIsNotificationsOpen] = (0, import_react.useState)(false);
+	const [isServerModalOpen, setIsServerModalOpen] = (0, import_react.useState)(false);
+	const [showLogoutConfirm, setShowLogoutConfirm] = (0, import_react.useState)(false);
+	const toggleSectionCollapse = (sectionId) => {
+		setCollapsedSectionIds((prev) => ({
+			...prev,
+			[sectionId]: !prev[sectionId]
+		}));
+	};
+	const checkPerm = (perm) => {
+		if (!perm) return true;
+		if (currentUser?.role === "admin") return true;
+		if (Array.isArray(perm)) return perm.some((p) => hasPermission(p));
+		return hasPermission(perm);
+	};
+	(0, import_react.useEffect)(() => {
+		return registerAndroidBackButton(() => {
+			if (showLogoutConfirm) {
+				setShowLogoutConfirm(false);
+				return true;
+			}
+			if (isNotificationsOpen) {
+				setIsNotificationsOpen(false);
+				return true;
+			}
+			if (isServerModalOpen) {
+				setIsServerModalOpen(false);
+				return true;
+			}
+			if (isLauncherOpen) {
+				setIsLauncherOpen(false);
+				return true;
+			}
+			if (currentPage !== "dashboard") {
+				onNavigate("dashboard");
+				return true;
+			}
+			return false;
+		});
+	}, [
+		showLogoutConfirm,
+		isNotificationsOpen,
+		isServerModalOpen,
+		isLauncherOpen,
+		currentPage,
+		onNavigate
+	]);
+	(0, import_react.useEffect)(() => {
+		if (!isLauncherOpen) return;
+		const onKeyDown = (e) => {
+			if (e.key === "Escape") setIsLauncherOpen(false);
+		};
+		document.addEventListener("keydown", onKeyDown);
+		return () => document.removeEventListener("keydown", onKeyDown);
+	}, [isLauncherOpen]);
+	const sections = (0, import_react.useMemo)(() => [
+		{
+			id: "sales",
+			title: "المبيعات والعملاء",
+			icon: ShoppingCart,
+			colorClass: "bg-blue-50 text-blue-900 border-blue-200",
+			permission: "canManageSales",
+			items: [
+				{
+					key: "customer-orders",
+					label: "طلبات العملاء والمندوبين"
+				},
+				{
+					key: "new-sale",
+					label: "فاتورة مبيعات جديدة (+)",
+					badge: "سريع"
+				},
+				{
+					key: "sales-invoices",
+					label: "فواتير المبيعات"
+				},
+				{
+					key: "quotes",
+					label: "عروض الأسعار",
+					badge: "جديد"
+				},
+				{
+					key: "customers",
+					label: "دليل العملاء والأرصدة والتحصيل"
+				},
+				{
+					key: "sales-returns",
+					label: "مرتجع المبيعات"
+				},
+				{
+					key: "deleted-invoices",
+					label: "الفواتير المحذوفة والملغاة",
+					permission: "canViewDeletedInvoices"
+				}
+			]
+		},
+		{
+			id: "purchases",
+			title: "المشتريات والموردون",
+			icon: Truck,
+			colorClass: "bg-purple-50 text-purple-900 border-purple-200",
+			permission: "canManagePurchases",
+			items: [
+				{
+					key: "new-purchase",
+					label: "فاتورة شراء جديدة (+)"
+				},
+				{
+					key: "purchase-invoices",
+					label: "فواتير المشتريات"
+				},
+				{
+					key: "suppliers",
+					label: "دليل الموردين والأرصدة والتسويات"
+				},
+				{
+					key: "purchase-returns",
+					label: "مرتجع المشتريات"
+				}
+			]
+		},
+		{
+			id: "inventory",
+			title: "المخازن والمنتجات",
+			icon: Boxes,
+			colorClass: "bg-amber-50 text-amber-900 border-amber-200",
+			permission: "canManageInventory",
+			items: [
+				{
+					key: "products",
+					label: "المنتجات والأسعار والباركود"
+				},
+				{
+					key: "product-categories",
+					label: "تصنيفات السلع"
+				},
+				{
+					key: "units-settings",
+					label: "الوحدات ومعاملات التحويل",
+					permission: ["canManageInventory", "canManageSettings"]
+				},
+				{
+					key: "warehouses",
+					label: "أرصدة المستودعات",
+					permission: "canManageWarehouses"
+				},
+				{
+					key: "stock-transfers-orders",
+					label: "أوامر تحويل الأصناف",
+					permission: [
+						"canCreateStockTransfer",
+						"canApproveStockTransfer",
+						"canExecuteStockTransfer",
+						"canManageInventory"
+					]
+				},
+				{
+					key: "stock-counts",
+					label: "جرد المخزن المعتمد",
+					permission: [
+						"canCreateStockCount",
+						"canApproveStockCount",
+						"canManageInventory"
+					]
+				},
+				{
+					key: "stock-transfers",
+					label: "تحويل سريع بين المستودعات"
+				},
+				{
+					key: "stock-adjustments",
+					label: "تسوية سريعة للمخزون"
+				},
+				{
+					key: "damaged-stock",
+					label: "بضاعة تالفة ومنتهية"
+				},
+				{
+					key: "stock-movements",
+					label: "سجل حركة الأصناف"
+				},
+				{
+					key: "item-movement-report",
+					label: "تقرير حركة الصنف المفصل",
+					badge: "مفصل",
+					permission: ["canManageInventory", "canViewReports"]
+				},
+				{
+					key: "abu-selim-import",
+					label: "استيراد الملفات"
+				}
+			]
+		},
+		{
+			id: "finance",
+			title: "المالية والخزائن",
+			icon: Wallet,
+			colorClass: "bg-emerald-50 text-emerald-900 border-emerald-200",
+			permission: "canManageCashboxes",
+			items: [
+				{
+					key: "cashboxes",
+					label: "الخزائن والبنوك والحركة النقدية"
+				},
+				{
+					key: "cashbox-transfer",
+					label: "تحويل بين الخزائن"
+				},
+				{
+					key: "expenses",
+					label: "المصروفات والإيرادات"
+				},
+				{
+					key: "personal-accounts",
+					label: "الحسابات الشخصية للملاك",
+					permission: "canViewPersonalAccounts"
+				}
+			]
+		},
+		{
+			id: "cheques",
+			title: "الشيكات والأقساط",
+			icon: CreditCard,
+			colorClass: "bg-indigo-50 text-indigo-900 border-indigo-200",
+			permission: "canManageAccounts",
+			items: [{
+				key: "cheques",
+				label: "الشيكات (واردة / صادرة)"
+			}, {
+				key: "installments",
+				label: "إدارة وجدولة الأقساط"
+			}]
+		},
+		{
+			id: "reps",
+			title: "المندوبون والتحويلات",
+			icon: UsersRound,
+			colorClass: "bg-cyan-50 text-cyan-900 border-cyan-200",
+			permission: "canManageReps",
+			items: [
+				{
+					key: "reps",
+					label: "قائمة المناديب والعهد"
+				},
+				{
+					key: "rep-transfers",
+					label: "طلب تحويل بالنصف (المالي)",
+					permission: "canManageTransfers"
+				},
+				{
+					key: "rep-item-transfers",
+					label: "تحويل أصناف وعهدة للمناديب",
+					permission: "canManageTransfers"
+				}
+			]
+		},
+		{
+			id: "hr",
+			title: "الموظفون والرواتب",
+			icon: Users,
+			colorClass: "bg-rose-50 text-rose-900 border-rose-200",
+			permission: "canManageEmployees",
+			items: [
+				{
+					key: "employees",
+					label: "شؤون الموظفين"
+				},
+				{
+					key: "attendance",
+					label: "الحضور والغياب"
+				},
+				{
+					key: "advances",
+					label: "السلف والخصومات والمكافآت",
+					permission: "canManageSalaries"
+				},
+				{
+					key: "payroll",
+					label: "مسير صرف الرواتب",
+					permission: "canManageSalaries"
+				}
+			]
+		},
+		{
+			id: "reports-users",
+			title: "التقارير والمستخدمون",
+			icon: FileChartColumnIncreasing,
+			colorClass: "bg-slate-100 text-slate-900 border-slate-300",
+			items: [
+				{
+					key: "reports",
+					label: "جميع التقارير والأرباح",
+					permission: "canViewReports"
+				},
+				{
+					key: "item-movement-report",
+					label: "تقرير حركة الصنف المفصل",
+					permission: ["canViewReports", "canManageInventory"]
+				},
+				{
+					key: "users",
+					label: "إدارة المستخدمين والصلاحيات",
+					permission: "canManageUsers"
+				},
+				{
+					key: "audit-log",
+					label: "سجل العمليات (Audit)",
+					permission: "canManageUsers"
+				}
+			]
+		},
+		{
+			id: "settings",
+			title: "الإعدادات والنسخ الاحتياطي",
+			icon: Settings,
+			colorClass: "bg-slate-100 text-slate-900 border-slate-300",
+			permission: "canManageSettings",
+			items: [
+				{
+					key: "system-settings",
+					label: "إعدادات النظام والحساب",
+					allowAllStaff: true
+				},
+				{
+					key: "branches-settings",
+					label: "الفروع",
+					permission: "canManageSettings"
+				},
+				{
+					key: "barcode-settings",
+					label: "إعدادات الباركود",
+					permission: "canManageSettings"
+				},
+				{
+					key: "printers-settings",
+					label: "الطابعات المتعددة",
+					permission: "canManageSettings"
+				},
+				{
+					key: "invoice-settings",
+					label: "تصميم الفاتورة",
+					permission: "canManageSettings"
+				},
+				{
+					key: "mobile-settings",
+					label: "إعدادات تطبيق العملاء والمناديب",
+					permission: "canManageSettings"
+				},
+				{
+					key: "online-sync-settings",
+					label: "المزامنة أونلاين",
+					permission: "canManageSettings"
+				},
+				{
+					key: "services-settings",
+					label: "الخدمات والتنبيهات",
+					permission: "canManageSettings"
+				},
+				{
+					key: "server-settings",
+					label: "إعدادات السيرفر والاتصال",
+					permission: "canManageSettings"
+				},
+				{
+					key: "diagnostics-settings",
+					label: "سجل التشخيص والأخطاء",
+					permission: "canManageSettings"
+				},
+				{
+					key: "backup",
+					label: "النسخ الاحتياطي والاستعادة",
+					permission: "canManageSettings"
+				},
+				{
+					key: "migration",
+					label: "PostgreSQL وسجل الترحيل",
+					permission: "canManageSettings"
+				}
+			]
+		}
+	], []);
+	const filteredSections = (0, import_react.useMemo)(() => sections.map((sec) => {
+		const secAllowed = checkPerm(sec.permission);
+		const allowedItems = sec.items.filter((item) => {
+			if (item.allowAllStaff) return true;
+			if (item.permission) return checkPerm(item.permission);
+			return secAllowed;
+		});
+		return {
+			...sec,
+			items: allowedItems
+		};
+	}).filter((sec) => sec.items.length > 0), [sections, currentUser]);
+	const getRoleArabicLabel = (role) => {
+		switch (role) {
+			case "admin": return "مدير عام / الإدارة";
+			case "manager": return "مدير فرع";
+			case "accountant": return "محاسب مالي";
+			case "sales": return "موظف مبيعات";
+			case "warehouse": return "أمين مستودع";
+			case "purchases": return "موظف مشتريات";
+			default: return "موظف";
+		}
+	};
+	const handleSelectNotification = (item) => {
+		if (item.targetTab && [
+			"customer-orders",
+			"customers",
+			"rep-item-transfers",
+			"rep-transfers",
+			"stock-counts",
+			"stock-transfers-orders",
+			"products",
+			"sales-invoices",
+			"quotes",
+			"purchase-invoices",
+			"cashboxes",
+			"item-movement-report"
+		].includes(item.targetTab)) onNavigate(item.targetTab);
+		else onNavigate("dashboard");
+	};
+	const topNavTabs = (0, import_react.useMemo)(() => {
+		const tabs = [{
+			key: "dashboard",
+			label: "الرئيسية",
+			icon: LayoutDashboard,
+			active: currentPage === "dashboard",
+			onClick: () => {
+				setIsLauncherOpen(false);
+				onNavigate("dashboard");
+			}
+		}];
+		if (checkPerm("canManageSales")) tabs.push({
+			key: "sales",
+			label: "المبيعات",
+			icon: ShoppingCart,
+			active: [
+				"sales-invoices",
+				"new-sale",
+				"customers",
+				"sales-returns",
+				"deleted-invoices"
+			].includes(currentPage),
+			onClick: () => {
+				setIsLauncherOpen(false);
+				onNavigate("sales-invoices");
+			}
+		});
+		else if (checkPerm("canManagePurchases")) tabs.push({
+			key: "purchases",
+			label: "المشتريات",
+			icon: Truck,
+			active: [
+				"purchase-invoices",
+				"new-purchase",
+				"suppliers",
+				"purchase-returns"
+			].includes(currentPage),
+			onClick: () => {
+				setIsLauncherOpen(false);
+				onNavigate("purchase-invoices");
+			}
+		});
+		if (checkPerm([
+			"canManageInventory",
+			"canManageWarehouses",
+			"canCreateStockCount",
+			"canCreateStockTransfer"
+		])) tabs.push({
+			key: "inventory",
+			label: "المخزون",
+			icon: Boxes,
+			active: [
+				"products",
+				"product-categories",
+				"units-settings",
+				"warehouses",
+				"stock-transfers",
+				"stock-transfers-orders",
+				"stock-counts",
+				"stock-adjustments",
+				"damaged-stock",
+				"stock-movements",
+				"abu-selim-import"
+			].includes(currentPage),
+			onClick: () => {
+				setIsLauncherOpen(false);
+				onNavigate(checkPerm("canManageInventory") ? "products" : "stock-counts");
+			}
+		});
+		if (checkPerm(["canManageCashboxes", "canManageAccounts"])) tabs.push({
+			key: "finance",
+			label: "المالية",
+			icon: Wallet,
+			active: [
+				"cashboxes",
+				"cashbox-transfer",
+				"expenses",
+				"personal-accounts",
+				"cheques",
+				"installments"
+			].includes(currentPage),
+			onClick: () => {
+				setIsLauncherOpen(false);
+				onNavigate(checkPerm("canManageCashboxes") ? "cashboxes" : "cheques");
+			}
+		});
+		else if (checkPerm("canViewReports")) tabs.push({
+			key: "reports",
+			label: "التقارير",
+			icon: FileChartColumnIncreasing,
+			active: currentPage === "reports",
+			onClick: () => {
+				setIsLauncherOpen(false);
+				onNavigate("reports");
+			}
+		});
+		return tabs;
+	}, [
+		currentPage,
+		currentUser,
+		onNavigate
+	]);
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+		className: "min-h-screen bg-slate-100 text-slate-800 font-['Cairo'] antialiased pb-6",
+		children: [
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)("header", {
+				className: "sticky top-0 z-30 bg-blue-950 text-white shadow-md pt-safe no-print",
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "max-w-7xl mx-auto px-2.5 sm:px-5",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "h-14 flex items-center justify-between gap-2 sm:gap-4",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center gap-2.5 min-w-0 shrink",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", {
+									src: "/awlad-selim-logo.png",
+									alt: "AWLAD SELIM",
+									className: "h-9 w-9 object-contain bg-white rounded-xl p-1 shrink-0"
+								}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+									className: "min-w-0",
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", {
+										className: "text-xs sm:text-sm font-black truncate leading-tight",
+										children: "AWLAD SELIM"
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+										className: "text-[10px] text-blue-200 truncate",
+										children: [
+											getRoleArabicLabel(currentUser?.role),
+											" · ",
+											currentUser?.fullName
+										]
+									})]
+								})]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("nav", {
+								"aria-label": "التنقل الرئيسي",
+								className: "hidden lg:flex items-center gap-1.5 flex-1 justify-center min-w-0",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+										type: "button",
+										onClick: () => setIsLauncherOpen((prev) => !prev),
+										"aria-expanded": isLauncherOpen,
+										"aria-controls": "staff-sections-drawer",
+										className: `min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 border transition-colors cursor-pointer ${isLauncherOpen ? "bg-sky-400/20 text-white border-sky-300/70" : "bg-white/10 text-blue-50 border-white/15 hover:bg-white/20 hover:text-white"}`,
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Menu, { className: "w-4 h-4 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "الأقسام" })]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+										className: "h-5 w-px bg-white/15 mx-0.5 shrink-0",
+										"aria-hidden": "true"
+									}),
+									topNavTabs.map((tab) => {
+										const TabIcon = tab.icon;
+										return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+											type: "button",
+											onClick: tab.onClick,
+											"aria-current": tab.active ? "page" : void 0,
+											className: `min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer ${tab.active ? "bg-white text-blue-950 font-black shadow-xs" : "text-blue-100 hover:bg-white/10 hover:text-white font-bold"}`,
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(TabIcon, { className: "w-4 h-4 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: tab.label })]
+										}, tab.key);
+									})
+								]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center gap-1 shrink-0",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+										type: "button",
+										onClick: () => {
+											setIsNotificationsOpen(true);
+											data.markNotificationsRead();
+										},
+										className: "relative min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer",
+										title: "التنبيهات والإشعارات",
+										"aria-label": "الإشعارات",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Bell, { className: "w-4 h-4" }), data.unreadNotificationCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-black flex items-center justify-center",
+											children: data.unreadNotificationCount
+										})]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+										type: "button",
+										onClick: () => setIsServerModalOpen(true),
+										className: "min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer",
+										title: "عنوان السيرفر المركزي",
+										"aria-label": "إعدادات السيرفر",
+										children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Server, { className: "w-4 h-4" })
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+										type: "button",
+										onClick: () => data.triggerManualSync(),
+										className: "min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer",
+										title: "تحديث ومزامنة",
+										"aria-label": "تحديث ومزامنة",
+										children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RefreshCw, { className: `w-4 h-4 ${data.networkStatus === "synchronizing" ? "animate-spin" : ""}` })
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+										type: "button",
+										onClick: () => setShowLogoutConfirm(true),
+										className: "min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-red-600/90 hover:bg-red-700 text-white cursor-pointer",
+										title: "تسجيل الخروج",
+										"aria-label": "تسجيل الخروج",
+										children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(LogOut, { className: "w-4 h-4" })
+									})
+								]
+							})
+						]
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("nav", {
+						"aria-label": "أزرار التنقل الرئيسية",
+						className: "lg:hidden border-t border-white/10 py-1.5 flex items-center justify-between sm:justify-start gap-1 sm:gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none]",
+						children: [
+							/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+								type: "button",
+								onClick: () => setIsLauncherOpen((prev) => !prev),
+								"aria-expanded": isLauncherOpen,
+								"aria-controls": "staff-sections-drawer",
+								className: `min-h-[40px] px-2 sm:px-3.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold flex items-center gap-1 sm:gap-1.5 whitespace-nowrap shrink-0 border transition-colors cursor-pointer ${isLauncherOpen ? "bg-sky-400/20 text-white border-sky-300/70" : "bg-white/10 text-blue-50 border-white/15 hover:bg-white/20 hover:text-white"}`,
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Menu, { className: "w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "الأقسام" })]
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+								className: "h-5 w-px bg-white/15 shrink-0",
+								"aria-hidden": "true"
+							}),
+							topNavTabs.map((tab) => {
+								const TabIcon = tab.icon;
+								return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: tab.onClick,
+									"aria-current": tab.active ? "page" : void 0,
+									className: `min-h-[40px] px-2 sm:px-3.5 py-1.5 rounded-xl text-[11px] sm:text-xs flex items-center gap-1 sm:gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer ${tab.active ? "bg-white text-blue-950 font-black shadow-xs" : "text-blue-100 hover:bg-white/10 hover:text-white font-bold"}`,
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(TabIcon, { className: "w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: tab.label })]
+								}, tab.key);
+							})
+						]
+					})]
+				})
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", {
+				className: "max-w-7xl mx-auto p-3 sm:p-5 space-y-3",
+				children: [(data.isUsingOfflineCache || data.networkStatus === "disconnected") && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "p-3 rounded-2xl bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-center justify-between gap-2 no-print",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "flex items-center gap-2 min-w-0",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(WifiOff, { className: "w-4 h-4 text-amber-700 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+							className: "truncate",
+							children: ["بيانات مخزنة مؤقتاً — تعذر الاتصال بالسيرفر المركزي", data.lastCacheTimestamp ? ` · ${new Date(data.lastCacheTimestamp).toLocaleTimeString("ar-EG")}` : ""]
+						})]
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						onClick: () => data.triggerManualSync(),
+						className: "px-3 py-1.5 rounded-xl bg-amber-600 text-white text-[11px] font-bold shrink-0 cursor-pointer",
+						children: "إعادة المحاولة"
+					})]
+				}), children]
+			}),
+			isLauncherOpen && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+				className: "fixed inset-0 z-40 bg-slate-950/55 backdrop-blur-xs transition-opacity no-print",
+				onClick: () => setIsLauncherOpen(false),
+				"aria-hidden": "true"
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("aside", {
+				id: "staff-sections-drawer",
+				"aria-label": "قائمة الأقسام الجانبية",
+				"aria-hidden": !isLauncherOpen,
+				className: `fixed inset-y-0 right-0 z-50 w-[86vw] max-w-[340px] sm:w-80 lg:w-96 bg-white text-slate-800 shadow-2xl border-l border-slate-200 flex flex-col pt-safe pb-safe transition-transform duration-200 ease-out no-print ${isLauncherOpen ? "translate-x-0 pointer-events-auto" : "translate-x-full pointer-events-none"}`,
+				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flex items-center justify-between gap-3 px-4 py-3.5 border-b border-slate-200 bg-blue-950 text-white shrink-0",
+					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "flex items-center gap-2.5 min-w-0",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", {
+							src: "/awlad-selim-logo.png",
+							alt: "AWLAD SELIM",
+							className: "h-8 w-8 object-contain bg-white rounded-lg p-1 shrink-0"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "min-w-0",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", {
+								className: "text-sm font-black truncate",
+								children: "أقسام النظام"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+								className: "text-[11px] text-blue-200 truncate",
+								children: [
+									getRoleArabicLabel(currentUser?.role),
+									" · ",
+									currentUser?.fullName
+								]
+							})]
+						})]
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+						type: "button",
+						onClick: () => setIsLauncherOpen(false),
+						className: "min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer shrink-0",
+						"aria-label": "إغلاق القائمة الجانبية",
+						title: "إغلاق القائمة",
+						children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(X, { className: "w-5 h-5" })
+					})]
+				}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+					className: "flex-1 overflow-y-auto p-3.5 space-y-3 bg-slate-50/70",
+					children: [
+						/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+							type: "button",
+							onClick: () => {
+								setIsLauncherOpen(false);
+								onNavigate("dashboard");
+							},
+							className: `w-full min-h-[44px] px-3.5 py-2.5 rounded-xl flex items-center justify-between text-xs font-bold border transition-colors cursor-pointer ${currentPage === "dashboard" ? "bg-blue-950 text-white border-blue-950 shadow-xs font-black" : "bg-white text-slate-800 border-slate-200 hover:bg-slate-50"}`,
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "flex items-center gap-2.5",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(LayoutDashboard, { className: "w-4 h-4 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "لوحة التحكم الرئيسية" })]
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronLeft, { className: `w-4 h-4 shrink-0 ${currentPage === "dashboard" ? "text-blue-200" : "text-slate-400"}` })]
+						}),
+						checkPerm("canManageCashboxes") && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+							className: "bg-emerald-50/80 border border-emerald-200 rounded-2xl p-3 space-y-2",
+							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+								className: "text-xs font-black text-emerald-950",
+								children: "العمليات النقدية السريعة"
+							}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "grid grid-cols-2 gap-2 text-xs font-bold",
+								children: [
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+										type: "button",
+										onClick: () => {
+											setIsLauncherOpen(false);
+											onOpenCashOp("cash_deposit");
+										},
+										className: "min-h-[42px] flex items-center justify-center gap-1.5 rounded-xl bg-white border border-emerald-200 text-emerald-800 hover:bg-emerald-100 cursor-pointer",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleArrowDown, { className: "w-4 h-4 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "إيداع نقدي" })]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+										type: "button",
+										onClick: () => {
+											setIsLauncherOpen(false);
+											onOpenCashOp("cash_withdrawal");
+										},
+										className: "min-h-[42px] flex items-center justify-center gap-1.5 rounded-xl bg-white border border-rose-200 text-rose-800 hover:bg-rose-50 cursor-pointer",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleArrowUp, { className: "w-4 h-4 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "سحب نقدي" })]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+										type: "button",
+										onClick: () => {
+											setIsLauncherOpen(false);
+											onOpenCashOp("expense");
+										},
+										className: "min-h-[42px] flex items-center justify-center gap-1.5 rounded-xl bg-white border border-orange-200 text-orange-800 hover:bg-orange-50 cursor-pointer",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(TrendingDown, { className: "w-4 h-4 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "مصروف" })]
+									}),
+									/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+										type: "button",
+										onClick: () => {
+											setIsLauncherOpen(false);
+											onOpenCashOp("profit_deposit");
+										},
+										className: "min-h-[42px] flex items-center justify-center gap-1.5 rounded-xl bg-white border border-teal-200 text-teal-800 hover:bg-teal-50 cursor-pointer",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(TrendingUp, { className: "w-4 h-4 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "إيداع ربحي" })]
+									})
+								]
+							})]
+						}),
+						filteredSections.map((sec) => {
+							const SecIcon = sec.icon;
+							const isSectionCollapsed = Boolean(collapsedSectionIds[sec.id]);
+							return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+								className: "rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-2xs",
+								children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+									type: "button",
+									onClick: () => toggleSectionCollapse(sec.id),
+									"aria-expanded": !isSectionCollapsed,
+									className: `w-full px-3.5 py-2.5 flex items-center justify-between gap-2 text-xs font-black cursor-pointer ${!isSectionCollapsed ? "border-b " : ""}${sec.colorClass}`,
+									children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+										className: "flex items-center gap-2 min-w-0",
+										children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(SecIcon, { className: "w-4 h-4 shrink-0" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+											className: "truncate",
+											children: sec.title
+										})]
+									}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronDown, { className: `w-4 h-4 shrink-0 transition-transform duration-150 ${isSectionCollapsed ? "rotate-90" : ""}` })]
+								}), !isSectionCollapsed && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+									className: "divide-y divide-slate-100",
+									children: sec.items.map((item) => {
+										const active = currentPage === item.key;
+										return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", {
+											type: "button",
+											onClick: () => {
+												setIsLauncherOpen(false);
+												onNavigate(item.key);
+											},
+											className: `w-full min-h-[44px] px-4 py-2.5 flex items-center justify-between gap-2 text-right text-xs font-bold transition-colors cursor-pointer ${active ? "bg-blue-50 text-blue-950 font-black" : "text-slate-700 hover:bg-slate-50"}`,
+											children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+												className: "flex items-center gap-2 min-w-0",
+												children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+													className: "truncate",
+													children: item.label
+												}), item.badge && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+													className: "px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 text-[10px] font-black shrink-0",
+													children: item.badge
+												})]
+											}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChevronLeft, { className: `w-4 h-4 shrink-0 ${active ? "text-blue-700" : "text-slate-400"}` })]
+										}, item.key);
+									})
+								})]
+							}, sec.id);
+						})
+					]
+				})]
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(MobileNotificationsSheet, {
+				isOpen: isNotificationsOpen,
+				onClose: () => setIsNotificationsOpen(false),
+				notifications: data.mobileNotifications,
+				unreadCount: data.unreadNotificationCount,
+				onMarkAllRead: data.markNotificationsRead,
+				onSelectNotification: handleSelectNotification
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(MobileServerModal, {
+				isOpen: isServerModalOpen,
+				onClose: () => setIsServerModalOpen(false),
+				onSaved: async () => {
+					await refreshAuthContext();
+					await data.triggerManualSync();
+				}
+			}),
+			/* @__PURE__ */ (0, import_jsx_runtime.jsx)(ConfirmDialog, {
+				isOpen: showLogoutConfirm,
+				onClose: () => setShowLogoutConfirm(false),
+				onConfirm: () => {
+					setShowLogoutConfirm(false);
+					logout();
+				},
+				variant: "danger",
+				title: "هل تريد تسجيل الخروج؟",
+				message: "سيتم إنهاء جلستك الحالية والعودة إلى شاشة الدخول الموحدة.",
+				confirmLabel: "نعم، تسجيل الخروج"
+			})
+		]
+	});
+};
 // src/App.tsx
 /**
 * @license
@@ -68561,6 +81088,7 @@ var MobilePortal = () => {
 var PAGE_PERMISSIONS = {
 	"customer-orders": "canManageSales",
 	"sales-invoices": "canManageSales",
+	"quotes": "canManageSales",
 	"new-sale": "canManageSales",
 	"customers": "canManageSales",
 	"sales-returns": "canManageSales",
@@ -68589,6 +81117,7 @@ var PAGE_PERMISSIONS = {
 	],
 	"damaged-stock": "canManageInventory",
 	"stock-movements": "canManageInventory",
+	"item-movement-report": ["canManageInventory", "canViewReports"],
 	"cashboxes": "canManageCashboxes",
 	"cashbox-transfer": "canManageCashboxes",
 	"expenses": "canManageCashboxes",
@@ -68614,7 +81143,8 @@ var PAGE_PERMISSIONS = {
 	"invoice-settings": "canManageSettings",
 	"mobile-settings": "canManageSettings",
 	"online-sync-settings": "canManageSettings",
-	"services-settings": "canManageSettings"
+	"services-settings": "canManageSettings",
+	"diagnostics-settings": "canManageSettings"
 };
 var ShortcutGlobalActions = ({ onOpenCashOp }) => {
 	const { registerHandler } = useShortcuts();
@@ -68629,13 +81159,30 @@ var ShortcutGlobalActions = ({ onOpenCashOp }) => {
 	return null;
 };
 var MainAppContent = () => {
-	const { isAuthenticated, isLoading, currentUser, hasPermission, refreshAuthContext, pairingBanner, setPairingBanner, clearPairingBanner } = useAuth();
+	const { isAuthenticated, isLoading, currentUser, hasPermission, refreshAuthContext, pairingBanner, setPairingBanner, clearPairingBanner, isDatabaseUnavailable, databaseUnavailableMessage } = useAuth();
+	const { networkStatus, lastError, triggerSync, isSyncing } = useData();
 	const [currentPage, setCurrentPage] = (0, import_react.useState)("dashboard");
-	const [isSectionsOpen, setIsSectionsOpen] = (0, import_react.useState)(false);
+	const [reportProductId, setReportProductId] = (0, import_react.useState)(void 0);
+	const [isMobileViewport, setIsMobileViewport] = (0, import_react.useState)(() => typeof window !== "undefined" ? window.innerWidth < 1024 || isNativeCapacitor() : false);
+	const [isSectionsOpen, setIsSectionsOpen] = (0, import_react.useState)(() => typeof window !== "undefined" ? window.innerWidth >= 1024 && !isNativeCapacitor() : true);
 	const [cashOpModal, setCashOpModal] = (0, import_react.useState)({
 		open: false,
 		mode: "cash_deposit"
 	});
+	(0, import_react.useEffect)(() => {
+		if (typeof window === "undefined") return;
+		const handleResize = () => {
+			const mobile = window.innerWidth < 1024 || isNativeCapacitor();
+			setIsMobileViewport(mobile);
+		};
+		window.addEventListener("resize", handleResize);
+		return () => window.removeEventListener("resize", handleResize);
+	}, []);
+	(0, import_react.useEffect)(() => {
+		if (isAuthenticated && currentUser && currentUser.role !== "customer" && currentUser.role !== "representative") {
+			if (typeof window !== "undefined" && window.innerWidth >= 1024 && !isNativeCapacitor()) setIsSectionsOpen(true);
+		}
+	}, [isAuthenticated, currentUser?.id]);
 	const inFlightPairingUrlsRef = (0, import_react.useRef)(/* @__PURE__ */ new Set());
 	const recentPairingUrlsRef = (0, import_react.useRef)(/* @__PURE__ */ new Map());
 	const didBootstrapLaunchRef = (0, import_react.useRef)(false);
@@ -68664,15 +81211,30 @@ var MainAppContent = () => {
 				if (!active) return;
 				if (res.ok) {
 					claimSucceeded = true;
+					logDiagnostic({
+						category: "app_event",
+						severity: "info",
+						source: "app.deepLinkPairing",
+						message: `تم ربط التطبيق بسيرفر (${res.companyName || ""}) عبر رابط دعوة`,
+						details: { requiresAdminApproval: Boolean(res.requiresAdminApproval) }
+					});
 					setPairingBanner({
 						type: res.requiresAdminApproval ? "warning" : "success",
 						message: res.requiresAdminApproval ? `تم ربط الجهاز بسيرفر (${res.companyName || ""}). بانتظار اعتماد مدير النظام، ثم أدخل بيانات حسابك للدخول.` : `تم إعداد الاتصال تلقائياً بسيرفر (${res.companyName || ""}). يرجى تسجيل الدخول باسم المستخدم وكلمة المرور المعتادة.`
 					});
 					await refreshAuthContext();
-				} else setPairingBanner({
-					type: "error",
-					message: res.error || "تعذر تفعيل رابط الربط"
-				});
+				} else {
+					logDiagnostic({
+						category: "app_event",
+						severity: "error",
+						source: "app.deepLinkPairing",
+						message: res.error || "تعذر تفعيل رابط الربط"
+					});
+					setPairingBanner({
+						type: "error",
+						message: res.error || "تعذر تفعيل رابط الربط"
+					});
+				}
 				if (typeof window !== "undefined" && window.history?.replaceState) {
 					const cleanPath = window.location.pathname;
 					if (cleanPath.startsWith("/pair/") || cleanPath.startsWith("/invite/") || window.location.search.includes("pair_token=")) window.history.replaceState({}, "", "/");
@@ -68712,6 +81274,13 @@ var MainAppContent = () => {
 				if (first.profiles) saveStoredConnectionProfiles(first.profiles);
 				if (Array.isArray(first.fallbackEndpoints)) saveFallbackEndpoints(first.fallbackEndpoints);
 				setConfiguredApiBaseUrl(first.url);
+				logDiagnostic({
+					category: "app_event",
+					severity: "info",
+					source: "app.lanDiscovery",
+					message: `تم اكتشاف السيرفر المركزي تلقائياً (${first.url})`,
+					details: { candidateCount: found.length }
+				});
 				setPairingBanner({
 					type: "success",
 					message: `تم اكتشاف السيرفر المركزي تلقائياً على الشبكة المحلية (${first.url}). يرجى تسجيل الدخول بحسابك.`
@@ -68816,6 +81385,7 @@ var MainAppContent = () => {
 			case "dashboard": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DashboardView, { onNavigate: (page) => setCurrentPage(page) });
 			case "customer-orders": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CustomerRepOrdersView, {});
 			case "sales-invoices": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SalesInvoicesView, {});
+			case "quotes": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SalesInvoicesView, { initialTab: "quotes" });
 			case "new-sale": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SalesInvoicesView, { initialOpenNew: true });
 			case "deleted-invoices": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DeletedInvoicesView, {});
 			case "customers": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CustomersView, { onNavigate: (page) => setCurrentPage(page) });
@@ -68824,7 +81394,13 @@ var MainAppContent = () => {
 			case "suppliers": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SuppliersView, {});
 			case "sales-returns": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ReturnsView, { initialTypeFilter: "sales_return" });
 			case "purchase-returns": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ReturnsView, { initialTypeFilter: "purchase_return" });
-			case "products": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(InventoryView, { initialTab: "products" });
+			case "products": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(InventoryView, {
+				initialTab: "products",
+				onOpenItemMovementReport: (productId) => {
+					setReportProductId(productId);
+					setCurrentPage("item-movement-report");
+				}
+			});
 			case "product-categories": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(InventoryView, { initialTab: "categories" });
 			case "units-settings": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(InventoryView, { initialTab: "units" });
 			case "warehouses": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(InventoryView, { initialTab: "warehouses" });
@@ -68834,6 +81410,10 @@ var MainAppContent = () => {
 			case "stock-counts": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(InventoryView, { initialTab: "stock-counts" });
 			case "damaged-stock": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(InventoryView, { initialTab: "damaged" });
 			case "stock-movements": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(InventoryView, { initialTab: "movements" });
+			case "item-movement-report": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ReportsView, {
+				initialTab: "item_movement",
+				initialProductId: reportProductId
+			});
 			case "abu-selim-import": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SettingsView, { initialTab: "abu-selim" });
 			case "cashboxes": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FinanceView, { initialTab: "cashboxes" });
 			case "cashbox-transfer": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FinanceView, { initialTab: "transfer" });
@@ -68863,9 +81443,26 @@ var MainAppContent = () => {
 			case "online-sync-settings": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SettingsView, { initialTab: "online-sync" });
 			case "shortcuts-settings": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SettingsView, { initialTab: "shortcuts" });
 			case "services-settings": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SettingsView, { initialTab: "services" });
+			case "diagnostics-settings": return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SettingsView, { initialTab: "diagnostics" });
 			default: return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DashboardView, { onNavigate: (page) => setCurrentPage(page) });
 		}
 	};
+	const renderDbOrSyncAlert = () => isDatabaseUnavailable || networkStatus === "error" && lastError ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+		className: "mb-4 p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-800 text-xs font-bold flex flex-wrap items-center justify-between gap-2 shadow-xs",
+		children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+			className: "flex items-center gap-2",
+			children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(CircleAlert, { className: "w-4 h-4 shrink-0 text-red-600" }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: isDatabaseUnavailable ? databaseUnavailableMessage || lastError : lastError })]
+		}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
+			type: "button",
+			disabled: isSyncing,
+			onClick: () => {
+				refreshAuthContext().catch(() => {});
+				triggerSync(false);
+			},
+			className: "px-3 py-1.5 rounded-xl bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors cursor-pointer",
+			children: isSyncing ? "جاري الفحص..." : "إعادة المحاولة"
+		})]
+	}) : null;
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(ShortcutsProvider, {
 		onNavigate: (page) => setCurrentPage(page),
 		children: [
@@ -68883,7 +81480,15 @@ var MainAppContent = () => {
 				}))
 			}),
 			renderFloatingPairingBanner(),
-			/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+			isMobileViewport ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(StaffMobileShell, {
+				currentPage,
+				onNavigate: (page) => setCurrentPage(page),
+				onOpenCashOp: (mode) => setCashOpModal({
+					open: true,
+					mode
+				}),
+				children: [renderDbOrSyncAlert(), renderActivePage()]
+			}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 				className: "min-h-screen bg-slate-100/70 text-slate-800 flex flex-col font-sans antialiased pb-safe",
 				children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Sidebar, {
 					currentPage,
@@ -68902,9 +81507,9 @@ var MainAppContent = () => {
 						onToggleSidebar: () => setIsSectionsOpen((prev) => !prev),
 						onNavigate: (page) => setCurrentPage(page),
 						onNavigateToTransfers: () => setCurrentPage("rep-transfers")
-					}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("main", {
+					}), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", {
 						className: "flex-1 p-3 sm:p-4 lg:p-6 max-w-7xl w-full mx-auto min-w-0",
-						children: renderActivePage()
+						children: [renderDbOrSyncAlert(), renderActivePage()]
 					})]
 				})]
 			})

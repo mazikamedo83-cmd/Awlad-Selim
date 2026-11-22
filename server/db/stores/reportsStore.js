@@ -1321,6 +1321,10 @@ export async function getComprehensiveReport(filters = {}, actor) {
     const partyLabel = partyObj?.phone ? `${partyName} (${partyObj.phone})` : partyName;
 
     const linkedInv = tx.relatedDocId && ['sales', 'purchase'].includes(tx.relatedDocType) ? invoiceMap.get(tx.relatedDocId) : null;
+    const linkedRet = tx.relatedDocId && ['sales_return', 'purchase_return'].includes(tx.relatedDocType)
+      ? (data.invoiceReturns || []).find((r) => r.id === tx.relatedDocId)
+      : null;
+    const linkedWarehouseId = linkedInv?.warehouseId || linkedRet?.warehouseId || undefined;
     const empName = linkedInv?.representativeName || tx.createdBy || '-';
     const invNo = tx.relatedDocNumber || tx.transactionNumber || '-';
 
@@ -1348,6 +1352,7 @@ export async function getComprehensiveReport(filters = {}, actor) {
       displayId: tx.transactionNumber || tx.id,
       invoiceNumber: invNo,
       branchName,
+      warehouseId: linkedWarehouseId,
       cashboxId: tx.cashboxId,
       cashboxName,
       notes: tx.notes || tx.description || '',
@@ -2648,6 +2653,43 @@ export async function getSourceDocumentForReport(docType, docId, actor) {
       },
       auditTrail: [],
     };
+  }
+
+  if (['rep_custody', 'custody_delivery', 'custody_return', 'custody_adjustment', 'custody_shortage'].includes(cleanType)) {
+    const op = (data.repCustodyOperations || []).find(
+      (o) => o.id === cleanId || o.operationNumber === cleanId || o.invoiceId === cleanId
+    );
+    if (op) {
+      const opTitleMap = {
+        delivered_to_customer: 'تسليم من عهدة المندوب للعميل',
+        returned_to_warehouse: 'مرتجع عهدة مندوب إلى المخزن',
+        custody_damaged: 'إثبات تالف عهدة مندوب',
+        custody_shortage: 'عجز عهدة مندوب',
+        custody_adjustment: 'تسوية عهدة مندوب',
+      };
+      return {
+        docType: 'rep_custody',
+        title: `${opTitleMap[op.operationType] || 'حركة عهدة مندوب'} رقم ${op.operationNumber || op.id}`,
+        document: {
+          ...op,
+          docNumber: op.operationNumber || op.id,
+          warehouseName: op.warehouseName,
+          branchName: resolveBranchName(op.warehouseId, null),
+          actualDateTime: formatActualDateTimeAr(op.createdAt, op.date),
+          items: [
+            {
+              productId: op.productId,
+              productName: op.productName,
+              unit: op.unit,
+              unitFactor: op.unitFactor || 1,
+              quantity: op.quantity,
+              baseQuantity: op.baseQuantity,
+            },
+          ],
+        },
+        auditTrail: (data.auditLogs || []).filter((a) => a.recordId === op.id || a.recordId === op.representativeId),
+      };
+    }
   }
 
   // Cash transaction / Expense / Payroll / Custody / Stock Movement fallback

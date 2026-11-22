@@ -6,10 +6,26 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { newDb } from 'pg-mem';
 
-// Isolate data directory BEFORE importing server modules
+// Isolate data directory & database mode BEFORE importing server modules
 const tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'awlad_selim_test_'));
 process.env.AWLAD_DATA_DIR = tempDataDir;
 process.env.JWT_SECRET = 'test_jwt_secret_key_for_awlad_selim_erp_verification_2026_secure';
+for (const pgEnvKey of [
+  'DATABASE_URL',
+  'PG_CONNECTION_STRING',
+  'PGHOST',
+  'PGPORT',
+  'PGUSER',
+  'PGPASSWORD',
+  'PGDATABASE',
+  'DB_HOST',
+  'DB_PORT',
+  'DB_USER',
+  'DB_PASSWORD',
+  'DB_NAME',
+]) {
+  delete process.env[pgEnvKey];
+}
 
 const { createApiApp } = await import('../app.js');
 const { readJsonDatabase, writeJsonDatabase } = await import('../db/jsonLedger.js');
@@ -84,6 +100,7 @@ function createPgMemPool() {
 
 async function runSuiteA_JsonLedgerHttp() {
   console.log('\n=== Suite A: Security, Auth, RBAC, Lifecycle & Accounting (JSON Ledger HTTP API) ===');
+  setInjectedPool(null);
   resetPgModeCache();
   const app = createApiApp();
   const server = http.createServer(app);
@@ -3571,9 +3588,16 @@ async function runSuiteB_PostgresPgMem() {
   }
 }
 
+const suiteArg = process.argv.find((a) => a.startsWith('--suite='))?.split('=')[1];
+const requestedSuite = (suiteArg || process.env.AWLAD_TEST_SUITE || 'all').trim().toUpperCase();
+
 try {
-  await runSuiteA_JsonLedgerHttp();
-  await runSuiteB_PostgresPgMem();
+  if (requestedSuite === 'A') {
+    await runSuiteA_JsonLedgerHttp();
+  } else {
+    await runSuiteA_JsonLedgerHttp();
+    await runSuiteB_PostgresPgMem();
+  }
   console.log(`\nALL TESTS PASSED (${passed}/${passed})`);
 } finally {
   try {

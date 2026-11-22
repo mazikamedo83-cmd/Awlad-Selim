@@ -11,7 +11,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useShortcuts } from '../../../context/ShortcutsContext';
 import { apiRequest } from '../../../services/api';
 import { getCurrentLocationSafe, parseLatLngCoords, reverseGeocodeCoords } from '../../../services/native';
-import { Customer, Invoice, CustomerItemOrderRequest } from '../../../types';
+import { Customer, CustomerPhoneEntry, Invoice, CustomerItemOrderRequest } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
@@ -66,6 +66,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
 
   // Invoice view modal
   const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null);
+  const [previewShopPhoto, setPreviewShopPhoto] = useState<string | null>(null);
 
   // Print modal state
   const [printData, setPrintData] = useState<PrintData | null>(null);
@@ -112,11 +113,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
     name: string;
     shopName: string;
     phone: string;
-    secondaryPhone: string;
+    extraPhones: Array<{ id: string; phone: string; label: string }>;
+    governorate: string;
     area: string;
     geoCoordinates: string;
     address: string;
     photo: string;
+    clearShopPhoto: boolean;
     notes: string;
     openingBalance: number;
     status: 'active' | 'blocked';
@@ -126,11 +129,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
     name: '',
     shopName: '',
     phone: '',
-    secondaryPhone: '',
+    extraPhones: [],
+    governorate: '',
     area: '',
     geoCoordinates: '',
     address: '',
     photo: '',
+    clearShopPhoto: false,
     notes: '',
     openingBalance: 0,
     status: 'active',
@@ -139,6 +144,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
 
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   // Dedicated customer tabs
   const [detailTab, setDetailTab] = useState<'statement' | 'invoices' | 'orders' | 'advances' | 'payments' | 'returns' | 'prices'>('statement');
@@ -206,17 +212,20 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
     return set;
   }, [syncQueue]);
 
-  // Filter customers list
   const filteredCustomers = useMemo(() => {
     return customers.filter(c => {
-      const matchSearch = 
-        c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (c.shopName && c.shopName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (c.area && c.area.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      const q = searchTerm.toLowerCase();
+      const matchSearch =
+        !q ||
+        c.name.toLowerCase().includes(q) ||
+        (c.shopName && c.shopName.toLowerCase().includes(q)) ||
+        (c.governorate && c.governorate.toLowerCase().includes(q)) ||
+        (c.area && c.area.toLowerCase().includes(q)) ||
         c.phone.includes(searchTerm) ||
         (c.secondaryPhone && c.secondaryPhone.includes(searchTerm)) ||
-        c.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.address.toLowerCase().includes(searchTerm.toLowerCase());
+        (Array.isArray(c.phones) && c.phones.some((p) => String(p.phone || '').includes(searchTerm))) ||
+        c.code.toLowerCase().includes(q) ||
+        c.address.toLowerCase().includes(q);
       
       const matchStatus = statusFilter === 'all' || c.status === statusFilter;
       const clsKey = customerClassificationMap.get(c.id)?.key || 'regular';
@@ -408,11 +417,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
       name: '',
       shopName: '',
       phone: '',
-      secondaryPhone: '',
+      extraPhones: [],
+      governorate: '',
       area: '',
       geoCoordinates: '',
       address: '',
       photo: '',
+      clearShopPhoto: false,
       notes: '',
       openingBalance: 0,
       status: 'active',
@@ -440,16 +451,40 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
         : c.assignedRepId
         ? [c.assignedRepId]
         : [];
+    const primaryClean = String(c.phone || '').trim();
+    const extras: Array<{ id: string; phone: string; label: string }> = [];
+    if (Array.isArray(c.phones)) {
+      c.phones.forEach((p, idx) => {
+        const val = String(p?.phone || '').trim();
+        if (!val) return;
+        if (val === primaryClean && (p.isPrimary || idx === 0)) return;
+        if (extras.some((ex) => ex.phone === val)) return;
+        extras.push({
+          id: p.id || `ph-${idx + 1}`,
+          phone: val,
+          label: p.label || 'إضافي',
+        });
+      });
+    }
+    if (c.secondaryPhone && String(c.secondaryPhone).trim() !== primaryClean && !extras.some((ex) => ex.phone === String(c.secondaryPhone).trim())) {
+      extras.unshift({
+        id: 'ph-sec',
+        phone: String(c.secondaryPhone).trim(),
+        label: 'إضافي',
+      });
+    }
     setFormData({
       code: c.code,
       name: c.name,
       shopName: c.shopName || '',
       phone: c.phone,
-      secondaryPhone: c.secondaryPhone || '',
+      extraPhones: extras,
+      governorate: c.governorate || '',
       area: c.area || '',
       geoCoordinates: c.geoCoordinates || '',
       address: c.address,
-      photo: c.photo || '',
+      photo: c.shopPhoto || c.photo || '',
+      clearShopPhoto: false,
       notes: c.notes || '',
       openingBalance: c.openingBalance,
       status: c.status,
@@ -510,7 +545,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
       setCustomerFormError(null);
       setIsUploadingPhoto(true);
       const base64 = await compressImageFileToDataUrl(file);
-      setFormData(prev => ({ ...prev, photo: base64 }));
+      setFormData(prev => ({ ...prev, photo: base64, clearShopPhoto: false }));
     } catch (err: any) {
       setCustomerFormError(err.message || 'حدث خطأ أثناء تحميل ومعالجة صورة المحل');
     } finally {
@@ -519,9 +554,12 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
   };
 
   const handleRemovePhoto = () => {
-    setFormData(prev => ({ ...prev, photo: '' }));
+    setFormData(prev => ({ ...prev, photo: '', clearShopPhoto: true }));
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
+    }
+    if (galleryInputRef.current) {
+      galleryInputRef.current.value = '';
     }
   };
 
@@ -544,6 +582,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
             geoCoordinates: res.coords!,
             address: rev.address,
             area: prev.area.trim() ? prev.area : rev.area || prev.area,
+            governorate: prev.governorate.trim() ? prev.governorate : rev.governorate || prev.governorate,
           }));
         } else {
           setMapActionWarning(rev.error);
@@ -584,16 +623,36 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
 
     setIsSavingCustomer(true);
     try {
+      const cleanPrimary = formData.phone.trim();
+      const cleanExtras = formData.extraPhones
+        .map((p, idx) => ({
+          id: p.id || `ph-${idx + 1}`,
+          phone: p.phone.trim(),
+          label: p.label.trim() || 'إضافي',
+          isPrimary: false,
+        }))
+        .filter((p) => p.phone && p.phone !== cleanPrimary);
+      const consolidatedPhones: CustomerPhoneEntry[] = [
+        { id: 'ph-primary', phone: cleanPrimary, label: 'رئيسي', isPrimary: true },
+        ...cleanExtras,
+      ];
+
       if (editingCustomer) {
         await updateCustomer(editingCustomer.id, {
           name: formData.name.trim(),
           shopName: formData.shopName.trim() || undefined,
-          phone: formData.phone.trim(),
-          secondaryPhone: formData.secondaryPhone.trim() || undefined,
+          phone: cleanPrimary,
+          secondaryPhone: cleanExtras[0]?.phone || undefined,
+          phones: consolidatedPhones,
+          governorate: formData.governorate.trim() || undefined,
           area: formData.area.trim() || undefined,
           geoCoordinates: formData.geoCoordinates.trim() || undefined,
           address: formData.address.trim(),
-          photo: formData.photo,
+          ...(formData.photo
+            ? { photo: formData.photo, shopPhoto: formData.photo }
+            : formData.clearShopPhoto
+            ? { clearShopPhoto: true }
+            : {}),
           notes: formData.notes.trim(),
           status: formData.status,
           allowedRepIds: formData.allowedRepIds,
@@ -605,12 +664,15 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
           code: formData.code.trim(),
           name: formData.name.trim(),
           shopName: formData.shopName.trim() || undefined,
-          phone: formData.phone.trim(),
-          secondaryPhone: formData.secondaryPhone.trim() || undefined,
+          phone: cleanPrimary,
+          secondaryPhone: cleanExtras[0]?.phone || undefined,
+          phones: consolidatedPhones,
+          governorate: formData.governorate.trim() || undefined,
           area: formData.area.trim() || undefined,
           geoCoordinates: formData.geoCoordinates.trim() || undefined,
           address: formData.address.trim(),
-          photo: formData.photo,
+          photo: formData.photo || undefined,
+          shopPhoto: formData.photo || undefined,
           notes: formData.notes.trim(),
           openingBalance: Number(formData.openingBalance) || 0,
           status: formData.status,
@@ -926,12 +988,19 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
             <div className="flex items-start sm:items-center gap-5">
               {/* Prominent Store Photo with Lightbox preview */}
               <div className="relative group shrink-0">
-                {selectedCustomer.photo ? (
-                  <img
-                    src={selectedCustomer.photo}
-                    alt={selectedCustomer.name}
-                    className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover border-2 border-slate-200 shadow-md bg-slate-50 transition-transform group-hover:scale-105"
-                  />
+                {(selectedCustomer.shopPhoto || selectedCustomer.photo) ? (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewShopPhoto(selectedCustomer.shopPhoto || selectedCustomer.photo || null)}
+                    className="cursor-pointer block focus:outline-hidden"
+                    title="اضغط لعرض صورة المحل بالحجم الكامل"
+                  >
+                    <img
+                      src={selectedCustomer.shopPhoto || selectedCustomer.photo}
+                      alt={selectedCustomer.name}
+                      className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover border-2 border-slate-200 shadow-md bg-slate-50 transition-transform group-hover:scale-105"
+                    />
+                  </button>
                 ) : (
                   <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-blue-900/5 border-2 border-dashed border-blue-200 flex flex-col items-center justify-center text-blue-900">
                     <Store className="w-10 h-10 stroke-[1.5]" />
@@ -951,11 +1020,19 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                    {selectedCustomer.name}
+                    {selectedCustomer.shopName || selectedCustomer.name}
                   </h1>
+                  {selectedCustomer.shopName && selectedCustomer.name && selectedCustomer.shopName !== selectedCustomer.name && (
+                    <span className="text-xs font-bold text-slate-500">({selectedCustomer.name})</span>
+                  )}
                   <span className="font-mono text-xs font-bold text-blue-900 bg-blue-100/70 px-2.5 py-0.5 rounded-lg border border-blue-200">
                     {selectedCustomer.code}
                   </span>
+                  {(selectedCustomer.governorate || selectedCustomer.area) && (
+                    <span className="text-[11px] font-bold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-lg border border-slate-200">
+                      {[selectedCustomer.governorate, selectedCustomer.area].filter(Boolean).join(' · ')}
+                    </span>
+                  )}
                   {(() => {
                     const cls = customerClassificationMap.get(selectedCustomer.id);
                     return cls ? (
@@ -972,30 +1049,42 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                   )}
                 </div>
 
-                {/* Direct Call & Google Maps Buttons */}
+                {/* Direct Call (all phones) & Google Maps Buttons */}
                 <div className="flex flex-wrap items-center gap-2 text-xs">
-                  {/* Direct Phone Call Button */}
-                  <a
-                    href={`tel:${selectedCustomer.phone}`}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-mono font-black border border-emerald-200 shadow-xs transition-all active:scale-95 cursor-pointer"
-                    title="اتصال هاتفي مباشر بالمحل"
-                  >
-                    <Phone className="w-4 h-4 text-emerald-600" />
-                    <span>{selectedCustomer.phone}</span>
-                  </a>
-
                   {(() => {
-                    const secClean = String(selectedCustomer.secondaryPhone || '').replace(/[^\d+]/g, '');
-                    return secClean.replace(/\D/g, '').length >= 7 ? (
-                      <a
-                        href={`tel:${secClean}`}
-                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 font-mono font-black border border-teal-200 shadow-xs transition-all active:scale-95 cursor-pointer"
-                        title="اتصال بالهاتف الإضافي"
-                      >
-                        <Phone className="w-4 h-4 text-teal-600" />
-                        <span>{selectedCustomer.secondaryPhone}</span>
-                      </a>
-                    ) : null;
+                    const allPhones: CustomerPhoneEntry[] =
+                      Array.isArray(selectedCustomer.phones) && selectedCustomer.phones.length > 0
+                        ? selectedCustomer.phones
+                        : [
+                            ...(selectedCustomer.phone
+                              ? [{ id: 'p-1', phone: selectedCustomer.phone, label: 'رئيسي', isPrimary: true }]
+                              : []),
+                            ...(selectedCustomer.secondaryPhone
+                              ? [{ id: 'p-2', phone: selectedCustomer.secondaryPhone, label: 'إضافي', isPrimary: false }]
+                              : []),
+                          ];
+                    return allPhones.map((ph, idx) => {
+                      const clean = String(ph.phone || '').replace(/[^\d+]/g, '');
+                      if (clean.replace(/\D/g, '').length < 5) return null;
+                      return (
+                        <a
+                          key={ph.id || idx}
+                          href={`tel:${clean}`}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-mono font-black border shadow-xs transition-all active:scale-95 cursor-pointer ${
+                            ph.isPrimary || idx === 0
+                              ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
+                              : 'bg-teal-50 hover:bg-teal-100 text-teal-800 border-teal-200'
+                          }`}
+                          title={`اتصال مباشر (${ph.label || 'هاتف'})`}
+                        >
+                          <Phone className="w-3.5 h-3.5 shrink-0" />
+                          <span>{ph.phone}</span>
+                          {ph.label && (
+                            <span className="font-sans text-[10px] opacity-80">({ph.label})</span>
+                          )}
+                        </a>
+                      );
+                    });
                   })()}
 
                   {/* Google Maps Location Button */}
@@ -1015,6 +1104,23 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                     <ExternalLink className="w-3.5 h-3.5 text-blue-700" />
                   </a>
                 </div>
+
+                {(() => {
+                  const parsed = parseLatLngCoords(selectedCustomer.geoCoordinates || '');
+                  if (!parsed) return null;
+                  const delta = 0.005;
+                  const bbox = `${parsed.lng - delta},${parsed.lat - delta},${parsed.lng + delta},${parsed.lat + delta}`;
+                  return (
+                    <div className="mt-2 rounded-2xl overflow-hidden border border-slate-200 max-w-md bg-slate-50">
+                      <iframe
+                        title="معاينة موقع المحل على الخريطة"
+                        src={`https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${parsed.lat},${parsed.lng}`}
+                        className="w-full h-36 border-0"
+                        loading="lazy"
+                      />
+                    </div>
+                  );
+                })()}
 
                 {selectedCustomer.notes && (
                   <p className="text-xs text-slate-500 bg-slate-50 p-2 rounded-xl border border-slate-100 max-w-xl">
@@ -2069,9 +2175,9 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 <div className="flex items-start gap-3.5">
                   {/* Shop Photo Thumbnail */}
                   <div className="relative shrink-0">
-                    {cust.photo ? (
+                    {(cust.shopPhoto || cust.photo) ? (
                       <img
-                        src={cust.photo}
+                        src={cust.shopPhoto || cust.photo}
                         alt={cust.name}
                         className="w-14 h-14 rounded-2xl object-cover border border-slate-200 bg-slate-50 shadow-2xs group-hover:scale-105 transition-transform"
                       />
@@ -2098,8 +2204,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                       </span>
                     </div>
                     <h3 className="text-sm font-black text-slate-900 truncate mt-1 group-hover:text-blue-900 transition-colors">
-                      {cust.name}
+                      {cust.shopName || cust.name}
                     </h3>
+                    {(cust.governorate || cust.area) && (
+                      <p className="text-[10px] text-slate-500 truncate">
+                        {[cust.governorate, cust.area].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
                     <div className="flex flex-wrap items-center gap-1 mt-1">
                       {(() => {
                         const cls = customerClassificationMap.get(cust.id);
@@ -2253,9 +2364,9 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                     className="hover:bg-slate-50/80 transition-colors cursor-pointer"
                   >
                     <td className="p-3">
-                      {cust.photo ? (
+                      {(cust.shopPhoto || cust.photo) ? (
                         <img
-                          src={cust.photo}
+                          src={cust.shopPhoto || cust.photo}
                           alt={cust.name}
                           className="w-11 h-11 rounded-xl object-cover border border-slate-200 bg-slate-50"
                         />
@@ -2414,7 +2525,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
                   <label className="inline-flex items-center gap-2 px-4 py-2 bg-blue-900 hover:bg-blue-950 text-white font-bold rounded-xl text-xs cursor-pointer shadow-sm active:scale-95 transition-all">
                     <Camera className="w-4 h-4" />
-                    <span>{formData.photo ? 'تغيير صورة المحل' : 'رفع / تصوير المحل'}</span>
+                    <span>{formData.photo ? 'التقاط صورة جديدة بالكاميرا' : 'تصوير بالكاميرا'}</span>
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -2425,13 +2536,25 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                     />
                   </label>
 
+                  <label className="inline-flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold rounded-xl text-xs cursor-pointer shadow-2xs active:scale-95 transition-all">
+                    <Upload className="w-4 h-4" />
+                    <span>اختيار من المعرض</span>
+                    <input
+                      ref={galleryInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoUpload}
+                      className="hidden"
+                    />
+                  </label>
+
                   {formData.photo && (
                     <button
                       type="button"
                       onClick={handleRemovePhoto}
-                      className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-xl font-bold border border-red-200"
+                      className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-xl font-bold border border-red-200 cursor-pointer"
                     >
-                      إلغاء الصورة
+                      حذف الصورة
                     </button>
                   )}
                 </div>
@@ -2475,120 +2598,183 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
               />
             </div>
 
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">
-                رقم الهاتف الرئيسي: <span className="text-red-500">*</span>
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="tel"
-                  required
-                  placeholder="مثال: 01012345678"
-                  value={formData.phone}
-                  onChange={(e) => {
-                    setFormData({ ...formData, phone: e.target.value });
-                    if (phoneActionNotice) setPhoneActionNotice(null);
-                  }}
-                  className="flex-1 bg-white border border-slate-300 rounded-xl p-2.5 font-mono font-bold focus:border-blue-600 outline-hidden"
-                />
-                {(() => {
-                  const cleanedPhone = formData.phone.replace(/[^\d+]/g, '');
-                  const isValidPhone = cleanedPhone.replace(/\D/g, '').length >= 7;
-                  return isValidPhone ? (
-                    <a
-                      href={`tel:${cleanedPhone}`}
-                      onClick={() =>
-                        setPhoneActionNotice({
-                          type: 'info',
-                          text: `جاري فتح الاتصال بالرقم (${cleanedPhone}) عبر تطبيق الهاتف.`,
-                        })
-                      }
-                      className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold shrink-0 transition-colors"
-                      title="اتصال هاتفي بالرقم"
-                    >
-                      <Phone className="w-4 h-4 text-emerald-700" />
-                      <span>اتصال</span>
-                    </a>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setPhoneActionNotice({
-                          type: 'error',
-                          text: 'يرجى إدخال رقم هاتف صحيح (7 أرقام على الأقل) لإجراء الاتصال.',
-                        })
-                      }
-                      className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300 font-bold shrink-0 cursor-pointer transition-colors"
-                      title="اتصال هاتفي"
-                    >
-                      <Phone className="w-4 h-4" />
-                      <span>اتصال</span>
-                    </button>
-                  );
-                })()}
+            <div className="sm:col-span-2 space-y-2.5 bg-slate-50/70 p-3 rounded-2xl border border-slate-200">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  رقم الهاتف الرئيسي: <span className="text-red-500">*</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="tel"
+                    required
+                    placeholder="مثال: 01012345678"
+                    value={formData.phone}
+                    onChange={(e) => {
+                      setFormData({ ...formData, phone: e.target.value });
+                      if (phoneActionNotice) setPhoneActionNotice(null);
+                    }}
+                    className="flex-1 bg-white border border-slate-300 rounded-xl p-2.5 font-mono font-bold focus:border-blue-600 outline-hidden"
+                  />
+                  {(() => {
+                    const cleanedPhone = formData.phone.replace(/[^\d+]/g, '');
+                    const isValidPhone = cleanedPhone.replace(/\D/g, '').length >= 7;
+                    return isValidPhone ? (
+                      <a
+                        href={`tel:${cleanedPhone}`}
+                        onClick={() =>
+                          setPhoneActionNotice({
+                            type: 'info',
+                            text: `جاري فتح الاتصال بالرقم (${cleanedPhone}) عبر تطبيق الهاتف.`,
+                          })
+                        }
+                        className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold shrink-0 transition-colors"
+                        title="اتصال هاتفي بالرقم"
+                      >
+                        <Phone className="w-4 h-4 text-emerald-700" />
+                        <span>اتصال</span>
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPhoneActionNotice({
+                            type: 'error',
+                            text: 'يرجى إدخال رقم هاتف صحيح (7 أرقام على الأقل) لإجراء الاتصال.',
+                          })
+                        }
+                        className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300 font-bold shrink-0 cursor-pointer transition-colors"
+                        title="اتصال هاتفي"
+                      >
+                        <Phone className="w-4 h-4" />
+                        <span>اتصال</span>
+                      </button>
+                    );
+                  })()}
+                </div>
+                {phoneActionNotice && (
+                  <span
+                    className={`text-[11px] font-bold mt-1 block ${
+                      phoneActionNotice.type === 'error' ? 'text-red-600' : 'text-emerald-700'
+                    }`}
+                  >
+                    {phoneActionNotice.text}
+                  </span>
+                )}
               </div>
-              {phoneActionNotice && (
-                <span
-                  className={`text-[11px] font-bold mt-1 block ${
-                    phoneActionNotice.type === 'error' ? 'text-red-600' : 'text-emerald-700'
-                  }`}
-                >
-                  {phoneActionNotice.text}
-                </span>
+
+              {formData.extraPhones.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <label className="block font-bold text-slate-600 text-[11px]">أرقام الهاتف الإضافية:</label>
+                  {formData.extraPhones.map((extra, idx) => {
+                    const cleanExtra = extra.phone.replace(/[^\d+]/g, '');
+                    const isValidExtra = cleanExtra.replace(/\D/g, '').length >= 7;
+                    return (
+                      <div key={extra.id || idx} className="flex flex-wrap sm:flex-nowrap items-center gap-1.5">
+                        <input
+                          type="tel"
+                          value={extra.phone}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setFormData((prev) => ({
+                              ...prev,
+                              extraPhones: prev.extraPhones.map((row, i) => (i === idx ? { ...row, phone: val } : row)),
+                            }));
+                          }}
+                          placeholder="رقم هاتف إضافي..."
+                          className="flex-1 min-w-[130px] bg-white border border-slate-300 rounded-xl p-2 font-mono font-bold"
+                        />
+                        <select
+                          value={extra.label}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setFormData((prev) => ({
+                              ...prev,
+                              extraPhones: prev.extraPhones.map((row, i) => (i === idx ? { ...row, label: val } : row)),
+                            }));
+                          }}
+                          className="bg-white border border-slate-300 rounded-xl p-2 font-semibold"
+                        >
+                          <option value="موبايل">موبايل</option>
+                          <option value="محل">تليفون المحل</option>
+                          <option value="واتساب">واتساب</option>
+                          <option value="إضافي">إضافي</option>
+                        </select>
+                        {isValidExtra && (
+                          <a
+                            href={`tel:${cleanExtra}`}
+                            className="p-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
+                            title="اتصال بهذا الرقم"
+                          >
+                            <Phone className="w-4 h-4" />
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const targetVal = extra.phone.trim();
+                            if (!targetVal) return;
+                            const oldPrimary = formData.phone.trim();
+                            setFormData((prev) => ({
+                              ...prev,
+                              phone: targetVal,
+                              extraPhones: prev.extraPhones
+                                .map((row, i) => (i === idx ? { ...row, phone: oldPrimary } : row))
+                                .filter((row) => row.phone.trim() !== ''),
+                            }));
+                          }}
+                          className="px-2 py-2 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 text-[10px] font-bold hover:bg-blue-100 cursor-pointer shrink-0"
+                          title="تعيين هذا الرقم كرقم رئيسي"
+                        >
+                          تعيين رئيسي
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              extraPhones: prev.extraPhones.filter((_, i) => i !== idx),
+                            }))
+                          }
+                          className="p-2 rounded-xl bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 cursor-pointer"
+                          title="حذف الرقم"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
+
+              <button
+                type="button"
+                onClick={() =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    extraPhones: [
+                      ...prev.extraPhones,
+                      { id: `ph-${Date.now()}-${prev.extraPhones.length}`, phone: '', label: 'موبايل' },
+                    ],
+                  }))
+                }
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-blue-50 text-blue-900 border border-blue-200 font-bold cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ إضافة رقم تليفون آخر</span>
+              </button>
             </div>
 
             <div>
               <label className="block font-bold text-slate-700 mb-1">
-                رقم هاتف إضافي:
+                المحافظة:
               </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="tel"
-                  placeholder="مثال: 01123456789"
-                  value={formData.secondaryPhone}
-                  onChange={(e) => {
-                    setFormData({ ...formData, secondaryPhone: e.target.value });
-                    if (phoneActionNotice) setPhoneActionNotice(null);
-                  }}
-                  className="flex-1 bg-white border border-slate-300 rounded-xl p-2.5 font-mono font-bold focus:border-blue-600 outline-hidden"
-                />
-                {(() => {
-                  const cleanedSec = formData.secondaryPhone.replace(/[^\d+]/g, '');
-                  const isValidSec = cleanedSec.replace(/\D/g, '').length >= 7;
-                  return isValidSec ? (
-                    <a
-                      href={`tel:${cleanedSec}`}
-                      onClick={() =>
-                        setPhoneActionNotice({
-                          type: 'info',
-                          text: `جاري فتح الاتصال بالرقم الإضافي (${cleanedSec}) عبر تطبيق الهاتف.`,
-                        })
-                      }
-                      className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold shrink-0 transition-colors"
-                      title="اتصال هاتفي بالرقم الإضافي"
-                    >
-                      <Phone className="w-4 h-4 text-emerald-700" />
-                      <span>اتصال</span>
-                    </a>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setPhoneActionNotice({
-                          type: 'error',
-                          text: 'يرجى إدخال رقم هاتف إضافي صحيح (7 أرقام على الأقل) لإجراء الاتصال.',
-                        })
-                      }
-                      className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300 font-bold shrink-0 cursor-pointer transition-colors"
-                      title="اتصال هاتفي بالرقم الإضافي"
-                    >
-                      <Phone className="w-4 h-4" />
-                      <span>اتصال</span>
-                    </button>
-                  );
-                })()}
-              </div>
+              <input
+                type="text"
+                placeholder="مثال: القاهرة / الجيزة / الغربية"
+                value={formData.governorate}
+                onChange={(e) => setFormData({ ...formData, governorate: e.target.value })}
+                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-semibold focus:border-blue-600 outline-hidden"
+              />
             </div>
 
             <div>
@@ -3271,6 +3457,36 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
             </div>
           </form>
         </Modal>
+      )}
+
+      {/* ========================================================= */}
+      {/* SHOP PHOTO LIGHTBOX PREVIEW MODAL                         */}
+      {/* ========================================================= */}
+      {previewShopPhoto && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs"
+          onClick={() => setPreviewShopPhoto(null)}
+        >
+          <div className="relative max-w-2xl w-full bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b bg-slate-50">
+              <span className="font-black text-xs text-slate-900">معاينة صورة المحل</span>
+              <button
+                type="button"
+                onClick={() => setPreviewShopPhoto(null)}
+                className="px-3 py-1 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+            <div className="p-3 bg-slate-900 flex items-center justify-center">
+              <img
+                src={previewShopPhoto}
+                alt="صورة المحل بالحجم الكامل"
+                className="max-h-[75vh] w-auto object-contain rounded-xl"
+              />
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ========================================================= */}

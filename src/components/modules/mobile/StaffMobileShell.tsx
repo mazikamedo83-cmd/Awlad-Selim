@@ -146,12 +146,12 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         title: 'المشتريات والموردون',
         icon: Truck,
         colorClass: 'bg-purple-50 text-purple-900 border-purple-200',
-        permission: 'canManagePurchases',
+        permission: ['canManagePurchases', 'canCreatePurchase'],
         items: [
           { key: 'new-purchase', label: 'فاتورة شراء جديدة (+)' },
           { key: 'purchase-invoices', label: 'فواتير المشتريات' },
           { key: 'suppliers', label: 'دليل الموردين والأرصدة والتسويات' },
-          { key: 'purchase-returns', label: 'مرتجع المشتريات' },
+          { key: 'purchase-returns', label: 'مرتجع المشتريات', permission: 'canManagePurchases' },
         ],
       },
       {

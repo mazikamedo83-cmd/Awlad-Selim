@@ -3,6 +3,9 @@ import {
   listInvoices,
   createSalesInvoice,
   createPurchaseInvoice,
+  sendPurchaseInvoice,
+  receivePurchaseInvoice,
+  rejectPurchaseInvoice,
   createSalesQuote,
   convertQuoteToInvoice,
   confirmDraftInvoice,
@@ -15,10 +18,12 @@ import {
   createInvoiceReturn,
 } from '../db/stores/invoicesStore.js';
 import { getCustomerStatementData, getSystemSettingsSafe } from '../db/stores/catalogStore.js';
+import { listPurchaseReceivers } from '../db/stores/inventoryAdminStore.js';
 import {
   requireAuth,
   requireStaff,
   requirePermission,
+  requireAnyPermission,
   asyncHandler,
 } from '../middleware/auth.js';
 import { AppError } from '../utils/errors.js';
@@ -65,6 +70,15 @@ router.get(
   })
 );
 
+router.get(
+  '/purchase-receivers',
+  requireStaff,
+  asyncHandler(async (_req, res) => {
+    const receivers = await listPurchaseReceivers();
+    res.json({ ok: true, receivers });
+  })
+);
+
 router.post(
   '/sales',
   requireStaff,
@@ -79,11 +93,43 @@ router.post(
 router.post(
   '/purchase',
   requireStaff,
-  requirePermission('canManagePurchases'),
+  requireAnyPermission('canManagePurchases', 'canCreatePurchase'),
   asyncHandler(async (req, res) => {
     const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
     const invoice = await createPurchaseInvoice(req.body || {}, req.auth.user, idempotencyKey);
     res.status(201).json({ ok: true, invoice });
+  })
+);
+
+router.post(
+  '/purchase/:id/send',
+  requireStaff,
+  requireAnyPermission('canCreatePurchase', 'canManagePurchases', 'canSend'),
+  asyncHandler(async (req, res) => {
+    const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
+    const invoice = await sendPurchaseInvoice(req.params.id, req.body || {}, req.auth.user, idempotencyKey);
+    res.json({ ok: true, invoice });
+  })
+);
+
+router.post(
+  '/purchase/:id/receive',
+  requireStaff,
+  requireAnyPermission('canManagePurchases', 'canApprove', 'canReceive'),
+  asyncHandler(async (req, res) => {
+    const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
+    const invoice = await receivePurchaseInvoice(req.params.id, req.body || {}, req.auth.user, idempotencyKey);
+    res.json({ ok: true, invoice });
+  })
+);
+
+router.post(
+  '/purchase/:id/reject',
+  requireStaff,
+  requireAnyPermission('canManagePurchases', 'canApprove', 'canReceive'),
+  asyncHandler(async (req, res) => {
+    const invoice = await rejectPurchaseInvoice(req.params.id, req.body || {}, req.auth.user);
+    res.json({ ok: true, invoice });
   })
 );
 
@@ -112,7 +158,6 @@ router.post(
 router.post(
   '/:id/confirm',
   requireStaff,
-  requirePermission('canManageSales'),
   asyncHandler(async (req, res) => {
     const invoice = await confirmDraftInvoice(req.params.id, req.auth.user);
     res.json({ ok: true, invoice });
@@ -135,7 +180,7 @@ router.post(
 router.put(
   '/purchase/:id',
   requireStaff,
-  requirePermission('canManagePurchases'),
+  requireAnyPermission('canManagePurchases', 'canCreatePurchase'),
   requirePermission('canEdit'),
   asyncHandler(async (req, res) => {
     const invoice = await editPurchaseInvoice(req.params.id, req.body || {}, req.auth.user);

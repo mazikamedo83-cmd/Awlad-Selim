@@ -150,12 +150,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         icon: Truck,
         headerGradient: 'bg-gradient-to-l from-indigo-50/90 via-violet-50/70 to-white text-indigo-950 border-indigo-100',
         iconAccent: 'bg-indigo-100/80 text-indigo-800',
-        permission: 'canManagePurchases',
+        permission: ['canManagePurchases', 'canCreatePurchase'],
         items: [
           { key: 'purchase-invoices', label: 'فواتير المشتريات' },
           { key: 'new-purchase', label: 'فاتورة شراء جديدة (+)' },
           { key: 'suppliers', label: 'دليل الموردين والأرصدة' },
-          { key: 'purchase-returns', label: 'مرتجع المشتريات' },
+          { key: 'purchase-returns', label: 'مرتجع المشتريات', permission: 'canManagePurchases' },
         ],
       },
       {

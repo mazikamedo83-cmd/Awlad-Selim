@@ -18,6 +18,7 @@ export interface UserPermissions {
   canViewReports: boolean;
   canManageSales: boolean;
   canManagePurchases: boolean;
+  canCreatePurchase?: boolean;
   canManageInventory: boolean;
   canManageWarehouses: boolean;
   canManageCashboxes: boolean;
@@ -186,17 +187,27 @@ export interface Warehouse {
   status?: 'active' | 'suspended'; // إيقاف المستودع وفق الصلاحيات
 }
 
+export interface CustomerPhoneEntry {
+  id: string;
+  phone: string;
+  label?: string;
+  isPrimary?: boolean;
+}
+
 export interface Customer {
   id: string;
   code: string;
   name: string;
   phone: string;
+  phones?: CustomerPhoneEntry[];
   userId?: string; // حساب الدخول المرتبط بالعميل
   assignedRepId?: string;
   allowedRepIds?: string[];
   secondaryPhone?: string; // رقم هاتف إضافي
   shopName?: string;       // اسم المحل
   shopPhoto?: string;      // صورة المحل
+  clearShopPhoto?: boolean;
+  governorate?: string;    // المحافظة
   area?: string;           // المنطقة
   geoCoordinates?: string; // الموقع الجغرافي / إحداثيات GPS أو رابط خرائط
   address: string;
@@ -286,6 +297,27 @@ export interface InvoiceEditHistoryEntry {
   };
 }
 
+export type InvoiceDispatchStatus = 'draft' | 'sent' | 'received' | 'rejected' | 'confirmed';
+
+export interface InvoiceDispatchHistoryEntry {
+  id?: string;
+  action: 'created' | 'sent' | 'resent' | 'received' | 'rejected' | 'confirmed' | 'edited';
+  by: string;
+  byUserId?: string;
+  at: string;
+  recipientUserId?: string;
+  recipientName?: string;
+  reason?: string;
+  notes?: string;
+}
+
+export interface PurchaseReceiverOption {
+  id: string;
+  fullName: string;
+  role: UserRole | string;
+  jobTitle?: string;
+}
+
 export interface Invoice {
   id: string;
   invoiceNumber: string;
@@ -312,6 +344,21 @@ export interface Invoice {
   paymentMethod: 'cash' | 'bank' | 'cheque';
   cashboxId: string;
   status: 'draft' | 'confirmed' | 'cancelled';
+  isRepPurchase?: boolean;
+  dispatchStatus?: InvoiceDispatchStatus;
+  sentBy?: string;
+  sentByUserId?: string;
+  sentAt?: string;
+  recipientUserId?: string;
+  recipientName?: string;
+  receivedBy?: string;
+  receivedByUserId?: string;
+  receivedAt?: string;
+  rejectedBy?: string;
+  rejectedByUserId?: string;
+  rejectedAt?: string;
+  rejectionReason?: string;
+  dispatchHistory?: InvoiceDispatchHistoryEntry[];
   reviewStatus?: 'not_required' | 'needs_review' | 'reviewed';
   reviewedBy?: string;
   reviewedAt?: string;
@@ -1321,7 +1368,11 @@ export interface MobileNotificationItem {
     | 'rep_item_transfer_executed'
     | 'rep_item_transfer_rejected'
     | 'rep_cash_awaiting_receipt'
-    | 'draft_invoice_ready';
+    | 'draft_invoice_ready'
+    | 'rep_purchase_sent'
+    | 'rep_purchase_received'
+    | 'rep_purchase_rejected'
+    | 'rep_purchase_confirmed';
   title: string;
   body: string;
   createdAt: string;
@@ -1373,6 +1424,8 @@ export type SyncOperationType =
   | 'create_sales_quote'
   | 'edit_sales_invoice'
   | 'create_purchase_invoice'
+  | 'send_purchase_invoice'
+  | 'edit_purchase_invoice'
   | 'create_invoice_return'
   | 'create_purchase_return'
   | 'add_invoice_payment'

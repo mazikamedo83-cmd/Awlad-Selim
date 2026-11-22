@@ -183,6 +183,26 @@ export function requirePermission(permKey) {
   };
 }
 
+export function requireAnyPermission(...permKeys) {
+  return (req, res, next) => {
+    const user = req.auth?.user;
+    if (!user) {
+      return res.status(401).json({ ok: false, code: 'UNAUTHORIZED', error: 'غير مصرح' });
+    }
+    if (user.role === 'customer') {
+      return res.status(403).json({ ok: false, code: 'FORBIDDEN', error: 'غير مصرح للعملاء بهذه العملية' });
+    }
+    if (user.role === 'admin' || permKeys.some((k) => user.permissions?.[k] === true)) {
+      return next();
+    }
+    return res.status(403).json({
+      ok: false,
+      code: 'FORBIDDEN_PERMISSION',
+      error: `ليس لديك الصلاحيات المطلوبة (${permKeys.join(' أو ')}) لتنفيذ هذا الإجراء`,
+    });
+  };
+}
+
 export function asyncHandler(fn) {
   return (req, res, next) => {
     Promise.resolve(fn(req, res, next)).catch(next);

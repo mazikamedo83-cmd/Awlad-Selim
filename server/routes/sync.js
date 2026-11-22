@@ -27,6 +27,7 @@ import {
 import {
   createSalesInvoice,
   createPurchaseInvoice,
+  sendPurchaseInvoice,
   createSalesQuote,
   editSalesInvoice,
   editPurchaseInvoice,
@@ -248,12 +249,27 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
   }
 
   if (opType === 'create_purchase_invoice') {
-    assertStaffPermission(user, 'canManagePurchases');
+    if (user.role !== 'admin' && !user.permissions?.canManagePurchases && !user.permissions?.canCreatePurchase) {
+      throw new AppError(403, 'ليس لديك صلاحية إنشاء فواتير الشراء (canManagePurchases / canCreatePurchase)', 'FORBIDDEN_PERMISSION');
+    }
     return createPurchaseInvoice(
       { ...payload, originDeviceId: op.deviceId || authContext.deviceId },
       user,
       opId
     );
+  }
+
+  if (opType === 'send_purchase_invoice') {
+    if (
+      user.role !== 'admin' &&
+      !user.permissions?.canCreatePurchase &&
+      !user.permissions?.canManagePurchases &&
+      !user.permissions?.canSend
+    ) {
+      throw new AppError(403, 'ليس لديك صلاحية إرسال فواتير الشراء', 'FORBIDDEN_PERMISSION');
+    }
+    const invoiceId = payload.invoiceId || op.entityId;
+    return sendPurchaseInvoice(invoiceId, payload, user, opId);
   }
 
   if (opType === 'edit_sales_invoice') {
@@ -286,7 +302,13 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
   }
 
   if (opType === 'edit_purchase_invoice') {
-    assertStaffPermission(user, 'canManagePurchases');
+    if (
+      user.role !== 'admin' &&
+      !user.permissions?.canManagePurchases &&
+      !user.permissions?.canCreatePurchase
+    ) {
+      throw new AppError(403, 'ليس لديك صلاحية تعديل فواتير المشتريات', 'FORBIDDEN_PERMISSION');
+    }
     assertStaffPermission(user, 'canEdit');
     const invoiceId = payload.invoiceId || op.entityId;
     const invoices = await listInvoices(user);
@@ -378,7 +400,9 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
   }
 
   if (opType === 'create_supplier') {
-    assertStaffPermission(user, 'canManagePurchases');
+    if (user.role !== 'admin' && !user.permissions?.canManagePurchases && !user.permissions?.canCreatePurchase) {
+      throw new AppError(403, 'ليس لديك صلاحية إضافة موردين', 'FORBIDDEN_PERMISSION');
+    }
     return createSupplier(payload, user);
   }
 

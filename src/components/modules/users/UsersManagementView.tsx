@@ -52,6 +52,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
     canViewReports: false,
     canManageSales: true,
     canManagePurchases: false,
+    canCreatePurchase: false,
     canManageInventory: false,
     canManageWarehouses: false,
     canManageCashboxes: false,
@@ -85,7 +86,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
       department: 'الإدارة العامة',
       perms: {
         canView: true, canAdd: true, canEdit: true, canDelete: true, canPrint: true, canExport: true,
-        canViewReports: true, canManageSales: true, canManagePurchases: true, canManageInventory: true,
+        canViewReports: true, canManageSales: true, canManagePurchases: true, canCreatePurchase: true, canManageInventory: true,
         canManageWarehouses: true, canManageCashboxes: true, canManageAccounts: true, canManageReps: true,
         canManageTransfers: true, canManageEmployees: true, canManageSalaries: true, canManageUsers: true,
         canManageSettings: true, canApprove: true, canSend: true, canReceive: true, canReviewRepInvoices: true,
@@ -100,7 +101,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
       department: 'الإدارة',
       perms: {
         canView: true, canAdd: true, canEdit: true, canDelete: false, canPrint: true, canExport: true,
-        canViewReports: true, canManageSales: true, canManagePurchases: true, canManageInventory: true,
+        canViewReports: true, canManageSales: true, canManagePurchases: true, canCreatePurchase: true, canManageInventory: true,
         canManageWarehouses: true, canManageCashboxes: true, canManageAccounts: true, canManageReps: true,
         canManageTransfers: true, canApprove: true, canSend: true, canReceive: true, canReviewRepInvoices: true,
         canCreateStockCount: true, canApproveStockCount: true, canCreateStockTransfer: true,
@@ -112,7 +113,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
       department: 'الحسابات والمالية',
       perms: {
         canView: true, canAdd: true, canEdit: true, canPrint: true, canExport: true, canViewReports: true,
-        canManageSales: true, canManagePurchases: true, canManageCashboxes: true, canManageAccounts: true,
+        canManageSales: true, canManagePurchases: true, canCreatePurchase: true, canManageCashboxes: true, canManageAccounts: true,
         canManageSalaries: true, canApprove: true, canSend: true, canReceive: true, canReviewRepInvoices: true,
       },
     },
@@ -128,7 +129,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
       department: 'المشتريات والموردين',
       perms: {
         canView: true, canAdd: true, canEdit: true, canPrint: true, canExport: true,
-        canManagePurchases: true, canManageInventory: true, canManageSales: false,
+        canManagePurchases: true, canCreatePurchase: true, canManageInventory: true, canManageSales: false,
         canManageCashboxes: false, canManageUsers: false, canSend: true, canReceive: true,
       },
     },
@@ -145,7 +146,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
       jobTitle: 'مندوب مبيعات ميداني',
       department: 'المبيعات الخارجية',
       perms: {
-        canView: true, canAdd: true, canPrint: true, canManageSales: true, canManageTransfers: true,
+        canView: true, canAdd: true, canEdit: true, canPrint: true, canManageSales: true,
+        canManagePurchases: false, canCreatePurchase: true, canManageTransfers: true,
         canSend: true, canReceive: true,
       },
     },
@@ -241,6 +243,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           newPassword: password.trim() || undefined,
           linkedCustomerId: role === 'customer' && linkedCustomerId ? linkedCustomerId : undefined,
           autoCreateCustomerProfile: role === 'customer' && !linkedCustomerId && !currentLinkedCustomer,
+          autoCreateRepProfile: role === 'representative',
         });
         if (!res.success) {
           setFormError(res.error || 'تعذر تحديث بيانات المستخدم');
@@ -262,6 +265,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           permissions,
           linkedCustomerId: role === 'customer' && linkedCustomerId ? linkedCustomerId : undefined,
           autoCreateCustomerProfile: role === 'customer' && !linkedCustomerId,
+          autoCreateRepProfile: role === 'representative',
         });
         if (!res.success) {
           setFormError(res.error || 'تعذر إنشاء المستخدم');
@@ -271,7 +275,9 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           type: 'success',
           text:
             role === 'customer'
-              ? `تم إنشاء حساب العميل (${username.trim()}) وربطه بملف عميل تلقائياً بنجاح.`
+              ? `تم إنشاء حساب العميل (${username.trim()}) وتفعيل صلاحياته وربطه بملف عميل تلقائياً بنجاح.`
+              : role === 'representative'
+              ? `تم إنشاء حساب المندوب (${username.trim()}) وتفعيل صلاحياته الميدانية وإنشاء ملف المندوب ومستودع السيارة تلقائياً بنجاح.`
               : `تم إنشاء حساب (${username.trim()}) بنجاح على السيرفر.`,
         });
       }
@@ -648,6 +654,12 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
             </div>
           </div>
 
+          {role === 'representative' && (
+            <div className="p-3 rounded-xl bg-cyan-50 border border-cyan-200 text-cyan-950 font-bold text-[11px] leading-relaxed">
+              سيتم تفعيل صلاحيات المندوب الأساسية تلقائياً (عرض وإضافة وتعديل العملاء، البيع من عهدة السيارة، إنشاء وإرسال فواتير شراء مسودة، التحويلات والمزامنة) وإنشاء ملف مندوب ومستودع سيارة 1:1 تلقائياً دون تكرار.
+            </div>
+          )}
+
           {role === 'customer' && (
             <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 space-y-1.5">
               <label className="block font-bold text-blue-950">ربط هذا الحساب بملف العميل مباشرة (1:1):</label>
@@ -710,7 +722,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 { key: 'canExport', label: 'صلاحية تصدير Excel' },
                 { key: 'canViewReports', label: 'الاطلاع على التقارير المالية' },
                 { key: 'canManageSales', label: 'إدارة المبيعات وفواتير البيع' },
-                { key: 'canManagePurchases', label: 'إدارة المشتريات والموردين' },
+                { key: 'canManagePurchases', label: 'إدارة المشتريات والموردين (الاعتماد الكامل)' },
+                { key: 'canCreatePurchase', label: 'إنشاء وإرسال فواتير شراء مسودة (للمندوب/الموظف)' },
                 { key: 'canManageInventory', label: 'إدارة المخزون والأصناف' },
                 { key: 'canManageWarehouses', label: 'إدارة المستودعات والتحويلات' },
                 { key: 'canManageCashboxes', label: 'إدارة الخزائن والحسابات' },
