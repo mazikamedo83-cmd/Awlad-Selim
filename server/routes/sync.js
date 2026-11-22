@@ -29,6 +29,7 @@ import {
   createPurchaseInvoice,
   createSalesQuote,
   editSalesInvoice,
+  editPurchaseInvoice,
   addInvoicePayment,
   createInvoiceReturn,
   listInvoices,
@@ -256,6 +257,7 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
   }
 
   if (opType === 'edit_sales_invoice') {
+    assertStaffPermission(user, 'canManageSales');
     assertStaffPermission(user, 'canEdit');
     const invoiceId = payload.invoiceId || op.entityId;
     const invoices = await listInvoices(user);
@@ -280,7 +282,39 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
         { serverSnapshot: serverInv }
       );
     }
-    return editSalesInvoice(invoiceId, payload, user);
+    return editSalesInvoice(invoiceId, { ...payload, ignoreVersionCheck }, user);
+  }
+
+  if (opType === 'edit_purchase_invoice') {
+    assertStaffPermission(user, 'canManagePurchases');
+    assertStaffPermission(user, 'canEdit');
+    const invoiceId = payload.invoiceId || op.entityId;
+    const invoices = await listInvoices(user);
+    const serverInv = invoices.find((i) => i.id === invoiceId);
+    if (!serverInv) {
+      throw new AppError(404, 'فاتورة المشتريات غير موجودة على السيرفر', 'INVOICE_NOT_FOUND');
+    }
+    if (serverInv.type !== 'purchase') {
+      throw new AppError(400, 'المستند المحدد ليس فاتورة مشتريات', 'NOT_PURCHASE_INVOICE');
+    }
+    if (serverInv.status === 'cancelled') {
+      throw new AppError(409, 'تم إلغاء فاتورة المشتريات على السيرفر قبل المزامنة', 'INVOICE_CANCELLED', {
+        serverSnapshot: serverInv,
+      });
+    }
+    if (
+      !ignoreVersionCheck &&
+      payload.baseVersion !== undefined &&
+      Number(serverInv.version || 1) > Number(payload.baseVersion)
+    ) {
+      throw new AppError(
+        409,
+        `تم تعديل فاتورة المشتريات (${serverInv.invoiceNumber}) على السيرفر لإصدار أحدث (${serverInv.version}) قبل مزامنة هذا الجهاز.`,
+        'VERSION_CONFLICT',
+        { serverSnapshot: serverInv }
+      );
+    }
+    return editPurchaseInvoice(invoiceId, { ...payload, ignoreVersionCheck }, user);
   }
 
   if (opType === 'create_invoice_return') {

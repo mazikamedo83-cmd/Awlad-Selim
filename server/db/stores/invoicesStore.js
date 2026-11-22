@@ -1290,6 +1290,9 @@ export async function confirmDraftInvoice(invoiceId, actor) {
 }
 
 export async function editSalesInvoice(invoiceId, updates, actor) {
+  if (actor?.role !== 'admin' && (!actor?.permissions?.canManageSales || !actor?.permissions?.canEdit)) {
+    throw new AppError(403, 'ليس لديك صلاحية تعديل فواتير المبيعات', 'FORBIDDEN_PERMISSION');
+  }
   const now = nowIso();
   const cleanReason = String(updates?.reason || '').trim();
   const repActor = actor?.role === 'representative' ? await getRepresentativeByUserId(actor.id) : null;
@@ -1301,7 +1304,22 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
     const out = await withTransaction(async (client) => {
       const inv = await fetchFullInvoicePg(client, invoiceId);
       if (!inv) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
+      if (inv.type === 'purchase') {
+        throw new AppError(400, 'يرجى استخدام مسار تعديل فواتير المشتريات', 'WRONG_INVOICE_TYPE');
+      }
       if (inv.status === 'cancelled') throw new AppError(409, 'لا يمكن تعديل فاتورة ملغاة', 'INVOICE_CANCELLED');
+      if (
+        !updates?.ignoreVersionCheck &&
+        updates?.baseVersion !== undefined &&
+        Number(inv.version || 1) !== Number(updates.baseVersion)
+      ) {
+        throw new AppError(
+          409,
+          `تم تعديل الفاتورة (${inv.invoiceNumber}) لإصدار أحدث (${inv.version}) على الخادم.`,
+          'VERSION_CONFLICT',
+          { serverSnapshot: inv }
+        );
+      }
 
       if (repActor) {
         if (inv.representativeId !== repActor.id) {
@@ -1517,7 +1535,22 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
   const out = await withJsonTransaction(async (db) => {
     const inv = db.invoices.find((i) => i.id === invoiceId);
     if (!inv) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
+    if (inv.type === 'purchase') {
+      throw new AppError(400, 'يرجى استخدام مسار تعديل فواتير المشتريات', 'WRONG_INVOICE_TYPE');
+    }
     if (inv.status === 'cancelled') throw new AppError(409, 'لا يمكن تعديل فاتورة ملغاة', 'INVOICE_CANCELLED');
+    if (
+      !updates?.ignoreVersionCheck &&
+      updates?.baseVersion !== undefined &&
+      Number(inv.version || 1) !== Number(updates.baseVersion)
+    ) {
+      throw new AppError(
+        409,
+        `تم تعديل الفاتورة (${inv.invoiceNumber}) لإصدار أحدث (${inv.version}) على الخادم.`,
+        'VERSION_CONFLICT',
+        { serverSnapshot: inv }
+      );
+    }
 
     if (repActor) {
       if (inv.representativeId !== repActor.id) {
@@ -1697,6 +1730,731 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
     notes: cleanReason || 'تعديل فاتورة مبيعات',
   });
   return out.updatedInv;
+}
+
+export async function editPurchaseInvoice(invoiceId, updates, actor) {
+  if (actor?.role !== 'admin' && (!actor?.permissions?.canManagePurchases || !actor?.permissions?.canEdit)) {
+    throw new AppError(403, 'ليس لديك صلاحية تعديل فواتير المشتريات', 'FORBIDDEN_PERMISSION');
+  }
+  const now = nowIso();
+  const cleanReason = String(updates?.reason || '').trim();
+
+  if (await isPgMode()) {
+    const out = await withTransaction(async (client) => {
+      const inv = await fetchFullInvoicePg(client, invoiceId);
+      if (!inv) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
+      if (inv.type !== 'purchase') {
+        throw new AppError(400, 'هذه الفاتورة ليست فاتورة مشتريات', 'NOT_PURCHASE_INVOICE');
+      }
+      if (inv.status === 'cancelled') throw new AppError(409, 'لا يمكن تعديل فاتورة مشتريات ملغاة', 'INVOICE_CANCELLED');
+      if (
+        !updates?.ignoreVersionCheck &&
+        updates?.baseVersion !== undefined &&
+        Number(inv.version || 1) !== Number(updates.baseVersion)
+      ) {
+        throw new AppError(
+          409,
+          `تم تعديل فاتورة المشتريات (${inv.invoiceNumber}) لإصدار أحدث (${inv.version}) على الخادم.`,
+          'VERSION_CONFLICT',
+          { serverSnapshot: inv }
+        );
+      }
+
+      const nextWarehouseId = updates.warehouseId !== undefined ? (updates.warehouseId || inv.warehouseId) : inv.warehouseId;
+      const nextSupplierId = updates.supplierId !== undefined ? (updates.supplierId || null) : inv.supplierId;
+      const hasReturns = Object.values(inv.returnedQuantityByItem || {}).some((q) => round3(q) > 0);
+      if (hasReturns && (nextWarehouseId !== inv.warehouseId || (nextSupplierId || null) !== (inv.supplierId || null))) {
+        throw new AppError(
+          409,
+          'لا يمكن تغيير المورد أو المستودع لفاتورة مشتريات مسجل عليها مرتجعات سابقة',
+          'CANNOT_CHANGE_PARTY_OR_WAREHOUSE_AFTER_RETURN'
+        );
+      }
+
+      const whNewRes = await client.query(`SELECT id, name FROM warehouses WHERE id = $1 LIMIT 1`, [nextWarehouseId]);
+      if (!whNewRes.rows[0]) throw new AppError(404, 'المستودع غير موجود', 'WAREHOUSE_NOT_FOUND');
+      const nextWarehouseName = whNewRes.rows[0].name;
+
+      let nextSupplierName = inv.supplierName || '';
+      if (nextSupplierId) {
+        const sNewRes = await client.query(`SELECT id, name FROM suppliers WHERE id = $1 FOR UPDATE`, [nextSupplierId]);
+        if (!sNewRes.rows[0]) throw new AppError(404, 'المورد غير موجود', 'SUPPLIER_NOT_FOUND');
+        nextSupplierName = sNewRes.rows[0].name;
+      } else {
+        nextSupplierName = 'مورد نقدي';
+      }
+
+      const stRes = await client.query(`SELECT allow_negative_stock FROM system_settings LIMIT 1`);
+      const allowNeg = Boolean(stRes.rows[0]?.allow_negative_stock) && Boolean(actor?.permissions?.canAllowNegativeInventory);
+
+      const resolvedItemsRaw = updates.items
+        ? await resolvePurchaseItemsWithInlineProductsPgTx(client, updates.items, now)
+        : inv.items;
+
+      const totals = recomputeInvoiceTotals(
+        {
+          items: resolvedItemsRaw,
+          discountTotal: updates.discountTotal ?? inv.discountTotal,
+          paidAmount: inv.paidAmount,
+          appliedAdvanceAmount: 0,
+        },
+        inv.items
+      );
+
+      if (totals.grandTotal < round2(Number(inv.paidAmount || 0)) - 0.01) {
+        throw new AppError(
+          400,
+          `إجمالي فاتورة المشتريات المعدّل (${totals.grandTotal}) لا يمكن أن يكون أقل من المبلغ المدفوع مسبقاً (${inv.paidAmount})`,
+          'GRAND_TOTAL_BELOW_PAID'
+        );
+      }
+
+      const newQtyByProduct = new Map();
+      for (const it of totals.items) {
+        newQtyByProduct.set(it.productId, round3((newQtyByProduct.get(it.productId) || 0) + Number(it.quantity || 0)));
+      }
+      for (const [pid, retQtyRaw] of Object.entries(inv.returnedQuantityByItem || {})) {
+        const retQty = round3(retQtyRaw);
+        if (retQty <= 0) continue;
+        const newQty = Number(newQtyByProduct.get(pid) || 0);
+        if (newQty + 0.0001 < retQty) {
+          throw new AppError(
+            400,
+            `لا يمكن تقليل كمية الصنف عن الكمية المرتجعة مسبقاً (${retQty})`,
+            'BELOW_RETURNED_QUANTITY'
+          );
+        }
+      }
+
+      const beforeSnapshot = {
+        date: inv.date,
+        supplierId: inv.supplierId,
+        supplierName: inv.supplierName,
+        warehouseId: inv.warehouseId,
+        warehouseName: inv.warehouseName,
+        items: inv.items,
+        subtotal: inv.subtotal,
+        discountTotal: inv.discountTotal,
+        grandTotal: inv.grandTotal,
+        paidAmount: inv.paidAmount,
+        remainingAmount: inv.remainingAmount,
+        paymentType: inv.paymentType,
+        notes: inv.notes || '',
+      };
+
+      if (inv.status === 'confirmed') {
+        const oldBaseByProd = new Map();
+        const newBaseByProd = new Map();
+        const metaByProd = new Map();
+
+        for (const oldItem of inv.items) {
+          const baseQty = round3(oldItem.quantity * (oldItem.unitFactor || 1));
+          oldBaseByProd.set(oldItem.productId, round3((oldBaseByProd.get(oldItem.productId) || 0) + baseQty));
+          metaByProd.set(oldItem.productId, oldItem);
+        }
+        for (const newItem of totals.items) {
+          const baseQty = round3(newItem.quantity * (newItem.unitFactor || 1));
+          newBaseByProd.set(newItem.productId, round3((newBaseByProd.get(newItem.productId) || 0) + baseQty));
+          metaByProd.set(newItem.productId, newItem);
+        }
+
+        const whOldRes = await client.query(`SELECT name FROM warehouses WHERE id = $1 LIMIT 1`, [inv.warehouseId]);
+        const oldWarehouseName = whOldRes.rows[0]?.name || inv.warehouseName || '';
+        const allPids = new Set([...oldBaseByProd.keys(), ...newBaseByProd.keys()]);
+        const sameWarehouse = nextWarehouseId === inv.warehouseId;
+
+        for (const pid of allPids) {
+          const oldBase = Number(oldBaseByProd.get(pid) || 0);
+          const newBase = Number(newBaseByProd.get(pid) || 0);
+          const pRes = await client.query(`SELECT * FROM products WHERE id = $1 FOR UPDATE`, [pid]);
+          const prod = pRes.rows[0];
+          if (!prod) {
+            if (newBase > 0) throw new AppError(404, `الصنف غير موجود (${metaByProd.get(pid)?.productName || pid})`, 'PRODUCT_NOT_FOUND');
+            continue;
+          }
+
+          const stockMap = { ...(prod.stock_per_warehouse || {}) };
+          const refItem = metaByProd.get(pid);
+          const newCostPrice = newBase > 0 && Number(refItem?.unitPrice || 0) > 0
+            ? round2(Number(refItem.unitPrice) / Math.max(0.001, Number(refItem.unitFactor || 1)))
+            : Number(prod.purchase_price || 0);
+
+          if (sameWarehouse) {
+            const deltaIn = round3(newBase - oldBase);
+            if (deltaIn !== 0) {
+              const curQty = Number(stockMap[inv.warehouseId] || 0);
+              const nextQty = round3(curQty + deltaIn);
+              if (nextQty < 0 && !allowNeg) {
+                throw new AppError(
+                  409,
+                  `لا يمكن تخفيض كمية (${prod.name}) لأن الرصيد المتاح بالمخزن (${curQty}) لا يكفي لصرف الفرق (${Math.abs(deltaIn)})`,
+                  'INSUFFICIENT_STOCK'
+                );
+              }
+              stockMap[inv.warehouseId] = nextQty;
+              await client.query(`UPDATE products SET stock_per_warehouse = $1, purchase_price = $2, updated_at = $3 WHERE id = $4`, [
+                JSON.stringify(stockMap),
+                newCostPrice,
+                now,
+                prod.id,
+              ]);
+
+              const mvId = generateServerId('SM');
+              await client.query(
+                `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_at)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,'purchase_edit',$8,$9,1,$10,$11,$12,'purchase',$13,$14,$15,$16,$17)`,
+                [
+                  mvId,
+                  mvId,
+                  updates.date || inv.date,
+                  prod.id,
+                  prod.name,
+                  inv.warehouseId,
+                  oldWarehouseName,
+                  Math.abs(deltaIn),
+                  prod.base_unit || refItem?.unit || 'قطعة',
+                  newCostPrice,
+                  curQty,
+                  nextQty,
+                  inv.id,
+                  inv.invoiceNumber,
+                  `تعديل فاتورة مشتريات رقم ${inv.invoiceNumber} (${deltaIn > 0 ? 'إضافة فرق ' : 'خصم فرق '}${Math.abs(deltaIn)})${cleanReason ? ` - السبب: ${cleanReason}` : ''}`,
+                  actor.fullName,
+                  now,
+                ]
+              );
+            } else if (newCostPrice !== Number(prod.purchase_price || 0)) {
+              await client.query(`UPDATE products SET purchase_price = $1, updated_at = $2 WHERE id = $3`, [newCostPrice, now, prod.id]);
+            }
+          } else {
+            if (oldBase > 0) {
+              const curOldQty = Number(stockMap[inv.warehouseId] || 0);
+              const nextOldQty = round3(curOldQty - oldBase);
+              if (nextOldQty < 0 && !allowNeg) {
+                throw new AppError(
+                  409,
+                  `لا يمكن نقل فاتورة المشتريات من (${oldWarehouseName}) لأن رصيد (${prod.name}) المتاح (${curOldQty}) أقل من كمية الفاتورة (${oldBase})`,
+                  'INSUFFICIENT_STOCK'
+                );
+              }
+              stockMap[inv.warehouseId] = nextOldQty;
+              const mvOutId = generateServerId('SM');
+              await client.query(
+                `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_at)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,'purchase_edit',$8,$9,1,$10,$11,$12,'purchase',$13,$14,$15,$16,$17)`,
+                [
+                  mvOutId,
+                  mvOutId,
+                  updates.date || inv.date,
+                  prod.id,
+                  prod.name,
+                  inv.warehouseId,
+                  oldWarehouseName,
+                  oldBase,
+                  prod.base_unit || refItem?.unit || 'قطعة',
+                  newCostPrice,
+                  curOldQty,
+                  nextOldQty,
+                  inv.id,
+                  inv.invoiceNumber,
+                  `نقل مخزون فاتورة مشتريات رقم ${inv.invoiceNumber} من (${oldWarehouseName}) إلى (${nextWarehouseName})${cleanReason ? ` - السبب: ${cleanReason}` : ''}`,
+                  actor.fullName,
+                  now,
+                ]
+              );
+            }
+            if (newBase > 0) {
+              const curNewQty = Number(stockMap[nextWarehouseId] || 0);
+              const nextNewQty = round3(curNewQty + newBase);
+              stockMap[nextWarehouseId] = nextNewQty;
+              const mvInId = generateServerId('SM');
+              await client.query(
+                `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_at)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,'purchase_edit',$8,$9,1,$10,$11,$12,'purchase',$13,$14,$15,$16,$17)`,
+                [
+                  mvInId,
+                  mvInId,
+                  updates.date || inv.date,
+                  prod.id,
+                  prod.name,
+                  nextWarehouseId,
+                  nextWarehouseName,
+                  newBase,
+                  prod.base_unit || refItem?.unit || 'قطعة',
+                  newCostPrice,
+                  curNewQty,
+                  nextNewQty,
+                  inv.id,
+                  inv.invoiceNumber,
+                  `إضافة مخزون فاتورة مشتريات معدلة رقم ${inv.invoiceNumber} إلى (${nextWarehouseName})${cleanReason ? ` - السبب: ${cleanReason}` : ''}`,
+                  actor.fullName,
+                  now,
+                ]
+              );
+            }
+            await client.query(`UPDATE products SET stock_per_warehouse = $1, purchase_price = $2, updated_at = $3 WHERE id = $4`, [
+              JSON.stringify(stockMap),
+              newCostPrice,
+              now,
+              prod.id,
+            ]);
+          }
+        }
+
+        const oldRem = round2(Number(inv.remainingAmount || 0));
+        const newRem = round2(Number(totals.remainingAmount || 0));
+        if ((inv.supplierId || null) === (nextSupplierId || null)) {
+          const diffRem = round2(newRem - oldRem);
+          if (nextSupplierId && diffRem !== 0) {
+            const sRes = await client.query(`SELECT current_balance FROM suppliers WHERE id = $1 FOR UPDATE`, [nextSupplierId]);
+            if (sRes.rows[0]) {
+              await client.query(`UPDATE suppliers SET current_balance = $1 WHERE id = $2`, [
+                round2(Number(sRes.rows[0].current_balance || 0) + diffRem),
+                nextSupplierId,
+              ]);
+            }
+          }
+        } else {
+          if (inv.supplierId && oldRem !== 0) {
+            const oldSRes = await client.query(`SELECT current_balance FROM suppliers WHERE id = $1 FOR UPDATE`, [inv.supplierId]);
+            if (oldSRes.rows[0]) {
+              await client.query(`UPDATE suppliers SET current_balance = $1 WHERE id = $2`, [
+                round2(Number(oldSRes.rows[0].current_balance || 0) - oldRem),
+                inv.supplierId,
+              ]);
+            }
+          }
+          if (nextSupplierId && newRem !== 0) {
+            const newSRes = await client.query(`SELECT current_balance FROM suppliers WHERE id = $1 FOR UPDATE`, [nextSupplierId]);
+            if (newSRes.rows[0]) {
+              await client.query(`UPDATE suppliers SET current_balance = $1 WHERE id = $2`, [
+                round2(Number(newSRes.rows[0].current_balance || 0) + newRem),
+                nextSupplierId,
+              ]);
+            }
+          }
+        }
+      }
+
+      const itemsWithCost = totals.items.map((it) => ({
+        ...it,
+        purchasePriceAtTime: it.purchasePriceAtTime || round2(Number(it.unitPrice || 0) / Math.max(0.001, Number(it.unitFactor || 1))),
+      }));
+
+      const afterSnapshot = {
+        date: updates.date || inv.date,
+        supplierId: nextSupplierId,
+        supplierName: nextSupplierName,
+        warehouseId: nextWarehouseId,
+        warehouseName: nextWarehouseName,
+        items: itemsWithCost,
+        subtotal: totals.subtotal,
+        discountTotal: totals.discountTotal,
+        grandTotal: totals.grandTotal,
+        paidAmount: inv.paidAmount,
+        remainingAmount: totals.remainingAmount,
+        paymentType: totals.paymentType,
+        notes: updates.notes !== undefined ? updates.notes : (inv.notes || ''),
+      };
+      const editEntry = {
+        id: generateServerId('EDT'),
+        editedAt: now,
+        editedBy: actor.fullName,
+        editedByUserId: actor.id,
+        reason: cleanReason || undefined,
+        before: beforeSnapshot,
+        after: afterSnapshot,
+      };
+      const nextEditHistory = [...(Array.isArray(inv.editHistory) ? inv.editHistory : []), editEntry];
+
+      await client.query(
+        `UPDATE invoices SET date = $1, supplier_id = $2, supplier_name = $3, warehouse_id = $4, warehouse_name = $5, subtotal = $6, discount_total = $7, grand_total = $8, remaining_amount = $9, payment_type = $10, notes = $11, edited_by = $12, edited_at = $13, edit_history = $14, version = COALESCE(version, 1) + 1, updated_at = $13 WHERE id = $15`,
+        [
+          afterSnapshot.date,
+          nextSupplierId,
+          nextSupplierName,
+          nextWarehouseId,
+          nextWarehouseName,
+          totals.subtotal,
+          totals.discountTotal,
+          totals.grandTotal,
+          totals.remainingAmount,
+          totals.paymentType,
+          afterSnapshot.notes,
+          actor.fullName,
+          now,
+          JSON.stringify(nextEditHistory),
+          invoiceId,
+        ]
+      );
+      await client.query(`DELETE FROM invoice_items WHERE invoice_id = $1`, [invoiceId]);
+      for (let idx = 0; idx < itemsWithCost.length; idx++) {
+        const it = itemsWithCost[idx];
+        await client.query(
+          `INSERT INTO invoice_items (id, invoice_id, product_id, product_name, barcode, unit, unit_factor, quantity, unit_price, purchase_price_at_time, discount, total)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+          [`${invoiceId}-ITM-${idx + 1}`, invoiceId, it.productId, it.productName, it.barcode, it.unit, it.unitFactor, it.quantity, it.unitPrice, it.purchasePriceAtTime, it.discount, it.total]
+        );
+      }
+
+      const updatedInv = await fetchFullInvoicePg(client, invoiceId);
+      return { updatedInv, beforeSnapshot, afterSnapshot };
+    });
+
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `تعديل فاتورة مشتريات (${out.updatedInv.invoiceNumber})`,
+      module: 'المشتريات',
+      recordId: invoiceId,
+      oldValues: out.beforeSnapshot,
+      newValues: out.afterSnapshot,
+      notes: cleanReason || 'تعديل فاتورة مشتريات',
+    });
+    return out.updatedInv;
+  }
+
+  const out = await withJsonTransaction(async (db) => {
+    const inv = db.invoices.find((i) => i.id === invoiceId);
+    if (!inv) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
+    if (inv.type !== 'purchase') {
+      throw new AppError(400, 'هذه الفاتورة ليست فاتورة مشتريات', 'NOT_PURCHASE_INVOICE');
+    }
+    if (inv.status === 'cancelled') throw new AppError(409, 'لا يمكن تعديل فاتورة مشتريات ملغاة', 'INVOICE_CANCELLED');
+    if (
+      !updates?.ignoreVersionCheck &&
+      updates?.baseVersion !== undefined &&
+      Number(inv.version || 1) !== Number(updates.baseVersion)
+    ) {
+      throw new AppError(
+        409,
+        `تم تعديل فاتورة المشتريات (${inv.invoiceNumber}) لإصدار أحدث (${inv.version}) على الخادم.`,
+        'VERSION_CONFLICT',
+        { serverSnapshot: inv }
+      );
+    }
+
+    const nextWarehouseId = updates.warehouseId !== undefined ? (updates.warehouseId || inv.warehouseId) : inv.warehouseId;
+    const nextSupplierId = updates.supplierId !== undefined ? (updates.supplierId || undefined) : inv.supplierId;
+    const hasReturns = Object.values(inv.returnedQuantityByItem || {}).some((q) => round3(q) > 0);
+    if (hasReturns && (nextWarehouseId !== inv.warehouseId || (nextSupplierId || null) !== (inv.supplierId || null))) {
+      throw new AppError(
+        409,
+        'لا يمكن تغيير المورد أو المستودع لفاتورة مشتريات مسجل عليها مرتجعات سابقة',
+        'CANNOT_CHANGE_PARTY_OR_WAREHOUSE_AFTER_RETURN'
+      );
+    }
+
+    const whNew = db.warehouses.find((w) => w.id === nextWarehouseId);
+    if (!whNew) throw new AppError(404, 'المستودع غير موجود', 'WAREHOUSE_NOT_FOUND');
+    const nextWarehouseName = whNew.name;
+
+    let nextSupplierName = inv.supplierName || '';
+    if (nextSupplierId) {
+      const sNew = db.suppliers.find((s) => s.id === nextSupplierId);
+      if (!sNew) throw new AppError(404, 'المورد غير موجود', 'SUPPLIER_NOT_FOUND');
+      nextSupplierName = sNew.name;
+    } else {
+      nextSupplierName = 'مورد نقدي';
+    }
+
+    const allowNeg = Boolean(db.settings?.allowNegativeStock) && Boolean(actor?.permissions?.canAllowNegativeInventory);
+    const resolvedItemsRaw = updates.items
+      ? resolvePurchaseItemsWithInlineProductsJsonTx(db, updates.items, now)
+      : inv.items;
+
+    const totals = recomputeInvoiceTotals(
+      {
+        items: resolvedItemsRaw,
+        discountTotal: updates.discountTotal ?? inv.discountTotal,
+        paidAmount: inv.paidAmount,
+        appliedAdvanceAmount: 0,
+      },
+      inv.items
+    );
+
+    if (totals.grandTotal < round2(Number(inv.paidAmount || 0)) - 0.01) {
+      throw new AppError(
+        400,
+        `إجمالي فاتورة المشتريات المعدّل (${totals.grandTotal}) لا يمكن أن يكون أقل من المبلغ المدفوع مسبقاً (${inv.paidAmount})`,
+        'GRAND_TOTAL_BELOW_PAID'
+      );
+    }
+
+    const newQtyByProduct = new Map();
+    for (const it of totals.items) {
+      newQtyByProduct.set(it.productId, round3((newQtyByProduct.get(it.productId) || 0) + Number(it.quantity || 0)));
+    }
+    for (const [pid, retQtyRaw] of Object.entries(inv.returnedQuantityByItem || {})) {
+      const retQty = round3(retQtyRaw);
+      if (retQty <= 0) continue;
+      const newQty = Number(newQtyByProduct.get(pid) || 0);
+      if (newQty + 0.0001 < retQty) {
+        throw new AppError(
+          400,
+          `لا يمكن تقليل كمية الصنف عن الكمية المرتجعة مسبقاً (${retQty})`,
+          'BELOW_RETURNED_QUANTITY'
+        );
+      }
+    }
+
+    const beforeSnapshot = {
+      date: inv.date,
+      supplierId: inv.supplierId,
+      supplierName: inv.supplierName,
+      warehouseId: inv.warehouseId,
+      warehouseName: inv.warehouseName,
+      items: inv.items,
+      subtotal: inv.subtotal,
+      discountTotal: inv.discountTotal,
+      grandTotal: inv.grandTotal,
+      paidAmount: inv.paidAmount,
+      remainingAmount: inv.remainingAmount,
+      paymentType: inv.paymentType,
+      notes: inv.notes || '',
+    };
+
+    if (inv.status === 'confirmed') {
+      const oldBaseByProd = new Map();
+      const newBaseByProd = new Map();
+      const metaByProd = new Map();
+
+      for (const oldItem of inv.items) {
+        const baseQty = round3(oldItem.quantity * (oldItem.unitFactor || 1));
+        oldBaseByProd.set(oldItem.productId, round3((oldBaseByProd.get(oldItem.productId) || 0) + baseQty));
+        metaByProd.set(oldItem.productId, oldItem);
+      }
+      for (const newItem of totals.items) {
+        const baseQty = round3(newItem.quantity * (newItem.unitFactor || 1));
+        newBaseByProd.set(newItem.productId, round3((newBaseByProd.get(newItem.productId) || 0) + baseQty));
+        metaByProd.set(newItem.productId, newItem);
+      }
+
+      const oldWarehouseName = db.warehouses.find((w) => w.id === inv.warehouseId)?.name || inv.warehouseName || '';
+      const allPids = new Set([...oldBaseByProd.keys(), ...newBaseByProd.keys()]);
+      const sameWarehouse = nextWarehouseId === inv.warehouseId;
+
+      for (const pid of allPids) {
+        const oldBase = Number(oldBaseByProd.get(pid) || 0);
+        const newBase = Number(newBaseByProd.get(pid) || 0);
+        const prod = db.products.find((p) => p.id === pid);
+        if (!prod) {
+          if (newBase > 0) throw new AppError(404, `الصنف غير موجود (${metaByProd.get(pid)?.productName || pid})`, 'PRODUCT_NOT_FOUND');
+          continue;
+        }
+
+        const refItem = metaByProd.get(pid);
+        const newCostPrice = newBase > 0 && Number(refItem?.unitPrice || 0) > 0
+          ? round2(Number(refItem.unitPrice) / Math.max(0.001, Number(refItem.unitFactor || 1)))
+          : Number(prod.purchasePrice || 0);
+
+        if (sameWarehouse) {
+          const deltaIn = round3(newBase - oldBase);
+          if (deltaIn !== 0) {
+            const curQty = Number(prod.stockPerWarehouse?.[inv.warehouseId] || 0);
+            const nextQty = round3(curQty + deltaIn);
+            if (nextQty < 0 && !allowNeg) {
+              throw new AppError(
+                409,
+                `لا يمكن تخفيض كمية (${prod.name}) لأن الرصيد المتاح بالمخزن (${curQty}) لا يكفي لصرف الفرق (${Math.abs(deltaIn)})`,
+                'INSUFFICIENT_STOCK'
+              );
+            }
+            prod.stockPerWarehouse = { ...(prod.stockPerWarehouse || {}), [inv.warehouseId]: nextQty };
+            prod.purchasePrice = newCostPrice;
+            const mvId = generateServerId('SM');
+            db.stockMovements.unshift({
+              id: mvId,
+              movementNumber: mvId,
+              date: updates.date || inv.date,
+              type: 'purchase_edit',
+              productId: prod.id,
+              productName: prod.name,
+              warehouseId: inv.warehouseId,
+              warehouseName: oldWarehouseName,
+              quantity: Math.abs(deltaIn),
+              unit: prod.baseUnit || refItem?.unit || 'قطعة',
+              unitFactor: 1,
+              unitCost: newCostPrice,
+              balanceBefore: curQty,
+              balanceAfter: nextQty,
+              relatedDocType: 'purchase',
+              referenceId: inv.id,
+              referenceNumber: inv.invoiceNumber,
+              notes: `تعديل فاتورة مشتريات رقم ${inv.invoiceNumber} (${deltaIn > 0 ? 'إضافة فرق ' : 'خصم فرق '}${Math.abs(deltaIn)})${cleanReason ? ` - السبب: ${cleanReason}` : ''}`,
+              createdBy: actor.fullName,
+              createdAt: now,
+            });
+          } else {
+            prod.purchasePrice = newCostPrice;
+          }
+        } else {
+          if (oldBase > 0) {
+            const curOldQty = Number(prod.stockPerWarehouse?.[inv.warehouseId] || 0);
+            const nextOldQty = round3(curOldQty - oldBase);
+            if (nextOldQty < 0 && !allowNeg) {
+              throw new AppError(
+                409,
+                `لا يمكن نقل فاتورة المشتريات من (${oldWarehouseName}) لأن رصيد (${prod.name}) المتاح (${curOldQty}) أقل من كمية الفاتورة (${oldBase})`,
+                'INSUFFICIENT_STOCK'
+              );
+            }
+            prod.stockPerWarehouse = { ...(prod.stockPerWarehouse || {}), [inv.warehouseId]: nextOldQty };
+            const mvOutId = generateServerId('SM');
+            db.stockMovements.unshift({
+              id: mvOutId,
+              movementNumber: mvOutId,
+              date: updates.date || inv.date,
+              type: 'purchase_edit',
+              productId: prod.id,
+              productName: prod.name,
+              warehouseId: inv.warehouseId,
+              warehouseName: oldWarehouseName,
+              quantity: oldBase,
+              unit: prod.baseUnit || refItem?.unit || 'قطعة',
+              unitFactor: 1,
+              unitCost: newCostPrice,
+              balanceBefore: curOldQty,
+              balanceAfter: nextOldQty,
+              relatedDocType: 'purchase',
+              referenceId: inv.id,
+              referenceNumber: inv.invoiceNumber,
+              notes: `نقل مخزون فاتورة مشتريات رقم ${inv.invoiceNumber} من (${oldWarehouseName}) إلى (${nextWarehouseName})${cleanReason ? ` - السبب: ${cleanReason}` : ''}`,
+              createdBy: actor.fullName,
+              createdAt: now,
+            });
+          }
+          if (newBase > 0) {
+            const curNewQty = Number(prod.stockPerWarehouse?.[nextWarehouseId] || 0);
+            const nextNewQty = round3(curNewQty + newBase);
+            prod.stockPerWarehouse = { ...(prod.stockPerWarehouse || {}), [nextWarehouseId]: nextNewQty };
+            const mvInId = generateServerId('SM');
+            db.stockMovements.unshift({
+              id: mvInId,
+              movementNumber: mvInId,
+              date: updates.date || inv.date,
+              type: 'purchase_edit',
+              productId: prod.id,
+              productName: prod.name,
+              warehouseId: nextWarehouseId,
+              warehouseName: nextWarehouseName,
+              quantity: newBase,
+              unit: prod.baseUnit || refItem?.unit || 'قطعة',
+              unitFactor: 1,
+              unitCost: newCostPrice,
+              balanceBefore: curNewQty,
+              balanceAfter: nextNewQty,
+              relatedDocType: 'purchase',
+              referenceId: inv.id,
+              referenceNumber: inv.invoiceNumber,
+              notes: `إضافة مخزون فاتورة مشتريات معدلة رقم ${inv.invoiceNumber} إلى (${nextWarehouseName})${cleanReason ? ` - السبب: ${cleanReason}` : ''}`,
+              createdBy: actor.fullName,
+              createdAt: now,
+            });
+          }
+          prod.purchasePrice = newCostPrice;
+        }
+      }
+
+      const oldRem = round2(Number(inv.remainingAmount || 0));
+      const newRem = round2(Number(totals.remainingAmount || 0));
+      if ((inv.supplierId || null) === (nextSupplierId || null)) {
+        const diffRem = round2(newRem - oldRem);
+        if (nextSupplierId && diffRem !== 0) {
+          const supp = db.suppliers.find((s) => s.id === nextSupplierId);
+          if (supp) supp.currentBalance = round2(Number(supp.currentBalance || 0) + diffRem);
+        }
+      } else {
+        if (inv.supplierId && oldRem !== 0) {
+          const oldSupp = db.suppliers.find((s) => s.id === inv.supplierId);
+          if (oldSupp) oldSupp.currentBalance = round2(Number(oldSupp.currentBalance || 0) - oldRem);
+        }
+        if (nextSupplierId && newRem !== 0) {
+          const newSupp = db.suppliers.find((s) => s.id === nextSupplierId);
+          if (newSupp) newSupp.currentBalance = round2(Number(newSupp.currentBalance || 0) + newRem);
+        }
+      }
+    }
+
+    const itemsWithCost = totals.items.map((it) => ({
+      ...it,
+      purchasePriceAtTime: it.purchasePriceAtTime || round2(Number(it.unitPrice || 0) / Math.max(0.001, Number(it.unitFactor || 1))),
+    }));
+
+    const afterSnapshot = {
+      date: updates.date || inv.date,
+      supplierId: nextSupplierId,
+      supplierName: nextSupplierName,
+      warehouseId: nextWarehouseId,
+      warehouseName: nextWarehouseName,
+      items: itemsWithCost,
+      subtotal: totals.subtotal,
+      discountTotal: totals.discountTotal,
+      grandTotal: totals.grandTotal,
+      paidAmount: inv.paidAmount,
+      remainingAmount: totals.remainingAmount,
+      paymentType: totals.paymentType,
+      notes: updates.notes !== undefined ? updates.notes : (inv.notes || ''),
+    };
+    const editEntry = {
+      id: generateServerId('EDT'),
+      editedAt: now,
+      editedBy: actor.fullName,
+      editedByUserId: actor.id,
+      reason: cleanReason || undefined,
+      before: beforeSnapshot,
+      after: afterSnapshot,
+    };
+
+    inv.date = afterSnapshot.date;
+    inv.supplierId = nextSupplierId;
+    inv.supplierName = nextSupplierName;
+    inv.warehouseId = nextWarehouseId;
+    inv.warehouseName = nextWarehouseName;
+    inv.items = itemsWithCost;
+    inv.subtotal = totals.subtotal;
+    inv.discountTotal = totals.discountTotal;
+    inv.grandTotal = totals.grandTotal;
+    inv.remainingAmount = totals.remainingAmount;
+    inv.paymentType = totals.paymentType;
+    inv.editedBy = actor.fullName;
+    inv.editedAt = now;
+    inv.editHistory = [...(Array.isArray(inv.editHistory) ? inv.editHistory : []), editEntry];
+    inv.version = Number(inv.version || 1) + 1;
+    inv.updatedAt = now;
+    inv.notes = afterSnapshot.notes;
+    return { updatedInv: inv, beforeSnapshot, afterSnapshot };
+  });
+
+  await recordAuditLog({
+    userId: actor.id,
+    userName: actor.fullName,
+    action: `تعديل فاتورة مشتريات (${out.updatedInv.invoiceNumber})`,
+    module: 'المشتريات',
+    recordId: invoiceId,
+    oldValues: out.beforeSnapshot,
+    newValues: out.afterSnapshot,
+    notes: cleanReason || 'تعديل فاتورة مشتريات',
+  });
+  return out.updatedInv;
+}
+
+export async function editInvoice(invoiceId, updates, actor) {
+  let invType = null;
+  if (await isPgMode()) {
+    const res = await getPool().query(`SELECT type FROM invoices WHERE id = $1 LIMIT 1`, [invoiceId]);
+    if (!res.rows[0]) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
+    invType = res.rows[0].type;
+  } else {
+    const db = readJsonDatabase();
+    const inv = db.invoices.find((i) => i.id === invoiceId);
+    if (!inv) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
+    invType = inv.type;
+  }
+  if (invType === 'purchase') {
+    return editPurchaseInvoice(invoiceId, updates, actor);
+  }
+  return editSalesInvoice(invoiceId, updates, actor);
 }
 
 export async function cancelInvoice(invoiceId, reason = '', actor) {

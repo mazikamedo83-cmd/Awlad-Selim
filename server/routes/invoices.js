@@ -8,6 +8,8 @@ import {
   confirmDraftInvoice,
   markInvoiceReviewed,
   editSalesInvoice,
+  editPurchaseInvoice,
+  editInvoice,
   cancelInvoice,
   addInvoicePayment,
   createInvoiceReturn,
@@ -131,11 +133,22 @@ router.post(
 );
 
 router.put(
+  '/purchase/:id',
+  requireStaff,
+  requirePermission('canManagePurchases'),
+  requirePermission('canEdit'),
+  asyncHandler(async (req, res) => {
+    const invoice = await editPurchaseInvoice(req.params.id, req.body || {}, req.auth.user);
+    res.json({ ok: true, invoice });
+  })
+);
+
+router.put(
   '/:id',
   requireStaff,
   requirePermission('canEdit'),
   asyncHandler(async (req, res) => {
-    const invoice = await editSalesInvoice(req.params.id, req.body || {}, req.auth.user);
+    const invoice = await editInvoice(req.params.id, req.body || {}, req.auth.user);
     res.json({ ok: true, invoice });
   })
 );

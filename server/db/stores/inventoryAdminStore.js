@@ -5495,16 +5495,25 @@ export async function getItemMovementReport(filters = {}, actor) {
     }
   }
 
-  // 5. Direct Warehouse Transfers & Stock Adjustments / Damaged / Stock Counts
+  // 5. Direct Warehouse Transfers, Stock Adjustments / Damaged / Stock Counts & Invoice Edit/Cancel Audit Movements
   const seenTransferPairs = new Set();
   for (const sm of allStockMovements) {
     if (sm.referenceId && (custodyRefIds.has(sm.referenceId) || custodyOpIds.has(sm.referenceId))) continue;
-    if (['sale', 'purchase', 'sales_return', 'purchase_return', 'custody_delivery', 'custody_return', 'sale_edit', 'purchase_edit', 'sale_cancel', 'purchase_cancel'].includes(sm.type)) {
+    if (['sale', 'purchase', 'sales_return', 'purchase_return', 'custody_delivery', 'custody_return'].includes(sm.type)) {
       continue;
     }
+    const isInvEditOrCancel = ['sale_edit', 'purchase_edit', 'sale_cancel', 'purchase_cancel'].includes(sm.type);
     const prod = productMap.get(sm.productId);
     const bQty = Number(sm.quantity || 0);
     const costPerBase = Number(sm.unitCost || prod?.purchasePrice || 0);
+    let direction = sm.type === 'transfer_in' || sm.type === 'opening_balance' ? 'in' : sm.type === 'adjustment' ? 'neutral' : 'out';
+    if (isInvEditOrCancel) {
+      if (sm.balanceBefore !== undefined && sm.balanceBefore !== null && sm.balanceAfter !== undefined && sm.balanceAfter !== null) {
+        direction = Number(sm.balanceAfter) >= Number(sm.balanceBefore) ? 'in' : 'out';
+      } else {
+        direction = sm.type === 'sale_cancel' ? 'in' : sm.type === 'purchase_cancel' ? 'out' : 'neutral';
+      }
+    }
     const row = {
       id: sm.id,
       date: sm.date,
@@ -5525,7 +5534,7 @@ export async function getItemMovementReport(filters = {}, actor) {
       costPrice: round2(costPerBase),
       totalValue: round2(bQty * costPerBase),
       profitValue: 0,
-      direction: sm.type === 'transfer_in' || sm.type === 'opening_balance' ? 'in' : sm.type === 'adjustment' ? 'neutral' : 'out',
+      direction,
       notes: sm.notes || '',
       createdBy: sm.createdBy,
     };

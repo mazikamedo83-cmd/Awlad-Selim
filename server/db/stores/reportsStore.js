@@ -1825,14 +1825,63 @@ function buildProductLifecycleHistory(productId, data, resolvers, filterOpts = {
   // Track documented reference IDs to prevent double counting stockMovements with invoices/returns/transfers/counts
   const handledDocRefs = new Set();
 
-  // 2. Confirmed Sales & Purchase Invoices
+  // 2. Confirmed Sales & Purchase Invoices (untouched confirmed invoices use invoice rows; edited/cancelled invoices with stock movements use chronological movements below so edits & cancellations never distort running balance)
   let lastPurchasePriceSeen = null;
   let lastSalePriceSeen = null;
+  const stockMovementsByRef = new Map();
+  for (const sm of data.stockMovements || []) {
+    if (sm.productId !== productId || !sm.referenceId) continue;
+    const list = stockMovementsByRef.get(sm.referenceId) || [];
+    list.push(sm);
+    stockMovementsByRef.set(sm.referenceId, list);
+  }
+
+  const movementDrivenInvoiceIds = new Set();
   const chronoInvoices = [...(data.invoices || [])]
-    .filter((i) => i.status === 'confirmed' && (i.type === 'sales' || i.type === 'purchase'))
+    .filter((i) => (i.status === 'confirmed' || i.status === 'cancelled') && (i.type === 'sales' || i.type === 'purchase'))
     .sort((a, b) => String(a.createdAt || a.date).localeCompare(String(b.createdAt || b.date)));
 
   for (const inv of chronoInvoices) {
+    const invMvs = stockMovementsByRef.get(inv.id) || [];
+    const hasEditsOrCancel = inv.status === 'cancelled' || (Array.isArray(inv.editHistory) && inv.editHistory.length > 0);
+    if (hasEditsOrCancel && invMvs.length > 0) {
+      movementDrivenInvoiceIds.add(inv.id);
+      if (inv.status === 'confirmed' && Array.isArray(inv.editHistory)) {
+        for (const ed of inv.editHistory) {
+          const matchingMv = invMvs.find(
+            (m) => (m.type === 'sale_edit' || m.type === 'purchase_edit') && m.createdAt === ed.editedAt
+          );
+          if (!matchingMv && (!filterWh || inv.warehouseId === filterWh)) {
+            const isSales = inv.type === 'sales';
+            const edIt = (ed.after?.items || []).find((x) => x.productId === productId) || (ed.before?.items || []).find((x) => x.productId === productId);
+            events.push({
+              id: `LC-IEDT-${inv.id}-${ed.id}`,
+              sortTime: ed.editedAt || inv.updatedAt || inv.createdAt,
+              date: isoDateOnly(ed.editedAt || inv.date),
+              actualDateTime: formatActualDateTimeAr(ed.editedAt, inv.date),
+              eventType: isSales ? 'sale_edit' : 'purchase_edit',
+              eventLabel: isSales ? 'تعديل فاتورة مبيعات' : 'تعديل فاتورة مشتريات',
+              docType: isSales ? 'sales_invoice' : 'purchase_invoice',
+              docId: inv.id,
+              docNumber: inv.invoiceNumber,
+              warehouseName: ed.after?.warehouseName || inv.warehouseName,
+              partyName: isSales ? (inv.customerName || 'عميل نقدي') : (ed.after?.supplierName || inv.supplierName || 'مورد نقدي'),
+              unit: edIt?.unit || prod.baseUnit,
+              qty: Number(edIt?.quantity || 0),
+              qtyIn: 0,
+              qtyOut: 0,
+              unitPrice: round2(edIt?.unitPrice || 0),
+              unitCost: round2(edIt?.purchasePriceAtTime || prod.purchasePrice || 0),
+              totalValue: round2(edIt?.total || 0),
+              userName: ed.editedBy || inv.editedBy || inv.createdBy,
+              notes: ed.reason ? `تعديل الفاتورة - ${ed.reason}` : 'تعديل أسعار/بيانات الفاتورة',
+            });
+          }
+        }
+      }
+      continue;
+    }
+    if (inv.status !== 'confirmed') continue;
     if (filterWh && inv.warehouseId !== filterWh) continue;
     for (let idx = 0; idx < (inv.items || []).length; idx++) {
       const it = inv.items[idx];
@@ -2000,20 +2049,38 @@ function buildProductLifecycleHistory(productId, data, resolvers, filterOpts = {
     });
   }
 
-  // 5. Stock Movements (opening, transfer_in/out, adjustment, damaged, stock_count)
+  // 5. Stock Movements (opening, transfer_in/out, adjustment, damaged, stock_count, and movement-driven invoice create/edit/cancel events)
   for (const sm of data.stockMovements || []) {
     if (sm.productId !== productId) continue;
     if (sm.referenceId && handledDocRefs.has(sm.referenceId)) continue;
-    if (['sale', 'purchase', 'sales_return', 'purchase_return', 'custody_delivery', 'custody_return', 'sale_edit', 'purchase_edit', 'sale_cancel', 'purchase_cancel'].includes(sm.type)) {
+    const isInvAuditMovement = ['sale', 'purchase', 'sale_edit', 'purchase_edit', 'sale_cancel', 'purchase_cancel'].includes(sm.type);
+    if (isInvAuditMovement) {
+      if (!sm.referenceId || !movementDrivenInvoiceIds.has(sm.referenceId)) continue;
+    } else if (['sales_return', 'purchase_return', 'custody_delivery', 'custody_return'].includes(sm.type)) {
       continue;
     }
     if (filterWh && sm.warehouseId !== filterWh) continue;
 
     const bQty = Number(sm.quantity || 0);
-    const isIn = ['opening', 'opening_balance', 'transfer_in', 'custody_in'].includes(sm.type) ||
-      (sm.type === 'adjustment' && String(sm.notes || '').includes('+'));
-    const isOut = ['transfer_out', 'damaged', 'custody_out'].includes(sm.type) ||
-      (sm.type === 'adjustment' && !String(sm.notes || '').includes('+'));
+    let qtyIn = 0;
+    let qtyOut = 0;
+    if (isInvAuditMovement) {
+      let signedDelta;
+      if (sm.balanceBefore !== undefined && sm.balanceBefore !== null && sm.balanceAfter !== undefined && sm.balanceAfter !== null) {
+        signedDelta = round3(Number(sm.balanceAfter) - Number(sm.balanceBefore));
+      } else {
+        signedDelta = sm.type === 'purchase' || sm.type === 'sale_cancel' ? bQty : -bQty;
+      }
+      qtyIn = signedDelta > 0 ? signedDelta : 0;
+      qtyOut = signedDelta < 0 ? Math.abs(signedDelta) : 0;
+    } else {
+      const isIn = ['opening', 'opening_balance', 'transfer_in', 'custody_in'].includes(sm.type) ||
+        (sm.type === 'adjustment' && String(sm.notes || '').includes('+'));
+      const isOut = ['transfer_out', 'damaged', 'custody_out'].includes(sm.type) ||
+        (sm.type === 'adjustment' && !String(sm.notes || '').includes('+'));
+      qtyIn = isIn ? bQty : 0;
+      qtyOut = isOut ? bQty : 0;
+    }
 
     const labelMap = {
       opening: 'رصيد افتتاحي',
@@ -2024,7 +2091,18 @@ function buildProductLifecycleHistory(productId, data, resolvers, filterOpts = {
       damaged: 'تالف ومنتهي الصلاحية',
       custody_in: 'استلام عهدة مندوب',
       custody_out: 'صرف عهدة مندوب',
+      sale: 'فاتورة مبيعات',
+      purchase: 'فاتورة مشتريات',
+      sale_edit: 'تعديل فاتورة مبيعات',
+      purchase_edit: 'تعديل فاتورة مشتريات',
+      sale_cancel: 'إلغاء فاتورة مبيعات',
+      purchase_cancel: 'إلغاء فاتورة مشتريات',
     };
+
+    const linkedInv = sm.referenceId ? invoiceMap.get(sm.referenceId) : null;
+    const invPartyName = linkedInv
+      ? (linkedInv.type === 'sales' ? (linkedInv.customerName || 'عميل نقدي') : (linkedInv.supplierName || 'مورد نقدي'))
+      : null;
 
     events.push({
       id: `LC-SM-${sm.id}`,
@@ -2033,15 +2111,15 @@ function buildProductLifecycleHistory(productId, data, resolvers, filterOpts = {
       actualDateTime: formatActualDateTimeAr(sm.createdAt, sm.date),
       eventType: sm.type,
       eventLabel: labelMap[sm.type] || sm.type,
-      docType: sm.type === 'damaged' ? 'damaged_voucher' : 'stock_movement',
+      docType: linkedInv ? (linkedInv.type === 'sales' ? 'sales_invoice' : 'purchase_invoice') : (sm.type === 'damaged' ? 'damaged_voucher' : 'stock_movement'),
       docId: sm.referenceId || sm.id,
       docNumber: sm.referenceNumber || sm.movementNumber || sm.id,
       warehouseName: sm.targetWarehouseName ? `${sm.warehouseName} ← ${sm.targetWarehouseName}` : sm.warehouseName,
-      partyName: sm.targetWarehouseName || '-',
+      partyName: invPartyName || sm.targetWarehouseName || '-',
       unit: sm.unit || prod.baseUnit,
       qty: bQty,
-      qtyIn: isIn ? bQty : 0,
-      qtyOut: isOut ? bQty : 0,
+      qtyIn,
+      qtyOut,
       unitPrice: round2(sm.unitCost || prod.purchasePrice || 0),
       unitCost: round2(sm.unitCost || prod.purchasePrice || 0),
       totalValue: round2(bQty * Number(sm.unitCost || prod.purchasePrice || 0)),
@@ -2296,6 +2374,14 @@ function buildProductsPnlAnalysis(data, filterOpts = {}) {
     if (effectiveWh && ret.warehouseId !== effectiveWh) continue;
     if (userMatchKeys && !userMatchKeys.has(String(ret.createdBy || '').toLowerCase())) continue;
     const origInv = ret.originalInvoiceId ? invoiceMap.get(ret.originalInvoiceId) : null;
+    if (ret.type === 'sales_return' && customerId) {
+      const retCustomerId = origInv?.customerId || ret.partyId;
+      if (retCustomerId !== customerId) continue;
+    }
+    if (ret.type === 'purchase_return' && supplierId) {
+      const retSupplierId = origInv?.supplierId || ret.partyId;
+      if (retSupplierId !== supplierId) continue;
+    }
     for (const it of ret.items || []) {
       if (productId && it.productId !== productId) continue;
       const prod = productMap.get(it.productId);
@@ -2319,6 +2405,7 @@ function buildProductsPnlAnalysis(data, filterOpts = {}) {
 
   // 3. Damaged Stock & Inventory Shortage Losses
   for (const sm of data.stockMovements || []) {
+    if (customerId || supplierId) continue;
     if (!inPeriod(sm.date)) continue;
     if (effectiveWh && sm.warehouseId !== effectiveWh) continue;
     if (productId && sm.productId !== productId) continue;
@@ -2461,8 +2548,16 @@ export async function getSourceDocumentForReport(docType, docId, actor) {
   const cleanType = String(docType || '').trim();
   const cleanId = String(docId || '').trim();
 
-  if (cleanType === 'sales_invoice' || cleanType === 'purchase_invoice' || cleanType === 'sales' || cleanType === 'purchase') {
-    const inv = (data.invoices || []).find((i) => i.id === cleanId || i.invoiceNumber === cleanId);
+  if (
+    ['sales_invoice', 'purchase_invoice', 'sales', 'purchase', 'sale_edit', 'purchase_edit', 'sale_cancel', 'purchase_cancel'].includes(cleanType)
+  ) {
+    let inv = (data.invoices || []).find((i) => i.id === cleanId || i.invoiceNumber === cleanId);
+    if (!inv) {
+      const smMatch = (data.stockMovements || []).find((m) => m.id === cleanId || m.referenceId === cleanId);
+      if (smMatch?.referenceId) {
+        inv = (data.invoices || []).find((i) => i.id === smMatch.referenceId) || null;
+      }
+    }
     if (!inv) return null;
     const relatedAudits = (data.auditLogs || []).filter((a) => a.recordId === inv.id);
     return {
@@ -2573,6 +2668,20 @@ export async function getSourceDocumentForReport(docType, docId, actor) {
 
   const sm = (data.stockMovements || []).find((m) => m.id === cleanId || m.referenceId === cleanId);
   if (sm) {
+    const linkedInv = sm.referenceId ? (data.invoices || []).find((i) => i.id === sm.referenceId) : null;
+    if (linkedInv) {
+      return {
+        docType: linkedInv.type === 'sales' ? 'sales_invoice' : 'purchase_invoice',
+        title: linkedInv.type === 'sales' ? `فاتورة مبيعات رقم ${linkedInv.invoiceNumber}` : `فاتورة مشتريات رقم ${linkedInv.invoiceNumber}`,
+        document: {
+          ...linkedInv,
+          branchName: resolveBranchName(linkedInv.warehouseId, linkedInv.cashboxId),
+          cashboxName: resolveCashboxName(linkedInv.cashboxId),
+          actualDateTime: formatActualDateTimeAr(linkedInv.createdAt, linkedInv.date),
+        },
+        auditTrail: (data.auditLogs || []).filter((a) => a.recordId === linkedInv.id),
+      };
+    }
     return {
       docType: 'stock_movement',
       title: `حركة مخزون ${sm.movementNumber || sm.id}`,

@@ -77,6 +77,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const result = await registerMobileAccount(req.body || {}, {
       deviceId: req.get('x-device-id') || req.body?.deviceId || '',
+      idempotencyKey: req.get('idempotency-key') || req.body?.idempotencyKey || req.body?.operationId || '',
       ipAddress: getClientIp(req),
       deviceInfo: req.get('user-agent') || '',
     });

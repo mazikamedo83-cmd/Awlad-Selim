@@ -28,6 +28,20 @@ import {
   mapPgCustomerRow,
   isoTimestamp,
 } from './mode.js';
+import {
+  buildScopedIdemKey,
+  findPgIdempotency,
+  savePgIdempotency,
+  findJsonIdempotency,
+  saveJsonIdempotency,
+} from '../../utils/idempotency.js';
+
+const CUSTOMER_PHONE_CONFLICT_MARKER = '[LINK_CONFLICT:CUSTOMER_PHONE]';
+const CUSTOMER_PHONE_CONFLICT_WARNING =
+  'يوجد تعارض على رقم الهاتف في دليل العملاء (الرقم مسجل مسبقًا لحساب آخر أو متكرر). تم تفعيل حسابك دون ربط تلقائي لحين مراجعة الإدارة.';
+const REP_PHONE_CONFLICT_MARKER = '[LINK_CONFLICT:REP_PHONE]';
+const REP_PHONE_CONFLICT_WARNING =
+  'يوجد تعارض على رقم الهاتف في سجل المناديب (الرقم مسجل مسبقًا لحساب آخر أو متكرر). تم تفعيل حسابك دون ربط تلقائي لحين مراجعة الإدارة.';
 
 const ACCESS_TOKEN_TTL_SEC = 900; // 15 minutes
 const REFRESH_TOKEN_TTL_DAYS = 30;
@@ -346,6 +360,8 @@ async function resolveLinkedProfilesPg(clientOrPool, user) {
     const custRes = await clientOrPool.query('SELECT * FROM customers WHERE user_id = $1 LIMIT 1', [user.id]);
     if (custRes.rows[0]) {
       customerProfile = mapPgCustomerRow(custRes.rows[0]);
+    } else if (String(user.notes || '').includes(CUSTOMER_PHONE_CONFLICT_MARKER)) {
+      linkWarning = CUSTOMER_PHONE_CONFLICT_WARNING;
     } else {
       linkWarning = 'حساب العميل غير مربوط بملف عميل في الدليل. يرجى التواصل مع الإدارة لإتمام الربط.';
     }
@@ -362,6 +378,10 @@ async function resolveLinkedProfilesPg(clientOrPool, user) {
         currentBalance: Number(r.current_balance || 0),
         status: r.status || 'active',
       };
+    } else if (String(user.notes || '').includes(REP_PHONE_CONFLICT_MARKER)) {
+      linkWarning = REP_PHONE_CONFLICT_WARNING;
+    } else {
+      linkWarning = 'حساب المندوب غير مربوط بملف مندوب مسجل. يرجى التواصل مع الإدارة لإتمام الربط.';
     }
   }
 
@@ -377,6 +397,8 @@ function resolveLinkedProfilesJson(db, user) {
     const cust = db.customers.find((c) => c.userId === user.id);
     if (cust) {
       customerProfile = cust;
+    } else if (String(user.notes || '').includes(CUSTOMER_PHONE_CONFLICT_MARKER)) {
+      linkWarning = CUSTOMER_PHONE_CONFLICT_WARNING;
     } else {
       linkWarning = 'حساب العميل غير مربوط بملف عميل في الدليل. يرجى التواصل مع الإدارة لإتمام الربط.';
     }
@@ -384,6 +406,10 @@ function resolveLinkedProfilesJson(db, user) {
     const rep = db.representatives.find((r) => r.userId === user.id);
     if (rep) {
       representativeProfile = rep;
+    } else if (String(user.notes || '').includes(REP_PHONE_CONFLICT_MARKER)) {
+      linkWarning = REP_PHONE_CONFLICT_WARNING;
+    } else {
+      linkWarning = 'حساب المندوب غير مربوط بملف مندوب مسجل. يرجى التواصل مع الإدارة لإتمام الربط.';
     }
   }
 
@@ -729,6 +755,12 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
     await checkDeviceAuthGuardInternal(cleanDeviceId);
   }
 
+  const rawIdemKey = String(payload.idempotencyKey || payload.operationId || meta.idempotencyKey || '').trim();
+  const scopedIdem = buildScopedIdemKey('POST /api/auth/register', { id: 'anon' }, rawIdemKey);
+  const normPhone = normalizeRegPhone(phone);
+  const payloadDigest = sha256Hex(`${role}::${cleanUsernameLower}::${normPhone}`);
+  const installationId = await ensureInstallationId();
+
   const passwordHash = await hashPasswordBcrypt(password);
   const userId = generateServerId('USR');
   const sessionId = generateServerId('SES');
@@ -737,141 +769,249 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
   const expiresDate = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 86400 * 1000).toISOString();
   const now = nowIso();
   const permissions = role === 'customer' ? { ...CUSTOMER_DEFAULT_PERMISSIONS } : { ...REP_SELF_REG_PERMISSIONS };
-  const normPhone = normalizeRegPhone(phone);
 
   if (await isPgMode()) {
-    const result = await withTransaction(async (client) => {
-      const dupUser = await client.query(`SELECT id FROM users WHERE LOWER(username) = $1 LIMIT 1`, [cleanUsernameLower]);
-      if (dupUser.rows[0]) {
-        throw new AppError(409, 'اسم المستخدم مسجل مسبقًا، يرجى اختيار اسم آخر أو تسجيل الدخول', 'DUPLICATE_USERNAME');
-      }
+    const preDup = scopedIdem ? await findPgIdempotency(getPool(), scopedIdem) : null;
+    if (preDup?.response && preDup.payloadDigest === payloadDigest) {
+      return preDup.response;
+    }
 
-      await client.query(
-        `INSERT INTO users (id, full_name, username, password_hash, password_algo, phone, address, notes, role, job_title, department, is_active, must_change_password, permissions, created_at)
-         VALUES ($1,$2,$3,$4,'bcrypt',$5,$6,$7,$8,$9,$10,TRUE,FALSE,$11,$12)`,
-        [
-          userId,
-          fullName,
-          username,
-          passwordHash,
-          phone,
-          address,
-          'حساب مسجل ذاتيًا عبر الموبايل',
-          role,
-          role === 'representative' ? 'مندوب مبيعات' : 'عميل',
-          role === 'representative' ? 'المندوبون' : 'العملاء',
-          JSON.stringify(permissions),
-          now,
-        ]
-      );
+    let result;
+    try {
+      result = await withTransaction(async (client) => {
+        if (scopedIdem) {
+          const txDup = await findPgIdempotency(client, scopedIdem);
+          if (txDup?.response && txDup.payloadDigest === payloadDigest) {
+            return { deduplicated: true, response: txDup.response };
+          }
+        }
 
-      let customerProfile = null;
-      let representativeProfile = null;
+        const dupUser = await client.query(`SELECT id FROM users WHERE LOWER(username) = $1 LIMIT 1`, [cleanUsernameLower]);
+        if (dupUser.rows[0]) {
+          throw new AppError(409, 'اسم المستخدم مسجل مسبقًا، يرجى اختيار اسم آخر أو تسجيل الدخول', 'DUPLICATE_USERNAME');
+        }
 
-      if (role === 'customer') {
-        const custRes = await client.query(`SELECT * FROM customers FOR UPDATE`);
-        const unlinkedMatches = normPhone
-          ? custRes.rows.filter(
-              (c) => !c.user_id && (normalizeRegPhone(c.phone) === normPhone || normalizeRegPhone(c.secondary_phone) === normPhone)
-            )
-          : [];
+        let customerProfile = null;
+        let representativeProfile = null;
+        let linkWarning = null;
+        let conflictReason = null;
+        let userNotes = 'حساب مسجل ذاتيًا عبر الموبايل';
 
-        if (unlinkedMatches.length === 1) {
-          const target = unlinkedMatches[0];
-          await client.query(
-            `UPDATE customers SET user_id = $1, shop_name = $2, address = $3, area = $4, geo_coordinates = $5, updated_at = $6 WHERE id = $7`,
-            [
+        if (role === 'customer') {
+          const custRes = await client.query(`SELECT * FROM customers FOR UPDATE`);
+          const allMatches = normPhone
+            ? custRes.rows.filter(
+                (c) => normalizeRegPhone(c.phone) === normPhone || normalizeRegPhone(c.secondary_phone) === normPhone
+              )
+            : [];
+          const hasAlreadyLinkedMatch = allMatches.some((c) => Boolean(c.user_id));
+
+          if (allMatches.length > 1 || hasAlreadyLinkedMatch) {
+            conflictReason = 'CUSTOMER_PHONE_CONFLICT';
+            linkWarning = CUSTOMER_PHONE_CONFLICT_WARNING;
+            userNotes = `${userNotes} ${CUSTOMER_PHONE_CONFLICT_MARKER}`;
+          }
+        } else {
+          const repRes = await client.query(`SELECT * FROM representatives FOR UPDATE`);
+          const repMatches = normPhone
+            ? repRes.rows.filter((r) => normalizeRegPhone(r.phone) === normPhone)
+            : [];
+          const hasAlreadyLinkedRep = repMatches.some((r) => Boolean(r.user_id));
+
+          if (repMatches.length > 1 || hasAlreadyLinkedRep) {
+            conflictReason = 'REP_PHONE_CONFLICT';
+            linkWarning = REP_PHONE_CONFLICT_WARNING;
+            userNotes = `${userNotes} ${REP_PHONE_CONFLICT_MARKER}`;
+          }
+        }
+
+        await client.query(
+          `INSERT INTO users (id, full_name, username, password_hash, password_algo, phone, address, notes, role, job_title, department, is_active, must_change_password, permissions, created_at)
+           VALUES ($1,$2,$3,$4,'bcrypt',$5,$6,$7,$8,$9,$10,TRUE,FALSE,$11,$12)`,
+          [
+            userId,
+            fullName,
+            username,
+            passwordHash,
+            phone,
+            address,
+            userNotes,
+            role,
+            role === 'representative' ? 'مندوب مبيعات' : 'عميل',
+            role === 'representative' ? 'المندوبون' : 'العملاء',
+            JSON.stringify(permissions),
+            now,
+          ]
+        );
+
+        if (role === 'customer' && !conflictReason) {
+          const custRes = await client.query(`SELECT * FROM customers FOR UPDATE`);
+          const unlinkedMatches = normPhone
+            ? custRes.rows.filter(
+                (c) => !c.user_id && (normalizeRegPhone(c.phone) === normPhone || normalizeRegPhone(c.secondary_phone) === normPhone)
+              )
+            : [];
+
+          if (unlinkedMatches.length === 1) {
+            const target = unlinkedMatches[0];
+            await client.query(
+              `UPDATE customers SET user_id = $1, shop_name = $2, address = $3, area = $4, geo_coordinates = $5, updated_at = $6 WHERE id = $7`,
+              [
+                userId,
+                shopName || target.shop_name || null,
+                address || target.address || '',
+                area || target.area || null,
+                geoCoordinates || target.geo_coordinates || null,
+                now,
+                target.id,
+              ]
+            );
+            const refreshed = await client.query(`SELECT * FROM customers WHERE id = $1 LIMIT 1`, [target.id]);
+            customerProfile = mapPgCustomerRow(refreshed.rows[0]);
+          } else {
+            const custId = generateServerId('CUS');
+            const custCode = `CUS-${String(Date.now()).slice(-5)}-${Math.floor(10 + Math.random() * 89)}`;
+            await client.query(
+              `INSERT INTO customers (id, code, user_id, name, phone, shop_name, address, shop_address, area, geo_coordinates, opening_balance, current_balance, notes, status, created_at, updated_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$7,$8,$9,0,0,'عميل مسجل ذاتيًا عبر التطبيق','active',$10,$10)`,
+              [custId, custCode, userId, fullName, phone, shopName || null, address, area || null, geoCoordinates || null, now]
+            );
+            const refreshed = await client.query(`SELECT * FROM customers WHERE id = $1 LIMIT 1`, [custId]);
+            customerProfile = mapPgCustomerRow(refreshed.rows[0]);
+          }
+        } else if (role === 'representative' && !conflictReason) {
+          const repRes = await client.query(`SELECT * FROM representatives FOR UPDATE`);
+          const unlinkedRepMatches = normPhone
+            ? repRes.rows.filter((r) => !r.user_id && normalizeRegPhone(r.phone) === normPhone)
+            : [];
+
+          if (unlinkedRepMatches.length === 1) {
+            const targetRep = unlinkedRepMatches[0];
+            let targetWhId = targetRep.warehouse_id || null;
+            if (!targetWhId) {
+              targetWhId = generateServerId('WH');
+              const vanCode = `VAN-${String(Date.now()).slice(-4)}-${Math.floor(10 + Math.random() * 89)}`;
+              const vanName = `سيارة المندوب - ${targetRep.name || fullName}`;
+              await client.query(
+                `INSERT INTO warehouses (id, name, code, location, manager_name, phone, is_default, status, created_at)
+                 VALUES ($1,$2,$3,'مخزون سيارة مندوب',$4,$5,FALSE,'active',$6)`,
+                [targetWhId, vanName, vanCode, targetRep.name || fullName, phone, now]
+              );
+            }
+            await client.query(
+              `UPDATE representatives SET user_id = $1, phone = COALESCE(NULLIF($2, ''), phone), vehicle_number = COALESCE(NULLIF($3, ''), vehicle_number), warehouse_id = $4 WHERE id = $5`,
+              [userId, phone, vehicleNumber, targetWhId, targetRep.id]
+            );
+            const refreshedRep = await client.query(`SELECT * FROM representatives WHERE id = $1 LIMIT 1`, [targetRep.id]);
+            const rr = refreshedRep.rows[0];
+            representativeProfile = {
+              id: rr.id,
+              userId: rr.user_id,
+              name: rr.name,
+              phone: rr.phone || '',
+              vehicleNumber: rr.vehicle_number || '',
+              warehouseId: rr.warehouse_id || undefined,
+              currentBalance: Number(rr.current_balance || 0),
+              status: rr.status || 'active',
+            };
+          } else {
+            const vanId = generateServerId('WH');
+            const vanCode = `VAN-${String(Date.now()).slice(-4)}-${Math.floor(10 + Math.random() * 89)}`;
+            const vanName = `سيارة المندوب - ${fullName}`;
+            await client.query(
+              `INSERT INTO warehouses (id, name, code, location, manager_name, phone, is_default, status, created_at)
+               VALUES ($1,$2,$3,'مخزون سيارة مندوب',$4,$5,FALSE,'active',$6)`,
+              [vanId, vanName, vanCode, fullName, phone, now]
+            );
+            const repId = generateServerId('REP');
+            const repCode = `REP-${String(Date.now()).slice(-5)}`;
+            await client.query(
+              `INSERT INTO representatives (id, code, user_id, name, phone, vehicle_number, address, opening_balance, current_balance, commission_rate, warehouse_id, notes, status, created_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,0,0,0,$8,'مندوب مسجل ذاتيًا عبر التطبيق','active',$9)`,
+              [repId, repCode, userId, fullName, phone, vehicleNumber, address, vanId, now]
+            );
+            representativeProfile = {
+              id: repId,
               userId,
-              shopName || target.shop_name || null,
-              address || target.address || '',
-              area || target.area || null,
-              geoCoordinates || target.geo_coordinates || null,
-              now,
-              target.id,
-            ]
-          );
-          const refreshed = await client.query(`SELECT * FROM customers WHERE id = $1 LIMIT 1`, [target.id]);
-          customerProfile = mapPgCustomerRow(refreshed.rows[0]);
-        } else {
-          const custId = generateServerId('CUS');
-          const custCode = `CUS-${String(Date.now()).slice(-5)}-${Math.floor(10 + Math.random() * 89)}`;
-          await client.query(
-            `INSERT INTO customers (id, code, user_id, name, phone, shop_name, address, shop_address, area, geo_coordinates, opening_balance, current_balance, notes, status, created_at, updated_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$7,$8,$9,0,0,'عميل مسجل ذاتيًا عبر التطبيق','active',$10,$10)`,
-            [custId, custCode, userId, fullName, phone, shopName || null, address, area || null, geoCoordinates || null, now]
-          );
-          const refreshed = await client.query(`SELECT * FROM customers WHERE id = $1 LIMIT 1`, [custId]);
-          customerProfile = mapPgCustomerRow(refreshed.rows[0]);
+              name: fullName,
+              phone,
+              vehicleNumber,
+              warehouseId: vanId,
+              currentBalance: 0,
+              status: 'active',
+            };
+          }
         }
-      } else {
-        const vanId = generateServerId('WH');
-        const vanCode = `VAN-${String(Date.now()).slice(-4)}-${Math.floor(10 + Math.random() * 89)}`;
-        const vanName = `سيارة المندوب - ${fullName}`;
+
         await client.query(
-          `INSERT INTO warehouses (id, name, code, location, manager_name, phone, is_default, status, created_at)
-           VALUES ($1,$2,$3,'مخزون سيارة مندوب',$4,$5,FALSE,'active',$6)`,
-          [vanId, vanName, vanCode, fullName, phone, now]
+          `INSERT INTO user_sessions (id, user_id, refresh_token_hash, device_info, device_id, ip_address, expires_at, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [sessionId, userId, refreshHash, meta.deviceInfo || '', cleanDeviceId || null, meta.ipAddress || '', expiresDate, now]
         );
-        const repId = generateServerId('REP');
-        const repCode = `REP-${String(Date.now()).slice(-5)}`;
-        await client.query(
-          `INSERT INTO representatives (id, code, user_id, name, phone, vehicle_number, address, opening_balance, current_balance, commission_rate, warehouse_id, notes, status, created_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,0,0,0,$8,'مندوب مسجل ذاتيًا عبر التطبيق','active',$9)`,
-          [repId, repCode, userId, fullName, phone, vehicleNumber, address, vanId, now]
+
+        if (cleanDeviceId) {
+          const devRes = await client.query(`SELECT device_id FROM paired_devices WHERE device_id = $1 LIMIT 1`, [cleanDeviceId]);
+          if (devRes.rows[0]) {
+            await client.query(
+              `UPDATE paired_devices SET linked_user_id = $1, linked_user_name = $2, last_seen_at = $3 WHERE device_id = $4`,
+              [userId, fullName, now, cleanDeviceId]
+            );
+          } else {
+            const inferredType =
+              payload.deviceType || (/iphone|ipad/i.test(meta.deviceInfo || '') ? 'ios' : /android/i.test(meta.deviceInfo || '') ? 'android' : 'web');
+            await client.query(
+              `INSERT INTO paired_devices (device_id, device_name, device_type, linked_user_id, linked_user_name, connection_mode, server_url_used, ip_address, status, paired_at, last_seen_at)
+               VALUES ($1,$2,$3,$4,$5,'local_network',$6,$7,'active',$8,$8)`,
+              [cleanDeviceId, payload.deviceName || `${fullName} (${inferredType})`, inferredType, userId, fullName, payload.serverUrlUsed || '', meta.ipAddress || '', now]
+            );
+          }
+        }
+
+        const uRes = await client.query(`SELECT * FROM users WHERE id = $1 LIMIT 1`, [userId]);
+        const mappedUser = mapPgUserRow(uRes.rows[0]);
+        const accessToken = signJwt(
+          {
+            sub: mappedUser.id,
+            role: mappedUser.role,
+            sid: sessionId,
+            did: cleanDeviceId || null,
+            iid: installationId,
+            cid: customerProfile?.id || null,
+            rid: representativeProfile?.id || null,
+          },
+          ACCESS_TOKEN_TTL_SEC
         );
-        representativeProfile = {
-          id: repId,
-          userId,
-          name: fullName,
-          phone,
-          vehicleNumber,
-          warehouseId: vanId,
-          currentBalance: 0,
-          status: 'active',
+        const response = {
+          installationId,
+          accessToken,
+          refreshToken,
+          expiresIn: ACCESS_TOKEN_TTL_SEC,
+          user: sanitizeUser(mappedUser),
+          customerProfile,
+          representativeProfile,
+          linkWarning,
         };
-      }
-
-      await client.query(
-        `INSERT INTO user_sessions (id, user_id, refresh_token_hash, device_info, device_id, ip_address, expires_at, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [sessionId, userId, refreshHash, meta.deviceInfo || '', cleanDeviceId || null, meta.ipAddress || '', expiresDate, now]
-      );
-
-      if (cleanDeviceId) {
-        const devRes = await client.query(`SELECT device_id FROM paired_devices WHERE device_id = $1 LIMIT 1`, [cleanDeviceId]);
-        if (devRes.rows[0]) {
-          await client.query(
-            `UPDATE paired_devices SET linked_user_id = $1, linked_user_name = $2, last_seen_at = $3 WHERE device_id = $4`,
-            [userId, fullName, now, cleanDeviceId]
-          );
-        } else {
-          const inferredType =
-            payload.deviceType || (/iphone|ipad/i.test(meta.deviceInfo || '') ? 'ios' : /android/i.test(meta.deviceInfo || '') ? 'android' : 'web');
-          await client.query(
-            `INSERT INTO paired_devices (device_id, device_name, device_type, linked_user_id, linked_user_name, connection_mode, server_url_used, ip_address, status, paired_at, last_seen_at)
-             VALUES ($1,$2,$3,$4,$5,'local_network',$6,$7,'active',$8,$8)`,
-            [cleanDeviceId, payload.deviceName || `${fullName} (${inferredType})`, inferredType, userId, fullName, payload.serverUrlUsed || '', meta.ipAddress || '', now]
-          );
+        if (scopedIdem) {
+          await savePgIdempotency(client, scopedIdem, { id: mappedUser.id }, 'POST /api/auth/register', {
+            payloadDigest,
+            response,
+          });
+        }
+        return { deduplicated: false, user: mappedUser, conflictReason, linkWarning, response };
+      });
+    } catch (err) {
+      if (scopedIdem && (err?.code === 'DUPLICATE_USERNAME' || err?.code === '23505')) {
+        const racedDup = await findPgIdempotency(getPool(), scopedIdem);
+        if (racedDup?.response && racedDup.payloadDigest === payloadDigest) {
+          return racedDup.response;
         }
       }
+      throw err;
+    }
 
-      const uRes = await client.query(`SELECT * FROM users WHERE id = $1 LIMIT 1`, [userId]);
-      return { user: mapPgUserRow(uRes.rows[0]), customerProfile, representativeProfile };
-    });
-
-    const installationId = await ensureInstallationId();
-    const accessToken = signJwt(
-      {
-        sub: result.user.id,
-        role: result.user.role,
-        sid: sessionId,
-        did: cleanDeviceId || null,
-        iid: installationId,
-        cid: result.customerProfile?.id || null,
-        rid: result.representativeProfile?.id || null,
-      },
-      ACCESS_TOKEN_TTL_SEC
-    );
+    if (result.deduplicated) {
+      return result.response;
+    }
 
     await recordAuditLog({
       userId: result.user.id,
@@ -883,22 +1023,66 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
       deviceInfo: meta.deviceInfo,
     });
 
-    return {
-      installationId,
-      accessToken,
-      refreshToken,
-      expiresIn: ACCESS_TOKEN_TTL_SEC,
-      user: sanitizeUser(result.user),
-      customerProfile: result.customerProfile,
-      representativeProfile: result.representativeProfile,
-      linkWarning: null,
-    };
+    if (result.conflictReason) {
+      await recordAuditLog({
+        userId: result.user.id,
+        userName: result.user.fullName,
+        action:
+          result.conflictReason === 'REP_PHONE_CONFLICT'
+            ? `رصد تعارض رقم هاتف مندوب عند التسجيل الذاتي (${phone})`
+            : `رصد تعارض رقم هاتف عميل عند التسجيل الذاتي (${phone})`,
+        module: 'المصادقة',
+        recordId: result.user.id,
+        notes: result.linkWarning || '',
+        ipAddress: meta.ipAddress,
+        deviceInfo: meta.deviceInfo,
+      });
+    }
+
+    return result.response;
   }
 
   // JSON Ledger mode
   const found = await withJsonTransaction(async (db) => {
+    if (scopedIdem) {
+      const dup = findJsonIdempotency(scopedIdem);
+      if (dup?.response && dup.payloadDigest === payloadDigest) {
+        return { deduplicated: true, response: dup.response };
+      }
+    }
+
     if ((db.users || []).some((u) => String(u.username || '').toLowerCase() === cleanUsernameLower)) {
       throw new AppError(409, 'اسم المستخدم مسجل مسبقًا، يرجى اختيار اسم آخر أو تسجيل الدخول', 'DUPLICATE_USERNAME');
+    }
+
+    let customerProfile = null;
+    let representativeProfile = null;
+    let linkWarning = null;
+    let conflictReason = null;
+    let userNotes = 'حساب مسجل ذاتيًا عبر الموبايل';
+
+    if (role === 'customer') {
+      const allMatches = normPhone
+        ? (db.customers || []).filter(
+            (c) => normalizeRegPhone(c.phone) === normPhone || normalizeRegPhone(c.secondaryPhone) === normPhone
+          )
+        : [];
+      const hasAlreadyLinkedMatch = allMatches.some((c) => Boolean(c.userId));
+      if (allMatches.length > 1 || hasAlreadyLinkedMatch) {
+        conflictReason = 'CUSTOMER_PHONE_CONFLICT';
+        linkWarning = CUSTOMER_PHONE_CONFLICT_WARNING;
+        userNotes = `${userNotes} ${CUSTOMER_PHONE_CONFLICT_MARKER}`;
+      }
+    } else {
+      const repMatches = normPhone
+        ? (db.representatives || []).filter((r) => normalizeRegPhone(r.phone) === normPhone)
+        : [];
+      const hasAlreadyLinkedRep = repMatches.some((r) => Boolean(r.userId));
+      if (repMatches.length > 1 || hasAlreadyLinkedRep) {
+        conflictReason = 'REP_PHONE_CONFLICT';
+        linkWarning = REP_PHONE_CONFLICT_WARNING;
+        userNotes = `${userNotes} ${REP_PHONE_CONFLICT_MARKER}`;
+      }
     }
 
     const newUser = {
@@ -909,7 +1093,7 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
       passwordAlgo: 'bcrypt',
       phone,
       address,
-      notes: 'حساب مسجل ذاتيًا عبر الموبايل',
+      notes: userNotes,
       role,
       jobTitle: role === 'representative' ? 'مندوب مبيعات' : 'عميل',
       department: role === 'representative' ? 'المندوبون' : 'العملاء',
@@ -921,10 +1105,7 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
     };
     db.users.push(newUser);
 
-    let customerProfile = null;
-    let representativeProfile = null;
-
-    if (role === 'customer') {
+    if (role === 'customer' && !conflictReason) {
       const unlinkedMatches = normPhone
         ? (db.customers || []).filter(
             (c) => !c.userId && (normalizeRegPhone(c.phone) === normPhone || normalizeRegPhone(c.secondaryPhone) === normPhone)
@@ -962,35 +1143,62 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
         };
         db.customers.unshift(customerProfile);
       }
-    } else {
-      const vanId = generateServerId('WH');
-      const vanCode = `VAN-${String(Date.now()).slice(-4)}-${Math.floor(10 + Math.random() * 89)}`;
-      const vanName = `سيارة المندوب - ${fullName}`;
-      db.warehouses.push({
-        id: vanId,
-        name: vanName,
-        code: vanCode,
-        location: 'مخزون سيارة مندوب',
-        managerName: fullName,
-        phone,
-        isDefault: false,
-        status: 'active',
-      });
-      const repId = generateServerId('REP');
-      representativeProfile = {
-        id: repId,
-        userId,
-        name: fullName,
-        phone,
-        vehicleNumber,
-        warehouseId: vanId,
-        openingBalance: 0,
-        currentBalance: 0,
-        commissionRate: 0,
-        notes: 'مندوب مسجل ذاتيًا عبر التطبيق',
-        status: 'active',
-      };
-      db.representatives.unshift(representativeProfile);
+    } else if (role === 'representative' && !conflictReason) {
+      const unlinkedRepMatches = normPhone
+        ? (db.representatives || []).filter((r) => !r.userId && normalizeRegPhone(r.phone) === normPhone)
+        : [];
+      if (unlinkedRepMatches.length === 1) {
+        const targetRep = unlinkedRepMatches[0];
+        if (!targetRep.warehouseId) {
+          const vanId = generateServerId('WH');
+          const vanCode = `VAN-${String(Date.now()).slice(-4)}-${Math.floor(10 + Math.random() * 89)}`;
+          const vanName = `سيارة المندوب - ${targetRep.name || fullName}`;
+          db.warehouses.push({
+            id: vanId,
+            name: vanName,
+            code: vanCode,
+            location: 'مخزون سيارة مندوب',
+            managerName: targetRep.name || fullName,
+            phone,
+            isDefault: false,
+            status: 'active',
+          });
+          targetRep.warehouseId = vanId;
+        }
+        targetRep.userId = userId;
+        if (!targetRep.phone && phone) targetRep.phone = phone;
+        if (!targetRep.vehicleNumber && vehicleNumber) targetRep.vehicleNumber = vehicleNumber;
+        representativeProfile = targetRep;
+      } else {
+        const vanId = generateServerId('WH');
+        const vanCode = `VAN-${String(Date.now()).slice(-4)}-${Math.floor(10 + Math.random() * 89)}`;
+        const vanName = `سيارة المندوب - ${fullName}`;
+        db.warehouses.push({
+          id: vanId,
+          name: vanName,
+          code: vanCode,
+          location: 'مخزون سيارة مندوب',
+          managerName: fullName,
+          phone,
+          isDefault: false,
+          status: 'active',
+        });
+        const repId = generateServerId('REP');
+        representativeProfile = {
+          id: repId,
+          userId,
+          name: fullName,
+          phone,
+          vehicleNumber,
+          warehouseId: vanId,
+          openingBalance: 0,
+          currentBalance: 0,
+          commissionRate: 0,
+          notes: 'مندوب مسجل ذاتيًا عبر التطبيق',
+          status: 'active',
+        };
+        db.representatives.unshift(representativeProfile);
+      }
     }
 
     if (cleanDeviceId) {
@@ -1020,15 +1228,10 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
       }
     }
 
-    return { user: newUser, customerProfile, representativeProfile };
-  });
-
-  const installationId = await ensureInstallationId();
-  await withJsonMutex(() => {
     const sessions = readJsonSessions().filter((s) => !s.revokedAt && new Date(s.expiresAt).getTime() > Date.now());
     sessions.push({
       id: sessionId,
-      userId: found.user.id,
+      userId: newUser.id,
       installationId,
       refreshTokenHash: refreshHash,
       deviceInfo: meta.deviceInfo || '',
@@ -1039,20 +1242,40 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
       createdAt: now,
     });
     writeJsonSessions(sessions);
+
+    const accessToken = signJwt(
+      {
+        sub: newUser.id,
+        role: newUser.role,
+        sid: sessionId,
+        did: cleanDeviceId || null,
+        iid: installationId,
+        cid: customerProfile?.id || null,
+        rid: representativeProfile?.id || null,
+      },
+      ACCESS_TOKEN_TTL_SEC
+    );
+    const response = {
+      installationId,
+      accessToken,
+      refreshToken,
+      expiresIn: ACCESS_TOKEN_TTL_SEC,
+      user: sanitizeUser(newUser),
+      customerProfile,
+      representativeProfile,
+      linkWarning,
+    };
+
+    if (scopedIdem) {
+      saveJsonIdempotency(scopedIdem, { payloadDigest, response });
+    }
+
+    return { deduplicated: false, user: newUser, conflictReason, linkWarning, response };
   });
 
-  const accessToken = signJwt(
-    {
-      sub: found.user.id,
-      role: found.user.role,
-      sid: sessionId,
-      did: cleanDeviceId || null,
-      iid: installationId,
-      cid: found.customerProfile?.id || null,
-      rid: found.representativeProfile?.id || null,
-    },
-    ACCESS_TOKEN_TTL_SEC
-  );
+  if (found.deduplicated) {
+    return found.response;
+  }
 
   await recordAuditLog({
     userId: found.user.id,
@@ -1064,16 +1287,23 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
     deviceInfo: meta.deviceInfo,
   });
 
-  return {
-    installationId,
-    accessToken,
-    refreshToken,
-    expiresIn: ACCESS_TOKEN_TTL_SEC,
-    user: sanitizeUser(found.user),
-    customerProfile: found.customerProfile,
-    representativeProfile: found.representativeProfile,
-    linkWarning: null,
-  };
+  if (found.conflictReason) {
+    await recordAuditLog({
+      userId: found.user.id,
+      userName: found.user.fullName,
+      action:
+        found.conflictReason === 'REP_PHONE_CONFLICT'
+          ? `رصد تعارض رقم هاتف مندوب عند التسجيل الذاتي (${phone})`
+          : `رصد تعارض رقم هاتف عميل عند التسجيل الذاتي (${phone})`,
+      module: 'المصادقة',
+      recordId: found.user.id,
+      notes: found.linkWarning || '',
+      ipAddress: meta.ipAddress,
+      deviceInfo: meta.deviceInfo,
+    });
+  }
+
+  return found.response;
 }
 
 export async function refreshUserSession({ refreshToken, deviceId = '', deviceInfo = '', ipAddress = '' }) {
