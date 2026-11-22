@@ -71,6 +71,7 @@ jobs:
           node server/tests/verifyElectronBootstrap.mjs
           node server/tests/securityCompletionTests.mjs
           npx tsx server/tests/clientSecurityCompletionTests.mts
+          node server/tests/fullCompletionSuite.mjs
 
       - name: Verify schema, concurrent bootstrap/register & store roundtrip against real PostgreSQL 16
         env:

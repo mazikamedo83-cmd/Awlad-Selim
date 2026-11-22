@@ -7,6 +7,7 @@ import {
   todayIso,
   round2,
   sanitizeProductForCustomer,
+  sanitizeProductForRepresentative,
   sanitizeUser,
 } from '../../utils/errors.js';
 import {
@@ -171,7 +172,7 @@ export async function getSystemSettingsSafe() {
   };
 }
 
-export async function listCustomers({ forRepId = null } = {}) {
+export async function listCustomers() {
   let rows;
   if (await isPgMode()) {
     const pool = getPool();
@@ -182,9 +183,6 @@ export async function listCustomers({ forRepId = null } = {}) {
     rows = [...db.customers]
       .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
       .map(normalizeCustomerRecordShape);
-  }
-  if (forRepId) {
-    return rows.filter((c) => isCustomerAllowedForRep(c, forRepId));
   }
   return rows;
 }
@@ -398,10 +396,6 @@ export async function updateCustomer(customerId, updates, actor) {
       if (!existing.rows[0]) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
       const cur = mapPgCustomerRow(existing.rows[0]);
 
-      if (isRepActor && !isCustomerAllowedForRep(cur, repActor.id)) {
-        throw new AppError(403, 'غير مصرح لك بتعديل بيانات عميل غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
-      }
-
       const nextUserId = isRepActor
         ? (cur.userId || null)
         : (updates.userId !== undefined ? (updates.userId || null) : (cur.userId || null));
@@ -471,9 +465,6 @@ export async function updateCustomer(customerId, updates, actor) {
     const idx = db.customers.findIndex((c) => c.id === customerId);
     if (idx === -1) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
     const cur = normalizeCustomerRecordShape(db.customers[idx]);
-    if (isRepActor && !isCustomerAllowedForRep(cur, repActor.id)) {
-      throw new AppError(403, 'غير مصرح لك بتعديل بيانات عميل غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
-    }
     if (!isRepActor && updates.userId && updates.userId !== cur.userId && db.customers.some((c) => c.userId === updates.userId && c.id !== customerId)) {
       throw new AppError(409, 'حساب المستخدم المختار مرتبط بعميل آخر', 'USER_ALREADY_LINKED');
     }
@@ -695,17 +686,11 @@ export async function updateOwnCustomerProfile(userId, customerId, updates = {},
 }
 
 export async function deleteCustomer(customerId, actor) {
-  const isRepActor = actor?.role === 'representative';
-  const repActor = isRepActor ? await getRepresentativeByUserId(actor.id) : null;
-
   if (await isPgMode()) {
     const deleted = await withTransaction(async (client) => {
       const existing = await client.query('SELECT * FROM customers WHERE id = $1 FOR UPDATE', [customerId]);
       if (!existing.rows[0]) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
       const cur = mapPgCustomerRow(existing.rows[0]);
-      if (isRepActor && (!repActor || !isCustomerAllowedForRep(cur, repActor.id))) {
-        throw new AppError(403, 'غير مصرح لك بحذف عميل غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
-      }
       if (Math.abs(cur.currentBalance) > 0.001) {
         throw new AppError(409, 'لا يمكن حذف عميل عليه رصيد مالي غير مسوّى', 'CUSTOMER_HAS_BALANCE');
       }
@@ -741,9 +726,6 @@ export async function deleteCustomer(customerId, actor) {
   const deleted = await withJsonTransaction(async (db) => {
     const cur = db.customers.find((c) => c.id === customerId);
     if (!cur) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
-    if (isRepActor && (!repActor || !isCustomerAllowedForRep(cur, repActor.id))) {
-      throw new AppError(403, 'غير مصرح لك بحذف عميل غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
-    }
     if (Math.abs(Number(cur.currentBalance || 0)) > 0.001) {
       throw new AppError(409, 'لا يمكن حذف عميل عليه رصيد مالي غير مسوّى', 'CUSTOMER_HAS_BALANCE');
     }
@@ -1492,7 +1474,7 @@ export async function checkProductDuplicate(candidate = {}) {
   return findProductDuplicateMatchInList(products, candidate);
 }
 
-export async function listProducts({ forCustomer = false, allowCustomerPriceView = true } = {}) {
+export async function listProducts({ forCustomer = false, forRepresentative = false, allowCustomerPriceView = true } = {}) {
   let products = [];
   if (await isPgMode()) {
     const pool = getPool();
@@ -1511,6 +1493,9 @@ export async function listProducts({ forCustomer = false, allowCustomerPriceView
 
   if (forCustomer) {
     return products.filter((p) => p.status === 'active').map((p) => sanitizeProductForCustomer(p, allowCustomerPriceView));
+  }
+  if (forRepresentative) {
+    return products.map(sanitizeProductForRepresentative);
   }
   return products;
 }

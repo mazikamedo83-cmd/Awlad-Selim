@@ -12,7 +12,16 @@ import {
   nextJsonSequence,
 } from '../jsonLedger.js';
 import { hashPasswordBcrypt, generateServerId } from '../../utils/crypto.js';
-import { AppError, nowIso, todayIso, round2, round3, sanitizeUser } from '../../utils/errors.js';
+import {
+  AppError,
+  nowIso,
+  todayIso,
+  round2,
+  round3,
+  sanitizeUser,
+  sanitizeProductForRepresentative,
+  sanitizeInvoiceForRepresentative,
+} from '../../utils/errors.js';
 import {
   buildScopedIdemKey,
   findPgIdempotency,
@@ -44,7 +53,6 @@ import {
   listCategories,
   listProducts,
   getRepresentativeByUserId,
-  isCustomerAllowedForRep,
   getSystemSettingsSafe,
   normalizePhoneDigits,
   normalizeCustomerRecordShape,
@@ -143,8 +151,8 @@ export async function getStaffBootstrapData(actor) {
       isAdminOrUserMgr ? pool.query('SELECT * FROM users ORDER BY created_at DESC') : Promise.resolve({ rows: [] }),
       pool.query('SELECT * FROM warehouses ORDER BY created_at ASC'),
       listCategories(),
-      listProducts({ forCustomer: false }),
-      isRep ? (repProfile ? listCustomers({ forRepId: repProfile.id }) : Promise.resolve([])) : listCustomers(),
+      listProducts({ forCustomer: false, forRepresentative: isRep }),
+      listCustomers(),
       canViewSuppliers ? pool.query('SELECT * FROM suppliers ORDER BY created_at DESC') : Promise.resolve({ rows: [] }),
       listInvoices(actor),
       pool.query('SELECT * FROM invoice_returns ORDER BY created_at DESC'),
@@ -543,7 +551,7 @@ export async function getStaffBootstrapData(actor) {
           quantity: Number(sm.quantity || 0),
           unit: sm.unit || '',
           unitFactor: Number(sm.unit_factor || 1),
-          unitCost: Number(sm.unit_cost || 0),
+          unitCost: isRep ? 0 : Number(sm.unit_cost || 0),
           balanceBefore: sm.balance_before !== null && sm.balance_before !== undefined ? Number(sm.balance_before) : undefined,
           balanceAfter: sm.balance_after !== null && sm.balance_after !== undefined ? Number(sm.balance_after) : undefined,
           relatedDocType: sm.related_doc_type || undefined,
@@ -601,19 +609,19 @@ export async function getStaffBootstrapData(actor) {
   // JSON Ledger fallback
   const db = readJsonDatabase();
   const audits = canViewAuditLogs ? await listAuditLogs(300) : [];
-  const scopedCustomersRaw = isRep
-    ? (repProfile ? (db.customers || []).filter((c) => isCustomerAllowedForRep(c, repProfile.id)) : [])
-    : db.customers;
-  const scopedCustomers = scopedCustomersRaw.map(normalizeCustomerRecordShape);
+  const scopedCustomers = (db.customers || []).map(normalizeCustomerRecordShape);
   const scopedCustomerIdSet = new Set(scopedCustomers.map((c) => c.id));
   const scopedInvoices = isRep
-    ? (db.invoices || []).filter(
-        (inv) =>
-          (repProfile && inv.representativeId === repProfile.id) ||
-          inv.createdBy === actor.id ||
-          inv.sentByUserId === actor.id ||
-          (inv.customerId && scopedCustomerIdSet.has(inv.customerId))
-      )
+    ? (db.invoices || [])
+        .filter(
+          (inv) =>
+            inv.type === 'sales' ||
+            inv.type === 'quote' ||
+            (repProfile && inv.representativeId === repProfile.id) ||
+            inv.createdBy === actor.id ||
+            inv.sentByUserId === actor.id
+        )
+        .map(sanitizeInvoiceForRepresentative)
     : db.invoices;
   const scopedInvIdSet = new Set(scopedInvoices.map((i) => i.id));
 
@@ -623,7 +631,7 @@ export async function getStaffBootstrapData(actor) {
     purchaseReceivers: resolvePurchaseReceiversFromUsers(db.users || []),
     warehouses: db.warehouses,
     categories: db.categories,
-    products: db.products,
+    products: isRep ? (db.products || []).map(sanitizeProductForRepresentative) : db.products,
     customers: scopedCustomers,
     suppliers: canViewSuppliers ? db.suppliers : [],
     invoices: scopedInvoices,
@@ -658,7 +666,9 @@ export async function getStaffBootstrapData(actor) {
     payrolls: canViewHrData ? db.payrolls : [],
     expenseIncomes: canViewTreasuryLedger ? db.expenseIncomes : [],
     stockMovements: isRep
-      ? (db.stockMovements || []).filter((sm) => repProfile?.warehouseId && (sm.warehouseId === repProfile.warehouseId || sm.targetWarehouseId === repProfile.warehouseId))
+      ? (db.stockMovements || [])
+          .filter((sm) => repProfile?.warehouseId && (sm.warehouseId === repProfile.warehouseId || sm.targetWarehouseId === repProfile.warehouseId))
+          .map((sm) => ({ ...sm, unitCost: 0 }))
       : db.stockMovements,
     ownerAccounts: canViewPersonal ? (db.ownerAccounts || []) : [],
     ownerTransactions: canViewPersonal ? (db.ownerTransactions || []) : [],
@@ -2301,8 +2311,18 @@ export async function createAdminUser(payload, actor) {
           const normPhone = normalizePhoneDigits(payload.phone);
           let matchedExisting = null;
           if (normPhone && payload.autoMatchExisting !== false && !payload.forceNewCustomerProfile) {
-            const unlinkedRes = await client.query('SELECT * FROM customers WHERE user_id IS NULL FOR UPDATE');
-            const matches = unlinkedRes.rows.filter((c) => customerMatchesPhoneDigits(mapPgCustomerRow(c), normPhone));
+            const unlinkedCandRes = await client.query('SELECT id, phone, secondary_phone, phones FROM customers WHERE user_id IS NULL');
+            const candIds = unlinkedCandRes.rows
+              .filter((c) => customerMatchesPhoneDigits(mapPgCustomerRow(c), normPhone))
+              .map((c) => c.id)
+              .sort();
+            const matches = [];
+            for (const cid of candIds) {
+              const r = await client.query('SELECT * FROM customers WHERE id = $1 AND user_id IS NULL FOR UPDATE', [cid]);
+              if (r.rows[0] && customerMatchesPhoneDigits(mapPgCustomerRow(r.rows[0]), normPhone)) {
+                matches.push(r.rows[0]);
+              }
+            }
             if (matches.length > 1) {
               throw new AppError(
                 409,
@@ -2576,8 +2596,18 @@ export async function updateAdminUser(userId, updates, actor) {
           const normPhone = normalizePhoneDigits(targetPhone);
           let matchedExisting = null;
           if (normPhone && updates.autoMatchExisting !== false && !updates.forceNewCustomerProfile) {
-            const unlinkedRes = await client.query('SELECT * FROM customers WHERE user_id IS NULL FOR UPDATE');
-            const matches = unlinkedRes.rows.filter((c) => customerMatchesPhoneDigits(mapPgCustomerRow(c), normPhone));
+            const unlinkedCandRes = await client.query('SELECT id, phone, secondary_phone, phones FROM customers WHERE user_id IS NULL');
+            const candIds = unlinkedCandRes.rows
+              .filter((c) => customerMatchesPhoneDigits(mapPgCustomerRow(c), normPhone))
+              .map((c) => c.id)
+              .sort();
+            const matches = [];
+            for (const cid of candIds) {
+              const r = await client.query('SELECT * FROM customers WHERE id = $1 AND user_id IS NULL FOR UPDATE', [cid]);
+              if (r.rows[0] && customerMatchesPhoneDigits(mapPgCustomerRow(r.rows[0]), normPhone)) {
+                matches.push(r.rows[0]);
+              }
+            }
             if (matches.length > 1) {
               throw new AppError(
                 409,
@@ -2642,8 +2672,18 @@ export async function updateAdminUser(userId, updates, actor) {
           const normPhone = normalizePhoneDigits(repPhone);
           let matchedRep = null;
           if (normPhone && updates.autoMatchExisting !== false) {
-            const unlinkedRepsRes = await client.query('SELECT * FROM representatives WHERE user_id IS NULL FOR UPDATE');
-            const matches = unlinkedRepsRes.rows.filter((rp) => normalizePhoneDigits(rp.phone) === normPhone);
+            const unlinkedRepsCandRes = await client.query('SELECT id, phone FROM representatives WHERE user_id IS NULL');
+            const repCandIds = unlinkedRepsCandRes.rows
+              .filter((rp) => normalizePhoneDigits(rp.phone) === normPhone)
+              .map((rp) => rp.id)
+              .sort();
+            const matches = [];
+            for (const rid of repCandIds) {
+              const r = await client.query('SELECT * FROM representatives WHERE id = $1 AND user_id IS NULL FOR UPDATE', [rid]);
+              if (r.rows[0] && normalizePhoneDigits(r.rows[0].phone) === normPhone) {
+                matches.push(r.rows[0]);
+              }
+            }
             if (matches.length === 1) matchedRep = matches[0];
           }
           if (matchedRep) {

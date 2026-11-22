@@ -692,7 +692,7 @@ async function runSuite(label, isPg = false, pgPool = null) {
       assert.equal(Number(protectedAttempt.json.customer.currentBalance), 300);
       assert.ok(protectedAttempt.json.customer.allowedRepIds.includes(repId));
 
-      // Create unassigned customer (admin only) and verify rep cannot view/edit/collect or sync-update them
+      // Create customer (admin only) and verify rep can view, edit notes, collect payment & sync-update while remaining isolated from protected fields & costs
       const unassignedRes = await req(baseUrl, 'POST', '/api/customers', {
         token: adminToken,
         body: {
@@ -707,15 +707,19 @@ async function runSuite(label, isPg = false, pgPool = null) {
 
       const repEditUnassigned = await req(baseUrl, 'PUT', `/api/customers/${unassignedId}`, {
         token: repToken,
-        body: { notes: 'محاولة تعديل غير مصرح بها' },
+        body: { notes: 'تعديل مسموح للمندوب لكل العملاء', status: 'blocked', currentBalance: 0 },
       });
-      assert.equal(repEditUnassigned.status, 403, 'Rep must be blocked 403 from editing unassigned customer');
+      assert.equal(repEditUnassigned.status, 200, 'Rep must be able to edit allowed fields on any customer');
+      assert.equal(repEditUnassigned.json.customer.notes, 'تعديل مسموح للمندوب لكل العملاء');
+      assert.equal(repEditUnassigned.json.customer.status, 'active', 'Protected status must stay unchanged');
+      assert.equal(Number(repEditUnassigned.json.customer.currentBalance), 200, 'Protected balance must stay unchanged');
 
       const repPayUnassigned = await req(baseUrl, 'POST', `/api/customers/${unassignedId}/payment`, {
         token: repToken,
         body: { amount: 50, cashboxId: cbMainId },
       });
-      assert.equal(repPayUnassigned.status, 403, 'Rep must be blocked 403 from collecting from unassigned customer');
+      assert.equal(repPayUnassigned.status, 200, 'Rep with canManageSales must be able to collect from any customer');
+      assert.equal(Number(repPayUnassigned.json.customer.currentBalance), 150);
 
       const repSyncEditUnassigned = await req(baseUrl, 'POST', '/api/sync/push', {
         token: repToken,
@@ -727,13 +731,18 @@ async function runSuite(label, isPg = false, pgPool = null) {
               operationType: 'update_customer',
               entityType: 'customer',
               entityId: unassignedId,
-              payload: { customerId: unassignedId, notes: 'محاولة مزامنة غير مصرح بها' },
+              payload: { customerId: unassignedId, notes: 'مزامنة مسموحة للمندوب لكل العملاء' },
             },
           ],
         },
       });
       assert.equal(repSyncEditUnassigned.status, 200);
-      assert.equal(repSyncEditUnassigned.json.results[0].status, 'failed');
+      assert.equal(repSyncEditUnassigned.json.results[0].status, 'synced');
+
+      // Verify rep cannot inspect company purchasePrice via /api/products
+      const repProdsRes = await req(baseUrl, 'GET', '/api/products', { token: repToken });
+      assert.equal(repProdsRes.status, 200);
+      assert.ok(repProdsRes.json.products.every((p) => Number(p.purchasePrice || 0) === 0));
     });
 
     // ------------------------------------------------------------------

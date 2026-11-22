@@ -119,6 +119,20 @@ function isDirectLoopbackSocket(req) {
   return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
 }
 
+function isPrivateLanSocket(req) {
+  const raw = String(req.socket?.remoteAddress || '').trim().toLowerCase();
+  const addr = raw.startsWith('::ffff:') ? raw.slice(7) : raw;
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(addr)) return true;
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(addr)) return true;
+  const m172 = addr.match(/^172\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/);
+  if (m172) {
+    const second = Number(m172[1]);
+    if (second >= 16 && second <= 31) return true;
+  }
+  if (addr.startsWith('fc') || addr.startsWith('fd') || addr.startsWith('fe80:')) return true;
+  return false;
+}
+
 function isRequestHttps(req) {
   if (req.secure) return true;
   if (req.app?.get('trust proxy')) {
@@ -166,16 +180,21 @@ export function createApiApp() {
     next();
   });
 
-  // Enforce HTTPS for external/proxied production traffic unless explicitly running desktop/LAN mode
+  // Enforce HTTPS for external/proxied production traffic; permit only direct loopback or explicit private LAN sockets
   app.use((req, res, next) => {
     const isProd = process.env.NODE_ENV === 'production';
-    const isLocalExplicit = process.env.AWLAD_ELECTRON === 'true' || process.env.ALLOW_MOBILE_LAN_HTTP === 'true';
-    const xfProtoHeader = String(req.get('x-forwarded-proto') || '').split(',')[0].trim().toLowerCase();
-    const proxiedHttp = Boolean(req.app?.get('trust proxy') && xfProtoHeader && xfProtoHeader !== 'https');
-    if (!isProd || isLocalExplicit) {
+    if (!isProd) {
       return next();
     }
-    if (!proxiedHttp && (isDirectLoopbackSocket(req) || isRequestHttps(req))) {
+    const xfProtoHeader = String(req.get('x-forwarded-proto') || '').split(',')[0].trim().toLowerCase();
+    const proxiedHttp = Boolean(req.app?.get('trust proxy') && xfProtoHeader && xfProtoHeader !== 'https');
+    const allowLanHttp = process.env.ALLOW_MOBILE_LAN_HTTP === 'true';
+    if (
+      !proxiedHttp &&
+      (isRequestHttps(req) ||
+        isDirectLoopbackSocket(req) ||
+        (allowLanHttp && isPrivateLanSocket(req)))
+    ) {
       return next();
     }
     return res.status(403).json({

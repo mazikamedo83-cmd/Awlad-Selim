@@ -18,7 +18,6 @@ import {
   getCustomerById,
   recordCustomerPayment,
   getRepresentativeByUserId,
-  isCustomerAllowedForRep,
   listCategories,
   listProducts,
   getCustomerStatementData,
@@ -371,11 +370,14 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
       throw new AppError(403, 'ليس لديك صلاحية تسجيل تحصيل دفعات العملاء', 'FORBIDDEN_PERMISSION');
     }
     const customerId = payload.customerId || op.entityId;
+    const cust = await getCustomerById(customerId);
+    if (!cust) {
+      throw new AppError(404, 'العميل غير موجود على السيرفر', 'CUSTOMER_NOT_FOUND');
+    }
     if (user.role === 'representative') {
-      const cust = await getCustomerById(customerId);
       const rep = authContext.representativeProfile || (await getRepresentativeByUserId(user.id));
-      if (!cust || !rep || !isCustomerAllowedForRep(cust, rep.id)) {
-        throw new AppError(403, 'غير مصرح لك بتحصيل مبالغ من عميل غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
+      if (!rep) {
+        throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
       }
     }
     return recordCustomerPayment({ ...payload, customerId }, user, opId);
@@ -479,8 +481,8 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
     }
     if (user.role === 'representative') {
       const rep = authContext.representativeProfile || (await getRepresentativeByUserId(user.id));
-      if (!rep || !isCustomerAllowedForRep(serverCust, rep.id)) {
-        throw new AppError(403, 'غير مصرح لك بتعديل بيانات عميل غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
+      if (!rep) {
+        throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
       }
     }
     if (

@@ -122,6 +122,7 @@ function saveAndRestoreEnv(fn) {
     AWLAD_ELECTRON: process.env.AWLAD_ELECTRON,
     DATABASE_URL: process.env.DATABASE_URL,
     PGHOST: process.env.PGHOST,
+    BOOTSTRAP_ADMIN_SECRET: process.env.BOOTSTRAP_ADMIN_SECRET,
   };
   return Promise.resolve()
     .then(fn)
@@ -304,6 +305,7 @@ await saveAndRestoreEnv(async () => {
   delete process.env.AWLAD_ELECTRON;
   delete process.env.AWLAD_REQUIRE_POSTGRES;
   process.env.NODE_ENV = 'production';
+  process.env.BOOTSTRAP_ADMIN_SECRET = 'StrictPgBootstrapSecret#2026';
 
   const togglePool = createToggleablePgMemPool();
   setInjectedPool(togglePool);
@@ -336,6 +338,7 @@ await saveAndRestoreEnv(async () => {
       assert.equal(h.json.mode, 'postgresql-enterprise');
 
       const bootAdmin = await req(baseUrl, 'POST', '/api/auth/bootstrap-admin', {
+        headers: { 'x-bootstrap-secret': 'StrictPgBootstrapSecret#2026' },
         body: {
           fullName: 'مدير السيرفر السحابي',
           username: 'cloud_admin',

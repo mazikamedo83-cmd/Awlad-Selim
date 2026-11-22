@@ -66,7 +66,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
 }) => {
   const { currentUser, customerProfile, mobileConfig } = useAuth();
   const data = useData();
-  const customer = customerProfile || data.customers[0] || null;
+  const customer = customerProfile || null;
   const allowPriceView = mobileConfig.allowCustomerPriceView !== false;
   const isNative = isNativeCapacitor();
 

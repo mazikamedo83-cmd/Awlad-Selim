@@ -4094,7 +4094,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           onClick={() => handleUseExistingPurDuplicateProduct(sim)}
                           className="min-h-[36px] px-2.5 rounded-lg bg-white border border-blue-300 hover:bg-blue-100 text-blue-900 font-bold text-[11px] cursor-pointer"
                         >
-                          {sim.name} ({sim.baseUnit}) — {sim.purchasePrice} {data.settings.currency}
+                          {sim.name} ({sim.baseUnit})
+                          {Number(sim.purchasePrice || 0) > 0 ? ` — ${sim.purchasePrice} ${data.settings.currency}` : ''}
                         </button>
                       ))}
                     </div>

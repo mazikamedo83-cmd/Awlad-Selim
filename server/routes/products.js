@@ -18,6 +18,7 @@ import {
   requirePermission,
   asyncHandler,
 } from '../middleware/auth.js';
+import { sanitizeProductForRepresentative } from '../utils/errors.js';
 
 const router = Router();
 
@@ -27,6 +28,7 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const isCustomer = req.auth.user.role === 'customer';
+    const isRep = req.auth.user.role === 'representative';
     const settings = await getSystemSettingsSafe();
     const allowCustomerPriceView = Boolean(settings.mobileConfig?.allowCustomerPriceView);
     if (isCustomer && settings.mobileConfig?.enableCustomerApp === false) {
@@ -36,7 +38,11 @@ router.get(
         error: 'تطبيق العملاء متوقف حاليًا من إعدادات الإدارة.',
       });
     }
-    const products = await listProducts({ forCustomer: isCustomer, allowCustomerPriceView });
+    const products = await listProducts({
+      forCustomer: isCustomer,
+      forRepresentative: isRep,
+      allowCustomerPriceView,
+    });
     res.json({ ok: true, products, mobileConfig: settings.mobileConfig });
   })
 );
@@ -92,6 +98,16 @@ router.post(
       });
     }
     const result = await checkProductDuplicate(req.body || {});
+    if (u.role === 'representative') {
+      return res.json({
+        ok: true,
+        ...result,
+        exactMatch: sanitizeProductForRepresentative(result.exactMatch),
+        similarMatches: Array.isArray(result.similarMatches)
+          ? result.similarMatches.map(sanitizeProductForRepresentative)
+          : [],
+      });
+    }
     res.json({ ok: true, ...result });
   })
 );

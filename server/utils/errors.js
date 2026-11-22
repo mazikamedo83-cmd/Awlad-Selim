@@ -79,6 +79,44 @@ export function sanitizeProductForCustomer(product, allowPriceView = true) {
   };
 }
 
+export function sanitizeProductForRepresentative(product) {
+  if (!product) return product;
+  return {
+    ...product,
+    purchasePrice: 0,
+    units: Array.isArray(product.units)
+      ? product.units.map((u) => ({
+          ...u,
+          purchasePrice: 0,
+        }))
+      : [],
+  };
+}
+
+export function sanitizeInvoiceForRepresentative(invoice) {
+  if (!invoice || invoice.type === 'purchase') return invoice;
+  const zeroItems = (list) =>
+    Array.isArray(list)
+      ? list.map((it) => ({
+          ...it,
+          purchasePriceAtTime: 0,
+        }))
+      : list;
+  return {
+    ...invoice,
+    items: zeroItems(invoice.items),
+    ...(Array.isArray(invoice.editHistory)
+      ? {
+          editHistory: invoice.editHistory.map((h) => ({
+            ...h,
+            before: h?.before ? { ...h.before, items: zeroItems(h.before.items) } : h?.before,
+            after: h?.after ? { ...h.after, items: zeroItems(h.after.items) } : h?.after,
+          })),
+        }
+      : {}),
+  };
+}
+
 export function getUnitSellingPrice(product, unitName) {
   if (!product) return 0;
   if (!unitName || unitName === product.baseUnit) {

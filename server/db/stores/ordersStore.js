@@ -23,7 +23,6 @@ import {
 } from './invoicesStore.js';
 import {
   getRepresentativeByUserId,
-  isCustomerAllowedForRep,
   getSystemSettingsSafe,
 } from './catalogStore.js';
 
@@ -470,8 +469,8 @@ export async function createCustomerOrder(payload, authContext) {
       let repProfile = null;
       if (isRep) {
         repProfile = authContext.representativeProfile || (await getRepresentativeByUserId(actor.id));
-        if (!repProfile || !isCustomerAllowedForRep(mapPgCustomerRow(cust), repProfile.id)) {
-          throw new AppError(403, 'غير مصرح لك بإنشاء طلب لعميل غير معين في قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
+        if (!repProfile) {
+          throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
         }
       }
 
@@ -621,8 +620,8 @@ export async function createCustomerOrder(payload, authContext) {
     let repProfile = null;
     if (isRep) {
       repProfile = authContext.representativeProfile || (db.representatives || []).find((r) => r.userId === actor.id);
-      if (!repProfile || !isCustomerAllowedForRep(cust, repProfile.id)) {
-        throw new AppError(403, 'غير مصرح لك بإنشاء طلب لعميل غير معين في قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
+      if (!repProfile) {
+        throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
       }
     }
 

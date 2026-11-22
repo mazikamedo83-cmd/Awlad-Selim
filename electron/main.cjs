@@ -442,9 +442,6 @@ async function bootstrapApplication() {
 
   // Always point embedded server at verified %APPDATA%\AWLAD SELIM\data before loading server modules
   process.env.AWLAD_ELECTRON = 'true';
-  if (!process.env.ALLOW_MOBILE_LAN_HTTP) {
-    process.env.ALLOW_MOBILE_LAN_HTTP = 'true';
-  }
   process.env.AWLAD_IS_PACKAGED = app.isPackaged ? 'true' : 'false';
   process.env.AWLAD_DATA_DIR = prepResult.targetDataDir;
   if (prepResult.envFilePath && allowLegacyImport) {

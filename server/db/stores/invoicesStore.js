@@ -1,7 +1,7 @@
 import { getPool, withTransaction } from '../postgres.js';
 import { withJsonTransaction, nextJsonSequence, readJsonDatabase } from '../jsonLedger.js';
 import { generateServerId } from '../../utils/crypto.js';
-import { AppError, nowIso, todayIso, round2, round3 } from '../../utils/errors.js';
+import { AppError, nowIso, todayIso, round2, round3, sanitizeInvoiceForRepresentative } from '../../utils/errors.js';
 import { isPgMode, mapPgInvoiceRow, mapPgCustomerRow, mapPgProductRow } from './mode.js';
 import { recordAuditLog } from './authStore.js';
 import {
@@ -14,8 +14,6 @@ import {
 import {
   getRepresentativeByUserId,
   getCustomerById,
-  isCustomerAllowedForRep,
-  listCustomers,
   getSystemSettingsSafe,
   findProductDuplicateMatchInList,
 } from './catalogStore.js';
@@ -836,7 +834,10 @@ export async function createInvoiceInsidePgTx(client, type, payload, actor) {
     if (!pRow) throw new AppError(404, `الصنف غير موجود (${it.productName || it.productId})`, 'PRODUCT_NOT_FOUND');
     it.productName = it.productName || pRow.name;
     it.barcode = it.barcode || pRow.barcode || '';
-    it.purchasePriceAtTime = it.purchasePriceAtTime || Number(pRow.purchase_price || 0);
+    const dbCost = Number(pRow.purchase_price || 0);
+    it.purchasePriceAtTime = (actor?.role === 'representative' && type !== 'purchase')
+      ? dbCost
+      : (it.purchasePriceAtTime || dbCost);
 
     await client.query(
       `INSERT INTO invoice_items (id, invoice_id, product_id, product_name, barcode, unit, unit_factor, quantity, unit_price, purchase_price_at_time, discount, total)
@@ -954,11 +955,14 @@ export function createInvoiceInsideJsonTx(db, type, payload, actor) {
   const enrichedItems = totals.items.map((it) => {
     const prod = db.products.find((p) => p.id === it.productId);
     if (!prod) throw new AppError(404, `الصنف غير موجود (${it.productName || it.productId})`, 'PRODUCT_NOT_FOUND');
+    const dbCost = Number(prod.purchasePrice || 0);
     return {
       ...it,
       productName: it.productName || prod.name,
       barcode: it.barcode || prod.barcode || '',
-      purchasePriceAtTime: it.purchasePriceAtTime || prod.purchasePrice || 0,
+      purchasePriceAtTime: (actor?.role === 'representative' && type !== 'purchase')
+        ? dbCost
+        : (it.purchasePriceAtTime || dbCost),
     };
   });
 
@@ -1083,9 +1087,6 @@ export async function createSalesInvoice(payload, actor, idempotencyKey = '') {
     }
     const customer = await getCustomerById(enrichedPayload.customerId);
     if (!customer) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
-    if (!isCustomerAllowedForRep(customer, rep.id)) {
-      throw new AppError(403, 'غير مصرح لك بإصدار فاتورة لهذا العميل لأنه غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
-    }
     enrichedPayload.representativeId = rep.id;
     enrichedPayload.representativeName = rep.name;
     if (!enrichedPayload.warehouseId && rep.warehouseId) {
@@ -1121,7 +1122,7 @@ export async function createSalesInvoice(payload, actor, idempotencyKey = '') {
       recordId: out.invoice.id,
     });
   }
-  return out.invoice;
+  return actor?.role === 'representative' ? sanitizeInvoiceForRepresentative(out.invoice) : out.invoice;
 }
 
 export async function createPurchaseInvoice(payload, actor, idempotencyKey = '') {
@@ -1562,9 +1563,6 @@ export async function createSalesQuote(payload, actor, idempotencyKey = '') {
     if (enrichedPayload.customerId) {
       const cust = await getCustomerById(enrichedPayload.customerId);
       if (!cust) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
-      if (!isCustomerAllowedForRep(cust, rep.id)) {
-        throw new AppError(403, 'غير مصرح لك بإصدار عرض سعر لعميل غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
-      }
     }
     enrichedPayload.representativeId = rep.id;
     enrichedPayload.representativeName = rep.name;
@@ -1599,7 +1597,7 @@ export async function createSalesQuote(payload, actor, idempotencyKey = '') {
       recordId: out.invoice.id,
     });
   }
-  return out.invoice;
+  return actor?.role === 'representative' ? sanitizeInvoiceForRepresentative(out.invoice) : out.invoice;
 }
 
 export async function convertQuoteToInvoice(quoteId, overrides = {}, actor, idempotencyKey = '') {
@@ -1684,7 +1682,7 @@ export async function convertQuoteToInvoice(quoteId, overrides = {}, actor, idem
       recordId: out.invoice.id,
     });
   }
-  return out.invoice;
+  return actor?.role === 'representative' ? sanitizeInvoiceForRepresentative(out.invoice) : out.invoice;
 }
 
 async function fetchFullInvoicePg(client, invoiceId) {
@@ -1733,13 +1731,6 @@ export async function confirmDraftInvoice(invoiceId, actor) {
       if (repActor) {
         if (inv.representativeId && inv.representativeId !== repActor.id) {
           throw new AppError(403, 'غير مصرح لك باعتماد فاتورة مندوب آخر', 'FORBIDDEN_INVOICE_ACCESS');
-        }
-        if (inv.customerId) {
-          const cRes = await client.query('SELECT * FROM customers WHERE id = $1 LIMIT 1', [inv.customerId]);
-          const cust = mapPgCustomerRow(cRes.rows[0]);
-          if (cust && !isCustomerAllowedForRep(cust, repActor.id)) {
-            throw new AppError(403, 'غير مصرح لك باعتماد فاتورة لعميل غير معين في قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
-          }
         }
       }
 
@@ -1828,12 +1819,6 @@ export async function confirmDraftInvoice(invoiceId, actor) {
         if (inv.representativeId && inv.representativeId !== repActor.id) {
           throw new AppError(403, 'غير مصرح لك باعتماد فاتورة مندوب آخر', 'FORBIDDEN_INVOICE_ACCESS');
         }
-        if (inv.customerId) {
-          const cust = db.customers.find((c) => c.id === inv.customerId);
-          if (cust && !isCustomerAllowedForRep(cust, repActor.id)) {
-            throw new AppError(403, 'غير مصرح لك باعتماد فاتورة لعميل غير معين في قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
-          }
-        }
       }
 
       if (inv.linkedRepTransferId) {
@@ -1890,7 +1875,7 @@ export async function confirmDraftInvoice(invoiceId, actor) {
     module: confirmedInvoice.type === 'sales' ? 'المبيعات' : 'المشتريات',
     recordId: confirmedInvoice.id,
   });
-  return confirmedInvoice;
+  return actor?.role === 'representative' ? sanitizeInvoiceForRepresentative(confirmedInvoice) : confirmedInvoice;
 }
 
 export async function editSalesInvoice(invoiceId, updates, actor) {
@@ -1928,13 +1913,6 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
       if (repActor) {
         if (inv.representativeId !== repActor.id) {
           throw new AppError(403, 'غير مصرح لك بتعديل فاتورة لمندوب آخر', 'FORBIDDEN_INVOICE_ACCESS');
-        }
-        if (inv.customerId) {
-          const cRes = await client.query('SELECT * FROM customers WHERE id = $1 LIMIT 1', [inv.customerId]);
-          const cust = mapPgCustomerRow(cRes.rows[0]);
-          if (cust && !isCustomerAllowedForRep(cust, repActor.id)) {
-            throw new AppError(403, 'غير مصرح لك بتعديل فاتورة لعميل غير معين في قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
-          }
         }
       }
 
@@ -2110,8 +2088,20 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
         ]
       );
       await client.query(`DELETE FROM invoice_items WHERE invoice_id = $1`, [invoiceId]);
+      const oldCostByProduct = new Map((inv.items || []).map((o) => [o.productId, Number(o.purchasePriceAtTime || 0)]));
       for (let idx = 0; idx < totals.items.length; idx++) {
         const it = totals.items[idx];
+        let resolvedCost = Number(it.purchasePriceAtTime || 0);
+        if (repActor || resolvedCost <= 0) {
+          const priorCost = oldCostByProduct.get(it.productId) || 0;
+          if (priorCost > 0) {
+            resolvedCost = priorCost;
+          } else {
+            const cRow = (await client.query(`SELECT purchase_price FROM products WHERE id = $1 LIMIT 1`, [it.productId])).rows[0];
+            resolvedCost = Number(cRow?.purchase_price || 0);
+          }
+          it.purchasePriceAtTime = resolvedCost;
+        }
         await client.query(
           `INSERT INTO invoice_items (id, invoice_id, product_id, product_name, barcode, unit, unit_factor, quantity, unit_price, purchase_price_at_time, discount, total)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
@@ -2133,7 +2123,7 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
       newValues: out.afterSnapshot,
       notes: cleanReason || 'تعديل فاتورة مبيعات',
     });
-    return out.updatedInv;
+    return repActor ? sanitizeInvoiceForRepresentative(out.updatedInv) : out.updatedInv;
   }
 
   const out = await withJsonTransaction(async (db) => {
@@ -2160,12 +2150,6 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
       if (inv.representativeId !== repActor.id) {
         throw new AppError(403, 'غير مصرح لك بتعديل فاتورة لمندوب آخر', 'FORBIDDEN_INVOICE_ACCESS');
       }
-      if (inv.customerId) {
-        const cust = db.customers.find((c) => c.id === inv.customerId);
-        if (cust && !isCustomerAllowedForRep(cust, repActor.id)) {
-          throw new AppError(403, 'غير مصرح لك بتعديل فاتورة لعميل غير معين في قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
-        }
-      }
     }
 
     const allowNeg = Boolean(db.settings?.allowNegativeStock) && Boolean(actor?.permissions?.canAllowNegativeInventory);
@@ -2178,6 +2162,18 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
       },
       inv.items
     );
+    const oldCostByProd = new Map((inv.items || []).map((o) => [o.productId, Number(o.purchasePriceAtTime || 0)]));
+    for (const it of totals.items) {
+      if (repActor || Number(it.purchasePriceAtTime || 0) <= 0) {
+        const prior = oldCostByProd.get(it.productId) || 0;
+        if (prior > 0) {
+          it.purchasePriceAtTime = prior;
+        } else {
+          const prod = (db.products || []).find((p) => p.id === it.productId);
+          it.purchasePriceAtTime = Number(prod?.purchasePrice || 0);
+        }
+      }
+    }
 
     if (totals.grandTotal < round2(Number(inv.paidAmount || 0)) - 0.01) {
       throw new AppError(
@@ -2333,7 +2329,7 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
     newValues: out.afterSnapshot,
     notes: cleanReason || 'تعديل فاتورة مبيعات',
   });
-  return out.updatedInv;
+  return repActor ? sanitizeInvoiceForRepresentative(out.updatedInv) : out.updatedInv;
 }
 
 export async function editPurchaseInvoice(invoiceId, updates, actor) {
@@ -3586,7 +3582,7 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
     newValues: out.newValues,
     notes: cleanReason,
   });
-  return out.updatedInv;
+  return actor?.role === 'representative' ? sanitizeInvoiceForRepresentative(out.updatedInv) : out.updatedInv;
 }
 
 export async function markInvoiceReviewed(invoiceId, { notes = '' } = {}, actor) {
@@ -3846,7 +3842,7 @@ export async function addInvoicePayment(invoiceId, paymentData, actor, idempoten
     const out = await withTransaction((client) =>
       addInvoicePaymentPgTx(client, invoiceId, paymentData, actor, idempotencyKey)
     );
-    return out.invoice;
+    return actor?.role === 'representative' ? sanitizeInvoiceForRepresentative(out.invoice) : out.invoice;
   }
 
   const out = await withJsonTransaction((db) =>
@@ -3862,7 +3858,7 @@ export async function addInvoicePayment(invoiceId, paymentData, actor, idempoten
       recordId: invoiceId,
     });
   }
-  return out.invoice;
+  return actor?.role === 'representative' ? sanitizeInvoiceForRepresentative(out.invoice) : out.invoice;
 }
 
 export async function createInvoiceReturn(returnData, actor, idempotencyKey = '') {
@@ -4250,17 +4246,14 @@ export async function listInvoices(actor = null, filters = {}) {
 
   if (actor?.role === 'representative') {
     const rep = await getRepresentativeByUserId(actor.id);
-    if (!rep) {
-      return allInvoices.filter((inv) => inv.sentByUserId === actor.id);
-    }
-    const allowedCusts = await listCustomers({ forRepId: rep.id });
-    const allowedCustIds = new Set(allowedCusts.map((c) => c.id));
-    return allInvoices.filter(
+    const visible = allInvoices.filter(
       (inv) =>
-        inv.representativeId === rep.id ||
-        inv.sentByUserId === actor.id ||
-        (inv.customerId && allowedCustIds.has(inv.customerId))
+        inv.type === 'sales' ||
+        inv.type === 'quote' ||
+        (rep && inv.representativeId === rep.id) ||
+        inv.sentByUserId === actor.id
     );
+    return visible.map(sanitizeInvoiceForRepresentative);
   }
 
   return allInvoices;

@@ -990,7 +990,7 @@ async function runSuiteA_JsonLedgerHttp() {
       }
     });
 
-    await test('24. Representative customer allowlist enforces 403 on unassigned customers across bootstrap, GET, price-history & invoices', async () => {
+    await test('24. Representative accesses ALL customers (including unassigned) while company purchase costs and HR/admin data remain stripped/blocked', async () => {
       // Create representative user account
       const repUserRes = await req(baseUrl, 'POST', '/api/admin/users', {
         token: adminToken,
@@ -1027,7 +1027,7 @@ async function runSuiteA_JsonLedgerHttp() {
       assert.equal(repProfRes.status, 201);
       repProfileId = repProfRes.json.representative.id;
 
-      // Assign ONLY custA to repProfileId (custB remains unassigned!)
+      // Assign custA as preferred rep metadata while custB remains completely unassigned
       const updCustARes = await req(baseUrl, 'PUT', `/api/customers/${custA.id}`, {
         token: adminToken,
         body: { allowedRepIds: [repProfileId], assignedRepId: repProfileId },
@@ -1040,19 +1040,25 @@ async function runSuiteA_JsonLedgerHttp() {
       assert.equal(repLogin.status, 200);
       tokenRep = repLogin.json.accessToken;
 
-      // /api/customers & /api/admin/bootstrap return ONLY custA for this rep
+      // /api/customers & /api/admin/bootstrap return ALL customers (both custA & unassigned custB)
       const repCustList = await req(baseUrl, 'GET', '/api/customers', { token: tokenRep });
       assert.equal(repCustList.status, 200);
-      assert.deepEqual(repCustList.json.customers.map((c) => c.id), [custA.id]);
+      const repCustIds = repCustList.json.customers.map((c) => c.id);
+      assert.ok(repCustIds.includes(custA.id) && repCustIds.includes(custB.id), 'Rep must see all customers');
 
       const repBoot = await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: tokenRep });
       assert.equal(repBoot.status, 200);
-      assert.deepEqual(repBoot.json.data.customers.map((c) => c.id), [custA.id]);
+      const repBootCustIds = repBoot.json.data.customers.map((c) => c.id);
+      assert.ok(repBootCustIds.includes(custA.id) && repBootCustIds.includes(custB.id), 'Bootstrap must include all customers for rep');
+      assert.ok(
+        repBoot.json.data.products.every((p) => Number(p.purchasePrice || 0) === 0),
+        'Company purchasePrice must be stripped (0) for representatives'
+      );
 
-      // Unassigned custB must return 403 everywhere for rep
-      assert.equal((await req(baseUrl, 'GET', `/api/customers/${custB.id}`, { token: tokenRep })).status, 403);
-      assert.equal((await req(baseUrl, 'GET', `/api/customers/${custB.id}/price-history`, { token: tokenRep })).status, 403);
-      const blockedSale = await req(baseUrl, 'POST', '/api/invoices/sales', {
+      // Unassigned custB is accessible for viewing, price history, and draft sales invoice
+      assert.equal((await req(baseUrl, 'GET', `/api/customers/${custB.id}`, { token: tokenRep })).status, 200);
+      assert.equal((await req(baseUrl, 'GET', `/api/customers/${custB.id}/price-history`, { token: tokenRep })).status, 200);
+      const allowedDraftForCustB = await req(baseUrl, 'POST', '/api/invoices/sales', {
         token: tokenRep,
         body: {
           customerId: custB.id,
@@ -1064,9 +1070,14 @@ async function runSuiteA_JsonLedgerHttp() {
           items: [{ productId: prod1.id, productName: prod1.name, unit: 'قطعة', unitFactor: 1, quantity: 1, unitPrice: 11 }],
         },
       });
-      assert.equal(blockedSale.status, 403);
+      assert.equal(allowedDraftForCustB.status, 201);
+      assert.equal(
+        Number(allowedDraftForCustB.json.invoice.items[0].purchasePriceAtTime || 0),
+        0,
+        'Rep sales invoice response must strip company purchasePriceAtTime'
+      );
 
-      // Allowed custA price history returns structured dates & prices isolated to custA
+      // Allowed custA price history returns structured dates & prices
       const phRes = await req(baseUrl, 'GET', `/api/customers/${custA.id}/price-history`, { token: tokenRep });
       assert.equal(phRes.status, 200);
       const prod1History = phRes.json.priceHistory[prod1.id] || [];
@@ -2030,15 +2041,17 @@ async function runSuiteA_JsonLedgerHttp() {
       assert.ok(Number(repOrd.totalAmount) > 0);
       assert.equal(repOrd.status, 'pending');
 
-      // Rep cannot submit order for unassigned custB -> 403
-      const repBlockedCustB = await req(baseUrl, 'POST', '/api/orders', {
+      // Rep CAN submit an order for ANY customer (including unassigned custB) under the ALL-CUSTOMERS rule
+      const repOrdCustBRes = await req(baseUrl, 'POST', '/api/orders', {
         token: tokenRep,
         body: {
           customerId: custB.id,
           items: [{ productId: prod1.id, unit: 'قطعة', quantity: 1 }],
         },
       });
-      assert.equal(repBlockedCustB.status, 403);
+      assert.equal(repOrdCustBRes.status, 201);
+      assert.equal(repOrdCustBRes.json.order.requesterType, 'representative');
+      assert.equal(repOrdCustBRes.json.order.representativeId, repProfileId);
 
       // 2. Customer B creates a direct order; Rep must NOT see Customer B order in GET /api/orders and gets 403 on GET /api/orders/:id
       const custBOrdRes = await req(baseUrl, 'POST', '/api/orders', {

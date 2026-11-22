@@ -265,10 +265,19 @@ export async function bootstrapAdmin(
   const cleanName = String(fullName || '').trim();
   const cleanPass = String(password || '');
   const cleanCompany = String(companyName || '').trim();
+  const isProd = process.env.NODE_ENV === 'production';
   const expectedSecret = String(process.env.BOOTSTRAP_ADMIN_SECRET || '').trim();
-  if (expectedSecret) {
+  const rawIp = String(meta.ipAddress || '').trim();
+  const isLoopbackCaller =
+    !rawIp ||
+    rawIp === '127.0.0.1' ||
+    rawIp === '::1' ||
+    rawIp === '::ffff:127.0.0.1';
+  const isElectronLocalLoopback =
+    process.env.AWLAD_ELECTRON === 'true' && !isStrictPostgresMode() && isLoopbackCaller;
+  if ((isProd && !isElectronLocalLoopback) || expectedSecret) {
     const providedSecret = String(meta.bootstrapSecret || bootstrapSecret || '').trim();
-    if (!constantTimeEqualSecret(providedSecret, expectedSecret)) {
+    if (!expectedSecret || !constantTimeEqualSecret(providedSecret, expectedSecret)) {
       throw new AppError(403, 'تعذر إتمام عملية التهيئة الأولية للنظام.', 'BOOTSTRAP_FORBIDDEN');
     }
   }
@@ -944,26 +953,54 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
         let customerProfile = null;
         let representativeProfile = null;
         const userNotes = 'حساب مسجل ذاتيًا عبر الموبايل';
+        let lockedUnlinkedCustomer = null;
+        let lockedUnlinkedRep = null;
 
         if (role === 'customer') {
-          const custRes = await client.query(`SELECT * FROM customers FOR UPDATE`);
-          const allMatches = normPhone
-            ? custRes.rows.filter((c) => customerHasRegPhone(c, normPhone))
-            : [];
-          const hasAlreadyLinkedMatch = allMatches.some((c) => Boolean(c.user_id));
+          if (normPhone) {
+            const custCandRes = await client.query(`SELECT id, phone, secondary_phone, phones FROM customers`);
+            const candIds = custCandRes.rows
+              .filter((c) => customerHasRegPhone(c, normPhone))
+              .map((c) => c.id)
+              .sort();
+            const lockedCusts = [];
+            for (const cid of candIds) {
+              const r = await client.query(`SELECT * FROM customers WHERE id = $1 FOR UPDATE`, [cid]);
+              if (r.rows[0]) lockedCusts.push(r.rows[0]);
+            }
+            const allMatches = lockedCusts.filter((c) => customerHasRegPhone(c, normPhone));
+            const hasAlreadyLinkedMatch = allMatches.some((c) => Boolean(c.user_id));
 
-          if (allMatches.length > 1 || hasAlreadyLinkedMatch) {
-            throw new AppError(409, CUSTOMER_PHONE_CONFLICT_WARNING, 'CUSTOMER_PHONE_CONFLICT');
+            if (allMatches.length > 1 || hasAlreadyLinkedMatch) {
+              throw new AppError(409, CUSTOMER_PHONE_CONFLICT_WARNING, 'CUSTOMER_PHONE_CONFLICT');
+            }
+            const unlinkedMatches = allMatches.filter((c) => !c.user_id);
+            if (unlinkedMatches.length === 1) {
+              lockedUnlinkedCustomer = unlinkedMatches[0];
+            }
           }
         } else {
-          const repRes = await client.query(`SELECT * FROM representatives FOR UPDATE`);
-          const repMatches = normPhone
-            ? repRes.rows.filter((r) => normalizeRegPhone(r.phone) === normPhone)
-            : [];
-          const hasAlreadyLinkedRep = repMatches.some((r) => Boolean(r.user_id));
+          if (normPhone) {
+            const repCandRes = await client.query(`SELECT id, phone FROM representatives`);
+            const candIds = repCandRes.rows
+              .filter((r) => normalizeRegPhone(r.phone) === normPhone)
+              .map((r) => r.id)
+              .sort();
+            const lockedReps = [];
+            for (const rid of candIds) {
+              const r = await client.query(`SELECT * FROM representatives WHERE id = $1 FOR UPDATE`, [rid]);
+              if (r.rows[0]) lockedReps.push(r.rows[0]);
+            }
+            const repMatches = lockedReps.filter((r) => normalizeRegPhone(r.phone) === normPhone);
+            const hasAlreadyLinkedRep = repMatches.some((r) => Boolean(r.user_id));
 
-          if (repMatches.length > 1 || hasAlreadyLinkedRep) {
-            throw new AppError(409, REP_PHONE_CONFLICT_WARNING, 'REP_PHONE_CONFLICT');
+            if (repMatches.length > 1 || hasAlreadyLinkedRep) {
+              throw new AppError(409, REP_PHONE_CONFLICT_WARNING, 'REP_PHONE_CONFLICT');
+            }
+            const unlinkedReps = repMatches.filter((r) => !r.user_id);
+            if (unlinkedReps.length === 1) {
+              lockedUnlinkedRep = unlinkedReps[0];
+            }
           }
         }
 
@@ -990,13 +1027,8 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
         );
 
         if (role === 'customer') {
-          const custRes = await client.query(`SELECT * FROM customers FOR UPDATE`);
-          const unlinkedMatches = normPhone
-            ? custRes.rows.filter((c) => !c.user_id && customerHasRegPhone(c, normPhone))
-            : [];
-
-          if (unlinkedMatches.length === 1) {
-            const target = unlinkedMatches[0];
+          if (lockedUnlinkedCustomer) {
+            const target = lockedUnlinkedCustomer;
             await client.query(
               `UPDATE customers SET user_id = $1, shop_name = $2, shop_photo = $3, photo = $3, address = $4, governorate = $5, area = $6, geo_coordinates = $7, phones = $8, updated_at = $9 WHERE id = $10`,
               [
@@ -1044,13 +1076,8 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
             customerProfile = mapPgCustomerRow(refreshed.rows[0]);
           }
         } else if (role === 'representative') {
-          const repRes = await client.query(`SELECT * FROM representatives FOR UPDATE`);
-          const unlinkedRepMatches = normPhone
-            ? repRes.rows.filter((r) => !r.user_id && normalizeRegPhone(r.phone) === normPhone)
-            : [];
-
-          if (unlinkedRepMatches.length === 1) {
-            const targetRep = unlinkedRepMatches[0];
+          if (lockedUnlinkedRep) {
+            const targetRep = lockedUnlinkedRep;
             let targetWhId = targetRep.warehouse_id || null;
             if (!targetWhId) {
               targetWhId = generateServerId('WH');

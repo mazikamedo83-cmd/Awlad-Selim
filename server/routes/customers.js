@@ -11,7 +11,6 @@ import {
   detectCustomerUserConflicts,
   repairUnlinkedCustomerUsers,
   getRepresentativeByUserId,
-  isCustomerAllowedForRep,
   getCustomerProductPriceHistory,
   getCustomerStatementData,
   getSystemSettingsSafe,
@@ -121,12 +120,7 @@ router.get(
   '/',
   requireStaff,
   requirePermission('canView'),
-  asyncHandler(async (req, res) => {
-    if (req.auth.user.role === 'representative') {
-      const rep = req.auth.representativeProfile || (await getRepresentativeByUserId(req.auth.user.id));
-      const customers = rep ? await listCustomers({ forRepId: rep.id }) : [];
-      return res.json({ ok: true, customers });
-    }
+  asyncHandler(async (_req, res) => {
     const customers = await listCustomers();
     res.json({ ok: true, customers });
   })
@@ -139,12 +133,6 @@ router.get(
   asyncHandler(async (req, res) => {
     const customer = await getCustomerById(req.params.id);
     if (!customer) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
-    if (req.auth.user.role === 'representative') {
-      const rep = req.auth.representativeProfile || (await getRepresentativeByUserId(req.auth.user.id));
-      if (!rep || !isCustomerAllowedForRep(customer, rep.id)) {
-        throw new AppError(403, 'غير مصرح لك بالوصول لبيانات عميل غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
-      }
-    }
     const priceHistory = await getCustomerProductPriceHistory(customer.id);
     res.json({ ok: true, customerId: customer.id, priceHistory });
   })
@@ -157,12 +145,6 @@ router.get(
   asyncHandler(async (req, res) => {
     const customer = await getCustomerById(req.params.id);
     if (!customer) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
-    if (req.auth.user.role === 'representative') {
-      const rep = req.auth.representativeProfile || (await getRepresentativeByUserId(req.auth.user.id));
-      if (!rep || !isCustomerAllowedForRep(customer, rep.id)) {
-        throw new AppError(403, 'غير مصرح لك بالوصول لبيانات عميل غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
-      }
-    }
     const statement = await getCustomerStatementData(customer.id, { allowPriceView: true });
     res.json({ ok: true, statement });
   })
@@ -175,12 +157,6 @@ router.get(
   asyncHandler(async (req, res) => {
     const customer = await getCustomerById(req.params.id);
     if (!customer) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
-    if (req.auth.user.role === 'representative') {
-      const rep = req.auth.representativeProfile || (await getRepresentativeByUserId(req.auth.user.id));
-      if (!rep || !isCustomerAllowedForRep(customer, rep.id)) {
-        throw new AppError(403, 'غير مصرح لك بالوصول لبيانات عميل غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
-      }
-    }
     res.json({ ok: true, customer });
   })
 );
@@ -248,8 +224,8 @@ router.post(
       const customer = await getCustomerById(req.params.id);
       if (!customer) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
       const rep = req.auth.representativeProfile || (await getRepresentativeByUserId(authUser.id));
-      if (!rep || !isCustomerAllowedForRep(customer, rep.id)) {
-        throw new AppError(403, 'غير مصرح لك بتحصيل مبالغ من عميل غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
+      if (!rep) {
+        throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
       }
     }
     const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
