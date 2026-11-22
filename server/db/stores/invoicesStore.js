@@ -3138,6 +3138,101 @@ export async function editInvoice(invoiceId, updates, actor) {
   return editSalesInvoice(invoiceId, updates, actor);
 }
 
+export async function deleteDraftPurchaseInvoice(invoiceId, actor) {
+  const canFullPurchaseManage =
+    actor?.role === 'admin' || Boolean(actor?.permissions?.canManagePurchases);
+  const canRepDraftDelete =
+    actor?.role === 'representative' || Boolean(actor?.permissions?.canCreatePurchase);
+  if (!canFullPurchaseManage && !canRepDraftDelete) {
+    throw new AppError(403, 'ليس لديك صلاحية حذف مسودة فاتورة الشراء', 'FORBIDDEN_PERMISSION');
+  }
+  const repActor = actor?.role === 'representative' ? await getRepresentativeByUserId(actor.id) : null;
+  if (actor?.role === 'representative' && !repActor) {
+    throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
+  }
+
+  if (await isPgMode()) {
+    const deleted = await withTransaction(async (client) => {
+      const inv = await fetchFullInvoicePg(client, invoiceId);
+      if (!inv) throw new AppError(404, 'فاتورة الشراء غير موجودة', 'INVOICE_NOT_FOUND');
+      if (inv.type !== 'purchase') {
+        throw new AppError(400, 'هذا المستند ليس فاتورة مشتريات', 'NOT_PURCHASE_INVOICE');
+      }
+      const dispatchSt = inv.dispatchStatus || 'draft';
+      if (inv.status !== 'draft' || !['draft', 'rejected'].includes(dispatchSt)) {
+        throw new AppError(
+          409,
+          'لا يمكن حذف فاتورة الشراء بعد إرسالها أو استلامها أو اعتمادها',
+          'CANNOT_DELETE_AFTER_DISPATCH'
+        );
+      }
+      if (!canFullPurchaseManage) {
+        const isOwner =
+          inv.sentByUserId === actor.id ||
+          (repActor && inv.representativeId === repActor.id) ||
+          inv.createdBy === actor.fullName ||
+          inv.createdBy === actor.id;
+        if (!isOwner) {
+          throw new AppError(403, 'غير مصرح لك بحذف مسودة فاتورة شراء لا تخصك', 'FORBIDDEN_INVOICE_ACCESS');
+        }
+      }
+
+      await client.query(`DELETE FROM invoice_items WHERE invoice_id = $1`, [invoiceId]);
+      await client.query(`DELETE FROM invoice_payments WHERE invoice_id = $1`, [invoiceId]);
+      await client.query(`DELETE FROM invoices WHERE id = $1`, [invoiceId]);
+      return inv;
+    });
+
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `حذف مسودة فاتورة مشتريات (${deleted.invoiceNumber})`,
+      module: 'المشتريات',
+      recordId: invoiceId,
+      oldValues: { invoiceNumber: deleted.invoiceNumber, grandTotal: deleted.grandTotal, dispatchStatus: deleted.dispatchStatus },
+    });
+    return { ok: true, id: invoiceId, invoiceNumber: deleted.invoiceNumber };
+  }
+
+  const deleted = await withJsonTransaction(async (db) => {
+    const inv = db.invoices.find((i) => i.id === invoiceId);
+    if (!inv) throw new AppError(404, 'فاتورة الشراء غير موجودة', 'INVOICE_NOT_FOUND');
+    if (inv.type !== 'purchase') {
+      throw new AppError(400, 'هذا المستند ليس فاتورة مشتريات', 'NOT_PURCHASE_INVOICE');
+    }
+    const dispatchSt = inv.dispatchStatus || 'draft';
+    if (inv.status !== 'draft' || !['draft', 'rejected'].includes(dispatchSt)) {
+      throw new AppError(
+        409,
+        'لا يمكن حذف فاتورة الشراء بعد إرسالها أو استلامها أو اعتمادها',
+        'CANNOT_DELETE_AFTER_DISPATCH'
+      );
+    }
+    if (!canFullPurchaseManage) {
+      const isOwner =
+        inv.sentByUserId === actor.id ||
+        (repActor && inv.representativeId === repActor.id) ||
+        inv.createdBy === actor.fullName ||
+        inv.createdBy === actor.id;
+      if (!isOwner) {
+        throw new AppError(403, 'غير مصرح لك بحذف مسودة فاتورة شراء لا تخصك', 'FORBIDDEN_INVOICE_ACCESS');
+      }
+    }
+    db.invoices = db.invoices.filter((i) => i.id !== invoiceId);
+    return inv;
+  });
+
+  await recordAuditLog({
+    userId: actor.id,
+    userName: actor.fullName,
+    action: `حذف مسودة فاتورة مشتريات (${deleted.invoiceNumber})`,
+    module: 'المشتريات',
+    recordId: invoiceId,
+    oldValues: { invoiceNumber: deleted.invoiceNumber, grandTotal: deleted.grandTotal, dispatchStatus: deleted.dispatchStatus },
+  });
+  return { ok: true, id: invoiceId, invoiceNumber: deleted.invoiceNumber };
+}
+
 export async function cancelInvoice(invoiceId, reason = '', actor) {
   const now = nowIso();
   const cleanReason = String(reason || 'إلغاء الفاتورة').trim();

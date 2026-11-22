@@ -24,6 +24,9 @@ import {
   isPgMode,
   FULL_ADMIN_PERMISSIONS,
   getDefaultPermissionsForRole,
+  resolveDefaultPermissionsForRole,
+  resolveRolePermissionPresets,
+  sanitizeRolePermissionPreset,
   normalizeCustomerPhonesList,
   mapPgUserRow,
   mapPgCustomerRow,
@@ -206,6 +209,11 @@ export async function getStaffBootstrapData(actor) {
     }
 
     const sRow = stRes.rows[0];
+    const rawExtra = sRow?.extra_settings || {};
+    const enrichedExtra = {
+      ...rawExtra,
+      roleDefaultPermissions: resolveRolePermissionPresets(rawExtra),
+    };
     const settings = sRow
       ? {
           companyName: sRow.company_name,
@@ -219,9 +227,12 @@ export async function getStaffBootstrapData(actor) {
           defaultPrintMode: sRow.default_print_mode || 'a4',
           invoiceNotes: sRow.invoice_notes || '',
           allowNegativeStock: Boolean(sRow.allow_negative_stock),
-          extraSettings: sRow.extra_settings || {},
+          extraSettings: enrichedExtra,
         }
-      : createEmptyDatabaseState().settings;
+      : {
+          ...createEmptyDatabaseState().settings,
+          extraSettings: enrichedExtra,
+        };
 
     const [personalData, stockCountsList, stockTransferRequestsList] = await Promise.all([
       canViewPersonal ? listPersonalAccountsData() : Promise.resolve({ accounts: [], transactions: [] }),
@@ -653,7 +664,13 @@ export async function getStaffBootstrapData(actor) {
     ownerTransactions: canViewPersonal ? (db.ownerTransactions || []) : [],
     stockCounts: isRep ? [] : (db.stockCounts || []),
     stockTransferRequests: isRep ? [] : (db.stockTransferRequests || []),
-    settings: db.settings,
+    settings: {
+      ...(db.settings || {}),
+      extraSettings: {
+        ...(db.settings?.extraSettings || {}),
+        roleDefaultPermissions: resolveRolePermissionPresets(db.settings?.extraSettings || {}),
+      },
+    },
     auditLogs: audits,
   };
 }
@@ -2223,14 +2240,15 @@ export async function createAdminUser(payload, actor) {
   if (actor?.role !== 'admin' && targetRole === 'admin') {
     throw new AppError(403, 'غير مصرح لغير المدير العام بإنشاء حساب مدير عام', 'FORBIDDEN_ADMIN_ESCALATION');
   }
+  const liveSettings = await getSystemSettingsSafe();
   const hasExplicitPermissions =
     payload.permissions && typeof payload.permissions === 'object' && Object.keys(payload.permissions).length > 0;
-  const resolvedPermissions = hasExplicitPermissions
+  const resolvedPermissions = hasExplicitPermissions && !payload.applyRolePreset
     ? {
         ...EMPTY_PERMISSIONS,
         ...Object.fromEntries(Object.entries(payload.permissions).map(([k, v]) => [k, Boolean(v)])),
       }
-    : getDefaultPermissionsForRole(targetRole);
+    : resolveDefaultPermissionsForRole(targetRole, liveSettings.extraSettings || {});
   assertNoPermissionEscalation(resolvedPermissions, actor);
   if (!username || username.length < 3) throw new AppError(400, 'اسم المستخدم يجب أن لا يقل عن 3 أحرف', 'INVALID_USERNAME');
   if (!fullName) throw new AppError(400, 'الاسم الكامل مطلوب', 'INVALID_NAME');
@@ -2497,6 +2515,9 @@ export async function updateAdminUser(userId, updates, actor) {
   assertNoPermissionEscalation(updates.permissions, actor);
   const nextPasswordHash = updates.newPassword && String(updates.newPassword).length >= 6 ? await hashPasswordBcrypt(updates.newPassword) : null;
 
+  const liveSettings = await getSystemSettingsSafe();
+  const liveExtraSettings = liveSettings.extraSettings || {};
+
   if (await isPgMode()) {
     const user = await withTransaction(async (client) => {
       const r = await client.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [userId]);
@@ -2507,11 +2528,13 @@ export async function updateAdminUser(userId, updates, actor) {
       }
       const effectiveRole = updates.role ?? cur.role;
       const resolvedPerms =
-        updates.permissions !== undefined
+        updates.applyRolePreset === true
+          ? resolveDefaultPermissionsForRole(effectiveRole, liveExtraSettings)
+          : updates.permissions !== undefined
           ? updates.permissions
           : updates.role !== undefined && updates.role !== cur.role
-          ? getDefaultPermissionsForRole(effectiveRole)
-          : (cur.permissions || getDefaultPermissionsForRole(effectiveRole));
+          ? resolveDefaultPermissionsForRole(effectiveRole, liveExtraSettings)
+          : (cur.permissions || resolveDefaultPermissionsForRole(effectiveRole, liveExtraSettings));
       await client.query(
         `UPDATE users SET full_name = $1, phone = $2, address = $3, notes = $4, role = $5, job_title = $6, department = $7, is_active = $8, must_change_password = $9, permissions = $10, updated_at = $11 WHERE id = $12`,
         [
@@ -2703,15 +2726,18 @@ export async function updateAdminUser(userId, updates, actor) {
       autoCreateRepProfile,
       autoMatchExisting,
       forceNewCustomerProfile,
+      applyRolePreset,
       ...rest
     } = updates;
     const effectiveRole = rest.role ?? cur.role;
     const resolvedPerms =
-      updates.permissions !== undefined
+      applyRolePreset === true
+        ? resolveDefaultPermissionsForRole(effectiveRole, liveExtraSettings)
+        : updates.permissions !== undefined
         ? updates.permissions
         : updates.role !== undefined && updates.role !== cur.role
-        ? getDefaultPermissionsForRole(effectiveRole)
-        : (cur.permissions || getDefaultPermissionsForRole(effectiveRole));
+        ? resolveDefaultPermissionsForRole(effectiveRole, liveExtraSettings)
+        : (cur.permissions || resolveDefaultPermissionsForRole(effectiveRole, liveExtraSettings));
     db.users[idx] = {
       ...cur,
       ...rest,
@@ -4894,6 +4920,84 @@ export async function updateSystemSettings(updates, actor) {
   });
   await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: 'تحديث إعدادات المؤسسة والاتصال', module: 'الإعدادات' });
   return updated;
+}
+
+export async function getRolePermissionPresets() {
+  const settings = await getSystemSettingsSafe();
+  return resolveRolePermissionPresets(settings.extraSettings || {});
+}
+
+export async function updateRolePermissionPresets(payload = {}, actor) {
+  const now = nowIso();
+  if (await isPgMode()) {
+    const presets = await withTransaction(async (client) => {
+      const existing = await client.query('SELECT * FROM system_settings LIMIT 1');
+      if (existing.rows[0]) {
+        const cur = existing.rows[0];
+        const prevExtra = cur.extra_settings || {};
+        const prevPresets = resolveRolePermissionPresets(prevExtra);
+        const nextPresets = {
+          representative: payload.representative
+            ? sanitizeRolePermissionPreset('representative', payload.representative)
+            : prevPresets.representative,
+          customer: payload.customer
+            ? sanitizeRolePermissionPreset('customer', payload.customer)
+            : prevPresets.customer,
+        };
+        const mergedExtra = { ...prevExtra, roleDefaultPermissions: nextPresets };
+        await client.query(`UPDATE system_settings SET extra_settings = $1, updated_at = $2 WHERE id = $3`, [
+          JSON.stringify(mergedExtra),
+          now,
+          cur.id,
+        ]);
+        return nextPresets;
+      } else {
+        const nextPresets = resolveRolePermissionPresets({ roleDefaultPermissions: payload });
+        await client.query(
+          `INSERT INTO system_settings (id, company_name, extra_settings, updated_at) VALUES ('default','أولاد سليم',$1,$2)`,
+          [JSON.stringify({ roleDefaultPermissions: nextPresets }), now]
+        );
+        return nextPresets;
+      }
+    });
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: 'تحديث قوالب الصلاحيات الافتراضية (المندوب / العميل)',
+      module: 'المستخدمون',
+      newValues: presets,
+    });
+    return presets;
+  }
+
+  const presets = await withJsonTransaction((db) => {
+    const prevExtra = db.settings?.extraSettings || {};
+    const prevPresets = resolveRolePermissionPresets(prevExtra);
+    const nextPresets = {
+      representative: payload.representative
+        ? sanitizeRolePermissionPreset('representative', payload.representative)
+        : prevPresets.representative,
+      customer: payload.customer
+        ? sanitizeRolePermissionPreset('customer', payload.customer)
+        : prevPresets.customer,
+    };
+    db.settings = {
+      ...(db.settings || {}),
+      extraSettings: {
+        ...prevExtra,
+        roleDefaultPermissions: nextPresets,
+      },
+    };
+    return nextPresets;
+  });
+  await recordAuditLog({
+    userId: actor.id,
+    userName: actor.fullName,
+    action: 'تحديث قوالب الصلاحيات الافتراضية (المندوب / العميل)',
+    module: 'المستخدمون',
+    newValues: presets,
+  });
+  return presets;
 }
 
 // ==============================================================================

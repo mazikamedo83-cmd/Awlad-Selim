@@ -69,6 +69,7 @@ import {
   ConnectionProfilesConfig,
   SyncQueueItem,
   SyncConflictRecord,
+  RoleDefaultPermissionPresets,
 } from '../types';
 import { useAuth } from './AuthContext';
 
@@ -141,6 +142,7 @@ export interface DataContextType extends DatabaseState {
   // Customers & Suppliers
   addCustomer: (customer: Omit<Customer, 'id' | 'createdAt' | 'currentBalance' | 'priceHistory'>) => Promise<Customer>;
   updateCustomer: (id: string, updates: Partial<Customer>) => Promise<{ success: boolean; queuedOffline?: boolean; error?: string } | void>;
+  updateOwnCustomerProfile: (updates: Partial<Customer>) => Promise<{ success: boolean; customer?: Customer; error?: string }>;
   deleteCustomer: (id: string) => Promise<{ success: boolean; error?: string }>;
   linkCustomerUser: (customerId: string, payload: { existingUserId?: string; createUser?: { fullName?: string; username: string; password: string; phone?: string; mustChangePassword?: boolean } }) => Promise<{ success: boolean; customer?: Customer; user?: User; error?: string }>;
   repairUnlinkedCustomerUsers: () => Promise<{ success: boolean; repairedCount?: number; error?: string }>;
@@ -159,6 +161,7 @@ export interface DataContextType extends DatabaseState {
   sendPurchaseInvoice: (invoiceId: string, payload?: { recipientUserId?: string; recipientName?: string; notes?: string }) => Promise<{ success: boolean; error?: string; invoice?: Invoice; queuedOffline?: boolean }>;
   receivePurchaseInvoice: (invoiceId: string, notes?: string) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
   rejectPurchaseInvoice: (invoiceId: string, reason: string) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
+  deleteDraftPurchaseInvoice: (invoiceId: string) => Promise<{ success: boolean; queuedOffline?: boolean; error?: string }>;
   createSalesQuote: (quoteData: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'>) => Promise<{ success: boolean; error?: string; invoice?: Invoice; queuedOffline?: boolean }>;
   convertQuoteToInvoice: (quoteId: string, payload?: Partial<Invoice> & { paidAtInvoice?: number }) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
   markInvoiceReviewed: (invoiceId: string, reviewNotes?: string) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
@@ -247,6 +250,8 @@ export interface DataContextType extends DatabaseState {
   ) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; advancePayment?: OrderAdvancePayment; queuedOffline?: boolean; error?: string }>;
   convertOrderToInvoice: (orderId: string, invoicePayload: Partial<Invoice> & { paidAtInvoice?: number }) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; invoice?: Invoice; error?: string }>;
   updateCustomerItemOrder: (id: string, status: CustomerItemOrderRequest['status'], reason?: string) => Promise<{ success: boolean; error?: string }>;
+  updateCustomerItemOrderContent: (orderId: string, payload: { items: Array<{ productId: string; unit?: string; unitFactor?: number; quantity: number }>; notes?: string; deliveryAddress?: string; geoCoordinates?: string }) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; error?: string }>;
+  cancelCustomerItemOrder: (orderId: string, reason?: string) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; error?: string }>;
 
   // Employees & Payroll
   addEmployee: (employee: Omit<Employee, 'id'>) => Promise<{ success: boolean; error?: string }>;
@@ -257,8 +262,11 @@ export interface DataContextType extends DatabaseState {
 
   // Users & Settings
   auditLogs: AuditLogItem[];
-  addUser: (userData: Omit<User, 'id' | 'createdAt'> & { password?: string; linkedCustomerId?: string; autoCreateCustomerProfile?: boolean; autoCreateRepProfile?: boolean }) => Promise<{ success: boolean; user?: User; linkedCustomerId?: string; linkedRepresentativeId?: string; error?: string }>;
-  updateUser: (id: string, updates: Partial<User> & { newPassword?: string; linkedCustomerId?: string; autoCreateCustomerProfile?: boolean; autoCreateRepProfile?: boolean }) => Promise<{ success: boolean; user?: User; linkedCustomerId?: string; linkedRepresentativeId?: string; error?: string }>;
+  permissionPresets: RoleDefaultPermissionPresets | null;
+  loadPermissionPresets: () => Promise<RoleDefaultPermissionPresets | null>;
+  updatePermissionPresets: (presets: Partial<RoleDefaultPermissionPresets>) => Promise<{ success: boolean; presets?: RoleDefaultPermissionPresets; error?: string }>;
+  addUser: (userData: Omit<User, 'id' | 'createdAt'> & { password?: string; linkedCustomerId?: string; autoCreateCustomerProfile?: boolean; autoCreateRepProfile?: boolean; applyRolePreset?: boolean }) => Promise<{ success: boolean; user?: User; linkedCustomerId?: string; linkedRepresentativeId?: string; error?: string }>;
+  updateUser: (id: string, updates: Partial<User> & { newPassword?: string; linkedCustomerId?: string; autoCreateCustomerProfile?: boolean; autoCreateRepProfile?: boolean; applyRolePreset?: boolean }) => Promise<{ success: boolean; user?: User; linkedCustomerId?: string; linkedRepresentativeId?: string; error?: string }>;
   deleteUser: (id: string) => Promise<{ success: boolean; error?: string }>;
   updateSettings: (newSettings: Partial<SystemSettings>) => Promise<void>;
 
@@ -657,6 +665,12 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
         if (p.notes !== undefined) inv.notes = p.notes;
         inv.editHistory = hist;
         inv.syncStatus = op.status;
+      }
+    } else if (op.operationType === 'delete_purchase_draft') {
+      const targetId = p.invoiceId || op.entityId;
+      const idx = invoices.findIndex((i) => i.id === targetId || i.localId === targetId);
+      if (idx >= 0 && invoices[idx].type === 'purchase' && invoices[idx].status === 'draft') {
+        invoices.splice(idx, 1);
       }
     } else if (op.operationType === 'add_invoice_payment') {
       const targetId = p.invoiceId || op.entityId;
@@ -1164,10 +1178,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadRoleScopedDataRef = useRef<(() => Promise<void>) | null>(null);
 
   const refreshSyncStatsFromLocal = useCallback(async () => {
-    const stats = await getSyncRefreshStats().catch(() => ({ lastSendSummary: null, lastReceiveSummary: null }));
+    if (!currentUser?.id) {
+      setLastSendSummary(null);
+      setLastReceiveSummary(null);
+      return;
+    }
+    const stats = await getSyncRefreshStats(currentUser.id).catch(() => ({
+      lastSendSummary: null,
+      lastReceiveSummary: null,
+    }));
     setLastSendSummary(stats.lastSendSummary);
     setLastReceiveSummary(stats.lastReceiveSummary);
-  }, []);
+  }, [currentUser?.id]);
 
   useEffect(() => {
     refreshSyncStatsFromLocal();
@@ -1367,6 +1389,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSyncConflicts([]);
         setCachedMediaMap({});
         setMobileNotifications([]);
+        setLastServerSyncAt(null);
         setIsUsingOfflineCache(false);
         setLastCacheTimestamp(null);
         setIsInitialLoaded(true);
@@ -1379,13 +1402,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           localDb.getSnapshot(currentUser.id),
           localDb.listSyncQueue(currentUser.id),
           localDb.listConflicts(currentUser.id),
-          localDb.getMeta<string>('last_sync_at'),
+          localDb.getMeta<string>(`last_sync_at:${currentUser.id}`),
         ]);
         if (cancelled) return;
 
         setSyncQueue(queue);
         setSyncConflicts(conflicts);
-        if (lastSyncMeta) setLastServerSyncAt(lastSyncMeta);
+        setLastServerSyncAt(lastSyncMeta || null);
 
         const expectedOrigin = normalizeServerOrigin(getConfiguredApiBaseUrl());
         const expectedInstallationId = getStoredInstallationId();
@@ -2430,6 +2453,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateOwnCustomerProfile = async (updates: Partial<Customer>) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; customer: Customer }>('/api/customers/me', {
+        method: 'PUT',
+        body: updates,
+      });
+      await Promise.all([loadRoleScopedData(), refreshAuthContext()]);
+      return { success: true, customer: res.customer };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تحديث بيانات الملف الشخصي والمحل' };
+    }
+  };
+
   const deleteCustomer = async (id: string) => {
     try {
       await apiRequest(`/api/customers/${id}`, { method: 'DELETE' });
@@ -2791,6 +2827,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: true, invoice: res.invoice };
     } catch (err: any) {
       return { success: false, error: err?.message || 'تعذر رفض فاتورة الشراء' };
+    }
+  };
+
+  const deleteDraftPurchaseInvoice = async (invoiceId: string) => {
+    try {
+      await apiRequest(`/api/invoices/purchase/${invoiceId}`, { method: 'DELETE' });
+      await loadRoleScopedData();
+      return { success: true };
+    } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const existing = data.invoices.find((i) => i.id === invoiceId);
+        await queueOfflineOp({
+          operationType: 'delete_purchase_draft',
+          entityType: 'invoice',
+          entityId: invoiceId,
+          summaryAr: `حذف مسودة فاتورة شراء (${existing?.invoiceNumber || invoiceId})`,
+          payload: { invoiceId },
+        });
+        return { success: true, queuedOffline: true };
+      }
+      return { success: false, error: err?.message || 'تعذر حذف مسودة فاتورة الشراء' };
     }
   };
 
@@ -3599,6 +3656,40 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: false, error: 'استخدم تحويل الطلب إلى فاتورة لإكمال دورة الاعتماد' };
   };
 
+  const updateCustomerItemOrderContent = async (
+    orderId: string,
+    payload: {
+      items: Array<{ productId: string; unit?: string; unitFactor?: number; quantity: number }>;
+      notes?: string;
+      deliveryAddress?: string;
+      geoCoordinates?: string;
+    }
+  ) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; order: CustomerItemOrderRequest }>(`/api/orders/${orderId}`, {
+        method: 'PUT',
+        body: payload,
+      });
+      await loadRoleScopedData();
+      return { success: true, order: res.order };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تعديل الطلب' };
+    }
+  };
+
+  const cancelCustomerItemOrder = async (orderId: string, reason = '') => {
+    try {
+      const res = await apiRequest<{ ok: boolean; order: CustomerItemOrderRequest }>(`/api/orders/${orderId}/cancel`, {
+        method: 'POST',
+        body: { reason },
+      });
+      await loadRoleScopedData();
+      return { success: true, order: res.order };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر إلغاء الطلب' };
+    }
+  };
+
   // Employees & HR
   const addEmployee = async (emp: Omit<Employee, 'id'>) => {
     try {
@@ -3650,21 +3741,70 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const permissionPresets: RoleDefaultPermissionPresets | null =
+    data.settings?.extraSettings?.roleDefaultPermissions || null;
+
+  const loadPermissionPresets = async () => {
+    try {
+      const res = await apiRequest<{ ok: boolean; presets: RoleDefaultPermissionPresets }>(
+        '/api/admin/permission-presets'
+      );
+      if (res.presets) {
+        setData((prev) => ({
+          ...prev,
+          settings: {
+            ...prev.settings,
+            extraSettings: {
+              ...(prev.settings?.extraSettings || {}),
+              roleDefaultPermissions: res.presets,
+            },
+          },
+        }));
+      }
+      return res.presets || null;
+    } catch {
+      return permissionPresets;
+    }
+  };
+
+  const updatePermissionPresets = async (presets: Partial<RoleDefaultPermissionPresets>) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; presets: RoleDefaultPermissionPresets }>(
+        '/api/admin/permission-presets',
+        { method: 'PUT', body: presets }
+      );
+      await loadRoleScopedData();
+      return { success: true, presets: res.presets };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر حفظ قوالب الصلاحيات الافتراضية' };
+    }
+  };
+
   // Users & Settings
   const addUser = async (
     userData: Omit<User, 'id' | 'createdAt'> & {
       password?: string;
       linkedCustomerId?: string;
       autoCreateCustomerProfile?: boolean;
+      autoCreateRepProfile?: boolean;
+      applyRolePreset?: boolean;
     }
   ) => {
     try {
-      const res = await apiRequest<{ ok: boolean; user: User; linkedCustomerId?: string }>('/api/admin/users', {
-        method: 'POST',
-        body: userData,
-      });
+      const res = await apiRequest<{ ok: boolean; user: User; linkedCustomerId?: string; linkedRepresentativeId?: string }>(
+        '/api/admin/users',
+        {
+          method: 'POST',
+          body: userData,
+        }
+      );
       await loadRoleScopedData();
-      return { success: true, user: res.user, linkedCustomerId: res.linkedCustomerId };
+      return {
+        success: true,
+        user: res.user,
+        linkedCustomerId: res.linkedCustomerId,
+        linkedRepresentativeId: res.linkedRepresentativeId,
+      };
     } catch (err: any) {
       return { success: false, error: err?.message || 'تعذر إنشاء المستخدم' };
     }
@@ -3672,12 +3812,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateUser = async (
     id: string,
-    updates: Partial<User> & { newPassword?: string; linkedCustomerId?: string; autoCreateCustomerProfile?: boolean }
+    updates: Partial<User> & {
+      newPassword?: string;
+      linkedCustomerId?: string;
+      autoCreateCustomerProfile?: boolean;
+      autoCreateRepProfile?: boolean;
+      applyRolePreset?: boolean;
+    }
   ) => {
     try {
-      await apiRequest(`/api/admin/users/${id}`, { method: 'PUT', body: updates });
+      const res = await apiRequest<{ ok: boolean; user: User; linkedCustomerId?: string; linkedRepresentativeId?: string }>(
+        `/api/admin/users/${id}`,
+        { method: 'PUT', body: updates }
+      );
       await loadRoleScopedData();
-      return { success: true };
+      return {
+        success: true,
+        user: res.user,
+        linkedCustomerId: res.linkedCustomerId,
+        linkedRepresentativeId: res.linkedRepresentativeId,
+      };
     } catch (err: any) {
       return { success: false, error: err?.message || 'تعذر تحديث المستخدم' };
     }
@@ -4167,6 +4321,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ensureRepVanWarehouse,
         addCustomer,
         updateCustomer,
+        updateOwnCustomerProfile,
         deleteCustomer,
         linkCustomerUser,
         repairUnlinkedCustomerUsers,
@@ -4182,6 +4337,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sendPurchaseInvoice,
         receivePurchaseInvoice,
         rejectPurchaseInvoice,
+        deleteDraftPurchaseInvoice,
         createSalesQuote,
         convertQuoteToInvoice,
         markInvoiceReviewed,
@@ -4222,11 +4378,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         recordOrderAdvancePayment,
         convertOrderToInvoice,
         updateCustomerItemOrder,
+        updateCustomerItemOrderContent,
+        cancelCustomerItemOrder,
         addEmployee,
         updateEmployee,
         recordAttendance,
         addAdvanceDeduction,
         paySalary,
+        permissionPresets,
+        loadPermissionPresets,
+        updatePermissionPresets,
         addUser,
         updateUser,
         deleteUser,

@@ -3,6 +3,8 @@ import {
   listOrders,
   getOrderById,
   createCustomerOrder,
+  updateOwnPendingOrder,
+  cancelOwnPendingOrder,
   reviewCustomerOrder,
   approveCustomerOrder,
   rejectCustomerOrder,
@@ -61,6 +63,22 @@ router.post(
       req.auth
     );
     res.status(deduplicated ? 200 : 201).json({ ok: true, order, deduplicated });
+  })
+);
+
+router.put(
+  '/:id',
+  asyncHandler(async (req, res) => {
+    const order = await updateOwnPendingOrder(req.params.id, req.body || {}, req.auth);
+    res.json({ ok: true, order });
+  })
+);
+
+router.post(
+  '/:id/cancel',
+  asyncHandler(async (req, res) => {
+    const order = await cancelOwnPendingOrder(req.params.id, req.body || {}, req.auth);
+    res.json({ ok: true, order });
   })
 );
 

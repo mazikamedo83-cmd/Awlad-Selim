@@ -707,6 +707,273 @@ export async function createCustomerOrder(payload, authContext) {
   return result;
 }
 
+function assertPendingOrderOwnership(ord, authContext) {
+  const actor = authContext.user;
+  if (actor.role === 'customer') {
+    const custId = authContext.customerProfile?.id;
+    if (!custId || ord.customerId !== custId) {
+      throw new AppError(403, 'غير مصرح لك بالوصول إلى طلب لا يخص حسابك', 'FORBIDDEN_ORDER_ACCESS');
+    }
+  } else if (actor.role === 'representative') {
+    const repId = authContext.representativeProfile?.id;
+    const isOwner = ord.userId === actor.id || (repId && ord.representativeId === repId);
+    if (!isOwner) {
+      throw new AppError(403, 'غير مصرح لك بتعديل أو إلغاء طلب لا يخصك', 'FORBIDDEN_ORDER_ACCESS');
+    }
+  } else if (actor.role !== 'admin' && !actor.permissions?.canManageSales) {
+    throw new AppError(403, 'ليس لديك صلاحية تعديل هذا الطلب', 'FORBIDDEN');
+  }
+  if (ord.status !== 'pending') {
+    throw new AppError(
+      409,
+      'لا يمكن تعديل أو إلغاء الطلب بعد بدء مراجعته أو اعتماده من الإدارة',
+      'ORDER_ALREADY_PROCESSED'
+    );
+  }
+}
+
+export async function updateOwnPendingOrder(orderId, payload = {}, authContext) {
+  const actor = authContext.user;
+  const now = nowIso();
+  const hasItems = payload.items !== undefined;
+  const rawItems = Array.isArray(payload.items) ? payload.items : [];
+  if (hasItems && rawItems.length === 0) {
+    throw new AppError(400, 'يجب إضافة صنف واحد على الأقل إلى الطلب', 'EMPTY_ORDER_ITEMS');
+  }
+
+  if (await isPgMode()) {
+    const order = await withTransaction(async (client) => {
+      const ordRes = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1 FOR UPDATE`, [orderId]);
+      const row = ordRes.rows[0];
+      if (!row) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
+      assertPendingOrderOwnership(mapPgOrderRow(row, [], []), authContext);
+
+      let nextTotalAmount = Number(row.total_amount || 0);
+      let resolvedItems = null;
+      if (hasItems) {
+        resolvedItems = [];
+        for (const item of rawItems) {
+          const qty = round3(item.quantity);
+          if (!item.productId || qty <= 0) {
+            throw new AppError(400, 'بيانات الأصناف أو الكميات غير صالحة (الكمية يجب أن تكون أكبر من صفر)', 'INVALID_ORDER_ITEM');
+          }
+          const pRes = await client.query(`SELECT * FROM products WHERE id = $1 LIMIT 1`, [item.productId]);
+          const prod = pRes.rows[0];
+          if (!prod || prod.status !== 'active') {
+            throw new AppError(404, `الصنف غير متاح أو غير نشط (${item.productName || item.productId})`, 'PRODUCT_UNAVAILABLE');
+          }
+          const uRes = await client.query(`SELECT * FROM product_units WHERE product_id = $1`, [prod.id]);
+          const prodObj = {
+            baseUnit: prod.base_unit,
+            sellingPrice: Number(prod.selling_price || 0),
+            units: uRes.rows.map((u) => ({
+              name: u.name,
+              conversionFactor: Number(u.conversion_factor || 1),
+              sellingPrice: Number(u.selling_price || 0),
+            })),
+          };
+          const unitName = String(item.unit || prod.base_unit);
+          const unitFactor = getUnitFactor(prodObj, unitName);
+          const referenceUnitPrice = round2(getUnitSellingPrice(prodObj, unitName));
+          resolvedItems.push({
+            id: generateServerId('OITM'),
+            productId: prod.id,
+            productCode: prod.code,
+            productName: prod.name,
+            productImage: prod.image || undefined,
+            unit: unitName,
+            unitFactor,
+            quantity: qty,
+            unitPrice: referenceUnitPrice,
+          });
+        }
+        nextTotalAmount = round2(
+          resolvedItems.reduce((sum, it) => sum + Number(it.unitPrice || 0) * Number(it.quantity || 0), 0)
+        );
+        await client.query(`DELETE FROM customer_item_order_items WHERE order_id = $1`, [orderId]);
+        for (const it of resolvedItems) {
+          await client.query(
+            `INSERT INTO customer_item_order_items (id, order_id, product_id, product_code, product_name, product_image, unit, unit_factor, quantity, reference_unit_price)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+            [it.id, orderId, it.productId, it.productCode, it.productName, it.productImage || null, it.unit, it.unitFactor, it.quantity, it.unitPrice]
+          );
+        }
+      }
+
+      const advancePaid = round2(row.advance_paid_amount || 0);
+      const nextRemaining = Math.max(0, round2(nextTotalAmount - advancePaid));
+      await client.query(
+        `UPDATE customer_item_orders SET
+          customer_phone = $1, shop_name = $2, delivery_address = $3, geo_coordinates = $4,
+          notes = $5, total_amount = $6, remaining_amount = $7,
+          version = COALESCE(version, 1) + 1, updated_at = $8
+         WHERE id = $9`,
+        [
+          payload.customerPhone !== undefined ? String(payload.customerPhone || '').trim() : (row.customer_phone || ''),
+          payload.shopName !== undefined ? String(payload.shopName || '').trim() : (row.shop_name || ''),
+          payload.deliveryAddress !== undefined ? String(payload.deliveryAddress || '').trim() : (row.delivery_address || ''),
+          payload.geoCoordinates !== undefined ? String(payload.geoCoordinates || '').trim() : (row.geo_coordinates || ''),
+          payload.notes !== undefined ? String(payload.notes || '').trim() : (row.notes || ''),
+          nextTotalAmount,
+          nextRemaining,
+          now,
+          orderId,
+        ]
+      );
+      await client.query(
+        `INSERT INTO order_status_history (id, order_id, from_status, to_status, changed_by_user_id, changed_by_name, reason, changed_at)
+         VALUES ($1,$2,'pending','pending',$3,$4,$5,$6)`,
+        [generateServerId('OSH'), orderId, actor.id, actor.fullName, 'تعديل تفاصيل الطلب قبل المراجعة', now]
+      );
+
+      const updated = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1`, [orderId]);
+      const itemsRes = await client.query(`SELECT * FROM customer_item_order_items WHERE order_id = $1`, [orderId]);
+      const histRes = await client.query(`SELECT * FROM order_status_history WHERE order_id = $1 ORDER BY changed_at ASC`, [orderId]);
+      return mapPgOrderRow(updated.rows[0], itemsRes.rows, histRes.rows);
+    });
+
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `تعديل تفاصيل الطلب المعلق (${order.requestNumber})`,
+      module: 'طلبات العملاء والمندوبين',
+      recordId: orderId,
+    });
+    return getOrderById(orderId, authContext);
+  }
+
+  const order = await withJsonTransaction(async (db) => {
+    const ord = db.customerItemOrders.find((o) => o.id === orderId);
+    if (!ord) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
+    assertPendingOrderOwnership(ord, authContext);
+
+    if (hasItems) {
+      const resolvedItems = [];
+      for (const item of rawItems) {
+        const qty = round3(item.quantity);
+        if (!item.productId || qty <= 0) {
+          throw new AppError(400, 'بيانات الأصناف أو الكميات غير صالحة', 'INVALID_ORDER_ITEM');
+        }
+        const prod = db.products.find((p) => p.id === item.productId && p.status === 'active');
+        if (!prod) {
+          throw new AppError(404, `الصنف غير متاح أو غير نشط (${item.productName || item.productId})`, 'PRODUCT_UNAVAILABLE');
+        }
+        const unitName = String(item.unit || prod.baseUnit);
+        resolvedItems.push({
+          productId: prod.id,
+          productCode: prod.code,
+          productName: prod.name,
+          productImage: prod.image || undefined,
+          unit: unitName,
+          unitFactor: getUnitFactor(prod, unitName),
+          quantity: qty,
+          unitPrice: round2(getUnitSellingPrice(prod, unitName)),
+        });
+      }
+      ord.items = resolvedItems;
+      ord.totalAmount = round2(
+        resolvedItems.reduce((sum, it) => sum + Number(it.unitPrice || 0) * Number(it.quantity || 0), 0)
+      );
+      ord.remainingAmount = Math.max(0, round2(ord.totalAmount - Number(ord.advancePaidAmount || 0)));
+    }
+
+    if (payload.customerPhone !== undefined) ord.customerPhone = String(payload.customerPhone || '').trim();
+    if (payload.shopName !== undefined) ord.shopName = String(payload.shopName || '').trim();
+    if (payload.deliveryAddress !== undefined) ord.deliveryAddress = String(payload.deliveryAddress || '').trim();
+    if (payload.geoCoordinates !== undefined) ord.geoCoordinates = String(payload.geoCoordinates || '').trim();
+    if (payload.notes !== undefined) ord.notes = String(payload.notes || '').trim();
+    ord.version = Number(ord.version || 1) + 1;
+    ord.updatedAt = now;
+    ord.statusHistory = ord.statusHistory || [];
+    ord.statusHistory.push({
+      id: generateServerId('OSH'),
+      fromStatus: 'pending',
+      toStatus: 'pending',
+      changedByName: actor.fullName,
+      reason: 'تعديل تفاصيل الطلب قبل المراجعة',
+      changedAt: now,
+    });
+    return ord;
+  });
+
+  await recordAuditLog({
+    userId: actor.id,
+    userName: actor.fullName,
+    action: `تعديل تفاصيل الطلب المعلق (${order.requestNumber})`,
+    module: 'طلبات العملاء والمندوبين',
+    recordId: orderId,
+  });
+  return getOrderById(orderId, authContext);
+}
+
+export async function cancelOwnPendingOrder(orderId, { reason = '' } = {}, authContext) {
+  const actor = authContext.user;
+  const now = nowIso();
+  const cleanReason = String(reason || '').trim() || 'إلغاء الطلب بواسطة العميل قبل المراجعة';
+
+  if (await isPgMode()) {
+    const order = await withTransaction(async (client) => {
+      const ordRes = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1 FOR UPDATE`, [orderId]);
+      const row = ordRes.rows[0];
+      if (!row) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
+      assertPendingOrderOwnership(mapPgOrderRow(row, [], []), authContext);
+
+      await client.query(
+        `UPDATE customer_item_orders SET status = 'cancelled', rejection_reason = $1, version = COALESCE(version, 1) + 1, updated_at = $2 WHERE id = $3`,
+        [cleanReason, now, orderId]
+      );
+      await client.query(
+        `INSERT INTO order_status_history (id, order_id, from_status, to_status, changed_by_user_id, changed_by_name, reason, changed_at)
+         VALUES ($1,$2,'pending','cancelled',$3,$4,$5,$6)`,
+        [generateServerId('OSH'), orderId, actor.id, actor.fullName, cleanReason, now]
+      );
+      const updated = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1`, [orderId]);
+      return mapPgOrderRow(updated.rows[0], [], []);
+    });
+
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `إلغاء الطلب المعلق (${order.requestNumber})`,
+      module: 'طلبات العملاء والمندوبين',
+      recordId: orderId,
+      notes: cleanReason,
+    });
+    return getOrderById(orderId, authContext);
+  }
+
+  const order = await withJsonTransaction(async (db) => {
+    const ord = db.customerItemOrders.find((o) => o.id === orderId);
+    if (!ord) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
+    assertPendingOrderOwnership(ord, authContext);
+
+    ord.status = 'cancelled';
+    ord.rejectionReason = cleanReason;
+    ord.version = Number(ord.version || 1) + 1;
+    ord.updatedAt = now;
+    ord.statusHistory = ord.statusHistory || [];
+    ord.statusHistory.push({
+      id: generateServerId('OSH'),
+      fromStatus: 'pending',
+      toStatus: 'cancelled',
+      changedByName: actor.fullName,
+      reason: cleanReason,
+      changedAt: now,
+    });
+    return ord;
+  });
+
+  await recordAuditLog({
+    userId: actor.id,
+    userName: actor.fullName,
+    action: `إلغاء الطلب المعلق (${order.requestNumber})`,
+    module: 'طلبات العملاء والمندوبين',
+    recordId: orderId,
+    notes: cleanReason,
+  });
+  return getOrderById(orderId, authContext);
+}
+
 export async function reviewCustomerOrder(orderId, { notes = '' } = {}, actor) {
   const now = nowIso();
   if (await isPgMode()) {

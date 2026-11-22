@@ -6,12 +6,51 @@ import {
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
-import { RepTransfer, RepItemTransferRequest, Representative, RepCustodyStatementResponse } from '../../../types';
+import { RepTransfer, RepItemTransferRequest, Representative, RepCustodyStatementResponse, UserPermissions } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
+import { CashTransferIcon, StockTransfersIcon, RepsFleetIcon, AccountsLedgerIcon } from '../../common/AppIcons';
+
+const REP_DEFAULT_PERMISSIONS: UserPermissions = {
+  canView: true,
+  canAdd: true,
+  canEdit: true,
+  canDelete: false,
+  canPrint: true,
+  canExport: false,
+  canViewReports: false,
+  canManageSales: true,
+  canManagePurchases: false,
+  canCreatePurchase: true,
+  canManageInventory: false,
+  canManageWarehouses: false,
+  canManageCashboxes: false,
+  canManageAccounts: false,
+  canManageReps: false,
+  canManageTransfers: true,
+  canManageEmployees: false,
+  canManageSalaries: false,
+  canManageUsers: false,
+  canManageSettings: false,
+  canAllowNegativeInventory: false,
+  canApprove: false,
+  canSend: true,
+  canReceive: true,
+  canReviewRepInvoices: false,
+  canViewPersonalAccounts: false,
+  canCreatePersonalTx: false,
+  canEditPersonalTx: false,
+  canApprovePersonalAdjustment: false,
+  canCreateStockCount: false,
+  canApproveStockCount: false,
+  canCreateStockTransfer: false,
+  canApproveStockTransfer: false,
+  canExecuteStockTransfer: false,
+  canViewDeletedInvoices: false,
+};
 
 interface RepTransferViewProps {
   initialTab?: 'cash-transfers' | 'item-transfers' | 'reps-list' | 'rep-custody-statement';
@@ -21,7 +60,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
   const { 
     repTransfers, repItemTransfers = [], representatives, customers, products, warehouses, invoices, cashboxes, settings, 
     createRepTransfer, confirmRepTransferReceipt, rejectRepTransfer,
-    createRepItemTransfer, updateRepItemTransferStatus, addRepresentative, updateRepresentative,
+    createRepItemTransfer, updateRepItemTransferStatus, addRepresentative, updateRepresentative, addUser,
     getRepCustodyStatement, recordRepCustodyDelivery, recordRepCustodyReturn, recordRepCustodyAdjustment,
   } = useData();
   const { currentUser, hasPermission } = useAuth();
@@ -95,6 +134,9 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
   const [repPhone, setRepPhone] = useState('');
   const [repVehicle, setRepVehicle] = useState('');
   const [repOpening, setRepOpening] = useState(0);
+  const [createRepAccount, setCreateRepAccount] = useState(true);
+  const [repUsername, setRepUsername] = useState('');
+  const [repPassword, setRepPassword] = useState('');
   const [isSavingRep, setIsSavingRep] = useState(false);
   const [repFormError, setRepFormError] = useState<string | null>(null);
   const [isConfirmBusy, setIsConfirmBusy] = useState(false);
@@ -583,6 +625,16 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       setRepFormError('يرجى إدخال اسم المندوب.');
       return;
     }
+    if (!editingRep && createRepAccount) {
+      if (repUsername.trim().length < 3) {
+        setRepFormError('يرجى إدخال اسم مستخدم للمندوب (3 أحرف على الأقل).');
+        return;
+      }
+      if (repPassword.length < 4) {
+        setRepFormError('كلمة مرور حساب المندوب يجب أن لا تقل عن 4 أحرف.');
+        return;
+      }
+    }
     setIsSavingRep(true);
     try {
       if (editingRep) {
@@ -592,6 +644,37 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           vehicleNumber: repVehicle.trim(),
         });
         setStatusBanner({ type: 'success', text: `تم تحديث بيانات المندوب (${repName.trim()}) بنجاح.` });
+      } else if (createRepAccount) {
+        const userRes = await addUser({
+          fullName: repName.trim(),
+          username: repUsername.trim(),
+          password: repPassword,
+          phone: repPhone.trim(),
+          role: 'representative',
+          jobTitle: 'مندوب مبيعات ميداني',
+          department: 'المبيعات الخارجية',
+          isActive: true,
+          permissions: REP_DEFAULT_PERMISSIONS,
+          autoCreateRepProfile: true,
+        } as any);
+        if (!userRes.success || !userRes.user) {
+          setRepFormError(userRes.error || 'تعذر إنشاء حساب الدخول التلقائي للمندوب');
+          return;
+        }
+        if (Number(repOpening) !== 0 || repVehicle.trim()) {
+          await addRepresentative({
+            userId: userRes.user.id,
+            name: repName.trim(),
+            phone: repPhone.trim(),
+            vehicleNumber: repVehicle.trim(),
+            openingBalance: Number(repOpening) || 0,
+            status: 'active',
+          });
+        }
+        setStatusBanner({
+          type: 'success',
+          text: `تم إنشاء ملف المندوب (${repName.trim()}) وحساب الدخول (${repUsername.trim()}) بصلاحيات المندوب الافتراضية تلقائياً.`,
+        });
       } else {
         await addRepresentative({
           name: repName.trim(),
@@ -608,6 +691,8 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       setRepPhone('');
       setRepVehicle('');
       setRepOpening(0);
+      setRepUsername('');
+      setRepPassword('');
     } catch (err: any) {
       setRepFormError(err?.message || 'تعذر حفظ بيانات المندوب');
     } finally {
@@ -731,10 +816,14 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
             <button
               onClick={() => {
                 setEditingRep(null);
+                setRepFormError(null);
                 setRepName('');
                 setRepPhone('');
                 setRepVehicle('');
                 setRepOpening(0);
+                setRepUsername('');
+                setRepPassword('');
+                setCreateRepAccount(true);
                 setIsAddRepModalOpen(true);
               }}
               className="flex items-center gap-2 px-4 py-2 bg-blue-900 hover:bg-blue-950 text-white text-xs font-black rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
@@ -769,7 +858,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
             activeTab === 'cash-transfers' ? 'bg-white text-blue-950 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <ArrowLeftRight className="w-4 h-4 text-blue-700" />
+          <CashTransferIcon className="w-5 h-5 shrink-0" />
           <span>التحويل المالي والنقدي (طلب تحويل بالنصف)</span>
         </button>
 
@@ -779,7 +868,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
             activeTab === 'item-transfers' ? 'bg-white text-blue-950 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <Boxes className="w-4 h-4 text-emerald-600" />
+          <StockTransfersIcon className="w-5 h-5 shrink-0" />
           <span>طلبات تحويل الأصناف والعهد (مرتبطة بالفاتورة)</span>
           {repItemTransfers.filter(r => r.status === 'pending').length > 0 && (
             <span className="bg-amber-500 text-white px-1.5 py-0.2 rounded-full text-[10px]">
@@ -794,7 +883,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
             activeTab === 'reps-list' ? 'bg-white text-blue-950 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <User className="w-4 h-4 text-purple-600" />
+          <RepsFleetIcon className="w-5 h-5 shrink-0" />
           <span>دليل المناديب ومتابعة العهد ({representatives.length})</span>
         </button>
 
@@ -804,7 +893,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
             activeTab === 'rep-custody-statement' ? 'bg-white text-blue-950 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <FileSpreadsheet className="w-4 h-4 text-blue-900" />
+          <AccountsLedgerIcon className="w-5 h-5 shrink-0" />
           <span>كشف حساب وعهدة المندوب</span>
         </button>
       </div>
@@ -2008,15 +2097,67 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
             </div>
 
             {!editingRep && (
-              <div>
-                <label className="block font-bold mb-1">رصيد العهدة الافتتاحي ({settings.currency}):</label>
-                <input
-                  type="number"
-                  value={repOpening}
-                  onChange={(e) => setRepOpening(parseFloat(e.target.value) || 0)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300 font-mono"
-                />
-              </div>
+              <>
+                <div>
+                  <label className="block font-bold mb-1">رصيد العهدة الافتتاحي ({settings.currency}):</label>
+                  <input
+                    type="number"
+                    value={repOpening}
+                    onChange={(e) => setRepOpening(parseFloat(e.target.value) || 0)}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 font-mono"
+                  />
+                </div>
+
+                {(currentUser?.role === 'admin' || hasPermission('canManageUsers')) && (
+                  <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-3">
+                    <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={createRepAccount}
+                        onChange={(e) => setCreateRepAccount(e.target.checked)}
+                        className="mt-0.5 w-4 h-4 rounded accent-indigo-700"
+                      />
+                      <div>
+                        <span className="font-black text-indigo-950 block">
+                          إنشاء حساب دخول تلقائي بصلاحيات المندوب الافتراضية
+                        </span>
+                        <span className="text-[11px] text-indigo-800 block mt-0.5">
+                          يفعّل المبيعات والعملاء والتحويلات وإنشاء مسودات الشراء وإرسالها، مع إنشاء مستودع سيارة مربوط 1:1 (يمكن تعديل الصلاحيات لاحقاً من إدارة المستخدمين).
+                        </span>
+                      </div>
+                    </label>
+
+                    {createRepAccount && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        <div>
+                          <label className="block font-bold text-slate-700 mb-1">اسم المستخدم للدخول: *</label>
+                          <input
+                            type="text"
+                            required={createRepAccount}
+                            value={repUsername}
+                            onChange={(e) => setRepUsername(e.target.value)}
+                            placeholder="مثال: rep_ahmed"
+                            dir="ltr"
+                            className="w-full p-2.5 rounded-xl border border-indigo-200 bg-white font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block font-bold text-slate-700 mb-1">كلمة المرور: *</label>
+                          <input
+                            type="password"
+                            required={createRepAccount}
+                            value={repPassword}
+                            onChange={(e) => setRepPassword(e.target.value)}
+                            placeholder="4 أحرف على الأقل..."
+                            dir="ltr"
+                            className="w-full p-2.5 rounded-xl border border-indigo-200 bg-white font-mono"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
             )}
 
             <div className="flex justify-end gap-2 pt-3 border-t">

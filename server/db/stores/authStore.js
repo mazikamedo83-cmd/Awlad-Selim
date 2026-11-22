@@ -25,6 +25,7 @@ import {
   FULL_ADMIN_PERMISSIONS,
   CUSTOMER_DEFAULT_PERMISSIONS,
   REP_DEFAULT_PERMISSIONS,
+  resolveDefaultPermissionsForRole,
   normalizeCustomerPhonesList,
   mapPgUserRow,
   mapPgCustomerRow,
@@ -362,6 +363,19 @@ async function resolveLinkedProfilesPg(clientOrPool, user) {
     const custRes = await clientOrPool.query('SELECT * FROM customers WHERE user_id = $1 LIMIT 1', [user.id]);
     if (custRes.rows[0]) {
       customerProfile = mapPgCustomerRow(custRes.rows[0]);
+      if (customerProfile?.assignedRepId) {
+        const repRes = await clientOrPool.query(
+          'SELECT id, name, phone FROM representatives WHERE id = $1 LIMIT 1',
+          [customerProfile.assignedRepId]
+        );
+        if (repRes.rows[0]) {
+          customerProfile.assignedRep = {
+            id: repRes.rows[0].id,
+            name: repRes.rows[0].name,
+            phone: repRes.rows[0].phone || '',
+          };
+        }
+      }
     } else if (String(user.notes || '').includes(CUSTOMER_PHONE_CONFLICT_MARKER)) {
       linkWarning = CUSTOMER_PHONE_CONFLICT_WARNING;
     } else {
@@ -398,7 +412,18 @@ function resolveLinkedProfilesJson(db, user) {
   if (user.role === 'customer') {
     const cust = db.customers.find((c) => c.userId === user.id);
     if (cust) {
-      customerProfile = cust;
+      const cloned = structuredClone(cust);
+      if (cloned.assignedRepId) {
+        const rep = (db.representatives || []).find((r) => r.id === cloned.assignedRepId);
+        if (rep) {
+          cloned.assignedRep = {
+            id: rep.id,
+            name: rep.name,
+            phone: rep.phone || '',
+          };
+        }
+      }
+      customerProfile = cloned;
     } else if (String(user.notes || '').includes(CUSTOMER_PHONE_CONFLICT_MARKER)) {
       linkWarning = CUSTOMER_PHONE_CONFLICT_WARNING;
     } else {
@@ -817,7 +842,7 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
   const refreshHash = sha256Hex(refreshToken);
   const expiresDate = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 86400 * 1000).toISOString();
   const now = nowIso();
-  const permissions = role === 'customer' ? { ...CUSTOMER_DEFAULT_PERMISSIONS } : { ...REP_DEFAULT_PERMISSIONS };
+  const fallbackPermissions = resolveDefaultPermissionsForRole(role, {});
 
   const lockKeys = [
     `u:${cleanUsernameLower}`,
@@ -878,6 +903,9 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
           }
         }
 
+        const sysPresetRes = await client.query(`SELECT extra_settings FROM system_settings LIMIT 1`);
+        const livePermissions = resolveDefaultPermissionsForRole(role, sysPresetRes.rows[0]?.extra_settings || fallbackPermissions);
+
         await client.query(
           `INSERT INTO users (id, full_name, username, password_hash, password_algo, phone, address, notes, role, job_title, department, is_active, must_change_password, permissions, created_at)
            VALUES ($1,$2,$3,$4,'bcrypt',$5,$6,$7,$8,$9,$10,TRUE,FALSE,$11,$12)`,
@@ -892,7 +920,7 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
             role,
             role === 'representative' ? 'مندوب مبيعات' : 'عميل',
             role === 'representative' ? 'المندوبون' : 'العملاء',
-            JSON.stringify(permissions),
+            JSON.stringify(livePermissions),
             now,
           ]
         );
@@ -1158,6 +1186,7 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
       }
     }
 
+    const livePermissions = resolveDefaultPermissionsForRole(role, db.settings?.extraSettings || {});
     const newUser = {
       id: userId,
       fullName,
@@ -1172,7 +1201,7 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
       department: role === 'representative' ? 'المندوبون' : 'العملاء',
       isActive: true,
       mustChangePassword: false,
-      permissions,
+      permissions: livePermissions,
       shortcuts: [],
       createdAt: now,
     };

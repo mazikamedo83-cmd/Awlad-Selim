@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell, clipboard, session } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, clipboard, session, safeStorage } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const nodeCrypto = require('node:crypto');
@@ -172,13 +172,56 @@ function buildApplicationMenu() {
 function ensureOfflineClientKey() {
   if (!desktopState.offlineClientDir) return null;
   fs.mkdirSync(desktopState.offlineClientDir, { recursive: true });
-  const keyPath = path.join(desktopState.offlineClientDir, '.vault.key');
-  if (fs.existsSync(keyPath)) {
-    const raw = fs.readFileSync(keyPath);
-    if (raw.length === 32) return raw;
+  const encKeyPath = path.join(desktopState.offlineClientDir, '.vault.key.enc');
+  const legacyKeyPath = path.join(desktopState.offlineClientDir, '.vault.key');
+  const canUseSafeStorage = Boolean(
+    safeStorage &&
+      typeof safeStorage.isEncryptionAvailable === 'function' &&
+      safeStorage.isEncryptionAvailable()
+  );
+
+  if (canUseSafeStorage && fs.existsSync(encKeyPath)) {
+    try {
+      const encBuf = fs.readFileSync(encKeyPath);
+      const hex = safeStorage.decryptString(encBuf);
+      const key = Buffer.from(hex, 'hex');
+      if (key.length === 32) return key;
+    } catch {
+      // fall through to legacy migration or regeneration
+    }
   }
+
+  if (fs.existsSync(legacyKeyPath)) {
+    try {
+      const raw = fs.readFileSync(legacyKeyPath);
+      if (raw.length === 32) {
+        if (canUseSafeStorage) {
+          try {
+            const encrypted = safeStorage.encryptString(raw.toString('hex'));
+            fs.writeFileSync(encKeyPath, encrypted, { mode: 0o600 });
+            fs.unlinkSync(legacyKeyPath);
+          } catch {
+            // keep legacy file if OS keychain migration fails temporarily
+          }
+        }
+        return raw;
+      }
+    } catch {
+      // ignore read failure
+    }
+  }
+
   const key = nodeCrypto.randomBytes(32);
-  fs.writeFileSync(keyPath, key, { mode: 0o600 });
+  if (canUseSafeStorage) {
+    try {
+      const encrypted = safeStorage.encryptString(key.toString('hex'));
+      fs.writeFileSync(encKeyPath, encrypted, { mode: 0o600 });
+      return key;
+    } catch {
+      // fall back below if OS encryption throws
+    }
+  }
+  fs.writeFileSync(legacyKeyPath, key, { mode: 0o600 });
   return key;
 }
 
@@ -431,7 +474,7 @@ async function bootstrapApplication() {
 
   // On a clean database with zero users, purge any leftover client auth/session vault from prior installs
   if (isFreshDatabase) {
-    for (const staleFolder of ['offline_auth_session', 'offline_auth_creds']) {
+    for (const staleFolder of ['offline_auth_session', 'offline_auth_creds', 'account_vault']) {
       try {
         fs.rmSync(path.join(offlineClientDir, staleFolder), { recursive: true, force: true });
       } catch {

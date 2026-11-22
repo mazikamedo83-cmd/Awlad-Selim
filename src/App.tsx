@@ -9,6 +9,7 @@ import { DataProvider, useData } from './context/DataContext';
 import { ShortcutsProvider, useShortcuts } from './context/ShortcutsContext';
 import { LoginView } from './components/modules/auth/LoginView';
 import { ChangePasswordModal } from './components/modules/auth/ChangePasswordModal';
+import { AccountSwitcherModal } from './components/modules/auth/AccountSwitcherModal';
 import { Header } from './components/layout/Header';
 import { Sidebar, NavItemKey } from './components/layout/Sidebar';
 import { ShieldAlert, AlertCircle, CheckCircle2, X } from 'lucide-react';
@@ -37,6 +38,7 @@ import { MobilePortal } from './components/modules/mobile/MobilePortal';
 import { StaffMobileShell } from './components/modules/mobile/StaffMobileShell';
 import {
   getLaunchDeepLinkUrl,
+  isMobileAppPlatform,
   isNativeCapacitor,
   registerAndroidBackButton,
   subscribeDeepLinks,
@@ -388,6 +390,7 @@ const MainAppContent: React.FC = () => {
     return (
       <>
         {renderFloatingPairingBanner()}
+        <AccountSwitcherModal />
         <MobilePortal />
       </>
     );
@@ -547,7 +550,7 @@ const MainAppContent: React.FC = () => {
         return (
           <SettingsView
             initialTab={
-              currentUser?.role === 'admin' || hasPermission('canManageSettings') ? 'general' : 'shortcuts'
+              currentUser?.role === 'admin' || hasPermission('canManageSettings') ? 'general' : 'account'
             }
           />
         );
@@ -622,6 +625,7 @@ const MainAppContent: React.FC = () => {
     <ShortcutsProvider onNavigate={(page) => setCurrentPage(page as NavItemKey)}>
       <ShortcutGlobalActions onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })} />
       <ChangePasswordModal />
+      <AccountSwitcherModal />
 
       <CashOperationModal
         isOpen={cashOpModal.open}
@@ -631,7 +635,7 @@ const MainAppContent: React.FC = () => {
 
       {renderFloatingPairingBanner()}
 
-      {isMobileViewport ? (
+      {isMobileViewport || isMobileAppPlatform() ? (
         <StaffMobileShell
           currentPage={currentPage}
           onNavigate={(page) => setCurrentPage(page)}

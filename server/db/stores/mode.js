@@ -210,6 +210,79 @@ export const REP_DEFAULT_PERMISSIONS = {
   canReceive: true,
 };
 
+export const CUSTOMER_PRESET_ALLOWED_KEYS = new Set([
+  'canView',
+  'canPrint',
+  'canExport',
+  'canViewReports',
+]);
+
+export const REP_PRESET_ALLOWED_KEYS = new Set([
+  'canView',
+  'canAdd',
+  'canEdit',
+  'canDelete',
+  'canPrint',
+  'canExport',
+  'canViewReports',
+  'canManageSales',
+  'canCreatePurchase',
+  'canManageTransfers',
+  'canCreateStockTransfer',
+  'canSend',
+  'canReceive',
+]);
+
+export const DEFAULT_ROLE_PERMISSION_PRESETS = {
+  representative: { ...REP_DEFAULT_PERMISSIONS },
+  customer: { ...CUSTOMER_DEFAULT_PERMISSIONS },
+};
+
+export function sanitizeRolePermissionPreset(role, rawPerms = {}) {
+  const cleanRole = String(role || '').trim();
+  const base =
+    cleanRole === 'customer'
+      ? { ...CUSTOMER_DEFAULT_PERMISSIONS }
+      : cleanRole === 'representative'
+      ? { ...REP_DEFAULT_PERMISSIONS }
+      : getDefaultPermissionsForRole(cleanRole);
+
+  if (cleanRole !== 'customer' && cleanRole !== 'representative') {
+    return base;
+  }
+
+  const allowedKeys = cleanRole === 'customer' ? CUSTOMER_PRESET_ALLOWED_KEYS : REP_PRESET_ALLOWED_KEYS;
+  const sanitized = Object.fromEntries(Object.keys(FULL_ADMIN_PERMISSIONS).map((k) => [k, false]));
+  for (const key of Object.keys(sanitized)) {
+    if (!allowedKeys.has(key)) {
+      sanitized[key] = false;
+      continue;
+    }
+    sanitized[key] = rawPerms && Object.prototype.hasOwnProperty.call(rawPerms, key)
+      ? Boolean(rawPerms[key])
+      : Boolean(base[key]);
+  }
+  sanitized.canView = true; // View basic portal data is always baseline active
+  return sanitized;
+}
+
+export function resolveRolePermissionPresets(extraSettings = {}) {
+  const stored = extraSettings?.roleDefaultPermissions || {};
+  return {
+    representative: sanitizeRolePermissionPreset('representative', stored.representative || REP_DEFAULT_PERMISSIONS),
+    customer: sanitizeRolePermissionPreset('customer', stored.customer || CUSTOMER_DEFAULT_PERMISSIONS),
+  };
+}
+
+export function resolveDefaultPermissionsForRole(role, extraSettings = {}) {
+  const cleanRole = String(role || '').trim();
+  if (cleanRole === 'representative' || cleanRole === 'customer') {
+    const presets = resolveRolePermissionPresets(extraSettings);
+    return { ...presets[cleanRole] };
+  }
+  return getDefaultPermissionsForRole(cleanRole);
+}
+
 export function getDefaultPermissionsForRole(role) {
   switch (String(role || '').trim()) {
     case 'admin':

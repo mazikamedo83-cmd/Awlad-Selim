@@ -21,10 +21,25 @@ import {
   clearLastVerifiedOfflineSession,
   refreshCachedUserAuthorization,
   restoreLastVerifiedOfflineSession,
+  restoreOfflineSessionByUserId,
   revokeOfflineUser,
   saveVerifiedOnlineCredentials,
   verifyOfflineLogin,
 } from '../services/offlineAuth';
+import {
+  SavedDeviceAccount,
+  clearSavedAccountsForServerMismatch,
+  getRuntimeUnlockedAccountId,
+  getSavedAccount,
+  hasRuntimeSessionStorage,
+  listSavedAccounts,
+  markSavedAccountStatus,
+  removeSavedAccount,
+  setActiveAccountId,
+  setRuntimeUnlockedAccountId,
+  updateSavedAccountTokens,
+  upsertSavedAccount,
+} from '../services/accountVault';
 import { logDiagnostic } from '../services/diagnostics';
 
 export interface PairingBannerMessage {
@@ -121,6 +136,7 @@ export function createAuthExpiredCallback(
     revokeOfflineUser?: typeof revokeOfflineUser;
     clearLastVerifiedOfflineSession?: typeof clearLastVerifiedOfflineSession;
     clearReadCache?: typeof clearReadCache;
+    onAccountStatusMarked?: (userId: string, message?: string) => void;
   }
 ) {
   return (message?: string) => {
@@ -136,7 +152,14 @@ export function createAuthExpiredCallback(
     } else if (cleanup?.clearLastVerifiedOfflineSession) {
       cleanup.clearLastVerifiedOfflineSession().catch(() => {});
     }
-    cleanup?.clearReadCache?.();
+    if (uid) {
+      markSavedAccountStatus(uid, 'expired', message).catch(() => {});
+      setRuntimeUnlockedAccountId(null);
+      cleanup?.onAccountStatusMarked?.(uid, message);
+      cleanup?.clearReadCache?.(uid);
+    } else {
+      cleanup?.clearReadCache?.();
+    }
     actions.setCurrentUser(null);
     actions.setCustomerProfile(null);
     actions.setRepresentativeProfile(null);
@@ -155,8 +178,9 @@ export async function executeAuthSessionCheck(params: {
   actions: AuthSessionStateActions;
   isStale?: () => boolean;
   deps?: Partial<AuthSessionCheckDeps>;
+  onSavedAccountsLoaded?: (accounts: SavedDeviceAccount[]) => void;
 }): Promise<void> {
-  const { getCurrentUser, actions, isStale = () => false } = params;
+  const { getCurrentUser, actions, isStale = () => false, onSavedAccountsLoaded } = params;
   const deps: AuthSessionCheckDeps = { ...DEFAULT_AUTH_SESSION_DEPS, ...(params.deps || {}) };
 
   deps.purgeLegacyLocalDatabaseCache();
@@ -239,17 +263,24 @@ export async function executeAuthSessionCheck(params: {
         deps.clearReadCache();
         if (serverInstallationId) {
           await deps.setStoredInstallationIdAsync(serverInstallationId).catch(() => {});
+          await clearSavedAccountsForServerMismatch(baseUrl, serverInstallationId).catch(() => {});
+        }
+        if (onSavedAccountsLoaded) {
+          onSavedAccountsLoaded(await listSavedAccounts(baseUrl).catch(() => []));
         }
         resetToUnauthenticated(true);
         return;
       }
 
       if (prevInstallationId && serverInstallationId && prevInstallationId !== serverInstallationId) {
-        // Different company database or clean reinstall on same host: wipe previous client session
         deps.saveStoredTokens(null);
         await deps.clearLastVerifiedOfflineSession().catch(() => {});
         deps.clearReadCache();
         await deps.setStoredInstallationIdAsync(serverInstallationId).catch(() => {});
+        await clearSavedAccountsForServerMismatch(baseUrl, serverInstallationId).catch(() => {});
+        if (onSavedAccountsLoaded) {
+          onSavedAccountsLoaded(await listSavedAccounts(baseUrl).catch(() => []));
+        }
         resetToUnauthenticated(false);
         return;
       }
@@ -261,6 +292,21 @@ export async function executeAuthSessionCheck(params: {
       } else if (err?.status === 0 || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
         serverUnreachable = true;
       }
+    }
+
+    const vaultAccounts = await listSavedAccounts(baseUrl).catch(() => [] as SavedDeviceAccount[]);
+    if (isStale()) return;
+    onSavedAccountsLoaded?.(vaultAccounts);
+
+    // Cold-boot policy on Electron / Mobile: if saved accounts exist on this device and the runtime
+    // window has not yet unlocked an account, prompt account selection without revoking valid tokens.
+    const runtimeUnlockedUid = getRuntimeUnlockedAccountId();
+    if (hasRuntimeSessionStorage() && !runtimeUnlockedUid && !getCurrentUser() && vaultAccounts.length > 0) {
+      if (serverInstallationId && !prevInstallationId) {
+        await deps.setStoredInstallationIdAsync(serverInstallationId).catch(() => {});
+      }
+      resetToUnauthenticated(false, statusDbUnavailable, statusDbMessage);
+      return;
     }
 
     const tokens = deps.getStoredTokens();
@@ -307,6 +353,26 @@ export async function executeAuthSessionCheck(params: {
       actions.setPermissionsMayBeStale(false);
       const nowIso = new Date().toISOString();
       actions.setLastVerifiedAt(nowIso);
+      setRuntimeUnlockedAccountId(me.user.id);
+      const latestTokens = deps.getStoredTokens();
+      if (latestTokens?.refreshToken) {
+        upsertSavedAccount({
+          serverUrl: baseUrl,
+          installationId: resolvedInstallationId,
+          user: me.user,
+          customerProfile: me.customerProfile || null,
+          representativeProfile: me.representativeProfile || null,
+          accessToken: latestTokens.accessToken,
+          refreshToken: latestTokens.refreshToken,
+          sessionStatus: 'active',
+        })
+          .then(async () => {
+            if (onSavedAccountsLoaded) {
+              onSavedAccountsLoaded(await listSavedAccounts(baseUrl).catch(() => []));
+            }
+          })
+          .catch(() => {});
+      }
       deps
         .refreshCachedUserAuthorization({
           serverUrl: baseUrl,
@@ -322,9 +388,15 @@ export async function executeAuthSessionCheck(params: {
         const prevUid = getCurrentUser()?.id || null;
         if (prevUid) {
           await deps.revokeOfflineUser(prevUid).catch(() => {});
+          await markSavedAccountStatus(
+            prevUid,
+            err?.status === 403 ? 'revoked' : 'expired',
+            err?.message
+          ).catch(() => {});
         } else {
           await deps.clearLastVerifiedOfflineSession().catch(() => {});
         }
+        setRuntimeUnlockedAccountId(null);
         deps.saveStoredTokens(null);
         actions.setCurrentUser(null);
         actions.setCustomerProfile(null);
@@ -335,6 +407,9 @@ export async function executeAuthSessionCheck(params: {
         actions.setLastVerifiedAt(null);
         actions.setIsDatabaseUnavailable(false);
         actions.setDatabaseUnavailableMessage(null);
+        if (onSavedAccountsLoaded) {
+          onSavedAccountsLoaded(await listSavedAccounts(baseUrl).catch(() => []));
+        }
         if (
           err?.code === 'DEVICE_REVOKED' ||
           err?.code === 'ACCOUNT_DEACTIVATED' ||
@@ -355,6 +430,7 @@ export async function executeAuthSessionCheck(params: {
           .catch(() => null);
         if (isStale()) return;
         if (restored) {
+          setRuntimeUnlockedAccountId(restored.user.id);
           actions.setCurrentUser(restored.user);
           actions.setCustomerProfile(restored.customerProfile);
           actions.setRepresentativeProfile(restored.representativeProfile);
@@ -366,7 +442,6 @@ export async function executeAuthSessionCheck(params: {
           resetToUnauthenticated(false);
         }
       } else {
-        // Unverified unexpected non-503 failure: clear unverified session state
         actions.setIsDatabaseUnavailable(false);
         actions.setDatabaseUnavailableMessage(null);
         actions.setCurrentUser(null);
@@ -403,6 +478,17 @@ interface AuthContextType {
   isOfflineSession: boolean;
   lastVerifiedAt: string | null;
   permissionsMayBeStale: boolean;
+  savedAccounts: SavedDeviceAccount[];
+  isAccountSwitcherOpen: boolean;
+  setIsAccountSwitcherOpen: (open: boolean) => void;
+  refreshSavedAccounts: () => Promise<void>;
+  resumeSavedAccount: (userId: string) => Promise<{
+    success: boolean;
+    needsPassword?: boolean;
+    username?: string;
+    error?: string;
+  }>;
+  removeSavedAccountFromDevice: (userId: string) => Promise<void>;
   login: (username: string, password: string) => Promise<{ success: boolean; error?: string; requirePasswordChange?: boolean }>;
   registerAccount: (payload: {
     role: 'customer' | 'representative';
@@ -447,6 +533,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isOfflineSession, setIsOfflineSession] = useState(false);
   const [lastVerifiedAt, setLastVerifiedAt] = useState<string | null>(null);
   const [permissionsMayBeStale, setPermissionsMayBeStale] = useState(false);
+  const [savedAccounts, setSavedAccounts] = useState<SavedDeviceAccount[]>([]);
+  const [isAccountSwitcherOpen, setIsAccountSwitcherOpen] = useState(false);
 
   const currentUserRef = useRef<User | null>(null);
   currentUserRef.current = currentUser;
@@ -457,6 +545,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const checkSeqRef = useRef(0);
   const isCheckingRef = useRef(false);
 
+  const refreshSavedAccounts = useCallback(async () => {
+    const baseUrl = getConfiguredApiBaseUrl();
+    const list = await listSavedAccounts(baseUrl).catch(() => []);
+    setSavedAccounts(list);
+  }, []);
+
   const checkStatusAndSession = useCallback(async () => {
     const seq = ++checkSeqRef.current;
     isCheckingRef.current = true;
@@ -464,6 +558,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await executeAuthSessionCheck({
         getCurrentUser: () => currentUserRef.current,
         isStale: () => seq !== checkSeqRef.current,
+        onSavedAccountsLoaded: (accounts) => {
+          if (seq === checkSeqRef.current) setSavedAccounts(accounts);
+        },
         actions: {
           setCurrentUser,
           setCustomerProfile,
@@ -507,6 +604,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           revokeOfflineUser,
           clearLastVerifiedOfflineSession,
           clearReadCache,
+          onAccountStatusMarked: () => {
+            refreshSavedAccounts().catch(() => {});
+          },
         }
       )
     );
@@ -529,7 +629,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setAuthExpiredHandler(null);
       unsubscribeDbStatus();
     };
-  }, [checkStatusAndSession]);
+  }, [checkStatusAndSession, refreshSavedAccounts]);
 
   useEffect(() => {
     if (!isDatabaseUnavailable) return;
@@ -541,6 +641,195 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, 10000);
     return () => window.clearInterval(timer);
   }, [isDatabaseUnavailable, checkStatusAndSession]);
+
+  const persistActiveVaultAccount = useCallback(
+    async (params: {
+      baseUrl: string;
+      installationId?: string;
+      user: User;
+      customerProfile: Customer | null;
+      representativeProfile: Representative | null;
+      accessToken: string;
+      refreshToken: string;
+    }) => {
+      await upsertSavedAccount({
+        serverUrl: params.baseUrl,
+        installationId: params.installationId,
+        user: params.user,
+        customerProfile: params.customerProfile,
+        representativeProfile: params.representativeProfile,
+        accessToken: params.accessToken,
+        refreshToken: params.refreshToken,
+        sessionStatus: 'active',
+      });
+      await refreshSavedAccounts();
+    },
+    [refreshSavedAccounts]
+  );
+
+  const resumeSavedAccount = async (
+    userId: string
+  ): Promise<{ success: boolean; needsPassword?: boolean; username?: string; error?: string }> => {
+    const entry = await getSavedAccount(userId);
+    if (!entry) {
+      return { success: false, error: 'الحساب غير موجود ضمن الحسابات المحفوظة على الجهاز.' };
+    }
+    if (entry.sessionStatus !== 'active' || !entry.refreshToken) {
+      return {
+        success: false,
+        needsPassword: true,
+        username: entry.username,
+        error:
+          entry.sessionStatus === 'revoked'
+            ? entry.lastError || 'تم إيقاف الجلسة أو سحب صلاحية هذا الجهاز من الإدارة.'
+            : entry.sessionStatus === 'logged_out'
+            ? 'تم تسجيل الخروج من هذا الحساب سابقاً. أدخل كلمة المرور للدخول مجدداً.'
+            : 'انتهت صلاحية الجلسة المحفوظة. أدخل كلمة المرور لتأكيد الدخول.',
+      };
+    }
+
+    const baseUrl = getConfiguredApiBaseUrl();
+    const installationId = getStoredInstallationId();
+    try {
+      const refreshRes = await apiRequest<{
+        ok: boolean;
+        accessToken: string;
+        refreshToken: string;
+      }>('/api/auth/refresh', {
+        method: 'POST',
+        body: { refreshToken: entry.refreshToken },
+        skipAuth: true,
+      });
+
+      const nextTokens = {
+        accessToken: refreshRes.accessToken,
+        refreshToken: refreshRes.refreshToken,
+      };
+      saveStoredTokens(nextTokens);
+
+      const me = await apiRequest<{
+        ok: boolean;
+        installationId?: string;
+        user: User;
+        customerProfile: Customer | null;
+        representativeProfile: Representative | null;
+        mobileConfig?: MobileConfig;
+        linkWarning: string | null;
+      }>('/api/auth/me');
+
+      const resolvedInstallationId = String(me.installationId || installationId || entry.installationId || '').trim();
+      if (resolvedInstallationId) {
+        await setStoredInstallationIdAsync(resolvedInstallationId).catch(() => {});
+      }
+
+      setRuntimeUnlockedAccountId(me.user.id);
+      await persistActiveVaultAccount({
+        baseUrl,
+        installationId: resolvedInstallationId,
+        user: me.user,
+        customerProfile: me.customerProfile || null,
+        representativeProfile: me.representativeProfile || null,
+        accessToken: nextTokens.accessToken,
+        refreshToken: nextTokens.refreshToken,
+      });
+
+      await refreshCachedUserAuthorization({
+        serverUrl: baseUrl,
+        installationId: resolvedInstallationId,
+        user: me.user,
+        customerProfile: me.customerProfile || null,
+        representativeProfile: me.representativeProfile || null,
+      }).catch(() => {});
+
+      setCurrentUser(me.user);
+      setCustomerProfile(me.customerProfile || null);
+      setRepresentativeProfile(me.representativeProfile || null);
+      setMobileConfig(me.mobileConfig || DEFAULT_MOBILE_CONFIG);
+      setLinkWarning(me.linkWarning || null);
+      setSessionExpiredMessage(null);
+      setIsDatabaseUnavailable(false);
+      setDatabaseUnavailableMessage(null);
+      setNeedsAdminSetup(false);
+      setIsOfflineSession(false);
+      setPermissionsMayBeStale(false);
+      setLastVerifiedAt(new Date().toISOString());
+      setIsAccountSwitcherOpen(false);
+      return { success: true };
+    } catch (err: any) {
+      if (isAuthSecurityRejectionError(err)) {
+        const status = err?.status === 403 ? 'revoked' : 'expired';
+        await markSavedAccountStatus(userId, status, err?.message).catch(() => {});
+        await revokeOfflineUser(userId).catch(() => {});
+        if (getCurrentUserIdOrNull(currentUserRef.current) === userId || !currentUserRef.current) {
+          saveStoredTokens(null);
+        }
+        await refreshSavedAccounts();
+        return {
+          success: false,
+          needsPassword: true,
+          username: entry.username,
+          error: err?.message || 'انتهت صلاحية الجلسة المحفوظة، يرجى إدخال كلمة المرور.',
+        };
+      }
+
+      if (err?.status === 0 || isDatabaseUnavailableError(err)) {
+        if (isDatabaseUnavailableError(err)) {
+          setIsDatabaseUnavailable(true);
+          setDatabaseUnavailableMessage(err?.message || DEFAULT_DB_UNAVAILABLE_MESSAGE);
+        }
+        const offlineUserSession = await restoreOfflineSessionByUserId(
+          userId,
+          baseUrl,
+          installationId || entry.installationId || ''
+        ).catch(() => null);
+        if (offlineUserSession && (isNativeCapacitor() || isDatabaseUnavailableError(err))) {
+          saveStoredTokens({
+            accessToken: entry.accessToken || 'offline_cached_token',
+            refreshToken: entry.refreshToken,
+          });
+          setRuntimeUnlockedAccountId(offlineUserSession.user.id);
+          await setActiveAccountId(offlineUserSession.user.id);
+          setCurrentUser(offlineUserSession.user);
+          setCustomerProfile(offlineUserSession.customerProfile);
+          setRepresentativeProfile(offlineUserSession.representativeProfile);
+          setMobileConfig(DEFAULT_MOBILE_CONFIG);
+          setLinkWarning(null);
+          setSessionExpiredMessage(null);
+          setNeedsAdminSetup(false);
+          setIsOfflineSession(!isDatabaseUnavailableError(err));
+          setPermissionsMayBeStale(true);
+          setLastVerifiedAt(offlineUserSession.lastVerifiedAt);
+          setIsAccountSwitcherOpen(false);
+          return { success: true };
+        }
+      }
+
+      return {
+        success: false,
+        error: err?.message || 'تعذر فتح الحساب المحفوظ الآن.',
+      };
+    }
+  };
+
+  const removeSavedAccountFromDevice = async (userId: string) => {
+    const isRemovingActive = currentUserRef.current?.id === userId;
+    await removeSavedAccount(userId);
+    await revokeOfflineUser(userId).catch(() => {});
+    clearReadCache(userId);
+    await refreshSavedAccounts();
+    if (isRemovingActive) {
+      saveStoredTokens(null);
+      setRuntimeUnlockedAccountId(null);
+      setCurrentUser(null);
+      setCustomerProfile(null);
+      setRepresentativeProfile(null);
+      setLinkWarning(null);
+      setIsOfflineSession(false);
+      setPermissionsMayBeStale(false);
+      setLastVerifiedAt(null);
+      setIsAccountSwitcherOpen(false);
+    }
+  };
 
   const login = async (
     username: string,
@@ -577,6 +866,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await setStoredInstallationIdAsync(resolvedInstallationId).catch(() => {});
       }
       saveStoredTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });
+      setRuntimeUnlockedAccountId(res.user.id);
       await saveVerifiedOnlineCredentials({
         serverUrl: baseUrl,
         installationId: resolvedInstallationId,
@@ -585,6 +875,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user: res.user,
         customerProfile: res.customerProfile || null,
         representativeProfile: res.representativeProfile || null,
+      }).catch(() => {});
+
+      await persistActiveVaultAccount({
+        baseUrl,
+        installationId: resolvedInstallationId,
+        user: res.user,
+        customerProfile: res.customerProfile || null,
+        representativeProfile: res.representativeProfile || null,
+        accessToken: res.accessToken,
+        refreshToken: res.refreshToken,
       }).catch(() => {});
 
       setCurrentUser(res.user);
@@ -599,6 +899,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsOfflineSession(false);
       setPermissionsMayBeStale(false);
       setLastVerifiedAt(new Date().toISOString());
+      setIsAccountSwitcherOpen(false);
 
       return {
         success: true,
@@ -613,6 +914,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           password,
         });
         if (offlineRes.ok) {
+          setRuntimeUnlockedAccountId(offlineRes.user.id);
+          await setActiveAccountId(offlineRes.user.id).catch(() => {});
           setCurrentUser(offlineRes.user);
           setCustomerProfile(offlineRes.customerProfile);
           setRepresentativeProfile(offlineRes.representativeProfile);
@@ -625,6 +928,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setIsOfflineSession(true);
           setPermissionsMayBeStale(true);
           setLastVerifiedAt(offlineRes.lastVerifiedAt);
+          setIsAccountSwitcherOpen(false);
           return { success: true, requirePasswordChange: false };
         }
         return { success: false, error: offlineRes.error };
@@ -690,6 +994,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await setStoredInstallationIdAsync(resolvedInstallationId).catch(() => {});
       }
       saveStoredTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });
+      setRuntimeUnlockedAccountId(res.user.id);
       await saveVerifiedOnlineCredentials({
         serverUrl: baseUrl,
         installationId: resolvedInstallationId,
@@ -698,6 +1003,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user: res.user,
         customerProfile: res.customerProfile || null,
         representativeProfile: res.representativeProfile || null,
+      }).catch(() => {});
+
+      await persistActiveVaultAccount({
+        baseUrl,
+        installationId: resolvedInstallationId,
+        user: res.user,
+        customerProfile: res.customerProfile || null,
+        representativeProfile: res.representativeProfile || null,
+        accessToken: res.accessToken,
+        refreshToken: res.refreshToken,
       }).catch(() => {});
 
       setCurrentUser(res.user);
@@ -712,6 +1027,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsOfflineSession(false);
       setPermissionsMayBeStale(false);
       setLastVerifiedAt(new Date().toISOString());
+      setIsAccountSwitcherOpen(false);
 
       return { success: true };
     } catch (err: any) {
@@ -756,11 +1072,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: { refreshToken: tokens?.refreshToken },
       });
     } catch {
-      // always clear local session even if server unreachable
+      // always clear local active session even if server unreachable
     }
     await clearLastVerifiedOfflineSession(uid).catch(() => {});
+    if (uid) {
+      await markSavedAccountStatus(uid, 'logged_out').catch(() => {});
+      clearReadCache(uid);
+    } else {
+      clearReadCache();
+    }
+    setRuntimeUnlockedAccountId(null);
+    await setActiveAccountId(null).catch(() => {});
     saveStoredTokens(null);
-    clearReadCache();
+    await refreshSavedAccounts().catch(() => {});
+
     setCurrentUser(null);
     setCustomerProfile(null);
     setRepresentativeProfile(null);
@@ -772,6 +1097,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsOfflineSession(false);
     setPermissionsMayBeStale(false);
     setLastVerifiedAt(null);
+    setIsAccountSwitcherOpen(false);
   };
 
   const handleServerAuthRevoked = useCallback(async (reason?: string) => {
@@ -784,11 +1110,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const uid = currentUserIdRef.current;
     if (uid) {
       await revokeOfflineUser(uid).catch(() => {});
+      await markSavedAccountStatus(uid, 'revoked', reason).catch(() => {});
+      clearReadCache(uid);
     } else {
       await clearLastVerifiedOfflineSession().catch(() => {});
+      clearReadCache();
     }
+    setRuntimeUnlockedAccountId(null);
+    await setActiveAccountId(null).catch(() => {});
     saveStoredTokens(null);
-    clearReadCache();
+    await refreshSavedAccounts().catch(() => {});
     setCurrentUser(null);
     setCustomerProfile(null);
     setRepresentativeProfile(null);
@@ -800,7 +1131,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsDatabaseUnavailable(false);
     setDatabaseUnavailableMessage(null);
     setSessionExpiredMessage(reason || 'تم إيقاف الحساب أو سحب الصلاحية من السيرفر المركزي.');
-  }, []);
+    setIsAccountSwitcherOpen(false);
+  }, [refreshSavedAccounts]);
 
   const updatePassword = async (
     newPassword: string,
@@ -823,6 +1155,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         customerProfile,
         representativeProfile,
       }).catch(() => {});
+      const curTokens = getStoredTokens();
+      if (curTokens?.refreshToken) {
+        await updateSavedAccountTokens(updatedUser.id, curTokens, {
+          sessionStatus: 'active',
+          lastVerifiedAt: new Date().toISOString(),
+        }).catch(() => {});
+      }
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err?.message || 'فشل تحديث كلمة المرور' };
@@ -877,6 +1216,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isOfflineSession,
         lastVerifiedAt,
         permissionsMayBeStale,
+        savedAccounts,
+        isAccountSwitcherOpen,
+        setIsAccountSwitcherOpen,
+        refreshSavedAccounts,
+        resumeSavedAccount,
+        removeSavedAccountFromDevice,
         login,
         registerAccount,
         bootstrapAdmin,
@@ -895,6 +1240,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 };
 
+function getCurrentUserIdOrNull(u: User | null): string | null {
+  return u?.id || null;
+}
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -902,4 +1251,5 @@ export const useAuth = () => {
   }
   return context;
 };
+
 

@@ -12,6 +12,7 @@ import {
 import {
   isPgMode,
   CUSTOMER_DEFAULT_PERMISSIONS,
+  resolveDefaultPermissionsForRole,
   normalizeCustomerPhonesList,
   mapPgCustomerRow,
   mapPgProductRow,
@@ -520,6 +521,179 @@ export async function updateCustomer(customerId, updates, actor) {
   return updated;
 }
 
+const CUSTOMER_SELF_FORBIDDEN_FIELDS = [
+  'openingBalance',
+  'currentBalance',
+  'status',
+  'assignedRepId',
+  'allowedRepIds',
+  'userId',
+  'code',
+];
+
+export async function updateOwnCustomerProfile(userId, customerId, updates = {}, actor) {
+  for (const field of CUSTOMER_SELF_FORBIDDEN_FIELDS) {
+    if (updates[field] !== undefined) {
+      throw new AppError(
+        403,
+        'لا يُسمح للعميل بتعديل الأرصدة المالية أو الحالة أو المندوب المخصص',
+        'FORBIDDEN_CUSTOMER_FIELD_EDIT'
+      );
+    }
+  }
+
+  const allowedUpdates = {};
+  if (updates.name !== undefined) {
+    const cleanName = String(updates.name || '').trim();
+    if (cleanName.length < 2) throw new AppError(400, 'الاسم يجب أن لا يقل عن حرفين', 'INVALID_CUSTOMER_NAME');
+    allowedUpdates.name = cleanName;
+  }
+  if (updates.shopName !== undefined) allowedUpdates.shopName = String(updates.shopName || '').trim() || undefined;
+  if (updates.phone !== undefined) allowedUpdates.phone = String(updates.phone || '').trim();
+  if (updates.secondaryPhone !== undefined) allowedUpdates.secondaryPhone = String(updates.secondaryPhone || '').trim();
+  if (updates.phones !== undefined) allowedUpdates.phones = updates.phones;
+  if (updates.address !== undefined) allowedUpdates.address = String(updates.address || '').trim();
+  if (updates.governorate !== undefined) allowedUpdates.governorate = String(updates.governorate || '').trim();
+  if (updates.area !== undefined) allowedUpdates.area = String(updates.area || '').trim() || undefined;
+  if (updates.geoCoordinates !== undefined) allowedUpdates.geoCoordinates = updates.geoCoordinates;
+  if (updates.shopPhoto !== undefined) allowedUpdates.shopPhoto = updates.shopPhoto;
+  if (updates.photo !== undefined) allowedUpdates.photo = updates.photo;
+  if (updates.clearShopPhoto !== undefined) allowedUpdates.clearShopPhoto = Boolean(updates.clearShopPhoto);
+
+  const now = nowIso();
+
+  if (await isPgMode()) {
+    const updated = await withTransaction(async (client) => {
+      const existing = await client.query('SELECT * FROM customers WHERE id = $1 AND user_id = $2 FOR UPDATE', [
+        customerId,
+        userId,
+      ]);
+      if (!existing.rows[0]) {
+        throw new AppError(404, 'ملف العميل غير موجود أو غير مربوط بحسابك', 'CUSTOMER_NOT_FOUND');
+      }
+      const cur = mapPgCustomerRow(existing.rows[0]);
+      const { nextPhones, nextPrimary, nextSecondary, nextPhoto, nextGeo } = resolveUpdatedCustomerPhonesAndPhoto(
+        cur,
+        allowedUpdates
+      );
+
+      const nextName = allowedUpdates.name ?? cur.name;
+      const nextAddress = allowedUpdates.address ?? cur.address;
+      await client.query(
+        `UPDATE customers SET
+          name = $1, phone = $2, secondary_phone = $3, phones = $4, shop_name = $5, shop_photo = $6, photo = $7,
+          address = $8, governorate = $9, area = $10, geo_coordinates = $11,
+          version = COALESCE(version, 1) + 1, updated_at = $12
+         WHERE id = $13`,
+        [
+          nextName,
+          nextPrimary,
+          nextSecondary ?? null,
+          JSON.stringify(nextPhones),
+          allowedUpdates.shopName !== undefined ? (allowedUpdates.shopName || null) : (cur.shopName ?? null),
+          nextPhoto ?? null,
+          nextPhoto ?? null,
+          nextAddress,
+          allowedUpdates.governorate !== undefined ? (allowedUpdates.governorate || '') : (cur.governorate || ''),
+          allowedUpdates.area !== undefined ? (allowedUpdates.area || null) : (cur.area ?? null),
+          nextGeo ?? null,
+          now,
+          customerId,
+        ]
+      );
+      await client.query(
+        `UPDATE users SET full_name = $1, phone = $2, address = $3, updated_at = $4 WHERE id = $5`,
+        [nextName, nextPrimary, nextAddress, now, userId]
+      );
+      const r = await client.query('SELECT * FROM customers WHERE id = $1', [customerId]);
+      const mapped = mapPgCustomerRow(r.rows[0]);
+      if (mapped?.assignedRepId) {
+        const repRes = await client.query('SELECT id, name, phone FROM representatives WHERE id = $1 LIMIT 1', [
+          mapped.assignedRepId,
+        ]);
+        if (repRes.rows[0]) {
+          mapped.assignedRep = {
+            id: repRes.rows[0].id,
+            name: repRes.rows[0].name,
+            phone: repRes.rows[0].phone || '',
+          };
+        }
+      }
+      return mapped;
+    });
+
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `تحديث العميل لبياناته وبيانات المحل (${updated.name})`,
+      module: 'العملاء',
+      recordId: updated.id,
+    });
+    return updated;
+  }
+
+  const updated = await withJsonTransaction(async (db) => {
+    const idx = db.customers.findIndex((c) => c.id === customerId && c.userId === userId);
+    if (idx === -1) {
+      throw new AppError(404, 'ملف العميل غير موجود أو غير مربوط بحسابك', 'CUSTOMER_NOT_FOUND');
+    }
+    const cur = normalizeCustomerRecordShape(db.customers[idx]);
+    const { nextPhones, nextPrimary, nextSecondary, nextPhoto, nextGeo } = resolveUpdatedCustomerPhonesAndPhoto(
+      cur,
+      allowedUpdates
+    );
+    const { clearShopPhoto: _ignoreClear, ...cleanAllowed } = allowedUpdates;
+    const nextName = cleanAllowed.name ?? cur.name;
+    const nextAddress = cleanAllowed.address ?? cur.address;
+    const merged = normalizeCustomerRecordShape({
+      ...cur,
+      ...cleanAllowed,
+      id: cur.id,
+      name: nextName,
+      address: nextAddress,
+      phone: nextPrimary,
+      secondaryPhone: nextSecondary,
+      phones: nextPhones,
+      shopPhoto: nextPhoto,
+      photo: nextPhoto,
+      geoCoordinates: nextGeo,
+      governorate:
+        allowedUpdates.governorate !== undefined ? (allowedUpdates.governorate || undefined) : cur.governorate,
+      version: Number(cur.version || 1) + 1,
+      updatedAt: now,
+    });
+    db.customers[idx] = merged;
+
+    const uIdx = (db.users || []).findIndex((u) => u.id === userId);
+    if (uIdx !== -1) {
+      db.users[uIdx] = {
+        ...db.users[uIdx],
+        fullName: nextName,
+        phone: nextPrimary,
+        address: nextAddress,
+      };
+    }
+
+    const out = structuredClone(merged);
+    if (out.assignedRepId) {
+      const rep = (db.representatives || []).find((r) => r.id === out.assignedRepId);
+      if (rep) {
+        out.assignedRep = { id: rep.id, name: rep.name, phone: rep.phone || '' };
+      }
+    }
+    return out;
+  });
+
+  await recordAuditLog({
+    userId: actor.id,
+    userName: actor.fullName,
+    action: `تحديث العميل لبياناته وبيانات المحل (${updated.name})`,
+    module: 'العملاء',
+    recordId: updated.id,
+  });
+  return updated;
+}
+
 export async function deleteCustomer(customerId, actor) {
   const isRepActor = actor?.role === 'representative';
   const repActor = isRepActor ? await getRepresentativeByUserId(actor.id) : null;
@@ -618,6 +792,9 @@ export async function linkCustomerToUser({ customerId, existingUserId, createUse
     newPasswordHash = await hashPasswordBcrypt(pass);
   }
 
+  const liveSettings = await getSystemSettingsSafe();
+  const customerPresetPerms = resolveDefaultPermissionsForRole('customer', liveSettings.extraSettings || {});
+
   if (await isPgMode()) {
     const result = await withTransaction(async (client) => {
       const custRes = await client.query('SELECT * FROM customers WHERE id = $1 FOR UPDATE', [customerId]);
@@ -643,7 +820,7 @@ export async function linkCustomerToUser({ customerId, existingUserId, createUse
             newPasswordHash,
             createUser.phone || customer.phone || '',
             Boolean(createUser.mustChangePassword),
-            JSON.stringify(CUSTOMER_DEFAULT_PERMISSIONS),
+            JSON.stringify(customerPresetPerms),
             now,
           ]
         );
@@ -708,7 +885,7 @@ export async function linkCustomerToUser({ customerId, existingUserId, createUse
         department: 'المبيعات',
         isActive: true,
         mustChangePassword: Boolean(createUser.mustChangePassword),
-        permissions: CUSTOMER_DEFAULT_PERMISSIONS,
+        permissions: customerPresetPerms,
         createdAt: now,
       };
       db.users.push(newUser);
@@ -1895,9 +2072,22 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
   let paymentTxs = [];
   let orders = [];
   let advancePayments = [];
+  let assignedRep = null;
 
   if (await isPgMode()) {
     const pool = getPool();
+    if (customer.assignedRepId) {
+      const repRes = await pool.query('SELECT id, name, phone FROM representatives WHERE id = $1 LIMIT 1', [
+        customer.assignedRepId,
+      ]);
+      if (repRes.rows[0]) {
+        assignedRep = {
+          id: repRes.rows[0].id,
+          name: repRes.rows[0].name,
+          phone: repRes.rows[0].phone || '',
+        };
+      }
+    }
     const invRes = await pool.query(
       `SELECT * FROM invoices WHERE customer_id = $1 AND type = 'sales' AND status <> 'draft' ORDER BY date DESC, created_at DESC`,
       [customerId]
@@ -1984,6 +2174,12 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
     }));
   } else {
     const db = readJsonDatabase();
+    if (customer.assignedRepId) {
+      const rep = (db.representatives || []).find((r) => r.id === customer.assignedRepId);
+      if (rep) {
+        assignedRep = { id: rep.id, name: rep.name, phone: rep.phone || '' };
+      }
+    }
     invoices = (db.invoices || [])
       .filter((i) => i.customerId === customerId && i.type === 'sales' && i.status !== 'draft')
       .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
@@ -2160,6 +2356,7 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
     allowPriceView: Boolean(allowPriceView),
     customer: {
       ...customer,
+      assignedRep: assignedRep || customer.assignedRep || undefined,
       openingBalance: allowPriceView ? customer.openingBalance : 0,
       currentBalance: allowPriceView ? customer.currentBalance : 0,
       priceHistory: allowPriceView ? customer.priceHistory : {},

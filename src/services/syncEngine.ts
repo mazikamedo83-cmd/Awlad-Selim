@@ -89,13 +89,18 @@ function isUnreachableError(err: any): boolean {
   return err?.status === 0 || (typeof navigator !== 'undefined' && navigator.onLine === false);
 }
 
-export async function getSyncRefreshStats(): Promise<{
+function syncMetaKey(base: 'last_send_summary' | 'last_receive_summary' | 'last_sync_at', userId?: string): string {
+  const uid = String(userId || '').trim();
+  return uid ? `${base}:${uid}` : base;
+}
+
+export async function getSyncRefreshStats(userId?: string): Promise<{
   lastSendSummary: SyncRefreshSummary | null;
   lastReceiveSummary: SyncRefreshSummary | null;
 }> {
   const [lastSendSummary, lastReceiveSummary] = await Promise.all([
-    localDb.getMeta<SyncRefreshSummary>('last_send_summary'),
-    localDb.getMeta<SyncRefreshSummary>('last_receive_summary'),
+    localDb.getMeta<SyncRefreshSummary>(syncMetaKey('last_send_summary', userId)),
+    localDb.getMeta<SyncRefreshSummary>(syncMetaKey('last_receive_summary', userId)),
   ]);
   return {
     lastSendSummary: lastSendSummary || null,
@@ -213,7 +218,7 @@ async function executeSyncCycle(params: {
         failedCount = updatedQueue.filter((q) => q.status === 'failed').length;
         conflictCount = updatedQueue.filter((q) => q.status === 'needs_review').length;
 
-        await localDb.setMeta<SyncRefreshSummary>('last_send_summary', {
+        await localDb.setMeta<SyncRefreshSummary>(syncMetaKey('last_send_summary', userId), {
           at: updateTimestamp,
           count: syncedCount,
           failedCount,
@@ -256,7 +261,7 @@ async function executeSyncCycle(params: {
             error: err?.message,
           };
         }
-        await localDb.setMeta<SyncRefreshSummary>('last_send_summary', {
+        await localDb.setMeta<SyncRefreshSummary>(syncMetaKey('last_send_summary', userId), {
           at: new Date().toISOString(),
           count: 0,
           failedCount: dueOperations.length,
@@ -294,7 +299,7 @@ async function executeSyncCycle(params: {
           method: 'POST',
           body: { operations: [] },
         });
-        await localDb.setMeta<SyncRefreshSummary>('last_send_summary', {
+        await localDb.setMeta<SyncRefreshSummary>(syncMetaKey('last_send_summary', userId), {
           at: new Date().toISOString(),
           count: 0,
           failedCount: 0,
@@ -346,7 +351,7 @@ async function executeSyncCycle(params: {
   try {
     const pullData = await apiRequest<any>('/api/sync/pull');
     const nowTime = pullData?.serverTime || new Date().toISOString();
-    await localDb.setMeta('last_sync_at', nowTime);
+    await localDb.setMeta(syncMetaKey('last_sync_at', userId), nowTime);
 
     const serverConflicts: SyncConflictRecord[] = Array.isArray(pullData?.syncConflicts)
       ? pullData.syncConflicts
@@ -358,7 +363,7 @@ async function executeSyncCycle(params: {
       (Array.isArray(pullData?.products) ? pullData.products.length : 0) +
       (Array.isArray(pullData?.repItemTransfers) ? pullData.repItemTransfers.filter((r: any) => r.status === 'executed').length : 0);
 
-    await localDb.setMeta<SyncRefreshSummary>('last_receive_summary', {
+    await localDb.setMeta<SyncRefreshSummary>(syncMetaKey('last_receive_summary', userId), {
       at: nowTime,
       count: receivedCount,
       ok: true,
@@ -397,7 +402,7 @@ async function executeSyncCycle(params: {
         error: err?.message,
       };
     }
-    await localDb.setMeta<SyncRefreshSummary>('last_receive_summary', {
+    await localDb.setMeta<SyncRefreshSummary>(syncMetaKey('last_receive_summary', userId), {
       at: new Date().toISOString(),
       count: 0,
       ok: false,

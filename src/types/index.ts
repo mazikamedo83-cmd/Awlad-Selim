@@ -203,6 +203,11 @@ export interface Customer {
   phones?: CustomerPhoneEntry[];
   userId?: string; // حساب الدخول المرتبط بالعميل
   assignedRepId?: string;
+  assignedRep?: {
+    id: string;
+    name: string;
+    phone?: string;
+  } | null;
   allowedRepIds?: string[];
   secondaryPhone?: string; // رقم هاتف إضافي
   shopName?: string;       // اسم المحل
@@ -735,6 +740,14 @@ export interface ExtraSettingsConfig {
     whatsappNumber?: string;
   };
   connectionConfig?: ConnectionProfilesConfig;
+  roleDefaultPermissions?: RoleDefaultPermissionPresets;
+}
+
+export interface RoleDefaultPermissionPresets {
+  representative: Partial<UserPermissions>;
+  customer: Partial<UserPermissions>;
+  updatedAt?: string;
+  updatedBy?: string;
 }
 
 export interface SystemSettings {
@@ -1481,6 +1494,7 @@ export type SyncOperationType =
   | 'create_purchase_invoice'
   | 'send_purchase_invoice'
   | 'edit_purchase_invoice'
+  | 'delete_purchase_draft'
   | 'create_invoice_return'
   | 'create_purchase_return'
   | 'add_invoice_payment'

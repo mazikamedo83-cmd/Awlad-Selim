@@ -21,6 +21,9 @@ import {
   SuppliersTruckIcon,
   ExpensesCashIcon,
   AccountsLedgerIcon,
+  CustomerAddIcon,
+  ProductAddIcon,
+  StockTransfersIcon,
 } from '../../common/AppIcons';
 
 interface DashboardViewProps {
@@ -253,11 +256,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onView
       {/* Welcome & Top Filter Bar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
         <div>
-          <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+          <h2 className="text-xl font-black text-slate-900 tracking-tight flex flex-wrap items-center gap-2">
             <span>مرحباً، {currentUser?.fullName}</span>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200">
-              {currentUser?.jobTitle}
-            </span>
+            {currentUser?.jobTitle && (
+              <span className="text-xs font-bold text-blue-800 bg-blue-50/90 border border-blue-200/80 px-2.5 py-0.5 rounded-lg">
+                {currentUser.jobTitle}
+              </span>
+            )}
           </h2>
           <p className="text-xs text-slate-500 mt-1">
             نظام أولاد سليم لتجارة المواد الغذائية بالجملة • آخر تحديث: اليوم {new Date().toLocaleDateString('ar-EG')}
@@ -276,7 +281,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onView
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-xs transition-all active:scale-95 cursor-pointer"
               title="إضافة عميل جديد مباشرة"
             >
-              <UserPlus className="w-3.5 h-3.5" />
+              <span className="w-5 h-5 rounded-lg bg-white/95 flex items-center justify-center shrink-0">
+                <CustomerAddIcon className="w-4 h-4" />
+              </span>
               <span>إضافة عميل</span>
             </button>
           )}
@@ -291,7 +298,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onView
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-bold shadow-xs transition-all active:scale-95 cursor-pointer"
               title="إضافة صنف جديد للمخزن مباشرة"
             >
-              <PackagePlus className="w-3.5 h-3.5" />
+              <span className="w-5 h-5 rounded-lg bg-white/95 flex items-center justify-center shrink-0">
+                <ProductAddIcon className="w-4 h-4" />
+              </span>
               <span>إضافة صنف</span>
             </button>
           )}
@@ -303,7 +312,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onView
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-bold shadow-xs transition-all active:scale-95 cursor-pointer"
               title="إصدار فاتورة بيع جديدة مباشرة"
             >
-              <ShoppingCart className="w-3.5 h-3.5" />
+              <span className="w-5 h-5 rounded-lg bg-white/95 flex items-center justify-center shrink-0">
+                <SalesInvoiceIcon className="w-4 h-4" />
+              </span>
               <span>فاتورة بيع</span>
             </button>
           )}
@@ -315,7 +326,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onView
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-orange-700 hover:bg-orange-800 text-white text-xs font-bold shadow-xs transition-all active:scale-95 cursor-pointer"
               title="تسجيل مصروف تشغيل من الخزينة"
             >
-              <Receipt className="w-3.5 h-3.5" />
+              <span className="w-5 h-5 rounded-lg bg-white/95 flex items-center justify-center shrink-0">
+                <ExpensesCashIcon className="w-4 h-4" />
+              </span>
               <span>تسجيل مصروف</span>
             </button>
           )}
@@ -327,7 +340,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onView
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold shadow-xs transition-all active:scale-95 cursor-pointer"
               title="إنشاء أمر تحويل أصناف بين المستودعات"
             >
-              <Boxes className="w-3.5 h-3.5" />
+              <span className="w-5 h-5 rounded-lg bg-white/95 flex items-center justify-center shrink-0">
+                <StockTransfersIcon className="w-4 h-4" />
+              </span>
               <span>تحويل أصناف</span>
             </button>
           )}

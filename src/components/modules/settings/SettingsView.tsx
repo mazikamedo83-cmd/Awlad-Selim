@@ -5,7 +5,7 @@ import {
   Server, Wifi, WifiOff, Activity, Monitor, Smartphone, FileSpreadsheet,
   Eye, ArrowLeftRight, CheckCircle2, ShoppingCart, User, Layers,
   Barcode, FileText, Keyboard, Wrench, GitBranch, Plus, Search, Power,
-  Globe, Cloud, Lock, Copy, Radio
+  Globe, Cloud, Lock, Copy, Radio, Users
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -22,7 +22,7 @@ import {
   validateConnectionUrl,
   setConfiguredApiBaseUrl,
 } from '../../../services/api';
-import { isNativeCapacitor } from '../../../services/native';
+import { isMobileAppPlatform, isNativeCapacitor } from '../../../services/native';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { Modal } from '../../common/Modal';
 import { PairingAndDevicesPanel } from './PairingAndDevicesPanel';
@@ -34,6 +34,7 @@ import {
 } from '../../../types';
 
 export type SettingsTabKey =
+  | 'account'
   | 'general'
   | 'server'
   | 'abu-selim'
@@ -53,13 +54,46 @@ interface SettingsViewProps {
   initialTab?: SettingsTabKey;
 }
 
+const PERMISSION_LABELS_AR: Record<string, string> = {
+  canView: 'العرض والقراءة',
+  canAdd: 'الإضافة والإنشاء',
+  canEdit: 'التعديل',
+  canDelete: 'الحذف والإلغاء',
+  canPrint: 'الطباعة',
+  canExport: 'تصدير Excel',
+  canViewReports: 'التقارير المالية',
+  canManageSales: 'إدارة المبيعات',
+  canManagePurchases: 'إدارة المشتريات الكاملة',
+  canCreatePurchase: 'إنشاء فواتير شراء مسودة',
+  canManageInventory: 'إدارة المخزون والأصناف',
+  canManageWarehouses: 'إدارة المستودعات',
+  canManageCashboxes: 'إدارة الخزائن',
+  canManageAccounts: 'إدارة الحسابات',
+  canManageTransfers: 'التحويل بالنصف',
+  canManageReps: 'إدارة المندوبين',
+  canApprove: 'اعتماد المستندات',
+  canReviewRepInvoices: 'مراجعة فواتير المناديب',
+  canSend: 'إرسال المزامنة',
+  canReceive: 'استلام المزامنة',
+  canManageEmployees: 'شؤون الموظفين',
+  canManageSalaries: 'صرف الرواتب',
+  canManageUsers: 'إدارة المستخدمين',
+  canManageSettings: 'إعدادات النظام',
+  canCreateStockCount: 'إنشاء جرد مخزن',
+  canApproveStockCount: 'اعتماد جرد المخزن',
+  canCreateStockTransfer: 'أوامر تحويل الأصناف',
+  canApproveStockTransfer: 'اعتماد تحويل الأصناف',
+  canExecuteStockTransfer: 'تنفيذ تحويل الأصناف',
+  canViewDeletedInvoices: 'الفواتير المحذوفة',
+};
+
 export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'general' }) => {
   const {
     settings, updateSettings, exportBackup, importBackup,
     serverSettings, updateServerSettings, testServerConnection,
     products, addProduct, deleteImportedProducts, warehouses, cashboxes, users, migrationLogs, runMigration, rollbackMigration,
   } = useData();
-  const { hasPermission, currentUser } = useAuth();
+  const { hasPermission, currentUser, updatePassword, logout, savedAccounts, setIsAccountSwitcherOpen } = useAuth();
   const {
     shortcuts: userShortcuts,
     catalog: userShortcutCatalog,
@@ -69,20 +103,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
     resetToDefaults,
   } = useShortcuts();
 
+  const isMobilePlatform = isMobileAppPlatform();
   const canManageSettings = currentUser?.role === 'admin' || hasPermission('canManageSettings');
   const canManageInventory = currentUser?.role === 'admin' || hasPermission('canManageInventory');
   const resolvedInitialTab: SettingsTabKey =
-    initialTab === 'shortcuts'
-      ? 'shortcuts'
+    initialTab === 'account'
+      ? 'account'
+      : initialTab === 'shortcuts'
+      ? isMobilePlatform
+        ? 'account'
+        : 'shortcuts'
       : initialTab === 'abu-selim' && canManageInventory
       ? 'abu-selim'
       : canManageSettings
       ? initialTab
       : canManageInventory && initialTab === 'abu-selim'
       ? 'abu-selim'
-      : 'shortcuts';
+      : 'account';
 
   const [activeTab, setActiveTab] = useState<SettingsTabKey>(resolvedInitialTab);
+  const [accountCurrentPassword, setAccountCurrentPassword] = useState('');
+  const [accountNewPassword, setAccountNewPassword] = useState('');
+  const [accountConfirmPassword, setAccountConfirmPassword] = useState('');
+  const [isUpdatingAccountPassword, setIsUpdatingAccountPassword] = useState(false);
+  const [accountPasswordFeedback, setAccountPasswordFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     setActiveTab(resolvedInitialTab);
@@ -823,6 +867,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
       {/* Tabs Navigation */}
       <div className="flex items-center gap-1.5 p-1.5 bg-slate-200/80 rounded-2xl overflow-x-auto text-xs font-bold no-print">
         {[
+          { key: 'account', label: 'حسابي وكلمة المرور والصلاحيات', icon: User, color: 'text-blue-800', allowAllStaff: true },
           { key: 'general', label: 'المنشأة والطباعة', icon: Building2, color: 'text-blue-700', perm: 'canManageSettings' },
           { key: 'branches', label: 'الفروع', icon: GitBranch, color: 'text-indigo-700', perm: 'canManageSettings' },
           { key: 'barcode', label: 'إعدادات الباركود', icon: Barcode, color: 'text-slate-700', perm: 'canManageSettings' },
@@ -830,7 +875,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           { key: 'invoice-design', label: 'إعدادات الفاتورة', icon: FileText, color: 'text-cyan-700', perm: 'canManageSettings' },
           { key: 'mobile-config', label: 'إعدادات الموبايل', icon: Smartphone, color: 'text-emerald-700', perm: 'canManageSettings' },
           { key: 'online-sync', label: 'مزامنة أونلاين', icon: Wifi, color: 'text-teal-700', perm: 'canManageSettings' },
-          { key: 'shortcuts', label: 'اختصارات لوحة المفاتيح', icon: Keyboard, color: 'text-purple-700' },
+          ...(!isMobilePlatform
+            ? [{ key: 'shortcuts', label: 'اختصارات لوحة المفاتيح', icon: Keyboard, color: 'text-purple-700', allowAllStaff: true }]
+            : []),
           { key: 'services', label: 'الخدمات', icon: Wrench, color: 'text-amber-700', perm: 'canManageSettings' },
           { key: 'server', label: 'Server & Connection Settings', icon: Server, color: 'text-emerald-600', perm: 'canManageSettings' },
           { key: 'diagnostics', label: 'سجل التشخيص والأخطاء', icon: Activity, color: 'text-rose-700', perm: 'canManageSettings' },
@@ -838,7 +885,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           { key: 'backup', label: 'النسخ الاحتياطي', icon: Database, color: 'text-purple-600', perm: 'canManageSettings' },
           { key: 'migration', label: 'الترحيل و PostgreSQL', icon: Layers, color: 'text-indigo-600', perm: 'canManageSettings' },
         ]
-          .filter((t) => !t.perm || currentUser?.role === 'admin' || hasPermission(t.perm as any))
+          .filter((t: any) => t.allowAllStaff || !t.perm || currentUser?.role === 'admin' || hasPermission(t.perm as any))
           .map((tab) => {
             const TabIcon = tab.icon;
             return (
@@ -867,6 +914,161 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
         <div className="p-3 bg-emerald-50 text-emerald-900 border border-emerald-300 rounded-xl text-xs font-bold flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
           <span>{restoreSuccess}</span>
+        </div>
+      )}
+
+      {/* TAB 0: Staff Account, Password Change & Permissions Summary (Available to All Authenticated Staff) */}
+      {activeTab === 'account' && (
+        <div className="space-y-5 text-xs">
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-900">
+                  <User className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">{currentUser?.fullName}</h3>
+                  <p className="text-[11px] text-slate-500 font-mono">
+                    @{currentUser?.username} · {currentUser?.jobTitle || currentUser?.role}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAccountSwitcherOpen(true)}
+                  className="min-h-[40px] px-4 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 font-black flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Users className="w-4 h-4" />
+                  <span>الحسابات المحفوظة على الجهاز ({savedAccounts.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => logout()}
+                  className="min-h-[40px] px-4 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-black flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Power className="w-4 h-4" />
+                  <span>تسجيل الخروج</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h4 className="font-black text-slate-800 flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-700" />
+                <span>الصلاحيات النشطة لحسابك:</span>
+              </h4>
+              {currentUser?.role === 'admin' ? (
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 font-bold">
+                  حساب مدير عام بصلاحيات إدارية ومالية وتشغيلية كاملة على جميع أقسام المنظومة.
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.entries(currentUser?.permissions || {})
+                    .filter(([, allowed]) => Boolean(allowed))
+                    .map(([key]) => (
+                      <span
+                        key={key}
+                        className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-900 border border-blue-200 font-bold text-[11px]"
+                      >
+                        {PERMISSION_LABELS_AR[key] || key}
+                      </span>
+                    ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setAccountPasswordFeedback(null);
+              if (accountNewPassword.length < 4) {
+                setAccountPasswordFeedback({ type: 'error', text: 'كلمة المرور الجديدة يجب ألا تقل عن 4 أحرف.' });
+                return;
+              }
+              if (accountNewPassword !== accountConfirmPassword) {
+                setAccountPasswordFeedback({ type: 'error', text: 'تأكيد كلمة المرور غير مطابق.' });
+                return;
+              }
+              setIsUpdatingAccountPassword(true);
+              const res = await updatePassword(accountNewPassword, accountCurrentPassword || undefined);
+              setIsUpdatingAccountPassword(false);
+              if (res.success) {
+                setAccountCurrentPassword('');
+                setAccountNewPassword('');
+                setAccountConfirmPassword('');
+                setAccountPasswordFeedback({ type: 'success', text: 'تم تحديث كلمة المرور بنجاح وحفظها على السيرفر المركزي.' });
+              } else {
+                setAccountPasswordFeedback({ type: 'error', text: res.error || 'تعذر تغيير كلمة المرور.' });
+              }
+            }}
+            className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4"
+          >
+            <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
+              <Lock className="w-4 h-4 text-blue-900" />
+              <span>تغيير كلمة المرور الشخصية</span>
+            </h3>
+
+            {accountPasswordFeedback && (
+              <div
+                className={`p-3 rounded-xl border font-bold flex items-center gap-2 ${
+                  accountPasswordFeedback.type === 'success'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : 'bg-red-50 border-red-200 text-red-900'
+                }`}
+              >
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{accountPasswordFeedback.text}</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block font-bold mb-1">كلمة المرور الحالية:</label>
+                <input
+                  type="password"
+                  required
+                  value={accountCurrentPassword}
+                  onChange={(e) => setAccountCurrentPassword(e.target.value)}
+                  className="w-full min-h-[42px] border border-slate-300 rounded-xl px-3 font-mono"
+                />
+              </div>
+              <div>
+                <label className="block font-bold mb-1">كلمة المرور الجديدة:</label>
+                <input
+                  type="password"
+                  required
+                  minLength={4}
+                  value={accountNewPassword}
+                  onChange={(e) => setAccountNewPassword(e.target.value)}
+                  className="w-full min-h-[42px] border border-slate-300 rounded-xl px-3 font-mono"
+                />
+              </div>
+              <div>
+                <label className="block font-bold mb-1">تأكيد كلمة المرور الجديدة:</label>
+                <input
+                  type="password"
+                  required
+                  minLength={4}
+                  value={accountConfirmPassword}
+                  onChange={(e) => setAccountConfirmPassword(e.target.value)}
+                  className="w-full min-h-[42px] border border-slate-300 rounded-xl px-3 font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={isUpdatingAccountPassword}
+                className="min-h-[44px] px-6 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-black flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                <span>{isUpdatingAccountPassword ? 'جاري التحديث...' : 'حفظ كلمة المرور الجديدة'}</span>
+              </button>
+            </div>
+          </form>
         </div>
       )}
 

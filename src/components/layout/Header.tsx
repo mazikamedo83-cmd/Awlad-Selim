@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   Server,
   Settings,
+  Users,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
@@ -73,7 +74,7 @@ export const Header: React.FC<HeaderProps> = ({
   onNavigate,
   onNavigateToTransfers,
 }) => {
-  const { currentUser, logout, hasPermission, refreshAuthContext } = useAuth();
+  const { currentUser, logout, hasPermission, refreshAuthContext, setIsAccountSwitcherOpen, savedAccounts } = useAuth();
   const {
     repTransfers,
     customerItemOrders = [],
@@ -207,6 +208,12 @@ export const Header: React.FC<HeaderProps> = ({
         return 'أمين مستودع';
       case 'sales':
         return 'موظف مبيعات';
+      case 'purchases':
+        return 'موظف مشتريات';
+      case 'representative':
+        return 'مندوب مبيعات';
+      case 'customer':
+        return 'عميل مسجل';
       default:
         return 'موظف';
     }
@@ -323,6 +330,21 @@ export const Header: React.FC<HeaderProps> = ({
                 aria-label="إعدادات السيرفر"
               >
                 <Server className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsAccountSwitcherOpen(true)}
+                className="relative min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer"
+                title="الحسابات المحفوظة وتبديل الحساب"
+                aria-label="تبديل الحساب"
+              >
+                <Users className="w-4 h-4" />
+                {savedAccounts.length > 1 && (
+                  <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-emerald-500 text-white text-[9px] font-black flex items-center justify-center">
+                    {savedAccounts.length}
+                  </span>
+                )}
               </button>
 
               <button

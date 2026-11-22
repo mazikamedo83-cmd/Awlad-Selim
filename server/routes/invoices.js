@@ -12,6 +12,7 @@ import {
   markInvoiceReviewed,
   editSalesInvoice,
   editPurchaseInvoice,
+  deleteDraftPurchaseInvoice,
   editInvoice,
   cancelInvoice,
   addInvoicePayment,
@@ -185,6 +186,16 @@ router.put(
   asyncHandler(async (req, res) => {
     const invoice = await editPurchaseInvoice(req.params.id, req.body || {}, req.auth.user);
     res.json({ ok: true, invoice });
+  })
+);
+
+router.delete(
+  '/purchase/:id',
+  requireStaff,
+  requireAnyPermission('canManagePurchases', 'canCreatePurchase'),
+  asyncHandler(async (req, res) => {
+    const result = await deleteDraftPurchaseInvoice(req.params.id, req.auth.user);
+    res.json(result);
   })
 );
 

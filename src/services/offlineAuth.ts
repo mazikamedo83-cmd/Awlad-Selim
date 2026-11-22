@@ -352,6 +352,40 @@ export async function restoreLastVerifiedOfflineSession(
   };
 }
 
+export async function restoreOfflineSessionByUserId(
+  userId: string,
+  serverUrl: string,
+  installationId = ''
+): Promise<{
+  user: User;
+  customerProfile: Customer | null;
+  representativeProfile: Representative | null;
+  lastVerifiedAt: string;
+} | null> {
+  if (!userId) return null;
+  const cKey = await getKV<string>(CRED_NAMESPACE, userIndexKey(userId));
+  if (!cKey) return null;
+  const record = await getKV<StoredOfflineCredential>(CRED_NAMESPACE, cKey);
+  if (!record || record.revoked || record.user?.isActive === false) return null;
+
+  const expectedOrigin = normalizeServerOrigin(serverUrl);
+  if (record.serverOrigin !== expectedOrigin) return null;
+  const cleanIid = String(installationId || '').trim();
+  if (cleanIid && record.installationId && record.installationId !== cleanIid) return null;
+
+  const verifiedAtMs = Date.parse(record.lastVerifiedAt || '');
+  if (Number.isFinite(verifiedAtMs) && Date.now() - verifiedAtMs > OFFLINE_SESSION_MAX_AGE_MS) {
+    return null;
+  }
+
+  return {
+    user: record.user,
+    customerProfile: record.customerProfile || null,
+    representativeProfile: record.representativeProfile || null,
+    lastVerifiedAt: record.lastVerifiedAt,
+  };
+}
+
 export async function clearLastVerifiedOfflineSession(_userId?: string): Promise<void> {
   await removeKV(SESSION_NAMESPACE, ACTIVE_SESSION_KEY);
 }

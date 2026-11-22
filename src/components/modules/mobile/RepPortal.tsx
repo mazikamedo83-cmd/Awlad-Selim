@@ -6,7 +6,7 @@ import {
   CloudOff, CloudCheck, Camera, ShoppingBag, RotateCcw, ArrowDownCircle,
   ArrowUpCircle, UserPlus, Building2, Receipt, CreditCard, FileSpreadsheet,
   Wallet, Settings, LogOut, ChevronLeft, Lock, Warehouse as WarehouseIcon,
-  Barcode, X, Eye, Calculator, ClipboardCheck, Send, Clock, Edit, Upload, ExternalLink, Store
+  Barcode, X, Eye, Calculator, ClipboardCheck, Send, Clock, Edit, Upload, ExternalLink, Store, PackagePlus
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
@@ -16,10 +16,13 @@ import {
   CustomerItemOrderRequest,
   CustomerPriceHistoryEntry,
   CustomerStatementResponse,
+  InlinePurchaseNewProduct,
   Invoice,
   InvoiceReturn,
+  Product,
   RepCustodyStatementResponse,
 } from '../../../types';
+import { apiRequest } from '../../../services/api';
 import { exportHtmlToPdf } from '../../common/PdfExporter';
 import { getCurrentLocationSafe, isNativeCapacitor, parseLatLngCoords, reverseGeocodeCoords } from '../../../services/native';
 import { QuantityInput } from '../../common/QuantityInput';
@@ -27,9 +30,12 @@ import { computeLineTotal } from '../../../utils/quantity';
 import { compressImageFileToDataUrl } from '../../../utils/image';
 import { RefreshSyncScreen } from './RefreshSyncScreen';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
+import { ProductSearchSelect } from '../../common/ProductSearchSelect';
 import {
   SalesInvoiceIcon,
+  SalesInvoicesListIcon,
   PurchaseInvoiceIcon,
+  PurchaseInvoicesListIcon,
   SalesReturnIcon,
   PurchaseReturnIcon,
   PriceQuoteIcon,
@@ -41,7 +47,65 @@ import {
   ChequesIcon,
   WalletCashIcon,
   ExpensesCashIcon,
+  WarehouseBoxesIcon,
+  OrdersClipboardIcon,
+  SettingsTwinGearsIcon,
+  LogoutDoorIcon,
+  ProductAddIcon,
 } from '../../common/AppIcons';
+
+function normalizeRepProdDupText(text: string): string {
+  return String(text || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/\s+/g, ' ');
+}
+
+function checkRepLocalProductDuplicates(
+  products: Product[],
+  payload: { name: string; barcode: string; code: string; category: string; baseUnit: string }
+): { exactMatch: Product | null; matchedBy: string | null; similarMatches: Product[] } {
+  const bc = payload.barcode.trim().toLowerCase();
+  const cd = payload.code.trim().toLowerCase();
+  const normName = normalizeRepProdDupText(payload.name);
+  const normCat = normalizeRepProdDupText(payload.category);
+  const normUnit = normalizeRepProdDupText(payload.baseUnit);
+
+  if (bc) {
+    const byBarcode = products.find(
+      (p) =>
+        String(p.barcode || '').trim().toLowerCase() === bc ||
+        (Array.isArray(p.units) && p.units.some((u) => String(u.barcode || '').trim().toLowerCase() === bc))
+    );
+    if (byBarcode) return { exactMatch: byBarcode, matchedBy: 'barcode', similarMatches: [] };
+  }
+  if (cd) {
+    const byCode = products.find((p) => String(p.code || '').trim().toLowerCase() === cd);
+    if (byCode) return { exactMatch: byCode, matchedBy: 'code', similarMatches: [] };
+  }
+  if (normName) {
+    const exactFull = products.find(
+      (p) =>
+        normalizeRepProdDupText(p.name) === normName &&
+        normalizeRepProdDupText(p.category || '') === normCat &&
+        normalizeRepProdDupText(p.baseUnit || '') === normUnit
+    );
+    if (exactFull) return { exactMatch: exactFull, matchedBy: 'name_category_unit', similarMatches: [] };
+
+    const similarMatches = products
+      .filter((p) => {
+        const pNorm = normalizeRepProdDupText(p.name);
+        return pNorm && (pNorm === normName || pNorm.includes(normName) || normName.includes(pNorm));
+      })
+      .slice(0, 5);
+    return { exactMatch: null, matchedBy: null, similarMatches };
+  }
+  return { exactMatch: null, matchedBy: null, similarMatches: [] };
+}
 
 const REP_ORDER_STATUS_LABELS: Record<string, string> = {
   pending: 'جديد',
@@ -183,6 +247,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   } | null>(null);
   const [deleteCustomerTarget, setDeleteCustomerTarget] = useState<Customer | null>(null);
   const [isDeletingCustomer, setIsDeletingCustomer] = useState(false);
+  const [safeDeleteModalOpen, setSafeDeleteModalOpen] = useState(false);
+  const [safeDeleteSearch, setSafeDeleteSearch] = useState('');
   const [actualDrawerCash, setActualDrawerCash] = useState<string>('');
 
   // ==================== 2. PURCHASE INVOICE STATE ====================
@@ -209,7 +275,23 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     purchasePriceAtTime: number;
     discount: number;
     total: number;
+    newProduct?: InlinePurchaseNewProduct;
   }>>([]);
+  const [showPurInlineNewProduct, setShowPurInlineNewProduct] = useState(false);
+  const [newPurProdName, setNewPurProdName] = useState('');
+  const [newPurProdBarcode, setNewPurProdBarcode] = useState('');
+  const [newPurProdCode, setNewPurProdCode] = useState('');
+  const [newPurProdCategory, setNewPurProdCategory] = useState('أصناف عامة');
+  const [newPurProdBaseUnit, setNewPurProdBaseUnit] = useState('قطعة');
+  const [newPurProdQty, setNewPurProdQty] = useState<number | ''>('');
+  const [newPurProdBuyPrice, setNewPurProdBuyPrice] = useState<number | ''>('');
+  const [newPurProdSellPrice, setNewPurProdSellPrice] = useState<number | ''>('');
+  const [purDuplicateCheckState, setPurDuplicateCheckState] = useState<{
+    checking: boolean;
+    exactMatch: Product | null;
+    matchedBy: string | null;
+    similarMatches: Product[];
+  }>({ checking: false, exactMatch: null, matchedBy: null, similarMatches: [] });
   const [isSubmittingPurchase, setIsSubmittingPurchase] = useState(false);
   const [purReviewOpen, setPurReviewOpen] = useState(false);
   const [purRecipientUserId, setPurRecipientUserId] = useState('');
@@ -481,8 +563,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     data
       .getCustomerStatement(selectedCustomerDetail.id)
       .then((res) => {
-        if (active && res.success && res.statement) {
-          setCustomerDetailStatement(res.statement);
+        if (active && res) {
+          setCustomerDetailStatement(res);
         }
       })
       .finally(() => {
@@ -823,6 +905,90 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     }
   };
 
+  const selectedPurProduct = useMemo(
+    () => activeProducts.find((p) => p.id === purProductId) || null,
+    [activeProducts, purProductId]
+  );
+
+  const purUnitOptions = useMemo(() => {
+    if (!selectedPurProduct) return [];
+    return [
+      { name: selectedPurProduct.baseUnit, factor: 1 },
+      ...(selectedPurProduct.units || []).map((u) => ({
+        name: u.name,
+        factor: u.conversionFactor || 1,
+      })),
+    ];
+  }, [selectedPurProduct]);
+
+  useEffect(() => {
+    if (!showPurInlineNewProduct) return;
+    const hasQuery = Boolean(newPurProdName.trim() || newPurProdBarcode.trim() || newPurProdCode.trim());
+    if (!hasQuery) {
+      setPurDuplicateCheckState({ checking: false, exactMatch: null, matchedBy: null, similarMatches: [] });
+      return;
+    }
+
+    let cancelled = false;
+    setPurDuplicateCheckState((prev) => ({ ...prev, checking: true }));
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await apiRequest<{
+          ok: boolean;
+          exactMatch?: Product | null;
+          matchedBy?: string | null;
+          similarMatches?: Product[];
+        }>('/api/products/check-duplicate', {
+          method: 'POST',
+          body: {
+            name: newPurProdName.trim(),
+            barcode: newPurProdBarcode.trim(),
+            code: newPurProdCode.trim(),
+            category: newPurProdCategory.trim(),
+            baseUnit: newPurProdBaseUnit.trim(),
+          },
+        });
+        if (!cancelled) {
+          setPurDuplicateCheckState({
+            checking: false,
+            exactMatch: res?.exactMatch || null,
+            matchedBy: res?.matchedBy || null,
+            similarMatches: Array.isArray(res?.similarMatches) ? res.similarMatches : [],
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          const localRes = checkRepLocalProductDuplicates(data.products, {
+            name: newPurProdName,
+            barcode: newPurProdBarcode,
+            code: newPurProdCode,
+            category: newPurProdCategory,
+            baseUnit: newPurProdBaseUnit,
+          });
+          setPurDuplicateCheckState({
+            checking: false,
+            exactMatch: localRes.exactMatch,
+            matchedBy: localRes.matchedBy,
+            similarMatches: localRes.similarMatches,
+          });
+        }
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    showPurInlineNewProduct,
+    newPurProdName,
+    newPurProdBarcode,
+    newPurProdCode,
+    newPurProdCategory,
+    newPurProdBaseUnit,
+    data.products,
+  ]);
+
   const handleSelectPurProduct = (prodId: string) => {
     setPurProductId(prodId);
     const prod = activeProducts.find((p) => p.id === prodId);
@@ -830,6 +996,108 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     setPurUnitName(prod.baseUnit);
     setPurPrice(prod.purchasePrice > 0 ? prod.purchasePrice : '');
     setPurQty('');
+  };
+
+  const handleSelectPurUnit = (unitName: string) => {
+    setPurUnitName(unitName);
+    if (!selectedPurProduct) return;
+    const matched = purUnitOptions.find((u) => u.name === unitName);
+    const factor = matched?.factor || 1;
+    if (selectedPurProduct.purchasePrice > 0) {
+      setPurPrice(Number((selectedPurProduct.purchasePrice * factor).toFixed(2)));
+    }
+  };
+
+  const handleUseExistingPurDuplicateProduct = (prod: Product) => {
+    setShowPurInlineNewProduct(false);
+    setPurProductId(prod.id);
+    setPurUnitName(prod.baseUnit);
+    setPurPrice(prod.purchasePrice > 0 ? prod.purchasePrice : '');
+    if (newPurProdQty !== '' && Number(newPurProdQty) > 0) {
+      setPurQty(Number(newPurProdQty));
+    }
+    setFeedback(null);
+  };
+
+  const handleAddPurInlineNewProduct = () => {
+    const cleanName = newPurProdName.trim();
+    if (!cleanName) {
+      setFeedback({ type: 'error', text: 'يرجى إدخال اسم الصنف الجديد أولاً.' });
+      return;
+    }
+    const qtyNum = Number(newPurProdQty || 0);
+    if (qtyNum <= 0) {
+      setFeedback({ type: 'error', text: 'يرجى إدخال كمية الشراء للصنف الجديد أكبر من صفر.' });
+      return;
+    }
+    const buyPrice = Math.max(0, Number(newPurProdBuyPrice || 0));
+    const sellPrice = newPurProdSellPrice === '' ? 0 : Math.max(0, Number(newPurProdSellPrice || 0));
+
+    const exact = purDuplicateCheckState.exactMatch;
+    if (exact) {
+      const effectiveBuy = buyPrice || exact.purchasePrice || 0;
+      setPurItems((prev) => [
+        ...prev,
+        {
+          productId: exact.id,
+          productName: exact.name,
+          barcode: exact.barcode || '',
+          unit: exact.baseUnit,
+          unitFactor: 1,
+          quantity: qtyNum,
+          unitPrice: effectiveBuy,
+          purchasePriceAtTime: effectiveBuy,
+          discount: 0,
+          total: computeLineTotal(qtyNum, effectiveBuy),
+        },
+      ]);
+      setFeedback({
+        type: 'success',
+        text: `تم ربط البند بالصنف الموجود (${exact.name}) لمنع التكرار في المخزن.`,
+      });
+    } else {
+      const cleanCategory = newPurProdCategory.trim() || 'أصناف عامة';
+      const cleanUnit = newPurProdBaseUnit.trim() || 'قطعة';
+      const cleanBarcode = newPurProdBarcode.trim();
+      const cleanCode = newPurProdCode.trim();
+      setPurItems((prev) => [
+        ...prev,
+        {
+          productId: '',
+          productName: cleanName,
+          barcode: cleanBarcode || cleanCode,
+          unit: cleanUnit,
+          unitFactor: 1,
+          quantity: qtyNum,
+          unitPrice: buyPrice,
+          purchasePriceAtTime: buyPrice,
+          discount: 0,
+          total: computeLineTotal(qtyNum, buyPrice),
+          newProduct: {
+            name: cleanName,
+            barcode: cleanBarcode || undefined,
+            code: cleanCode || undefined,
+            category: cleanCategory,
+            baseUnit: cleanUnit,
+            purchasePrice: buyPrice,
+            sellingPrice: sellPrice,
+          },
+        },
+      ]);
+      setFeedback({
+        type: 'success',
+        text: `تمت إضافة الصنف الجديد (${cleanName}) لبنود المسودة؛ سيُدرج بالمخزون عند اعتماد الإدارة.`,
+      });
+    }
+
+    setNewPurProdName('');
+    setNewPurProdBarcode('');
+    setNewPurProdCode('');
+    setNewPurProdQty('');
+    setNewPurProdBuyPrice('');
+    setNewPurProdSellPrice('');
+    setPurDuplicateCheckState({ checking: false, exactMatch: null, matchedBy: null, similarMatches: [] });
+    setShowPurInlineNewProduct(false);
   };
 
   const handleAddPurItem = () => {
@@ -852,7 +1120,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         unitFactor: factor,
         quantity: qtyNum,
         unitPrice: priceNum,
-        purchasePriceAtTime: priceNum,
+        purchasePriceAtTime: factor > 0 ? Number((priceNum / factor).toFixed(2)) : priceNum,
         discount: 0,
         total: computeLineTotal(qtyNum, priceNum),
       },
@@ -1895,7 +2163,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         (c.area && c.area.toLowerCase().includes(q)) ||
         (c.governorate && c.governorate.toLowerCase().includes(q));
       if (!matchesSearch) return false;
-      if (customerFilterMode === 'current') return c.status !== 'inactive';
+      if (customerFilterMode === 'current') return c.status !== 'blocked';
       if (customerFilterMode === 'debtors') return Number(c.currentBalance || 0) > 0.009;
       if (customerFilterMode === 'credits') return Number(c.currentBalance || 0) < -0.009;
       return true;
@@ -2546,7 +2814,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <div className="min-w-0">
                 <span className="block text-xs font-black text-slate-900 truncate">فواتير الشراء</span>
                 <span className="block text-[10px] text-slate-500 font-semibold truncate">
-                  {myPurchaseInvoices.length} فاتورة · إرسال ومتابعة
+                  {myPurchases.length} فاتورة · إرسال ومتابعة
                 </span>
               </div>
             </button>
@@ -2753,27 +3021,27 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       {activeTab === 'more' && (
         <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs divide-y divide-slate-100 text-xs">
           {[
-            { key: 'purchases-list' as RepTabKey, label: 'فواتير الشراء', icon: ShoppingBag, allowed: canCreatePurchase },
-            { key: 'sales-returns-list' as RepTabKey, label: 'مرتجع البيع', icon: RotateCcw, allowed: canSales },
-            { key: 'invoices' as RepTabKey, label: 'فواتير البيع', icon: FileText, allowed: canSales },
-            { key: 'customers' as RepTabKey, label: 'الحسابات والعملاء', icon: Users, allowed: canAccounts || canSales },
-            { key: 'custody' as RepTabKey, label: 'المخزن والعهدة', icon: WarehouseIcon, allowed: canInventory },
-            { key: 'purchase-returns-list' as RepTabKey, label: 'مرتجع الشراء', icon: RotateCcw, allowed: canPurchases },
-            { key: 'orders' as RepTabKey, label: 'الطلبات والتسليمات', icon: Truck, allowed: canSales },
-            { key: 'new-quote' as RepTabKey, label: 'عروض الأسعار', icon: FileSpreadsheet, allowed: canSales },
-            { key: 'refresh' as RepTabKey, label: 'REFRESH · الإرسال والاستلام', icon: RefreshCw, allowed: true },
+            { key: 'purchases-list' as RepTabKey, label: 'فواتير الشراء', Icon: PurchaseInvoicesListIcon, allowed: canCreatePurchase },
+            { key: 'sales-returns-list' as RepTabKey, label: 'مرتجع البيع', Icon: SalesReturnIcon, allowed: canSales },
+            { key: 'invoices' as RepTabKey, label: 'فواتير البيع', Icon: SalesInvoicesListIcon, allowed: canSales },
+            { key: 'customers' as RepTabKey, label: 'الحسابات والعملاء', Icon: CustomersGroupIcon, allowed: canAccounts || canSales },
+            { key: 'custody' as RepTabKey, label: 'المخزن والعهدة', Icon: WarehouseBoxesIcon, allowed: canInventory },
+            { key: 'purchase-returns-list' as RepTabKey, label: 'مرتجع الشراء', Icon: PurchaseReturnIcon, allowed: canPurchases },
+            { key: 'orders' as RepTabKey, label: 'الطلبات والتسليمات', Icon: OrdersClipboardIcon, allowed: canSales },
+            { key: 'new-quote' as RepTabKey, label: 'عروض الأسعار', Icon: PriceQuoteIcon, allowed: canSales },
+            { key: 'refresh' as RepTabKey, label: 'REFRESH · الإرسال والاستلام', Icon: RefreshCloudIcon, allowed: true },
           ].map((item) => {
-            const Icon = item.icon;
+            const ItemIcon = item.Icon;
             return (
               <button
                 key={item.key}
                 type="button"
                 disabled={!item.allowed}
                 onClick={() => onTabChange(item.key)}
-                className="w-full min-h-[52px] px-4 py-3 flex items-center justify-between gap-2 text-right font-bold text-slate-800 hover:bg-slate-50 disabled:opacity-45 cursor-pointer"
+                className="w-full min-h-[54px] px-4 py-3 flex items-center justify-between gap-2 text-right font-bold text-slate-800 hover:bg-slate-50 disabled:opacity-45 cursor-pointer"
               >
                 <div className="flex items-center gap-3">
-                  <Icon className="w-4 h-4 text-blue-900 shrink-0" />
+                  <ItemIcon className="w-6 h-6 shrink-0" />
                   <span>{item.label}</span>
                 </div>
                 {item.allowed ? (
@@ -2789,10 +3057,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <button
               type="button"
               onClick={onOpenServerModal}
-              className="w-full min-h-[52px] px-4 py-3 flex items-center justify-between gap-2 text-right font-bold text-slate-800 hover:bg-slate-50 cursor-pointer"
+              className="w-full min-h-[54px] px-4 py-3 flex items-center justify-between gap-2 text-right font-bold text-slate-800 hover:bg-slate-50 cursor-pointer"
             >
               <div className="flex items-center gap-3">
-                <Settings className="w-4 h-4 text-slate-700 shrink-0" />
+                <SettingsTwinGearsIcon className="w-6 h-6 shrink-0" />
                 <span>الإعدادات والربط المركزي</span>
               </div>
               <ChevronLeft className="w-4 h-4 text-slate-400" />
@@ -2803,10 +3071,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <button
               type="button"
               onClick={onLogout}
-              className="w-full min-h-[52px] px-4 py-3 flex items-center justify-between gap-2 text-right font-black text-red-700 hover:bg-red-50 cursor-pointer"
+              className="w-full min-h-[54px] px-4 py-3 flex items-center justify-between gap-2 text-right font-black text-red-700 hover:bg-red-50 cursor-pointer"
             >
               <div className="flex items-center gap-3">
-                <LogOut className="w-4 h-4 shrink-0" />
+                <LogoutDoorIcon className="w-6 h-6 shrink-0" />
                 <span>تسجيل الخروج</span>
               </div>
               <ChevronLeft className="w-4 h-4 text-red-400" />
@@ -2818,7 +3086,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       {/* ==================== REFRESH SCREEN ==================== */}
       {activeTab === 'refresh' && <RefreshSyncScreen onBack={() => onTabChange('home')} />}
 
-      {/* ==================== ALLOWED CUSTOMERS LIST (Action Bar, Live Stats, Filters & Safe Actions) ==================== */}
+      {/* ==================== ALLOWED CUSTOMERS LIST (4 Action Buttons, 6 Live KPIs, Filters & Safe Delete) ==================== */}
       {activeTab === 'customers' && (
         <div className="space-y-3">
           {/* Header Action Bar */}
@@ -2831,43 +3099,97 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   <p className="text-[11px] text-slate-500">عرض المحلات، المبالغ المتبقية، الإحصائيات وكشف الحساب التفصيلي</p>
                 </div>
               </div>
+            </div>
+
+            {/* 4 Quick Action Buttons */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
               {canAddCustomer && (
                 <button
                   type="button"
                   onClick={() => onTabChange('new-customer')}
-                  className="min-h-[42px] px-3.5 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black inline-flex items-center gap-1.5 cursor-pointer"
+                  className="min-h-[44px] px-3 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black inline-flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <Plus className="w-4 h-4" />
+                  <CustomerAddIcon className="w-5 h-5 shrink-0" />
                   <span>إضافة عميل جديد</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setCustomerFilterMode('current')}
+                className={`min-h-[44px] px-3 rounded-xl border font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer ${
+                  customerFilterMode === 'current'
+                    ? 'bg-emerald-700 text-white border-emerald-700 font-black'
+                    : 'bg-emerald-50 text-emerald-900 border-emerald-200 hover:bg-emerald-100'
+                }`}
+              >
+                <Users className="w-4 h-4 shrink-0" />
+                <span>عرض العملاء الحاليين</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomerFilterMode('debtors');
+                  setCustomerSortMode('debt_desc');
+                }}
+                className={`min-h-[44px] px-3 rounded-xl border font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer ${
+                  customerFilterMode === 'debtors'
+                    ? 'bg-rose-700 text-white border-rose-700 font-black'
+                    : 'bg-rose-50 text-rose-900 border-rose-200 hover:bg-rose-100'
+                }`}
+              >
+                <Wallet className="w-4 h-4 shrink-0" />
+                <span>المبالغ المتبقية عند العملاء</span>
+              </button>
+              {canDeleteCustomer && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSafeDeleteSearch('');
+                    setSafeDeleteModalOpen(true);
+                  }}
+                  className="min-h-[44px] px-3 rounded-xl bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4 shrink-0" />
+                  <span>حذف العميل الآمن</span>
                 </button>
               )}
             </div>
 
-            {/* Live Scoped Customer Statistics Cards (NEVER merging لنا and علينا) */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs tabular-nums">
+            {/* 6 Live Scoped Customer Statistics Cards (NEVER merging لنا and علينا) */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs tabular-nums">
               <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
                 <span className="text-[10px] text-slate-500 block">إجمالي العملاء</span>
                 <strong className="text-base font-black text-slate-900">{repCustomersStats.total}</strong>
-                <span className="block text-[10px] text-slate-500">نسبة المديونية: {repCustomersStats.debtorPct}%</span>
+                <span className="block text-[10px] text-slate-500">المطابق الآن: {filteredCustomers.length}</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200">
+                <span className="text-[10px] text-amber-800 block">عدد العملاء المدينين</span>
+                <strong className="text-base font-black text-amber-900">{repCustomersStats.debtorsCount}</strong>
+                <span className="block text-[10px] text-amber-700">ذوي أرصدة مستحقة</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-teal-50 border border-teal-200">
+                <span className="text-[10px] text-teal-800 block">ذوو الأرصدة الدائنة</span>
+                <strong className="text-base font-black text-teal-900">{repCustomersStats.creditsCount}</strong>
+                <span className="block text-[10px] text-teal-700">دافعي مقدمات</span>
               </div>
               <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200">
-                <span className="text-[10px] text-rose-700 block">العملاء المدينون ({repCustomersStats.debtorsCount})</span>
-                <strong className="text-base font-black font-mono text-rose-800">
+                <span className="text-[10px] text-rose-700 block">المستحق على العملاء (لنا)</span>
+                <strong className="text-sm font-black font-mono text-rose-800">
                   {repCustomersStats.totalDue.toLocaleString()} {data.settings.currency}
                 </strong>
-                <span className="block text-[10px] text-rose-700 font-bold">المبالغ المتبقية (لنا)</span>
+                <span className="block text-[10px] text-rose-700 font-bold">مديونيات غير محصلة</span>
               </div>
               <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
-                <span className="text-[10px] text-emerald-700 block">أرصدة دائنة للعملاء ({repCustomersStats.creditsCount})</span>
-                <strong className="text-base font-black font-mono text-emerald-800">
+                <span className="text-[10px] text-emerald-700 block">الأرصدة الدائنة (علينا)</span>
+                <strong className="text-sm font-black font-mono text-emerald-800">
                   {repCustomersStats.totalCredit.toLocaleString()} {data.settings.currency}
                 </strong>
-                <span className="block text-[10px] text-emerald-700 font-bold">دفعات مقدمة (علينا)</span>
+                <span className="block text-[10px] text-emerald-700 font-bold">مقدمات مالية للعملاء</span>
               </div>
-              <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 flex flex-col justify-between">
-                <span className="text-[10px] text-blue-800 block">العملاء المطابقون للبحث</span>
-                <strong className="text-base font-black text-blue-950">{filteredCustomers.length}</strong>
-                <span className="block text-[10px] text-blue-700">عميل في العرض الحالي</span>
+              <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200">
+                <span className="text-[10px] text-blue-800 block">نسبة العملاء المدينين</span>
+                <strong className="text-base font-black font-mono text-blue-950">{repCustomersStats.debtorPct}%</strong>
+                <span className="block text-[10px] text-blue-700">من إجمالي العملاء</span>
               </div>
             </div>
 
@@ -3570,55 +3892,232 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           </div>
 
           <div className="p-3 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-2.5">
-            <select
-              value={purProductId}
-              onChange={(e) => handleSelectPurProduct(e.target.value)}
-              className="w-full min-h-[44px] rounded-xl border border-indigo-300 px-3 font-bold bg-white"
-            >
-              <option value="">-- اختر الصنف للشراء --</option>
-              {activeProducts.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} (تكلفة: {p.purchasePrice} {data.settings.currency})
-                </option>
-              ))}
-            </select>
-            {purProductId && (
-              <div className="grid grid-cols-3 gap-2">
-                <input
-                  type="text"
-                  value={purUnitName}
-                  onChange={(e) => setPurUnitName(e.target.value)}
-                  className="min-h-[42px] rounded-xl border border-slate-300 px-2 text-center font-bold bg-white"
-                  placeholder="الوحدة"
-                />
-                <QuantityInput
-                  allowDecimals
-                  min={0.001}
-                  value={purQty}
-                  onChange={setPurQty}
-                  placeholder="الكمية"
-                  ariaLabel="كمية الشراء"
-                  inputClassName="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
-                />
-                <input
-                  type="number"
-                  step="0.5"
-                  min={0}
-                  placeholder="سعر الشراء"
-                  value={purPrice}
-                  onChange={(e) => setPurPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                  className="min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
-                />
-              </div>
-            )}
-            {purProductId && (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-black text-indigo-950">إضافة أصناف لفاتورة الشراء:</span>
               <button
                 type="button"
-                onClick={handleAddPurItem}
-                className="w-full min-h-[44px] rounded-xl bg-indigo-900 text-white font-black cursor-pointer"
+                onClick={() => {
+                  setShowPurInlineNewProduct((prev) => !prev);
+                  setFeedback(null);
+                }}
+                className={`min-h-[38px] inline-flex items-center gap-1.5 px-3 rounded-xl font-bold border transition-colors cursor-pointer ${
+                  showPurInlineNewProduct
+                    ? 'bg-slate-800 text-white border-slate-800'
+                    : 'bg-white text-indigo-900 border-indigo-300 hover:bg-indigo-100/60'
+                }`}
               >
-                إضافة الصنف لفاتورة الشراء
+                <PackagePlus className="w-4 h-4 shrink-0" />
+                <span>{showPurInlineNewProduct ? 'إغلاق إنشاء الصنف الجديد' : 'إنشاء صنف جديد داخل الفاتورة'}</span>
               </button>
+            </div>
+
+            {!showPurInlineNewProduct ? (
+              <>
+                <ProductSearchSelect
+                  products={activeProducts}
+                  selectedProductId={purProductId}
+                  warehouseId={purWarehouseId || mainWarehouse?.id}
+                  warehouses={data.warehouses}
+                  priceMode="purchase"
+                  currency={data.settings.currency}
+                  placeholder="ابحث باسم الصنف أو الكود أو الباركود..."
+                  onSelect={(prod) => handleSelectPurProduct(prod.id)}
+                />
+                {purProductId && (
+                  <div className="grid grid-cols-3 gap-2">
+                    <select
+                      value={purUnitName}
+                      onChange={(e) => handleSelectPurUnit(e.target.value)}
+                      className="min-h-[42px] rounded-xl border border-slate-300 px-2 text-center font-bold bg-white"
+                      aria-label="وحدة الشراء"
+                    >
+                      {purUnitOptions.map((u) => (
+                        <option key={u.name} value={u.name}>
+                          {u.name}{u.factor > 1 ? ` (×${u.factor})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <QuantityInput
+                      allowDecimals
+                      min={0.001}
+                      value={purQty}
+                      onChange={setPurQty}
+                      placeholder="الكمية"
+                      ariaLabel="كمية الشراء"
+                      inputClassName="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                    />
+                    <input
+                      type="number"
+                      step="0.5"
+                      min={0}
+                      placeholder="سعر الشراء"
+                      value={purPrice}
+                      onChange={(e) => setPurPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                      className="min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                    />
+                  </div>
+                )}
+                {purProductId && (
+                  <button
+                    type="button"
+                    onClick={handleAddPurItem}
+                    className="w-full min-h-[44px] rounded-xl bg-indigo-900 text-white font-black cursor-pointer"
+                  >
+                    إضافة الصنف لفاتورة الشراء
+                  </button>
+                )}
+              </>
+            ) : (
+              <div className="bg-white p-3 rounded-2xl border border-indigo-200 space-y-2.5">
+                <div className="flex items-center gap-2 text-emerald-900 font-black">
+                  <ProductAddIcon className="w-5 h-5 shrink-0" />
+                  <span>بيانات الصنف الجديد (لا يضاف للمخزن إلا بعد اعتماد الإدارة)</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">اسم الصنف الجديد: *</label>
+                    <input
+                      type="text"
+                      value={newPurProdName}
+                      onChange={(e) => setNewPurProdName(e.target.value)}
+                      placeholder="مثال: شاي العروسة 250 جم"
+                      className="w-full min-h-[42px] border border-slate-300 rounded-xl px-3 font-bold bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">الباركود (اختياري):</label>
+                    <input
+                      type="text"
+                      value={newPurProdBarcode}
+                      onChange={(e) => setNewPurProdBarcode(e.target.value)}
+                      placeholder="622..."
+                      className="w-full min-h-[42px] border border-slate-300 rounded-xl px-3 font-mono bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">الكود (اختياري):</label>
+                    <input
+                      type="text"
+                      value={newPurProdCode}
+                      onChange={(e) => setNewPurProdCode(e.target.value)}
+                      placeholder="PRD-..."
+                      className="w-full min-h-[42px] border border-slate-300 rounded-xl px-3 font-mono bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">التصنيف:</label>
+                    <input
+                      type="text"
+                      value={newPurProdCategory}
+                      onChange={(e) => setNewPurProdCategory(e.target.value)}
+                      className="w-full min-h-[42px] border border-slate-300 rounded-xl px-3 font-semibold bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">الوحدة الأساسية:</label>
+                    <input
+                      type="text"
+                      value={newPurProdBaseUnit}
+                      onChange={(e) => setNewPurProdBaseUnit(e.target.value)}
+                      placeholder="قطعة / كرتونة / كجم"
+                      className="w-full min-h-[42px] border border-slate-300 rounded-xl px-3 font-semibold bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">الكمية المشتراة: *</label>
+                    <QuantityInput
+                      allowDecimals
+                      min={0.001}
+                      value={newPurProdQty}
+                      onChange={setNewPurProdQty}
+                      placeholder="الكمية"
+                      ariaLabel="كمية الصنف الجديد"
+                      inputClassName="w-full min-h-[42px] bg-white border border-slate-300 rounded-xl text-center font-mono font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">سعر الشراء: *</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min={0}
+                      placeholder="سعر الشراء"
+                      value={newPurProdBuyPrice}
+                      onChange={(e) => setNewPurProdBuyPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                      className="w-full min-h-[42px] border border-slate-300 rounded-xl text-center font-mono font-bold bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">سعر البيع المقترح:</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min={0}
+                      placeholder="سعر البيع"
+                      value={newPurProdSellPrice}
+                      onChange={(e) => setNewPurProdSellPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                      className="w-full min-h-[42px] border border-slate-300 rounded-xl text-center font-mono font-bold bg-white"
+                    />
+                  </div>
+                </div>
+
+                {purDuplicateCheckState.exactMatch && (
+                  <div className="p-2.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-950 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 font-bold">
+                      <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+                      <span>
+                        هذا الصنف مسجل مسبقاً ({purDuplicateCheckState.exactMatch.name} — {purDuplicateCheckState.exactMatch.code})! لن يُنشأ صنف مكرر.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleUseExistingPurDuplicateProduct(purDuplicateCheckState.exactMatch!)}
+                      className="min-h-[36px] px-3 rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-bold cursor-pointer"
+                    >
+                      استخدام الصنف الموجود
+                    </button>
+                  </div>
+                )}
+
+                {!purDuplicateCheckState.exactMatch && purDuplicateCheckState.similarMatches.length > 0 && (
+                  <div className="p-2.5 rounded-xl border border-blue-200 bg-blue-50/70 text-blue-950 space-y-1.5">
+                    <div className="font-bold flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 text-blue-700 shrink-0" />
+                      <span>توجد أصناف متشابهة بالاسم (اضغط للاختيار إن كان نفس الصنف):</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {purDuplicateCheckState.similarMatches.map((sim) => (
+                        <button
+                          key={sim.id}
+                          type="button"
+                          onClick={() => handleUseExistingPurDuplicateProduct(sim)}
+                          className="min-h-[36px] px-2.5 rounded-lg bg-white border border-blue-300 hover:bg-blue-100 text-blue-900 font-bold text-[11px] cursor-pointer"
+                        >
+                          {sim.name} ({sim.baseUnit}) — {sim.purchasePrice} {data.settings.currency}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowPurInlineNewProduct(false)}
+                    className="min-h-[40px] px-3 rounded-xl border border-slate-300 font-bold text-slate-600 cursor-pointer"
+                  >
+                    إلغاء
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAddPurInlineNewProduct}
+                    className="min-h-[40px] px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
+                  >
+                    {purDuplicateCheckState.exactMatch ? 'ربط بالصنف الموجود وإضافته' : '+ إضافة الصنف للفاتورة'}
+                  </button>
+                </div>
+              </div>
             )}
           </div>
 
@@ -3626,10 +4125,19 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl px-3">
               {purItems.map((it, idx) => (
                 <div key={idx} className="py-2 flex items-center justify-between gap-2">
-                  <span className="font-bold text-slate-900">
-                    {it.productName} ({it.quantity} {it.unit} × {it.unitPrice})
-                  </span>
-                  <div className="flex items-center gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-bold text-slate-900">
+                        {it.productName} ({it.quantity} {it.unit} × {it.unitPrice})
+                      </span>
+                      {it.newProduct && (
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold">
+                          صنف جديد
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
                     <strong className="font-mono text-indigo-950">{it.total.toLocaleString()}</strong>
                     <button
                       type="button"
@@ -6207,34 +6715,39 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     <p className="text-center py-8 text-slate-500 font-bold">جاري تحميل كشف الحساب التفصيلي...</p>
                   ) : (
                     <>
-                      {stmtSummary && (
-                        <div className="grid grid-cols-3 gap-2 text-center tabular-nums">
-                          <div className="p-2.5 rounded-xl bg-red-50 border border-red-200">
-                            <span className="text-[10px] text-red-700 block">إجمالي مدين (لنا)</span>
-                            <strong className="font-mono text-sm text-red-800">
-                              {stmtSummary.totalDebit.toLocaleString()}
-                            </strong>
+                      {stmtSummary && (() => {
+                        const totalDebit = Number(stmtSummary.totalDebit || 0);
+                        const totalCredit = Number(stmtSummary.totalCredit || 0);
+                        const curBal = Number(stmtSummary.currentBalance || 0);
+                        return (
+                          <div className="grid grid-cols-3 gap-2 text-center tabular-nums">
+                            <div className="p-2.5 rounded-xl bg-red-50 border border-red-200">
+                              <span className="text-[10px] text-red-700 block">إجمالي مدين (لنا)</span>
+                              <strong className="font-mono text-sm text-red-800">
+                                {totalDebit.toLocaleString()}
+                              </strong>
+                            </div>
+                            <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
+                              <span className="text-[10px] text-emerald-700 block">إجمالي دائن (سداد/مرتجع)</span>
+                              <strong className="font-mono text-sm text-emerald-800">
+                                {totalCredit.toLocaleString()}
+                              </strong>
+                            </div>
+                            <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200">
+                              <span className="text-[10px] text-blue-800 block">
+                                {curBal > 0.009
+                                  ? 'الرصيد (لنا)'
+                                  : curBal < -0.009
+                                  ? 'رصيد دائن (علينا)'
+                                  : 'متوازن'}
+                              </span>
+                              <strong className="font-mono text-sm text-blue-950">
+                                {Math.abs(curBal).toLocaleString()}
+                              </strong>
+                            </div>
                           </div>
-                          <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
-                            <span className="text-[10px] text-emerald-700 block">إجمالي دائن (سداد/مرتجع)</span>
-                            <strong className="font-mono text-sm text-emerald-800">
-                              {stmtSummary.totalCredit.toLocaleString()}
-                            </strong>
-                          </div>
-                          <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200">
-                            <span className="text-[10px] text-blue-800 block">
-                              {stmtSummary.currentBalance > 0.009
-                                ? 'الرصيد (لنا)'
-                                : stmtSummary.currentBalance < -0.009
-                                ? 'رصيد دائن (علينا)'
-                                : 'متوازن'}
-                            </span>
-                            <strong className="font-mono text-sm text-blue-950">
-                              {Math.abs(stmtSummary.currentBalance).toLocaleString()}
-                            </strong>
-                          </div>
-                        </div>
-                      )}
+                        );
+                      })()}
 
                       <div className="border border-slate-200 rounded-2xl overflow-hidden">
                         {(customerDetailStatement?.entries || []).length === 0 ? (
@@ -6244,14 +6757,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             {customerDetailStatement!.entries.map((entry) => {
                               const rb = Number(entry.runningBalance ?? 0);
                               const dirLabel = rb > 0.009 ? 'لنا' : rb < -0.009 ? 'علينا' : 'متوازن';
-                              const clickable = Boolean(entry.docId && (entry.docType === 'invoice' || entry.docType === 'payment'));
+                              const clickable = Boolean(entry.docId && (entry.docType === 'sales' || entry.docType === 'customer_payment'));
                               return (
                                 <div
                                   key={entry.id}
                                   onClick={() => {
                                     if (clickable && entry.docId) {
                                       setStatementPreviewDoc({
-                                        type: entry.docType === 'payment' ? 'payment' : 'invoice',
+                                        type: entry.docType === 'customer_payment' ? 'payment' : 'invoice',
                                         docId: entry.docId,
                                         title: entry.docNumber || entry.label,
                                       });
@@ -6501,9 +7014,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
             <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl px-3">
               {purItems.map((it, idx) => (
-                <div key={idx} className="py-2 flex items-center justify-between">
-                  <span className="font-bold text-slate-800">{it.productName} ({it.quantity} {it.unit} × {it.unitPrice})</span>
-                  <strong className="font-mono text-indigo-950">{it.total.toLocaleString()}</strong>
+                <div key={idx} className="py-2 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-bold text-slate-800">{it.productName} ({it.quantity} {it.unit} × {it.unitPrice})</span>
+                    {it.newProduct && (
+                      <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold">
+                        صنف جديد
+                      </span>
+                    )}
+                  </div>
+                  <strong className="font-mono text-indigo-950 shrink-0">{it.total.toLocaleString()}</strong>
                 </div>
               ))}
             </div>
@@ -7151,11 +7671,89 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         );
       })()}
 
+      {safeDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/65 backdrop-blur-xs">
+          <div className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 max-h-[88vh] flex flex-col gap-3 text-xs pb-safe">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div>
+                <h4 className="font-black text-base text-red-900">حذف العميل الآمن</h4>
+                <p className="text-[11px] text-slate-500">
+                  يسمح النظام بالحذف فقط للعملاء ذوي الرصيد الصفرى بدون فواتير أو حركات مالية مرتبطة.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSafeDeleteModalOpen(false)}
+                className="min-h-[38px] px-3 rounded-xl bg-slate-100 font-bold text-slate-700 cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+
+            <div className="relative">
+              <input
+                type="text"
+                value={safeDeleteSearch}
+                onChange={(e) => setSafeDeleteSearch(e.target.value)}
+                placeholder="ابحث باسم العميل أو المحل أو الكود..."
+                className="w-full min-h-[42px] rounded-xl border border-slate-300 pr-9 pl-3 font-semibold outline-hidden focus:border-red-500"
+              />
+              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+            </div>
+
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-2xl">
+              {data.customers
+                .filter((c) => {
+                  const q = safeDeleteSearch.trim().toLowerCase();
+                  if (!q) return true;
+                  return (
+                    c.name.toLowerCase().includes(q) ||
+                    (c.shopName && c.shopName.toLowerCase().includes(q)) ||
+                    c.code.toLowerCase().includes(q) ||
+                    c.phone.includes(q)
+                  );
+                })
+                .map((c) => {
+                  const hasBalance = Math.abs(Number(c.currentBalance || 0)) > 0.009;
+                  return (
+                    <div key={c.id} className="p-3 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-black text-slate-900 truncate">{c.shopName || c.name}</p>
+                        <p className="text-[11px] text-slate-500 truncate">
+                          {c.name} · {c.code} · الرصيد:{' '}
+                          <span className={hasBalance ? 'text-red-700 font-bold' : 'text-emerald-700 font-bold'}>
+                            {Number(c.currentBalance || 0).toLocaleString()} {data.settings.currency}
+                          </span>
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSafeDeleteModalOpen(false);
+                          setDeleteCustomerTarget(c);
+                        }}
+                        className={`min-h-[38px] px-3 rounded-xl font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer ${
+                          hasBalance
+                            ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                            : 'bg-red-600 hover:bg-red-700 text-white'
+                        }`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>{hasBalance ? 'فحص والحذف' : 'حذف'}</span>
+                      </button>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
+      )}
+
       <ConfirmDialog
         isOpen={Boolean(deleteCustomerTarget)}
         onClose={() => !isDeletingCustomer && setDeleteCustomerTarget(null)}
         onConfirm={handleConfirmDeleteCustomer}
-        isBusy={isDeletingCustomer}
+        isLoading={isDeletingCustomer}
         variant="danger"
         title="تأكيد حذف العميل"
         message={

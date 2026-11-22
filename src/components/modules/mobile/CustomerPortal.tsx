@@ -18,6 +18,7 @@ import {
   OrdersClipboardIcon,
   SalesInvoiceIcon,
   AccountsLedgerIcon,
+  StoreShopIcon,
 } from '../../common/AppIcons';
 
 export type CustomerTabKey = 'home' | 'catalog' | 'cart' | 'orders' | 'account';
@@ -461,8 +462,8 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                   {customer?.area ? ` · ${customer.area}` : ''}
                 </p>
               </div>
-              <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-900 shrink-0">
-                <Building2 className="w-6 h-6" />
+              <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0">
+                <StoreShopIcon className="w-8 h-8" />
               </div>
             </div>
 

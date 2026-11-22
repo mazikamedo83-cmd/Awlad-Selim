@@ -310,7 +310,7 @@ export const SuppliersView: React.FC = () => {
         const cashPaidAtInvoice =
           Array.isArray(inv.payments) && inv.payments.length > 0
             ? inv.payments
-                .filter((p) => p.paymentMethod !== 'advance_settlement')
+                .filter((p) => (p.paymentMethod as string) !== 'advance_settlement')
                 .reduce((ps, p) => ps + Number(p.amount || 0), 0)
             : Number(inv.paidAtInvoice ?? inv.paidAmount ?? 0);
         events.push({

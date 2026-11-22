@@ -268,10 +268,20 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
 
   const selectedCustomerPayments = useMemo(() => {
     if (!selectedCustomer) return [];
+    const confirmedSaleIds = new Set(
+      selectedCustomerInvoices
+        .filter((inv) => inv.status === 'confirmed')
+        .map((inv) => inv.id)
+    );
     return financialTransactions
-      .filter(t => t.partyId === selectedCustomer.id && t.type === 'customer_payment')
+      .filter(
+        (t) =>
+          t.partyId === selectedCustomer.id &&
+          t.type === 'customer_payment' &&
+          !(t.relatedDocType === 'sales' && t.relatedDocId && confirmedSaleIds.has(t.relatedDocId))
+      )
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [selectedCustomer, financialTransactions]);
+  }, [selectedCustomer, selectedCustomerInvoices, financialTransactions]);
 
   const selectedCustomerReturns = useMemo(() => {
     if (!selectedCustomer) return [];
@@ -1301,6 +1311,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                   selectedCustomerPayments.reduce((a, b) => a + b.amount, 0) +
                   selectedCustomerAdvances.filter(a => a.status !== 'refunded').reduce((a, b) => a + b.amount, 0) +
                   selectedCustomerInvoices.reduce((a, b) => {
+                    if (b.status !== 'confirmed') return a;
                     const cashAtInv = b.paidAtInvoice !== undefined ? b.paidAtInvoice : Math.max(0, b.paidAmount - (b.appliedAdvanceAmount || 0));
                     return a + cashAtInv;
                   }, 0)

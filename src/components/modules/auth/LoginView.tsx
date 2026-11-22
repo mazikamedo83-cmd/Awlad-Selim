@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
-  Lock, User, Eye, EyeOff, ShieldCheck, AlertCircle, Server, UserPlus, QrCode, Search, CheckCircle2, Loader2
+  Lock, User, Eye, EyeOff, ShieldCheck, AlertCircle, Server, UserPlus, QrCode, Search, CheckCircle2, Loader2, Users, Trash2, ArrowRightCircle
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import {
@@ -17,6 +17,31 @@ import { claimPairingInvitation, discoverServerCandidates } from '../../../servi
 import { isNativeCapacitor } from '../../../services/native';
 import { QrScannerModal } from '../../common/QrScannerModal';
 import { MobileServerModal } from '../mobile/MobileServerModal';
+import { ConfirmDialog } from '../../common/ConfirmDialog';
+import { SavedDeviceAccount } from '../../../services/accountVault';
+
+function getRoleBadgeText(role: string): string {
+  switch (role) {
+    case 'admin':
+      return 'مدير عام';
+    case 'manager':
+      return 'مدير فرع';
+    case 'accountant':
+      return 'محاسب مالي';
+    case 'warehouse':
+      return 'أمين مستودع';
+    case 'sales':
+      return 'مبيعات';
+    case 'purchases':
+      return 'مشتريات';
+    case 'representative':
+      return 'مندوب';
+    case 'customer':
+      return 'عميل';
+    default:
+      return role;
+  }
+}
 
 export const LoginView: React.FC = () => {
   const {
@@ -32,6 +57,9 @@ export const LoginView: React.FC = () => {
     pairingBanner,
     setPairingBanner,
     clearPairingBanner,
+    savedAccounts,
+    resumeSavedAccount,
+    removeSavedAccountFromDevice,
   } = useAuth();
   const [authMode, setAuthMode] = useState<'login' | 'register_customer' | 'register_rep'>('login');
   const [username, setUsername] = useState('');
@@ -47,12 +75,41 @@ export const LoginView: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [infoNotice, setInfoNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [resumingUserId, setResumingUserId] = useState<string | null>(null);
+  const [accountToForget, setAccountToForget] = useState<SavedDeviceAccount | null>(null);
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [isClaimingQr, setIsClaimingQr] = useState(false);
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [showServerModal, setShowServerModal] = useState(false);
   const [showQrScanner, setShowQrScanner] = useState(false);
+  const passwordInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleResumeSavedAccount = async (acc: SavedDeviceAccount) => {
+    setError(null);
+    setInfoNotice(null);
+    clearSessionExpiredMessage();
+    setResumingUserId(acc.userId);
+    try {
+      const res = await resumeSavedAccount(acc.userId);
+      if (!res.success) {
+        setAuthMode('login');
+        setUsername(acc.username);
+        setPassword('');
+        setInfoNotice(
+          res.needsPassword
+            ? `أدخل كلمة مرور الحساب (${acc.fullName}) لإعادة التفعيل بأمان.`
+            : res.error || 'يرجى تسجيل الدخول بكلمة المرور.'
+        );
+        window.setTimeout(() => {
+          passwordInputRef.current?.focus();
+        }, 60);
+      }
+    } finally {
+      setResumingUserId(null);
+    }
+  };
 
   const nativeApp = isNativeCapacitor();
   const serverMissing = nativeApp && !hasConfiguredServerUrl();
@@ -341,10 +398,97 @@ export const LoginView: React.FC = () => {
             </div>
           )}
 
+          {infoNotice && (
+            <div className="flex items-center gap-2.5 p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-xs font-bold text-blue-900">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-blue-700" />
+              <span>{infoNotice}</span>
+            </div>
+          )}
+
           {error && (
             <div className="flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs font-bold text-red-700 animate-shake">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
+            </div>
+          )}
+
+          {!needsAdminSetup && savedAccounts.length > 0 && (
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                  <Users className="w-4 h-4 text-blue-800" />
+                  <span>الحسابات المحفوظة على الجهاز ({savedAccounts.length})</span>
+                </span>
+                <span className="text-[10px] font-bold text-slate-500">تبديل ودخول سريع آمن</span>
+              </div>
+              <div className="space-y-2 max-h-52 overflow-y-auto">
+                {savedAccounts.map((acc) => {
+                  const isResuming = resumingUserId === acc.userId;
+                  const quickReady = acc.sessionStatus === 'active' && Boolean(acc.refreshToken || acc.accessToken);
+                  return (
+                    <div
+                      key={acc.userId}
+                      className="p-2.5 rounded-xl bg-white border border-slate-200 flex items-center justify-between gap-2"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {acc.avatarPhoto ? (
+                          <img
+                            src={acc.avatarPhoto}
+                            alt={acc.fullName}
+                            className="w-9 h-9 rounded-xl object-cover border border-slate-200 shrink-0"
+                          />
+                        ) : (
+                          <div className="w-9 h-9 rounded-xl bg-blue-900 text-white font-black text-xs flex items-center justify-center shrink-0">
+                            {(acc.fullName || acc.username || '؟').trim().charAt(0)}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-black text-xs text-slate-900 truncate">{acc.fullName}</span>
+                            <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-900 text-[10px] font-bold">
+                              {getRoleBadgeText(acc.role)}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-500 font-mono truncate">
+                            @{acc.username}
+                            {acc.shopName ? ` · ${acc.shopName}` : ''}
+                            {quickReady ? ' · جلسة جاهزة' : ' · يتطلب كلمة المرور'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          disabled={Boolean(resumingUserId)}
+                          onClick={() => handleResumeSavedAccount(acc)}
+                          className={`min-h-[36px] px-2.5 rounded-lg text-[11px] font-black flex items-center gap-1 cursor-pointer disabled:opacity-50 ${
+                            quickReady
+                              ? 'bg-blue-900 hover:bg-blue-950 text-white'
+                              : 'bg-amber-100 hover:bg-amber-200 text-amber-950'
+                          }`}
+                        >
+                          {isResuming ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <ArrowRightCircle className="w-3.5 h-3.5" />
+                          )}
+                          <span>{isResuming ? 'جاري...' : quickReady ? 'دخول' : 'تحديد'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={Boolean(resumingUserId)}
+                          onClick={() => setAccountToForget(acc)}
+                          className="min-h-[36px] min-w-[36px] rounded-lg bg-red-50 hover:bg-red-100 text-red-700 flex items-center justify-center cursor-pointer"
+                          title="إزالة الحساب من الجهاز"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -355,6 +499,7 @@ export const LoginView: React.FC = () => {
                 onClick={() => {
                   setAuthMode('login');
                   setError(null);
+                  setInfoNotice(null);
                 }}
                 className={`min-h-[42px] px-2 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   authMode === 'login'
@@ -369,6 +514,9 @@ export const LoginView: React.FC = () => {
                 onClick={() => {
                   setAuthMode('register_customer');
                   setError(null);
+                  setInfoNotice(null);
+                  setPassword('');
+                  setConfirmPassword('');
                 }}
                 className={`min-h-[42px] px-2 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   authMode === 'register_customer'
@@ -383,6 +531,9 @@ export const LoginView: React.FC = () => {
                 onClick={() => {
                   setAuthMode('register_rep');
                   setError(null);
+                  setInfoNotice(null);
+                  setPassword('');
+                  setConfirmPassword('');
                 }}
                 className={`min-h-[42px] px-2 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   authMode === 'register_rep'
@@ -562,6 +713,7 @@ export const LoginView: React.FC = () => {
 
               <div className="relative">
                 <input
+                  ref={passwordInputRef}
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
@@ -659,6 +811,25 @@ export const LoginView: React.FC = () => {
         isOpen={showQrScanner}
         onClose={() => setShowQrScanner(false)}
         onDetected={handleQrDetected}
+      />
+
+      <ConfirmDialog
+        isOpen={Boolean(accountToForget)}
+        onClose={() => setAccountToForget(null)}
+        onConfirm={async () => {
+          if (!accountToForget) return;
+          await removeSavedAccountFromDevice(accountToForget.userId);
+          setAccountToForget(null);
+          setInfoNotice('تمت إزالة الحساب من هذا الجهاز فقط دون التأثير على حساباتك الأخرى أو بيانات السيرفر.');
+        }}
+        variant="danger"
+        title="إزالة الحساب من الجهاز؟"
+        message={
+          accountToForget
+            ? `هل تريد إزالة الحساب (${accountToForget.fullName} - @${accountToForget.username}) من قائمة الحسابات المحفوظة على هذا الجهاز؟`
+            : ''
+        }
+        confirmLabel="نعم، إزالة من الجهاز"
       />
     </div>
   );

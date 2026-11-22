@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Plus, KeyRound, AlertCircle, CheckCircle2, Trash2
+  Plus, KeyRound, AlertCircle, CheckCircle2, Trash2, Shield, RotateCcw, Save
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -9,14 +9,47 @@ import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 
 interface UsersManagementViewProps {
-  initialTab?: 'users' | 'audit';
+  initialTab?: 'users' | 'audit' | 'presets';
 }
 
+const REP_SAFE_PRESET_KEYS: Array<{ key: keyof UserPermissions; label: string; locked?: boolean }> = [
+  { key: 'canView', label: 'العرض والقراءة الأساسية للبوابة (إلزامي)', locked: true },
+  { key: 'canAdd', label: 'إضافة عملاء جدد وعروض وفواتير بيع' },
+  { key: 'canEdit', label: 'تعديل بيانات العملاء ومسوّدات فواتير الشراء الخاصة به' },
+  { key: 'canDelete', label: 'حذف مسوّدات الشراء الخاصة به فقط' },
+  { key: 'canPrint', label: 'طباعة الفواتير والإيصالات والتصدير PDF' },
+  { key: 'canExport', label: 'تصدير التقارير والبيانات إلى Excel / CSV' },
+  { key: 'canManageSales', label: 'إنشاء فواتير البيع ومرتجعات البيع والطلبات من عهدة السيارة' },
+  { key: 'canCreatePurchase', label: 'إنشاء فواتير شراء مسودة وإرسالها للإدارة' },
+  { key: 'canManageTransfers', label: 'نظام التحويل بالنصف والعهدة المالية للمندوب' },
+  { key: 'canCreateStockTransfer', label: 'إنشاء أوامر وطلبات تحويل أصناف' },
+  { key: 'canSend', label: 'إرسال البيانات والمزامنة للسيرفر (Send)' },
+  { key: 'canReceive', label: 'استلام التحديثات والموافقة عليها (Receive)' },
+  { key: 'canViewReports', label: 'عرض ملخصات مبيعات المندوب المسموحة (دون أرباح الشركة)' },
+];
+
+const CUSTOMER_SAFE_PRESET_KEYS: Array<{ key: keyof UserPermissions; label: string; locked?: boolean }> = [
+  { key: 'canView', label: 'عرض الكتالوج والطلبات والفواتير وكشف الحساب الشخصي (إلزامي)', locked: true },
+  { key: 'canPrint', label: 'طباعة الفواتير وكشف الحساب كملف PDF' },
+  { key: 'canExport', label: 'تصدير كشف الحساب الشخصي Excel / CSV' },
+  { key: 'canViewReports', label: 'عرض ملخص الرصيد وإجمالي المديونية والائتمان الشخصي' },
+];
+
 export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initialTab }) => {
-  const { users, customers, auditLogs, addUser, updateUser, deleteUser } = useData();
+  const {
+    users,
+    customers,
+    auditLogs,
+    addUser,
+    updateUser,
+    deleteUser,
+    permissionPresets,
+    loadPermissionPresets,
+    updatePermissionPresets,
+  } = useData();
   const { currentUser } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'users' | 'audit'>(initialTab || 'users');
+  const [activeTab, setActiveTab] = useState<'users' | 'audit' | 'presets'>(initialTab || 'users');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -24,6 +57,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
   const [isDeletingUser, setIsDeletingUser] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [togglingUserId, setTogglingUserId] = useState<string | null>(null);
+  const [hasManualPermEdits, setHasManualPermEdits] = useState(false);
+  const [isSavingPresets, setIsSavingPresets] = useState(false);
 
   useEffect(() => {
     if (initialTab) setActiveTab(initialTab);
@@ -165,13 +200,43 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
       (acc as any)[key] = false;
       return acc;
     }, {} as UserPermissions);
+    const livePreset =
+      targetRole === 'representative'
+        ? permissionPresets?.representative
+        : targetRole === 'customer'
+        ? permissionPresets?.customer
+        : undefined;
     return {
       ...base,
-      ...(ROLE_PERMISSION_PRESETS[targetRole]?.perms || {}),
+      ...(livePreset || ROLE_PERMISSION_PRESETS[targetRole]?.perms || {}),
     };
   };
 
   const [permissions, setPermissions] = useState<UserPermissions>(DEFAULT_PERMISSIONS);
+  const [repPresetDraft, setRepPresetDraft] = useState<UserPermissions>(() => buildPresetPermissions('representative'));
+  const [customerPresetDraft, setCustomerPresetDraft] = useState<UserPermissions>(() => buildPresetPermissions('customer'));
+
+  useEffect(() => {
+    loadPermissionPresets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (permissionPresets?.representative) {
+      setRepPresetDraft({
+        ...Object.keys(DEFAULT_PERMISSIONS).reduce((a, k) => ({ ...a, [k]: false }), {} as UserPermissions),
+        ...permissionPresets.representative,
+        canView: true,
+      });
+    }
+    if (permissionPresets?.customer) {
+      setCustomerPresetDraft({
+        ...Object.keys(DEFAULT_PERMISSIONS).reduce((a, k) => ({ ...a, [k]: false }), {} as UserPermissions),
+        ...permissionPresets.customer,
+        canView: true,
+      });
+    }
+  }, [permissionPresets]);
 
   // Password reset modal
   const [resetModalUser, setResetModalUser] = useState<User | null>(null);
@@ -188,6 +253,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
     setJobTitle(ROLE_PERMISSION_PRESETS.sales.jobTitle);
     setDepartment(ROLE_PERMISSION_PRESETS.sales.department);
     setPermissions(buildPresetPermissions('sales'));
+    setHasManualPermEdits(false);
     setMustChangePassword(false);
     setFormError(null);
     setEditingUser(null);
@@ -205,6 +271,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
     setJobTitle(u.jobTitle);
     setDepartment(u.department);
     setPermissions({ ...DEFAULT_PERMISSIONS, ...(u.permissions || {}) });
+    setHasManualPermEdits(true);
     setMustChangePassword(Boolean(u.mustChangePassword));
     setFormError(null);
     setEditingUser(u);
@@ -244,6 +311,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           linkedCustomerId: role === 'customer' && linkedCustomerId ? linkedCustomerId : undefined,
           autoCreateCustomerProfile: role === 'customer' && !linkedCustomerId && !currentLinkedCustomer,
           autoCreateRepProfile: role === 'representative',
+          applyRolePreset: !hasManualPermEdits,
         });
         if (!res.success) {
           setFormError(res.error || 'تعذر تحديث بيانات المستخدم');
@@ -266,6 +334,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           linkedCustomerId: role === 'customer' && linkedCustomerId ? linkedCustomerId : undefined,
           autoCreateCustomerProfile: role === 'customer' && !linkedCustomerId,
           autoCreateRepProfile: role === 'representative',
+          applyRolePreset: !hasManualPermEdits,
         });
         if (!res.success) {
           setFormError(res.error || 'تعذر إنشاء المستخدم');
@@ -335,10 +404,32 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
   };
 
   const togglePermission = (key: keyof UserPermissions) => {
+    setHasManualPermEdits(true);
     setPermissions((prev) => ({
       ...prev,
       [key]: !prev[key],
     }));
+  };
+
+  const handleSavePresets = async () => {
+    setIsSavingPresets(true);
+    setStatusMessage(null);
+    try {
+      const res = await updatePermissionPresets({
+        representative: { ...repPresetDraft, canView: true },
+        customer: { ...customerPresetDraft, canView: true },
+      });
+      if (res.success) {
+        setStatusMessage({
+          type: 'success',
+          text: 'تم حفظ قوالب الصلاحيات التلقائية (صلاحيات المندوب وصلاحيات العميل) وتطبيقها على كل تسجيل جديد.',
+        });
+      } else {
+        setStatusMessage({ type: 'error', text: res.error || 'تعذر حفظ قوالب الصلاحيات التلقائية' });
+      }
+    } finally {
+      setIsSavingPresets(false);
+    }
   };
 
   return (
@@ -386,7 +477,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
       )}
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-200 text-xs font-bold gap-4">
+      <div className="flex flex-wrap border-b border-slate-200 text-xs font-bold gap-4">
         <button
           onClick={() => setActiveTab('users')}
           className={`pb-2.5 transition-colors border-b-2 cursor-pointer ${
@@ -394,6 +485,15 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           }`}
         >
           حسابات المستخدمين ({users.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('presets')}
+          className={`pb-2.5 transition-colors border-b-2 cursor-pointer flex items-center gap-1.5 ${
+            activeTab === 'presets' ? 'border-blue-900 text-blue-950' : 'border-transparent text-slate-500'
+          }`}
+        >
+          <Shield className="w-3.5 h-3.5" />
+          <span>قوالب الصلاحيات التلقائية (المندوب / العميل)</span>
         </button>
         <button
           onClick={() => setActiveTab('audit')}
@@ -519,6 +619,127 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
         </div>
       )}
 
+      {/* Presets Tab */}
+      {activeTab === 'presets' && (
+        <div className="space-y-4 text-xs">
+          <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200 text-blue-950 flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <h3 className="text-sm font-black">القوالب التلقائية عند إنشاء أو تسجيل حساب مندوب أو عميل</h3>
+              <p className="text-[11px] text-blue-800 leading-relaxed">
+                يُطبق قالب «صلاحيات المندوب» أو «صلاحيات العميل» تلقائياً عند تسجيل الحساب من التطبيق أو لوحة الإدارة، مع إمكانية تعديل صلاحيات أي فرد لاحقاً.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={isSavingPresets}
+              onClick={handleSavePresets}
+              className="min-h-[42px] px-5 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black flex items-center gap-2 shadow-sm disabled:opacity-50 cursor-pointer"
+            >
+              <Save className="w-4 h-4" />
+              <span>{isSavingPresets ? 'جاري الحفظ...' : 'حفظ قوالب الصلاحيات'}</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Representative Preset Card */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-3">
+              <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div>
+                  <h4 className="text-sm font-black text-cyan-950">«صلاحيات المندوب» الافتراضية</h4>
+                  <p className="text-[11px] text-slate-500">الصلاحيات المسموحة والممنوحة تلقائياً لكل حساب مندوب جديد</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const base = Object.keys(DEFAULT_PERMISSIONS).reduce((a, k) => ({ ...a, [k]: false }), {} as UserPermissions);
+                    setRepPresetDraft({ ...base, ...ROLE_PERMISSION_PRESETS.representative.perms, canView: true });
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>استعادة الافتراضي</span>
+                </button>
+              </div>
+              <div className="space-y-2">
+                {REP_SAFE_PRESET_KEYS.map((item) => (
+                  <label
+                    key={item.key}
+                    className={`flex items-center gap-2.5 p-2.5 rounded-xl border ${
+                      item.locked ? 'bg-slate-50 border-slate-200 opacity-85' : 'bg-white border-slate-200 hover:border-cyan-300 cursor-pointer'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      disabled={item.locked}
+                      checked={item.locked ? true : Boolean(repPresetDraft[item.key])}
+                      onChange={() =>
+                        setRepPresetDraft((prev) => ({
+                          ...prev,
+                          [item.key]: !prev[item.key],
+                        }))
+                      }
+                      className="w-4 h-4 rounded text-blue-900"
+                    />
+                    <span className="font-bold text-slate-800">{item.label}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 font-bold">
+                ملاحظة أمنية: تظل صلاحيات الإدارة والمستخدمين والخزائن وأرباح الشركة والاعتماد النهائي محجوبة تماماً عن قالب المندوب على السيرفر.
+              </div>
+            </div>
+
+            {/* Customer Preset Card */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-3">
+              <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div>
+                  <h4 className="text-sm font-black text-blue-950">«صلاحيات العميل» الافتراضية</h4>
+                  <p className="text-[11px] text-slate-500">الصلاحيات الممنوحة تلقائياً لكل حساب عميل بوابة جديد</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const base = Object.keys(DEFAULT_PERMISSIONS).reduce((a, k) => ({ ...a, [k]: false }), {} as UserPermissions);
+                    setCustomerPresetDraft({ ...base, ...ROLE_PERMISSION_PRESETS.customer.perms, canView: true });
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>استعادة الافتراضي</span>
+                </button>
+              </div>
+              <div className="space-y-2">
+                {CUSTOMER_SAFE_PRESET_KEYS.map((item) => (
+                  <label
+                    key={item.key}
+                    className={`flex items-center gap-2.5 p-2.5 rounded-xl border ${
+                      item.locked ? 'bg-slate-50 border-slate-200 opacity-85' : 'bg-white border-slate-200 hover:border-blue-300 cursor-pointer'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      disabled={item.locked}
+                      checked={item.locked ? true : Boolean(customerPresetDraft[item.key])}
+                      onChange={() =>
+                        setCustomerPresetDraft((prev) => ({
+                          ...prev,
+                          [item.key]: !prev[item.key],
+                        }))
+                      }
+                      className="w-4 h-4 rounded text-blue-900"
+                    />
+                    <span className="font-bold text-slate-800">{item.label}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-[11px] text-blue-900 font-bold">
+                ملاحظة أمنية: حساب العميل معزول بالكامل في بياناته وطلباته وفواتيره وكشف حسابه الشخصي ولا يمكنه الوصول لأي بيانات عملاء آخرين أو مالية الشركة.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Audit Log Tab */}
       {activeTab === 'audit' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
@@ -616,10 +837,11 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 onChange={(e) => {
                   const nextRole = e.target.value as UserRole;
                   setRole(nextRole);
-                  if (!editingUser && ROLE_PERMISSION_PRESETS[nextRole]) {
+                  if (ROLE_PERMISSION_PRESETS[nextRole] && (!editingUser || nextRole === 'representative' || nextRole === 'customer')) {
                     setJobTitle(ROLE_PERMISSION_PRESETS[nextRole].jobTitle);
                     setDepartment(ROLE_PERMISSION_PRESETS[nextRole].department);
                     setPermissions(buildPresetPermissions(nextRole));
+                    setHasManualPermEdits(false);
                   }
                 }}
                 className="w-full border rounded-xl p-2 font-bold"
@@ -711,7 +933,20 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
 
           {/* Granular Permissions Checkboxes */}
           <div className="space-y-2 border-t pt-3">
-            <h4 className="font-black text-slate-800 text-sm">تخصيص الصلاحيات الفردية (Granular Permissions):</h4>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="font-black text-slate-800 text-sm">تخصيص الصلاحيات الفردية (Granular Permissions):</h4>
+              <button
+                type="button"
+                onClick={() => {
+                  setPermissions(buildPresetPermissions(role));
+                  setHasManualPermEdits(false);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>تطبيق القالب الافتراضي للدور</span>
+              </button>
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 p-3 bg-slate-50 rounded-xl border">
               {[
                 { key: 'canView', label: 'صلاحية العرض والقراءة' },

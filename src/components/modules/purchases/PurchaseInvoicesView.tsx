@@ -92,12 +92,17 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   initialOpenNew = false,
 }) => {
   const {
-    invoices, suppliers, products, warehouses, cashboxes,
+    invoices, suppliers, products, warehouses, cashboxes, purchaseReceivers = [],
     settings, createPurchaseInvoice, editPurchaseInvoice, cancelInvoice,
-    receivePurchaseInvoice, rejectPurchaseInvoice, confirmDraftInvoice,
+    sendPurchaseInvoice, receivePurchaseInvoice, rejectPurchaseInvoice, confirmDraftInvoice,
   } = useData();
   const { currentUser, hasPermission } = useAuth();
   const canEditPurchase = currentUser?.role === 'admin' || (hasPermission('canManagePurchases') && hasPermission('canEdit'));
+  const canCreatePurchaseDraft =
+    currentUser?.role === 'admin' ||
+    hasPermission('canManagePurchases') ||
+    hasPermission('canCreatePurchase') ||
+    hasPermission('canSend');
   const canApprovePurchase =
     currentUser?.role === 'admin' ||
     hasPermission('canManagePurchases') ||
@@ -121,6 +126,11 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   const [isDispatchActionBusy, setIsDispatchActionBusy] = useState(false);
   const [isRejectBoxOpen, setIsRejectBoxOpen] = useState(false);
   const [rejectReasonText, setRejectReasonText] = useState('');
+  const [newRecipientUserId, setNewRecipientUserId] = useState('');
+  const [sendModalInvoice, setSendModalInvoice] = useState<Invoice | null>(null);
+  const [sendModalRecipientId, setSendModalRecipientId] = useState('');
+  const [sendModalNotes, setSendModalNotes] = useState('');
+  const [isSendingModalBusy, setIsSendingModalBusy] = useState(false);
 
   // Edit Purchase Invoice Modal state
   const [editModalInvoice, setEditModalInvoice] = useState<Invoice | null>(null);
@@ -522,7 +532,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     setIsPrintModalOpen(true);
   }, []);
 
-  const handleSubmitPurchase = useCallback(async (shouldPrint: boolean) => {
+  const handleSubmitPurchase = useCallback(async (shouldPrint: boolean, sendToAdmin = false) => {
     if (isSubmitting) return;
     if (items.length === 0) {
       setError('يرجى إضافة أصناف لفاتورة الشراء');
@@ -541,6 +551,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       }
 
       const effectivePaid = paymentType === 'cash' ? grandTotal : paymentType === 'credit' ? 0 : Math.min(grandTotal, rawPaid);
+      const chosenReceiver = purchaseReceivers.find((r) => r.id === newRecipientUserId);
+      const createAsDraft = sendToAdmin || !canApprovePurchase;
 
       const res = await createPurchaseInvoice({
         date: invoiceDate,
@@ -558,18 +570,25 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         paymentType,
         paymentMethod: 'bank',
         cashboxId: selectedCashboxId,
-        status: canApprovePurchase ? 'confirmed' : 'draft',
+        status: createAsDraft ? 'draft' : 'confirmed',
+        dispatchStatus: createAsDraft ? (sendToAdmin ? 'sent' : 'draft') : 'confirmed',
+        sendNow: createAsDraft && sendToAdmin,
+        recipientUserId: createAsDraft && sendToAdmin ? chosenReceiver?.id : undefined,
+        recipientName: createAsDraft && sendToAdmin ? (chosenReceiver?.fullName || 'الإدارة العامة') : undefined,
         notes,
       });
 
       if (res.success) {
         setIsNewModalOpen(false);
         resetPurchaseModalForm();
+        setNewRecipientUserId('');
         setActionMessage({
           type: 'success',
-          text: canApprovePurchase
+          text: !createAsDraft
             ? `تم حفظ فاتورة المشتريات رقم (${res.invoice?.invoiceNumber || ''}) وتحديث المخزون والأصناف بنجاح.`
-            : `تم حفظ فاتورة الشراء كمسودة (${res.invoice?.invoiceNumber || ''}) بانتظار المراجعة والاعتماد دون تعديل المخزون.`,
+            : sendToAdmin
+            ? `تم حفظ فاتورة الشراء وإرسالها للإدارة (${res.invoice?.invoiceNumber || ''}) بانتظار الاستلام والاعتماد دون تعديل الأرصدة.`
+            : `تم حفظ فاتورة الشراء كمسودة (${res.invoice?.invoiceNumber || ''}) بانتظار الإرسال أو المراجعة دون تعديل المخزون.`,
         });
         if (shouldPrint && res.invoice) {
           handlePrint(res.invoice);
@@ -583,7 +602,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   }, [
     isSubmitting, items, suppliers, selectedSupplierId, warehouses, selectedWarehouseId, paymentType, grandTotal,
     paidAmount, createPurchaseInvoice, invoiceDate, subtotal, numericDiscount, selectedCashboxId,
-    notes, handlePrint, resetPurchaseModalForm, canApprovePurchase
+    notes, handlePrint, resetPurchaseModalForm, canApprovePurchase, purchaseReceivers, newRecipientUserId
   ]);
 
   const submitPurchaseRef = useRef(handleSubmitPurchase);
@@ -842,6 +861,20 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     </td>
                     <td className="p-3">
                       <div className="flex items-center justify-center gap-1.5">
+                        {inv.status === 'draft' && (!inv.dispatchStatus || inv.dispatchStatus === 'draft' || inv.dispatchStatus === 'rejected') && canCreatePurchaseDraft && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSendModalInvoice(inv);
+                              setSendModalRecipientId(inv.recipientUserId || '');
+                              setSendModalNotes('');
+                            }}
+                            className="p-1.5 text-indigo-700 hover:text-indigo-900 hover:bg-indigo-50 rounded-lg cursor-pointer"
+                            title={inv.dispatchStatus === 'rejected' ? 'إعادة إرسال الفاتورة للإدارة' : 'إرسال الفاتورة للإدارة'}
+                          >
+                            <Send className="w-4 h-4" />
+                          </button>
+                        )}
                         {inv.status !== 'cancelled' && canEditPurchase && (
                           <button
                             onClick={() => handleOpenEditModal(inv)}
@@ -1389,6 +1422,25 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             </div>
           </div>
 
+          <div className="bg-indigo-50/60 border border-indigo-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex-1 min-w-[200px]">
+              <label className="block font-bold text-indigo-950 mb-1">المسؤول الموجه إليه عند الإرسال للإدارة (اختياري):</label>
+              <select
+                value={newRecipientUserId}
+                onChange={(e) => setNewRecipientUserId(e.target.value)}
+                className="w-full bg-white border border-indigo-200 rounded-xl p-2 font-bold"
+              >
+                <option value="">الإدارة العامة (جميع المسؤولين المختصين)</option>
+                {purchaseReceivers.map((r) => (
+                  <option key={r.id} value={r.id}>{r.fullName} ({r.role})</option>
+                ))}
+              </select>
+            </div>
+            <span className="text-[11px] font-bold text-indigo-800">
+              «حفظ وإرسال للإدارة» يحفظها كمسودة مرسلة دون تعديل أرصدة المخزون أو المورد لحين الاعتماد.
+            </span>
+          </div>
+
           <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t">
             <button
               type="button"
@@ -1401,16 +1453,25 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               <button
                 type="button"
                 disabled={isSubmitting || items.length === 0}
-                onClick={() => handleSubmitPurchase(false)}
-                className="flex items-center gap-1.5 px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50"
+                onClick={() => handleSubmitPurchase(false, true)}
+                className="flex items-center gap-1.5 px-4 py-2 bg-indigo-800 hover:bg-indigo-900 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50"
               >
-                <Save className="w-4 h-4" />
-                <span>{isSubmitting ? 'جاري الحفظ...' : 'حفظ الفاتورة فقط'}</span>
+                <Send className="w-4 h-4" />
+                <span>{isSubmitting ? 'جاري الإرسال...' : 'حفظ وإرسال للإدارة'}</span>
               </button>
               <button
                 type="button"
                 disabled={isSubmitting || items.length === 0}
-                onClick={() => handleSubmitPurchase(true)}
+                onClick={() => handleSubmitPurchase(false, false)}
+                className="flex items-center gap-1.5 px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                <span>{isSubmitting ? 'جاري الحفظ...' : canApprovePurchase ? 'حفظ واعتماد الفاتورة' : 'حفظ كمسودة'}</span>
+              </button>
+              <button
+                type="button"
+                disabled={isSubmitting || items.length === 0}
+                onClick={() => handleSubmitPurchase(true, false)}
                 className="flex items-center gap-1.5 px-5 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50"
               >
                 <Printer className="w-4 h-4" />
@@ -1621,7 +1682,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               </div>
             )}
 
-            {displayedActiveInvoice.status === 'draft' && (canReceivePurchase || canApprovePurchase) && (
+            {displayedActiveInvoice.status === 'draft' && (canCreatePurchaseDraft || canReceivePurchase || canApprovePurchase) && (
               <div className="mb-4 p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3 text-xs">
                 <p className="text-[11px] font-bold text-slate-600">
                   ملاحظة محاسبية: هذه الفاتورة لا تزال مسودة ولم تؤثر على أرصدة المخازن أو المورد أو الخزينة بعد. يتم الترحيل الفعلي فقط عند الضغط على «اعتماد وترحيل الفاتورة».
@@ -1673,6 +1734,22 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 )}
 
                 <div className="flex flex-wrap items-center gap-2">
+                  {canCreatePurchaseDraft && (!displayedActiveInvoice.dispatchStatus || displayedActiveInvoice.dispatchStatus === 'draft' || displayedActiveInvoice.dispatchStatus === 'rejected') && (
+                    <button
+                      type="button"
+                      disabled={isDispatchActionBusy}
+                      onClick={() => {
+                        setSendModalInvoice(displayedActiveInvoice);
+                        setSendModalRecipientId(displayedActiveInvoice.recipientUserId || '');
+                        setSendModalNotes('');
+                      }}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-800 hover:bg-indigo-900 text-white font-bold cursor-pointer disabled:opacity-50"
+                    >
+                      <Send className="w-4 h-4" />
+                      <span>{displayedActiveInvoice.dispatchStatus === 'rejected' ? 'إعادة إرسال للإدارة' : 'إرسال للإدارة'}</span>
+                    </button>
+                  )}
+
                   {canReceivePurchase && displayedActiveInvoice.dispatchStatus === 'sent' && (
                     <button
                       type="button"
@@ -2094,6 +2171,81 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         inputLabel="سبب الإلغاء:"
         isLoading={isCancelling}
       />
+
+      {sendModalInvoice && (
+        <Modal
+          isOpen={Boolean(sendModalInvoice)}
+          onClose={() => !isSendingModalBusy && setSendModalInvoice(null)}
+          title={`${sendModalInvoice.dispatchStatus === 'rejected' ? 'إعادة إرسال' : 'إرسال'} فاتورة الشراء (${sendModalInvoice.invoiceNumber}) للإدارة`}
+          maxWidth="md"
+        >
+          <div className="space-y-3 text-xs">
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-bold">
+              سيتم توجيه الفاتورة للإدارة للاستلام والمراجعة فقط دون تعديل المخزون أو حساب المورد أو الخزينة حتى الاعتماد.
+            </div>
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">المسؤول الموجه إليه:</label>
+              <select
+                value={sendModalRecipientId}
+                onChange={(e) => setSendModalRecipientId(e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+              >
+                <option value="">الإدارة العامة (جميع المسؤولين المختصين)</option>
+                {purchaseReceivers.map((r) => (
+                  <option key={r.id} value={r.id}>{r.fullName} ({r.role})</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">ملاحظة للإدارة (اختياري):</label>
+              <input
+                type="text"
+                value={sendModalNotes}
+                onChange={(e) => setSendModalNotes(e.target.value)}
+                placeholder="مثال: تم شراء البضاعة وبانتظار مراجعة التسعير والكميات..."
+                className="w-full p-2.5 rounded-xl border border-slate-300"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <button
+                type="button"
+                disabled={isSendingModalBusy}
+                onClick={() => setSendModalInvoice(null)}
+                className="px-4 py-2 rounded-xl border border-slate-300 font-bold cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                disabled={isSendingModalBusy}
+                onClick={async () => {
+                  const chosen = purchaseReceivers.find((r) => r.id === sendModalRecipientId);
+                  setIsSendingModalBusy(true);
+                  const res = await sendPurchaseInvoice(sendModalInvoice.id, {
+                    recipientUserId: chosen?.id || undefined,
+                    recipientName: chosen?.fullName || 'الإدارة العامة',
+                    notes: sendModalNotes.trim() || undefined,
+                  });
+                  setIsSendingModalBusy(false);
+                  if (res.success) {
+                    setSendModalInvoice(null);
+                    setActionMessage({
+                      type: 'success',
+                      text: `تم إرسال فاتورة الشراء (${sendModalInvoice.invoiceNumber}) إلى ${chosen?.fullName || 'الإدارة العامة'} بانتظار الاستلام والاعتماد.`,
+                    });
+                  } else {
+                    setActionMessage({ type: 'error', text: res.error || 'تعذر إرسال الفاتورة' });
+                  }
+                }}
+                className="px-5 py-2 rounded-xl bg-indigo-800 hover:bg-indigo-900 text-white font-black inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Send className="w-4 h-4" />
+                <span>{isSendingModalBusy ? 'جاري الإرسال...' : 'تأكيد الإرسال'}</span>
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Print Document Modal */}
       <PrintDocumentModal

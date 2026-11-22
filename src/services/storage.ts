@@ -175,9 +175,14 @@ export interface QueuedCustomerOrder {
   queuedAt: string;
 }
 
-export function loadOfflineOrdersQueue(): QueuedCustomerOrder[] {
+function offlineQueueStorageKey(userId?: string): string {
+  const uid = String(userId || '').trim();
+  return uid ? `${OFFLINE_ORDERS_QUEUE_KEY}_${uid}` : OFFLINE_ORDERS_QUEUE_KEY;
+}
+
+export function loadOfflineOrdersQueue(userId?: string): QueuedCustomerOrder[] {
   try {
-    const raw = localStorage.getItem(OFFLINE_ORDERS_QUEUE_KEY);
+    const raw = localStorage.getItem(offlineQueueStorageKey(userId));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -186,19 +191,21 @@ export function loadOfflineOrdersQueue(): QueuedCustomerOrder[] {
   }
 }
 
-export function saveOfflineOrdersQueue(queue: QueuedCustomerOrder[]): void {
+export function saveOfflineOrdersQueue(queue: QueuedCustomerOrder[], userId?: string): void {
   try {
+    const key = offlineQueueStorageKey(userId);
     if (!queue.length) {
-      localStorage.removeItem(OFFLINE_ORDERS_QUEUE_KEY);
+      localStorage.removeItem(key);
     } else {
-      localStorage.setItem(OFFLINE_ORDERS_QUEUE_KEY, JSON.stringify(queue));
+      localStorage.setItem(key, JSON.stringify(queue));
     }
   } catch {
     // ignore storage errors
   }
 }
 
-const READ_CACHE_KEY = 'awlad_selim_read_cache_v1';
+const READ_CACHE_KEY_PREFIX = 'awlad_selim_read_cache_v2_';
+const LEGACY_READ_CACHE_KEY = 'awlad_selim_read_cache_v1';
 
 export interface MobileReadCacheSnapshot<T = any> {
   userId: string;
@@ -216,7 +223,7 @@ export function saveReadCache<T = any>(userId: string, role: string, data: T): v
       cachedAt: new Date().toISOString(),
       data,
     };
-    localStorage.setItem(READ_CACHE_KEY, JSON.stringify(payload));
+    localStorage.setItem(`${READ_CACHE_KEY_PREFIX}${userId}`, JSON.stringify(payload));
   } catch {
     // ignore storage quota errors
   }
@@ -228,7 +235,9 @@ export function loadReadCache<T = any>(
 ): MobileReadCacheSnapshot<T> | null {
   if (!userId || !role) return null;
   try {
-    const raw = localStorage.getItem(READ_CACHE_KEY);
+    const raw =
+      localStorage.getItem(`${READ_CACHE_KEY_PREFIX}${userId}`) ||
+      localStorage.getItem(LEGACY_READ_CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as MobileReadCacheSnapshot<T>;
     if (parsed?.userId !== userId || parsed?.role !== role || !parsed?.data) {
@@ -240,9 +249,13 @@ export function loadReadCache<T = any>(
   }
 }
 
-export function clearReadCache(): void {
+export function clearReadCache(userId?: string): void {
   try {
-    localStorage.removeItem(READ_CACHE_KEY);
+    if (userId) {
+      localStorage.removeItem(`${READ_CACHE_KEY_PREFIX}${userId}`);
+    } else {
+      localStorage.removeItem(LEGACY_READ_CACHE_KEY);
+    }
   } catch {
     // ignore
   }

@@ -316,3 +316,259 @@ export const BackupCloudIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10
     <ellipse cx="32" cy="18" rx="18" ry="6" fill="#93C5FD" />
   </svg>
 );
+
+/** لوحة التحكم الرئيسية */
+export const DashboardHomeIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <rect x="10" y="10" width="20" height="20" rx="5" fill="#2563EB" />
+    <rect x="34" y="10" width="20" height="13" rx="4" fill="#38BDF8" />
+    <rect x="34" y="27" width="20" height="27" rx="5" fill="#10B981" />
+    <rect x="10" y="34" width="20" height="20" rx="5" fill="#F59E0B" />
+    <circle cx="20" cy="20" r="4" fill="#DBEAFE" />
+    <path d="M39 45l4-5 3.5 3 4.5-6" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+/** عرض فواتير البيع — شاشة قائمة فواتير مع شارة المبيعات */
+export const SalesInvoicesListIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <rect x="10" y="10" width="44" height="44" rx="6" fill="#E0F2FE" stroke="#0284C7" strokeWidth="2.4" />
+    <rect x="15" y="15" width="34" height="10" rx="3" fill="#FFFFFF" stroke="#BAE6FD" strokeWidth="1.5" />
+    <circle cx="21" cy="20" r="2.8" fill="#10B981" />
+    <path d="M27 20h17" stroke="#0284C7" strokeWidth="2.6" strokeLinecap="round" />
+    <rect x="15" y="29" width="34" height="9" rx="2.5" fill="#FFFFFF" />
+    <path d="M20 33.5h15M39 33.5h5" stroke="#64748B" strokeWidth="2.5" strokeLinecap="round" />
+    <rect x="15" y="41" width="34" height="9" rx="2.5" fill="#FFFFFF" />
+    <path d="M20 45.5h19M42 45.5h3" stroke="#64748B" strokeWidth="2.5" strokeLinecap="round" />
+  </svg>
+);
+
+/** عرض فواتير الشراء — لوح تدقيق واستلام فواتير التوريد */
+export const PurchaseInvoicesListIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <rect x="13" y="11" width="38" height="44" rx="5" fill="#EEF2FF" stroke="#312E81" strokeWidth="2.4" />
+    <rect x="23" y="7" width="18" height="7" rx="3" fill="#4338CA" />
+    <path d="M20 24l2.5 2.5 4.5-4.5M31 24.5h13" stroke="#10B981" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M20 35l2.5 2.5 4.5-4.5M31 35.5h13" stroke="#4F46E5" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M20 46l2.5 2.5 4.5-4.5M31 46.5h10" stroke="#F59E0B" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+/** إضافة صنف جديد */
+export const ProductAddIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <path d="M12 22l20-10 20 10v20L32 52 12 42V22z" fill="#FDE68A" stroke="#D97706" strokeWidth="2.4" strokeLinejoin="round" />
+    <path d="M12 22l20 10 20-10M32 32v20" stroke="#B45309" strokeWidth="2.2" />
+    <circle cx="47" cy="44" r="11" fill="#10B981" stroke="#FFFFFF" strokeWidth="2.5" />
+    <path d="M47 39v10M42 44h10" stroke="#FFFFFF" strokeWidth="2.8" strokeLinecap="round" />
+  </svg>
+);
+
+/** التحويلات المخزنية */
+export const StockTransfersIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <rect x="8" y="13" width="20" height="18" rx="3" fill="#F59E0B" />
+    <rect x="36" y="33" width="20" height="18" rx="3" fill="#0284C7" />
+    <path d="M31 20h14m0 0l-5-5m5 5l-5 5" stroke="#0F766E" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M33 44H19m0 0l5-5m-5 5l5 5" stroke="#2563EB" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+/** حركات المخزن */
+export const StockMovementsIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <rect x="11" y="11" width="42" height="42" rx="7" fill="#F0FDF4" stroke="#16A34A" strokeWidth="2.4" />
+    <path d="M18 39l8-9 7 6 13-15" stroke="#15803D" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M39 21h7v7" stroke="#15803D" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+    <circle cx="18" cy="39" r="3" fill="#22C55E" />
+    <circle cx="26" cy="30" r="3" fill="#22C55E" />
+    <circle cx="33" cy="36" r="3" fill="#22C55E" />
+  </svg>
+);
+
+/** جرد المخزون */
+export const StockCountIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <rect x="12" y="14" width="28" height="36" rx="4" fill="#FEF3C7" stroke="#B45309" strokeWidth="2.4" />
+    <path d="M18 24h14M18 32h11M18 40h9" stroke="#D97706" strokeWidth="2.6" strokeLinecap="round" />
+    <circle cx="43" cy="38" r="11" fill="#FFFFFF" stroke="#1D4ED8" strokeWidth="2.8" />
+    <path d="M51 46l6 6" stroke="#1D4ED8" strokeWidth="3.5" strokeLinecap="round" />
+    <path d="M39 38l2.5 2.5 5-5" stroke="#10B981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+/** حركة النقدية والتحويل بين الخزائن */
+export const CashTransferIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <circle cx="22" cy="24" r="11" fill="#10B981" />
+    <path d="M22 18v12M19 21.5c0-1 1.3-1.8 3-1.8s3 .8 3 1.8-1.3 1.5-3 1.8-3 .8-3 1.9 1.3 1.8 3 1.8 3-.8 3-1.8" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" />
+    <circle cx="42" cy="40" r="11" fill="#0284C7" />
+    <path d="M42 34v12M39 37.5c0-1 1.3-1.8 3-1.8s3 .8 3 1.8-1.3 1.5-3 1.8-3 .8-3 1.9 1.3 1.8 3 1.8 3-.8 3-1.8" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" />
+    <path d="M35 20h11m0 0l-4-4m4 4l-4 4" stroke="#047857" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M29 44H18m0 0l4-4m-4 4l4 4" stroke="#0369A1" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+/** سجل المراجعة والتدقيق */
+export const AuditShieldIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <path d="M32 8l20 7.5v15c0 12.5-8.4 22.3-20 26.5-11.6-4.2-20-14-20-26.5v-15L32 8z" fill="#EEF2FF" stroke="#4338CA" strokeWidth="2.6" />
+    <circle cx="31" cy="31" r="9" fill="#FFFFFF" stroke="#4F46E5" strokeWidth="2.5" />
+    <path d="M37.5 37.5l6.5 6.5" stroke="#4338CA" strokeWidth="3.2" strokeLinecap="round" />
+    <path d="M27.5 31l2.3 2.3 4.7-4.7" stroke="#10B981" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+/** الفروع والمحافظات */
+export const BranchMapIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <path d="M10 18l14-5 16 6 14-5v32l-14 5-16-6-14 5V18z" fill="#E0F2FE" stroke="#0284C7" strokeWidth="2.4" strokeLinejoin="round" />
+    <path d="M24 13v32M40 19v32" stroke="#7DD3FC" strokeWidth="2" />
+    <path d="M32 14c-5 0-9 3.9-9 8.8 0 6.7 9 15.7 9 15.7s9-9 9-15.7c0-4.9-4-8.8-9-8.8z" fill="#EF4444" stroke="#FFFFFF" strokeWidth="2" />
+    <circle cx="32" cy="22.5" r="3" fill="#FFFFFF" />
+  </svg>
+);
+
+/** طباعة الباركود */
+export const BarcodeScanIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <rect x="8" y="14" width="48" height="36" rx="5" fill="#F8FAFC" stroke="#334155" strokeWidth="2.4" />
+    <path d="M15 22v20M20 22v20M26 22v20M31 22v20M38 22v20M43 22v20M49 22v20" stroke="#0F172A" strokeWidth="2.4" strokeLinecap="round" />
+    <path d="M11 32h42" stroke="#EF4444" strokeWidth="2.4" strokeLinecap="round" />
+  </svg>
+);
+
+/** الطابعات والأجهزة */
+export const PrintersIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <rect x="18" y="10" width="28" height="14" rx="2" fill="#E2E8F0" stroke="#475569" strokeWidth="2.2" />
+    <rect x="9" y="22" width="46" height="22" rx="5" fill="#3B82F6" />
+    <circle cx="46" cy="29" r="2.5" fill="#22C55E" />
+    <rect x="18" y="36" width="28" height="18" rx="2" fill="#FFFFFF" stroke="#1E293B" strokeWidth="2.2" />
+    <path d="M23 42h18M23 47h12" stroke="#64748B" strokeWidth="2.4" strokeLinecap="round" />
+  </svg>
+);
+
+/** التصنيفات والوسوم */
+export const CategoriesTagIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <path d="M12 14h20l20 20-16 16L16 30V14z" fill="#FEF3C7" stroke="#D97706" strokeWidth="2.4" strokeLinejoin="round" />
+    <circle cx="22" cy="24" r="3.5" fill="#D97706" />
+    <path d="M29 31l9 9M25 36l8 8" stroke="#F59E0B" strokeWidth="2.6" strokeLinecap="round" />
+  </svg>
+);
+
+/** المحلات والعميل */
+export const StoreShopIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <path d="M10 24l5-12h34l5 12H10z" fill="#EF4444" />
+    <path d="M21 12l-2 12h10l1-12h-9zM43 12l2 12H35l-1-12h9z" fill="#FEE2E2" />
+    <rect x="13" y="24" width="38" height="28" rx="3" fill="#FFFBEB" stroke="#D97706" strokeWidth="2.4" />
+    <rect x="26" y="34" width="12" height="18" rx="2" fill="#2563EB" />
+    <rect x="16" y="30" width="7" height="8" rx="1.5" fill="#BAE6FD" stroke="#0284C7" strokeWidth="1.5" />
+    <rect x="41" y="30" width="7" height="8" rx="1.5" fill="#BAE6FD" stroke="#0284C7" strokeWidth="1.5" />
+  </svg>
+);
+
+/** إعدادات الحساب وكلمة المرور والصلاحيات */
+export const StaffAccountSettingsIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <circle cx="28" cy="21" r="8.5" fill="#0284C7" />
+    <path d="M12 49c0-7.5 6.8-13 16-13s16 5.5 16 13v3H12v-3z" fill="#0369A1" />
+    <circle cx="46" cy="42" r="11" fill="#F59E0B" stroke="#FFFFFF" strokeWidth="2.5" />
+    <circle cx="46" cy="39" r="3" fill="#FFFFFF" />
+    <path d="M46 42v6M43.5 46h4" stroke="#FFFFFF" strokeWidth="2.2" strokeLinecap="round" />
+  </svg>
+);
+
+/** الفواتير المحذوفة والملغاة */
+export const DeletedInvoicesIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <rect x="13" y="9" width="32" height="44" rx="4" fill="#FEF2F2" stroke="#DC2626" strokeWidth="2.4" />
+    <path d="M20 19h18M20 27h14M20 35h10" stroke="#FCA5A5" strokeWidth="3" strokeLinecap="round" />
+    <circle cx="45" cy="44" r="11" fill="#DC2626" stroke="#FFFFFF" strokeWidth="2.5" />
+    <path d="M41 40l8 8M49 40l-8 8" stroke="#FFFFFF" strokeWidth="2.6" strokeLinecap="round" />
+  </svg>
+);
+
+/** قوالب الصلاحيات التلقائية */
+export const PermissionPresetsIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <path d="M32 8l19 7v14c0 12-8 21.5-19 25.5C21 50.5 13 41 13 29V15l19-7z" fill="#E0E7FF" stroke="#4338CA" strokeWidth="2.4" />
+    <rect x="23" y="23" width="18" height="4" rx="2" fill="#4F46E5" />
+    <circle cx="26" cy="25" r="3.5" fill="#10B981" stroke="#FFFFFF" strokeWidth="1.5" />
+    <rect x="23" y="33" width="18" height="4" rx="2" fill="#4F46E5" />
+    <circle cx="38" cy="35" r="3.5" fill="#F59E0B" stroke="#FFFFFF" strokeWidth="1.5" />
+  </svg>
+);
+
+/** الحسابات المحفوظة والتبديل السريع */
+export const SavedAccountsIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <circle cx="24" cy="21" r="7.5" fill="#0284C7" />
+    <path d="M10 47c0-6.5 6-11.5 14-11.5S38 40.5 38 47v3H10v-3z" fill="#0369A1" />
+    <circle cx="43" cy="23" r="6" fill="#38BDF8" />
+    <path d="M34 45c.5-5 4.2-8.5 9-8.5s8.5 3.5 9 8.5v3H34v-3z" fill="#0EA5E9" />
+    <circle cx="46" cy="45" r="10" fill="#10B981" stroke="#FFFFFF" strokeWidth="2.2" />
+    <path d="M41 43h10l-3-3M51 47H41l3 3" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+/** بياناتي والمحل (بوابة العميل) */
+export const CustomerProfileIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <rect x="11" y="13" width="42" height="38" rx="6" fill="#EFF6FF" stroke="#1D4ED8" strokeWidth="2.4" />
+    <circle cx="25" cy="28" r="6.5" fill="#2563EB" />
+    <path d="M15 44c0-5 4.3-8.5 10-8.5s10 3.5 10 8.5v2H15v-2z" fill="#1D4ED8" />
+    <path d="M37 25h11M37 32h11M37 39h8" stroke="#60A5FA" strokeWidth="2.8" strokeLinecap="round" />
+  </svg>
+);
+
+/** البضاعة التالفة والمنتهية */
+export const DamagedStockIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <rect x="12" y="18" width="32" height="32" rx="4" fill="#FEF3C7" stroke="#D97706" strokeWidth="2.4" />
+    <path d="M12 28h32" stroke="#F59E0B" strokeWidth="2.4" />
+    <circle cx="46" cy="44" r="11" fill="#EF4444" stroke="#FFFFFF" strokeWidth="2.4" />
+    <path d="M46 38v7M46 48.5h.01" stroke="#FFFFFF" strokeWidth="2.8" strokeLinecap="round" />
+  </svg>
+);
+
+/** الفروع والإدارات */
+export const BranchesBuildingIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <rect x="12" y="16" width="24" height="38" rx="3" fill="#2563EB" />
+    <rect x="36" y="24" width="16" height="30" rx="3" fill="#0EA5E9" />
+    <rect x="17" y="22" width="5" height="5" rx="1" fill="#DBEAFE" />
+    <rect x="26" y="22" width="5" height="5" rx="1" fill="#DBEAFE" />
+    <rect x="17" y="31" width="5" height="5" rx="1" fill="#DBEAFE" />
+    <rect x="26" y="31" width="5" height="5" rx="1" fill="#DBEAFE" />
+    <rect x="21" y="42" width="6" height="12" rx="1" fill="#1E3A8A" />
+    <rect x="41" y="30" width="6" height="5" rx="1" fill="#E0F2FE" />
+    <rect x="41" y="39" width="6" height="5" rx="1" fill="#E0F2FE" />
+  </svg>
+);
+
+/** إعدادات السيرفر والمزامنة */
+export const SyncSettingsIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <rect x="11" y="12" width="42" height="14" rx="4" fill="#1E293B" />
+    <rect x="11" y="30" width="42" height="14" rx="4" fill="#334155" />
+    <circle cx="19" cy="19" r="2.5" fill="#22C55E" />
+    <circle cx="19" cy="37" r="2.5" fill="#38BDF8" />
+    <path d="M27 19h18M27 37h12" stroke="#94A3B8" strokeWidth="2.6" strokeLinecap="round" />
+    <circle cx="47" cy="46" r="10" fill="#2563EB" stroke="#FFFFFF" strokeWidth="2.2" />
+    <path d="M43 45a4.5 4.5 0 017.8-2M51 47a4.5 4.5 0 01-7.8 2" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" />
+  </svg>
+);
+
+/** الحسابات الشخصية للملاك */
+export const PersonalAccountsIcon: React.FC<AppIconProps> = ({ className = 'w-10 h-10' }) => (
+  <svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true">
+    <rect x="12" y="12" width="40" height="40" rx="7" fill="#ECFDF5" stroke="#047857" strokeWidth="2.4" />
+    <circle cx="32" cy="25" r="6.5" fill="#10B981" />
+    <path d="M20 43c0-5 5.4-8.5 12-8.5s12 3.5 12 8.5v2H20v-2z" fill="#059669" />
+  </svg>
+);
+
+

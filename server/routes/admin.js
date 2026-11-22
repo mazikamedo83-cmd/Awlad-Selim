@@ -28,6 +28,8 @@ import {
   recordAttendance,
   issuePayroll,
   updateSystemSettings,
+  getRolePermissionPresets,
+  updateRolePermissionPresets,
   exportFullBackup,
   restoreFullBackup,
 } from '../db/stores/inventoryAdminStore.js';
@@ -269,6 +271,24 @@ router.get(
   asyncHandler(async (req, res) => {
     const logs = await listAuditLogs(req.query.limit);
     res.json({ ok: true, logs });
+  })
+);
+
+router.get(
+  '/permission-presets',
+  requirePermission('canManageUsers'),
+  asyncHandler(async (_req, res) => {
+    const presets = await getRolePermissionPresets();
+    res.json({ ok: true, presets });
+  })
+);
+
+router.put(
+  '/permission-presets',
+  requirePermission('canManageUsers'),
+  asyncHandler(async (req, res) => {
+    const presets = await updateRolePermissionPresets(req.body?.presets || req.body || {}, req.auth.user);
+    res.json({ ok: true, presets });
   })
 );
 

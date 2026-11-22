@@ -71,7 +71,11 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>يستخدم التطبيق الموقع الجغرافي لتوثيق زيارات المندوبين وعناوين تسليم طلبات العملاء.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>يستخدم التطبيق الكاميرا لمسح رموز QR الخاصة بربط الجهاز بالسيرفر المركزي ومسح الباركود.</string>
+	<string>يستخدم التطبيق الكاميرا لمسح رموز QR الخاصة بربط الجهاز بالسيرفر المركزي، ومسح الباركود، والتقاط صور المحلات وإثبات التسليم.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>يستخدم التطبيق معرض الصور لاختيار صور المحلات والمستندات وإرفاقها ببيانات العملاء والفواتير.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>يسمح بحفظ مستندات الفواتير وكشوف الحساب المصورة في ألبوم الصور عند التصدير.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

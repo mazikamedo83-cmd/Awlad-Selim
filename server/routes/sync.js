@@ -31,6 +31,7 @@ import {
   createSalesQuote,
   editSalesInvoice,
   editPurchaseInvoice,
+  deleteDraftPurchaseInvoice,
   addInvoicePayment,
   createInvoiceReturn,
   listInvoices,
@@ -337,6 +338,18 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
       );
     }
     return editPurchaseInvoice(invoiceId, { ...payload, ignoreVersionCheck }, user);
+  }
+
+  if (opType === 'delete_purchase_draft') {
+    if (
+      user.role !== 'admin' &&
+      !user.permissions?.canManagePurchases &&
+      !user.permissions?.canCreatePurchase
+    ) {
+      throw new AppError(403, 'ليس لديك صلاحية حذف مسودة فاتورة الشراء', 'FORBIDDEN_PERMISSION');
+    }
+    const invoiceId = payload.invoiceId || op.entityId;
+    return deleteDraftPurchaseInvoice(invoiceId, user);
   }
 
   if (opType === 'create_invoice_return') {

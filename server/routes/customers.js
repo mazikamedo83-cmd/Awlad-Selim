@@ -4,6 +4,7 @@ import {
   getCustomerById,
   createCustomer,
   updateCustomer,
+  updateOwnCustomerProfile,
   deleteCustomer,
   linkCustomerToUser,
   recordCustomerPayment,
@@ -48,6 +49,28 @@ router.get(
       customer: sanitizedCust,
       linkWarning: req.auth.linkWarning || null,
       mobileConfig: settings.mobileConfig,
+    });
+  })
+);
+
+router.put(
+  '/me',
+  asyncHandler(async (req, res) => {
+    if (req.auth.user.role !== 'customer') {
+      throw new AppError(403, 'هذه النقطة مخصصة لحسابات العملاء فقط', 'CUSTOMER_ONLY');
+    }
+    const cust = req.auth.customerProfile;
+    if (!cust) {
+      throw new AppError(404, req.auth.linkWarning || 'حسابك غير مربوط بملف عميل', 'CUSTOMER_PROFILE_REQUIRED');
+    }
+    const updated = await updateOwnCustomerProfile(req.auth.user.id, cust.id, req.body || {}, req.auth.user);
+    const settings = await getSystemSettingsSafe();
+    res.json({
+      ok: true,
+      customer: {
+        ...updated,
+        priceHistory: settings.mobileConfig?.allowCustomerPriceView ? updated.priceHistory : {},
+      },
     });
   })
 );

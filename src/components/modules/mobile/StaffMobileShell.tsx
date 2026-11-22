@@ -56,6 +56,16 @@ import {
   LogoutDoorIcon,
   OrdersClipboardIcon,
   PriceQuoteIcon,
+  SalesInvoicesListIcon,
+  PurchaseInvoicesListIcon,
+  StockTransfersIcon,
+  StockCountIcon,
+  CashTransferIcon,
+  AuditShieldIcon,
+  DeletedInvoicesIcon,
+  PersonalAccountsIcon,
+  DamagedStockIcon,
+  BranchesBuildingIcon,
 } from '../../common/AppIcons';
 
 interface StaffMobileShellProps {
@@ -88,7 +98,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
   onOpenCashOp,
   children,
 }) => {
-  const { currentUser, hasPermission, logout, refreshAuthContext } = useAuth();
+  const { currentUser, hasPermission, logout, refreshAuthContext, setIsAccountSwitcherOpen, savedAccounts } = useAuth();
   const data = useData();
   const hideSectionsNav = isMobileAppPlatform();
 
@@ -336,6 +346,10 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         return 'أمين مستودع';
       case 'purchases':
         return 'موظف مشتريات';
+      case 'representative':
+        return 'مندوب مبيعات';
+      case 'customer':
+        return 'عميل مسجل';
       default:
         return 'موظف';
     }
@@ -488,7 +502,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
       tiles.push({
         id: 'sales-invoices',
         label: 'عرض فواتير البيع',
-        icon: <SalesInvoiceIcon className="w-11 h-11" />,
+        icon: <SalesInvoicesListIcon className="w-11 h-11" />,
         onClick: () => onNavigate('sales-invoices'),
       });
       tiles.push({
@@ -516,6 +530,14 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         onClick: () => onNavigate('customers'),
       });
     }
+    if (checkPerm('canViewDeletedInvoices')) {
+      tiles.push({
+        id: 'deleted-invoices',
+        label: 'الفواتير المحذوفة',
+        icon: <DeletedInvoicesIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('deleted-invoices'),
+      });
+    }
 
     if (checkPerm(['canManagePurchases', 'canCreatePurchase'])) {
       tiles.push({
@@ -527,7 +549,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
       tiles.push({
         id: 'purchase-invoices',
         label: 'عرض فواتير الشراء',
-        icon: <PurchaseInvoiceIcon className="w-11 h-11" />,
+        icon: <PurchaseInvoicesListIcon className="w-11 h-11" />,
         onClick: () => onNavigate('purchase-invoices'),
       });
       tiles.push({
@@ -546,19 +568,41 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
       });
     }
 
-    if (checkPerm(['canManageInventory', 'canManageWarehouses', 'canCreateStockCount'])) {
+    if (checkPerm(['canManageInventory', 'canManageWarehouses'])) {
       tiles.push({
         id: 'inventory',
         label: 'المخزن والأصناف',
         icon: <WarehouseBoxesIcon className="w-11 h-11" />,
         onClick: () =>
           onNavigate(
-            checkPerm('canManageInventory')
-              ? 'products'
-              : checkPerm('canManageWarehouses')
-              ? 'warehouses'
-              : 'stock-counts'
+            checkPerm('canManageInventory') ? 'products' : 'warehouses'
           ),
+      });
+    }
+    if (checkPerm('canManageInventory')) {
+      tiles.push({
+        id: 'damaged-stock',
+        label: 'بضاعة تالفة',
+        icon: <DamagedStockIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('damaged-stock'),
+      });
+    }
+
+    if (checkPerm(['canCreateStockTransfer', 'canApproveStockTransfer', 'canExecuteStockTransfer', 'canManageInventory'])) {
+      tiles.push({
+        id: 'stock-transfers-orders',
+        label: 'تحويل الأصناف',
+        icon: <StockTransfersIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('stock-transfers-orders'),
+      });
+    }
+
+    if (checkPerm(['canCreateStockCount', 'canApproveStockCount', 'canManageInventory'])) {
+      tiles.push({
+        id: 'stock-counts',
+        label: 'جرد المخزون',
+        icon: <StockCountIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('stock-counts'),
       });
     }
 
@@ -579,10 +623,24 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         onClick: () => onNavigate('cashboxes'),
       });
       tiles.push({
+        id: 'cashbox-transfer',
+        label: 'تحويل الخزائن',
+        icon: <CashTransferIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('cashbox-transfer'),
+      });
+      tiles.push({
         id: 'expenses',
         label: 'المصروفات',
         icon: <ExpensesCashIcon className="w-11 h-11" />,
         onClick: () => onNavigate('expenses'),
+      });
+    }
+    if (checkPerm('canViewPersonalAccounts')) {
+      tiles.push({
+        id: 'personal-accounts',
+        label: 'الحسابات الشخصية',
+        icon: <PersonalAccountsIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('personal-accounts'),
       });
     }
 
@@ -635,9 +693,21 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         icon: <UsersShieldIcon className="w-11 h-11" />,
         onClick: () => onNavigate('users'),
       });
+      tiles.push({
+        id: 'audit-log',
+        label: 'سجل المراجعة',
+        icon: <AuditShieldIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('audit-log'),
+      });
     }
 
     if (checkPerm('canManageSettings')) {
+      tiles.push({
+        id: 'branches-settings',
+        label: 'الفروع',
+        icon: <BranchesBuildingIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('branches-settings'),
+      });
       tiles.push({
         id: 'backup',
         label: 'النسخ الاحتياطي',
@@ -774,6 +844,21 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
 
               <button
                 type="button"
+                onClick={() => setIsAccountSwitcherOpen(true)}
+                className="relative min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+                title="الحسابات المحفوظة وتبديل الحساب"
+                aria-label="تبديل الحساب"
+              >
+                <Users className="w-4 h-4" />
+                {savedAccounts.length > 1 && (
+                  <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-emerald-500 text-white text-[9px] font-black flex items-center justify-center">
+                    {savedAccounts.length}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
                 onClick={() => onNavigate('system-settings')}
                 className={`min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl text-white cursor-pointer ${
                   currentPage === 'system-settings' ? 'bg-white text-blue-950' : 'bg-white/10 hover:bg-white/20'
@@ -883,7 +968,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         )}
 
         {hideSectionsNav && currentPage === 'dashboard' && (
-          <section aria-label="الأقسام والخدمات السريعة" className="space-y-2.5 no-print">
+          <section aria-label="الخدمات والشاشات الرئيسية" className="space-y-2.5 no-print">
             <div className="grid grid-cols-3 gap-2.5">
               {mobileGridTiles.map((tile) => (
                 <button

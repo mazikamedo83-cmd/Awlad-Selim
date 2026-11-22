@@ -21,6 +21,8 @@ import {
   ChevronLeft,
   AlertCircle,
   Settings,
+  Lock,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
@@ -44,6 +46,7 @@ export const MobilePortal: React.FC = () => {
     logout,
     refreshAuthContext,
     hasPermission,
+    updatePassword,
   } = useAuth();
   const data = useData();
   const isRep = currentUser?.role === 'representative';
@@ -56,6 +59,12 @@ export const MobilePortal: React.FC = () => {
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
   const [isSyncCenterOpen, setIsSyncCenterOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [showPasswordBox, setShowPasswordBox] = useState(false);
+  const [currPwd, setCurrPwd] = useState('');
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [isSavingPwd, setIsSavingPwd] = useState(false);
+  const [pwdFeedback, setPwdFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [hasUnsavedRepInvoice, setHasUnsavedRepInvoice] = useState(false);
   const [pendingRepTab, setPendingRepTab] = useState<RepTabKey | null>(null);
 
@@ -580,7 +589,130 @@ export const MobilePortal: React.FC = () => {
               </button>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 max-h-[68vh] overflow-y-auto pr-0.5">
+              {/* Scoped Permissions Summary */}
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5">
+                <div className="flex items-center gap-1.5 font-black text-slate-800">
+                  <ShieldCheck className="w-4 h-4 text-emerald-700 shrink-0" />
+                  <span>حالة الحساب والصلاحيات</span>
+                </div>
+                <p className="text-[11px] text-slate-600 font-mono">
+                  @{currentUser?.username} · {isRep ? 'مندوب مبيعات' : 'عميل مسجل'}
+                </p>
+                <div className="flex flex-wrap gap-1 pt-0.5">
+                  {Object.entries(currentUser?.permissions || {})
+                    .filter(([, ok]) => Boolean(ok))
+                    .slice(0, 8)
+                    .map(([k]) => (
+                      <span key={k} className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-900 border border-blue-200 text-[10px] font-bold">
+                        {k === 'canManageSales'
+                          ? 'المبيعات'
+                          : k === 'canCreatePurchase'
+                          ? 'فواتير الشراء'
+                          : k === 'canManageTransfers'
+                          ? 'العهد والتحويل'
+                          : k === 'canView'
+                          ? 'العرض'
+                          : k === 'canAdd'
+                          ? 'الإضافة'
+                          : k === 'canEdit'
+                          ? 'التعديل'
+                          : k === 'canPrint'
+                          ? 'الطباعة'
+                          : k === 'canSend'
+                          ? 'الإرسال'
+                          : k === 'canReceive'
+                          ? 'الاستلام'
+                          : k}
+                      </span>
+                    ))}
+                </div>
+              </div>
+
+              {/* Change Password Inline Accordion */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPasswordBox((prev) => !prev);
+                  setPwdFeedback(null);
+                }}
+                className="w-full min-h-[44px] px-3.5 rounded-2xl bg-slate-50 hover:bg-blue-50 border border-slate-200 flex items-center justify-between font-bold text-slate-800 cursor-pointer"
+              >
+                <span className="flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-indigo-700" />
+                  <span>تغيير كلمة المرور</span>
+                </span>
+                <ChevronLeft className={`w-4 h-4 text-slate-400 transition-transform ${showPasswordBox ? '-rotate-90' : ''}`} />
+              </button>
+
+              {showPasswordBox && (
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    setPwdFeedback(null);
+                    if (newPwd.length < 4) {
+                      setPwdFeedback({ type: 'error', text: 'كلمة المرور يجب أن تكون 4 أحرف على الأقل.' });
+                      return;
+                    }
+                    if (newPwd !== confirmPwd) {
+                      setPwdFeedback({ type: 'error', text: 'تأكيد كلمة المرور غير مطابق.' });
+                      return;
+                    }
+                    setIsSavingPwd(true);
+                    const res = await updatePassword(newPwd, currPwd || undefined);
+                    setIsSavingPwd(false);
+                    if (res.success) {
+                      setCurrPwd('');
+                      setNewPwd('');
+                      setConfirmPwd('');
+                      setPwdFeedback({ type: 'success', text: 'تم تحديث كلمة المرور بنجاح.' });
+                    } else {
+                      setPwdFeedback({ type: 'error', text: res.error || 'تعذر تغيير كلمة المرور.' });
+                    }
+                  }}
+                  className="p-3 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-2"
+                >
+                  {pwdFeedback && (
+                    <p className={`text-[11px] font-bold ${pwdFeedback.type === 'success' ? 'text-emerald-800' : 'text-red-700'}`}>
+                      {pwdFeedback.text}
+                    </p>
+                  )}
+                  <input
+                    type="password"
+                    required
+                    value={currPwd}
+                    onChange={(e) => setCurrPwd(e.target.value)}
+                    placeholder="كلمة المرور الحالية"
+                    className="w-full min-h-[40px] rounded-xl border border-slate-300 px-3 bg-white font-mono"
+                  />
+                  <input
+                    type="password"
+                    required
+                    minLength={4}
+                    value={newPwd}
+                    onChange={(e) => setNewPwd(e.target.value)}
+                    placeholder="كلمة المرور الجديدة"
+                    className="w-full min-h-[40px] rounded-xl border border-slate-300 px-3 bg-white font-mono"
+                  />
+                  <input
+                    type="password"
+                    required
+                    minLength={4}
+                    value={confirmPwd}
+                    onChange={(e) => setConfirmPwd(e.target.value)}
+                    placeholder="تأكيد كلمة المرور الجديدة"
+                    className="w-full min-h-[40px] rounded-xl border border-slate-300 px-3 bg-white font-mono"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isSavingPwd}
+                    className="w-full min-h-[40px] rounded-xl bg-indigo-900 text-white font-black cursor-pointer disabled:opacity-50"
+                  >
+                    {isSavingPwd ? 'جاري التحديث...' : 'حفظ كلمة المرور'}
+                  </button>
+                </form>
+              )}
+
               <button
                 type="button"
                 onClick={() => {

@@ -20,6 +20,19 @@ import {
   ArrowLeftRight,
   X,
 } from 'lucide-react';
+import {
+  DashboardHomeIcon,
+  SalesInvoiceIcon,
+  SuppliersTruckIcon,
+  WarehouseBoxesIcon,
+  SafeVaultIcon,
+  ChequesIcon,
+  RepsFleetIcon,
+  EmployeesHrIcon,
+  ReportsChartIcon,
+  UsersShieldIcon,
+  SettingsTwinGearsIcon,
+} from '../common/AppIcons';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { CashOperationType } from '../../types';
@@ -129,9 +142,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {
         id: 'sales',
         title: 'المبيعات والعملاء',
-        icon: ShoppingCart,
+        icon: SalesInvoiceIcon,
         headerGradient: 'bg-gradient-to-l from-blue-50/95 via-sky-50/80 to-white text-blue-950 border-blue-100',
-        iconAccent: 'bg-blue-100/80 text-blue-800',
+        iconAccent: 'bg-white border border-blue-100 shadow-2xs',
         permission: 'canManageSales',
         items: [
           {
@@ -150,9 +163,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {
         id: 'purchases',
         title: 'المشتريات والموردون',
-        icon: Truck,
+        icon: SuppliersTruckIcon,
         headerGradient: 'bg-gradient-to-l from-indigo-50/90 via-violet-50/70 to-white text-indigo-950 border-indigo-100',
-        iconAccent: 'bg-indigo-100/80 text-indigo-800',
+        iconAccent: 'bg-white border border-indigo-100 shadow-2xs',
         permission: ['canManagePurchases', 'canCreatePurchase'],
         items: [
           { key: 'purchase-invoices', label: 'فواتير المشتريات' },
@@ -164,9 +177,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {
         id: 'inventory',
         title: 'المخازن والمنتجات',
-        icon: Boxes,
+        icon: WarehouseBoxesIcon,
         headerGradient: 'bg-gradient-to-l from-sky-50/95 via-cyan-50/70 to-white text-sky-950 border-sky-100',
-        iconAccent: 'bg-sky-100/80 text-sky-800',
+        iconAccent: 'bg-white border border-sky-100 shadow-2xs',
         permission: 'canManageInventory',
         items: [
           { key: 'products', label: 'المنتجات والأسعار' },
@@ -205,9 +218,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {
         id: 'finance',
         title: 'الحسابات والخزائن',
-        icon: Wallet,
+        icon: SafeVaultIcon,
         headerGradient: 'bg-gradient-to-l from-emerald-50/90 via-teal-50/65 to-white text-emerald-950 border-emerald-100',
-        iconAccent: 'bg-emerald-100/80 text-emerald-800',
+        iconAccent: 'bg-white border border-emerald-100 shadow-2xs',
         permission: ['canManageCashboxes', 'canManageAccounts'],
         items: [
           {
@@ -236,9 +249,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {
         id: 'cheques-inst',
         title: 'الشيكات والأقساط',
-        icon: CreditCard,
+        icon: ChequesIcon,
         headerGradient: 'bg-gradient-to-l from-violet-50/90 via-purple-50/65 to-white text-violet-950 border-violet-100',
-        iconAccent: 'bg-violet-100/80 text-violet-800',
+        iconAccent: 'bg-white border border-violet-100 shadow-2xs',
         permission: 'canManageAccounts',
         items: [
           { key: 'cheques', label: 'الشيكات (واردة / صادرة)' },
@@ -248,9 +261,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {
         id: 'representatives',
         title: 'المندوبون والتحويلات',
-        icon: Users2,
+        icon: RepsFleetIcon,
         headerGradient: 'bg-gradient-to-l from-cyan-50/90 via-sky-50/65 to-white text-cyan-950 border-cyan-100',
-        iconAccent: 'bg-cyan-100/80 text-cyan-800',
+        iconAccent: 'bg-white border border-cyan-100 shadow-2xs',
         permission: 'canManageReps',
         items: [
           { key: 'reps', label: 'قائمة المناديب' },
@@ -271,9 +284,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {
         id: 'employees',
         title: 'الموظفون والرواتب',
-        icon: Users,
+        icon: EmployeesHrIcon,
         headerGradient: 'bg-gradient-to-l from-rose-50/85 via-pink-50/60 to-white text-rose-950 border-rose-100',
-        iconAccent: 'bg-rose-100/80 text-rose-800',
+        iconAccent: 'bg-white border border-rose-100 shadow-2xs',
         permission: 'canManageEmployees',
         items: [
           { key: 'employees', label: 'شؤون الموظفين' },
@@ -285,9 +298,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {
         id: 'reports',
         title: 'التقارير المحاسبية',
-        icon: FileBarChart,
+        icon: ReportsChartIcon,
         headerGradient: 'bg-gradient-to-l from-blue-50/85 via-indigo-50/65 to-white text-blue-950 border-blue-100',
-        iconAccent: 'bg-blue-100/80 text-blue-800',
+        iconAccent: 'bg-white border border-blue-100 shadow-2xs',
         permission: 'canViewReports',
         items: [
           { key: 'reports', label: 'جميع التقارير والأرباح' },
@@ -297,9 +310,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {
         id: 'management',
         title: 'المستخدمون والصلاحيات',
-        icon: Shield,
+        icon: UsersShieldIcon,
         headerGradient: 'bg-gradient-to-l from-slate-100/95 via-blue-50/65 to-white text-slate-900 border-slate-200/80',
-        iconAccent: 'bg-slate-200/80 text-slate-800',
+        iconAccent: 'bg-white border border-slate-200 shadow-2xs',
         permission: 'canManageUsers',
         items: [
           { key: 'users', label: 'إدارة المستخدمين' },
@@ -309,9 +322,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {
         id: 'settings',
         title: 'الإعدادات والنسخ الاحتياطي',
-        icon: Settings,
+        icon: SettingsTwinGearsIcon,
         headerGradient: 'bg-gradient-to-l from-slate-100/90 via-indigo-50/60 to-white text-slate-900 border-slate-200/80',
-        iconAccent: 'bg-indigo-100/70 text-indigo-800',
+        iconAccent: 'bg-white border border-slate-200 shadow-2xs',
         permission: 'canManageSettings',
         items: [
           { key: 'system-settings', label: 'إعدادات النظام والحساب', allowAllStaff: true },
@@ -448,7 +461,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             }`}
           >
             <div className="flex items-center gap-2.5">
-              <LayoutDashboard className="w-4 h-4 shrink-0" />
+              <span className="w-7 h-7 rounded-xl bg-white border border-blue-100 flex items-center justify-center shrink-0">
+                <DashboardHomeIcon className="w-5 h-5" />
+              </span>
               <span>لوحة التحكم الرئيسية</span>
             </div>
             <ChevronLeft
@@ -549,9 +564,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <span
-                      className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 ${section.iconAccent}`}
+                      className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 p-1 ${section.iconAccent}`}
                     >
-                      <SectionIcon className="w-4 h-4" />
+                      <SectionIcon className="w-6 h-6" />
                     </span>
                     <span className="truncate">{section.title}</span>
                   </div>

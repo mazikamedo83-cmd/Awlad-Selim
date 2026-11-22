@@ -278,7 +278,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         const cashPart =
           Array.isArray(i.payments) && i.payments.length > 0
             ? i.payments
-                .filter((p) => p.paymentMethod !== 'advance_settlement')
+                .filter((p) => (p.paymentMethod as string) !== 'advance_settlement')
                 .reduce((ps, p) => ps + Number(p.amount || 0), 0)
             : Number(i.paidAtInvoice ?? i.paidAmount ?? 0);
         return s + cashPart;
@@ -915,8 +915,8 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             </div>
           </div>
 
-          {/* Customer Accounts Table */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+          {/* Customer Accounts — Desktop Table */}
+          <div className="hidden md:block bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
             <div className="awlad-table-scroll">
               <table className="w-full text-right text-xs">
                 <thead>
@@ -986,6 +986,62 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 </tbody>
               </table>
             </div>
+          </div>
+
+          {/* Customer Accounts — Mobile Cards */}
+          <div className="md:hidden space-y-2.5 text-xs">
+            {filteredCustomersList.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400">
+                لا يوجد عملاء مطابقون لمعايير البحث أو التصفية.
+              </div>
+            ) : (
+              filteredCustomersList.map((c) => (
+                <div key={c.id} className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="font-mono text-[10px] font-bold text-blue-900">{c.code}</span>
+                      <h4 className="font-black text-sm text-slate-900 truncate">{c.shopName || c.name}</h4>
+                      {c.shopName && c.shopName !== c.name && (
+                        <p className="text-[11px] text-slate-500 truncate">{c.name}</p>
+                      )}
+                      {c.phone && (
+                        <a href={`tel:${c.phone}`} className="inline-flex items-center gap-1 text-emerald-700 font-mono font-bold text-[11px] mt-0.5">
+                          <Phone className="w-3 h-3" />
+                          <span>{c.phone}</span>
+                        </a>
+                      )}
+                    </div>
+                    <div className="shrink-0 font-mono tabular-nums">
+                      {formatCustomerBalBadge(Number(c.currentBalance || 0))}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-1.5 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenCustomerStatement(c)}
+                      className="min-h-[44px] inline-flex items-center justify-center gap-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold cursor-pointer"
+                    >
+                      <FileText className="w-4 h-4 text-blue-800" />
+                      <span>كشف حساب</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustPayError(null);
+                        setCustPayNotes('');
+                        setCustPayMethod('cash');
+                        setCustPaymentTarget(c);
+                        setCustPayAmount(c.currentBalance > 0 ? c.currentBalance : 0);
+                      }}
+                      className="min-h-[44px] inline-flex items-center justify-center gap-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold cursor-pointer"
+                    >
+                      <ArrowDownLeft className="w-4 h-4" />
+                      <span>تحصيل دفعة</span>
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}
@@ -1081,8 +1137,8 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             </div>
           </div>
 
-          {/* Supplier Accounts Table */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+          {/* Supplier Accounts — Desktop Table */}
+          <div className="hidden md:block bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
             <div className="awlad-table-scroll">
               <table className="w-full text-right text-xs">
                 <thead>
@@ -1169,6 +1225,79 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 </tbody>
               </table>
             </div>
+          </div>
+
+          {/* Supplier Accounts — Mobile Cards */}
+          <div className="md:hidden space-y-2.5 text-xs">
+            {filteredSuppliersList.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400">
+                لا يوجد موردون مطابقون لمعايير البحث أو التصفية.
+              </div>
+            ) : (
+              filteredSuppliersList.map((s) => {
+                const { openInvoices, availableAdvance } = getSupplierAdvanceInfo(s);
+                return (
+                  <div key={s.id} className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <span className="font-mono text-[10px] font-bold text-indigo-900">{s.code}</span>
+                        <h4 className="font-black text-sm text-slate-900 truncate">{s.name}</h4>
+                        {s.address && <p className="text-[11px] text-slate-500 truncate">{s.address}</p>}
+                        {s.phone && (
+                          <a href={`tel:${s.phone}`} className="inline-flex items-center gap-1 text-emerald-700 font-mono font-bold text-[11px] mt-0.5">
+                            <Phone className="w-3 h-3" />
+                            <span>{s.phone}</span>
+                          </a>
+                        )}
+                      </div>
+                      <div className="shrink-0 font-mono tabular-nums">
+                        {formatSupplierBalBadge(Number(s.currentBalance || 0))}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 pt-1.5 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSupplierStatement(s)}
+                        className="flex-1 min-w-[120px] min-h-[44px] inline-flex items-center justify-center gap-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold cursor-pointer"
+                      >
+                        <FileText className="w-4 h-4 text-blue-800" />
+                        <span>كشف حساب</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSuppPayError(null);
+                          setSuppPayNotes('');
+                          setSuppPaymentTarget(s);
+                          setSuppPayAmount(s.currentBalance > 0 ? s.currentBalance : 0);
+                        }}
+                        className="flex-1 min-w-[120px] min-h-[44px] inline-flex items-center justify-center gap-1.5 px-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold cursor-pointer"
+                      >
+                        <ArrowUpRight className="w-4 h-4" />
+                        <span>سداد دفعة</span>
+                      </button>
+                      {availableAdvance > 0 && openInvoices.length > 0 && (currentUser?.role === 'admin' || hasPermission('canManageAccounts')) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const firstInv = openInvoices[0];
+                            setSettleError(null);
+                            setSettleNotes('تسوية دفعة مقدمة على فاتورة المشتريات');
+                            setSettleSupplierTarget(s);
+                            setSettleInvoiceId(firstInv?.id || '');
+                            setSettleAmount(firstInv ? Math.min(availableAdvance, Number(firstInv.remainingAmount || 0)) : 0);
+                          }}
+                          className="w-full min-h-[44px] inline-flex items-center justify-center gap-1.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl font-bold cursor-pointer"
+                        >
+                          <DollarSign className="w-4 h-4" />
+                          <span>تسوية مقدم ({availableAdvance.toLocaleString()})</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       )}
@@ -1375,7 +1504,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
           onClose={() => setCustStatementTarget(null)}
           title={`كشف حساب العميل التفصيلي: ${custStatementTarget.shopName || custStatementTarget.name}`}
           subtitle={`${custStatementTarget.code}${custStatementTarget.phone ? ` · ${custStatementTarget.phone}` : ''}`}
-          maxWidth="5xl"
+          maxWidth="6xl"
         >
           {isLoadingCustStatement || !custStatementData ? (
             <div className="p-10 text-center text-xs font-bold text-slate-500">جاري تحميل كشف حساب العميل...</div>
@@ -1556,7 +1685,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
           onClose={() => setSuppStatementTarget(null)}
           title={`كشف حساب المورد التفصيلي: ${suppStatementTarget.name}`}
           subtitle={`${suppStatementTarget.code}${suppStatementTarget.phone ? ` · ${suppStatementTarget.phone}` : ''}`}
-          maxWidth="5xl"
+          maxWidth="6xl"
         >
           {isLoadingSuppStatement || !suppStatementData ? (
             <div className="p-10 text-center text-xs font-bold text-slate-500">جاري تحميل كشف حساب المورد...</div>
@@ -1736,7 +1865,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
           onClose={() => setPreviewStatementDoc(null)}
           title={previewStatementDoc.title}
           subtitle={`رقم المستند: ${previewStatementDoc.docNumber} · التاريخ: ${previewStatementDoc.date}`}
-          maxWidth="3xl"
+          maxWidth="4xl"
         >
           <div className="space-y-4 text-xs">
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-2">
