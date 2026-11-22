@@ -63,6 +63,10 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
     canManageUsers: false,
     canManageSettings: false,
     canAllowNegativeInventory: false,
+    canApprove: false,
+    canSend: true,
+    canReceive: true,
+    canReviewRepInvoices: false,
     canViewPersonalAccounts: false,
     canCreatePersonalTx: false,
     canEditPersonalTx: false,
@@ -73,6 +77,96 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
     canApproveStockTransfer: false,
     canExecuteStockTransfer: false,
     canViewDeletedInvoices: false,
+  };
+
+  const ROLE_PERMISSION_PRESETS: Record<UserRole, { jobTitle: string; department: string; perms: Partial<UserPermissions> }> = {
+    admin: {
+      jobTitle: 'مالك / مدير عام',
+      department: 'الإدارة العامة',
+      perms: {
+        canView: true, canAdd: true, canEdit: true, canDelete: true, canPrint: true, canExport: true,
+        canViewReports: true, canManageSales: true, canManagePurchases: true, canManageInventory: true,
+        canManageWarehouses: true, canManageCashboxes: true, canManageAccounts: true, canManageReps: true,
+        canManageTransfers: true, canManageEmployees: true, canManageSalaries: true, canManageUsers: true,
+        canManageSettings: true, canApprove: true, canSend: true, canReceive: true, canReviewRepInvoices: true,
+        canViewPersonalAccounts: true, canCreatePersonalTx: true, canEditPersonalTx: true,
+        canApprovePersonalAdjustment: true, canCreateStockCount: true, canApproveStockCount: true,
+        canCreateStockTransfer: true, canApproveStockTransfer: true, canExecuteStockTransfer: true,
+        canViewDeletedInvoices: true,
+      },
+    },
+    manager: {
+      jobTitle: 'مدير فرع',
+      department: 'الإدارة',
+      perms: {
+        canView: true, canAdd: true, canEdit: true, canDelete: false, canPrint: true, canExport: true,
+        canViewReports: true, canManageSales: true, canManagePurchases: true, canManageInventory: true,
+        canManageWarehouses: true, canManageCashboxes: true, canManageAccounts: true, canManageReps: true,
+        canManageTransfers: true, canApprove: true, canSend: true, canReceive: true, canReviewRepInvoices: true,
+        canCreateStockCount: true, canApproveStockCount: true, canCreateStockTransfer: true,
+        canApproveStockTransfer: true, canExecuteStockTransfer: true, canViewDeletedInvoices: true,
+      },
+    },
+    accountant: {
+      jobTitle: 'محاسب مالي',
+      department: 'الحسابات والمالية',
+      perms: {
+        canView: true, canAdd: true, canEdit: true, canPrint: true, canExport: true, canViewReports: true,
+        canManageSales: true, canManagePurchases: true, canManageCashboxes: true, canManageAccounts: true,
+        canManageSalaries: true, canApprove: true, canSend: true, canReceive: true, canReviewRepInvoices: true,
+      },
+    },
+    sales: {
+      jobTitle: 'موظف مبيعات',
+      department: 'المبيعات',
+      perms: {
+        canView: true, canAdd: true, canPrint: true, canManageSales: true, canSend: true, canReceive: true,
+      },
+    },
+    purchases: {
+      jobTitle: 'موظف مشتريات',
+      department: 'المشتريات والموردين',
+      perms: {
+        canView: true, canAdd: true, canEdit: true, canPrint: true, canExport: true,
+        canManagePurchases: true, canManageInventory: true, canManageSales: false,
+        canManageCashboxes: false, canManageUsers: false, canSend: true, canReceive: true,
+      },
+    },
+    warehouse: {
+      jobTitle: 'أمين مستودع',
+      department: 'المخازن والمستودعات',
+      perms: {
+        canView: true, canAdd: true, canPrint: true, canManageInventory: true, canManageWarehouses: true,
+        canManageSales: false, canCreateStockCount: true, canCreateStockTransfer: true,
+        canExecuteStockTransfer: true, canSend: true, canReceive: true,
+      },
+    },
+    representative: {
+      jobTitle: 'مندوب مبيعات ميداني',
+      department: 'المبيعات الخارجية',
+      perms: {
+        canView: true, canAdd: true, canPrint: true, canManageSales: true, canManageTransfers: true,
+        canSend: true, canReceive: true,
+      },
+    },
+    customer: {
+      jobTitle: 'عميل بوابة الطلبات',
+      department: 'العملاء',
+      perms: {
+        canView: true, canAdd: true, canPrint: true, canManageSales: false, canSend: true, canReceive: true,
+      },
+    },
+  };
+
+  const buildPresetPermissions = (targetRole: UserRole): UserPermissions => {
+    const base: UserPermissions = Object.keys(DEFAULT_PERMISSIONS).reduce((acc, key) => {
+      (acc as any)[key] = false;
+      return acc;
+    }, {} as UserPermissions);
+    return {
+      ...base,
+      ...(ROLE_PERMISSION_PRESETS[targetRole]?.perms || {}),
+    };
   };
 
   const [permissions, setPermissions] = useState<UserPermissions>(DEFAULT_PERMISSIONS);
@@ -89,9 +183,9 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
     setPhone('');
     setRole('sales');
     setLinkedCustomerId('');
-    setJobTitle('موظف مبيعات');
-    setDepartment('المبيعات');
-    setPermissions(DEFAULT_PERMISSIONS);
+    setJobTitle(ROLE_PERMISSION_PRESETS.sales.jobTitle);
+    setDepartment(ROLE_PERMISSION_PRESETS.sales.department);
+    setPermissions(buildPresetPermissions('sales'));
     setMustChangePassword(false);
     setFormError(null);
     setEditingUser(null);
@@ -104,7 +198,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
     setPassword('');
     setPhone(u.phone);
     setRole(u.role);
-    setLinkedCustomerId('');
+    const linkedCust = customers.find((c) => c.userId === u.id);
+    setLinkedCustomerId(linkedCust?.id || '');
     setJobTitle(u.jobTitle);
     setDepartment(u.department);
     setPermissions({ ...DEFAULT_PERMISSIONS, ...(u.permissions || {}) });
@@ -133,6 +228,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
     setIsSaving(true);
     try {
       if (editingUser) {
+        const currentLinkedCustomer = customers.find((c) => c.userId === editingUser.id);
         const res = await updateUser(editingUser.id, {
           fullName: fullName.trim(),
           username: username.trim(),
@@ -143,6 +239,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           permissions,
           mustChangePassword,
           newPassword: password.trim() || undefined,
+          linkedCustomerId: role === 'customer' && linkedCustomerId ? linkedCustomerId : undefined,
+          autoCreateCustomerProfile: role === 'customer' && !linkedCustomerId && !currentLinkedCustomer,
         });
         if (!res.success) {
           setFormError(res.error || 'تعذر تحديث بيانات المستخدم');
@@ -163,12 +261,19 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           mustChangePassword,
           permissions,
           linkedCustomerId: role === 'customer' && linkedCustomerId ? linkedCustomerId : undefined,
+          autoCreateCustomerProfile: role === 'customer' && !linkedCustomerId,
         });
         if (!res.success) {
           setFormError(res.error || 'تعذر إنشاء المستخدم');
           return;
         }
-        setStatusMessage({ type: 'success', text: `تم إنشاء حساب (${username.trim()}) بنجاح على السيرفر.` });
+        setStatusMessage({
+          type: 'success',
+          text:
+            role === 'customer'
+              ? `تم إنشاء حساب العميل (${username.trim()}) وربطه بملف عميل تلقائياً بنجاح.`
+              : `تم إنشاء حساب (${username.trim()}) بنجاح على السيرفر.`,
+        });
       }
       setIsAddModalOpen(false);
     } finally {
@@ -324,6 +429,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                           ? 'مدير'
                           : u.role === 'accountant'
                           ? 'محاسب'
+                          : u.role === 'purchases'
+                          ? 'موظف مشتريات'
                           : u.role === 'representative'
                           ? 'مندوب مبيعات'
                           : u.role === 'customer'
@@ -500,13 +607,22 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
               <label className="block font-bold mb-1">نوع الحساب / الدور:</label>
               <select
                 value={role}
-                onChange={(e) => setRole(e.target.value as UserRole)}
+                onChange={(e) => {
+                  const nextRole = e.target.value as UserRole;
+                  setRole(nextRole);
+                  if (!editingUser && ROLE_PERMISSION_PRESETS[nextRole]) {
+                    setJobTitle(ROLE_PERMISSION_PRESETS[nextRole].jobTitle);
+                    setDepartment(ROLE_PERMISSION_PRESETS[nextRole].department);
+                    setPermissions(buildPresetPermissions(nextRole));
+                  }
+                }}
                 className="w-full border rounded-xl p-2 font-bold"
               >
                 <option value="admin">مالك / مدير عام (كامل الصلاحيات)</option>
                 <option value="manager">مدير فرع</option>
                 <option value="accountant">محاسب مالي</option>
                 <option value="sales">موظف مبيعات</option>
+                <option value="purchases">موظف مشتريات</option>
                 <option value="warehouse">أمين مستودع</option>
                 <option value="representative">مندوب مبيعات خارجي</option>
                 <option value="customer">عميل - تطبيق العملاء</option>
@@ -532,23 +648,42 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
             </div>
           </div>
 
-          {role === 'customer' && !editingUser && (
+          {role === 'customer' && (
             <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 space-y-1.5">
               <label className="block font-bold text-blue-950">ربط هذا الحساب بملف العميل مباشرة (1:1):</label>
-              <select
-                value={linkedCustomerId}
-                onChange={(e) => setLinkedCustomerId(e.target.value)}
-                className="w-full bg-white border border-blue-300 rounded-xl p-2 font-bold"
-              >
-                <option value="">-- بدون ربط حالي (يمكن الربط لاحقاً من دليل العملاء) --</option>
-                {customers
-                  .filter((c) => !c.userId)
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} {c.shopName ? `(${c.shopName})` : ''} — {c.phone}
-                    </option>
-                  ))}
-              </select>
+              {editingUser && (() => {
+                const alreadyLinked = customers.find((c) => c.userId === editingUser.id);
+                if (alreadyLinked) {
+                  return (
+                    <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 font-bold">
+                      مربوط حالياً بملف العميل: {alreadyLinked.name}{' '}
+                      {alreadyLinked.shopName ? `(${alreadyLinked.shopName})` : ''} — {alreadyLinked.code}
+                    </div>
+                  );
+                }
+                return (
+                  <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
+                    تنبيه: حساب العميل غير مربوط بملف عميل حالياً — اختر عميلاً من القائمة أو احفظ لإنشاء وربط ملف عميل تلقائياً.
+                  </div>
+                );
+              })()}
+
+              {(!editingUser || !customers.some((c) => c.userId === editingUser.id)) && (
+                <select
+                  value={linkedCustomerId}
+                  onChange={(e) => setLinkedCustomerId(e.target.value)}
+                  className="w-full bg-white border border-blue-300 rounded-xl p-2 font-bold"
+                >
+                  <option value="">-- إنشاء وربط ملف عميل جديد تلقائياً (مستحسن) --</option>
+                  {customers
+                    .filter((c) => !c.userId)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} {c.shopName ? `(${c.shopName})` : ''} — {c.phone}
+                      </option>
+                    ))}
+                </select>
+              )}
             </div>
           )}
 
@@ -580,6 +715,10 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 { key: 'canManageWarehouses', label: 'إدارة المستودعات والتحويلات' },
                 { key: 'canManageCashboxes', label: 'إدارة الخزائن والحسابات' },
                 { key: 'canManageTransfers', label: 'نظام طلب تحويل بالنصف' },
+                { key: 'canApprove', label: 'اعتماد العمليات والمستندات' },
+                { key: 'canReviewRepInvoices', label: 'مراجعة واعتماد فواتير المناديب' },
+                { key: 'canSend', label: 'صلاحية إرسال المزامنة Send' },
+                { key: 'canReceive', label: 'صلاحية استلام المزامنة Receive' },
                 { key: 'canManageEmployees', label: 'إدارة الموظفين والغياب' },
                 { key: 'canManageSalaries', label: 'إدارة وصرف الرواتب' },
                 { key: 'canManageUsers', label: 'إدارة حسابات المستخدمين' },

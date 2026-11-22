@@ -1,9 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
+    <!--
+      Android Network Security Config does not support CIDR ranges (e.g. 192.168.0.0/16)
+      or wildcard IP patterns in <domain-config>. Because local_network servers run on
+      dynamic shop router DHCP IPs, cleartextTrafficPermitted="true" is kept at the OS XML
+      level for LAN compatibility, while the application layer (src/services/api.ts &
+      src/services/discovery.ts) strictly blocks non-LAN HTTP requests via enforceHttpsForRemote.
+      Release builds trust system CAs only (user CAs are restricted to debug-overrides).
+    -->
     <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <debug-overrides>
         <trust-anchors>
             <certificates src="system" />
             <certificates src="user" />
         </trust-anchors>
-    </base-config>
+    </debug-overrides>
 </network-security-config>

@@ -587,7 +587,7 @@ export const StockCountView: React.FC = () => {
             </label>
           </div>
 
-          <div className="border border-slate-200 rounded-xl overflow-hidden max-h-80 overflow-y-auto">
+          <div className="border border-slate-200 rounded-xl awlad-table-scroll max-h-80 overflow-y-auto">
             <table className="w-full text-right text-[11px]">
               <thead className="bg-slate-100 text-slate-700 sticky top-0 border-b">
                 <tr>
@@ -772,7 +772,7 @@ export const StockCountView: React.FC = () => {
               </div>
             )}
 
-            <div className="border border-slate-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+            <div className="border border-slate-200 rounded-xl awlad-table-scroll max-h-72 overflow-y-auto">
               <table className="w-full text-right text-[11px]">
                 <thead className="bg-slate-100 text-slate-700 sticky top-0 border-b">
                   <tr>

@@ -3,6 +3,7 @@ import {
   getAuthStatus,
   bootstrapAdmin,
   loginUser,
+  registerMobileAccount,
   refreshUserSession,
   logoutSession,
   changeOwnPassword,
@@ -18,6 +19,7 @@ import {
   getClientIp,
   requireAuth,
 } from '../middleware/auth.js';
+import { verifyJwt } from '../utils/crypto.js';
 
 const router = Router();
 
@@ -48,6 +50,13 @@ router.post(
       const result = await loginUser({
         username: req.body?.username,
         password: req.body?.password,
+        deviceId: req.get('x-device-id') || req.body?.deviceId || '',
+        deviceName: req.body?.deviceName || '',
+        deviceType: req.body?.deviceType || '',
+        osVersion: req.body?.osVersion || '',
+        appVersion: req.body?.appVersion || '',
+        connectionMode: req.body?.connectionMode || '',
+        serverUrlUsed: req.body?.serverUrlUsed || '',
         ipAddress: getClientIp(req),
         deviceInfo: req.get('user-agent') || '',
       });
@@ -64,10 +73,24 @@ router.post(
 );
 
 router.post(
+  '/register',
+  asyncHandler(async (req, res) => {
+    const result = await registerMobileAccount(req.body || {}, {
+      deviceId: req.get('x-device-id') || req.body?.deviceId || '',
+      ipAddress: getClientIp(req),
+      deviceInfo: req.get('user-agent') || '',
+    });
+    const sysSettings = await getSystemSettingsSafe();
+    res.status(201).json({ ok: true, ...result, mobileConfig: sysSettings.mobileConfig });
+  })
+);
+
+router.post(
   '/refresh',
   asyncHandler(async (req, res) => {
     const result = await refreshUserSession({
       refreshToken: req.body?.refreshToken,
+      deviceId: req.get('x-device-id') || req.body?.deviceId || '',
       ipAddress: getClientIp(req),
       deviceInfo: req.get('user-agent') || '',
     });
@@ -78,8 +101,15 @@ router.post(
 router.post(
   '/logout',
   asyncHandler(async (req, res) => {
-    let sessionId = null;
-    if (req.auth?.sessionId) sessionId = req.auth.sessionId;
+    let sessionId = req.auth?.sessionId || null;
+    if (!sessionId) {
+      const authHeader = req.get('authorization') || '';
+      const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+      if (token) {
+        const payload = verifyJwt(token);
+        if (payload?.sid) sessionId = payload.sid;
+      }
+    }
     await logoutSession({ sessionId, refreshToken: req.body?.refreshToken || null });
     res.json({ ok: true });
   })
@@ -92,6 +122,7 @@ router.get(
     const sysSettings = await getSystemSettingsSafe();
     res.json({
       ok: true,
+      installationId: req.auth.installationId || null,
       user: req.auth.user,
       customerProfile: req.auth.customerProfile,
       representativeProfile: req.auth.representativeProfile,

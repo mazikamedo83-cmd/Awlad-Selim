@@ -1,16 +1,28 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
   DatabaseState,
   getEmptyClientDatabaseState,
   generateId,
-  loadOfflineOrdersQueue,
-  saveOfflineOrdersQueue,
-  QueuedCustomerOrder,
-  saveReadCache,
-  loadReadCache,
 } from '../services/storage';
-import { apiRequest, getConfiguredApiBaseUrl, setConfiguredApiBaseUrl } from '../services/api';
-import { notifyLocal, subscribeNetworkStatus } from '../services/native';
+import {
+  apiRequest,
+  getConfiguredApiBaseUrl,
+  setConfiguredApiBaseUrl,
+  getStoredConnectionProfiles,
+  getStoredInstallationId,
+  saveStoredConnectionProfiles,
+  resolveModeEndpointUrl,
+  detectModeFromUrl,
+  testServerHealth,
+  getDefaultConnectionProfiles,
+  subscribeServerDbStatus,
+} from '../services/api';
+import { syncConnectionConfigFromServer } from '../services/discovery';
+import { notifyLocal, subscribeAppForeground, subscribeNetworkStatus } from '../services/native';
+import { localDb } from '../services/localDb';
+import { normalizeServerOrigin, refreshCachedUserAuthorization } from '../services/offlineAuth';
+import { getCachedProductImageMap, warmProductMediaCache } from '../services/mediaCache';
+import { enqueueSyncOperation, getSyncRefreshStats, runSyncCycle, SyncRefreshSummary } from '../services/syncEngine';
 import {
   Product,
   Customer,
@@ -33,10 +45,14 @@ import {
   RepItemTransferRequest,
   RepItemTransferStatus,
   RepTransferItem,
+  RepCustodyOperation,
+  RepCustodyStatementResponse,
+  ItemMovementReportResponse,
   ServerConnectionSettings,
   ProductCategory,
   Warehouse,
   CustomerItemOrderRequest,
+  OrderAdvancePayment,
   MigrationLogEntry,
   AuditLogItem,
   CashOperationPayload,
@@ -48,6 +64,10 @@ import {
   CustomerPriceHistoryEntry,
   CustomerStatementResponse,
   MobileNotificationItem,
+  ConnectionMode,
+  ConnectionProfilesConfig,
+  SyncQueueItem,
+  SyncConflictRecord,
 } from '../types';
 import { useAuth } from './AuthContext';
 
@@ -59,6 +79,17 @@ export interface DataContextType extends DatabaseState {
   lastError: string | null;
   isUsingOfflineCache: boolean;
   lastCacheTimestamp: string | null;
+  lastServerSyncAt: string | null;
+  isServerReachable: boolean;
+  isSyncing: boolean;
+  syncQueue: SyncQueueItem[];
+  syncConflicts: SyncConflictRecord[];
+  orderAdvancePayments: OrderAdvancePayment[];
+  cachedMediaMap: Record<string, string>;
+  pendingSyncCount: number;
+  failedSyncCount: number;
+  conflictsCount: number;
+  hasTentativeLocalBalances: boolean;
   customerStatement: CustomerStatementResponse | null;
   mobileNotifications: MobileNotificationItem[];
   unreadNotificationCount: number;
@@ -66,7 +97,17 @@ export interface DataContextType extends DatabaseState {
   refreshMobileNotifications: () => Promise<void>;
   refreshCustomerStatement: () => Promise<void>;
   getCustomerPriceHistory: (customerId: string) => Promise<Record<string, CustomerPriceHistoryEntry[]>>;
+  triggerSync: (forceAll?: boolean) => Promise<void>;
   triggerManualSync: () => Promise<void>;
+  lastSendSummary: SyncRefreshSummary | null;
+  lastReceiveSummary: SyncRefreshSummary | null;
+  syncSendOnly: () => Promise<{ ok: boolean; count: number; failedCount: number; conflictCount: number; error?: string }>;
+  syncReceiveOnly: () => Promise<{ ok: boolean; count: number; error?: string }>;
+  resolveSyncConflict: (
+    conflictId: string,
+    action: 'keep_server' | 'apply_local' | 'dismiss',
+    resolutionNotes?: string
+  ) => Promise<{ success: boolean; error?: string }>;
   exportBackup: () => Promise<void>;
   importBackup: (fileContent: string) => Promise<{ success: boolean; error?: string }>;
   resetSystemToFresh: () => Promise<void>;
@@ -96,27 +137,32 @@ export interface DataContextType extends DatabaseState {
 
   // Customers & Suppliers
   addCustomer: (customer: Omit<Customer, 'id' | 'createdAt' | 'currentBalance' | 'priceHistory'>) => Promise<Customer>;
-  updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
+  updateCustomer: (id: string, updates: Partial<Customer>) => Promise<{ success: boolean; queuedOffline?: boolean; error?: string } | void>;
   deleteCustomer: (id: string) => Promise<{ success: boolean; error?: string }>;
   linkCustomerUser: (customerId: string, payload: { existingUserId?: string; createUser?: { fullName?: string; username: string; password: string; phone?: string; mustChangePassword?: boolean } }) => Promise<{ success: boolean; customer?: Customer; user?: User; error?: string }>;
+  repairUnlinkedCustomerUsers: () => Promise<{ success: boolean; repairedCount?: number; error?: string }>;
   toggleCustomerUserStatus: (customerId: string, isActive: boolean) => Promise<{ success: boolean; isActive?: boolean; error?: string }>;
-  recordCustomerPayment: (customerId: string, amount: number, cashboxId: string, notes: string, paymentMethod?: 'cash' | 'bank' | 'cheque') => Promise<{ success: boolean; error?: string }>;
+  recordCustomerPayment: (customerId: string, amount: number, cashboxId: string, notes: string, paymentMethod?: 'cash' | 'bank' | 'cheque') => Promise<{ success: boolean; queuedOffline?: boolean; error?: string }>;
 
   addSupplier: (supplier: Omit<Supplier, 'id' | 'createdAt' | 'currentBalance'>) => Promise<Supplier>;
   updateSupplier: (id: string, updates: Partial<Supplier>) => Promise<void>;
   deleteSupplier: (id: string) => Promise<void>;
   recordSupplierPayment: (supplierId: string, amount: number, cashboxId: string, notes: string) => Promise<{ success: boolean; error?: string }>;
+  settleSupplierAdvance: (supplierId: string, payload: { invoiceId: string; amount: number; notes?: string; date?: string }) => Promise<{ success: boolean; availableAdvanceAfter?: number; settledAmount?: number; error?: string }>;
 
-  // Sales & Purchases
-  createSalesInvoice: (invoice: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'>) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
-  createPurchaseInvoice: (invoice: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'>) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
+  // Sales & Purchases & Quotes
+  createSalesInvoice: (invoice: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'>) => Promise<{ success: boolean; error?: string; invoice?: Invoice; queuedOffline?: boolean }>;
+  createPurchaseInvoice: (invoice: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'>) => Promise<{ success: boolean; error?: string; invoice?: Invoice; queuedOffline?: boolean }>;
+  createSalesQuote: (quoteData: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'>) => Promise<{ success: boolean; error?: string; invoice?: Invoice; queuedOffline?: boolean }>;
+  convertQuoteToInvoice: (quoteId: string, payload?: Partial<Invoice> & { paidAtInvoice?: number }) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
+  markInvoiceReviewed: (invoiceId: string, reviewNotes?: string) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
   confirmDraftInvoice: (invoiceId: string) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
   cancelInvoice: (invoiceId: string, reason: string) => Promise<{ success: boolean; error?: string }>;
-  addInvoicePayment: (invoiceId: string, payment: { amount: number; date?: string; paymentMethod: 'cash' | 'bank' | 'cheque'; cashboxId: string; notes?: string }) => Promise<{ success: boolean; error?: string }>;
-  editSalesInvoice: (invoiceId: string, updates: { date?: string; items?: Invoice['items']; discountTotal?: number; notes?: string }) => Promise<{ success: boolean; error?: string }>;
+  addInvoicePayment: (invoiceId: string, payment: { amount: number; date?: string; paymentMethod: 'cash' | 'bank' | 'cheque'; cashboxId: string; notes?: string }) => Promise<{ success: boolean; queuedOffline?: boolean; error?: string }>;
+  editSalesInvoice: (invoiceId: string, updates: { date?: string; items?: Invoice['items']; discountTotal?: number; notes?: string; reason?: string }) => Promise<{ success: boolean; queuedOffline?: boolean; error?: string }>;
 
   // Returns
-  createReturn: (returnData: Omit<InvoiceReturn, 'id' | 'returnNumber' | 'createdAt' | 'createdBy'>) => Promise<{ success: boolean; error?: string }>;
+  createReturn: (returnData: Omit<InvoiceReturn, 'id' | 'returnNumber' | 'createdAt' | 'createdBy'>) => Promise<{ success: boolean; queuedOffline?: boolean; error?: string }>;
 
   // Financial & Cashboxes
   addCashbox: (cashbox: Omit<Cashbox, 'id' | 'currentBalance'>) => Promise<void>;
@@ -146,13 +192,53 @@ export interface DataContextType extends DatabaseState {
   confirmRepTransferReceipt: (transferId: string, note?: string) => Promise<{ success: boolean; error?: string }>;
   rejectRepTransfer: (transferId: string, reason: string) => Promise<{ success: boolean; error?: string }>;
   createRepItemTransfer: (transferData: Omit<RepItemTransferRequest, 'id' | 'requestNumber' | 'createdAt' | 'status' | 'createdBy'>) => Promise<{ success: boolean; request?: RepItemTransferRequest; error?: string }>;
-  updateRepItemTransferStatus: (requestId: string, newStatus: RepItemTransferStatus, approvedItems?: RepTransferItem[], notes?: string) => Promise<{ success: boolean; error?: string }>;
+  updateRepItemTransferStatus: (requestId: string, newStatus: RepItemTransferStatus, approvedItems?: RepTransferItem[], notes?: string) => Promise<{ success: boolean; queuedOffline?: boolean; error?: string }>;
+  repCustodyOperations: RepCustodyOperation[];
+  recordRepCustodyDelivery: (payload: { representativeId?: string; customerId?: string; customerName?: string; productId: string; quantity: number; unit?: string; unitFactor?: number; date?: string; notes?: string; idempotencyKey?: string }) => Promise<{ success: boolean; operation?: RepCustodyOperation; queuedOffline?: boolean; error?: string }>;
+  recordRepCustodyReturn: (payload: { representativeId?: string; targetWarehouseId?: string; productId: string; quantity: number; unit?: string; unitFactor?: number; date?: string; notes?: string; idempotencyKey?: string }) => Promise<{ success: boolean; operation?: RepCustodyOperation; queuedOffline?: boolean; error?: string }>;
+  recordRepCustodyAdjustment: (payload: { representativeId: string; productId: string; operationType: 'custody_damaged' | 'custody_shortage' | 'custody_adjustment'; quantity: number; unit?: string; unitFactor?: number; date?: string; notes?: string }) => Promise<{ success: boolean; operation?: RepCustodyOperation; error?: string }>;
+  getRepCustodyStatement: (repId?: string, filters?: { dateFrom?: string; dateTo?: string }) => Promise<{ success: boolean; statement?: RepCustodyStatementResponse; error?: string }>;
+  getItemMovementReport: (filters?: { productId?: string; warehouseId?: string; movementType?: string; representativeId?: string; dateFrom?: string; dateTo?: string; search?: string }) => Promise<{ success: boolean; report?: ItemMovementReportResponse; error?: string }>;
 
-  // Customer Orders Lifecycle
+  // Customer & Representative Orders Lifecycle
   createCustomerItemOrder: (payload: Omit<CustomerItemOrderRequest, 'id' | 'requestNumber' | 'status' | 'createdAt'> & { idempotencyKey?: string }) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; queuedOffline?: boolean; error?: string }>;
+  reviewCustomerItemOrder: (id: string, notes?: string) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; error?: string }>;
   approveCustomerItemOrder: (id: string, notes?: string) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; error?: string }>;
   rejectCustomerItemOrder: (id: string, reason: string) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; error?: string }>;
-  convertOrderToInvoice: (orderId: string, invoicePayload: Partial<Invoice>) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; invoice?: Invoice; error?: string }>;
+  assignOrderDeliveryRep: (orderId: string, repId: string, notes?: string) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; error?: string }>;
+  updateOrderDeliveryStatus: (
+    orderId: string,
+    payload: {
+      status: 'out_for_delivery' | 'delivered';
+      collectedAmount?: number;
+      cashboxId?: string;
+      paymentMethod?: 'cash' | 'bank' | 'cheque';
+      deliveryNotes?: string;
+      deliveryProof?: string;
+    }
+  ) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; queuedOffline?: boolean; error?: string }>;
+  advanceOrderStage: (
+    orderId: string,
+    payload: {
+      status: 'preparing' | 'out_for_delivery' | 'delivered' | 'collected' | 'closed';
+      collectedAmount?: number;
+      cashboxId?: string;
+      paymentMethod?: 'cash' | 'bank' | 'cheque';
+      deliveryNotes?: string;
+      notes?: string;
+    }
+  ) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; error?: string }>;
+  recordOrderAdvancePayment: (
+    orderId: string,
+    payload: {
+      amount: number;
+      cashboxId: string;
+      paymentMethod?: 'cash' | 'bank' | 'cheque';
+      date?: string;
+      notes?: string;
+    }
+  ) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; advancePayment?: OrderAdvancePayment; queuedOffline?: boolean; error?: string }>;
+  convertOrderToInvoice: (orderId: string, invoicePayload: Partial<Invoice> & { paidAtInvoice?: number }) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; invoice?: Invoice; error?: string }>;
   updateCustomerItemOrder: (id: string, status: CustomerItemOrderRequest['status'], reason?: string) => Promise<{ success: boolean; error?: string }>;
 
   // Employees & Payroll
@@ -164,14 +250,30 @@ export interface DataContextType extends DatabaseState {
 
   // Users & Settings
   auditLogs: AuditLogItem[];
-  addUser: (userData: Omit<User, 'id' | 'createdAt'> & { password?: string; linkedCustomerId?: string }) => Promise<{ success: boolean; user?: User; error?: string }>;
-  updateUser: (id: string, updates: Partial<User> & { newPassword?: string }) => Promise<{ success: boolean; error?: string }>;
+  addUser: (userData: Omit<User, 'id' | 'createdAt'> & { password?: string; linkedCustomerId?: string; autoCreateCustomerProfile?: boolean }) => Promise<{ success: boolean; user?: User; linkedCustomerId?: string; error?: string }>;
+  updateUser: (id: string, updates: Partial<User> & { newPassword?: string; linkedCustomerId?: string; autoCreateCustomerProfile?: boolean }) => Promise<{ success: boolean; error?: string }>;
   deleteUser: (id: string) => Promise<{ success: boolean; error?: string }>;
   updateSettings: (newSettings: Partial<SystemSettings>) => Promise<void>;
 
   // Server & Connectivity
-  updateServerSettings: (newSettings: Partial<ServerConnectionSettings>) => Promise<void>;
-  testServerConnection: () => Promise<{ success: boolean; latencyMs: number; error?: string }>;
+  updateServerSettings: (
+    newSettings: Partial<ServerConnectionSettings>,
+    options?: {
+      persistToServer?: boolean;
+      applyToCurrentDevice?: boolean;
+      targetDeviceUrl?: string;
+    }
+  ) => Promise<{ success: boolean; error?: string }>;
+  testServerConnection: (customUrl?: string) => Promise<{
+    success: boolean;
+    latencyMs: number;
+    mode?: string;
+    protocol?: string;
+    httpsActive?: boolean;
+    lanUrls?: string[];
+    version?: string;
+    error?: string;
+  }>;
 
   // Database Migration & Integrity
   migrationLogs: MigrationLogEntry[];
@@ -179,7 +281,7 @@ export interface DataContextType extends DatabaseState {
   rollbackMigration: (backupFile?: string) => Promise<{ success: boolean; error?: string }>;
 
   // Cash Operations & Global Category Rename
-  executeCashOperation: (payload: CashOperationPayload) => Promise<{ success: boolean; transaction?: FinancialTransaction; expenseIncomeRecord?: ExpenseIncomeRecord; error?: string }>;
+  executeCashOperation: (payload: CashOperationPayload) => Promise<{ success: boolean; transaction?: FinancialTransaction; expenseIncomeRecord?: ExpenseIncomeRecord; queuedOffline?: boolean; error?: string }>;
   renameCategoryGlobal: (categoryId: string, name: string) => Promise<{ success: boolean; error?: string }>;
 
   // Owner Personal Accounts
@@ -209,12 +311,708 @@ export interface DataContextType extends DatabaseState {
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
+export function isNetworkFailure(err: any): boolean {
+  if (err?.status === 503 || String(err?.code || '') === 'DATABASE_UNAVAILABLE') {
+    return false;
+  }
+  if (typeof err?.status === 'number' && err.status >= 400) {
+    return false;
+  }
+  return err?.status === 0 || (typeof navigator !== 'undefined' && navigator.onLine === false);
+}
+
+/**
+ * Applies pending/failed local queue items optimistically onto a cached snapshot
+ * so closing/reopening the app offline preserves every locally recorded invoice, order, payment, and balance.
+ */
+export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueueItem[]): DatabaseState {
+  const pending = (queue || []).filter((q) => q.status !== 'synced');
+  if (pending.length === 0) return base;
+
+  const products = (base.products || []).map((p) => ({
+    ...p,
+    stockPerWarehouse: { ...(p.stockPerWarehouse || {}) },
+  }));
+  const customers = (base.customers || []).map((c) => ({ ...c }));
+  const representatives = (base.representatives || []).map((r) => ({ ...r }));
+  const suppliers = (base.suppliers || []).map((s) => ({ ...s }));
+  const cashboxes = (base.cashboxes || []).map((cb) => ({ ...cb }));
+  const invoices = (base.invoices || []).map((inv) => ({
+    ...inv,
+    items: (inv.items || []).map((it) => ({ ...it })),
+    payments: [...(inv.payments || [])],
+  }));
+  const orders = (base.customerItemOrders || []).map((o) => ({ ...o }));
+  const advancePayments = (base.orderAdvancePayments || []).map((a) => ({ ...a }));
+  const returns = (base.invoiceReturns || []).map((r) => ({ ...r }));
+  const financialTransactions = [...(base.financialTransactions || [])];
+  const expenseIncomes = [...(base.expenseIncomes || [])];
+  const repItemTransfers = (base.repItemTransfers || []).map((t) => ({ ...t }));
+  const repCustodyOperations = [...(base.repCustodyOperations || [])];
+
+  for (const op of pending) {
+    const p = op.payload || {};
+    if (op.operationType === 'create_order') {
+      const targetId = op.localId || op.entityId || op.operationId;
+      if (!orders.some((o) => o.id === targetId || o.localId === targetId)) {
+        const estTotal = (p.items || []).reduce(
+          (s: number, it: any) => s + Number(it.quantity || 0) * Number(it.unitPrice || 0),
+          0
+        );
+        orders.unshift({
+          id: targetId,
+          requestNumber: `LOC-${op.operationId.slice(-5)}`,
+          customerId: p.customerId || '',
+          customerName: p.customerName || 'عميل',
+          requesterType: p.requesterType || 'customer',
+          items: p.items || [],
+          totalEstimatedAmount: estTotal,
+          notes: p.notes || '',
+          deliveryAddress: p.deliveryAddress || '',
+          geoCoordinates: p.geoCoordinates || '',
+          shopName: p.shopName || '',
+          customerPhone: p.customerPhone || '',
+          status: 'pending',
+          createdAt: op.createdAt,
+          localId: targetId,
+          operationId: op.operationId,
+          syncStatus: op.status,
+          originDeviceId: op.deviceId,
+        });
+      }
+    } else if (op.operationType === 'create_sales_invoice') {
+      const targetId = op.localId || op.entityId || op.operationId;
+      if (!invoices.some((i) => i.id === targetId || i.localId === targetId)) {
+        const cust = customers.find((c) => c.id === p.customerId);
+        const subtotal = (p.items || []).reduce((s: number, it: any) => s + Number(it.total || 0), 0);
+        const grandTotal = Math.max(0, subtotal - Number(p.discountTotal || 0));
+        const paidAmount = Math.min(grandTotal, Number(p.paidAmount || 0));
+        const remainingAmount = Math.max(0, grandTotal - paidAmount);
+
+        invoices.unshift({
+          id: targetId,
+          invoiceNumber: `LOC-INV-${op.operationId.slice(-5)}`,
+          type: 'sales',
+          status: p.status === 'draft' ? 'draft' : 'confirmed',
+          date: p.date || op.createdAt.slice(0, 10),
+          customerId: p.customerId,
+          customerName: p.customerName || cust?.name || 'عميل',
+          representativeId: p.representativeId,
+          representativeName: p.representativeName,
+          reviewStatus: p.status !== 'draft' && p.representativeId ? 'needs_review' : 'not_required',
+          warehouseId: p.warehouseId,
+          warehouseName: p.warehouseName || '',
+          items: p.items || [],
+          subtotal,
+          discountTotal: Number(p.discountTotal || 0),
+          taxTotal: Number(p.taxTotal || 0),
+          grandTotal,
+          paidAmount,
+          remainingAmount,
+          paymentType: p.paymentType || (remainingAmount === 0 ? 'cash' : paidAmount > 0 ? 'partial' : 'credit'),
+          paymentMethod: p.paymentMethod || 'cash',
+          cashboxId: p.cashboxId,
+          notes: p.notes || '',
+          createdBy: op.userId,
+          createdAt: op.createdAt,
+          payments: [],
+          localId: targetId,
+          operationId: op.operationId,
+          syncStatus: op.status,
+          originDeviceId: op.deviceId,
+        });
+
+        if (p.status !== 'draft') {
+          if (cust) cust.currentBalance = Number(cust.currentBalance || 0) + remainingAmount;
+          const cb = cashboxes.find((c) => c.id === p.cashboxId);
+          if (cb && paidAmount > 0) cb.currentBalance = Number(cb.currentBalance || 0) + paidAmount;
+          if (p.representativeId && paidAmount > 0) {
+            const repTarget = representatives.find((r) => r.id === p.representativeId);
+            if (repTarget) repTarget.currentBalance = Number(repTarget.currentBalance || 0) + paidAmount;
+          }
+          if (p.warehouseId) {
+            for (const it of p.items || []) {
+              const prod = products.find((pr) => pr.id === it.productId);
+              if (prod) {
+                const qtyBase = Number(it.quantity || 0) * Number(it.unitFactor || 1);
+                prod.stockPerWarehouse[p.warehouseId] = Number(prod.stockPerWarehouse[p.warehouseId] || 0) - qtyBase;
+              }
+            }
+          }
+        }
+      }
+    } else if (op.operationType === 'create_purchase_invoice') {
+      const targetId = op.localId || op.entityId || op.operationId;
+      if (!invoices.some((i) => i.id === targetId || i.localId === targetId)) {
+        const supp = suppliers.find((s) => s.id === p.supplierId);
+        const subtotal = (p.items || []).reduce((s: number, it: any) => s + Number(it.total || 0), 0);
+        const grandTotal = Math.max(0, subtotal - Number(p.discountTotal || 0));
+        const paidAmount = Math.min(grandTotal, Number(p.paidAmount || 0));
+        const remainingAmount = Math.max(0, grandTotal - paidAmount);
+
+        invoices.unshift({
+          id: targetId,
+          invoiceNumber: `LOC-PUR-${op.operationId.slice(-5)}`,
+          type: 'purchase',
+          status: p.status === 'draft' ? 'draft' : 'confirmed',
+          date: p.date || op.createdAt.slice(0, 10),
+          supplierId: p.supplierId,
+          supplierName: p.supplierName || supp?.name || 'مورد',
+          warehouseId: p.warehouseId,
+          warehouseName: p.warehouseName || '',
+          items: p.items || [],
+          subtotal,
+          discountTotal: Number(p.discountTotal || 0),
+          taxTotal: Number(p.taxTotal || 0),
+          grandTotal,
+          paidAmount,
+          remainingAmount,
+          paymentType: p.paymentType || (remainingAmount === 0 ? 'cash' : paidAmount > 0 ? 'partial' : 'credit'),
+          paymentMethod: p.paymentMethod || 'cash',
+          cashboxId: p.cashboxId,
+          notes: p.notes || '',
+          createdBy: op.userId,
+          createdAt: op.createdAt,
+          payments: [],
+          localId: targetId,
+          operationId: op.operationId,
+          syncStatus: op.status,
+          originDeviceId: op.deviceId,
+        });
+
+        if (p.status !== 'draft') {
+          if (supp) supp.currentBalance = Number(supp.currentBalance || 0) + remainingAmount;
+          const cb = cashboxes.find((c) => c.id === p.cashboxId);
+          if (cb && paidAmount > 0) cb.currentBalance = Number(cb.currentBalance || 0) - paidAmount;
+          if (p.warehouseId) {
+            for (const it of p.items || []) {
+              const prod = products.find((pr) => pr.id === it.productId);
+              if (prod) {
+                const qtyBase = Number(it.quantity || 0) * Number(it.unitFactor || 1);
+                prod.stockPerWarehouse[p.warehouseId] = Number(prod.stockPerWarehouse[p.warehouseId] || 0) + qtyBase;
+              }
+            }
+          }
+        }
+      }
+    } else if (op.operationType === 'edit_sales_invoice') {
+      const targetId = p.invoiceId || op.entityId;
+      const inv = invoices.find((i) => i.id === targetId || i.localId === targetId);
+      if (inv && inv.status !== 'cancelled') {
+        const oldGrand = Number(inv.grandTotal || 0);
+        const nextItems = Array.isArray(p.items) ? p.items : inv.items;
+        const nextSubtotal = nextItems.reduce((s: number, it: any) => s + Number(it.total || 0), 0);
+        const nextDiscount = p.discountTotal !== undefined ? Number(p.discountTotal || 0) : Number(inv.discountTotal || 0);
+        const nextGrand = Math.max(0, nextSubtotal - nextDiscount);
+        const grandDiff = nextGrand - oldGrand;
+
+        if (inv.status === 'confirmed' && inv.warehouseId && Array.isArray(p.items)) {
+          for (const oldIt of inv.items || []) {
+            const prod = products.find((pr) => pr.id === oldIt.productId);
+            if (prod) {
+              const qtyBase = Number(oldIt.quantity || 0) * Number(oldIt.unitFactor || 1);
+              prod.stockPerWarehouse[inv.warehouseId] = Number(prod.stockPerWarehouse[inv.warehouseId] || 0) + qtyBase;
+            }
+          }
+          for (const newIt of p.items) {
+            const prod = products.find((pr) => pr.id === newIt.productId);
+            if (prod) {
+              const qtyBase = Number(newIt.quantity || 0) * Number(newIt.unitFactor || 1);
+              prod.stockPerWarehouse[inv.warehouseId] = Number(prod.stockPerWarehouse[inv.warehouseId] || 0) - qtyBase;
+            }
+          }
+        }
+
+        if (inv.status === 'confirmed' && inv.customerId && grandDiff !== 0) {
+          const cust = customers.find((c) => c.id === inv.customerId);
+          if (cust) cust.currentBalance = Number(cust.currentBalance || 0) + grandDiff;
+        }
+
+        inv.items = nextItems;
+        inv.subtotal = nextSubtotal;
+        inv.discountTotal = nextDiscount;
+        inv.grandTotal = nextGrand;
+        inv.remainingAmount = Math.max(0, nextGrand - Number(inv.paidAmount || 0));
+        if (p.date) inv.date = p.date;
+        if (p.notes !== undefined) inv.notes = p.notes;
+        if (p.reason) {
+          const hist = Array.isArray(inv.editHistory) ? [...inv.editHistory] : [];
+          hist.push({
+            editedBy: op.userId,
+            editedAt: op.createdAt,
+            reason: String(p.reason),
+            before: { grandTotal: oldGrand, discountTotal: Number(inv.discountTotal || 0), itemsCount: (inv.items || []).length },
+            after: { date: inv.date, grandTotal: nextGrand, discountTotal: nextDiscount, itemsCount: nextItems.length },
+          });
+          inv.editHistory = hist;
+        }
+        inv.syncStatus = op.status;
+      }
+    } else if (op.operationType === 'add_invoice_payment') {
+      const targetId = p.invoiceId || op.entityId;
+      const amt = Number(p.amount || 0);
+      const inv = invoices.find((i) => i.id === targetId || i.localId === targetId);
+      if (inv && amt > 0) {
+        inv.paidAmount = Number(inv.paidAmount || 0) + amt;
+        inv.remainingAmount = Math.max(0, Number(inv.grandTotal || 0) - inv.paidAmount);
+        inv.paymentType = inv.remainingAmount === 0 ? 'cash' : 'partial';
+        inv.syncStatus = op.status;
+        const cb = cashboxes.find((c) => c.id === p.cashboxId);
+        inv.payments = [
+          ...(inv.payments || []),
+          {
+            id: op.operationId,
+            invoiceId: inv.id,
+            invoiceNumber: inv.invoiceNumber,
+            amount: amt,
+            date: p.date || op.createdAt.slice(0, 10),
+            paymentMethod: p.paymentMethod || 'cash',
+            cashboxId: p.cashboxId,
+            cashboxName: cb?.name || '',
+            notes: p.notes || '',
+            createdBy: op.userId,
+            createdAt: op.createdAt,
+          },
+        ];
+        if (inv.type === 'sales' && inv.customerId) {
+          const cust = customers.find((c) => c.id === inv.customerId);
+          if (cust) cust.currentBalance = Number(cust.currentBalance || 0) - amt;
+          if (cb) cb.currentBalance = Number(cb.currentBalance || 0) + amt;
+        } else if (inv.type === 'purchase' && inv.supplierId) {
+          const supp = suppliers.find((s) => s.id === inv.supplierId);
+          if (supp) supp.currentBalance = Number(supp.currentBalance || 0) - amt;
+          if (cb) cb.currentBalance = Number(cb.currentBalance || 0) - amt;
+        }
+      }
+    } else if (op.operationType === 'record_customer_payment') {
+      const cust = customers.find((c) => c.id === p.customerId);
+      if (cust) cust.currentBalance = Number(cust.currentBalance || 0) - Number(p.amount || 0);
+      const cb = cashboxes.find((c) => c.id === p.cashboxId);
+      if (cb) cb.currentBalance = Number(cb.currentBalance || 0) + Number(p.amount || 0);
+    } else if (op.operationType === 'record_order_advance') {
+      const targetAdvId = op.localId || op.operationId;
+      if (!advancePayments.some((a) => a.id === targetAdvId || a.operationId === op.operationId)) {
+        const ord = orders.find((o) => o.id === p.orderId);
+        const amt = Number(p.amount || 0);
+        if (ord) {
+          ord.advancePaidAmount = Number(ord.advancePaidAmount || 0) + amt;
+          ord.syncStatus = op.status;
+        }
+        const cust = customers.find((c) => c.id === ord?.customerId);
+        if (cust) cust.currentBalance = Number(cust.currentBalance || 0) - amt;
+        const cb = cashboxes.find((c) => c.id === p.cashboxId);
+        if (cb) cb.currentBalance = Number(cb.currentBalance || 0) + amt;
+        advancePayments.unshift({
+          id: targetAdvId,
+          paymentNumber: `LOC-ADV-${op.operationId.slice(-5)}`,
+          orderId: p.orderId,
+          orderNumber: ord?.requestNumber || '',
+          customerId: ord?.customerId || '',
+          customerName: ord?.customerName || '',
+          amount: amt,
+          cashboxId: p.cashboxId,
+          paymentMethod: p.paymentMethod || 'cash',
+          date: p.date || op.createdAt.slice(0, 10),
+          notes: p.notes || '',
+          status: 'active',
+          createdBy: op.userId,
+          createdAt: op.createdAt,
+          operationId: op.operationId,
+          syncStatus: op.status,
+        });
+      }
+    } else if (op.operationType === 'update_order_delivery') {
+      const ord = orders.find((o) => o.id === p.orderId);
+      if (ord) {
+        ord.status = p.status;
+        if (p.deliveryNotes) ord.deliveryNotes = p.deliveryNotes;
+        if (p.deliveryProof) ord.deliveryProof = p.deliveryProof;
+        if (p.status === 'delivered') {
+          ord.deliveredAt = op.createdAt;
+          if (Number(p.collectedAmount || 0) > 0) {
+            ord.collectedAmount = Number(p.collectedAmount || 0);
+            ord.advancePaidAmount = Number(ord.advancePaidAmount || 0) + Number(p.collectedAmount || 0);
+            const cust = customers.find((c) => c.id === ord.customerId);
+            if (cust) cust.currentBalance = Number(cust.currentBalance || 0) - Number(p.collectedAmount || 0);
+            const cb = cashboxes.find((c) => c.id === p.cashboxId);
+            if (cb) cb.currentBalance = Number(cb.currentBalance || 0) + Number(p.collectedAmount || 0);
+          }
+        }
+        ord.syncStatus = op.status;
+      }
+    } else if (op.operationType === 'create_customer') {
+      const targetId = op.localId || op.operationId;
+      if (!customers.some((c) => c.id === targetId)) {
+        customers.unshift({
+          id: targetId,
+          code: p.code || `LOC-${op.operationId.slice(-4)}`,
+          name: p.name || '',
+          shopName: p.shopName || '',
+          phone: p.phone || '',
+          address: p.address || '',
+          area: p.area || '',
+          geoCoordinates: p.geoCoordinates || '',
+          assignedRepId: p.assignedRepId || undefined,
+          allowedRepIds: Array.isArray(p.allowedRepIds)
+            ? p.allowedRepIds
+            : p.assignedRepId
+            ? [p.assignedRepId]
+            : [],
+          status: p.status || 'active',
+          openingBalance: Number(p.openingBalance || 0),
+          currentBalance: Number(p.openingBalance || 0),
+          priceHistory: {},
+          notes: p.notes || '',
+          createdAt: op.createdAt,
+          syncStatus: op.status,
+          originDeviceId: op.deviceId,
+        });
+      }
+    } else if (op.operationType === 'update_customer') {
+      const targetId = p.customerId || op.entityId;
+      const cust = customers.find((c) => c.id === targetId);
+      if (cust) {
+        if (p.name !== undefined) cust.name = p.name;
+        if (p.phone !== undefined) cust.phone = p.phone;
+        if (p.secondaryPhone !== undefined) cust.secondaryPhone = p.secondaryPhone;
+        if (p.address !== undefined) cust.address = p.address;
+        if (p.shopName !== undefined) cust.shopName = p.shopName;
+        if (p.area !== undefined) cust.area = p.area;
+        if (p.geoCoordinates !== undefined) cust.geoCoordinates = p.geoCoordinates;
+        if (p.notes !== undefined) cust.notes = p.notes;
+        if (p.status !== undefined) cust.status = p.status;
+        cust.syncStatus = op.status;
+      }
+    } else if (op.operationType === 'create_invoice_return') {
+      const targetId = op.localId || op.operationId;
+      if (!returns.some((r) => r.id === targetId)) {
+        const partyId = p.partyId || p.customerId || p.supplierId || '';
+        const partyName = p.partyName || p.customerName || p.supplierName || '';
+        const totalAmt = Number(p.grandTotal ?? p.totalAmount ?? 0);
+        returns.unshift({
+          id: targetId,
+          returnNumber: `LOC-RET-${op.operationId.slice(-5)}`,
+          originalInvoiceId: p.originalInvoiceId || '',
+          originalInvoiceNumber: p.originalInvoiceNumber || '',
+          date: p.date || op.createdAt.slice(0, 10),
+          type: p.type || 'sales_return',
+          partyId,
+          partyName,
+          warehouseId: p.warehouseId || '',
+          warehouseName: p.warehouseName || '',
+          items: p.items || [],
+          grandTotal: totalAmt,
+          refundType: p.refundType || 'balance',
+          cashboxId: p.cashboxId,
+          reason: p.reason || '',
+          createdBy: op.userId,
+          createdAt: op.createdAt,
+          syncStatus: op.status,
+        });
+        if (p.warehouseId) {
+          for (const it of p.items || []) {
+            const prod = products.find((pr) => pr.id === it.productId);
+            if (prod) {
+              const qtyBase = Number(it.quantity || 0) * Number(it.unitFactor || 1);
+              prod.stockPerWarehouse[p.warehouseId] =
+                p.type === 'purchase_return'
+                  ? Number(prod.stockPerWarehouse[p.warehouseId] || 0) - qtyBase
+                  : Number(prod.stockPerWarehouse[p.warehouseId] || 0) + qtyBase;
+            }
+          }
+        }
+        if (p.type === 'sales_return') {
+          if (p.refundType === 'balance' && partyId) {
+            const cust = customers.find((c) => c.id === partyId);
+            if (cust) cust.currentBalance = Number(cust.currentBalance || 0) - totalAmt;
+          } else if (p.refundType === 'cash' && p.cashboxId) {
+            const cb = cashboxes.find((c) => c.id === p.cashboxId);
+            if (cb) cb.currentBalance = Number(cb.currentBalance || 0) - totalAmt;
+          }
+        } else if (p.type === 'purchase_return') {
+          if (p.refundType === 'balance' && partyId) {
+            const supp = suppliers.find((s) => s.id === partyId);
+            if (supp) supp.currentBalance = Number(supp.currentBalance || 0) - totalAmt;
+          } else if (p.refundType === 'cash' && p.cashboxId) {
+            const cb = cashboxes.find((c) => c.id === p.cashboxId);
+            if (cb) cb.currentBalance = Number(cb.currentBalance || 0) + totalAmt;
+          }
+        }
+      }
+    } else if (op.operationType === 'execute_cash_operation') {
+      const targetId = op.localId || op.operationId;
+      if (!financialTransactions.some((t) => t.id === targetId)) {
+        const amt = Number(p.amount || 0);
+        const cb = cashboxes.find((c) => c.id === p.cashboxId);
+        const targetCb = p.targetCashboxId ? cashboxes.find((c) => c.id === p.targetCashboxId) : undefined;
+        const opType = p.type;
+        const isOutflow = opType === 'cash_withdrawal' || opType === 'cashbox_transfer' || opType === 'expense';
+        if (cb && amt > 0) {
+          cb.currentBalance = isOutflow
+            ? Number(cb.currentBalance || 0) - amt
+            : Number(cb.currentBalance || 0) + amt;
+        }
+        if (opType === 'cashbox_transfer' && targetCb && amt > 0) {
+          targetCb.currentBalance = Number(targetCb.currentBalance || 0) + amt;
+        }
+        const txTypeMap: Record<string, FinancialTransaction['type']> = {
+          cash_withdrawal: 'withdrawal',
+          cash_deposit: 'deposit',
+          cashbox_transfer: 'transfer',
+          expense: 'expense',
+          profit_deposit: 'income',
+        };
+        const category = p.category || (opType === 'expense' ? 'مصروفات تشغيل' : opType === 'profit_deposit' ? 'إيداع ربحي' : 'حركة نقدية');
+        financialTransactions.unshift({
+          id: targetId,
+          transactionNumber: `LOC-COP-${op.operationId.slice(-5)}`,
+          date: p.date || op.createdAt.slice(0, 10),
+          type: txTypeMap[opType] || 'expense',
+          cashboxId: p.cashboxId,
+          cashboxName: cb?.name || '',
+          targetCashboxId: targetCb?.id,
+          targetCashboxName: targetCb?.name,
+          amount: amt,
+          category,
+          partyName: p.recipientOrPayer || undefined,
+          description: opType === 'cashbox_transfer' && targetCb ? `ترحيل محلي إلى ${targetCb.name}` : category,
+          notes: p.notes || '',
+          syncStatus: op.status,
+          createdBy: op.userId,
+          createdAt: op.createdAt,
+        });
+        if (opType === 'expense' || opType === 'profit_deposit') {
+          expenseIncomes.unshift({
+            id: `EXP-${targetId}`,
+            recordNumber: `LOC-${opType === 'expense' ? 'EXP' : 'INC'}-${op.operationId.slice(-5)}`,
+            type: opType === 'expense' ? 'expense' : 'income',
+            category,
+            amount: amt,
+            date: p.date || op.createdAt.slice(0, 10),
+            cashboxId: p.cashboxId,
+            cashboxName: cb?.name || '',
+            paymentMethod: 'cash',
+            recipientOrPayer: p.recipientOrPayer || '',
+            notes: p.notes || '',
+            syncStatus: op.status,
+            createdBy: op.userId,
+            createdAt: op.createdAt,
+          });
+        }
+      }
+    } else if (op.operationType === 'create_supplier') {
+      const targetId = op.localId || op.operationId;
+      if (!suppliers.some((s) => s.id === targetId)) {
+        suppliers.unshift({
+          id: targetId,
+          code: p.code || `SUP-LOC-${op.operationId.slice(-4)}`,
+          name: p.name || '',
+          phone: p.phone || '',
+          address: p.address || '',
+          status: p.status || 'active',
+          openingBalance: Number(p.openingBalance || 0),
+          currentBalance: Number(p.openingBalance || 0),
+          notes: p.notes || '',
+          createdAt: op.createdAt,
+        });
+      }
+    } else if (op.operationType === 'create_sales_quote') {
+      const targetId = op.localId || op.entityId || op.operationId;
+      if (!invoices.some((i) => i.id === targetId || i.localId === targetId)) {
+        const cust = customers.find((c) => c.id === p.customerId);
+        const subtotal = (p.items || []).reduce((s: number, it: any) => s + Number(it.total || 0), 0);
+        const grandTotal = Math.max(0, subtotal - Number(p.discountTotal || 0));
+        invoices.unshift({
+          id: targetId,
+          invoiceNumber: `LOC-QUO-${op.operationId.slice(-5)}`,
+          type: 'quote',
+          status: 'draft',
+          date: p.date || op.createdAt.slice(0, 10),
+          customerId: p.customerId,
+          customerName: p.customerName || cust?.name || 'عميل',
+          warehouseId: p.warehouseId,
+          warehouseName: p.warehouseName || '',
+          items: p.items || [],
+          subtotal,
+          discountTotal: Number(p.discountTotal || 0),
+          taxTotal: Number(p.taxTotal || 0),
+          grandTotal,
+          paidAmount: 0,
+          remainingAmount: grandTotal,
+          paymentType: 'credit',
+          paymentMethod: 'cash',
+          cashboxId: p.cashboxId || '',
+          notes: p.notes || '',
+          createdBy: op.userId,
+          createdAt: op.createdAt,
+          payments: [],
+          localId: targetId,
+          operationId: op.operationId,
+          syncStatus: op.status,
+          originDeviceId: op.deviceId,
+        });
+      }
+    } else if (op.operationType === 'create_purchase_return') {
+      const targetId = op.localId || op.operationId;
+      if (!returns.some((r) => r.id === targetId)) {
+        const partyId = p.partyId || p.supplierId || '';
+        const partyName = p.partyName || p.supplierName || '';
+        const totalAmt = Number(p.grandTotal ?? p.totalAmount ?? 0);
+        returns.unshift({
+          id: targetId,
+          returnNumber: `LOC-PRET-${op.operationId.slice(-5)}`,
+          originalInvoiceId: p.originalInvoiceId || '',
+          originalInvoiceNumber: p.originalInvoiceNumber || '',
+          date: p.date || op.createdAt.slice(0, 10),
+          type: 'purchase_return',
+          partyId,
+          partyName,
+          warehouseId: p.warehouseId || '',
+          warehouseName: p.warehouseName || '',
+          items: p.items || [],
+          grandTotal: totalAmt,
+          refundType: p.refundType || 'balance',
+          cashboxId: p.cashboxId,
+          reason: p.reason || '',
+          createdBy: op.userId,
+          createdAt: op.createdAt,
+          syncStatus: op.status,
+        });
+        if (p.warehouseId) {
+          for (const it of p.items || []) {
+            const prod = products.find((pr) => pr.id === it.productId);
+            if (prod) {
+              const qtyBase = Number(it.quantity || 0) * Number(it.unitFactor || 1);
+              prod.stockPerWarehouse[p.warehouseId] = Number(prod.stockPerWarehouse[p.warehouseId] || 0) - qtyBase;
+            }
+          }
+        }
+        if (p.refundType === 'balance' && partyId) {
+          const supp = suppliers.find((s) => s.id === partyId);
+          if (supp) supp.currentBalance = Number(supp.currentBalance || 0) - totalAmt;
+        } else if (p.refundType === 'cash' && p.cashboxId) {
+          const cb = cashboxes.find((c) => c.id === p.cashboxId);
+          if (cb) cb.currentBalance = Number(cb.currentBalance || 0) + totalAmt;
+        }
+      }
+    } else if (op.operationType === 'confirm_custody_receipt') {
+      const reqId = p.requestId || op.entityId;
+      const req = repItemTransfers.find((r) => r.id === reqId);
+      if (req && req.status === 'executed') {
+        req.status = 'received';
+        req.receivedAt = op.createdAt;
+        if (req.transferMode === 'custody_dispatch' && req.targetWarehouseId) {
+          for (const it of req.items || []) {
+            const prod = products.find((pr) => pr.id === it.productId);
+            const qty = Number(it.executedQty ?? it.approvedQty ?? it.requestedQty ?? 0);
+            if (prod && qty > 0) {
+              prod.stockPerWarehouse[req.targetWarehouseId] = Number(prod.stockPerWarehouse[req.targetWarehouseId] || 0) + qty;
+            }
+          }
+        }
+      }
+    } else if (op.operationType === 'record_custody_delivery') {
+      const targetId = op.localId || op.operationId;
+      if (!repCustodyOperations.some((c) => c.id === targetId)) {
+        const bQty = Number(p.quantity || 0) * Number(p.unitFactor || 1);
+        const prod = products.find((pr) => pr.id === p.productId);
+        const whId = p.warehouseId || '';
+        if (prod && whId) {
+          prod.stockPerWarehouse[whId] = Math.max(0, Number(prod.stockPerWarehouse[whId] || 0) - bQty);
+        }
+        repCustodyOperations.unshift({
+          id: targetId,
+          operationNumber: `LOC-CDL-${op.operationId.slice(-5)}`,
+          representativeId: p.representativeId || '',
+          representativeName: p.representativeName || '',
+          warehouseId: whId,
+          warehouseName: p.warehouseName || '',
+          customerId: p.customerId,
+          customerName: p.customerName,
+          productId: p.productId,
+          productName: prod?.name || p.productName || '',
+          operationType: 'delivered_to_customer',
+          quantity: Number(p.quantity || 0),
+          unit: p.unit || prod?.baseUnit || 'قطعة',
+          unitFactor: Number(p.unitFactor || 1),
+          baseQuantity: bQty,
+          date: p.date || op.createdAt.slice(0, 10),
+          status: 'approved',
+          notes: p.notes || '',
+          createdBy: op.userId,
+          createdAt: op.createdAt,
+        });
+      }
+    } else if (op.operationType === 'record_custody_return') {
+      const targetId = op.localId || op.operationId;
+      if (!repCustodyOperations.some((c) => c.id === targetId)) {
+        const bQty = Number(p.quantity || 0) * Number(p.unitFactor || 1);
+        const prod = products.find((pr) => pr.id === p.productId);
+        const whId = p.warehouseId || '';
+        const targetWhId = p.targetWarehouseId || '';
+        if (prod && whId) {
+          prod.stockPerWarehouse[whId] = Math.max(0, Number(prod.stockPerWarehouse[whId] || 0) - bQty);
+        }
+        if (prod && targetWhId) {
+          prod.stockPerWarehouse[targetWhId] = Number(prod.stockPerWarehouse[targetWhId] || 0) + bQty;
+        }
+        repCustodyOperations.unshift({
+          id: targetId,
+          operationNumber: `LOC-CRET-${op.operationId.slice(-5)}`,
+          representativeId: p.representativeId || '',
+          representativeName: p.representativeName || '',
+          warehouseId: whId,
+          warehouseName: p.warehouseName || '',
+          targetWarehouseId: targetWhId || undefined,
+          targetWarehouseName: p.targetWarehouseName || undefined,
+          productId: p.productId,
+          productName: prod?.name || p.productName || '',
+          operationType: 'returned_to_warehouse',
+          quantity: Number(p.quantity || 0),
+          unit: p.unit || prod?.baseUnit || 'قطعة',
+          unitFactor: Number(p.unitFactor || 1),
+          baseQuantity: bQty,
+          date: p.date || op.createdAt.slice(0, 10),
+          status: 'approved',
+          notes: p.notes || '',
+          createdBy: op.userId,
+          createdAt: op.createdAt,
+        });
+      }
+    }
+  }
+
+  return {
+    ...base,
+    products,
+    customers,
+    representatives,
+    suppliers,
+    cashboxes,
+    invoices,
+    customerItemOrders: orders,
+    orderAdvancePayments: advancePayments,
+    invoiceReturns: returns,
+    financialTransactions,
+    expenseIncomes,
+    repItemTransfers,
+    repCustodyOperations,
+  };
+}
+
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentUser, isAuthenticated } = useAuth();
+  const { currentUser, isAuthenticated, handleServerAuthRevoked, refreshAuthContext } = useAuth();
   const [data, setData] = useState<DatabaseState>(() => getEmptyClientDatabaseState());
   const [networkStatus, setNetworkStatus] = useState<NetworkSyncStatus>('connected');
   const [lastSyncTime, setLastSyncTime] = useState<string>(new Date().toLocaleTimeString('ar-EG'));
-  const [offlineQueue, setOfflineQueue] = useState<QueuedCustomerOrder[]>(() => loadOfflineOrdersQueue());
+  const [lastServerSyncAt, setLastServerSyncAt] = useState<string | null>(null);
+  const [syncQueue, setSyncQueue] = useState<SyncQueueItem[]>([]);
+  const [syncConflicts, setSyncConflicts] = useState<SyncConflictRecord[]>([]);
+  const [cachedMediaMap, setCachedMediaMap] = useState<Record<string, string>>({});
+  const [isServerReachable, setIsServerReachable] = useState<boolean>(
+    typeof navigator !== 'undefined' ? navigator.onLine !== false : true
+  );
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [lastError, setLastError] = useState<string | null>(null);
   const [isInitialLoaded, setIsInitialLoaded] = useState<boolean>(false);
   const [isUsingOfflineCache, setIsUsingOfflineCache] = useState<boolean>(false);
@@ -222,116 +1020,431 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [customerStatement, setCustomerStatement] = useState<CustomerStatementResponse | null>(null);
   const [mobileNotifications, setMobileNotifications] = useState<MobileNotificationItem[]>([]);
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
+  const [lastSendSummary, setLastSendSummary] = useState<SyncRefreshSummary | null>(null);
+  const [lastReceiveSummary, setLastReceiveSummary] = useState<SyncRefreshSummary | null>(null);
+
+  const hydratedUserRef = useRef<string | null>(null);
+  const isDbUnavailableRef = useRef<boolean>(false);
+  const isSyncingRef = useRef<boolean>(false);
+  const loadRoleScopedDataRef = useRef<(() => Promise<void>) | null>(null);
+
+  const refreshSyncStatsFromLocal = useCallback(async () => {
+    const stats = await getSyncRefreshStats().catch(() => ({ lastSendSummary: null, lastReceiveSummary: null }));
+    setLastSendSummary(stats.lastSendSummary);
+    setLastReceiveSummary(stats.lastReceiveSummary);
+  }, []);
+
+  useEffect(() => {
+    refreshSyncStatsFromLocal();
+  }, [refreshSyncStatsFromLocal]);
+
+  useEffect(() => {
+    return subscribeServerDbStatus((available, message) => {
+      if (!available) {
+        isDbUnavailableRef.current = true;
+        setIsServerReachable(true);
+        setNetworkStatus('error');
+        setLastError(
+          message ||
+            'قاعدة البيانات المركزية (PostgreSQL) غير متاحة مؤقتًا. تم إيقاف العمليات لحماية البيانات ومنع انقسامها.'
+        );
+      } else if (isDbUnavailableRef.current) {
+        isDbUnavailableRef.current = false;
+        setLastError(null);
+        setNetworkStatus((prev) => (prev === 'error' ? 'connected' : prev));
+        if (!isSyncingRef.current && loadRoleScopedDataRef.current) {
+          loadRoleScopedDataRef.current().catch(() => {});
+        }
+      }
+    });
+  }, []);
+
+  const refreshQueueAndConflictsFromLocal = useCallback(async (uid?: string) => {
+    const targetUid = uid || currentUser?.id;
+    if (!targetUid) {
+      setSyncQueue([]);
+      setSyncConflicts([]);
+      return;
+    }
+    const [q, cf] = await Promise.all([
+      localDb.listSyncQueue(targetUid),
+      localDb.listConflicts(targetUid),
+    ]);
+    setSyncQueue(q);
+    setSyncConflicts(cf);
+  }, [currentUser?.id]);
+
+  const applyServerPullPayload = useCallback(
+    async (pullData: any, activeUser: User) => {
+      if (!pullData || !activeUser?.id) return;
+
+      const empty = getEmptyClientDatabaseState();
+      let nextStateBase: DatabaseState;
+      let nextStmt: CustomerStatementResponse | null = null;
+
+      if (pullData.scope === 'customer') {
+        nextStateBase = {
+          ...empty,
+          customers: pullData.customerProfile ? [pullData.customerProfile] : [],
+          products: pullData.products || [],
+          categories: pullData.categories || [],
+          customerItemOrders: pullData.customerItemOrders || [],
+          orderAdvancePayments: pullData.orderAdvancePayments || [],
+          invoices: pullData.invoices || [],
+          invoiceReturns: pullData.invoiceReturns || [],
+          syncConflicts: pullData.syncConflicts || [],
+          settings: {
+            ...empty.settings,
+            ...(pullData.settings || {}),
+          },
+        };
+        nextStmt = pullData.statement
+          ? {
+              ...pullData.statement,
+              customer: pullData.statement.customer || pullData.customerProfile || null,
+              allowPriceView: pullData.statement.allowPriceView,
+              summary: pullData.statement.summary,
+              entries: pullData.statement.entries || [],
+            }
+          : null;
+      } else {
+        const localProfiles = getStoredConnectionProfiles();
+        const serverConnConfig = pullData.settings?.extraSettings?.connectionConfig;
+        const mergedProfiles: ConnectionProfilesConfig = serverConnConfig
+          ? {
+              ...getDefaultConnectionProfiles(),
+              ...localProfiles,
+              ...serverConnConfig,
+              localNetwork: {
+                ...getDefaultConnectionProfiles().localNetwork,
+                ...localProfiles.localNetwork,
+                ...(serverConnConfig.localNetwork || {}),
+              },
+              freeRemote: { ...localProfiles.freeRemote, ...(serverConnConfig.freeRemote || {}) },
+              proRemote: { ...localProfiles.proRemote, ...(serverConnConfig.proRemote || {}) },
+              cloudVps: { ...localProfiles.cloudVps, ...(serverConnConfig.cloudVps || {}) },
+            }
+          : localProfiles;
+
+        if (serverConnConfig) {
+          saveStoredConnectionProfiles(mergedProfiles);
+        }
+
+        const deviceBaseUrl = getConfiguredApiBaseUrl();
+        const activeMode: ConnectionMode = deviceBaseUrl
+          ? detectModeFromUrl(deviceBaseUrl, mergedProfiles)
+          : mergedProfiles.activeMode;
+
+        const hydratedServerSettings: ServerConnectionSettings = {
+          ...empty.serverSettings!,
+          serverIp: mergedProfiles.localNetwork.ip || '192.168.1.100',
+          hostname: mergedProfiles.localNetwork.hostname || 'awlad-selim-server',
+          port: Number(mergedProfiles.localNetwork.port || 3000) || 3000,
+          apiBaseUrl: deviceBaseUrl || resolveModeEndpointUrl(activeMode, mergedProfiles),
+          connectionType: activeMode,
+          activeMode,
+          profiles: mergedProfiles,
+          serverStatus: 'online',
+          databaseStatus: 'connected',
+          syncStatus: 'connected',
+        };
+
+        nextStateBase = {
+          ...empty,
+          ...pullData,
+          repCustodyOperations: pullData.repCustodyOperations || [],
+          serverSettings: hydratedServerSettings,
+        };
+      }
+
+      const currentQueue = await localDb.listSyncQueue(activeUser.id);
+      const effectiveState = overlayPendingQueueOnState(nextStateBase, currentQueue);
+
+      setData((prev) => ({
+        ...effectiveState,
+        migrationLogs: pullData.migrationLogs || prev.migrationLogs || [],
+      }));
+      setCustomerStatement(nextStmt);
+      setSyncQueue(currentQueue);
+      setSyncConflicts(Array.isArray(pullData.syncConflicts) ? pullData.syncConflicts : []);
+      setIsUsingOfflineCache(false);
+      setLastCacheTimestamp(null);
+      const nowServerTime = pullData.serverTime || new Date().toISOString();
+      setLastServerSyncAt(nowServerTime);
+      setLastSyncTime(new Date().toLocaleTimeString('ar-EG'));
+
+      // Persist clean server baseline into multi-platform LocalDB (IndexedDB + Electron AES Vault / Capacitor Filesystem)
+      const currentInstallationId = getStoredInstallationId();
+      await localDb.saveSnapshot({
+        userId: activeUser.id,
+        scope: pullData.scope || 'staff',
+        serverOrigin: normalizeServerOrigin(getConfiguredApiBaseUrl()),
+        installationId: currentInstallationId || undefined,
+        cachedAt: new Date().toISOString(),
+        serverTime: nowServerTime,
+        user: pullData.user || activeUser,
+        customerProfile: pullData.customerProfile || null,
+        representativeProfile: pullData.representativeProfile || null,
+        mobileConfig: pullData.mobileConfig,
+        data: {
+          dbState: nextStateBase,
+          customerStatement: nextStmt,
+        },
+      });
+
+      // Keep local auth permissions & active status synced with central DB
+      if (pullData.user) {
+        if (pullData.user.isActive === false) {
+          await handleServerAuthRevoked('تم إيقاف الحساب من الإدارة مركزيًا.');
+          return;
+        }
+        await refreshCachedUserAuthorization({
+          serverUrl: getConfiguredApiBaseUrl(),
+          installationId: currentInstallationId,
+          user: pullData.user,
+          customerProfile: pullData.customerProfile || null,
+          representativeProfile: pullData.representativeProfile || null,
+        }).catch(() => {});
+      }
+
+      // Warm cached product media in background
+      const prods = nextStateBase.products || [];
+      getCachedProductImageMap(prods)
+        .then((map) => setCachedMediaMap(map))
+        .catch(() => {});
+      warmProductMediaCache(prods, (productId, dataUrl) => {
+        setCachedMediaMap((prev) => ({ ...prev, [productId]: dataUrl }));
+      }).catch(() => {});
+    },
+    [handleServerAuthRevoked]
+  );
+
+  // Instant Offline-First Hydration from LocalDB whenever user logs in or opens app offline
+  useEffect(() => {
+    let cancelled = false;
+    const hydrateFromLocalDb = async () => {
+      if (!isAuthenticated || !currentUser) {
+        hydratedUserRef.current = null;
+        setData(getEmptyClientDatabaseState());
+        setCustomerStatement(null);
+        setSyncQueue([]);
+        setSyncConflicts([]);
+        setCachedMediaMap({});
+        setMobileNotifications([]);
+        setIsUsingOfflineCache(false);
+        setLastCacheTimestamp(null);
+        setIsInitialLoaded(true);
+        return;
+      }
+
+      if (hydratedUserRef.current !== currentUser.id) {
+        hydratedUserRef.current = currentUser.id;
+        const [snap, queue, conflicts, lastSyncMeta] = await Promise.all([
+          localDb.getSnapshot(currentUser.id),
+          localDb.listSyncQueue(currentUser.id),
+          localDb.listConflicts(currentUser.id),
+          localDb.getMeta<string>('last_sync_at'),
+        ]);
+        if (cancelled) return;
+
+        setSyncQueue(queue);
+        setSyncConflicts(conflicts);
+        if (lastSyncMeta) setLastServerSyncAt(lastSyncMeta);
+
+        const expectedOrigin = normalizeServerOrigin(getConfiguredApiBaseUrl());
+        const expectedInstallationId = getStoredInstallationId();
+        const snapshotMatchesServer =
+          snap?.data?.dbState &&
+          (!snap.serverOrigin || snap.serverOrigin === expectedOrigin) &&
+          (!expectedInstallationId || !snap.installationId || snap.installationId === expectedInstallationId);
+
+        if (snapshotMatchesServer && snap?.data?.dbState) {
+          const effective = overlayPendingQueueOnState(snap.data.dbState, queue);
+          setData(effective);
+          if (snap.data.customerStatement) {
+            setCustomerStatement(snap.data.customerStatement);
+          }
+          setIsUsingOfflineCache(true);
+          setLastCacheTimestamp(snap.cachedAt);
+          setIsInitialLoaded(true);
+          getCachedProductImageMap(effective.products || [])
+            .then((map) => {
+              if (!cancelled) setCachedMediaMap(map);
+            })
+            .catch(() => {});
+        }
+      }
+    };
+
+    hydrateFromLocalDb();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, currentUser?.id]);
 
   const loadRoleScopedData = useCallback(async () => {
     if (!isAuthenticated || !currentUser) {
-      setData(getEmptyClientDatabaseState());
-      setCustomerStatement(null);
-      setMobileNotifications([]);
-      setIsUsingOfflineCache(false);
-      setLastCacheTimestamp(null);
       setIsInitialLoaded(true);
       return;
     }
 
+    isSyncingRef.current = true;
+    setIsSyncing(true);
     try {
-      if (currentUser.role === 'customer') {
-        const [meRes, prodRes, catRes, ordRes, myInvRes, stmtRes] = await Promise.all([
-          apiRequest<{ ok: boolean; customer: Customer | null }>('/api/customers/me'),
-          apiRequest<{ ok: boolean; products: Product[] }>('/api/products'),
-          apiRequest<{ ok: boolean; categories: ProductCategory[] }>('/api/products/categories'),
-          apiRequest<{ ok: boolean; orders: CustomerItemOrderRequest[] }>('/api/orders'),
-          apiRequest<{ ok: boolean; invoices: Invoice[]; returns: InvoiceReturn[] }>('/api/invoices/my').catch(() => ({
-            invoices: [] as Invoice[],
-            returns: [] as InvoiceReturn[],
-          })),
-          apiRequest<{ ok: boolean } & CustomerStatementResponse>('/api/customers/me/statement').catch(() => null),
-        ]);
+      const outcome = await runSyncCycle({ userId: currentUser.id, forceAll: false });
+      await refreshQueueAndConflictsFromLocal(currentUser.id);
 
-        const nextStateBase: DatabaseState = {
-          ...getEmptyClientDatabaseState(),
-          customers: meRes.customer ? [meRes.customer] : [],
-          products: prodRes.products || [],
-          categories: catRes.categories || [],
-          customerItemOrders: ordRes.orders || [],
-          invoices: myInvRes.invoices || [],
-          invoiceReturns: myInvRes.returns || [],
-        };
-        const nextStmt = stmtRes
-          ? {
-              customer: stmtRes.customer || null,
-              allowPriceView: stmtRes.allowPriceView,
-              summary: stmtRes.summary,
-              entries: stmtRes.entries || [],
-            }
-          : null;
+      if (outcome.authRevoked) {
+        await handleServerAuthRevoked(outcome.revokeReason);
+        return;
+      }
 
-        setData((prev) => ({
-          ...nextStateBase,
-          serverSettings: prev.serverSettings,
-        }));
-        setCustomerStatement(nextStmt);
-        saveReadCache(currentUser.id, currentUser.role, {
-          dbState: nextStateBase,
-          customerStatement: nextStmt,
-        });
-        setIsUsingOfflineCache(false);
-        setLastCacheTimestamp(null);
+      setIsServerReachable(outcome.serverReachable);
+
+      if (outcome.serverReachable && outcome.ok && outcome.pullData) {
+        await applyServerPullPayload(outcome.pullData, currentUser);
+        // Optional migration logs fetch for admin
+        if (currentUser.role === 'admin' || currentUser.permissions?.canManageSettings) {
+          apiRequest<{ ok: boolean; logs: MigrationLogEntry[] }>('/api/admin/migration/logs')
+            .then((mig) => {
+              if (Array.isArray(mig?.logs)) {
+                setData((prev) => ({ ...prev, migrationLogs: mig.logs }));
+              }
+            })
+            .catch(() => {});
+        }
+        // Refresh AuthContext permissions if role/permissions changed remotely
+        if (JSON.stringify(outcome.pullData.user?.permissions) !== JSON.stringify(currentUser.permissions)) {
+          refreshAuthContext().catch(() => {});
+        }
+        setNetworkStatus(outcome.conflictCount > 0 || outcome.failedCount > 0 ? 'pending' : 'connected');
+        setLastError(null);
       } else {
-        const [bootRes, migRes] = await Promise.all([
-          apiRequest<{ ok: boolean; data: any }>('/api/admin/bootstrap'),
-          currentUser.role === 'admin' || currentUser.permissions?.canManageSettings
-            ? apiRequest<{ ok: boolean; logs: MigrationLogEntry[] }>('/api/admin/migration/logs').catch(() => ({ logs: [] }))
-            : Promise.resolve({ logs: [] }),
-        ]);
-        const d = bootRes.data || {};
-        const nextStateBase: DatabaseState = {
-          ...getEmptyClientDatabaseState(),
-          ...d,
-          migrationLogs: migRes.logs || [],
-        };
-        setData((prev) => ({
-          ...nextStateBase,
-          serverSettings: prev.serverSettings,
-        }));
-        setCustomerStatement(null);
-        if (currentUser.role === 'representative') {
-          saveReadCache(currentUser.id, currentUser.role, { dbState: nextStateBase });
-        }
-        setIsUsingOfflineCache(false);
-        setLastCacheTimestamp(null);
+        setNetworkStatus(outcome.serverReachable ? 'error' : 'disconnected');
+        if (outcome.error) setLastError(outcome.error);
       }
-      setNetworkStatus(offlineQueue.length > 0 ? 'pending' : 'connected');
-      setLastSyncTime(new Date().toLocaleTimeString('ar-EG'));
-      setLastError(null);
     } catch (err: any) {
-      const canUseCache =
-        (currentUser.role === 'customer' || currentUser.role === 'representative') &&
-        err?.status === 0;
-      if (canUseCache) {
-        const cached = loadReadCache<{ dbState: DatabaseState; customerStatement?: CustomerStatementResponse | null }>(
-          currentUser.id,
-          currentUser.role
-        );
-        if (cached?.data?.dbState) {
-          setData((prev) => ({
-            ...getEmptyClientDatabaseState(),
-            ...cached.data.dbState,
-            serverSettings: prev.serverSettings,
-          }));
-          if (cached.data.customerStatement) {
-            setCustomerStatement(cached.data.customerStatement);
-          }
-          setIsUsingOfflineCache(true);
-          setLastCacheTimestamp(cached.cachedAt);
-        }
-      }
+      const networkDown = isNetworkFailure(err);
+      setIsServerReachable(!networkDown);
+      setNetworkStatus(networkDown ? 'disconnected' : 'error');
       setLastError(err?.message || 'تعذر مزامنة البيانات مع السيرفر');
-      setNetworkStatus(err?.status === 0 ? 'disconnected' : 'error');
     } finally {
+      isSyncingRef.current = false;
+      setIsSyncing(false);
       setIsInitialLoaded(true);
     }
-  }, [isAuthenticated, currentUser, offlineQueue.length]);
+  }, [isAuthenticated, currentUser, applyServerPullPayload, refreshQueueAndConflictsFromLocal, handleServerAuthRevoked, refreshAuthContext]);
+
+  loadRoleScopedDataRef.current = loadRoleScopedData;
+
+  const triggerSync = useCallback(
+    async (forceAll = false) => {
+      if (!isAuthenticated || !currentUser) return;
+      setNetworkStatus('synchronizing');
+      isSyncingRef.current = true;
+      setIsSyncing(true);
+      try {
+        await syncConnectionConfigFromServer({ triggerHeartbeat: true }).catch(() => {});
+        const outcome = await runSyncCycle({ userId: currentUser.id, forceAll });
+        await refreshQueueAndConflictsFromLocal(currentUser.id);
+
+        if (outcome.authRevoked) {
+          await handleServerAuthRevoked(outcome.revokeReason);
+          return;
+        }
+        setIsServerReachable(outcome.serverReachable);
+
+        if (outcome.ok && outcome.pullData) {
+          await applyServerPullPayload(outcome.pullData, currentUser);
+          setNetworkStatus(outcome.conflictCount > 0 || outcome.failedCount > 0 ? 'pending' : 'connected');
+          setLastError(null);
+        } else {
+          setNetworkStatus(outcome.serverReachable ? 'error' : 'disconnected');
+          if (outcome.error) setLastError(outcome.error);
+        }
+      } catch (err: any) {
+        const networkDown = isNetworkFailure(err);
+        setIsServerReachable(!networkDown);
+        setNetworkStatus(networkDown ? 'disconnected' : 'error');
+        setLastError(err?.message || 'تعذر مزامنة البيانات مع السيرفر');
+      } finally {
+        isSyncingRef.current = false;
+        setIsSyncing(false);
+      }
+    },
+    [isAuthenticated, currentUser, refreshQueueAndConflictsFromLocal, handleServerAuthRevoked, applyServerPullPayload]
+  );
+
+  const triggerManualSync = useCallback(() => triggerSync(true), [triggerSync]);
+
+  const syncSendOnly = useCallback(async () => {
+    if (!isAuthenticated || !currentUser) {
+      return { ok: false, count: 0, failedCount: 0, conflictCount: 0, error: 'المستخدم غير مسجل' };
+    }
+    setNetworkStatus('synchronizing');
+    isSyncingRef.current = true;
+    setIsSyncing(true);
+    try {
+      const outcome = await runSyncCycle({ userId: currentUser.id, forceAll: true, mode: 'send_only' });
+      await refreshQueueAndConflictsFromLocal(currentUser.id);
+      await refreshSyncStatsFromLocal();
+      if (outcome.authRevoked) {
+        await handleServerAuthRevoked(outcome.revokeReason);
+        return { ok: false, count: 0, failedCount: outcome.failedCount, conflictCount: outcome.conflictCount, error: outcome.revokeReason };
+      }
+      setIsServerReachable(outcome.serverReachable);
+      setNetworkStatus(
+        !outcome.serverReachable ? 'disconnected' : outcome.ok ? (outcome.failedCount > 0 || outcome.conflictCount > 0 ? 'pending' : 'connected') : 'error'
+      );
+      if (outcome.error) setLastError(outcome.error);
+      else setLastError(null);
+      return {
+        ok: outcome.ok,
+        count: outcome.syncedCount,
+        failedCount: outcome.failedCount,
+        conflictCount: outcome.conflictCount,
+        error: outcome.error,
+      };
+    } catch (err: any) {
+      return { ok: false, count: 0, failedCount: 0, conflictCount: 0, error: err?.message || 'فشل الإرسال' };
+    } finally {
+      isSyncingRef.current = false;
+      setIsSyncing(false);
+    }
+  }, [isAuthenticated, currentUser, refreshQueueAndConflictsFromLocal, refreshSyncStatsFromLocal, handleServerAuthRevoked]);
+
+  const syncReceiveOnly = useCallback(async () => {
+    if (!isAuthenticated || !currentUser) {
+      return { ok: false, count: 0, error: 'المستخدم غير مسجل' };
+    }
+    setNetworkStatus('synchronizing');
+    isSyncingRef.current = true;
+    setIsSyncing(true);
+    try {
+      const outcome = await runSyncCycle({ userId: currentUser.id, forceAll: true, mode: 'receive_only' });
+      await refreshQueueAndConflictsFromLocal(currentUser.id);
+      await refreshSyncStatsFromLocal();
+      if (outcome.authRevoked) {
+        await handleServerAuthRevoked(outcome.revokeReason);
+        return { ok: false, count: 0, error: outcome.revokeReason };
+      }
+      setIsServerReachable(outcome.serverReachable);
+      if (outcome.ok && outcome.pullData) {
+        await applyServerPullPayload(outcome.pullData, currentUser);
+        setNetworkStatus(outcome.conflictCount > 0 || outcome.failedCount > 0 ? 'pending' : 'connected');
+        setLastError(null);
+        return { ok: true, count: outcome.receivedCount || 0 };
+      }
+      setNetworkStatus(outcome.serverReachable ? 'error' : 'disconnected');
+      if (outcome.error) setLastError(outcome.error);
+      return { ok: false, count: 0, error: outcome.error || 'تعذر الاستلام من السيرفر' };
+    } catch (err: any) {
+      return { ok: false, count: 0, error: err?.message || 'تعذر الاستلام من السيرفر' };
+    } finally {
+      isSyncingRef.current = false;
+      setIsSyncing(false);
+    }
+  }, [isAuthenticated, currentUser, refreshQueueAndConflictsFromLocal, refreshSyncStatsFromLocal, handleServerAuthRevoked, applyServerPullPayload]);
 
   useEffect(() => {
     loadRoleScopedData();
@@ -352,13 +1465,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [currentUser?.id]);
 
   const refreshMobileNotifications = useCallback(async () => {
-    if (
-      !isAuthenticated ||
-      !currentUser ||
-      (currentUser.role !== 'customer' && currentUser.role !== 'representative')
-    ) {
-      return;
-    }
+    if (!isAuthenticated || !currentUser) return;
     try {
       const res = await apiRequest<{ ok: boolean; notifications: MobileNotificationItem[] }>(
         '/api/mobile/notifications'
@@ -376,7 +1483,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (seen.length === 0) {
-        // Seed initial state cleanly without blasting notifications on first launch
         try {
           localStorage.setItem(seenKey, JSON.stringify(list.map((n) => n.id)));
         } catch {
@@ -385,6 +1491,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         const unseen = list.filter((n) => !seen.includes(n.id));
         if (unseen.length > 0) {
+          const hasOrderUpdates = unseen.some(
+            (n) => n.type === 'customer_order' || n.type === 'order_status' || String(n.type).startsWith('order_')
+          );
+          if (hasOrderUpdates) {
+            loadRoleScopedData().catch(() => {});
+          }
           for (const item of unseen.slice(0, 3)) {
             let hash = 0;
             for (let i = 0; i < item.id.length; i += 1) {
@@ -410,7 +1522,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch {
       // keep existing notifications silently if offline
     }
-  }, [isAuthenticated, currentUser]);
+  }, [isAuthenticated, currentUser, loadRoleScopedData]);
 
   const markNotificationsRead = useCallback(() => {
     if (!currentUser) return;
@@ -428,33 +1540,119 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ).length;
 
   useEffect(() => {
-    if (
-      !isAuthenticated ||
-      (currentUser?.role !== 'customer' && currentUser?.role !== 'representative')
-    ) {
-      return;
-    }
+    if (!isAuthenticated || !currentUser) return;
+
     refreshMobileNotifications();
-    const timer = window.setInterval(() => {
-      if (navigator.onLine) {
+
+    let lastReconnectCheckAt = 0;
+    const runReconnectConfigSync = () => {
+      const now = Date.now();
+      if (now - lastReconnectCheckAt < 10000) return;
+      lastReconnectCheckAt = now;
+      syncConnectionConfigFromServer({ triggerHeartbeat: true, allowLanDiscoveryOnFailure: true })
+        .then((res) => {
+          if (res.switchedUrl) {
+            loadRoleScopedData();
+            triggerSync(true).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    };
+
+    const unsubscribeNet = subscribeNetworkStatus((connected) => {
+      setIsServerReachable(connected);
+      if (connected) {
+        runReconnectConfigSync();
+        triggerSync(true).catch(() => {});
+        refreshMobileNotifications();
+      } else {
+        setNetworkStatus('disconnected');
+      }
+    });
+
+    const unsubscribeFg = subscribeAppForeground(() => {
+      if (navigator.onLine !== false) {
+        runReconnectConfigSync();
+        triggerSync(true).catch(() => {});
+      }
+    });
+
+    // Periodic 20s auto-sync & notifications check when active & online
+    const syncTimer = window.setInterval(() => {
+      if (navigator.onLine !== false) {
+        runSyncCycle({ userId: currentUser.id, forceAll: false })
+          .then(async (outcome) => {
+            await refreshQueueAndConflictsFromLocal(currentUser.id);
+            if (outcome.authRevoked) {
+              await handleServerAuthRevoked(outcome.revokeReason);
+              return;
+            }
+            setIsServerReachable(outcome.serverReachable);
+            if (outcome.ok && outcome.pullData) {
+              await applyServerPullPayload(outcome.pullData, currentUser);
+              setNetworkStatus(outcome.conflictCount > 0 || outcome.failedCount > 0 ? 'pending' : 'connected');
+              setLastError(null);
+            } else if (!outcome.serverReachable) {
+              setNetworkStatus('disconnected');
+              if (outcome.error) setLastError(outcome.error);
+            } else {
+              setNetworkStatus('error');
+              if (outcome.error) setLastError(outcome.error);
+            }
+          })
+          .catch(() => {});
+      }
+    }, 20000);
+
+    const notifTimer = window.setInterval(() => {
+      if (navigator.onLine !== false) {
         refreshMobileNotifications();
       }
     }, 45000);
-    return () => window.clearInterval(timer);
-  }, [isAuthenticated, currentUser?.role, refreshMobileNotifications]);
+
+    const heartbeatTimer = window.setInterval(() => {
+      if (navigator.onLine !== false) {
+        syncConnectionConfigFromServer({ triggerHeartbeat: true })
+          .then((res) => {
+            if (res.switchedUrl) {
+              loadRoleScopedData();
+            }
+          })
+          .catch(() => {});
+      }
+    }, 90000);
+
+    return () => {
+      unsubscribeNet();
+      unsubscribeFg();
+      window.clearInterval(syncTimer);
+      window.clearInterval(notifTimer);
+      window.clearInterval(heartbeatTimer);
+    };
+  }, [
+    isAuthenticated,
+    currentUser,
+    triggerSync,
+    refreshMobileNotifications,
+    refreshQueueAndConflictsFromLocal,
+    handleServerAuthRevoked,
+    applyServerPullPayload,
+    loadRoleScopedData,
+  ]);
 
   const refreshCustomerStatement = useCallback(async () => {
     if (!isAuthenticated || currentUser?.role !== 'customer') return;
     try {
       const res = await apiRequest<{ ok: boolean } & CustomerStatementResponse>('/api/customers/me/statement');
       setCustomerStatement({
+        ...res,
         customer: res.customer || null,
         allowPriceView: res.allowPriceView,
         summary: res.summary,
         entries: res.entries || [],
       });
     } catch {
-      // ignore if offline
+      // keep cached statement if offline
     }
   }, [isAuthenticated, currentUser?.role]);
 
@@ -467,7 +1665,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         );
         return res.priceHistory || {};
       } catch {
-        // fallback to cached customer record if offline
         const cust = data.customers.find((c) => c.id === customerId);
         if (!cust?.priceHistory) return {};
         const fallback: Record<string, CustomerPriceHistoryEntry[]> = {};
@@ -482,62 +1679,65 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [data.customers]
   );
 
-  // Flush queued customer orders when connection recovers
-  const flushOfflineOrders = useCallback(async () => {
-    if (!isAuthenticated || currentUser?.role !== 'customer') return;
-    const queue = loadOfflineOrdersQueue();
-    if (!queue.length) return;
+  // Offline Queue Helper
+  const queueOfflineOp = useCallback(
+    async (params: {
+      operationType: SyncQueueItem['operationType'];
+      entityType: string;
+      entityId?: string;
+      localId?: string;
+      summaryAr: string;
+      payload: Record<string, any>;
+    }) => {
+      if (!currentUser) throw new Error('المستخدم غير مسجل');
+      const queued = await enqueueSyncOperation({
+        userId: currentUser.id,
+        ...params,
+      });
+      const updatedQueue = await localDb.listSyncQueue(currentUser.id);
+      setSyncQueue(updatedQueue);
 
-    const remaining: QueuedCustomerOrder[] = [];
-    for (const entry of queue) {
-      try {
-        await apiRequest('/api/orders', {
-          method: 'POST',
-          body: entry.payload,
-          idempotencyKey: entry.idempotencyKey,
-        });
-      } catch (err: any) {
-        if (err?.status === 0) {
-          remaining.push(entry);
-        }
-        // 4xx validation errors are dropped from queue rather than looping infinitely
-      }
+      setData((prev) => {
+        const next = overlayPendingQueueOnState(prev, [queued]);
+        localDb
+          .saveSnapshot({
+            userId: currentUser.id,
+            scope:
+              currentUser.role === 'customer'
+                ? 'customer'
+                : currentUser.role === 'representative'
+                ? 'representative'
+                : 'staff',
+            serverOrigin: normalizeServerOrigin(getConfiguredApiBaseUrl()),
+            cachedAt: new Date().toISOString(),
+            user: currentUser,
+            data: { dbState: next, customerStatement },
+          })
+          .catch(() => {});
+        return next;
+      });
+      setNetworkStatus('pending');
+      setIsServerReachable(false);
+      return queued;
+    },
+    [currentUser, customerStatement]
+  );
+
+  const resolveSyncConflict = async (
+    conflictId: string,
+    action: 'keep_server' | 'apply_local' | 'dismiss',
+    resolutionNotes?: string
+  ) => {
+    try {
+      await apiRequest(`/api/sync/conflicts/${conflictId}/resolve`, {
+        method: 'POST',
+        body: { action, resolutionNotes },
+      });
+      await triggerSync(false);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر معالجة تعارض المزامنة' };
     }
-    saveOfflineOrdersQueue(remaining);
-    setOfflineQueue(remaining);
-    if (remaining.length < queue.length) {
-      await loadRoleScopedData();
-    }
-  }, [isAuthenticated, currentUser, loadRoleScopedData]);
-
-  useEffect(() => {
-    const unsubscribe = subscribeNetworkStatus((connected) => {
-      if (connected && isAuthenticated) {
-        flushOfflineOrders();
-        if (currentUser?.role === 'customer' || currentUser?.role === 'representative') {
-          loadRoleScopedData();
-          refreshMobileNotifications();
-        }
-      } else if (!connected) {
-        setNetworkStatus('disconnected');
-      }
-    });
-    const interval = window.setInterval(() => {
-      if (isAuthenticated && navigator.onLine) {
-        flushOfflineOrders();
-      }
-    }, 15000);
-    return () => {
-      unsubscribe();
-      window.clearInterval(interval);
-    };
-  }, [isAuthenticated, currentUser?.role, flushOfflineOrders, loadRoleScopedData, refreshMobileNotifications]);
-
-  const triggerManualSync = async () => {
-    setNetworkStatus('synchronizing');
-    await flushOfflineOrders();
-    await loadRoleScopedData();
-    await refreshMobileNotifications();
   };
 
   // Backup Export & Restore
@@ -728,17 +1928,66 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Customers & Suppliers
   const addCustomer = async (custData: Omit<Customer, 'id' | 'createdAt' | 'currentBalance' | 'priceHistory'>): Promise<Customer> => {
-    const res = await apiRequest<{ ok: boolean; customer: Customer }>('/api/customers', {
-      method: 'POST',
-      body: custData,
-    });
-    await loadRoleScopedData();
-    return res.customer;
+    try {
+      const res = await apiRequest<{ ok: boolean; customer: Customer }>('/api/customers', {
+        method: 'POST',
+        body: custData,
+      });
+      await loadRoleScopedData();
+      return res.customer;
+    } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const localId = generateId('CUS-LOC');
+        const op = await queueOfflineOp({
+          operationType: 'create_customer',
+          entityType: 'customer',
+          localId,
+          summaryAr: `إضافة عميل محليًا: ${custData.name}`,
+          payload: { ...custData, localId },
+        });
+        return {
+          id: localId,
+          code: custData.code || `LOC-${op.operationId.slice(-4)}`,
+          name: custData.name,
+          phone: custData.phone,
+          address: custData.address,
+          status: custData.status || 'active',
+          openingBalance: custData.openingBalance,
+          currentBalance: custData.openingBalance,
+          priceHistory: {},
+          notes: custData.notes,
+          createdAt: op.createdAt,
+          syncStatus: op.status,
+        };
+      }
+      throw err;
+    }
   };
 
   const updateCustomer = async (id: string, updates: Partial<Customer>) => {
-    await apiRequest(`/api/customers/${id}`, { method: 'PUT', body: updates });
-    await loadRoleScopedData();
+    const current = data.customers.find((c) => c.id === id);
+    const body = { ...updates, baseVersion: current?.version ?? updates.version };
+    try {
+      await apiRequest(`/api/customers/${id}`, { method: 'PUT', body });
+      await loadRoleScopedData();
+      return { success: true };
+    } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        await queueOfflineOp({
+          operationType: 'update_customer',
+          entityType: 'customer',
+          entityId: id,
+          summaryAr: `تحديث بيانات العميل: ${current?.name || id}`,
+          payload: { customerId: id, ...body },
+        });
+        setData((prev) => ({
+          ...prev,
+          customers: prev.customers.map((c) => (c.id === id ? { ...c, ...updates, syncStatus: 'pending' } : c)),
+        }));
+        return { success: true, queuedOffline: true };
+      }
+      throw err;
+    }
   };
 
   const deleteCustomer = async (id: string) => {
@@ -767,6 +2016,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const repairUnlinkedCustomerUsers = async () => {
+    try {
+      const res = await apiRequest<{ ok: boolean; repairedCount: number }>('/api/customers/conflicts/fix-unlinked', {
+        method: 'POST',
+      });
+      await loadRoleScopedData();
+      return { success: true, repairedCount: res.repairedCount || 0 };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر إصلاح حسابات العملاء غير المربوطة' };
+    }
+  };
+
   const toggleCustomerUserStatus = async (customerId: string, isActive: boolean) => {
     try {
       const res = await apiRequest<{ ok: boolean; isActive: boolean }>(`/api/customers/${customerId}/toggle-user-status`, {
@@ -787,25 +2048,64 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     notes: string,
     paymentMethod: 'cash' | 'bank' | 'cheque' = 'cash'
   ) => {
+    const idempotencyKey = generateId('IDEMP');
     try {
       await apiRequest(`/api/customers/${customerId}/payment`, {
         method: 'POST',
         body: { amount, cashboxId, notes, paymentMethod },
+        idempotencyKey,
       });
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const cust = data.customers.find((c) => c.id === customerId);
+        await queueOfflineOp({
+          operationType: 'record_customer_payment',
+          entityType: 'payment',
+          entityId: customerId,
+          summaryAr: `تحصيل عميل (${cust?.name || customerId}): ${amount} ج.م`,
+          payload: { customerId, amount, cashboxId, notes, paymentMethod },
+        });
+        return { success: true, queuedOffline: true };
+      }
       return { success: false, error: err?.message || 'فشل تسجيل التحصيل' };
     }
   };
 
   const addSupplier = async (suppData: Omit<Supplier, 'id' | 'createdAt' | 'currentBalance'>): Promise<Supplier> => {
-    const res = await apiRequest<{ ok: boolean; supplier: Supplier }>('/api/admin/suppliers', {
-      method: 'POST',
-      body: suppData,
-    });
-    await loadRoleScopedData();
-    return res.supplier;
+    try {
+      const res = await apiRequest<{ ok: boolean; supplier: Supplier }>('/api/admin/suppliers', {
+        method: 'POST',
+        body: suppData,
+      });
+      await loadRoleScopedData();
+      return res.supplier;
+    } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const localId = generateId('SUP-LOC');
+        const op = await queueOfflineOp({
+          operationType: 'create_supplier',
+          entityType: 'supplier',
+          localId,
+          summaryAr: `إضافة مورد محليًا: ${suppData.name}`,
+          payload: { ...suppData, localId },
+        });
+        return {
+          id: localId,
+          code: suppData.code || `SUP-LOC-${op.operationId.slice(-4)}`,
+          name: suppData.name,
+          phone: suppData.phone,
+          address: suppData.address,
+          status: suppData.status || 'active',
+          openingBalance: suppData.openingBalance,
+          currentBalance: suppData.openingBalance,
+          notes: suppData.notes,
+          createdAt: op.createdAt,
+        };
+      }
+      throw err;
+    }
   };
 
   const updateSupplier = async (id: string, updates: Partial<Supplier>) => {
@@ -823,6 +2123,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await apiRequest('/api/admin/suppliers/payment', {
         method: 'POST',
         body: { supplierId, amount, cashboxId, notes },
+        idempotencyKey: generateId('IDEMP'),
       });
       await loadRoleScopedData();
       return { success: true };
@@ -831,19 +2132,95 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const settleSupplierAdvance = async (
+    supplierId: string,
+    payload: { invoiceId: string; amount: number; notes?: string; date?: string }
+  ) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; availableAdvanceAfter?: number; settledAmount?: number }>(
+        `/api/admin/suppliers/${supplierId}/settle-advance`,
+        {
+          method: 'POST',
+          body: payload,
+          idempotencyKey: generateId('IDEMP'),
+        }
+      );
+      await loadRoleScopedData();
+      return {
+        success: true,
+        availableAdvanceAfter: res.availableAdvanceAfter,
+        settledAmount: res.settledAmount,
+      };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تسوية الدفعة المقدمة للمورد' };
+    }
+  };
+
   // Invoices
   const createSalesInvoice = async (invoiceData: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'>) => {
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      return { success: false, error: 'إصدار فواتير المبيعات يتطلب اتصالاً مباشراً بالسيرفر المركزي (لابتوب المحل).' };
-    }
+    const idempotencyKey = (invoiceData as any)?.idempotencyKey || generateId('IDEMP');
     try {
       const res = await apiRequest<{ ok: boolean; invoice: Invoice }>('/api/invoices/sales', {
         method: 'POST',
         body: invoiceData,
+        idempotencyKey,
       });
       await loadRoleScopedData();
       return { success: true, invoice: res.invoice };
     } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        if (!data.settings?.allowNegativeStock && invoiceData.status !== 'draft' && invoiceData.warehouseId) {
+          for (const item of invoiceData.items || []) {
+            const prod = data.products.find((p) => p.id === item.productId);
+            const avail = Number(prod?.stockPerWarehouse?.[invoiceData.warehouseId] || 0);
+            const needed = Number(item.quantity || 0) * Number(item.unitFactor || 1);
+            if (needed > avail) {
+              return {
+                success: false,
+                error: `الرصيد المحلي المتاح للصنف (${item.productName}) في المخزن المحدد هو (${avail}) فقط ولا يكفي للكمية المطلوبة (${needed}).`,
+              };
+            }
+          }
+        }
+        const localId = generateId('INV-LOC');
+        const op = await queueOfflineOp({
+          operationType: 'create_sales_invoice',
+          entityType: 'invoice',
+          localId,
+          summaryAr: `فاتورة مبيعات محلية (${invoiceData.customerName || 'عميل'}) بمبلغ ${invoiceData.grandTotal || 0} ج.م`,
+          payload: { ...invoiceData, localId },
+        });
+        const cust = data.customers.find((c) => c.id === invoiceData.customerId);
+        const optimisticInvoice: Invoice = {
+          id: localId,
+          invoiceNumber: `LOC-INV-${op.operationId.slice(-5)}`,
+          type: 'sales',
+          status: invoiceData.status === 'draft' ? 'draft' : 'confirmed',
+          date: invoiceData.date || op.createdAt.slice(0, 10),
+          customerId: invoiceData.customerId,
+          customerName: invoiceData.customerName || cust?.name,
+          warehouseId: invoiceData.warehouseId,
+          warehouseName: invoiceData.warehouseName || '',
+          items: invoiceData.items || [],
+          subtotal: invoiceData.subtotal || 0,
+          discountTotal: invoiceData.discountTotal || 0,
+          taxTotal: invoiceData.taxTotal || 0,
+          grandTotal: invoiceData.grandTotal || 0,
+          paidAmount: invoiceData.paidAmount || 0,
+          remainingAmount: invoiceData.remainingAmount || 0,
+          paymentType: invoiceData.paymentType || 'cash',
+          paymentMethod: invoiceData.paymentMethod || 'cash',
+          cashboxId: invoiceData.cashboxId,
+          notes: invoiceData.notes,
+          createdBy: currentUser.id,
+          createdAt: op.createdAt,
+          payments: [],
+          localId,
+          operationId: op.operationId,
+          syncStatus: 'pending',
+        };
+        return { success: true, invoice: optimisticInvoice, queuedOffline: true };
+      }
       return { success: false, error: err?.message || 'تعذر إنشاء فاتورة المبيعات' };
     }
   };
@@ -853,17 +2230,140 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await apiRequest<{ ok: boolean; invoice: Invoice }>('/api/invoices/purchase', {
         method: 'POST',
         body: invoiceData,
+        idempotencyKey: (invoiceData as any)?.idempotencyKey || generateId('IDEMP'),
       });
       await loadRoleScopedData();
       return { success: true, invoice: res.invoice };
     } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const localId = generateId('PUR-LOC');
+        const op = await queueOfflineOp({
+          operationType: 'create_purchase_invoice',
+          entityType: 'invoice',
+          localId,
+          summaryAr: `فاتورة مشتريات محلية (${invoiceData.supplierName || 'مورد'})`,
+          payload: { ...invoiceData, localId },
+        });
+        const supp = data.suppliers.find((s) => s.id === invoiceData.supplierId);
+        const optimisticPurchase: Invoice = {
+          id: localId,
+          invoiceNumber: `LOC-PUR-${op.operationId.slice(-5)}`,
+          type: 'purchase',
+          status: invoiceData.status === 'draft' ? 'draft' : 'confirmed',
+          date: invoiceData.date || op.createdAt.slice(0, 10),
+          supplierId: invoiceData.supplierId,
+          supplierName: invoiceData.supplierName || supp?.name,
+          warehouseId: invoiceData.warehouseId,
+          warehouseName: invoiceData.warehouseName || '',
+          items: invoiceData.items || [],
+          subtotal: invoiceData.subtotal || 0,
+          discountTotal: invoiceData.discountTotal || 0,
+          taxTotal: invoiceData.taxTotal || 0,
+          grandTotal: invoiceData.grandTotal || 0,
+          paidAmount: invoiceData.paidAmount || 0,
+          remainingAmount: invoiceData.remainingAmount || 0,
+          paymentType: invoiceData.paymentType || 'cash',
+          paymentMethod: invoiceData.paymentMethod || 'cash',
+          cashboxId: invoiceData.cashboxId,
+          notes: invoiceData.notes,
+          createdBy: currentUser.id,
+          createdAt: op.createdAt,
+          payments: [],
+          localId,
+          operationId: op.operationId,
+          syncStatus: op.status,
+        };
+        return { success: true, invoice: optimisticPurchase, queuedOffline: true };
+      }
       return { success: false, error: err?.message || 'تعذر إنشاء فاتورة المشتريات' };
+    }
+  };
+
+  const createSalesQuote = async (quoteData: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdAt' | 'createdBy' | 'type'>) => {
+    const idempotencyKey = (quoteData as any)?.idempotencyKey || generateId('QUO');
+    try {
+      const res = await apiRequest<{ ok: boolean; invoice: Invoice }>('/api/invoices/quotes', {
+        method: 'POST',
+        body: quoteData,
+        idempotencyKey,
+      });
+      await loadRoleScopedData();
+      return { success: true, invoice: res.invoice };
+    } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const localId = generateId('QUO-LOC');
+        const op = await queueOfflineOp({
+          operationType: 'create_sales_quote',
+          entityType: 'quote',
+          localId,
+          summaryAr: `عرض سعر محلي (${quoteData.customerName || 'عميل'}) بمبلغ ${quoteData.grandTotal || 0} ج.م`,
+          payload: { ...quoteData, localId },
+        });
+        const cust = data.customers.find((c) => c.id === quoteData.customerId);
+        const optimisticQuote: Invoice = {
+          id: localId,
+          invoiceNumber: `LOC-QUO-${op.operationId.slice(-5)}`,
+          type: 'quote',
+          status: 'draft',
+          date: quoteData.date || op.createdAt.slice(0, 10),
+          customerId: quoteData.customerId,
+          customerName: quoteData.customerName || cust?.name,
+          warehouseId: quoteData.warehouseId,
+          warehouseName: quoteData.warehouseName || '',
+          items: quoteData.items || [],
+          subtotal: quoteData.subtotal || 0,
+          discountTotal: quoteData.discountTotal || 0,
+          taxTotal: quoteData.taxTotal || 0,
+          grandTotal: quoteData.grandTotal || 0,
+          paidAmount: 0,
+          remainingAmount: quoteData.grandTotal || 0,
+          paymentType: 'credit',
+          paymentMethod: 'cash',
+          cashboxId: quoteData.cashboxId || '',
+          notes: quoteData.notes,
+          createdBy: currentUser.id,
+          createdAt: op.createdAt,
+          payments: [],
+          localId,
+          operationId: op.operationId,
+          syncStatus: op.status,
+        };
+        return { success: true, invoice: optimisticQuote, queuedOffline: true };
+      }
+      return { success: false, error: err?.message || 'تعذر إنشاء عرض السعر' };
+    }
+  };
+
+  const convertQuoteToInvoice = async (quoteId: string, payload: Partial<Invoice> & { paidAtInvoice?: number } = {}) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; invoice: Invoice }>(`/api/invoices/quotes/${quoteId}/convert`, {
+        method: 'POST',
+        body: payload,
+        idempotencyKey: generateId('QCV'),
+      });
+      await loadRoleScopedData();
+      return { success: true, invoice: res.invoice };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تحويل عرض السعر إلى فاتورة بيع' };
+    }
+  };
+
+  const markInvoiceReviewed = async (invoiceId: string, reviewNotes = '') => {
+    try {
+      const res = await apiRequest<{ ok: boolean; invoice: Invoice }>(`/api/invoices/${invoiceId}/mark-reviewed`, {
+        method: 'POST',
+        body: { reviewNotes },
+      });
+      await loadRoleScopedData();
+      return { success: true, invoice: res.invoice };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تأكيد مراجعة الفاتورة' };
     }
   };
 
   const confirmDraftInvoice = async (invoiceId: string) => {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      return { success: false, error: 'اعتماد الفواتير يتطلب اتصالاً مباشراً بالسيرفر المركزي (لابتوب المحل).' };
+      return { success: false, error: 'اعتماد الفواتير يتطلب اتصالاً بالسيرفر المركزي لحسم المخزون والرصيد المعتمد.' };
     }
     try {
       const res = await apiRequest<{ ok: boolean; invoice: Invoice }>(`/api/invoices/${invoiceId}/confirm`, {
@@ -897,23 +2397,46 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await apiRequest(`/api/invoices/${invoiceId}/payments`, {
         method: 'POST',
         body: paymentData,
+        idempotencyKey: (paymentData as any)?.idempotencyKey || generateId('IDEMP'),
       });
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        await queueOfflineOp({
+          operationType: 'add_invoice_payment',
+          entityType: 'payment',
+          entityId: invoiceId,
+          summaryAr: `سداد فاتورة (${invoiceId}): ${paymentData.amount} ج.م`,
+          payload: { invoiceId, ...paymentData },
+        });
+        return { success: true, queuedOffline: true };
+      }
       return { success: false, error: err?.message || 'تعذر تسجيل الدفعة' };
     }
   };
 
-  const editSalesInvoice = async (invoiceId: string, updates: { date?: string; items?: Invoice['items']; discountTotal?: number; notes?: string }) => {
+  const editSalesInvoice = async (invoiceId: string, updates: { date?: string; items?: Invoice['items']; discountTotal?: number; notes?: string; reason?: string }) => {
+    const existing = data.invoices.find((i) => i.id === invoiceId);
+    const body = { ...updates, baseVersion: existing?.version ?? 1 };
     try {
       await apiRequest(`/api/invoices/${invoiceId}`, {
         method: 'PUT',
-        body: updates,
+        body,
       });
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        await queueOfflineOp({
+          operationType: 'edit_sales_invoice',
+          entityType: 'invoice',
+          entityId: invoiceId,
+          summaryAr: `تعديل فاتورة (${existing?.invoiceNumber || invoiceId})`,
+          payload: { invoiceId, ...body },
+        });
+        return { success: true, queuedOffline: true };
+      }
       return { success: false, error: err?.message || 'تعذر تعديل الفاتورة' };
     }
   };
@@ -923,10 +2446,23 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await apiRequest('/api/invoices/returns', {
         method: 'POST',
         body: returnData,
+        idempotencyKey: generateId('IDEMP'),
       });
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const localId = generateId('RET-LOC');
+        const opType = returnData.type === 'purchase_return' ? 'create_purchase_return' : 'create_invoice_return';
+        await queueOfflineOp({
+          operationType: opType,
+          entityType: 'invoice_return',
+          localId,
+          summaryAr: `${returnData.type === 'purchase_return' ? 'مرتجع شراء محلي' : 'مرتجع بيع محلي'} (${returnData.originalInvoiceNumber || returnData.partyName || returnData.originalInvoiceId || ''})`,
+          payload: { ...returnData, localId },
+        });
+        return { success: true, queuedOffline: true };
+      }
       return { success: false, error: err?.message || 'تعذر إنشاء المرتجع' };
     }
   };
@@ -944,7 +2480,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const transferBetweenCashboxes = async (fromId: string, toId: string, amount: number, notes: string) => {
     try {
-      await apiRequest('/api/admin/cashboxes/transfer', { method: 'POST', body: { fromId, toId, amount, notes } });
+      await apiRequest('/api/admin/cashboxes/transfer', {
+        method: 'POST',
+        body: { fromId, toId, amount, notes },
+        idempotencyKey: generateId('IDEMP'),
+      });
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
@@ -953,8 +2493,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const addExpenseIncome = async (record: Omit<ExpenseIncomeRecord, 'id' | 'recordNumber' | 'createdAt' | 'createdBy'>) => {
-    await apiRequest('/api/admin/expenses', { method: 'POST', body: record });
-    await loadRoleScopedData();
+    try {
+      await apiRequest('/api/admin/expenses', { method: 'POST', body: record });
+      await loadRoleScopedData();
+    } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const opType = record.type === 'income' ? 'profit_deposit' : 'expense';
+        await queueOfflineOp({
+          operationType: 'execute_cash_operation',
+          entityType: 'cash_operation',
+          summaryAr: `${record.type === 'expense' ? 'سند صرف محلي' : 'سند قبض محلي'} (${record.category}): ${record.amount} ج.م`,
+          payload: {
+            type: opType,
+            cashboxId: record.cashboxId,
+            amount: record.amount,
+            date: record.date,
+            category: record.category,
+            recipientOrPayer: record.recipientOrPayer,
+            notes: record.notes,
+          },
+        });
+        return;
+      }
+      throw err;
+    }
   };
 
   // Cheques & Installments
@@ -1003,7 +2565,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     notes?: string;
   }) => {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      return { success: false, error: 'التحويلات النقدية تتطلب اتصالاً مباشراً بالسيرفر المركزي.' };
+      return { success: false, error: 'التحويلات النقدية تتطلب اتصالاً بالسيرفر المركزي.' };
     }
     try {
       const res = await apiRequest<{ ok: boolean; transfer: RepTransfer }>('/api/inventory/rep-transfers', {
@@ -1019,7 +2581,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const confirmRepTransferReceipt = async (transferId: string, note?: string) => {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      return { success: false, error: 'تأكيد الاستلام النقدي يتطلب اتصالاً مباشراً بالسيرفر المركزي.' };
+      return { success: false, error: 'تأكيد الاستلام النقدي يتطلب اتصالاً بالسيرفر المركزي.' };
     }
     try {
       await apiRequest(`/api/inventory/rep-transfers/${transferId}/confirm`, { method: 'POST', body: { note } });
@@ -1042,7 +2604,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const createRepItemTransfer = async (transferData: Omit<RepItemTransferRequest, 'id' | 'requestNumber' | 'createdAt' | 'status' | 'createdBy'>) => {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      return { success: false, error: 'إرسال طلبات تحويل الأصناف يتطلب اتصالاً مباشراً بالسيرفر المركزي.' };
+      return { success: false, error: 'إرسال طلبات تحويل الأصناف يتطلب اتصالاً بالسيرفر المركزي.' };
     }
     try {
       const res = await apiRequest<{ ok: boolean; request: RepItemTransferRequest }>('/api/inventory/rep-item-transfers', {
@@ -1057,9 +2619,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateRepItemTransferStatus = async (requestId: string, newStatus: RepItemTransferStatus, approvedItems?: RepTransferItem[], notes?: string) => {
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      return { success: false, error: 'تحديث حالة تحويل الأصناف يتطلب اتصالاً مباشراً بالسيرفر المركزي.' };
-    }
     try {
       await apiRequest(`/api/inventory/rep-item-transfers/${requestId}/status`, {
         method: 'POST',
@@ -1068,11 +2627,180 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
+      if (newStatus === 'received' && isNetworkFailure(err) && currentUser) {
+        const req = (data.repItemTransfers || []).find((r) => r.id === requestId);
+        await queueOfflineOp({
+          operationType: 'confirm_custody_receipt',
+          entityType: 'rep_item_transfer',
+          entityId: requestId,
+          summaryAr: `تأكيد استلام عهدة محلياً (${req?.requestNumber || requestId})`,
+          payload: { requestId, notes },
+        });
+        return { success: true, queuedOffline: true };
+      }
       return { success: false, error: err?.message || 'تعذر تحديث طلب التحويل' };
     }
   };
 
-  // Customer Item Orders Lifecycle (Real Server Persistence + Honest Offline Queue)
+  const recordRepCustodyDelivery = async (payload: {
+    representativeId?: string;
+    customerId?: string;
+    customerName?: string;
+    productId: string;
+    quantity: number;
+    unit?: string;
+    unitFactor?: number;
+    date?: string;
+    notes?: string;
+    idempotencyKey?: string;
+  }) => {
+    const idempotencyKey = payload.idempotencyKey || generateId('CDLV');
+    try {
+      const res = await apiRequest<{ ok: boolean; operation: RepCustodyOperation }>('/api/inventory/rep-custody/deliver', {
+        method: 'POST',
+        body: payload,
+        idempotencyKey,
+      });
+      await loadRoleScopedData();
+      return { success: true, operation: res.operation };
+    } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const localId = generateId('CDL-LOC');
+        const prod = data.products.find((p) => p.id === payload.productId);
+        const rep = (data.representatives || []).find((r) => r.id === payload.representativeId || r.userId === currentUser.id);
+        await queueOfflineOp({
+          operationType: 'record_custody_delivery',
+          entityType: 'rep_custody_operation',
+          localId,
+          summaryAr: `تسليم من العهدة (${prod?.name || payload.productId}): ${payload.quantity}`,
+          payload: {
+            ...payload,
+            representativeId: rep?.id || payload.representativeId,
+            representativeName: rep?.name || currentUser.fullName,
+            warehouseId: rep?.warehouseId,
+            productName: prod?.name,
+          },
+        });
+        return { success: true, queuedOffline: true };
+      }
+      return { success: false, error: err?.message || 'تعذر تسجيل التسليم من العهدة' };
+    }
+  };
+
+  const recordRepCustodyReturn = async (payload: {
+    representativeId?: string;
+    targetWarehouseId?: string;
+    productId: string;
+    quantity: number;
+    unit?: string;
+    unitFactor?: number;
+    date?: string;
+    notes?: string;
+    idempotencyKey?: string;
+  }) => {
+    const idempotencyKey = payload.idempotencyKey || generateId('CRET');
+    try {
+      const res = await apiRequest<{ ok: boolean; operation: RepCustodyOperation }>('/api/inventory/rep-custody/return', {
+        method: 'POST',
+        body: payload,
+        idempotencyKey,
+      });
+      await loadRoleScopedData();
+      return { success: true, operation: res.operation };
+    } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const localId = generateId('CRET-LOC');
+        const prod = data.products.find((p) => p.id === payload.productId);
+        const rep = (data.representatives || []).find(
+          (r) => r.id === payload.representativeId || r.userId === currentUser.id
+        );
+        const targetWh = (data.warehouses || []).find((w) => w.id === payload.targetWarehouseId) || data.warehouses[0];
+        await queueOfflineOp({
+          operationType: 'record_custody_return',
+          entityType: 'rep_custody_operation',
+          localId,
+          summaryAr: `إرجاع عهدة للمخزن (${prod?.name || payload.productId}): ${payload.quantity}`,
+          payload: {
+            ...payload,
+            representativeId: rep?.id || payload.representativeId,
+            representativeName: rep?.name || currentUser.fullName,
+            warehouseId: rep?.warehouseId,
+            targetWarehouseId: targetWh?.id || payload.targetWarehouseId,
+            targetWarehouseName: targetWh?.name,
+            productName: prod?.name,
+          },
+        });
+        return { success: true, queuedOffline: true };
+      }
+      return { success: false, error: err?.message || 'تعذر إرجاع الصنف للمخزن' };
+    }
+  };
+
+  const recordRepCustodyAdjustment = async (payload: {
+    representativeId: string;
+    productId: string;
+    operationType: 'custody_damaged' | 'custody_shortage' | 'custody_adjustment';
+    quantity: number;
+    unit?: string;
+    unitFactor?: number;
+    date?: string;
+    notes?: string;
+  }) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; operation: RepCustodyOperation }>('/api/inventory/rep-custody/adjust', {
+        method: 'POST',
+        body: payload,
+      });
+      await loadRoleScopedData();
+      return { success: true, operation: res.operation };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تسجيل تسوية العهدة' };
+    }
+  };
+
+  const getRepCustodyStatement = async (repId?: string, filters?: { dateFrom?: string; dateTo?: string }) => {
+    try {
+      const qs = new URLSearchParams();
+      if (repId) qs.set('repId', repId);
+      if (filters?.dateFrom) qs.set('dateFrom', filters.dateFrom);
+      if (filters?.dateTo) qs.set('dateTo', filters.dateTo);
+      const res = await apiRequest<{ ok: boolean; statement: RepCustodyStatementResponse }>(
+        `/api/inventory/rep-custody/statement${qs.toString() ? `?${qs.toString()}` : ''}`
+      );
+      return { success: true, statement: res.statement };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تحميل كشف عهدة المندوب' };
+    }
+  };
+
+  const getItemMovementReport = async (filters: {
+    productId?: string;
+    warehouseId?: string;
+    movementType?: string;
+    representativeId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    search?: string;
+  } = {}) => {
+    try {
+      const qs = new URLSearchParams();
+      if (filters.productId) qs.set('productId', filters.productId);
+      if (filters.warehouseId) qs.set('warehouseId', filters.warehouseId);
+      if (filters.movementType) qs.set('movementType', filters.movementType);
+      if (filters.representativeId) qs.set('representativeId', filters.representativeId);
+      if (filters.dateFrom) qs.set('dateFrom', filters.dateFrom);
+      if (filters.dateTo) qs.set('dateTo', filters.dateTo);
+      if (filters.search) qs.set('search', filters.search);
+      const res = await apiRequest<{ ok: boolean; report: ItemMovementReportResponse }>(
+        `/api/inventory/item-movement-report${qs.toString() ? `?${qs.toString()}` : ''}`
+      );
+      return { success: true, report: res.report };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تحميل تقرير حركة الصنف' };
+    }
+  };
+
+  // Customer & Representative Orders Lifecycle (Online + Persistent Sync Queue Offline)
   const createCustomerItemOrder = async (
     payload: Omit<CustomerItemOrderRequest, 'id' | 'requestNumber' | 'status' | 'createdAt'> & { idempotencyKey?: string }
   ) => {
@@ -1086,35 +2814,66 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, order: res.order };
     } catch (err: any) {
-      if (err?.status === 0) {
-        // Real network offline: queue with idempotency key and honestly inform caller (NOT fake success!)
-        const currentQ = loadOfflineOrdersQueue();
-        if (!currentQ.some((q) => q.idempotencyKey === idempotencyKey)) {
-          const nextQ = [
-            ...currentQ,
-            {
-              idempotencyKey,
-              payload: {
-                items: payload.items,
-                notes: payload.notes,
-                deliveryAddress: payload.deliveryAddress,
-                geoCoordinates: payload.geoCoordinates,
-                shopName: payload.shopName,
-                customerPhone: payload.customerPhone,
-              },
-              queuedAt: new Date().toISOString(),
-            },
-          ];
-          saveOfflineOrdersQueue(nextQ);
-          setOfflineQueue(nextQ);
-        }
+      if (isNetworkFailure(err) && currentUser) {
+        const localId = generateId('ORD-LOC');
+        const op = await queueOfflineOp({
+          operationType: 'create_order',
+          entityType: 'order',
+          localId,
+          summaryAr: `طلب أصناف محلي (${payload.customerName || 'عميل'})`,
+          payload: {
+            ...payload,
+            localId,
+            items: payload.items.map((it) => ({
+              productId: it.productId,
+              productName: it.productName,
+              unit: it.unit,
+              unitFactor: it.unitFactor,
+              unitPrice: it.unitPrice,
+              quantity: it.quantity,
+            })),
+          },
+        });
+        const estTotal = payload.items.reduce((s, it) => s + Number(it.quantity || 0) * Number(it.unitPrice || 0), 0);
+        const localOrder: CustomerItemOrderRequest = {
+          id: localId,
+          requestNumber: `LOC-${op.operationId.slice(-5)}`,
+          customerId: payload.customerId,
+          customerName: payload.customerName,
+          requesterType: payload.requesterType,
+          items: payload.items,
+          totalEstimatedAmount: estTotal,
+          notes: payload.notes,
+          deliveryAddress: payload.deliveryAddress,
+          geoCoordinates: payload.geoCoordinates,
+          shopName: payload.shopName,
+          customerPhone: payload.customerPhone,
+          status: 'pending',
+          createdAt: op.createdAt,
+          localId,
+          operationId: op.operationId,
+          syncStatus: op.status,
+        };
         return {
-          success: false,
+          success: true,
+          order: localOrder,
           queuedOffline: true,
-          error: 'لا يوجد اتصال بالسيرفر حاليًا. تم حفظ الطلب في قائمة الانتظار للإرسال التلقائي فور عودة الشبكة.',
         };
       }
       return { success: false, error: err?.message || 'تعذر إرسال الطلب للسيرفر' };
+    }
+  };
+
+  const reviewCustomerItemOrder = async (id: string, notes?: string) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; order: CustomerItemOrderRequest }>(`/api/orders/${id}/review`, {
+        method: 'POST',
+        body: { notes },
+      });
+      await loadRoleScopedData();
+      return { success: true, order: res.order };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر بدء مراجعة الطلب' };
     }
   };
 
@@ -1144,13 +2903,131 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const convertOrderToInvoice = async (orderId: string, invoicePayload: Partial<Invoice>) => {
+  const assignOrderDeliveryRep = async (orderId: string, repId: string, notes?: string) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; order: CustomerItemOrderRequest }>(`/api/orders/${orderId}/assign-rep`, {
+        method: 'POST',
+        body: { repId, notes },
+      });
+      await loadRoleScopedData();
+      return { success: true, order: res.order };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تعيين مندوب التوصيل' };
+    }
+  };
+
+  const updateOrderDeliveryStatus = async (
+    orderId: string,
+    payload: {
+      status: 'out_for_delivery' | 'delivered';
+      collectedAmount?: number;
+      cashboxId?: string;
+      paymentMethod?: 'cash' | 'bank' | 'cheque';
+      deliveryNotes?: string;
+      deliveryProof?: string;
+    }
+  ) => {
+    const idempotencyKey = generateId('DELIV');
+    try {
+      const res = await apiRequest<{ ok: boolean; order: CustomerItemOrderRequest }>(
+        `/api/orders/${orderId}/delivery-status`,
+        {
+          method: 'POST',
+          body: payload,
+          idempotencyKey,
+        }
+      );
+      await loadRoleScopedData();
+      return { success: true, order: res.order };
+    } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const ord = data.customerItemOrders?.find((o) => o.id === orderId);
+        await queueOfflineOp({
+          operationType: 'update_order_delivery',
+          entityType: 'order',
+          entityId: orderId,
+          summaryAr: `${payload.status === 'delivered' ? 'تسليم طلب' : 'بدء توصيل طلب'} (${ord?.requestNumber || orderId})`,
+          payload: { orderId, ...payload },
+        });
+        return { success: true, queuedOffline: true };
+      }
+      return { success: false, error: err?.message || 'تعذر تحديث حالة التوصيل' };
+    }
+  };
+
+  const advanceOrderStage = async (
+    orderId: string,
+    payload: {
+      status: 'preparing' | 'out_for_delivery' | 'delivered' | 'collected' | 'closed';
+      collectedAmount?: number;
+      cashboxId?: string;
+      paymentMethod?: 'cash' | 'bank' | 'cheque';
+      deliveryNotes?: string;
+      notes?: string;
+    }
+  ) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; order: CustomerItemOrderRequest }>(`/api/orders/${orderId}/stage`, {
+        method: 'POST',
+        body: payload,
+        idempotencyKey: generateId('ORDSTG'),
+      });
+      await loadRoleScopedData();
+      return { success: true, order: res.order };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تحديث مرحلة الطلب' };
+    }
+  };
+
+  const recordOrderAdvancePayment = async (
+    orderId: string,
+    payload: {
+      amount: number;
+      cashboxId: string;
+      paymentMethod?: 'cash' | 'bank' | 'cheque';
+      date?: string;
+      notes?: string;
+    }
+  ) => {
+    const idempotencyKey = generateId('ADV');
+    try {
+      const res = await apiRequest<{
+        ok: boolean;
+        order: CustomerItemOrderRequest;
+        advancePayment: OrderAdvancePayment;
+      }>(`/api/orders/${orderId}/advance-payment`, {
+        method: 'POST',
+        body: payload,
+        idempotencyKey,
+      });
+      await loadRoleScopedData();
+      return { success: true, order: res.order, advancePayment: res.advancePayment };
+    } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const ord = data.customerItemOrders?.find((o) => o.id === orderId);
+        const localId = generateId('ADV-LOC');
+        await queueOfflineOp({
+          operationType: 'record_order_advance',
+          entityType: 'order_advance',
+          entityId: orderId,
+          localId,
+          summaryAr: `دفعة مقدمة على طلب (${ord?.requestNumber || orderId}): ${payload.amount} ج.م`,
+          payload: { orderId, ...payload },
+        });
+        return { success: true, queuedOffline: true };
+      }
+      return { success: false, error: err?.message || 'تعذر تسجيل الدفعة المقدمة للطلب' };
+    }
+  };
+
+  const convertOrderToInvoice = async (orderId: string, invoicePayload: Partial<Invoice> & { paidAtInvoice?: number }) => {
     try {
       const res = await apiRequest<{ ok: boolean; order: CustomerItemOrderRequest; invoice: Invoice }>(
         `/api/orders/${orderId}/convert-to-invoice`,
         {
           method: 'POST',
           body: invoicePayload,
+          idempotencyKey: generateId('CNV'),
         }
       );
       await loadRoleScopedData();
@@ -1161,6 +3038,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateCustomerItemOrder = async (id: string, status: CustomerItemOrderRequest['status'], reason?: string) => {
+    if (status === 'under_review') return reviewCustomerItemOrder(id, reason);
     if (status === 'approved') return approveCustomerItemOrder(id, reason);
     if (status === 'rejected') return rejectCustomerItemOrder(id, reason || 'لم يتم تحديد سبب');
     return { success: false, error: 'استخدم تحويل الطلب إلى فاتورة لإكمال دورة الاعتماد' };
@@ -1218,20 +3096,29 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // Users & Settings
-  const addUser = async (userData: Omit<User, 'id' | 'createdAt'> & { password?: string; linkedCustomerId?: string }) => {
+  const addUser = async (
+    userData: Omit<User, 'id' | 'createdAt'> & {
+      password?: string;
+      linkedCustomerId?: string;
+      autoCreateCustomerProfile?: boolean;
+    }
+  ) => {
     try {
-      const res = await apiRequest<{ ok: boolean; user: User }>('/api/admin/users', {
+      const res = await apiRequest<{ ok: boolean; user: User; linkedCustomerId?: string }>('/api/admin/users', {
         method: 'POST',
         body: userData,
       });
       await loadRoleScopedData();
-      return { success: true, user: res.user };
+      return { success: true, user: res.user, linkedCustomerId: res.linkedCustomerId };
     } catch (err: any) {
       return { success: false, error: err?.message || 'تعذر إنشاء المستخدم' };
     }
   };
 
-  const updateUser = async (id: string, updates: Partial<User> & { newPassword?: string }) => {
+  const updateUser = async (
+    id: string,
+    updates: Partial<User> & { newPassword?: string; linkedCustomerId?: string; autoCreateCustomerProfile?: boolean }
+  ) => {
     try {
       await apiRequest(`/api/admin/users/${id}`, { method: 'PUT', body: updates });
       await loadRoleScopedData();
@@ -1256,32 +3143,119 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await loadRoleScopedData();
   };
 
-  const updateServerSettings = async (newSettings: Partial<ServerConnectionSettings>) => {
-    if (newSettings.apiBaseUrl !== undefined) {
+  const updateServerSettings = async (
+    newSettings: Partial<ServerConnectionSettings>,
+    options: {
+      persistToServer?: boolean;
+      applyToCurrentDevice?: boolean;
+      targetDeviceUrl?: string;
+    } = {}
+  ): Promise<{ success: boolean; error?: string }> => {
+    const prevServer = (data.serverSettings || getEmptyClientDatabaseState().serverSettings!) as ServerConnectionSettings;
+    const prevProfiles = prevServer.profiles || getStoredConnectionProfiles();
+    const nextProfiles: ConnectionProfilesConfig = newSettings.profiles
+      ? {
+          ...prevProfiles,
+          ...newSettings.profiles,
+          localNetwork: {
+            ...prevProfiles.localNetwork,
+            ...(newSettings.profiles.localNetwork || {}),
+          },
+          freeRemote: {
+            ...prevProfiles.freeRemote,
+            ...(newSettings.profiles.freeRemote || {}),
+          },
+          proRemote: {
+            ...prevProfiles.proRemote,
+            ...(newSettings.profiles.proRemote || {}),
+          },
+          cloudVps: {
+            ...prevProfiles.cloudVps,
+            ...(newSettings.profiles.cloudVps || {}),
+          },
+        }
+      : prevProfiles;
+
+    const canPersistServer =
+      options.persistToServer !== false &&
+      isAuthenticated &&
+      Boolean(currentUser && (currentUser.role === 'admin' || currentUser.permissions?.canManageSettings));
+
+    let persistedConnectionConfig = nextProfiles;
+
+    if (canPersistServer) {
+      try {
+        const res = await apiRequest<{ ok: boolean; settings?: SystemSettings }>('/api/admin/settings', {
+          method: 'PUT',
+          body: {
+            extraSettings: {
+              ...(data.settings?.extraSettings || {}),
+              connectionConfig: nextProfiles,
+            },
+          },
+        });
+        if (res.settings?.extraSettings?.connectionConfig) {
+          persistedConnectionConfig = res.settings.extraSettings.connectionConfig;
+        }
+      } catch (err: any) {
+        return {
+          success: false,
+          error: err?.message || 'تعذر حفظ إعدادات الاتصال في السيرفر المركزي',
+        };
+      }
+    }
+
+    saveStoredConnectionProfiles(persistedConnectionConfig);
+
+    if (options.applyToCurrentDevice === true) {
+      const targetUrl =
+        options.targetDeviceUrl !== undefined
+          ? options.targetDeviceUrl
+          : newSettings.apiBaseUrl ?? '';
+      setConfiguredApiBaseUrl(targetUrl);
+    } else if (options.applyToCurrentDevice === undefined && newSettings.apiBaseUrl !== undefined) {
       setConfiguredApiBaseUrl(newSettings.apiBaseUrl);
     }
-    setData((prev) => ({
-      ...prev,
-      serverSettings: { ...(prev.serverSettings as ServerConnectionSettings), ...newSettings },
-    }));
+
+    setData((prev) => {
+      const mergedExtra = {
+        ...(prev.settings?.extraSettings || {}),
+        connectionConfig: persistedConnectionConfig,
+      };
+      return {
+        ...prev,
+        settings: {
+          ...prev.settings,
+          extraSettings: mergedExtra,
+        },
+        serverSettings: {
+          ...(prev.serverSettings as ServerConnectionSettings),
+          ...newSettings,
+          profiles: persistedConnectionConfig,
+        },
+      };
+    });
+
+    return { success: true };
   };
 
-  const testServerConnection = async (): Promise<{ success: boolean; latencyMs: number; error?: string }> => {
-    const start = performance.now();
-    try {
-      const base = getConfiguredApiBaseUrl();
-      const res = await fetch(`${base}/api/health`);
-      const latencyMs = Math.round(performance.now() - start);
-      if (!res.ok) return { success: false, latencyMs, error: `استجابة غير صالحة (${res.status})` };
+  const testServerConnection = async (customUrl?: string) => {
+    const target = customUrl !== undefined ? customUrl : getConfiguredApiBaseUrl();
+    const res = await testServerHealth(target);
+    setIsServerReachable(res.ok);
+    if (res.ok) {
       setNetworkStatus('connected');
-      return { success: true, latencyMs };
-    } catch {
-      return {
-        success: false,
-        latencyMs: Math.round(performance.now() - start),
-        error: 'تعذر الاتصال بالسيرفر، تأكد من تشغيل خدمة الخادم وعنوان الشبكة.',
-      };
     }
+    return {
+      success: res.ok,
+      latencyMs: res.latencyMs,
+      mode: res.mode,
+      protocol: res.protocol,
+      httpsActive: res.httpsActive,
+      lanUrls: res.lanUrls,
+      version: res.version,
+      error: res.error,
+    };
   };
 
   const runMigration = async (executedBy?: string, isTestRun = false) => {
@@ -1327,6 +3301,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         expenseIncomeRecord: res.expenseIncomeRecord,
       };
     } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        await queueOfflineOp({
+          operationType: 'execute_cash_operation',
+          entityType: 'cash_operation',
+          summaryAr: `حركة خزينة محلية: ${payload.notes || payload.category || ''} (${payload.amount} ج.م)`,
+          payload,
+        });
+        return { success: true, queuedOffline: true };
+      }
       return { success: false, error: err?.message || 'تعذر تنفيذ العملية النقدية' };
     }
   };
@@ -1550,12 +3533,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const pendingSyncCount = syncQueue.filter((q) =>
+    q.status === 'local' || q.status === 'pending' || q.status === 'syncing' || q.status === 'failed'
+  ).length;
+  const failedSyncCount = syncQueue.filter((q) => q.status === 'failed').length;
+  const conflictsCount = syncConflicts.filter((c) => c.status === 'needs_review').length;
+  const hasTentativeLocalBalances = pendingSyncCount > 0;
+
   if (!isInitialLoaded && isAuthenticated) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-900 text-white font-['Cairo']">
+      <div className="flex items-center justify-center min-h-screen bg-slate-900 text-white font-sans">
         <div className="text-center space-y-4">
           <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-lg font-bold">جاري مزامنة بيانات نظام أولاد سليم...</p>
+          <p className="text-lg font-bold">جاري تحميل ومزامنة بيانات نظام أولاد سليم...</p>
         </div>
       </div>
     );
@@ -1566,10 +3556,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         ...data,
         auditLogs: data.auditLogs || [],
+        orderAdvancePayments: data.orderAdvancePayments || [],
+        syncConflicts,
+        syncQueue,
+        cachedMediaMap,
+        isServerReachable,
+        isSyncing,
+        pendingSyncCount,
+        failedSyncCount,
+        conflictsCount,
+        hasTentativeLocalBalances,
+        lastServerSyncAt,
         networkStatus,
         lastSyncTime,
-        pendingChangesCount: offlineQueue.length,
-        offlineOrdersCount: offlineQueue.length,
+        pendingChangesCount: pendingSyncCount + conflictsCount,
+        offlineOrdersCount: syncQueue.filter((q) => q.operationType === 'create_order' && q.status !== 'synced').length,
         lastError,
         isUsingOfflineCache,
         lastCacheTimestamp,
@@ -1580,7 +3581,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         refreshMobileNotifications,
         refreshCustomerStatement,
         getCustomerPriceHistory,
+        triggerSync,
         triggerManualSync,
+        lastSendSummary,
+        lastReceiveSummary,
+        syncSendOnly,
+        syncReceiveOnly,
+        resolveSyncConflict,
         exportBackup,
         importBackup,
         resetSystemToFresh,
@@ -1605,14 +3612,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateCustomer,
         deleteCustomer,
         linkCustomerUser,
+        repairUnlinkedCustomerUsers,
         toggleCustomerUserStatus,
         recordCustomerPayment,
         addSupplier,
         updateSupplier,
         deleteSupplier,
         recordSupplierPayment,
+        settleSupplierAdvance,
         createSalesInvoice,
         createPurchaseInvoice,
+        createSalesQuote,
+        convertQuoteToInvoice,
+        markInvoiceReviewed,
         confirmDraftInvoice,
         cancelInvoice,
         addInvoicePayment,
@@ -1633,9 +3645,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         rejectRepTransfer,
         createRepItemTransfer,
         updateRepItemTransferStatus,
+        repCustodyOperations: data.repCustodyOperations || [],
+        recordRepCustodyDelivery,
+        recordRepCustodyReturn,
+        recordRepCustodyAdjustment,
+        getRepCustodyStatement,
+        getItemMovementReport,
         createCustomerItemOrder,
+        reviewCustomerItemOrder,
         approveCustomerItemOrder,
         rejectCustomerItemOrder,
+        assignOrderDeliveryRep,
+        updateOrderDeliveryStatus,
+        advanceOrderStage,
+        recordOrderAdvancePayment,
         convertOrderToInvoice,
         updateCustomerItemOrder,
         addEmployee,

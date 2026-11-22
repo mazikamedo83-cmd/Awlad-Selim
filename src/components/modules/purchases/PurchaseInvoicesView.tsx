@@ -1,18 +1,88 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
-  Plus, Printer, Trash2, Save, CheckCircle2, XCircle
+  Plus, Printer, Trash2, Save, CheckCircle2, XCircle, PackagePlus, AlertTriangle
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useShortcuts } from '../../../context/ShortcutsContext';
-import { Invoice } from '../../../types';
+import { apiRequest } from '../../../services/api';
+import { Invoice, InlinePurchaseNewProduct, Product } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
+import { QuantityInput } from '../../common/QuantityInput';
+import { computeLineTotal } from '../../../utils/quantity';
 
 export interface PurchaseInvoicesViewProps {
   initialStatusFilter?: 'all' | 'confirmed' | 'draft' | 'cancelled';
   initialOpenNew?: boolean;
+}
+
+interface PurchaseDraftItem {
+  productId: string;
+  productName: string;
+  barcode: string;
+  unit: string;
+  unitFactor: number;
+  quantity: number;
+  unitPrice: number;
+  purchasePriceAtTime: number;
+  discount: number;
+  total: number;
+  newProduct?: InlinePurchaseNewProduct;
+}
+
+function normalizeArabicNameForDup(text: string): string {
+  return String(text || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/\s+/g, ' ');
+}
+
+function checkLocalProductDuplicates(
+  products: Product[],
+  payload: { name: string; barcode: string; code: string; category: string; baseUnit: string }
+): { exactMatch: Product | null; matchedBy: string | null; similarMatches: Product[] } {
+  const bc = payload.barcode.trim().toLowerCase();
+  const cd = payload.code.trim().toLowerCase();
+  const normName = normalizeArabicNameForDup(payload.name);
+  const normCat = normalizeArabicNameForDup(payload.category);
+  const normUnit = normalizeArabicNameForDup(payload.baseUnit);
+
+  if (bc) {
+    const byBarcode = products.find(
+      (p) =>
+        String(p.barcode || '').trim().toLowerCase() === bc ||
+        (Array.isArray(p.units) && p.units.some((u) => String(u.barcode || '').trim().toLowerCase() === bc))
+    );
+    if (byBarcode) return { exactMatch: byBarcode, matchedBy: 'barcode', similarMatches: [] };
+  }
+  if (cd) {
+    const byCode = products.find((p) => String(p.code || '').trim().toLowerCase() === cd);
+    if (byCode) return { exactMatch: byCode, matchedBy: 'code', similarMatches: [] };
+  }
+  if (normName) {
+    const exactFull = products.find(
+      (p) =>
+        normalizeArabicNameForDup(p.name) === normName &&
+        normalizeArabicNameForDup(p.category || '') === normCat &&
+        normalizeArabicNameForDup(p.baseUnit || '') === normUnit
+    );
+    if (exactFull) return { exactMatch: exactFull, matchedBy: 'name_category_unit', similarMatches: [] };
+
+    const similarMatches = products
+      .filter((p) => {
+        const pNorm = normalizeArabicNameForDup(p.name);
+        return pNorm && (pNorm === normName || pNorm.includes(normName) || normName.includes(pNorm));
+      })
+      .slice(0, 5);
+    return { exactMatch: null, matchedBy: null, similarMatches };
+  }
+  return { exactMatch: null, matchedBy: null, similarMatches: [] };
 }
 
 export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
@@ -23,7 +93,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     invoices, suppliers, products, warehouses, cashboxes,
     settings, createPurchaseInvoice, cancelInvoice
   } = useData();
-  const { registerHandler, getShortcutLabelForAction } = useShortcuts();
+  const { registerHandler } = useShortcuts();
 
   const productSearchRef = useRef<HTMLInputElement | null>(null);
   const qtyInputRef = useRef<HTMLInputElement | null>(null);
@@ -37,29 +107,72 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   const [cancelTarget, setCancelTarget] = useState<Invoice | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
 
+  // New Purchase Form state (numeric inputs default to '' so user types explicitly)
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string>(suppliers[0]?.id || '');
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>(warehouses[0]?.id || '');
+  const [selectedCashboxId, setSelectedCashboxId] = useState<string>(cashboxes[0]?.id || '');
+  const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [paymentType, setPaymentType] = useState<'cash' | 'credit' | 'partial'>('partial');
+  const [paidAmount, setPaidAmount] = useState<number | ''>('');
+  const [discountTotal, setDiscountTotal] = useState<number | ''>('');
+  const [notes, setNotes] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Items
+  const [items, setItems] = useState<PurchaseDraftItem[]>([]);
+
+  // Existing item input (blank defaults)
+  const [itemProdId, setItemProdId] = useState('');
+  const [itemQty, setItemQty] = useState<number | ''>('');
+  const [itemPrice, setItemPrice] = useState<number | ''>('');
+
+  // Inline new product creation state
+  const [showInlineNewProduct, setShowInlineNewProduct] = useState(false);
+  const [newProdName, setNewProdName] = useState('');
+  const [newProdBarcode, setNewProdBarcode] = useState('');
+  const [newProdCode, setNewProdCode] = useState('');
+  const [newProdCategory, setNewProdCategory] = useState('أصناف عامة');
+  const [newProdBaseUnit, setNewProdBaseUnit] = useState('قطعة');
+  const [newProdQty, setNewProdQty] = useState<number | ''>('');
+  const [newProdPurchasePrice, setNewProdPurchasePrice] = useState<number | ''>('');
+  const [newProdSellingPrice, setNewProdSellingPrice] = useState<number | ''>('');
+  const [duplicateCheckState, setDuplicateCheckState] = useState<{
+    checking: boolean;
+    exactMatch: Product | null;
+    matchedBy: string | null;
+    similarMatches: Product[];
+  }>({ checking: false, exactMatch: null, matchedBy: null, similarMatches: [] });
+
+  const resetPurchaseModalForm = useCallback(() => {
+    setItems([]);
+    setItemProdId('');
+    setItemQty('');
+    setItemPrice('');
+    setPaidAmount('');
+    setDiscountTotal('');
+    setNotes('');
+    setError(null);
+    setShowInlineNewProduct(false);
+    setNewProdName('');
+    setNewProdBarcode('');
+    setNewProdCode('');
+    setNewProdQty('');
+    setNewProdPurchasePrice('');
+    setNewProdSellingPrice('');
+    setDuplicateCheckState({ checking: false, exactMatch: null, matchedBy: null, similarMatches: [] });
+  }, []);
+
   useEffect(() => {
     setStatusFilter(initialStatusFilter);
   }, [initialStatusFilter]);
 
   useEffect(() => {
     if (initialOpenNew) {
-      setItems([]);
-      setError(null);
+      resetPurchaseModalForm();
       setIsNewModalOpen(true);
     }
-  }, [initialOpenNew]);
-
-  // New Purchase Form state
-  const [selectedSupplierId, setSelectedSupplierId] = useState<string>(suppliers[0]?.id || '');
-  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>(warehouses[0]?.id || '');
-  const [selectedCashboxId, setSelectedCashboxId] = useState<string>(cashboxes[0]?.id || '');
-  const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [paymentType, setPaymentType] = useState<'cash' | 'credit' | 'partial'>('partial');
-  const [paidAmount, setPaidAmount] = useState<number>(0);
-  const [discountTotal, setDiscountTotal] = useState<number>(0);
-  const [notes, setNotes] = useState<string>('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  }, [initialOpenNew, resetPurchaseModalForm]);
 
   // Sync defaults when lists load asynchronously
   useEffect(() => {
@@ -80,24 +193,66 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     }
   }, [cashboxes, selectedCashboxId]);
 
-  // Items
-  const [items, setItems] = useState<Array<{
-    productId: string;
-    productName: string;
-    barcode: string;
-    unit: string;
-    unitFactor: number;
-    quantity: number;
-    unitPrice: number;
-    purchasePriceAtTime: number;
-    discount: number;
-    total: number;
-  }>>([]);
+  // Debounced duplicate check while typing an inline new product
+  useEffect(() => {
+    if (!showInlineNewProduct) return;
+    const hasQuery = Boolean(newProdName.trim() || newProdBarcode.trim() || newProdCode.trim());
+    if (!hasQuery) {
+      setDuplicateCheckState({ checking: false, exactMatch: null, matchedBy: null, similarMatches: [] });
+      return;
+    }
 
-  // Item input
-  const [itemProdId, setItemProdId] = useState('');
-  const [itemQty, setItemQty] = useState(1);
-  const [itemPrice, setItemPrice] = useState(0);
+    let cancelled = false;
+    setDuplicateCheckState((prev) => ({ ...prev, checking: true }));
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await apiRequest<{
+          ok: boolean;
+          exactMatch?: Product | null;
+          matchedBy?: string | null;
+          similarMatches?: Product[];
+        }>('/api/products/check-duplicate', {
+          method: 'POST',
+          body: {
+            name: newProdName.trim(),
+            barcode: newProdBarcode.trim(),
+            code: newProdCode.trim(),
+            category: newProdCategory.trim(),
+            baseUnit: newProdBaseUnit.trim(),
+          },
+        });
+        if (!cancelled) {
+          setDuplicateCheckState({
+            checking: false,
+            exactMatch: res?.exactMatch || null,
+            matchedBy: res?.matchedBy || null,
+            similarMatches: Array.isArray(res?.similarMatches) ? res.similarMatches : [],
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          const localRes = checkLocalProductDuplicates(products, {
+            name: newProdName,
+            barcode: newProdBarcode,
+            code: newProdCode,
+            category: newProdCategory,
+            baseUnit: newProdBaseUnit,
+          });
+          setDuplicateCheckState({
+            checking: false,
+            exactMatch: localRes.exactMatch,
+            matchedBy: localRes.matchedBy,
+            similarMatches: localRes.similarMatches,
+          });
+        }
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [showInlineNewProduct, newProdName, newProdBarcode, newProdCode, newProdCategory, newProdBaseUnit, products]);
 
   const purchaseInvoices = useMemo(() => {
     return invoices.filter(i => i.type === 'purchase');
@@ -117,9 +272,22 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     setItemProdId(prodId);
     const p = products.find(prod => prod.id === prodId);
     if (p) {
-      setItemPrice(p.purchasePrice);
-      setItemQty(1);
+      setItemPrice(p.purchasePrice > 0 ? p.purchasePrice : '');
     }
+  };
+
+  const handleUseExistingDuplicateProduct = (prod: Product) => {
+    setShowInlineNewProduct(false);
+    setItemProdId(prod.id);
+    setItemPrice(prod.purchasePrice > 0 ? prod.purchasePrice : '');
+    if (newProdQty !== '' && Number(newProdQty) > 0) {
+      setItemQty(Number(newProdQty));
+    }
+    setError(null);
+    window.setTimeout(() => {
+      qtyInputRef.current?.focus();
+      qtyInputRef.current?.select();
+    }, 30);
   };
 
   const handleAddItem = () => {
@@ -128,11 +296,13 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       setError('يرجى اختيار الصنف أولاً');
       return;
     }
-    if (itemQty <= 0) {
+    const qtyNum = Number(itemQty || 0);
+    if (qtyNum <= 0) {
       setError('يرجى إدخال كمية صحيحة أكبر من صفر');
       return;
     }
-    const total = itemQty * itemPrice;
+    const priceNum = Math.max(0, Number(itemPrice || 0));
+    const total = computeLineTotal(qtyNum, priceNum);
 
     setItems(prev => [
       ...prev,
@@ -142,37 +312,125 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         barcode: prod.barcode,
         unit: prod.baseUnit,
         unitFactor: 1,
-        quantity: itemQty,
-        unitPrice: itemPrice,
-        purchasePriceAtTime: itemPrice,
+        quantity: qtyNum,
+        unitPrice: priceNum,
+        purchasePriceAtTime: priceNum,
         discount: 0,
         total,
       }
     ]);
     setItemProdId('');
-    setItemQty(1);
-    setItemPrice(0);
+    setItemQty('');
+    setItemPrice('');
     setError(null);
     window.setTimeout(() => {
       productSearchRef.current?.focus();
     }, 30);
   };
 
+  const handleAddInlineNewProductItem = () => {
+    const cleanName = newProdName.trim();
+    if (!cleanName) {
+      setError('يرجى إدخال اسم الصنف الجديد');
+      return;
+    }
+    const qtyNum = Number(newProdQty || 0);
+    if (qtyNum <= 0) {
+      setError('يرجى إدخال كمية الشراء للصنف الجديد أكبر من صفر');
+      return;
+    }
+    const buyPrice = Math.max(0, Number(newProdPurchasePrice || 0));
+    const sellPrice = newProdSellingPrice === '' ? buyPrice : Math.max(0, Number(newProdSellingPrice || 0));
+
+    // Prevent exact duplicate creation by auto-binding to the existing product
+    const exact = duplicateCheckState.exactMatch;
+    if (exact) {
+      const total = computeLineTotal(qtyNum, buyPrice || exact.purchasePrice || 0);
+      const effectiveBuy = buyPrice || exact.purchasePrice || 0;
+      setItems((prev) => [
+        ...prev,
+        {
+          productId: exact.id,
+          productName: exact.name,
+          barcode: exact.barcode || '',
+          unit: exact.baseUnit,
+          unitFactor: 1,
+          quantity: qtyNum,
+          unitPrice: effectiveBuy,
+          purchasePriceAtTime: effectiveBuy,
+          discount: 0,
+          total,
+        },
+      ]);
+      setActionMessage({
+        type: 'success',
+        text: `تم ربط البند بالصنف المسجل مسبقاً (${exact.name}) لمنع التكرار في المخزن.`,
+      });
+    } else {
+      const cleanCategory = newProdCategory.trim() || 'أصناف عامة';
+      const cleanUnit = newProdBaseUnit.trim() || 'قطعة';
+      const cleanBarcode = newProdBarcode.trim();
+      const cleanCode = newProdCode.trim();
+      const total = computeLineTotal(qtyNum, buyPrice);
+      setItems((prev) => [
+        ...prev,
+        {
+          productId: '',
+          productName: cleanName,
+          barcode: cleanBarcode || cleanCode,
+          unit: cleanUnit,
+          unitFactor: 1,
+          quantity: qtyNum,
+          unitPrice: buyPrice,
+          purchasePriceAtTime: buyPrice,
+          discount: 0,
+          total,
+          newProduct: {
+            name: cleanName,
+            barcode: cleanBarcode || undefined,
+            code: cleanCode || undefined,
+            category: cleanCategory,
+            baseUnit: cleanUnit,
+            purchasePrice: buyPrice,
+            sellingPrice: sellPrice,
+          },
+        },
+      ]);
+    }
+
+    setNewProdName('');
+    setNewProdBarcode('');
+    setNewProdCode('');
+    setNewProdQty('');
+    setNewProdPurchasePrice('');
+    setNewProdSellingPrice('');
+    setDuplicateCheckState({ checking: false, exactMatch: null, matchedBy: null, similarMatches: [] });
+    setShowInlineNewProduct(false);
+    setError(null);
+  };
+
   const subtotal = useMemo(() => items.reduce((a, b) => a + b.total, 0), [items]);
-  const grandTotal = useMemo(() => Math.max(0, subtotal - discountTotal), [subtotal, discountTotal]);
+  const numericDiscount = useMemo(() => Math.max(0, Number(discountTotal || 0)), [discountTotal]);
+  const grandTotal = useMemo(() => Math.max(0, subtotal - numericDiscount), [subtotal, numericDiscount]);
 
   useEffect(() => {
     if (paymentType === 'cash') {
-      setPaidAmount(grandTotal);
+      setPaidAmount(grandTotal > 0 ? grandTotal : '');
     } else if (paymentType === 'credit') {
-      setPaidAmount(0);
+      setPaidAmount('');
     }
   }, [paymentType, grandTotal]);
 
+  const numericPaid = useMemo(() => {
+    if (paymentType === 'cash') return grandTotal;
+    if (paymentType === 'credit') return 0;
+    return Math.min(grandTotal, Math.max(0, Number(paidAmount || 0)));
+  }, [grandTotal, paidAmount, paymentType]);
+
   const remainingAmount = useMemo(() => {
     if (paymentType === 'cash') return 0;
-    return Math.max(0, grandTotal - paidAmount);
-  }, [grandTotal, paidAmount, paymentType]);
+    return Math.max(0, grandTotal - numericPaid);
+  }, [grandTotal, numericPaid, paymentType]);
 
   const handlePrint = useCallback((inv: Invoice) => {
     setPrintData({
@@ -209,7 +467,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     try {
       const supp = suppliers.find(s => s.id === selectedSupplierId);
       const wh = warehouses.find(w => w.id === selectedWarehouseId);
-      const rawPaid = Number(paidAmount) || 0;
+      const rawPaid = Number(paidAmount || 0);
       if (paymentType === 'partial' && rawPaid < 0) {
         setError('المبلغ المدفوع لا يمكن أن يكون سالباً');
         return;
@@ -225,7 +483,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         warehouseName: wh?.name || 'المستودع الرئيسي',
         items,
         subtotal,
-        discountTotal,
+        discountTotal: numericDiscount,
         taxTotal: 0,
         grandTotal,
         paidAmount: effectivePaid,
@@ -239,12 +497,10 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
       if (res.success) {
         setIsNewModalOpen(false);
-        setItems([]);
-        setDiscountTotal(0);
-        setNotes('');
+        resetPurchaseModalForm();
         setActionMessage({
           type: 'success',
-          text: `تم حفظ فاتورة المشتريات رقم (${res.invoice?.invoiceNumber || ''}) وتحديث المخزون بنجاح.`,
+          text: `تم حفظ فاتورة المشتريات رقم (${res.invoice?.invoiceNumber || ''}) وتحديث المخزون والأصناف بنجاح.`,
         });
         if (shouldPrint && res.invoice) {
           handlePrint(res.invoice);
@@ -257,8 +513,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     }
   }, [
     isSubmitting, items, suppliers, selectedSupplierId, warehouses, selectedWarehouseId, paymentType, grandTotal,
-    paidAmount, createPurchaseInvoice, invoiceDate, subtotal, discountTotal, selectedCashboxId,
-    notes, handlePrint
+    paidAmount, createPurchaseInvoice, invoiceDate, subtotal, numericDiscount, selectedCashboxId,
+    notes, handlePrint, resetPurchaseModalForm
   ]);
 
   const submitPurchaseRef = useRef(handleSubmitPurchase);
@@ -304,8 +560,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
         <button
           onClick={() => {
-            setItems([]);
-            setError(null);
+            resetPurchaseModalForm();
             setIsNewModalOpen(true);
           }}
           className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-md shadow-blue-900/20 active:scale-95 transition-all cursor-pointer"
@@ -474,72 +729,255 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             </div>
           </div>
 
-          {/* Add product to purchase using instant search */}
-          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end bg-blue-50/60 p-3 rounded-xl border border-blue-200">
-            <div className="sm:col-span-6">
-              <label className="block font-bold text-slate-700 mb-1">ابحث واختر السلعة المشتراة:</label>
-              <ProductSearchSelect
-                products={products}
-                selectedProductId={itemProdId}
-                warehouseId={selectedWarehouseId}
-                warehouses={warehouses}
-                priceMode="purchase"
-                currency={settings.currency}
-                inputRef={productSearchRef}
-                placeholder={`ابحث بالاسم أو الكود أو الباركود (${getShortcutLabelForAction('action:focus_product_search') || 'F3'})...`}
-                onSelect={(prod) => handleProductPick(prod.id)}
-                onAfterSelect={() => {
-                  qtyInputRef.current?.focus();
-                  qtyInputRef.current?.select();
-                }}
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block font-bold text-slate-700 mb-1">الكمية:</label>
-              <input
-                ref={qtyInputRef}
-                type="number"
-                min="1"
-                value={itemQty}
-                onChange={(e) => setItemQty(Number(e.target.value))}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAddItem();
-                  }
-                }}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-center font-mono font-bold"
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block font-bold text-slate-700 mb-1">سعر الشراء:</label>
-              <input
-                type="number"
-                step="0.5"
-                value={itemPrice}
-                onChange={(e) => setItemPrice(Number(e.target.value))}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAddItem();
-                  }
-                }}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-center font-mono font-bold"
-              />
-            </div>
-            <div className="sm:col-span-2">
+          {/* Add product to purchase using instant search + Inline New Product Creation */}
+          <div className="bg-blue-50/60 p-3 rounded-xl border border-blue-200 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-black text-slate-800">إضافة أصناف لفاتورة الشراء:</span>
               <button
                 type="button"
-                onClick={handleAddItem}
-                className="w-full py-2.5 px-3 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-bold cursor-pointer"
+                onClick={() => {
+                  setShowInlineNewProduct((prev) => !prev);
+                  setError(null);
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold border transition-colors cursor-pointer ${
+                  showInlineNewProduct
+                    ? 'bg-slate-800 text-white border-slate-800'
+                    : 'bg-white text-blue-900 border-blue-300 hover:bg-blue-50'
+                }`}
               >
-                + إضافة
+                <PackagePlus className="w-3.5 h-3.5" />
+                <span>{showInlineNewProduct ? 'إغلاق إنشاء الصنف الجديد' : 'إنشاء صنف جديد داخل الفاتورة'}</span>
               </button>
             </div>
+
+            {!showInlineNewProduct ? (
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                <div className="sm:col-span-6">
+                  <label className="block font-bold text-slate-700 mb-1">ابحث واختر السلعة المشتراة:</label>
+                  <ProductSearchSelect
+                    products={products}
+                    selectedProductId={itemProdId}
+                    warehouseId={selectedWarehouseId}
+                    warehouses={warehouses}
+                    priceMode="purchase"
+                    currency={settings.currency}
+                    inputRef={productSearchRef}
+                    placeholder="ابحث بالاسم أو الكود أو الباركود..."
+                    onSelect={(prod) => handleProductPick(prod.id)}
+                    onAfterSelect={() => {
+                      qtyInputRef.current?.focus();
+                      qtyInputRef.current?.select();
+                    }}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block font-bold text-slate-700 mb-1">الكمية:</label>
+                  <QuantityInput
+                    inputRef={qtyInputRef}
+                    allowDecimals
+                    min={0.001}
+                    value={itemQty}
+                    placeholder="الكمية"
+                    onChange={setItemQty}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddItem();
+                      }
+                    }}
+                    ariaLabel="كمية الشراء"
+                    inputClassName="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-center font-mono font-bold outline-hidden focus:border-blue-700"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block font-bold text-slate-700 mb-1">سعر الشراء:</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    placeholder="السعر"
+                    value={itemPrice}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setItemPrice(raw === '' ? '' : Number(raw));
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddItem();
+                      }
+                    }}
+                    className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-center font-mono font-bold"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <button
+                    type="button"
+                    onClick={handleAddItem}
+                    className="w-full py-2.5 px-3 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-bold cursor-pointer"
+                  >
+                    + إضافة
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white p-3.5 rounded-xl border border-blue-200 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div className="sm:col-span-2">
+                    <label className="block font-bold text-slate-700 mb-1">اسم الصنف الجديد: *</label>
+                    <input
+                      type="text"
+                      value={newProdName}
+                      onChange={(e) => setNewProdName(e.target.value)}
+                      placeholder="مثال: سكر الضحى 1 كجم"
+                      className="w-full border border-slate-300 rounded-xl p-2 font-bold focus:border-blue-600 outline-hidden"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">الباركود (اختياري):</label>
+                    <input
+                      type="text"
+                      value={newProdBarcode}
+                      onChange={(e) => setNewProdBarcode(e.target.value)}
+                      placeholder="622..."
+                      className="w-full border border-slate-300 rounded-xl p-2 font-mono focus:border-blue-600 outline-hidden"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">الكود (اختياري):</label>
+                    <input
+                      type="text"
+                      value={newProdCode}
+                      onChange={(e) => setNewProdCode(e.target.value)}
+                      placeholder="PRD-..."
+                      className="w-full border border-slate-300 rounded-xl p-2 font-mono focus:border-blue-600 outline-hidden"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">التصنيف:</label>
+                    <input
+                      type="text"
+                      value={newProdCategory}
+                      onChange={(e) => setNewProdCategory(e.target.value)}
+                      className="w-full border border-slate-300 rounded-xl p-2 font-semibold focus:border-blue-600 outline-hidden"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">الوحدة الأساسية:</label>
+                    <input
+                      type="text"
+                      value={newProdBaseUnit}
+                      onChange={(e) => setNewProdBaseUnit(e.target.value)}
+                      placeholder="قطعة / كرتونة / كجم"
+                      className="w-full border border-slate-300 rounded-xl p-2 font-semibold focus:border-blue-600 outline-hidden"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">الكمية المشتراة: *</label>
+                    <QuantityInput
+                      allowDecimals
+                      min={0.001}
+                      value={newProdQty}
+                      placeholder="الكمية"
+                      onChange={setNewProdQty}
+                      ariaLabel="كمية الصنف الجديد"
+                      inputClassName="w-full bg-white border border-slate-300 rounded-xl p-2 text-center font-mono font-bold outline-hidden focus:border-blue-700"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">سعر الشراء: *</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      placeholder="سعر الشراء"
+                      value={newProdPurchasePrice}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setNewProdPurchasePrice(raw === '' ? '' : Number(raw));
+                      }}
+                      className="w-full border border-slate-300 rounded-xl p-2 text-center font-mono font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">سعر البيع المقترح:</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      placeholder="سعر البيع"
+                      value={newProdSellingPrice}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setNewProdSellingPrice(raw === '' ? '' : Number(raw));
+                      }}
+                      className="w-full border border-slate-300 rounded-xl p-2 text-center font-mono font-bold"
+                    />
+                  </div>
+                </div>
+
+                {/* Live Duplicate Check Alerts */}
+                {duplicateCheckState.exactMatch && (
+                  <div className="p-2.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-950 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 font-bold">
+                      <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+                      <span>
+                        هذا الصنف مسجل مسبقاً ({duplicateCheckState.exactMatch.name} — {duplicateCheckState.exactMatch.code})! لن يُنشأ صنف مكرر.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleUseExistingDuplicateProduct(duplicateCheckState.exactMatch!)}
+                      className="px-3 py-1 rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-bold cursor-pointer"
+                    >
+                      استخدام الصنف الموجود
+                    </button>
+                  </div>
+                )}
+
+                {!duplicateCheckState.exactMatch && duplicateCheckState.similarMatches.length > 0 && (
+                  <div className="p-2.5 rounded-xl border border-blue-200 bg-blue-50/70 text-blue-950 space-y-1.5">
+                    <div className="font-bold flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 text-blue-700" />
+                      <span>توجد أصناف متشابهة بالاسم (اختر منها إن كان نفس الصنف):</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {duplicateCheckState.similarMatches.map((sim) => (
+                        <button
+                          key={sim.id}
+                          type="button"
+                          onClick={() => handleUseExistingDuplicateProduct(sim)}
+                          className="px-2.5 py-1 rounded-lg bg-white border border-blue-300 hover:bg-blue-100 text-blue-900 font-bold text-[11px] cursor-pointer"
+                        >
+                          {sim.name} ({sim.baseUnit}) — {sim.purchasePrice} {settings.currency}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowInlineNewProduct(false)}
+                    className="px-3 py-2 rounded-xl border border-slate-300 font-bold text-slate-600 cursor-pointer"
+                  >
+                    إلغاء
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAddInlineNewProductItem}
+                    className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
+                  >
+                    {duplicateCheckState.exactMatch ? 'ربط بالصنف الموجود وإضافته' : '+ إضافة الصنف للفاتورة'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Items list */}
-          <div className="border rounded-xl overflow-hidden">
+          <div className="border rounded-xl awlad-table-scroll">
             <table className="w-full text-right">
               <thead>
                 <tr className="bg-slate-100 font-bold border-b">
@@ -554,27 +992,38 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 {items.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="p-6 text-center text-slate-400">
-                      لم تتم إضافة أصناف بعد. ابحث عن صنف أعلاه لإضافته.
+                      لم تتم إضافة أصناف بعد. ابحث عن صنف أعلاه أو أنشئ صنفاً جديداً لإضافته.
                     </td>
                   </tr>
                 ) : (
                   items.map((it, i) => (
                     <tr key={i}>
-                      <td className="p-2 font-bold">{it.productName}</td>
+                      <td className="p-2 font-bold">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>{it.productName}</span>
+                          {it.newProduct && (
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold">
+                              صنف جديد ({it.unit})
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="p-2 text-center">
-                        <input
-                          type="number"
-                          min="1"
+                        <QuantityInput
+                          allowDecimals
+                          min={0.001}
                           value={it.quantity}
-                          onChange={(e) => {
-                            const q = Math.max(1, Number(e.target.value));
+                          onChange={(q) => {
                             setItems((prev) =>
                               prev.map((row, idx) =>
-                                idx === i ? { ...row, quantity: q, total: q * row.unitPrice } : row
+                                idx === i
+                                  ? { ...row, quantity: q, total: computeLineTotal(q, row.unitPrice, row.discount || 0) }
+                                  : row
                               )
                             );
                           }}
-                          className="w-20 border rounded-lg px-2 py-1 text-center font-mono font-bold"
+                          ariaLabel={`كمية ${it.productName}`}
+                          inputClassName="w-20 border rounded-lg px-2 py-1 text-center font-mono font-bold outline-hidden focus:border-blue-700"
                         />
                       </td>
                       <td className="p-2 text-center">
@@ -587,7 +1036,15 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                             const p = Math.max(0, Number(e.target.value));
                             setItems((prev) =>
                               prev.map((row, idx) =>
-                                idx === i ? { ...row, unitPrice: p, purchasePriceAtTime: p, total: row.quantity * p } : row
+                                idx === i
+                                  ? {
+                                      ...row,
+                                      unitPrice: p,
+                                      purchasePriceAtTime: p,
+                                      total: row.quantity * p,
+                                      newProduct: row.newProduct ? { ...row.newProduct, purchasePrice: p } : undefined,
+                                    }
+                                  : row
                               )
                             );
                           }}
@@ -663,8 +1120,12 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     type="number"
                     min="0"
                     max={grandTotal}
+                    placeholder="أدخل المبلغ المدفوع"
                     value={paidAmount}
-                    onChange={(e) => setPaidAmount(Number(e.target.value))}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setPaidAmount(raw === '' ? '' : Number(raw));
+                    }}
                     className="w-full bg-white border rounded-xl p-2 font-mono font-bold"
                   />
                 </div>
@@ -692,8 +1153,12 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 <input
                   type="number"
                   min="0"
+                  placeholder="0"
                   value={discountTotal}
-                  onChange={(e) => setDiscountTotal(Math.max(0, Number(e.target.value)))}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setDiscountTotal(raw === '' ? '' : Math.max(0, Number(raw)));
+                  }}
                   className="w-24 border rounded-lg px-2 py-1 text-center font-mono text-red-600"
                 />
               </div>
@@ -703,7 +1168,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               </div>
               <div className="flex justify-between text-emerald-700">
                 <span>المدفوع:</span>
-                <span>{paidAmount.toLocaleString()}</span>
+                <span>{numericPaid.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-red-700 border-t pt-1">
                 <span>المتبقي للمورد:</span>
@@ -729,11 +1194,6 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               >
                 <Save className="w-4 h-4" />
                 <span>{isSubmitting ? 'جاري الحفظ...' : 'حفظ الفاتورة فقط'}</span>
-                {getShortcutLabelForAction('action:save_invoice') && (
-                  <kbd dir="ltr" className="text-[10px] font-mono bg-black/20 px-1.5 py-0.5 rounded">
-                    {getShortcutLabelForAction('action:save_invoice')}
-                  </kbd>
-                )}
               </button>
               <button
                 type="button"

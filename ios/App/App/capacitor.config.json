@@ -3,10 +3,12 @@
 	"appName": "AWLAD SELIM",
 	"webDir": "dist",
 	"server": {
-		"androidScheme": "https",
-		"cleartext": true
+		"androidScheme": "https"
 	},
 	"plugins": {
+		"CapacitorHttp": {
+			"enabled": true
+		},
 		"SplashScreen": {
 			"launchShowDuration": 1500,
 			"backgroundColor": "#0f172a",
@@ -16,6 +18,11 @@
 		"LocalNotifications": {
 			"smallIcon": "ic_stat_icon_config_sample",
 			"iconColor": "#1e3a8a"
+		},
+		"SystemBars": {
+			"insetsHandling": "css",
+			"initialViewportFitValueHint": "cover",
+			"style": "DARK"
 		}
 	},
 	"packageClassList": [

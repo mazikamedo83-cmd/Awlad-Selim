@@ -15,7 +15,7 @@ import { exportToExcel } from '../../common/ExcelExporter';
 export const SuppliersView: React.FC = () => {
   const {
     suppliers, invoices, invoiceReturns, financialTransactions, cashboxes, settings,
-    addSupplier, updateSupplier, deleteSupplier, recordSupplierPayment
+    addSupplier, updateSupplier, deleteSupplier, recordSupplierPayment, settleSupplierAdvance
   } = useData();
   const { currentUser, hasPermission } = useAuth();
 
@@ -40,6 +40,15 @@ export const SuppliersView: React.FC = () => {
   const [paymentNotes, setPaymentNotes] = useState<string>('');
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+
+  // Advance settlement modal state
+  const [settleSupplier, setSettleSupplier] = useState<Supplier | null>(null);
+  const [settleInvoiceId, setSettleInvoiceId] = useState<string>('');
+  const [settleAmount, setSettleAmount] = useState<number>(0);
+  const [settleNotes, setSettleNotes] = useState<string>('');
+  const [settleError, setSettleError] = useState<string | null>(null);
+  const [isConfirmingSettle, setIsConfirmingSettle] = useState(false);
+  const [isSettlingAdvance, setIsSettlingAdvance] = useState(false);
 
   // Print state
   const [printData, setPrintData] = useState<PrintData | null>(null);
@@ -211,6 +220,51 @@ export const SuppliersView: React.FC = () => {
     }
   };
 
+  const getSupplierAdvanceInfo = (supp: Supplier) => {
+    const openInvoices = invoices.filter(
+      (i) => i.supplierId === supp.id && i.type === 'purchase' && i.status === 'confirmed' && Number(i.remainingAmount || 0) > 0
+    );
+    const openInvoicesRemaining = openInvoices.reduce((s, i) => s + Number(i.remainingAmount || 0), 0);
+    const availableAdvance = Math.max(0, Number((openInvoicesRemaining - Number(supp.currentBalance || 0)).toFixed(2)));
+    return { openInvoices, openInvoicesRemaining, availableAdvance };
+  };
+
+  const handleOpenSettleModal = (supp: Supplier) => {
+    const { openInvoices, availableAdvance } = getSupplierAdvanceInfo(supp);
+    const firstInv = openInvoices[0];
+    setSettleError(null);
+    setSettleNotes('تسوية دفعة مقدمة على فاتورة المشتريات');
+    setSettleSupplier(supp);
+    setSettleInvoiceId(firstInv?.id || '');
+    setSettleAmount(firstInv ? Math.min(availableAdvance, Number(firstInv.remainingAmount || 0)) : 0);
+  };
+
+  const handleConfirmSettleAdvance = async () => {
+    if (!settleSupplier || !settleInvoiceId || settleAmount <= 0 || isSettlingAdvance) return;
+    setIsSettlingAdvance(true);
+    setSettleError(null);
+    try {
+      const res = await settleSupplierAdvance(settleSupplier.id, {
+        invoiceId: settleInvoiceId,
+        amount: settleAmount,
+        notes: settleNotes,
+      });
+      if (res.success) {
+        setStatusBanner({
+          type: 'success',
+          text: `تمت تسوية دفعة مقدمة بمبلغ ${settleAmount.toLocaleString()} ${settings.currency} لصالح المورد (${settleSupplier.name}) دون حركة خزينة.`,
+        });
+        setIsConfirmingSettle(false);
+        setSettleSupplier(null);
+      } else {
+        setIsConfirmingSettle(false);
+        setSettleError(res.error || 'تعذر تنفيذ تسوية الدفعة المقدمة');
+      }
+    } finally {
+      setIsSettlingAdvance(false);
+    }
+  };
+
   // Supplier chronological ledger (opening + purchases + returns + payments)
   const supplierMovements = useMemo(() => {
     if (!statementSupplier) return [];
@@ -360,70 +414,96 @@ export const SuppliersView: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {filteredSuppliers.map(supp => (
-            <div key={supp.id} className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 text-xs space-y-3">
-              <div className="flex items-start justify-between">
-                <div>
-                  <span className="font-mono text-[11px] font-bold text-indigo-900 bg-indigo-50 px-2 py-0.5 rounded-md">
-                    {supp.code}
-                  </span>
-                  <h3 className="text-sm font-black text-slate-900 mt-1">{supp.name}</h3>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => handleOpenEdit(supp)}
-                    className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded-lg cursor-pointer"
-                    title="تعديل بيانات المورد"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </button>
-                  {(currentUser?.role === 'admin' || hasPermission('canDelete')) && (
+          {filteredSuppliers.map(supp => {
+            const { openInvoices, availableAdvance } = getSupplierAdvanceInfo(supp);
+            return (
+              <div key={supp.id} className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 text-xs space-y-3">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <span className="font-mono text-[11px] font-bold text-indigo-900 bg-indigo-50 px-2 py-0.5 rounded-md">
+                      {supp.code}
+                    </span>
+                    <h3 className="text-sm font-black text-slate-900 mt-1">{supp.name}</h3>
+                  </div>
+                  <div className="flex items-center gap-1">
                     <button
-                      onClick={() => setSupplierToDelete(supp)}
-                      className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-lg cursor-pointer"
-                      title="حذف المورد"
+                      onClick={() => handleOpenEdit(supp)}
+                      className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded-lg cursor-pointer"
+                      title="تعديل بيانات المورد"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Edit className="w-4 h-4" />
                     </button>
+                    {(currentUser?.role === 'admin' || hasPermission('canDelete')) && (
+                      <button
+                        onClick={() => setSupplierToDelete(supp)}
+                        className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-lg cursor-pointer"
+                        title="حذف المورد"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-1 text-slate-600">
+                  <p className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-400" /> {supp.phone}</p>
+                  <p className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-slate-400" /> {supp.address}</p>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-50 border space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-600">
+                      {supp.currentBalance < 0 ? 'دفعة مقدمة للمورد / رصيد لنا:' : 'مستحقات المورد:'}
+                    </span>
+                    <span className={`font-mono font-black text-sm tabular-nums ${supp.currentBalance < 0 ? 'text-emerald-700' : 'text-purple-800'}`}>
+                      {supp.currentBalance < 0
+                        ? `دفعة مقدمة للمورد / رصيد لنا (${Math.abs(supp.currentBalance).toLocaleString()} ${settings.currency})`
+                        : `${supp.currentBalance.toLocaleString()} ${settings.currency}`}
+                    </span>
+                  </div>
+                  {availableAdvance > 0 && openInvoices.length > 0 && (
+                    <div className="flex items-center justify-between text-[11px] text-emerald-700 font-bold pt-1 border-t border-slate-200">
+                      <span>رصيد دفعة مقدمة متاح للتسوية:</span>
+                      <span className="font-mono">{availableAdvance.toLocaleString()} {settings.currency}</span>
+                    </div>
                   )}
                 </div>
-              </div>
 
-              <div className="space-y-1 text-slate-600">
-                <p className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-400" /> {supp.phone}</p>
-                <p className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-slate-400" /> {supp.address}</p>
-              </div>
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t">
+                  <button
+                    onClick={() => {
+                      setPaymentError(null);
+                      setPaymentNotes('');
+                      setPaymentSupplier(supp);
+                      setPaymentAmount(supp.currentBalance > 0 ? supp.currentBalance : 0);
+                    }}
+                    className="flex items-center justify-center gap-1.5 py-2 px-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold cursor-pointer"
+                  >
+                    <ArrowUpRight className="w-4 h-4" />
+                    <span>سداد دفعة</span>
+                  </button>
+                  <button
+                    onClick={() => setStatementSupplier(supp)}
+                    className="flex items-center justify-center gap-1.5 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold cursor-pointer"
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>كشف الحساب</span>
+                  </button>
+                </div>
 
-              <div className="p-3 rounded-xl bg-slate-50 border flex items-center justify-between">
-                <span className="font-bold text-slate-600">مستحقات المورد:</span>
-                <span className="font-mono font-black text-sm text-purple-800">
-                  {supp.currentBalance.toLocaleString()} {settings.currency}
-                </span>
+                {availableAdvance > 0 && openInvoices.length > 0 && (currentUser?.role === 'admin' || hasPermission('canManageAccounts')) && (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenSettleModal(supp)}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl font-bold cursor-pointer"
+                  >
+                    <DollarSign className="w-4 h-4" />
+                    <span>تسوية دفعة مقدمة على فاتورة</span>
+                  </button>
+                )}
               </div>
-
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t">
-                <button
-                  onClick={() => {
-                    setPaymentError(null);
-                    setPaymentNotes('');
-                    setPaymentSupplier(supp);
-                    setPaymentAmount(supp.currentBalance > 0 ? supp.currentBalance : 0);
-                  }}
-                  className="flex items-center justify-center gap-1.5 py-2 px-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold cursor-pointer"
-                >
-                  <ArrowUpRight className="w-4 h-4" />
-                  <span>سداد دفعة</span>
-                </button>
-                <button
-                  onClick={() => setStatementSupplier(supp)}
-                  className="flex items-center justify-center gap-1.5 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold"
-                >
-                  <FileText className="w-4 h-4" />
-                  <span>كشف الحساب</span>
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -433,7 +513,11 @@ export const SuppliersView: React.FC = () => {
           isOpen={!!statementSupplier}
           onClose={() => setStatementSupplier(null)}
           title={`كشف حساب المورد: ${statementSupplier.name} (${statementSupplier.code})`}
-          subtitle={`الرصيد المستحق الحالي للمورد: ${statementSupplier.currentBalance.toLocaleString()} ${settings.currency}`}
+          subtitle={
+            statementSupplier.currentBalance < 0
+              ? `دفعة مقدمة للمورد / رصيد لنا: ${Math.abs(statementSupplier.currentBalance).toLocaleString()} ${settings.currency}`
+              : `الرصيد المستحق الحالي للمورد: ${statementSupplier.currentBalance.toLocaleString()} ${settings.currency}`
+          }
           maxWidth="4xl"
         >
           <div className="space-y-4 text-xs">
@@ -472,7 +556,7 @@ export const SuppliersView: React.FC = () => {
               </div>
             </div>
 
-            <div className="border border-slate-200 rounded-xl overflow-hidden max-h-96 overflow-y-auto">
+            <div className="border border-slate-200 rounded-xl awlad-table-scroll max-h-96 overflow-y-auto">
               <table className="w-full text-right text-xs">
                 <thead className="bg-slate-100 text-slate-700 font-bold sticky top-0 border-b">
                   <tr>
@@ -656,6 +740,119 @@ export const SuppliersView: React.FC = () => {
         title="تأكيد حذف المورد"
         message={supplierToDelete ? `هل أنت متأكد من حذف المورد (${supplierToDelete.name})؟ لن يتم الحذف إذا كان مرتبطاً بفواتير أو حركات مالية.` : ''}
         confirmLabel="حذف المورد"
+      />
+
+      {/* Advance Settlement Modal */}
+      {settleSupplier && (
+        <Modal
+          isOpen={!!settleSupplier}
+          onClose={() => !isSettlingAdvance && setSettleSupplier(null)}
+          title={`تسوية دفعة مقدمة للمورد: ${settleSupplier.name}`}
+          subtitle="تسوية داخلية من الرصيد المقدم المتاح على فاتورة مشتريات دون التأثير على الخزائن"
+          maxWidth="md"
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const { availableAdvance, openInvoices } = getSupplierAdvanceInfo(settleSupplier);
+              const inv = openInvoices.find((i) => i.id === settleInvoiceId);
+              if (!inv) {
+                setSettleError('يرجى اختيار فاتورة مشتريات مفتوحة للتسوية.');
+                return;
+              }
+              if (settleAmount <= 0 || settleAmount > Math.min(availableAdvance, inv.remainingAmount) + 0.01) {
+                setSettleError('مبلغ التسوية يتجاوز المسموح به على الفاتورة أو الرصيد المقدم المتاح.');
+                return;
+              }
+              setSettleError(null);
+              setIsConfirmingSettle(true);
+            }}
+            className="space-y-4 text-xs"
+          >
+            {settleError && (
+              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{settleError}</span>
+              </div>
+            )}
+            <div>
+              <label className="block font-bold mb-1">فاتورة المشتريات المفتوحة:</label>
+              <select
+                value={settleInvoiceId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setSettleInvoiceId(id);
+                  const { openInvoices, availableAdvance } = getSupplierAdvanceInfo(settleSupplier);
+                  const found = openInvoices.find((i) => i.id === id);
+                  if (found) {
+                    setSettleAmount(Math.min(availableAdvance, Number(found.remainingAmount || 0)));
+                  }
+                }}
+                className="w-full border rounded-xl p-2.5 font-bold"
+              >
+                {getSupplierAdvanceInfo(settleSupplier).openInvoices.map((inv) => (
+                  <option key={inv.id} value={inv.id}>
+                    {inv.invoiceNumber} — متبقي: {Number(inv.remainingAmount || 0).toLocaleString()} {settings.currency}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block font-bold mb-1">
+                مبلغ التسوية ({settings.currency}) — المتاح: {getSupplierAdvanceInfo(settleSupplier).availableAdvance.toLocaleString()}
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                required
+                value={settleAmount || ''}
+                onChange={(e) => setSettleAmount(Number(e.target.value))}
+                className="w-full border rounded-xl p-2.5 text-center font-mono font-black text-emerald-800 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block font-bold mb-1">ملاحظات التسوية:</label>
+              <input
+                type="text"
+                value={settleNotes}
+                onChange={(e) => setSettleNotes(e.target.value)}
+                className="w-full border rounded-xl p-2.5"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <button
+                type="button"
+                onClick={() => setSettleSupplier(null)}
+                className="px-4 py-2 border rounded-xl font-bold cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="submit"
+                disabled={isSettlingAdvance}
+                className="px-6 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50"
+              >
+                تنفيذ التسوية
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      <ConfirmDialog
+        isOpen={isConfirmingSettle}
+        onClose={() => !isSettlingAdvance && setIsConfirmingSettle(false)}
+        onConfirm={handleConfirmSettleAdvance}
+        variant="warning"
+        isLoading={isSettlingAdvance}
+        title="تأكيد تسوية الدفعة المقدمة"
+        message={
+          settleSupplier
+            ? `سيتم تسوية مبلغ ${settleAmount.toLocaleString()} ${settings.currency} من رصيد الدفعة المقدمة لحساب المورد (${settleSupplier.name}) على الفاتورة المحددة دون أي سحب أو حركة جديدة في الخزينة.`
+            : ''
+        }
+        confirmLabel="تأكيد التسوية"
       />
 
       {/* Print Document Modal */}

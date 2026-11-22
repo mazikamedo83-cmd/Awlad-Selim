@@ -12,27 +12,58 @@ import { NewSaleInvoiceModal } from './NewSaleInvoiceModal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { exportToExcel } from '../../common/ExcelExporter';
+import { QuantityInput } from '../../common/QuantityInput';
+import { ProductSearchSelect } from '../../common/ProductSearchSelect';
+import { computeLineTotal } from '../../../utils/quantity';
 
 export interface SalesInvoicesViewProps {
   initialStatusFilter?: 'all' | 'confirmed' | 'draft' | 'cancelled';
   initialOpenNew?: boolean;
+  initialTab?: 'invoices' | 'quotes';
 }
 
 export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
   initialStatusFilter = 'all',
   initialOpenNew = false,
+  initialTab = 'invoices',
 }) => {
-  const { invoices, customers, cashboxes, settings, cancelInvoice, confirmDraftInvoice, addInvoicePayment, editSalesInvoice } = useData();
-  const { hasPermission } = useAuth();
+  const {
+    invoices,
+    customers,
+    products,
+    warehouses,
+    representatives,
+    cashboxes,
+    settings,
+    cancelInvoice,
+    confirmDraftInvoice,
+    addInvoicePayment,
+    editSalesInvoice,
+    createSalesQuote,
+    convertQuoteToInvoice,
+    markInvoiceReviewed,
+  } = useData();
+  const { currentUser, hasPermission } = useAuth();
   const { registerHandler } = useShortcuts();
+  const canReviewInvoices =
+    currentUser?.role === 'admin' ||
+    hasPermission('canReviewRepInvoices') ||
+    hasPermission('canManageSales') ||
+    hasPermission('canApprove');
 
+  const [activeTab, setActiveTab] = useState<'invoices' | 'quotes'>(initialTab);
   const [isNewModalOpen, setIsNewModalOpen] = useState(initialOpenNew);
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCustomerFilter, setSelectedCustomerFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'confirmed' | 'draft' | 'cancelled'>(initialStatusFilter);
+  const [reviewFilter, setReviewFilter] = useState<'all' | 'needs_review' | 'reviewed'>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   useEffect(() => {
     setStatusFilter(initialStatusFilter);
@@ -82,9 +113,50 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
-  // Filter only sales invoices
+  // Review Rep Invoice modal state
+  const [reviewTarget, setReviewTarget] = useState<Invoice | null>(null);
+  const [reviewNotesInput, setReviewNotesInput] = useState('');
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+
+  // Create Quote modal state
+  const [isNewQuoteOpen, setIsNewQuoteOpen] = useState(false);
+  const [quoteCustomerId, setQuoteCustomerId] = useState('');
+  const [quoteWarehouseId, setQuoteWarehouseId] = useState(warehouses[0]?.id || 'wh-main');
+  const [quoteRepId, setQuoteRepId] = useState('');
+  const [quoteDate, setQuoteDate] = useState(new Date().toISOString().split('T')[0]);
+  const [quoteDiscountTotal, setQuoteDiscountTotal] = useState(0);
+  const [quoteNotes, setQuoteNotes] = useState('');
+  const [quoteItems, setQuoteItems] = useState<InvoiceItem[]>([]);
+  const [quoteSelectedProductId, setQuoteSelectedProductId] = useState('');
+  const [quoteQty, setQuoteQty] = useState<number>(1);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [isSubmittingQuote, setIsSubmittingQuote] = useState(false);
+
+  // Convert Quote to Invoice modal state
+  const [convertQuoteTarget, setConvertQuoteTarget] = useState<Invoice | null>(null);
+  const [convertWarehouseId, setConvertWarehouseId] = useState(warehouses[0]?.id || 'wh-main');
+  const [convertCashboxId, setConvertCashboxId] = useState(cashboxes[0]?.id || 'cb-main');
+  const [convertPaymentType, setConvertPaymentType] = useState<'cash' | 'partial' | 'credit'>('cash');
+  const [convertPaidAtInvoice, setConvertPaidAtInvoice] = useState<number>(0);
+  const [convertDiscountTotal, setConvertDiscountTotal] = useState<number>(0);
+  const [convertNotes, setConvertNotes] = useState('');
+  const [isConvertingQuote, setIsConvertingQuote] = useState(false);
+
+  // Filter sales invoices & quotes
   const salesInvoices = useMemo(() => {
     return invoices.filter(i => i.type === 'sales');
+  }, [invoices]);
+
+  const quotesList = useMemo(() => {
+    return invoices.filter(i => i.type === 'quote');
+  }, [invoices]);
+
+  const convertedQuoteIds = useMemo(() => {
+    return new Set(
+      invoices
+        .filter((i) => i.type === 'sales' && i.status !== 'cancelled' && i.convertedFromQuoteId)
+        .map((i) => String(i.convertedFromQuoteId))
+    );
   }, [invoices]);
 
   const filteredInvoices = useMemo(() => {
@@ -92,28 +164,55 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
       const matchSearch = 
         inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (inv.customerName && inv.customerName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (inv.representativeName && inv.representativeName.toLowerCase().includes(searchTerm.toLowerCase()));
+        (inv.representativeName && inv.representativeName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (inv.convertedFromQuoteNumber && inv.convertedFromQuoteNumber.toLowerCase().includes(searchTerm.toLowerCase()));
 
       const matchCustomer = selectedCustomerFilter ? inv.customerId === selectedCustomerFilter : true;
       const matchStatus = statusFilter === 'all' ? true : inv.status === statusFilter;
+      const matchReview =
+        reviewFilter === 'all'
+          ? true
+          : reviewFilter === 'needs_review'
+          ? inv.reviewStatus === 'needs_review'
+          : inv.reviewStatus === 'reviewed';
       const matchDateFrom = dateFrom ? inv.date >= dateFrom : true;
       const matchDateTo = dateTo ? inv.date <= dateTo : true;
 
-      return matchSearch && matchCustomer && matchStatus && matchDateFrom && matchDateTo;
+      return matchSearch && matchCustomer && matchStatus && matchReview && matchDateFrom && matchDateTo;
     });
-  }, [salesInvoices, searchTerm, selectedCustomerFilter, statusFilter, dateFrom, dateTo]);
+  }, [salesInvoices, searchTerm, selectedCustomerFilter, statusFilter, reviewFilter, dateFrom, dateTo]);
+
+  const filteredQuotes = useMemo(() => {
+    return quotesList.filter(q => {
+      const matchSearch =
+        q.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (q.customerName && q.customerName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (q.representativeName && q.representativeName.toLowerCase().includes(searchTerm.toLowerCase()));
+      const matchCustomer = selectedCustomerFilter ? q.customerId === selectedCustomerFilter : true;
+      const matchDateFrom = dateFrom ? q.date >= dateFrom : true;
+      const matchDateTo = dateTo ? q.date <= dateTo : true;
+      return matchSearch && matchCustomer && matchDateFrom && matchDateTo;
+    });
+  }, [quotesList, searchTerm, selectedCustomerFilter, dateFrom, dateTo]);
 
   // Open print preview
   const handlePrint = (inv: Invoice) => {
+    const isQuote = inv.type === 'quote';
     setPrintData({
-      title: 'فاتورة مبيعات أولاد سليم',
+      title: isQuote ? 'عرض سعر — أولاد سليم' : 'فاتورة مبيعات أولاد سليم',
       docNumber: inv.invoiceNumber,
-      docType: 'فاتورة مبيعات',
+      docType: isQuote ? 'عرض سعر' : 'فاتورة مبيعات',
       date: inv.date,
       partyName: inv.customerName,
       warehouseName: inv.warehouseName,
       representativeName: inv.representativeName,
-      paymentType: inv.paymentType === 'cash' ? 'نقدي' : inv.paymentType === 'credit' ? 'آجل' : 'جزئي',
+      paymentType: isQuote
+        ? 'عرض سعر استرشادي (بلا أثر مخزني أو مالي)'
+        : inv.paymentType === 'cash'
+        ? 'نقدي'
+        : inv.paymentType === 'credit'
+        ? 'آجل'
+        : 'جزئي',
       items: inv.items.map(it => ({
         name: it.productName,
         unit: it.unit,
@@ -125,8 +224,8 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
       subtotal: inv.subtotal,
       discountTotal: inv.discountTotal,
       grandTotal: inv.grandTotal,
-      paidAmount: inv.paidAmount,
-      remainingAmount: inv.remainingAmount,
+      paidAmount: isQuote ? undefined : inv.paidAmount,
+      remainingAmount: isQuote ? undefined : inv.remainingAmount,
       notes: inv.notes,
     });
     setIsPrintModalOpen(true);
@@ -268,27 +367,201 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
     }
   };
 
+  const handleAddQuoteItem = (prodId?: string) => {
+    const pid = prodId || quoteSelectedProductId;
+    const prod = products.find((p) => p.id === pid);
+    if (!prod) return;
+    const qty = Math.max(0.001, Number(quoteQty || 1));
+    const unitPrice = Number(prod.sellingPrice || 0);
+    setQuoteItems((prev) => {
+      const existingIdx = prev.findIndex((i) => i.productId === prod.id && i.unit === prod.baseUnit);
+      if (existingIdx >= 0) {
+        return prev.map((it, idx) =>
+          idx === existingIdx
+            ? {
+                ...it,
+                quantity: it.quantity + qty,
+                total: computeLineTotal(it.quantity + qty, it.unitPrice, it.discount || 0),
+              }
+            : it
+        );
+      }
+      return [
+        ...prev,
+        {
+          productId: prod.id,
+          productName: prod.name,
+          barcode: prod.barcode || prod.code || '',
+          unit: prod.baseUnit,
+          unitFactor: 1,
+          quantity: qty,
+          unitPrice,
+          purchasePriceAtTime: Number(prod.purchasePrice || 0),
+          discount: 0,
+          total: computeLineTotal(qty, unitPrice, 0),
+        },
+      ];
+    });
+    setQuoteSelectedProductId('');
+    setQuoteQty(1);
+  };
+
+  const handleSubmitQuote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setQuoteError(null);
+    if (quoteItems.length === 0) {
+      setQuoteError('أضف صنفاً واحداً على الأقل لعرض السعر');
+      return;
+    }
+    const cust = customers.find((c) => c.id === quoteCustomerId);
+    const wh = warehouses.find((w) => w.id === quoteWarehouseId) || warehouses[0];
+    const rep = representatives.find((r) => r.id === quoteRepId);
+    const subtotal = quoteItems.reduce((s, it) => s + computeLineTotal(it.quantity, it.unitPrice, it.discount || 0), 0);
+    const grandTotal = Math.max(0, subtotal - Number(quoteDiscountTotal || 0));
+
+    setIsSubmittingQuote(true);
+    const res = await createSalesQuote({
+      date: quoteDate,
+      customerId: cust?.id,
+      customerName: cust?.name || 'عميل نقدي / عرض سعر عام',
+      representativeId: rep?.id,
+      representativeName: rep?.name,
+      warehouseId: wh?.id || 'wh-main',
+      warehouseName: wh?.name || 'المخزن الرئيسي',
+      items: quoteItems,
+      subtotal,
+      discountTotal: Number(quoteDiscountTotal || 0),
+      taxTotal: 0,
+      grandTotal,
+      paidAmount: 0,
+      remainingAmount: grandTotal,
+      paymentType: 'credit',
+      paymentMethod: 'cash',
+      cashboxId: cashboxes[0]?.id || 'cb-main',
+      status: 'draft',
+      notes: quoteNotes.trim() || undefined,
+    });
+    setIsSubmittingQuote(false);
+    if (!res.success) {
+      setQuoteError(res.error || 'تعذر إنشاء عرض السعر');
+      return;
+    }
+    setIsNewQuoteOpen(false);
+    setQuoteItems([]);
+    setQuoteNotes('');
+    setQuoteDiscountTotal(0);
+    setActionMessage({
+      type: 'success',
+      text: `تم إنشاء عرض السعر (${res.invoice?.invoiceNumber || ''}) بنجاح دون أي تأثير على المخزون أو الحسابات.`,
+    });
+  };
+
+  const handleSubmitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reviewTarget) return;
+    setIsSubmittingReview(true);
+    const res = await markInvoiceReviewed(reviewTarget.id, reviewNotesInput.trim() || undefined);
+    setIsSubmittingReview(false);
+    if (!res.success) {
+      setActionMessage({ type: 'error', text: res.error || 'تعذر تأكيد مراجعة الفاتورة' });
+    } else {
+      setActionMessage({
+        type: 'success',
+        text: `تم اعتماد مراجعة فاتورة المندوب (${reviewTarget.invoiceNumber}) بنجاح دون تكرار القيد أو المخزون.`,
+      });
+      setReviewTarget(null);
+      setReviewNotesInput('');
+    }
+  };
+
+  const handleSubmitConvertQuote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!convertQuoteTarget) return;
+    setIsConvertingQuote(true);
+    const res = await convertQuoteToInvoice(convertQuoteTarget.id, {
+      warehouseId: convertWarehouseId,
+      cashboxId: convertCashboxId,
+      paymentType: convertPaymentType,
+      paidAtInvoice: convertPaidAtInvoice,
+      discountTotal: convertDiscountTotal,
+      notes: convertNotes.trim() || undefined,
+    });
+    setIsConvertingQuote(false);
+    if (!res.success) {
+      setActionMessage({ type: 'error', text: res.error || 'تعذر تحويل عرض السعر لفاتورة' });
+      return;
+    }
+    setConvertQuoteTarget(null);
+    setActiveTab('invoices');
+    setActionMessage({
+      type: 'success',
+      text: `تم تحويل عرض السعر (${convertQuoteTarget.invoiceNumber}) إلى فاتورة بيع (${res.invoice?.invoiceNumber || ''}) بنجاح.`,
+    });
+  };
+
   return (
     <div className="space-y-5">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
         <div>
-          <h2 className="text-lg font-black text-slate-900 tracking-tight">إدارة فواتير المبيعات</h2>
+          <h2 className="text-lg font-black text-slate-900 tracking-tight">إدارة فواتير المبيعات وعروض الأسعار</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            عرض وتوليد وطباعة فواتير مبيعات المواد الغذائية ومتابعة التحصيلات والديون
+            عرض وتوليد وطباعة فواتير المبيعات ومراجعة فواتير المناديب وإصدار عروض الأسعار وتحويلها 1:1
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl text-xs font-bold">
+            <button
+              type="button"
+              onClick={() => setActiveTab('invoices')}
+              className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                activeTab === 'invoices' ? 'bg-blue-900 text-white shadow-xs' : 'text-slate-700 hover:text-slate-900'
+              }`}
+            >
+              فواتير المبيعات ({salesInvoices.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('quotes')}
+              className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                activeTab === 'quotes' ? 'bg-blue-900 text-white shadow-xs' : 'text-slate-700 hover:text-slate-900'
+              }`}
+            >
+              عروض الأسعار ({quotesList.length})
+            </button>
+          </div>
+
           <button
+            type="button"
             onClick={handleExportExcel}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
           >
             <Download className="w-4 h-4 text-emerald-600" />
             <span>تصدير Excel</span>
           </button>
 
           <button
+            type="button"
+            onClick={() => {
+              setQuoteCustomerId('');
+              setQuoteWarehouseId(warehouses[0]?.id || 'wh-main');
+              setQuoteRepId('');
+              setQuoteDate(new Date().toISOString().split('T')[0]);
+              setQuoteDiscountTotal(0);
+              setQuoteNotes('');
+              setQuoteItems([]);
+              setQuoteError(null);
+              setIsNewQuoteOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold transition-all cursor-pointer"
+          >
+            <FileText className="w-4 h-4" />
+            <span>عرض سعر جديد</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setIsNewModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-md shadow-blue-900/20 transition-all active:scale-95 cursor-pointer"
           >
@@ -315,12 +588,12 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
       )}
 
       {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 text-xs">
         {/* Search */}
         <div className="relative">
           <input
             type="text"
-            placeholder="بحث برقم الفاتورة أو العميل أو المندوب..."
+            placeholder="بحث برقم المستند أو العميل أو المندوب..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 pr-9 pl-3 text-xs focus:bg-white focus:border-blue-600 outline-hidden"
@@ -343,18 +616,35 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
         </div>
 
         {/* Status Filter */}
-        <div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
-          >
-            <option value="all">-- جميع الحالات --</option>
-            <option value="confirmed">فواتير مؤكدة</option>
-            <option value="draft">مسودات</option>
-            <option value="cancelled">فواتير ملغاة / محذوفة</option>
-          </select>
-        </div>
+        {activeTab === 'invoices' && (
+          <div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
+            >
+              <option value="all">-- جميع الحالات --</option>
+              <option value="confirmed">فواتير مؤكدة</option>
+              <option value="draft">مسودات</option>
+              <option value="cancelled">فواتير ملغاة / محذوفة</option>
+            </select>
+          </div>
+        )}
+
+        {/* Review Status Filter */}
+        {activeTab === 'invoices' && (
+          <div>
+            <select
+              value={reviewFilter}
+              onChange={(e) => setReviewFilter(e.target.value as any)}
+              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
+            >
+              <option value="all">-- حالة المراجعة --</option>
+              <option value="needs_review">تحتاج مراجعة الإدارة</option>
+              <option value="reviewed">تمت المراجعة</option>
+            </select>
+          </div>
+        )}
 
         {/* Date From */}
         <div>
@@ -379,7 +669,8 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
         </div>
       </div>
 
-      {/* Invoices Table */}
+      {/* Invoices Table OR Quotes Table */}
+      {activeTab === 'invoices' ? (
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-right text-xs">
@@ -394,7 +685,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                 <th className="p-3.5">المدفوع</th>
                 <th className="p-3.5">المتبقي</th>
                 <th className="p-3.5">نوع الدفع</th>
-                <th className="p-3.5">الحالة</th>
+                <th className="p-3.5">الحالة والمراجعة</th>
                 <th className="p-3.5 text-center">الإجراءات</th>
               </tr>
             </thead>
@@ -420,14 +711,24 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                           <span>طلب عميل</span>
                         </span>
                       )}
+                      {inv.convertedFromQuoteNumber && (
+                        <span className="inline-flex items-center gap-1 mt-0.5 mr-1 px-1.5 py-0.5 bg-slate-100 border border-slate-300 text-slate-700 rounded text-[9px] font-sans font-bold">
+                          <span>من عرض سعر: {inv.convertedFromQuoteNumber}</span>
+                        </span>
+                      )}
+                      <div className="text-[10px] font-sans font-normal text-slate-500 mt-0.5">
+                        بواسطة: {inv.createdBy}
+                        {inv.editedBy ? ` · تعديل: ${inv.editedBy}` : ''}
+                        {inv.cancelledBy ? ` · إلغاء: ${inv.cancelledBy}` : ''}
+                      </div>
                     </td>
                     <td className="p-3.5 font-mono text-slate-600">{inv.date}</td>
                     <td className="p-3.5 font-bold text-slate-800">{inv.customerName || 'نقدي عام'}</td>
                     <td className="p-3.5 text-slate-600">{inv.representativeName || '-'}</td>
                     <td className="p-3.5 text-slate-600">{inv.warehouseName}</td>
-                    <td className="p-3.5 font-black text-slate-900">{inv.grandTotal.toLocaleString()} {settings.currency}</td>
-                    <td className="p-3.5 font-bold text-emerald-700">{inv.paidAmount.toLocaleString()}</td>
-                    <td className="p-3.5 font-bold text-red-600">{inv.remainingAmount.toLocaleString()}</td>
+                    <td className="p-3.5 font-black text-slate-900 tabular-nums">{inv.grandTotal.toLocaleString()} {settings.currency}</td>
+                    <td className="p-3.5 font-bold text-emerald-700 tabular-nums">{inv.paidAmount.toLocaleString()}</td>
+                    <td className="p-3.5 font-bold text-red-600 tabular-nums">{inv.remainingAmount.toLocaleString()}</td>
                     <td className="p-3.5">
                       <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
                         inv.paymentType === 'cash' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
@@ -438,22 +739,48 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                       </span>
                     </td>
                     <td className="p-3.5">
-                      {inv.status === 'confirmed' ? (
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
-                          مؤكدة
-                        </span>
-                      ) : inv.status === 'draft' ? (
-                        <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold">
-                          مسودة (بلا خصم)
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold">
-                          ملغاة
-                        </span>
-                      )}
+                      <div className="flex flex-col items-start gap-1">
+                        {inv.status === 'confirmed' ? (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                            مؤكدة
+                          </span>
+                        ) : inv.status === 'draft' ? (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold">
+                            مسودة (بلا خصم)
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold">
+                            ملغاة
+                          </span>
+                        )}
+                        {inv.reviewStatus === 'needs_review' && (
+                          <span className="px-2 py-0.5 rounded-md bg-orange-50 text-orange-800 border border-orange-200 text-[10px] font-bold">
+                            تحتاج مراجعة الإدارة
+                          </span>
+                        )}
+                        {inv.reviewStatus === 'reviewed' && (
+                          <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-bold">
+                            تمت المراجعة {inv.reviewedBy ? `(${inv.reviewedBy})` : ''}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="p-3.5">
-                      <div className="flex items-center justify-center gap-1.5">
+                      <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                        {inv.reviewStatus === 'needs_review' && canReviewInvoices && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReviewTarget(inv);
+                              setReviewNotesInput(inv.reviewNotes || '');
+                            }}
+                            className="px-2 py-1 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                            title="تأكيد مراجعة فاتورة المندوب بدون تكرار القيد"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>تأكيد المراجعة</span>
+                          </button>
+                        )}
                         {inv.status === 'draft' && (
                           <button
                             onClick={() => setConfirmDraftTarget(inv)}
@@ -513,6 +840,129 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
           </table>
         </div>
       </div>
+      ) : (
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        <div className="p-3.5 bg-blue-50/70 border-b border-blue-200 text-xs text-blue-950 font-bold flex items-center justify-between">
+          <span>عروض الأسعار لا تخصم من المخزون ولا تُقيد مالياً حتى يتم تحويلها لفاتورة بيع معتمدة.</span>
+          <button
+            type="button"
+            onClick={() => setIsNewQuoteOpen(true)}
+            className="px-3 py-1.5 rounded-lg bg-blue-900 text-white text-[11px] font-bold cursor-pointer"
+          >
+            + إنشاء عرض سعر
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-right text-xs">
+            <thead>
+              <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                <th className="p-3.5">رقم عرض السعر</th>
+                <th className="p-3.5">التاريخ</th>
+                <th className="p-3.5">العميل</th>
+                <th className="p-3.5">المستودع</th>
+                <th className="p-3.5 text-center">الأصناف</th>
+                <th className="p-3.5">الإجمالي</th>
+                <th className="p-3.5">الحالة</th>
+                <th className="p-3.5 text-center">الإجراءات</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredQuotes.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="p-8 text-center text-slate-400">
+                    لا توجد عروض أسعار مسجلة بعد.
+                  </td>
+                </tr>
+              ) : (
+                filteredQuotes.map((quote) => {
+                  const isConverted = convertedQuoteIds.has(quote.id);
+                  return (
+                    <tr key={quote.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="p-3.5 font-mono font-bold text-blue-900">
+                        <div>{quote.invoiceNumber}</div>
+                        <div className="text-[10px] font-sans font-normal text-slate-500">
+                          بواسطة: {quote.createdBy}
+                        </div>
+                      </td>
+                      <td className="p-3.5 font-mono text-slate-600">{quote.date}</td>
+                      <td className="p-3.5 font-bold text-slate-800">{quote.customerName || 'عميل نقدي / عرض سعر عام'}</td>
+                      <td className="p-3.5 text-slate-600">{quote.warehouseName}</td>
+                      <td className="p-3.5 text-center font-mono font-bold">{quote.items.length}</td>
+                      <td className="p-3.5 font-black text-slate-900 tabular-nums">
+                        {quote.grandTotal.toLocaleString()} {settings.currency}
+                      </td>
+                      <td className="p-3.5">
+                        {quote.status === 'cancelled' ? (
+                          <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold">
+                            ملغي
+                          </span>
+                        ) : isConverted ? (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                            تم التحويل لفاتورة
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-bold">
+                            عرض سعر (بلا خصم مخزني)
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3.5">
+                        <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                          {quote.status !== 'cancelled' && !isConverted && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConvertQuoteTarget(quote);
+                                setConvertWarehouseId(quote.warehouseId || warehouses[0]?.id || 'wh-main');
+                                setConvertCashboxId(cashboxes[0]?.id || 'cb-main');
+                                setConvertPaymentType('cash');
+                                setConvertPaidAtInvoice(quote.grandTotal);
+                                setConvertDiscountTotal(quote.discountTotal || 0);
+                                setConvertNotes(quote.notes || '');
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-blue-900 hover:bg-blue-950 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                            >
+                              <ArrowLeftRight className="w-3.5 h-3.5" />
+                              <span>تحويل لفاتورة بيع</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handlePrint(quote)}
+                            className="p-1.5 rounded-lg text-slate-600 hover:text-blue-900 hover:bg-blue-50 transition-colors cursor-pointer"
+                            title="طباعة عرض السعر"
+                          >
+                            <Printer className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setActiveInvoice(quote)}
+                            className="p-1.5 rounded-lg text-slate-600 hover:text-blue-900 hover:bg-blue-50 transition-colors cursor-pointer"
+                            title="عرض التفاصيل"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          {quote.status !== 'cancelled' && !isConverted && (
+                            <button
+                              type="button"
+                              onClick={() => setCancelTarget(quote)}
+                              className="p-1.5 rounded-lg text-red-400 hover:text-red-700 hover:bg-red-50 transition-colors cursor-pointer"
+                              title="إلغاء عرض السعر"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      )}
 
       {/* New Invoice Modal */}
       <NewSaleInvoiceModal
@@ -579,18 +1029,32 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 text-xs mb-4 p-3 bg-slate-50 rounded-xl">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs mb-4 p-3 bg-slate-50 rounded-xl">
               <div>
                 <p className="text-slate-500">العميل: <strong className="text-slate-800">{activeInvoice.customerName}</strong></p>
                 <p className="text-slate-500">المستودع: <strong className="text-slate-800">{activeInvoice.warehouseName}</strong></p>
+                <p className="text-slate-500">أنشئت بواسطة: <strong className="text-slate-800">{activeInvoice.createdBy}</strong></p>
+                {activeInvoice.convertedFromQuoteNumber && (
+                  <p className="text-slate-500">محولة من عرض سعر: <strong className="font-mono text-blue-900">{activeInvoice.convertedFromQuoteNumber}</strong></p>
+                )}
               </div>
               <div>
                 <p className="text-slate-500">التاريخ: <strong className="font-mono text-slate-800">{activeInvoice.date}</strong></p>
                 <p className="text-slate-500">المندوب: <strong className="text-slate-800">{activeInvoice.representativeName || '-'}</strong></p>
+                {activeInvoice.reviewedBy && (
+                  <p className="text-emerald-700">مراجعة الإدارة: <strong>{activeInvoice.reviewedBy}</strong> {activeInvoice.reviewNotes ? `(${activeInvoice.reviewNotes})` : ''}</p>
+                )}
+                {activeInvoice.editedBy && (
+                  <p className="text-amber-700">آخر تعديل: <strong>{activeInvoice.editedBy}</strong></p>
+                )}
+                {activeInvoice.cancelledBy && (
+                  <p className="text-red-700">ألغيت بواسطة: <strong>{activeInvoice.cancelledBy}</strong> {activeInvoice.cancelReason ? `— ${activeInvoice.cancelReason}` : ''}</p>
+                )}
               </div>
             </div>
 
-            <table className="w-full text-right text-xs mb-4">
+            <div className="awlad-table-scroll mb-4">
+            <table className="w-full text-right text-xs">
               <thead>
                 <tr className="bg-slate-100 font-bold border-b">
                   <th className="p-2">الصنف</th>
@@ -612,6 +1076,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                 ))}
               </tbody>
             </table>
+            </div>
 
             {/* Payments History on this Invoice */}
             <div className="mt-4 mb-4 p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
@@ -915,7 +1380,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
               {/* Items Table for Editing Quantities & Prices */}
               <div>
                 <label className="block font-bold text-slate-700 mb-1.5">أصناف الفاتورة (تعديل الكميات والأسعار):</label>
-                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <div className="border border-slate-200 rounded-xl overflow-hidden awlad-table-scroll">
                   <table className="w-full text-right text-xs">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold">
@@ -932,15 +1397,25 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                           <td className="p-2.5 font-bold text-slate-800">{item.productName}</td>
                           <td className="p-2.5 text-center text-slate-600">{item.unit}</td>
                           <td className="p-2.5 text-center">
-                            <input
-                              type="number"
-                              min={1}
+                            <QuantityInput
+                              allowDecimals
+                              min={0.001}
                               value={item.quantity}
-                              onChange={(e) => {
-                                const newQty = parseFloat(e.target.value) || 1;
-                                setEditItems(prev => prev.map((it, i) => i === idx ? { ...it, quantity: newQty, total: (newQty * it.unitPrice) - (it.discount || 0) } : it));
+                              onChange={(newQty) => {
+                                setEditItems((prev) =>
+                                  prev.map((it, i) =>
+                                    i === idx
+                                      ? {
+                                          ...it,
+                                          quantity: newQty,
+                                          total: computeLineTotal(newQty, it.unitPrice, it.discount || 0),
+                                        }
+                                      : it
+                                  )
+                                );
                               }}
-                              className="w-20 p-1.5 rounded-lg border border-slate-300 text-center font-bold"
+                              ariaLabel={`كمية ${item.productName}`}
+                              inputClassName="w-20 p-1.5 rounded-lg border border-slate-300 text-center font-bold font-mono outline-hidden focus:border-blue-700"
                             />
                           </td>
                           <td className="p-2.5 text-center">
@@ -1025,6 +1500,379 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   className="px-5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   {isSubmittingEdit ? 'جاري حفظ التعديل...' : 'حفظ وتحديث الفاتورة'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Rep Invoice Review Modal */}
+      {reviewTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-right">
+            <div className="flex items-center justify-between border-b pb-3 mb-4">
+              <h3 className="text-base font-black text-slate-900">
+                تأكيد مراجعة فاتورة المندوب ({reviewTarget.invoiceNumber})
+              </h3>
+              <button type="button" onClick={() => setReviewTarget(null)} className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer">
+                ✕
+              </button>
+            </div>
+            <p className="text-xs text-slate-600 mb-3">
+              هذه الفاتورة نُفذت وقُيدت بالفعل في المخزون والحسابات من تطبيق المندوب ({reviewTarget.representativeName || reviewTarget.createdBy}). تأكيد المراجعة يحدّث حالة المراجعة فقط دون تكرار أي قيد.
+            </p>
+            <form onSubmit={handleSubmitReview} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">ملاحظات المراجعة (اختياري):</label>
+                <textarea
+                  rows={2}
+                  value={reviewNotesInput}
+                  onChange={(e) => setReviewNotesInput(e.target.value)}
+                  placeholder="ملاحظة الإدارة على الفاتورة..."
+                  className="w-full p-2.5 rounded-xl border border-slate-300"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setReviewTarget(null)} className="px-4 py-2 rounded-xl border border-slate-300 font-bold cursor-pointer">
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingReview}
+                  className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingReview ? 'جاري التأكيد...' : 'اعتماد المراجعة'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* New Quote Modal */}
+      {isNewQuoteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-right max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b pb-3 mb-4">
+              <div>
+                <h3 className="text-base font-black text-slate-900">إنشاء عرض سعر جديد</h3>
+                <p className="text-xs text-slate-500">لا يخصم من المخزون ولا يُقيد مالياً إلا بعد التحويل لفاتورة بيع</p>
+              </div>
+              <button type="button" onClick={() => setIsNewQuoteOpen(false)} className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer">
+                ✕
+              </button>
+            </div>
+
+            {quoteError && (
+              <div className="mb-3 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-bold">
+                {quoteError}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmitQuote} className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">العميل:</label>
+                  <select
+                    value={quoteCustomerId}
+                    onChange={(e) => setQuoteCustomerId(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                  >
+                    <option value="">-- عميل عام / نقدي --</option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">المستودع المقترح:</label>
+                  <select
+                    value={quoteWarehouseId}
+                    onChange={(e) => setQuoteWarehouseId(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                  >
+                    {warehouses.map((w) => (
+                      <option key={w.id} value={w.id}>{w.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">التاريخ:</label>
+                  <input
+                    type="date"
+                    value={quoteDate}
+                    onChange={(e) => setQuoteDate(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                <label className="block font-bold text-slate-700">إضافة أصناف لعرض السعر:</label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="flex-1">
+                    <ProductSearchSelect
+                      products={products}
+                      warehouses={warehouses}
+                      warehouseId={quoteWarehouseId}
+                      selectedProductId={quoteSelectedProductId}
+                      onSelect={(p) => {
+                        setQuoteSelectedProductId(p.id);
+                        handleAddQuoteItem(p.id);
+                      }}
+                      clearOnSelect
+                      currency={settings.currency}
+                    />
+                  </div>
+                  <div className="w-28">
+                    <QuantityInput
+                      allowDecimals
+                      min={0.001}
+                      value={quoteQty}
+                      onChange={setQuoteQty}
+                      ariaLabel="الكمية"
+                      inputClassName="w-full p-2.5 rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="border border-slate-200 rounded-xl overflow-hidden awlad-table-scroll">
+                <table className="w-full text-right text-xs">
+                  <thead>
+                    <tr className="bg-slate-100 font-bold text-slate-700 border-b">
+                      <th className="p-2.5">الصنف</th>
+                      <th className="p-2.5 text-center">الوحدة</th>
+                      <th className="p-2.5 text-center">الكمية</th>
+                      <th className="p-2.5 text-center">السعر</th>
+                      <th className="p-2.5 text-center">الإجمالي</th>
+                      <th className="p-2.5 text-center">حذف</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {quoteItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="p-5 text-center text-slate-400">لم تُضف أصناف بعد</td>
+                      </tr>
+                    ) : (
+                      quoteItems.map((it, idx) => (
+                        <tr key={`${it.productId}-${idx}`}>
+                          <td className="p-2.5 font-bold">{it.productName}</td>
+                          <td className="p-2.5 text-center">{it.unit}</td>
+                          <td className="p-2.5 text-center">
+                            <QuantityInput
+                              allowDecimals
+                              min={0.001}
+                              value={it.quantity}
+                              onChange={(val) =>
+                                setQuoteItems((prev) =>
+                                  prev.map((row, i) =>
+                                    i === idx ? { ...row, quantity: val, total: computeLineTotal(val, row.unitPrice, row.discount || 0) } : row
+                                  )
+                                )
+                              }
+                              ariaLabel={`كمية ${it.productName}`}
+                              inputClassName="w-20 p-1 rounded-lg border border-slate-300 text-center font-mono font-bold"
+                            />
+                          </td>
+                          <td className="p-2.5 text-center">
+                            <input
+                              type="number"
+                              min={0}
+                              step="0.5"
+                              value={it.unitPrice}
+                              onChange={(e) => {
+                                const price = parseFloat(e.target.value) || 0;
+                                setQuoteItems((prev) =>
+                                  prev.map((row, i) =>
+                                    i === idx ? { ...row, unitPrice: price, total: computeLineTotal(row.quantity, price, row.discount || 0) } : row
+                                  )
+                                )
+                              }}
+                              className="w-24 p-1 rounded-lg border border-slate-300 text-center font-mono font-bold"
+                            />
+                          </td>
+                          <td className="p-2.5 text-center font-black text-blue-900 tabular-nums">
+                            {it.total.toLocaleString()} {settings.currency}
+                          </td>
+                          <td className="p-2.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => setQuoteItems((prev) => prev.filter((_, i) => i !== idx))}
+                              className="text-red-500 hover:text-red-700 font-bold cursor-pointer"
+                            >
+                              حذف
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">المندوب (اختياري):</label>
+                  <select
+                    value={quoteRepId}
+                    onChange={(e) => setQuoteRepId(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                  >
+                    <option value="">-- بدون مندوب --</option>
+                    {representatives.map((r) => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">الخصم الإجمالي ({settings.currency}):</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={quoteDiscountTotal}
+                    onChange={(e) => setQuoteDiscountTotal(parseFloat(e.target.value) || 0)}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">ملاحظات عرض السعر:</label>
+                  <input
+                    type="text"
+                    value={quoteNotes}
+                    onChange={(e) => setQuoteNotes(e.target.value)}
+                    placeholder="مدة الصلاحية أو شروط السداد..."
+                    className="w-full p-2.5 rounded-xl border border-slate-300"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-3 border-t">
+                <div className="text-sm font-black text-blue-950 tabular-nums">
+                  الصافي المقترح: {Math.max(0, quoteItems.reduce((s, it) => s + it.total, 0) - quoteDiscountTotal).toLocaleString()} {settings.currency}
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setIsNewQuoteOpen(false)} className="px-4 py-2 rounded-xl border border-slate-300 font-bold cursor-pointer">
+                    إلغاء
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingQuote || quoteItems.length === 0}
+                    className="px-5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
+                  >
+                    {isSubmittingQuote ? 'جاري الحفظ...' : 'حفظ عرض السعر'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Convert Quote to Sales Invoice Modal */}
+      {convertQuoteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-right">
+            <div className="flex items-center justify-between border-b pb-3 mb-4">
+              <h3 className="text-base font-black text-slate-900">
+                تحويل عرض السعر {convertQuoteTarget.invoiceNumber} إلى فاتورة بيع
+              </h3>
+              <button type="button" onClick={() => setConvertQuoteTarget(null)} className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer">
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleSubmitConvertQuote} className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">مستودع الصرف:</label>
+                  <select
+                    value={convertWarehouseId}
+                    onChange={(e) => setConvertWarehouseId(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                  >
+                    {warehouses.map((w) => (
+                      <option key={w.id} value={w.id}>{w.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">الخزينة:</label>
+                  <select
+                    value={convertCashboxId}
+                    onChange={(e) => setConvertCashboxId(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                  >
+                    {cashboxes.map((cb) => (
+                      <option key={cb.id} value={cb.id}>{cb.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">نوع الدفع:</label>
+                  <select
+                    value={convertPaymentType}
+                    onChange={(e) => {
+                      const nextType = e.target.value as 'cash' | 'partial' | 'credit';
+                      setConvertPaymentType(nextType);
+                      if (nextType === 'cash') {
+                        setConvertPaidAtInvoice(Math.max(0, convertQuoteTarget.subtotal - convertDiscountTotal));
+                      } else if (nextType === 'credit') {
+                        setConvertPaidAtInvoice(0);
+                      }
+                    }}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                  >
+                    <option value="cash">نقدي</option>
+                    <option value="partial">جزئي</option>
+                    <option value="credit">آجل</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">المدفوع:</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={convertPaidAtInvoice}
+                    onChange={(e) => setConvertPaidAtInvoice(parseFloat(e.target.value) || 0)}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">الخصم:</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={convertDiscountTotal}
+                    onChange={(e) => setConvertDiscountTotal(parseFloat(e.target.value) || 0)}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">ملاحظات الفاتورة:</label>
+                <input
+                  type="text"
+                  value={convertNotes}
+                  onChange={(e) => setConvertNotes(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-300"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t">
+                <button type="button" onClick={() => setConvertQuoteTarget(null)} className="px-4 py-2 rounded-xl border border-slate-300 font-bold cursor-pointer">
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={isConvertingQuote}
+                  className="px-5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
+                >
+                  {isConvertingQuote ? 'جاري التحويل...' : 'تأكيد التحويل لفاتورة بيع'}
                 </button>
               </div>
             </form>

@@ -1,49 +1,110 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
-  Lock, User, Eye, EyeOff, ShieldCheck, AlertCircle, Server, UserPlus, CheckCircle2, Wifi
+  Lock, User, Eye, EyeOff, ShieldCheck, AlertCircle, Server, UserPlus, QrCode, Search, CheckCircle2, Loader2
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import {
+  detectModeFromUrl,
   getConfiguredApiBaseUrl,
+  getConnectionModeLabel,
+  getStoredConnectionProfiles,
   hasConfiguredServerUrl,
+  saveFallbackEndpoints,
+  saveStoredConnectionProfiles,
   setConfiguredApiBaseUrl,
-  testServerHealth,
 } from '../../../services/api';
+import { claimPairingInvitation, discoverServerCandidates } from '../../../services/discovery';
 import { isNativeCapacitor } from '../../../services/native';
+import { QrScannerModal } from '../../common/QrScannerModal';
+import { MobileServerModal } from '../mobile/MobileServerModal';
 
 export const LoginView: React.FC = () => {
   const {
     login,
+    registerAccount,
     bootstrapAdmin,
     needsAdminSetup,
     refreshAuthContext,
     sessionExpiredMessage,
     clearSessionExpiredMessage,
+    isDatabaseUnavailable,
+    databaseUnavailableMessage,
+    pairingBanner,
+    setPairingBanner,
+    clearPairingBanner,
   } = useAuth();
+  const [authMode, setAuthMode] = useState<'login' | 'register_customer' | 'register_rep'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [companyName, setCompanyName] = useState('');
   const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [shopName, setShopName] = useState('');
+  const [area, setArea] = useState('');
+  const [vehicleNumber, setVehicleNumber] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDiscovering, setIsDiscovering] = useState(false);
+  const [isClaimingQr, setIsClaimingQr] = useState(false);
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [showServerModal, setShowServerModal] = useState(false);
-  const [serverUrlInput, setServerUrlInput] = useState(() => getConfiguredApiBaseUrl());
-  const [serverTestState, setServerTestState] = useState<{
-    testing: boolean;
-    ok?: boolean;
-    message?: string;
-    latencyMs?: number;
-  }>({ testing: false });
+  const [showQrScanner, setShowQrScanner] = useState(false);
 
   const nativeApp = isNativeCapacitor();
   const serverMissing = nativeApp && !hasConfiguredServerUrl();
+  const currentApiUrl = getConfiguredApiBaseUrl();
+  const activeModeLabel = currentApiUrl
+    ? getConnectionModeLabel(detectModeFromUrl(currentApiUrl, getStoredConnectionProfiles()))
+    : 'الاتصال المباشر بالسيرفر';
 
-  useEffect(() => {
-    setServerUrlInput(getConfiguredApiBaseUrl());
-  }, [showServerModal]);
+  const handleQuickDiscover = async () => {
+    setError(null);
+    clearPairingBanner();
+    setIsDiscovering(true);
+    try {
+      const results = await discoverServerCandidates();
+      if (results.length === 1) {
+        const srv = results[0];
+        if (srv.profiles) saveStoredConnectionProfiles(srv.profiles);
+        if (Array.isArray(srv.fallbackEndpoints)) saveFallbackEndpoints(srv.fallbackEndpoints);
+        setConfiguredApiBaseUrl(srv.url);
+        setPairingBanner({
+          type: 'success',
+          message: `تم اكتشاف السيرفر المركزي تلقائياً (${srv.url}). يرجى تسجيل الدخول بحسابك.`,
+        });
+        await refreshAuthContext();
+      } else if (results.length > 1) {
+        setShowServerModal(true);
+      } else {
+        setError('لم يتم العثور على سيرفر على الشبكة المحلية. تأكد من الاتصال بالـ Wi-Fi أو استخدم رمز QR / رابط الدعوة.');
+      }
+    } finally {
+      setIsDiscovering(false);
+    }
+  };
+
+  const handleQrDetected = async (rawText: string) => {
+    setShowQrScanner(false);
+    setError(null);
+    clearPairingBanner();
+    setIsClaimingQr(true);
+    const res = await claimPairingInvitation(rawText);
+    setIsClaimingQr(false);
+    if (!res.ok) {
+      setError(res.error || 'تعذر ربط الجهاز عبر الرمز أو الرابط.');
+      return;
+    }
+    setPairingBanner({
+      type: res.requiresAdminApproval ? 'warning' : 'success',
+      message: res.requiresAdminApproval
+        ? `تم إعداد السيرفر (${res.companyName || ''}). هذا الجهاز بانتظار موافقة مدير النظام، وبعدها يمكنك تسجيل الدخول بحسابك.`
+        : `تم ربط الجهاز بسيرفر (${res.companyName || ''}) بنجاح (${res.endpointUrl}). أدخل اسم المستخدم وكلمة المرور للدخول.`,
+    });
+    await refreshAuthContext();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,10 +127,56 @@ export const LoginView: React.FC = () => {
         return;
       }
       setIsLoading(true);
-      const res = await bootstrapAdmin({ fullName, username, password, phone });
+      const res = await bootstrapAdmin({
+        fullName,
+        username,
+        password,
+        phone,
+        ...(companyName.trim() ? { companyName: companyName.trim() } : {}),
+      });
       setIsLoading(false);
       if (!res.success) {
         setError(res.error || 'تعذر تهيئة حساب المدير العام');
+      }
+      return;
+    }
+
+    if (!needsAdminSetup && (authMode === 'register_customer' || authMode === 'register_rep')) {
+      if (fullName.trim().length < 2) {
+        setError('يرجى إدخال الاسم الكامل (حرفين على الأقل)');
+        return;
+      }
+      if (!phone.trim()) {
+        setError('يرجى إدخال رقم الهاتف للتسجيل');
+        return;
+      }
+      if (username.trim().length < 3) {
+        setError('اسم المستخدم يجب أن لا يقل عن 3 أحرف');
+        return;
+      }
+      if (password.length < 6) {
+        setError('كلمة المرور يجب أن لا تقل عن 6 أحرف أو أرقام');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError('كلمتا المرور غير متطابقتين');
+        return;
+      }
+      setIsLoading(true);
+      const res = await registerAccount({
+        role: authMode === 'register_customer' ? 'customer' : 'representative',
+        fullName: fullName.trim(),
+        phone: phone.trim(),
+        username: username.trim(),
+        password,
+        address: address.trim(),
+        shopName: authMode === 'register_customer' ? shopName.trim() : undefined,
+        area: authMode === 'register_customer' ? area.trim() : undefined,
+        vehicleNumber: authMode === 'register_rep' ? vehicleNumber.trim() : undefined,
+      });
+      setIsLoading(false);
+      if (!res.success) {
+        setError(res.error || 'تعذر إنشاء الحساب الجديد');
       }
       return;
     }
@@ -83,35 +190,8 @@ export const LoginView: React.FC = () => {
     }
   };
 
-  const handleTestServer = async () => {
-    setServerTestState({ testing: true });
-    const res = await testServerHealth(serverUrlInput);
-    if (res.ok) {
-      setServerTestState({
-        testing: false,
-        ok: true,
-        latencyMs: res.latencyMs,
-        message: `تم الاتصال بنجاح (${res.latencyMs}ms)${res.version ? ` — الإصدار ${res.version}` : ''}`,
-      });
-    } else {
-      setServerTestState({
-        testing: false,
-        ok: false,
-        message: res.error || 'تعذر الاتصال بالسيرفر',
-      });
-    }
-  };
-
-  const handleSaveServerUrl = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setConfiguredApiBaseUrl(serverUrlInput);
-    setShowServerModal(false);
-    setError(null);
-    await refreshAuthContext();
-  };
-
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 relative overflow-hidden font-['Cairo'] pt-safe pb-safe">
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 relative overflow-hidden font-sans pt-safe pb-safe">
       <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 rounded-full bg-blue-600/10 blur-3xl pointer-events-none"></div>
       <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-96 h-96 rounded-full bg-sky-500/10 blur-3xl pointer-events-none"></div>
 
@@ -120,15 +200,12 @@ export const LoginView: React.FC = () => {
         <div className="bg-gradient-to-b from-blue-950 to-slate-900 p-8 text-center text-white relative">
           <button
             type="button"
-            onClick={() => {
-              setServerTestState({ testing: false });
-              setShowServerModal(true);
-            }}
-            className="absolute top-4 left-4 p-2 rounded-xl bg-white/10 hover:bg-white/20 text-blue-100 text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-            title="إعدادات عنوان السيرفر (للشبكة أو التطبيق)"
+            onClick={() => setShowServerModal(true)}
+            className="absolute top-4 left-4 px-2.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-blue-100 text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+            title={activeModeLabel}
           >
             <Server className="w-3.5 h-3.5" />
-            <span>{serverMissing ? 'إعداد السيرفر' : 'السيرفر'}</span>
+            <span>{serverMissing ? 'إعداد السيرفر' : 'أوضاع الاتصال'}</span>
           </button>
 
           <img
@@ -148,22 +225,95 @@ export const LoginView: React.FC = () => {
 
         {/* Form Body */}
         <div className="p-6 sm:p-8 space-y-5">
-          {serverMissing && (
-            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-900 space-y-2">
+          {pairingBanner && (
+            <div
+              className={`p-3.5 rounded-xl border text-xs font-bold flex items-start gap-2.5 ${
+                pairingBanner.type === 'success'
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                  : pairingBanner.type === 'warning'
+                  ? 'bg-amber-50 border-amber-300 text-amber-900'
+                  : 'bg-red-50 border-red-200 text-red-700'
+              }`}
+            >
+              {pairingBanner.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-700 mt-0.5" />
+              ) : (
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              )}
+              <span className="leading-relaxed">{pairingBanner.message}</span>
+            </div>
+          )}
+
+          {serverMissing ? (
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-900 space-y-2.5">
               <div className="font-black flex items-center gap-2">
                 <Server className="w-4 h-4 text-amber-700 shrink-0" />
-                <span>الخطوة الأولى: ربط التطبيق بسيرفر المحل (اللابتوب)</span>
+                <span>الخطوة الأولى: ربط التطبيق بالسيرفر المركزي</span>
               </div>
               <p className="leading-relaxed">
-                أدخل عنوان IP اللابتوب على الشبكة المحلية (مثل <span className="font-mono" dir="ltr">http://192.168.1.100:3000</span>) أو رابط HTTPS الخاص بالسيرفر المركزي.
+                امسح رمز <span className="font-mono font-bold">QR Code</span> من لوحة الإدارة أو اضغط بحث تلقائي داخل الشبكة دون كتابة IP يدوياً.
               </p>
-              <button
-                type="button"
-                onClick={() => setShowServerModal(true)}
-                className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs cursor-pointer"
-              >
-                إعداد عنوان السيرفر الآن
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={isClaimingQr}
+                  onClick={() => setShowQrScanner(true)}
+                  className="px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <QrCode className="w-3.5 h-3.5" />
+                  <span>{isClaimingQr ? 'جاري الربط...' : 'مسح QR أو لصق رابط دعوة'}</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isDiscovering}
+                  onClick={handleQuickDiscover}
+                  className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  {isDiscovering ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+                  <span>{isDiscovering ? 'جاري الاكتشاف...' : 'اكتشاف السيرفر تلقائياً'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowServerModal(true)}
+                  className="px-3.5 py-2 rounded-xl bg-white border border-amber-300 text-amber-900 font-bold text-xs cursor-pointer"
+                >
+                  إعداد يدوي
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px]">
+              <div className="flex items-center gap-1.5 text-slate-600 font-bold truncate">
+                <Server className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                <span className="truncate">{activeModeLabel}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={isClaimingQr}
+                  onClick={() => setShowQrScanner(true)}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <QrCode className="w-3 h-3" />
+                  <span>ربط بـ QR / رابط</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isDiscovering}
+                  onClick={handleQuickDiscover}
+                  className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  {isDiscovering ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                  <span>بحث تلقائي</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {isDatabaseUnavailable && databaseUnavailableMessage && (
+            <div className="flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs font-bold text-red-800">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+              <span>{databaseUnavailableMessage}</span>
             </div>
           )}
 
@@ -180,6 +330,15 @@ export const LoginView: React.FC = () => {
             </div>
           )}
 
+          {typeof navigator !== 'undefined' && navigator.onLine === false && (
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 shrink-0 text-amber-700 mt-0.5" />
+              <span className="leading-relaxed">
+                أنت الآن في وضع العمل دون إنترنت: يُسمح بتسجيل الدخول محلياً فقط للحسابات التي سبق التحقق منها بنجاح على هذا الجهاز، وسيتم إعادة التحقق من الصلاحيات فور عودة الاتصال بالسيرفر المركزي.
+              </span>
+            </div>
+          )}
+
           {error && (
             <div className="flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs font-bold text-red-700 animate-shake">
               <AlertCircle className="w-4 h-4 shrink-0" />
@@ -187,9 +346,68 @@ export const LoginView: React.FC = () => {
             </div>
           )}
 
+          {!needsAdminSetup && (
+            <div className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-slate-100 border border-slate-200">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('login');
+                  setError(null);
+                }}
+                className={`min-h-[42px] px-2 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  authMode === 'login'
+                    ? 'bg-blue-900 text-white shadow-xs font-black'
+                    : 'text-slate-700 hover:bg-white'
+                }`}
+              >
+                تسجيل الدخول
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('register_customer');
+                  setError(null);
+                }}
+                className={`min-h-[42px] px-2 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  authMode === 'register_customer'
+                    ? 'bg-blue-900 text-white shadow-xs font-black'
+                    : 'text-slate-700 hover:bg-white'
+                }`}
+              >
+                تسجيل عميل جديد
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('register_rep');
+                  setError(null);
+                }}
+                className={`min-h-[42px] px-2 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  authMode === 'register_rep'
+                    ? 'bg-blue-900 text-white shadow-xs font-black'
+                    : 'text-slate-700 hover:bg-white'
+                }`}
+              >
+                تسجيل مندوب جديد
+              </button>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
             {needsAdminSetup && (
               <>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    اسم الشركة / النشاط (اختياري):
+                  </label>
+                  <input
+                    type="text"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    placeholder="أدخل اسم الشركة أو المؤسسة"
+                    className="w-full rounded-xl border border-slate-300 py-3 px-4 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
+                  />
+                </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5">
                     الاسم الكامل للمالك / المدير:
@@ -199,7 +417,7 @@ export const LoginView: React.FC = () => {
                     required
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    placeholder="مثال: الحاج سليم / أحمد سليم"
+                    placeholder="أدخل الاسم الكامل للمالك أو المدير العام"
                     className="w-full rounded-xl border border-slate-300 py-3 px-4 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
                   />
                 </div>
@@ -216,6 +434,85 @@ export const LoginView: React.FC = () => {
                   />
                 </div>
               </>
+            )}
+
+            {!needsAdminSetup && (authMode === 'register_customer' || authMode === 'register_rep') && (
+              <div className="space-y-3 p-3.5 rounded-2xl bg-blue-50/60 border border-blue-200/80">
+                <p className="text-xs font-black text-blue-950">
+                  {authMode === 'register_customer'
+                    ? 'بيانات العميل الجديد (تُفعّل مباشرة للدخول والطلب)'
+                    : 'بيانات المندوب الجديد (تُفعّل مباشرة مع مخزن سيارة خاص)'}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">الاسم الكامل *</label>
+                    <input
+                      type="text"
+                      required
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder={authMode === 'register_customer' ? 'اسم العميل أو المسؤول' : 'اسم المندوب الثلاثي'}
+                      className="w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">رقم الهاتف *</label>
+                    <input
+                      type="tel"
+                      required
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="01xxxxxxxxx"
+                      className="w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                    />
+                  </div>
+                  {authMode === 'register_customer' ? (
+                    <>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">اسم المحل / النشاط</label>
+                        <input
+                          type="text"
+                          value={shopName}
+                          onChange={(e) => setShopName(e.target.value)}
+                          placeholder="مثال: سوبر ماركت النور"
+                          className="w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">المنطقة</label>
+                        <input
+                          type="text"
+                          value={area}
+                          onChange={(e) => setArea(e.target.value)}
+                          placeholder="مثال: الجيزة / شبرا"
+                          className="w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">رقم السيارة / الخط</label>
+                      <input
+                        type="text"
+                        value={vehicleNumber}
+                        onChange={(e) => setVehicleNumber(e.target.value)}
+                        placeholder="مثال: أ ب ج 1234"
+                        className="w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                      />
+                    </div>
+                  )}
+                  <div className={authMode === 'register_customer' ? 'sm:col-span-2' : ''}>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">العنوان</label>
+                    <input
+                      type="text"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      placeholder="العنوان التفصيلي"
+                      className="w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                    />
+                  </div>
+                </div>
+              </div>
             )}
 
             <div>
@@ -272,7 +569,7 @@ export const LoginView: React.FC = () => {
               </div>
             </div>
 
-            {needsAdminSetup && (
+            {(needsAdminSetup || authMode === 'register_customer' || authMode === 'register_rep') && (
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5">
                   تأكيد كلمة المرور:
@@ -293,12 +590,20 @@ export const LoginView: React.FC = () => {
               disabled={isLoading}
               className="w-full py-3.5 px-4 bg-blue-900 hover:bg-blue-950 text-white font-bold text-sm rounded-xl shadow-lg shadow-blue-900/25 transition-all active:scale-98 disabled:opacity-60 flex items-center justify-center gap-2 cursor-pointer min-h-[46px]"
             >
-              {needsAdminSetup ? <UserPlus className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
+              {needsAdminSetup || authMode !== 'login' ? (
+                <UserPlus className="w-4 h-4" />
+              ) : (
+                <ShieldCheck className="w-4 h-4" />
+              )}
               <span>
                 {isLoading
                   ? 'جاري التحقق والمصادقة...'
                   : needsAdminSetup
                   ? 'إنشاء حساب المدير العام والدخول'
+                  : authMode === 'register_customer'
+                  ? 'إنشاء حساب العميل والدخول'
+                  : authMode === 'register_rep'
+                  ? 'إنشاء حساب المندوب والدخول'
                   : 'دخول النظام'}
               </span>
             </button>
@@ -328,100 +633,21 @@ export const LoginView: React.FC = () => {
         </div>
       )}
 
-      {/* Server URL Configuration Modal */}
-      {showServerModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
-          <form onSubmit={handleSaveServerUrl} className="w-full max-w-md bg-white rounded-2xl p-6 text-right shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex items-center gap-2">
-              <Server className="w-5 h-5 text-blue-900" />
-              <h4 className="text-base font-black text-slate-900">إعداد عنوان السيرفر المركزي (لابتوب المحل)</h4>
-            </div>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              {nativeApp
-                ? 'أدخل عنوان خادم أولاد سليم العامل على لابتوب المحل (على شبكة الواي فاي المحلية أو عبر رابط HTTPS الخارجي).'
-                : 'اترك الحقل فارغاً للاتصال التلقائي بنفس الخادم الحالي، أو أدخل رابط السيرفر المركزي.'}
-            </p>
-            <input
-              type="text"
-              dir="ltr"
-              value={serverUrlInput}
-              onChange={(e) => {
-                setServerUrlInput(e.target.value);
-                setServerTestState({ testing: false });
-              }}
-              placeholder="http://192.168.1.100:3000"
-              className="w-full rounded-xl border border-slate-300 py-2.5 px-3 text-xs font-mono text-left focus:border-blue-600 outline-hidden"
-            />
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                onClick={() => setServerUrlInput('http://192.168.1.100:3000')}
-                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-mono cursor-pointer"
-              >
-                http://192.168.1.100:3000
-              </button>
-              <button
-                type="button"
-                onClick={() => setServerUrlInput('http://10.0.2.2:3000')}
-                className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-mono cursor-pointer"
-              >
-                http://10.0.2.2:3000
-              </button>
-              {!nativeApp && (
-                <button
-                  type="button"
-                  onClick={() => setServerUrlInput('')}
-                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold cursor-pointer"
-                >
-                  تلقائي (نفس الخادم)
-                </button>
-              )}
-            </div>
+      {/* Unified 4-Mode Server Connection Modal */}
+      <MobileServerModal
+        isOpen={showServerModal}
+        onClose={() => setShowServerModal(false)}
+        onSaved={async () => {
+          setError(null);
+          await refreshAuthContext();
+        }}
+      />
 
-            {serverTestState.message && (
-              <div
-                className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 border ${
-                  serverTestState.ok
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                    : 'bg-red-50 border-red-200 text-red-700'
-                }`}
-              >
-                {serverTestState.ok ? (
-                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
-                )}
-                <span>{serverTestState.message}</span>
-              </div>
-            )}
-
-            <div className="flex gap-2 pt-1">
-              <button
-                type="button"
-                disabled={serverTestState.testing}
-                onClick={handleTestServer}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer"
-              >
-                <Wifi className="w-3.5 h-3.5" />
-                <span>{serverTestState.testing ? 'جاري الفحص...' : 'اختبار الاتصال'}</span>
-              </button>
-              <button
-                type="submit"
-                className="flex-1 py-2.5 bg-blue-900 text-white text-xs font-bold rounded-xl hover:bg-blue-950 cursor-pointer"
-              >
-                حفظ وإعادة الفحص
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowServerModal(false)}
-                className="px-4 py-2.5 bg-slate-100 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
-              >
-                إلغاء
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+      <QrScannerModal
+        isOpen={showQrScanner}
+        onClose={() => setShowQrScanner(false)}
+        onDetected={handleQrDetected}
+      />
     </div>
   );
 };

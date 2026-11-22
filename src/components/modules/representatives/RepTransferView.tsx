@@ -1,29 +1,32 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { 
   ArrowLeftRight, CheckCircle2, XCircle, Clock, AlertCircle, Plus, 
-  Search, Printer, History, User, Boxes, Truck, Edit, Eye, Check
+  Search, Printer, History, User, Boxes, Truck, Edit, Eye, Check,
+  Download, FileSpreadsheet, PackageCheck, RotateCcw, AlertTriangle, Wallet, RefreshCw
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
-import { RepTransfer, RepItemTransferRequest, Representative } from '../../../types';
+import { RepTransfer, RepItemTransferRequest, Representative, RepCustodyStatementResponse } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
+import { exportToExcel } from '../../common/ExcelExporter';
 
 interface RepTransferViewProps {
-  initialTab?: 'cash-transfers' | 'item-transfers' | 'reps-list';
+  initialTab?: 'cash-transfers' | 'item-transfers' | 'reps-list' | 'rep-custody-statement';
 }
 
 export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = 'cash-transfers' }) => {
   const { 
-    repTransfers, repItemTransfers = [], representatives, products, warehouses, invoices, cashboxes, settings, 
+    repTransfers, repItemTransfers = [], representatives, customers, products, warehouses, invoices, cashboxes, settings, 
     createRepTransfer, confirmRepTransferReceipt, rejectRepTransfer,
-    createRepItemTransfer, updateRepItemTransferStatus, addRepresentative, updateRepresentative
+    createRepItemTransfer, updateRepItemTransferStatus, addRepresentative, updateRepresentative,
+    getRepCustodyStatement, recordRepCustodyDelivery, recordRepCustodyReturn, recordRepCustodyAdjustment,
   } = useData();
   const { currentUser, hasPermission } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'cash-transfers' | 'item-transfers' | 'reps-list'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'cash-transfers' | 'item-transfers' | 'reps-list' | 'rep-custody-statement'>(initialTab);
   const [statusBanner, setStatusBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [confirmState, setConfirmState] = useState<{
     isOpen: boolean;
@@ -70,6 +73,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
   const [itemReqInvoiceId, setItemReqInvoiceId] = useState<string>('');
   const [itemReqSourceWhId, setItemReqSourceWhId] = useState<string>(warehouses[0]?.id || '');
   const [itemReqTargetWhId, setItemReqTargetWhId] = useState<string>(warehouses[1]?.id || warehouses[0]?.id || '');
+  const [itemReqTransferMode, setItemReqTransferMode] = useState<'transfer' | 'custody_dispatch'>('transfer');
   const [itemReqNotes, setItemReqNotes] = useState<string>('');
   const [selectedItemsForReq, setSelectedItemsForReq] = useState<Array<{
     productId: string;
@@ -95,11 +99,42 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
   const [repFormError, setRepFormError] = useState<string | null>(null);
   const [isConfirmBusy, setIsConfirmBusy] = useState(false);
 
+  // Rep Custody Statement state
+  const [custodyRepId, setCustodyRepId] = useState<string>(representatives[0]?.id || '');
+  const [custodyDateFrom, setCustodyDateFrom] = useState<string>('');
+  const [custodyDateTo, setCustodyDateTo] = useState<string>('');
+  const [custodyStatement, setCustodyStatement] = useState<RepCustodyStatementResponse | null>(null);
+  const [isCustodyLoading, setIsCustodyLoading] = useState(false);
+  const [custodyError, setCustodyError] = useState<string | null>(null);
+
+  // Custody Action Modals (Delivery / Return / Admin Adjustment)
+  const [custodyActionModal, setCustodyActionModal] = useState<'deliver' | 'return' | 'adjust' | null>(null);
+  const [custodyOpProductId, setCustodyOpProductId] = useState('');
+  const [custodyOpQty, setCustodyOpQty] = useState<number>(1);
+  const [custodyOpCustomerId, setCustodyOpCustomerId] = useState('');
+  const [custodyOpCustomerName, setCustodyOpCustomerName] = useState('');
+  const [custodyOpTargetWhId, setCustodyOpTargetWhId] = useState(warehouses[0]?.id || 'wh-main');
+  const [custodyOpType, setCustodyOpType] = useState<'custody_damaged' | 'custody_shortage' | 'custody_adjustment'>('custody_damaged');
+  const [custodyOpDate, setCustodyOpDate] = useState(new Date().toISOString().split('T')[0]);
+  const [custodyOpNotes, setCustodyOpNotes] = useState('');
+  const [isSubmittingCustodyOp, setIsSubmittingCustodyOp] = useState(false);
+
+  // Role constraint: If current user is a representative, default to rep_to_owner and filter to their own transfers
+  const isRepUser = currentUser?.role === 'representative';
+  const myRepProfile = useMemo(() => {
+    return representatives.find(r => r.userId === currentUser?.id || r.name === currentUser?.fullName);
+  }, [representatives, currentUser]);
+
   // Sync defaults when async data arrives
   useEffect(() => {
     if (representatives.length > 0) {
       if (!selectedRepId) setSelectedRepId(representatives[0].id);
       if (!itemReqRepId) setItemReqRepId(representatives[0].id);
+      if (isRepUser && myRepProfile) {
+        setCustodyRepId(myRepProfile.id);
+      } else if (!custodyRepId) {
+        setCustodyRepId(representatives[0].id);
+      }
     }
     if (cashboxes.length > 0 && !selectedCashboxId) {
       setSelectedCashboxId(cashboxes[0].id);
@@ -107,14 +142,32 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
     if (warehouses.length > 0) {
       if (!itemReqSourceWhId) setItemReqSourceWhId(warehouses[0].id);
       if (!itemReqTargetWhId) setItemReqTargetWhId((warehouses[1] || warehouses[0]).id);
+      if (!custodyOpTargetWhId) setCustodyOpTargetWhId(warehouses[0].id);
     }
-  }, [representatives, cashboxes, warehouses, selectedRepId, itemReqRepId, selectedCashboxId, itemReqSourceWhId, itemReqTargetWhId]);
+  }, [representatives, cashboxes, warehouses, selectedRepId, itemReqRepId, custodyRepId, selectedCashboxId, itemReqSourceWhId, itemReqTargetWhId, custodyOpTargetWhId, isRepUser, myRepProfile]);
 
-  // Role constraint: If current user is a representative, default to rep_to_owner and filter to their own transfers
-  const isRepUser = currentUser?.role === 'representative';
-  const myRepProfile = useMemo(() => {
-    return representatives.find(r => r.userId === currentUser?.id || r.name === currentUser?.fullName);
-  }, [representatives, currentUser]);
+  const loadCustodyStatement = useCallback(async (targetRepId?: string) => {
+    const rid = targetRepId || custodyRepId;
+    if (!rid) return;
+    setIsCustodyLoading(true);
+    setCustodyError(null);
+    const res = await getRepCustodyStatement(rid, {
+      dateFrom: custodyDateFrom || undefined,
+      dateTo: custodyDateTo || undefined,
+    });
+    setIsCustodyLoading(false);
+    if (!res.success || !res.statement) {
+      setCustodyError(res.error || 'تعذر تحميل كشف حساب وعهدة المندوب');
+    } else {
+      setCustodyStatement(res.statement);
+    }
+  }, [custodyRepId, custodyDateFrom, custodyDateTo, getRepCustodyStatement]);
+
+  useEffect(() => {
+    if (activeTab === 'rep-custody-statement' && custodyRepId) {
+      loadCustodyStatement(custodyRepId);
+    }
+  }, [activeTab, custodyRepId, loadCustodyStatement]);
 
   const filteredTransfers = useMemo(() => {
     return repTransfers.filter(t => {
@@ -326,6 +379,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       sourceWarehouseName: sourceWh?.name || 'المستودع الرئيسي',
       targetWarehouseId: targetWh?.id || 'WH-VAN',
       targetWarehouseName: targetWh?.name || `سيارة المندوب (${rep.name})`,
+      transferMode: itemReqTransferMode,
       items: selectedItemsForReq.map(it => ({
         ...it,
         approvedQty: it.requestedQty,
@@ -338,17 +392,150 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       setIsNewItemReqModalOpen(false);
       setSelectedItemsForReq([]);
       setItemReqNotes('');
+      setItemReqTransferMode('transfer');
+      setStatusBanner({
+        type: 'success',
+        text:
+          itemReqTransferMode === 'custody_dispatch'
+            ? 'تم صرف العهدة من المخزن الرئيسي — بانتظار تأكيد استلام المندوب.'
+            : 'تم إرسال طلب تحويل الأصناف للمراجعة بنجاح.',
+      });
     } else {
       setItemReqError(res.error || 'فشل إرسال طلب التحويل');
     }
   };
 
+  const handleConfirmCustodyReceipt = (req: RepItemTransferRequest) => {
+    setConfirmState({
+      isOpen: true,
+      title: 'تأكيد استلام العهدة في سيارة المندوب',
+      message: `هل تؤكد استلام الأصناف الفعلية الخاصة بالإذن (${req.requestNumber})؟ لن تُضاف الأصناف لعهدة السيارة إلا بعد تأكيد الاستلام.`,
+      confirmLabel: 'تأكيد الاستلام الفعلي',
+      variant: 'success',
+      onConfirm: async () => {
+        setConfirmState(null);
+        const res = await updateRepItemTransferStatus(req.id, 'received');
+        if (!res.success) {
+          setStatusBanner({ type: 'error', text: res.error || 'فشل تأكيد استلام العهدة' });
+        } else {
+          setStatusBanner({ type: 'success', text: `تم تأكيد استلام العهدة (${req.requestNumber}) وإضافتها لسيارة المندوب.` });
+          setActiveItemReqDetail(null);
+        }
+      },
+    });
+  };
+
+  const handleSubmitCustodyOp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!custodyActionModal || !custodyOpProductId || custodyOpQty <= 0) return;
+    setIsSubmittingCustodyOp(true);
+    let res: { success: boolean; error?: string } = { success: false };
+    if (custodyActionModal === 'deliver') {
+      const cust = customers.find((c) => c.id === custodyOpCustomerId);
+      res = await recordRepCustodyDelivery({
+        representativeId: custodyRepId,
+        customerId: cust?.id,
+        customerName: cust?.name || custodyOpCustomerName.trim() || undefined,
+        productId: custodyOpProductId,
+        quantity: custodyOpQty,
+        date: custodyOpDate,
+        notes: custodyOpNotes.trim() || undefined,
+      });
+    } else if (custodyActionModal === 'return') {
+      res = await recordRepCustodyReturn({
+        representativeId: custodyRepId,
+        targetWarehouseId: custodyOpTargetWhId,
+        productId: custodyOpProductId,
+        quantity: custodyOpQty,
+        date: custodyOpDate,
+        notes: custodyOpNotes.trim() || undefined,
+      });
+    } else {
+      res = await recordRepCustodyAdjustment({
+        representativeId: custodyRepId,
+        productId: custodyOpProductId,
+        operationType: custodyOpType,
+        quantity: custodyOpQty,
+        date: custodyOpDate,
+        notes: custodyOpNotes.trim() || undefined,
+      });
+    }
+    setIsSubmittingCustodyOp(false);
+    if (!res.success) {
+      setStatusBanner({ type: 'error', text: res.error || 'تعذر تنفيذ عملية العهدة' });
+    } else {
+      setCustodyActionModal(null);
+      setCustodyOpNotes('');
+      setCustodyOpCustomerName('');
+      setStatusBanner({ type: 'success', text: 'تم تسجيل حركة العهدة وتحديث رصيد المندوب بنجاح.' });
+      await loadCustodyStatement(custodyRepId);
+    }
+  };
+
+  const handleExportCustodyExcel = () => {
+    if (!custodyStatement) return;
+    const headers = [
+      'كود الصنف',
+      'اسم الصنف',
+      'الوحدة',
+      'المستلم فعلياً',
+      'قيد الاستلام',
+      'مسلم للعملاء',
+      'مرتجع للمخزن',
+      'تسويات/تالف',
+      'المتبقي بالعهدة',
+      'رصيد السيارة الفعلي',
+      'القيمة بالتكلفة',
+    ];
+    const rows = custodyStatement.itemsSummary.map((it) => [
+      it.productCode,
+      it.productName,
+      it.baseUnit,
+      it.receivedQty,
+      it.pendingReceiveQty,
+      it.deliveredToCustomersQty,
+      it.returnedToWarehouseQty,
+      it.approvedReductionsQty,
+      it.remainingCustodyQty,
+      it.vanPhysicalStockQty,
+      it.custodyValueAtCost,
+    ]);
+    exportToExcel(`كشف_عهدة_${custodyStatement.representative.name}_${new Date().toISOString().split('T')[0]}`, headers, rows);
+  };
+
+  const handlePrintCustodyStatement = () => {
+    if (!custodyStatement) return;
+    setPrintData({
+      title: `كشف حساب وعهدة المندوب — ${custodyStatement.representative.name}`,
+      docNumber: custodyStatement.representative.id,
+      docType: 'كشف حساب',
+      date: new Date().toISOString().split('T')[0],
+      partyName: custodyStatement.representative.name,
+      partyPhone: custodyStatement.representative.phone,
+      representativeName: custodyStatement.representative.name,
+      tableHeaders: ['م', 'الصنف', 'الوحدة', 'مستلم', 'مسلم للعملاء', 'مرتجع', 'المتبقي بالعهدة'],
+      items: custodyStatement.itemsSummary.map((it) => ({
+        name: it.productName,
+        unit: it.baseUnit,
+        quantity: it.receivedQty,
+        price: it.deliveredToCustomersQty,
+        discount: it.returnedToWarehouseQty,
+        total: it.remainingCustodyQty,
+      })),
+      grandTotal: custodyStatement.totals.totalCustodyCostValue,
+      paidAmount: custodyStatement.financialSummary.totalSalesPaidAmount,
+      remainingAmount: custodyStatement.financialSummary.currentCashCustodyBalance,
+      notes: `إجمالي المبيعات: ${custodyStatement.financialSummary.totalSalesAmount.toLocaleString()} ${settings.currency} | إجمالي المسلم للعملاء: ${custodyStatement.totals.totalDeliveredQty} | المتبقي بالعهدة: ${custodyStatement.totals.totalRemainingCustodyQty}`,
+    });
+    setIsPrintModalOpen(true);
+  };
+
   const handleExecuteItemTransfer = (req: RepItemTransferRequest) => {
     setConfirmState({
       isOpen: true,
-      title: 'اعتماد وتنفيذ تحويل العهدة',
-      message: `هل أنت متأكد من اعتماد ونقل بضاعة الطلب (${req.requestNumber}) من ${req.sourceWarehouseName} إلى عهدة سيارة المندوب ${req.representativeName}؟ سيتم خصم المستودع الرئيسي فوراً.`,
-      confirmLabel: 'اعتماد وتنفيذ النقل',
+      title: 'اعتماد وتنفيذ صرف العهدة من المخزن الرئيسي',
+      message: `سيتم خصم البضاعة من (${req.sourceWarehouseName}) للطلب (${req.requestNumber}). لن تُضاف الكمية إلى سيارة المندوب إلا بعد تأكيد استلام المندوب لها.`,
+      confirmLabel: 'اعتماد وصرف من المخزن',
       variant: 'success',
       onConfirm: async () => {
         setConfirmState(null);
@@ -356,7 +543,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
         if (!res.success) {
           setStatusBanner({ type: 'error', text: res.error || 'فشل تنفيذ تحويل الأصناف' });
         } else {
-          setStatusBanner({ type: 'success', text: 'تم تنفيذ التحويل المخزني بنجاح وتحديث عهدة سيارة المندوب.' });
+          setStatusBanner({ type: 'success', text: 'تم الصرف من المخزن الرئيسي — بانتظار تأكيد استلام المندوب لإضافتها لعهدة السيارة.' });
           setActiveItemReqDetail(null);
         }
       },
@@ -468,14 +655,14 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
         return (
           <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold">
             <CheckCircle2 className="w-3 h-3" />
-            <span>تم الاستلام الفعلي بواسطة المندوب</span>
+            <span>تم الاستلام الفعلي في سيارة المندوب</span>
           </span>
         );
       case 'executed':
         return (
           <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-teal-50 text-teal-800 border border-teal-200 text-[10px] font-bold">
             <Check className="w-3 h-3" />
-            <span>تم التنفيذ من المخزن — بانتظار استلام المندوب</span>
+            <span>تم الصرف من المخزن — بانتظار تأكيد استلام المندوب</span>
           </span>
         );
       case 'approved':
@@ -609,6 +796,16 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
         >
           <User className="w-4 h-4 text-purple-600" />
           <span>دليل المناديب ومتابعة العهد ({representatives.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('rep-custody-statement')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'rep-custody-statement' ? 'bg-white text-blue-950 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <FileSpreadsheet className="w-4 h-4 text-blue-900" />
+          <span>كشف حساب وعهدة المندوب</span>
         </button>
       </div>
 
@@ -775,7 +972,14 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   ) : (
                     filteredItemTransfers.map((req) => (
                       <tr key={req.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="p-3.5 font-bold font-mono text-blue-900">{req.requestNumber}</td>
+                        <td className="p-3.5 font-bold font-mono text-blue-900">
+                          <div>{req.requestNumber}</div>
+                          {req.transferMode === 'custody_dispatch' && (
+                            <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-purple-50 text-purple-800 border border-purple-200 text-[9px] font-sans font-bold">
+                              صرف عهدة مباشر
+                            </span>
+                          )}
+                        </td>
                         <td className="p-3.5 font-mono text-slate-600">{req.date}</td>
                         <td className="p-3.5 font-bold text-slate-800">{req.representativeName}</td>
                         <td className="p-3.5 font-mono font-bold text-blue-800">
@@ -786,7 +990,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                         <td className="p-3.5 font-bold text-slate-700">{req.items.length} أصناف</td>
                         <td className="p-3.5">{getItemReqStatusBadge(req.status)}</td>
                         <td className="p-3.5">
-                          <div className="flex items-center justify-center gap-1.5">
+                          <div className="flex items-center justify-center gap-1.5 flex-wrap">
                             <button
                               onClick={() => setActiveItemReqDetail(req)}
                               className="px-2.5 py-1 bg-blue-50 text-blue-900 hover:bg-blue-100 rounded-lg font-bold text-[11px] flex items-center gap-1 cursor-pointer"
@@ -798,9 +1002,18 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                               <button
                                 onClick={() => handleExecuteItemTransfer(req)}
                                 className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] cursor-pointer"
-                                title="موافقة ونقل البضاعة لسيارة المندوب"
+                                title="موافقة وصرف البضاعة من المخزن الرئيسي"
                               >
-                                اعتماد ونقل
+                                اعتماد وصرف
+                              </button>
+                            )}
+                            {req.status === 'executed' && (
+                              <button
+                                onClick={() => handleConfirmCustodyReceipt(req)}
+                                className="px-2.5 py-1 bg-blue-900 hover:bg-blue-950 text-white rounded-lg font-bold text-[11px] cursor-pointer"
+                                title="تأكيد استلام المندوب وإضافة البضاعة لعهدة السيارة"
+                              >
+                                تأكيد استلام المندوب
                               </button>
                             )}
                           </div>
@@ -845,7 +1058,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-2 border-t text-[11px]">
+              <div className="flex items-center justify-between gap-2 pt-2 border-t text-[11px]">
                 <button
                   onClick={() => {
                     setSelectedRepId(rep.id);
@@ -855,6 +1068,15 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   className="text-blue-900 font-bold hover:underline cursor-pointer"
                 >
                   توريد نقدية للمحل
+                </button>
+                <button
+                  onClick={() => {
+                    setCustodyRepId(rep.id);
+                    setActiveTab('rep-custody-statement');
+                  }}
+                  className="text-emerald-700 font-bold hover:underline cursor-pointer"
+                >
+                  كشف العهدة والحساب
                 </button>
                 <button
                   onClick={() => {
@@ -873,6 +1095,305 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* TAB 4: Rep Custody & Account Statement */}
+      {activeTab === 'rep-custody-statement' && (
+        <div className="space-y-4">
+          {/* Controls Strip */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-end justify-between gap-3 text-xs">
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block font-bold text-slate-600 mb-1">المندوب:</label>
+                <select
+                  value={custodyRepId}
+                  disabled={isRepUser}
+                  onChange={(e) => setCustodyRepId(e.target.value)}
+                  className="p-2 rounded-xl border border-slate-300 bg-slate-50 font-bold min-w-[200px]"
+                >
+                  {representatives.map((r) => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block font-bold text-slate-600 mb-1">من تاريخ:</label>
+                <input
+                  type="date"
+                  value={custodyDateFrom}
+                  onChange={(e) => setCustodyDateFrom(e.target.value)}
+                  className="p-2 rounded-xl border border-slate-300 font-mono bg-slate-50"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-600 mb-1">إلى تاريخ:</label>
+                <input
+                  type="date"
+                  value={custodyDateTo}
+                  onChange={(e) => setCustodyDateTo(e.target.value)}
+                  className="p-2 rounded-xl border border-slate-300 font-mono bg-slate-50"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => loadCustodyStatement(custodyRepId)}
+                disabled={isCustodyLoading}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-bold cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${isCustodyLoading ? 'animate-spin' : ''}`} />
+                <span>تحديث الكشف</span>
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const defaultProd = custodyStatement?.itemsSummary?.[0]?.productId || products[0]?.id || '';
+                  setCustodyOpProductId(defaultProd);
+                  setCustodyOpQty(1);
+                  setCustodyOpCustomerId('');
+                  setCustodyOpCustomerName('');
+                  setCustodyOpNotes('');
+                  setCustodyActionModal('deliver');
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
+              >
+                <PackageCheck className="w-4 h-4" />
+                <span>تسليم جزئي للعميل</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const defaultProd = custodyStatement?.itemsSummary?.[0]?.productId || products[0]?.id || '';
+                  setCustodyOpProductId(defaultProd);
+                  setCustodyOpQty(1);
+                  setCustodyOpTargetWhId(warehouses.find((w) => !w.id.includes('van'))?.id || warehouses[0]?.id || 'wh-main');
+                  setCustodyOpNotes('');
+                  setCustodyActionModal('return');
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold cursor-pointer"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>إرجاع للمخزن الرئيسي</span>
+              </button>
+              {(currentUser?.role === 'admin' || hasPermission('canApprove') || hasPermission('canManageReps')) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const defaultProd = custodyStatement?.itemsSummary?.[0]?.productId || products[0]?.id || '';
+                    setCustodyOpProductId(defaultProd);
+                    setCustodyOpQty(1);
+                    setCustodyOpType('custody_damaged');
+                    setCustodyOpNotes('');
+                    setCustodyActionModal('adjust');
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-black text-white font-bold cursor-pointer"
+                >
+                  <AlertTriangle className="w-4 h-4" />
+                  <span>تسوية / تالف / عجز</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleExportCustodyExcel}
+                disabled={!custodyStatement}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-700 cursor-pointer disabled:opacity-50"
+              >
+                <Download className="w-4 h-4 text-emerald-600" />
+                <span>Excel</span>
+              </button>
+              <button
+                type="button"
+                onClick={handlePrintCustodyStatement}
+                disabled={!custodyStatement}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-700 cursor-pointer disabled:opacity-50"
+              >
+                <Printer className="w-4 h-4 text-blue-900" />
+                <span>طباعة</span>
+              </button>
+            </div>
+          </div>
+
+          {custodyError && (
+            <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-xl text-xs font-bold">
+              {custodyError}
+            </div>
+          )}
+
+          {custodyStatement && (
+            <>
+              {/* Financial Summary Cards */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                <div className="bg-white p-4 rounded-2xl border border-blue-200 shadow-xs">
+                  <span className="text-slate-500 font-bold flex items-center gap-1">
+                    <Wallet className="w-4 h-4 text-blue-800" /> رصيد العهدة النقدية الحالية
+                  </span>
+                  <p className="text-xl font-black text-blue-950 font-mono tabular-nums mt-1">
+                    {custodyStatement.financialSummary.currentCashCustodyBalance.toLocaleString()} {settings.currency}
+                  </p>
+                </div>
+                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                  <span className="text-slate-500 font-bold">إجمالي مبيعات المندوب</span>
+                  <p className="text-xl font-black text-slate-900 font-mono tabular-nums mt-1">
+                    {custodyStatement.financialSummary.totalSalesAmount.toLocaleString()} {settings.currency}
+                  </p>
+                </div>
+                <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-xs">
+                  <span className="text-emerald-700 font-bold">المحصّل من الفواتير</span>
+                  <p className="text-xl font-black text-emerald-700 font-mono tabular-nums mt-1">
+                    {custodyStatement.financialSummary.totalSalesPaidAmount.toLocaleString()} {settings.currency}
+                  </p>
+                </div>
+                <div className="bg-white p-4 rounded-2xl border border-amber-200 shadow-xs">
+                  <span className="text-amber-700 font-bold">المتبقي بالآجل عند العملاء</span>
+                  <p className="text-xl font-black text-amber-800 font-mono tabular-nums mt-1">
+                    {custodyStatement.financialSummary.totalSalesRemainingAmount.toLocaleString()} {settings.currency}
+                  </p>
+                </div>
+              </div>
+
+              {/* Item Custody Totals Strip */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 bg-slate-900 text-white p-3.5 rounded-2xl text-center text-[11px] tabular-nums">
+                <div>
+                  <span className="text-slate-400 block">المستلم فعلياً</span>
+                  <strong className="text-sm font-mono">{custodyStatement.totals.totalReceivedQty}</strong>
+                </div>
+                <div>
+                  <span className="text-amber-300 block">بانتظار الاستلام</span>
+                  <strong className="text-sm font-mono">{custodyStatement.totals.totalPendingReceiveQty}</strong>
+                </div>
+                <div>
+                  <span className="text-emerald-300 block">مسلم للعملاء</span>
+                  <strong className="text-sm font-mono">{custodyStatement.totals.totalDeliveredQty}</strong>
+                </div>
+                <div>
+                  <span className="text-sky-300 block">مرتجع للمخزن</span>
+                  <strong className="text-sm font-mono">{custodyStatement.totals.totalReturnedQty}</strong>
+                </div>
+                <div>
+                  <span className="text-rose-300 block">تسويات / تالف</span>
+                  <strong className="text-sm font-mono">{custodyStatement.totals.totalReductionsQty}</strong>
+                </div>
+                <div>
+                  <span className="text-blue-300 block">المتبقي بالعهدة</span>
+                  <strong className="text-sm font-mono text-white">{custodyStatement.totals.totalRemainingCustodyQty}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-300 block">رصيد السيارة الفعلي</span>
+                  <strong className="text-sm font-mono">{custodyStatement.totals.totalVanPhysicalQty}</strong>
+                </div>
+                <div>
+                  <span className="text-emerald-200 block">قيمة العهدة بالتكلفة</span>
+                  <strong className="text-sm font-mono">{custodyStatement.totals.totalCustodyCostValue.toLocaleString()}</strong>
+                </div>
+              </div>
+
+              {/* Items Summary Table */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                <div className="p-3.5 bg-slate-50 border-b border-slate-200 font-black text-xs text-slate-900">
+                  ملخص الأصناف في عهدة المندوب (المتبقي = المستلم − المسلم للعملاء − المرتجع − التسويات)
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-right text-xs">
+                    <thead>
+                      <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                        <th className="p-3">الصنف</th>
+                        <th className="p-3 text-center">الوحدة</th>
+                        <th className="p-3 text-center">مستلم</th>
+                        <th className="p-3 text-center">معلّق (قيد الاستلام)</th>
+                        <th className="p-3 text-center">مسلم للعملاء</th>
+                        <th className="p-3 text-center">مفوتر</th>
+                        <th className="p-3 text-center">مرتجع للمخزن</th>
+                        <th className="p-3 text-center">تالف/عجز/تسوية</th>
+                        <th className="p-3 text-center">المتبقي بالعهدة</th>
+                        <th className="p-3 text-center">رصيد السيارة</th>
+                        <th className="p-3 text-center">القيمة بالتكلفة</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 tabular-nums">
+                      {custodyStatement.itemsSummary.length === 0 ? (
+                        <tr>
+                          <td colSpan={11} className="p-6 text-center text-slate-400">
+                            لا توجد حركات أصناف مسجلة لهذا المندوب في الفترة المحددة
+                          </td>
+                        </tr>
+                      ) : (
+                        custodyStatement.itemsSummary.map((it) => (
+                          <tr key={it.productId} className="hover:bg-slate-50/80">
+                            <td className="p-3 font-bold text-slate-900">
+                              <div>{it.productName}</div>
+                              <div className="text-[10px] font-mono text-slate-400">{it.productCode}</div>
+                            </td>
+                            <td className="p-3 text-center">{it.baseUnit}</td>
+                            <td className="p-3 text-center font-mono font-bold text-blue-900">{it.receivedQty}</td>
+                            <td className="p-3 text-center font-mono text-amber-700">{it.pendingReceiveQty}</td>
+                            <td className="p-3 text-center font-mono font-bold text-emerald-700">{it.deliveredToCustomersQty}</td>
+                            <td className="p-3 text-center font-mono text-slate-700">{it.invoicedSoldQty}</td>
+                            <td className="p-3 text-center font-mono text-sky-700">{it.returnedToWarehouseQty}</td>
+                            <td className="p-3 text-center font-mono text-rose-700">{it.approvedReductionsQty}</td>
+                            <td className="p-3 text-center font-mono font-black text-blue-950 bg-blue-50/60">{it.remainingCustodyQty}</td>
+                            <td className="p-3 text-center font-mono font-bold text-slate-800">{it.vanPhysicalStockQty}</td>
+                            <td className="p-3 text-center font-mono font-bold text-slate-900">{it.custodyValueAtCost.toLocaleString()} {settings.currency}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Chronological Custody Ledger Table */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                <div className="p-3.5 bg-slate-50 border-b border-slate-200 font-black text-xs text-slate-900">
+                  سجل حركات العهدة التفصيلي ({custodyStatement.ledger.length})
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-right text-xs">
+                    <thead>
+                      <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                        <th className="p-3">التاريخ</th>
+                        <th className="p-3">نوع الحركة</th>
+                        <th className="p-3">رقم المستند</th>
+                        <th className="p-3">الصنف</th>
+                        <th className="p-3">العميل / الجهة</th>
+                        <th className="p-3 text-center">وارد للعهدة (+)</th>
+                        <th className="p-3 text-center">صادر من العهدة (-)</th>
+                        <th className="p-3">ملاحظات</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 tabular-nums">
+                      {custodyStatement.ledger.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="p-6 text-center text-slate-400">
+                            لا توجد حركات مسجلة في دفتر العهدة
+                          </td>
+                        </tr>
+                      ) : (
+                        custodyStatement.ledger.map((row) => (
+                          <tr key={row.id} className="hover:bg-slate-50/80">
+                            <td className="p-3 font-mono text-slate-600">{row.date}</td>
+                            <td className="p-3 font-bold text-slate-800">{row.docType}</td>
+                            <td className="p-3 font-mono text-blue-900 font-bold">{row.docNumber}</td>
+                            <td className="p-3 font-bold">{row.productName}</td>
+                            <td className="p-3 text-slate-600">{row.customerName || '-'}</td>
+                            <td className="p-3 text-center font-mono font-bold text-emerald-700">
+                              {row.quantityIn > 0 ? `+${row.quantityIn}` : '-'}
+                            </td>
+                            <td className="p-3 text-center font-mono font-bold text-rose-700">
+                              {row.quantityOut > 0 ? `-${row.quantityOut}` : '-'}
+                            </td>
+                            <td className="p-3 text-slate-500">{row.notes || '-'}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -1001,6 +1522,33 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               </div>
             )}
 
+            <div>
+              <label className="block font-bold mb-1">نوع الإذن / المسار:</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setItemReqTransferMode('transfer')}
+                  className={`p-2 rounded-xl border font-bold cursor-pointer ${
+                    itemReqTransferMode === 'transfer' ? 'bg-blue-900 text-white border-blue-900' : 'bg-slate-50 text-slate-700 border-slate-300'
+                  }`}
+                >
+                  تحويل عادي / طلب سحب
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setItemReqTransferMode('custody_dispatch')}
+                  className={`p-2 rounded-xl border font-bold cursor-pointer ${
+                    itemReqTransferMode === 'custody_dispatch' ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-slate-50 text-slate-700 border-slate-300'
+                  }`}
+                >
+                  صرف عهدة مباشرة من المخزن للمندوب
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-500 mt-1">
+                في وضع صرف العهدة المباشر يُخصم المخزن الرئيسي فوراً ولا تُضاف البضاعة لرصيد سيارة المندوب إلا بعد تأكيد الاستلام.
+              </p>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block font-bold mb-1">المندوب:</label>
@@ -1102,7 +1650,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               </div>
 
               {selectedItemsForReq.length > 0 && (
-                <div className="border border-slate-200 rounded-xl overflow-hidden mt-2 bg-white">
+                <div className="border border-slate-200 rounded-xl awlad-table-scroll mt-2 bg-white">
                   <table className="w-full text-right text-[11px]">
                     <thead className="bg-slate-100 border-b">
                       <tr>
@@ -1189,7 +1737,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
 
             <div>
               <span className="font-bold text-slate-800 block mb-1.5">الأصناف المطلوبة وحالة العجز:</span>
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <div className="border border-slate-200 rounded-xl awlad-table-scroll">
                 <table className="w-full text-right text-xs">
                   <thead className="bg-slate-100 border-b">
                     <tr>
@@ -1237,9 +1785,18 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                       onClick={() => handleExecuteItemTransfer(activeItemReqDetail)}
                       className="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-black rounded-xl shadow-md cursor-pointer"
                     >
-                      موافقة وتنفيذ الخصم المخزني
+                      اعتماد وصرف من المخزن الرئيسي
                     </button>
                   </>
+                )}
+                {activeItemReqDetail.status === 'executed' && (
+                  <button
+                    type="button"
+                    onClick={() => handleConfirmCustodyReceipt(activeItemReqDetail)}
+                    className="px-5 py-2 bg-blue-900 hover:bg-blue-950 text-white font-black rounded-xl shadow-md cursor-pointer"
+                  >
+                    تأكيد استلام المندوب
+                  </button>
                 )}
                 <button
                   type="button"
@@ -1251,6 +1808,151 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               </div>
             </div>
           </div>
+        </Modal>
+      )}
+
+      {/* Custody Operation Modal (Deliver / Return / Adjust) */}
+      {custodyActionModal && (
+        <Modal
+          isOpen={Boolean(custodyActionModal)}
+          onClose={() => !isSubmittingCustodyOp && setCustodyActionModal(null)}
+          title={
+            custodyActionModal === 'deliver'
+              ? 'تسجيل تسليم جزئي من العهدة للعميل'
+              : custodyActionModal === 'return'
+              ? 'تسجيل إرجاع أصناف من العهدة للمخزن الرئيسي'
+              : 'تسوية عهدة المندوب (تالف / عجز / تسوية)'
+          }
+          maxWidth="md"
+        >
+          <form onSubmit={handleSubmitCustodyOp} className="space-y-3 text-xs">
+            <div>
+              <label className="block font-bold mb-1">الصنف:</label>
+              <select
+                required
+                value={custodyOpProductId}
+                onChange={(e) => setCustodyOpProductId(e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+              >
+                <option value="">-- اختر الصنف --</option>
+                {products.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.code})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {custodyActionModal === 'deliver' && (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-bold mb-1">العميل (من الدليل):</label>
+                  <select
+                    value={custodyOpCustomerId}
+                    onChange={(e) => setCustodyOpCustomerId(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                  >
+                    <option value="">-- عميل نقدي / إدخال يدوي --</option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">أو اسم العميل:</label>
+                  <input
+                    type="text"
+                    value={custodyOpCustomerName}
+                    onChange={(e) => setCustodyOpCustomerName(e.target.value)}
+                    placeholder="اسم العميل المستلم..."
+                    className="w-full p-2.5 rounded-xl border border-slate-300"
+                  />
+                </div>
+              </div>
+            )}
+
+            {custodyActionModal === 'return' && (
+              <div>
+                <label className="block font-bold mb-1">المستودع المستلم للمرتجع:</label>
+                <select
+                  value={custodyOpTargetWhId}
+                  onChange={(e) => setCustodyOpTargetWhId(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                >
+                  {warehouses.map((w) => (
+                    <option key={w.id} value={w.id}>{w.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {custodyActionModal === 'adjust' && (
+              <div>
+                <label className="block font-bold mb-1">نوع التسوية:</label>
+                <select
+                  value={custodyOpType}
+                  onChange={(e) => setCustodyOpType(e.target.value as any)}
+                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                >
+                  <option value="custody_damaged">تالف عهدة</option>
+                  <option value="custody_shortage">عجز عهدة</option>
+                  <option value="custody_adjustment">تسوية إدارية للعهدة</option>
+                </select>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block font-bold mb-1">الكمية:</label>
+                <input
+                  type="number"
+                  required
+                  min={0.001}
+                  step="0.001"
+                  value={custodyOpQty}
+                  onChange={(e) => setCustodyOpQty(parseFloat(e.target.value) || 0)}
+                  className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
+                />
+              </div>
+              <div>
+                <label className="block font-bold mb-1">التاريخ:</label>
+                <input
+                  type="date"
+                  required
+                  value={custodyOpDate}
+                  onChange={(e) => setCustodyOpDate(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-300 font-mono"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-bold mb-1">ملاحظات / سبب:</label>
+              <input
+                type="text"
+                value={custodyOpNotes}
+                onChange={(e) => setCustodyOpNotes(e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-slate-300"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <button
+                type="button"
+                onClick={() => setCustodyActionModal(null)}
+                className="px-4 py-2 rounded-xl border border-slate-300 font-bold cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmittingCustodyOp || !custodyOpProductId || custodyOpQty <= 0}
+                className="px-5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
+              >
+                {isSubmittingCustodyOp ? 'جاري التنفيذ...' : 'حفظ وتنفيذ'}
+              </button>
+            </div>
+          </form>
         </Modal>
       )}
 

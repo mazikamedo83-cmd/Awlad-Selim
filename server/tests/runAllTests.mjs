@@ -502,7 +502,9 @@ async function runSuiteA_JsonLedgerHttp() {
       const updatedCust = bootConfirmed.customers.find((c) => c.id === custA.id);
       assert.equal(updatedProd.stockPerWarehouse[whMainId], 76, 'Stock should decrease by 2*12=24 once');
       assert.equal(updatedCust.currentBalance, 250, 'Customer balance should increase by 250 once');
-      assert.ok(updatedCust.priceHistory[prod1.id].includes(125));
+      assert.ok(
+        (updatedCust.priceHistory[prod1.id] || []).some((entry) => (typeof entry === 'number' ? entry : entry.price) === 125)
+      );
     });
 
     await test('11. Insufficient stock rollback + Return respects unitFactor + Cancel reverses confirmed invoice', async () => {
@@ -1585,6 +1587,985 @@ async function runSuiteA_JsonLedgerHttp() {
       boot = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
       assert.equal(boot.products.find((p) => p.id === prod1.id).stockPerWarehouse[repVanWhId], 5);
     });
+
+    await test('35. Unified Mobile Login, Permission Escalation Guard, Idempotency, Supplier Advance Settlement, Dated Price History & Scoped Notifications', async () => {
+      // 1. Create a restricted manager (has canManageUsers + canView, lacks canManageSettings / canManageCashboxes)
+      const mgrCreate = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'مدير فرع اختبار',
+          username: 'mgr_scope_test',
+          password: 'MgrPassword!99',
+          phone: '01055551234',
+          role: 'manager',
+          permissions: { canView: true, canAdd: true, canManageUsers: true, canManageSales: true },
+        },
+      });
+      assert.equal(mgrCreate.status, 201);
+
+      // Login using PHONE number without specifying role
+      const phoneLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: '01055551234', password: 'MgrPassword!99' },
+      });
+      assert.equal(phoneLogin.status, 200);
+      assert.equal(phoneLogin.json.user.role, 'manager');
+      const mgrToken = phoneLogin.json.accessToken;
+
+      // Manager cannot escalate permissions they do not possess
+      const escRes = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: mgrToken,
+        body: {
+          fullName: 'حساب متجاوز',
+          username: 'esc_user_1',
+          password: 'EscPassword!99',
+          role: 'sales',
+          permissions: { canView: true, canManageCashboxes: true },
+        },
+      });
+      assert.equal(escRes.status, 403);
+      assert.equal(escRes.json.code, 'FORBIDDEN_PERMISSION_ESCALATION');
+
+      // Manager cannot create admin account
+      const admEsc = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: mgrToken,
+        body: {
+          fullName: 'ادمن مزيف',
+          username: 'fake_adm_1',
+          password: 'FakePassword!99',
+          role: 'admin',
+        },
+      });
+      assert.equal(admEsc.status, 403);
+
+      // Scoped notifications: Admin vs restricted Manager
+      const admNotifs = await req(baseUrl, 'GET', '/api/mobile/notifications', { token: adminToken });
+      assert.equal(admNotifs.status, 200);
+      assert.ok(Array.isArray(admNotifs.json.notifications));
+      const mgrNotifs = await req(baseUrl, 'GET', '/api/mobile/notifications', { token: mgrToken });
+      assert.equal(mgrNotifs.status, 200);
+      assert.ok(Array.isArray(mgrNotifs.json.notifications));
+
+      // 2. Idempotency on customer payment + supplier payment + sales invoice + invoice payment
+      const boot0 = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const cust0 = boot0.customers[0];
+      const supp0 = boot0.suppliers[0];
+      const cb0 = boot0.cashboxes[0];
+      const wh0 = boot0.warehouses[0];
+
+      const custBalBefore = Number(cust0.currentBalance || 0);
+      const cbBalBefore = Number(cb0.currentBalance || 0);
+      const cp1 = await req(baseUrl, 'POST', `/api/customers/${cust0.id}/payment`, {
+        token: adminToken,
+        headers: { 'Idempotency-Key': 'idem-cust-pay-35' },
+        body: { amount: 25, cashboxId: cb0.id, paymentMethod: 'cash', notes: 'تحصيل مع منع التكرار' },
+      });
+      assert.equal(cp1.status, 200);
+      const cp2 = await req(baseUrl, 'POST', `/api/customers/${cust0.id}/payment`, {
+        token: adminToken,
+        headers: { 'Idempotency-Key': 'idem-cust-pay-35' },
+        body: { amount: 25, cashboxId: cb0.id, paymentMethod: 'cash', notes: 'تحصيل مع منع التكرار' },
+      });
+      assert.equal(cp2.status, 200);
+      assert.equal(cp2.json.deduplicated, true);
+
+      let boot1 = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      assert.equal(boot1.customers.find((c) => c.id === cust0.id).currentBalance, custBalBefore - 25);
+      assert.equal(boot1.cashboxes.find((c) => c.id === cb0.id).currentBalance, cbBalBefore + 25);
+
+      // Sales invoice stores dated priceHistory object and respects Idempotency-Key
+      const invDate = new Date().toISOString().split('T')[0];
+      const si1 = await req(baseUrl, 'POST', '/api/invoices/sales', {
+        token: adminToken,
+        headers: { 'Idempotency-Key': 'idem-sale-35' },
+        body: {
+          date: invDate,
+          customerId: cust0.id,
+          warehouseId: wh0.id,
+          cashboxId: cb0.id,
+          paymentType: 'credit',
+          paidAmount: 0,
+          status: 'confirmed',
+          items: [{ productId: prod1.id, productName: prod1.name, unit: 'قطعة', unitFactor: 1, quantity: 1, unitPrice: 77 }],
+        },
+      });
+      assert.equal(si1.status, 201);
+      const si2 = await req(baseUrl, 'POST', '/api/invoices/sales', {
+        token: adminToken,
+        headers: { 'Idempotency-Key': 'idem-sale-35' },
+        body: {
+          date: invDate,
+          customerId: cust0.id,
+          warehouseId: wh0.id,
+          cashboxId: cb0.id,
+          paymentType: 'credit',
+          paidAmount: 0,
+          status: 'confirmed',
+          items: [{ productId: prod1.id, productName: prod1.name, unit: 'قطعة', unitFactor: 1, quantity: 1, unitPrice: 77 }],
+        },
+      });
+      assert.equal(si2.status, 201);
+      assert.equal(si2.json.invoice.id, si1.json.invoice.id);
+
+      const phRes = await req(baseUrl, 'GET', `/api/customers/${cust0.id}/price-history`, { token: adminToken });
+      assert.equal(phRes.status, 200);
+      const phEntries = phRes.json.priceHistory[prod1.id] || [];
+      const latestPh = phEntries[phEntries.length - 1];
+      assert.equal(latestPh.price, 77);
+      assert.equal(latestPh.date, invDate);
+      assert.equal(latestPh.invoiceNumber, si1.json.invoice.invoiceNumber);
+
+      // Invoice payment idempotency
+      const ip1 = await req(baseUrl, 'POST', `/api/invoices/${si1.json.invoice.id}/payments`, {
+        token: adminToken,
+        headers: { 'Idempotency-Key': 'idem-inv-pay-35' },
+        body: { amount: 20, cashboxId: cb0.id, paymentMethod: 'cash', notes: 'دفعة فاتورة' },
+      });
+      assert.equal(ip1.status, 200);
+      const ip2 = await req(baseUrl, 'POST', `/api/invoices/${si1.json.invoice.id}/payments`, {
+        token: adminToken,
+        headers: { 'Idempotency-Key': 'idem-inv-pay-35' },
+        body: { amount: 20, cashboxId: cb0.id, paymentMethod: 'cash', notes: 'دفعة فاتورة' },
+      });
+      assert.equal(ip2.status, 200);
+      assert.equal(ip2.json.invoice.paidAmount, 20);
+
+      // 3. Supplier advance payment + zero-cashbox advance settlement route
+      const spAdv = await req(baseUrl, 'POST', '/api/admin/suppliers/payment', {
+        token: adminToken,
+        headers: { 'Idempotency-Key': 'idem-supp-adv-35' },
+        body: { supplierId: supp0.id, amount: 500, cashboxId: cb0.id, notes: 'دفعة مقدمة للمورد' },
+      });
+      assert.equal(spAdv.status, 200);
+      const spAdvDup = await req(baseUrl, 'POST', '/api/admin/suppliers/payment', {
+        token: adminToken,
+        headers: { 'Idempotency-Key': 'idem-supp-adv-35' },
+        body: { supplierId: supp0.id, amount: 500, cashboxId: cb0.id, notes: 'دفعة مقدمة للمورد' },
+      });
+      assert.equal(spAdvDup.status, 200);
+      assert.equal(spAdvDup.json.deduplicated, true);
+
+      const purInvRes = await req(baseUrl, 'POST', '/api/invoices/purchase', {
+        token: adminToken,
+        body: {
+          supplierId: supp0.id,
+          warehouseId: wh0.id,
+          cashboxId: cb0.id,
+          paymentType: 'credit',
+          paidAmount: 0,
+          status: 'confirmed',
+          items: [{ productId: prod1.id, productName: prod1.name, unit: 'قطعة', unitFactor: 1, quantity: 2, unitPrice: 60 }],
+        },
+      });
+      assert.equal(purInvRes.status, 201);
+      const purInv = purInvRes.json.invoice;
+
+      const cbBeforeSettle = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data.cashboxes.find((c) => c.id === cb0.id).currentBalance;
+      const settle1 = await req(baseUrl, 'POST', `/api/admin/suppliers/${supp0.id}/settle-advance`, {
+        token: adminToken,
+        headers: { 'Idempotency-Key': 'idem-supp-settle-35' },
+        body: { invoiceId: purInv.id, amount: 120, notes: 'تسوية دفعة مقدمة' },
+      });
+      assert.equal(settle1.status, 200);
+      assert.equal(settle1.json.invoice.paidAmount, 120);
+      assert.equal(settle1.json.invoice.remainingAmount, 0);
+
+      // Retrying with same Idempotency-Key returns deduplicated without re-settling
+      const settle2 = await req(baseUrl, 'POST', `/api/admin/suppliers/${supp0.id}/settle-advance`, {
+        token: adminToken,
+        headers: { 'Idempotency-Key': 'idem-supp-settle-35' },
+        body: { invoiceId: purInv.id, amount: 120, notes: 'تسوية دفعة مقدمة' },
+      });
+      assert.equal(settle2.status, 200);
+      assert.equal(settle2.json.deduplicated, true);
+
+      const cbAfterSettle = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data.cashboxes.find((c) => c.id === cb0.id).currentBalance;
+      assert.equal(cbAfterSettle, cbBeforeSettle, 'Advance settlement must NEVER change cashbox balance');
+    });
+
+    await test('37. Dual/Multi-Connection System (JSON Ledger): 4 modes, HTTPS enforcement, dynamic CORS, zero secret leaks & RBAC guards', async () => {
+      // 1. Public /api/health reports supported modes & X-Forwarded-Proto HTTPS detection without secrets
+      const hPlain = await req(baseUrl, 'GET', '/api/health');
+      assert.equal(hPlain.status, 200);
+      assert.deepEqual(hPlain.json.connectionModesSupported, ['local_network', 'free_remote', 'pro_remote', 'cloud_vps']);
+      assert.equal(hPlain.json.httpsActive, false);
+      assert.ok(!JSON.stringify(hPlain.json).includes('JWT_SECRET'));
+      assert.ok(!JSON.stringify(hPlain.json).includes('tunnelToken'));
+
+      const hProxyHttps = await req(baseUrl, 'GET', '/api/health', {
+        headers: { 'X-Forwarded-Proto': 'https', 'X-Forwarded-Host': 'erp.awladselim.example.com' },
+      });
+      assert.equal(hProxyHttps.status, 200);
+      assert.equal(hProxyHttps.json.protocol, 'https');
+      assert.equal(hProxyHttps.json.httpsActive, true);
+
+      // 2. Dynamic CORS allows Capacitor, Quick Tunnel, LAN HTTP, and X-Forwarded-Host even when ALLOWED_ORIGINS is restricted
+      const prevAllowedOrigins = process.env.ALLOWED_ORIGINS;
+      try {
+        process.env.ALLOWED_ORIGINS = 'https://office.awladselim.com';
+        const allowedOriginsToCheck = [
+          { origin: 'capacitor://localhost', extraHeaders: {} },
+          { origin: 'https://localhost', extraHeaders: {} },
+          { origin: 'https://shop-tunnel.trycloudflare.com', extraHeaders: {} },
+          { origin: 'http://192.168.1.55:3000', extraHeaders: {} },
+          { origin: 'https://erp.awladselim.com', extraHeaders: { 'X-Forwarded-Host': 'erp.awladselim.com' } },
+        ];
+        for (const item of allowedOriginsToCheck) {
+          const corsRes = await fetch(`${baseUrl}/api/health`, {
+            headers: { Origin: item.origin, ...item.extraHeaders },
+          });
+          assert.equal(corsRes.status, 200);
+          assert.equal(
+            corsRes.headers.get('access-control-allow-origin'),
+            item.origin,
+            `Expected CORS allow for origin ${item.origin}`
+          );
+        }
+
+        const blockedRes = await fetch(`${baseUrl}/api/health`, {
+          headers: { Origin: 'https://evil-attacker.example.net' },
+        });
+        assert.equal(blockedRes.status, 403);
+      } finally {
+        if (prevAllowedOrigins === undefined) delete process.env.ALLOWED_ORIGINS;
+        else process.env.ALLOWED_ORIGINS = prevAllowedOrigins;
+      }
+
+      // 3. Unauthorized roles blocked from server-info, settings, backup, and cash-operations
+      const mgrNoSettingsLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: 'mgr_scope_test', password: 'MgrPassword!99' },
+      });
+      assert.equal(mgrNoSettingsLogin.status, 200);
+      const repLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: 'rep_karim', password: 'RepPassword!123' },
+      });
+      assert.equal(repLogin.status, 200);
+
+      for (const unauthorizedToken of [tokenCustA, repLogin.json.accessToken, mgrNoSettingsLogin.json.accessToken]) {
+        const siForb = await req(baseUrl, 'GET', '/api/admin/server-info', { token: unauthorizedToken });
+        assert.equal(siForb.status, 403, 'Unauthorized role must get 403 on /api/admin/server-info');
+        const setForb = await req(baseUrl, 'PUT', '/api/admin/settings', {
+          token: unauthorizedToken,
+          body: { extraSettings: { connectionConfig: { activeMode: 'free_remote' } } },
+        });
+        assert.equal(setForb.status, 403, 'Unauthorized role must get 403 on PUT /api/admin/settings');
+        const bakForb = await req(baseUrl, 'GET', '/api/admin/backup/export', { token: unauthorizedToken });
+        assert.equal(bakForb.status, 403, 'Unauthorized role must get 403 on /api/admin/backup/export');
+      }
+
+      // 4. Admin /api/admin/server-info returns port, lanUrls, databaseMode, zero secrets
+      const srvInfoRes = await req(baseUrl, 'GET', '/api/admin/server-info', {
+        token: adminToken,
+        headers: { 'X-Forwarded-Proto': 'https' },
+      });
+      assert.equal(srvInfoRes.status, 200);
+      assert.equal(srvInfoRes.json.ok, true);
+      assert.ok(typeof srvInfoRes.json.port === 'number');
+      assert.ok(Array.isArray(srvInfoRes.json.lanUrls));
+      assert.equal(srvInfoRes.json.httpsActive, true);
+      assert.equal(srvInfoRes.json.databaseMode, 'local-json-ledger');
+      assertNoSensitiveFields(srvInfoRes.json, 'server-info');
+
+      // 5. Capture DB snapshot metrics before mode switches (Single DB guarantee)
+      const snapBefore = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const beforeInvoicesCount = snapBefore.invoices.length;
+      const beforeCustomersCount = snapBefore.customers.length;
+      const beforeCashboxSum = snapBefore.cashboxes.reduce((s, c) => s + Number(c.currentBalance || 0), 0);
+
+      // Reject plain HTTP for remote modes
+      const badHttpRemote = await req(baseUrl, 'PUT', '/api/admin/settings', {
+        token: adminToken,
+        body: {
+          extraSettings: {
+            connectionConfig: {
+              activeMode: 'free_remote',
+              freeRemote: { tunnelUrl: 'http://insecure-demo.trycloudflare.com' },
+            },
+          },
+        },
+      });
+      assert.equal(badHttpRemote.status, 400);
+      assert.equal(badHttpRemote.json.code, 'HTTPS_REQUIRED_FOR_REMOTE');
+
+      // Save all 4 profiles with extraneous secret keys -> secrets MUST be stripped
+      const saveAll4 = await req(baseUrl, 'PUT', '/api/admin/settings', {
+        token: adminToken,
+        body: {
+          extraSettings: {
+            connectionConfig: {
+              activeMode: 'pro_remote',
+              localNetwork: { ip: '192.168.1.120', port: 3000, hostname: 'awlad-main-pc', adminSecret: 'MUST_STRIP' },
+              freeRemote: { tunnelUrl: 'https://awlad-test.trycloudflare.com', tunnelToken: 'SECRET_TOKEN' },
+              proRemote: { domainUrl: 'https://erp.awladselim.com', cloudflareApiKey: 'CF_SECRET' },
+              cloudVps: { vpsUrl: 'https://vps.awladselim.com', notes: 'مستقبلي', sshPassword: 'ROOT_PASSWORD' },
+              enforceHttpsForRemote: true,
+            },
+          },
+        },
+      });
+      assert.equal(saveAll4.status, 200);
+      const savedCfg = saveAll4.json.settings.extraSettings.connectionConfig;
+      assert.equal(savedCfg.activeMode, 'pro_remote');
+      assert.equal(savedCfg.localNetwork.ip, '192.168.1.120');
+      assert.equal(savedCfg.freeRemote.tunnelUrl, 'https://awlad-test.trycloudflare.com');
+      assert.equal(savedCfg.proRemote.domainUrl, 'https://erp.awladselim.com');
+      assert.equal(savedCfg.cloudVps.vpsUrl, 'https://vps.awladselim.com');
+      const cfgSerialized = JSON.stringify(savedCfg);
+      assert.ok(!cfgSerialized.includes('SECRET_TOKEN') && !cfgSerialized.includes('CF_SECRET') && !cfgSerialized.includes('ROOT_PASSWORD') && !cfgSerialized.includes('MUST_STRIP'));
+
+      // Switch between all 4 modes + verify single DB & token continuity across proxy headers
+      for (const nextMode of ['cloud_vps', 'free_remote', 'local_network']) {
+        const sw = await req(baseUrl, 'PUT', '/api/admin/settings', {
+          token: adminToken,
+          headers: { 'X-Forwarded-Proto': 'https', 'X-Forwarded-Host': 'erp.awladselim.com' },
+          body: { extraSettings: { connectionConfig: { activeMode: nextMode } } },
+        });
+        assert.equal(sw.status, 200);
+        assert.equal(sw.json.settings.extraSettings.connectionConfig.activeMode, nextMode);
+        assert.equal(sw.json.settings.extraSettings.connectionConfig.proRemote.domainUrl, 'https://erp.awladselim.com');
+      }
+
+      const snapAfter = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      assert.equal(snapAfter.invoices.length, beforeInvoicesCount);
+      assert.equal(snapAfter.customers.length, beforeCustomersCount);
+      assert.equal(
+        snapAfter.cashboxes.reduce((s, c) => s + Number(c.currentBalance || 0), 0),
+        beforeCashboxSum
+      );
+    });
+
+    await test('39. Customer & Rep Orders section: rep orders, strict RBAC isolation, approve does NOT auto-invoice, reject reason & separate convert', async () => {
+      const boot0 = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const wh0 = boot0.warehouses[0];
+      const cb0 = boot0.cashboxes[0];
+      const custABefore = boot0.customers.find((c) => c.id === custA.id);
+      const prodBefore = boot0.products.find((p) => p.id === prod1.id);
+      const invCountBefore = boot0.invoices.length;
+      const stockBefore = Number(prodBefore.stockPerWarehouse[wh0.id] || 0);
+      const balBefore = Number(custABefore.currentBalance || 0);
+
+      // 1. Rep submits an order for assigned custA
+      const repOrdRes = await req(baseUrl, 'POST', '/api/orders', {
+        token: tokenRep,
+        headers: { 'Idempotency-Key': 'rep-ord-39-1' },
+        body: {
+          customerId: custA.id,
+          items: [{ productId: prod1.id, unit: 'قطعة', quantity: 2.5 }],
+          notes: 'طلب مندوب تجريبي',
+        },
+      });
+      assert.equal(repOrdRes.status, 201);
+      const repOrd = repOrdRes.json.order;
+      assert.equal(repOrd.requesterType, 'representative');
+      assert.equal(repOrd.representativeId, repProfileId);
+      assert.ok(Number(repOrd.totalAmount) > 0);
+      assert.equal(repOrd.status, 'pending');
+
+      // Rep cannot submit order for unassigned custB -> 403
+      const repBlockedCustB = await req(baseUrl, 'POST', '/api/orders', {
+        token: tokenRep,
+        body: {
+          customerId: custB.id,
+          items: [{ productId: prod1.id, unit: 'قطعة', quantity: 1 }],
+        },
+      });
+      assert.equal(repBlockedCustB.status, 403);
+
+      // 2. Customer B creates a direct order; Rep must NOT see Customer B order in GET /api/orders and gets 403 on GET /api/orders/:id
+      const custBOrdRes = await req(baseUrl, 'POST', '/api/orders', {
+        token: tokenCustB,
+        body: {
+          items: [{ productId: prod1.id, unit: 'قطعة', quantity: 1 }],
+          notes: 'طلب مباشر من العميل ب',
+        },
+      });
+      assert.equal(custBOrdRes.status, 201);
+      const custBOrd = custBOrdRes.json.order;
+      assert.equal(custBOrd.requesterType, 'customer');
+
+      const repListRes = await req(baseUrl, 'GET', '/api/orders', { token: tokenRep });
+      assert.equal(repListRes.status, 200);
+      assert.ok(repListRes.json.orders.some((o) => o.id === repOrd.id));
+      assert.equal(repListRes.json.orders.some((o) => o.id === custBOrd.id), false, 'Rep MUST NOT see direct customer orders');
+      assert.equal((await req(baseUrl, 'GET', `/api/orders/${custBOrd.id}`, { token: tokenRep })).status, 403);
+
+      // Non-sales employee (e.g. warehouse staff without canManageSales) receives empty list / 403 on detail & review actions
+      const nonSalesRes = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'أمين مخزن اختبار',
+          username: 'wh_no_orders',
+          password: 'WhPassword!123',
+          role: 'warehouse',
+          permissions: { canView: true, canManageInventory: true },
+        },
+      });
+      assert.equal(nonSalesRes.status, 201);
+      const nonSalesToken = (await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: 'wh_no_orders', password: 'WhPassword!123' },
+      })).json.accessToken;
+
+      const staffOrdList = await req(baseUrl, 'GET', '/api/orders', { token: nonSalesToken });
+      assert.equal(staffOrdList.status, 200);
+      assert.equal(staffOrdList.json.orders.length, 0);
+      assert.equal((await req(baseUrl, 'GET', `/api/orders/${repOrd.id}`, { token: nonSalesToken })).status, 403);
+      assert.equal((await req(baseUrl, 'POST', `/api/orders/${repOrd.id}/approve`, { token: nonSalesToken, body: {} })).status, 403);
+
+      // 3. Review -> Approve lifecycle: must NOT auto-create invoice or touch stock/balances!
+      const revRes = await req(baseUrl, 'POST', `/api/orders/${repOrd.id}/review`, {
+        token: adminToken,
+        body: { notes: 'جاري المراجعة' },
+      });
+      assert.equal(revRes.status, 200);
+      assert.equal(revRes.json.order.status, 'under_review');
+
+      const appRes = await req(baseUrl, 'POST', `/api/orders/${repOrd.id}/approve`, {
+        token: adminToken,
+        body: {},
+      });
+      assert.equal(appRes.status, 200);
+      assert.equal(appRes.json.order.status, 'approved');
+      assert.ok(appRes.json.order.reviewedBy);
+      assert.ok(appRes.json.order.reviewedAt);
+
+      // Duplicate approve blocked with 409
+      const dupAppRes = await req(baseUrl, 'POST', `/api/orders/${repOrd.id}/approve`, {
+        token: adminToken,
+        body: {},
+      });
+      assert.equal(dupAppRes.status, 409);
+
+      // Verify ZERO change to invoices, stock, or customer balance upon approval
+      const bootAfterApprove = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      assert.equal(bootAfterApprove.invoices.length, invCountBefore, 'Approving order MUST NOT auto-create an invoice');
+      assert.equal(Number(bootAfterApprove.products.find((p) => p.id === prod1.id).stockPerWarehouse[wh0.id] || 0), stockBefore);
+      assert.equal(Number(bootAfterApprove.customers.find((c) => c.id === custA.id).currentBalance || 0), balBefore);
+
+      // Separate convert-to-invoice works & transitions order -> invoiced
+      const convRes = await req(baseUrl, 'POST', `/api/orders/${repOrd.id}/convert-to-invoice`, {
+        token: adminToken,
+        body: {
+          warehouseId: wh0.id,
+          warehouseName: wh0.name,
+          cashboxId: cb0.id,
+          status: 'confirmed',
+          paymentType: 'credit',
+          paidAmount: 0,
+          items: [{ productId: prod1.id, productName: prod1.name, unit: 'قطعة', unitFactor: 1, quantity: 2.5, unitPrice: 20 }],
+        },
+      });
+      assert.equal(convRes.status, 201);
+      assert.equal(convRes.json.order.status, 'invoiced');
+
+      // 4. Reject requires written reason & updates mobile state + notification
+      const emptyRej = await req(baseUrl, 'POST', `/api/orders/${custBOrd.id}/reject`, {
+        token: adminToken,
+        body: { reason: '   ' },
+      });
+      assert.equal(emptyRej.status, 400);
+
+      const okRej = await req(baseUrl, 'POST', `/api/orders/${custBOrd.id}/reject`, {
+        token: adminToken,
+        body: { reason: 'الكمية غير متوفرة مؤقتًا' },
+      });
+      assert.equal(okRej.status, 200);
+      assert.equal(okRej.json.order.status, 'rejected');
+      assert.equal(okRej.json.order.rejectionReason, 'الكمية غير متوفرة مؤقتًا');
+
+      const custBOrdersAfter = await req(baseUrl, 'GET', '/api/orders', { token: tokenCustB });
+      assert.equal(custBOrdersAfter.status, 200);
+      const rejectedForB = custBOrdersAfter.json.orders.find((o) => o.id === custBOrd.id);
+      assert.equal(rejectedForB.status, 'rejected');
+      assert.equal(rejectedForB.rejectionReason, 'الكمية غير متوفرة مؤقتًا');
+    });
+
+    await test('40. Customer user creation auto-links 1:1 profile, prevents duplicate linking & repairs legacy unlinked users', async () => {
+      // 1. Creating role='customer' user without linkedCustomerId auto-creates & links customer profile
+      const autoUserRes = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'متجر الأمل الجديد',
+          username: 'cust_amal_auto',
+          password: 'AmalPassword!123',
+          phone: '01077776666',
+          address: 'المنصورة',
+          role: 'customer',
+        },
+      });
+      assert.equal(autoUserRes.status, 201);
+      assert.ok(autoUserRes.json.user.linkedCustomerId, 'Expected auto-created linkedCustomerId');
+
+      const amalLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: 'cust_amal_auto', password: 'AmalPassword!123' },
+      });
+      assert.equal(amalLogin.status, 200);
+      const amalToken = amalLogin.json.accessToken;
+
+      const amalMe = await req(baseUrl, 'GET', '/api/customers/me', { token: amalToken });
+      assert.equal(amalMe.status, 200);
+      assert.equal(amalMe.json.customer.id, autoUserRes.json.user.linkedCustomerId);
+      assert.equal(amalMe.json.linkWarning, null);
+
+      const bootAuto = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const prodAny = bootAuto.products[0];
+      const amalOrd = await req(baseUrl, 'POST', '/api/orders', {
+        token: amalToken,
+        body: { items: [{ productId: prodAny.id, unit: prodAny.baseUnit, quantity: 1 }] },
+      });
+      assert.equal(amalOrd.status, 201);
+
+      // Attempting to link another user to an already-linked customer -> 409
+      const dupLinkRes = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'عميل متضارب',
+          username: 'cust_conflict_try',
+          password: 'Password!123',
+          role: 'customer',
+          linkedCustomerId: autoUserRes.json.user.linkedCustomerId,
+        },
+      });
+      assert.equal(dupLinkRes.status, 409);
+
+      // 2. Unlinked customer user created with autoCreateCustomerProfile: false gets repaired in one click
+      const unlinkedRes = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'عميل قديم غير مربوط',
+          username: 'cust_legacy_unlinked',
+          password: 'LegacyPassword!123',
+          phone: '01088887777',
+          role: 'customer',
+          autoCreateCustomerProfile: false,
+        },
+      });
+      assert.equal(unlinkedRes.status, 201);
+      assert.equal(unlinkedRes.json.user.linkedCustomerId, undefined);
+
+      const fixRes = await req(baseUrl, 'POST', '/api/customers/conflicts/fix-unlinked', { token: adminToken });
+      assert.equal(fixRes.status, 200);
+      assert.ok(fixRes.json.repairedCount >= 1);
+      assert.ok(fixRes.json.repaired.some((r) => r.userId === unlinkedRes.json.user.id));
+    });
+
+    await test('41. Packaging config excludes backup & server/data artifacts from Windows and Vite builds', async () => {
+      const rootDir = process.cwd();
+      const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
+      assert.equal(pkg.build?.extraResources, undefined, 'package.json must not bundle server/data via extraResources');
+      assert.ok(Array.isArray(pkg.build?.files) && pkg.build.files.includes('!server/data/**/*'));
+      assert.ok(pkg.build.files.includes('!server/tests/**/*'));
+      assert.ok(!pkg.build.files.some((entry) => String(entry).includes('AWLAD_SELIM_BACKUP')));
+      const unpackedAppDir = path.join(rootDir, 'dist-electron', 'win-unpacked', 'resources', 'app');
+      if (fs.existsSync(unpackedAppDir)) {
+        assert.equal(fs.existsSync(path.join(unpackedAppDir, 'AWLAD_SELIM_BACKUP')), false, 'AWLAD_SELIM_BACKUP must never leak into packaged app');
+        assert.equal(fs.existsSync(path.join(unpackedAppDir, 'server', 'data')), false, 'server/data must never leak into packaged app');
+      }
+    });
+
+    let prodCustody;
+
+    await test('43. Public registration (/api/auth/register), direct custody dispatch & partial delivery, and rep invoice mark-reviewed without duplicates', async () => {
+      // 1. Public registration: customer & representative succeed, admin rejected 403
+      const regAdminBlocked = await req(baseUrl, 'POST', '/api/auth/register', {
+        body: {
+          fullName: 'محاولة أدمن',
+          username: 'self_reg_admin_try',
+          password: 'Password!123',
+          phone: '01012340001',
+          role: 'admin',
+        },
+      });
+      assert.equal(regAdminBlocked.status, 403);
+
+      const regCust = await req(baseUrl, 'POST', '/api/auth/register', {
+        body: {
+          fullName: 'عميل تسجيل ذاتي',
+          username: 'self_reg_cust_1',
+          password: 'Password!123',
+          phone: '01012340002',
+          address: 'شارع الثورة - طنطا',
+          shopName: 'ماركت النجاح',
+          role: 'customer',
+        },
+      });
+      assert.equal(regCust.status, 201);
+      assert.equal(regCust.json.user.role, 'customer');
+      assert.ok(regCust.json.customerProfile?.id);
+      assert.ok(regCust.json.accessToken);
+      assertNoSensitiveFields(regCust.json, 'register customer');
+
+      const regRep = await req(baseUrl, 'POST', '/api/auth/register', {
+        body: {
+          fullName: 'مندوب تسجيل ذاتي',
+          username: 'self_reg_rep_1',
+          password: 'Password!123',
+          phone: '01012340003',
+          vehicleNumber: 'ع س 4455',
+          role: 'representative',
+        },
+      });
+      assert.equal(regRep.status, 201);
+      assert.equal(regRep.json.user.role, 'representative');
+      assert.ok(regRep.json.representativeProfile?.id);
+      assert.ok(regRep.json.representativeProfile?.warehouseId);
+      assert.ok(regRep.json.accessToken);
+      assertNoSensitiveFields(regRep.json, 'register rep');
+
+      // 2. Fresh isolated product for custody dispatch, quotes, and item-movement profit tests
+      const pCustRes = await req(baseUrl, 'POST', '/api/products', {
+        token: adminToken,
+        body: {
+          code: 'P-CUSTODY-1',
+          barcode: '622000900',
+          name: 'بسكويت عهدة وحركة',
+          category: 'بسكويت',
+          baseUnit: 'قطعة',
+          purchasePrice: 10,
+          sellingPrice: 18,
+          minStockLevel: 5,
+          stockPerWarehouse: { [whMainId]: 200 },
+          status: 'active',
+        },
+      });
+      assert.equal(pCustRes.status, 201);
+      prodCustody = pCustRes.json.product;
+
+      // 3. Direct custody dispatch (100 units): deducts main warehouse immediately, holds rep van until 'received'
+      const vanBefore = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data
+        .products.find((p) => p.id === prodCustody.id).stockPerWarehouse[repVanWhId] || 0;
+      assert.equal(vanBefore, 0);
+
+      const dispRes = await req(baseUrl, 'POST', '/api/inventory/rep-item-transfers', {
+        token: adminToken,
+        body: {
+          representativeId: repProfileId,
+          sourceWarehouseId: whMainId,
+          targetWarehouseId: repVanWhId,
+          transferMode: 'custody_dispatch',
+          autoDispatch: true,
+          notes: 'صرف عهدة أولية للمندوب',
+          items: [
+            {
+              productId: prodCustody.id,
+              productName: prodCustody.name,
+              unit: 'قطعة',
+              requestedQty: 100,
+            },
+          ],
+        },
+      });
+      assert.equal(dispRes.status, 201);
+      assert.equal(dispRes.json.request.transferMode, 'custody_dispatch');
+      assert.equal(dispRes.json.request.status, 'executed');
+
+      // Main warehouse deducted 200 -> 100 immediately, van STILL 0 until rep confirms receipt
+      const bootInTransit = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const prodInTransit = bootInTransit.products.find((p) => p.id === prodCustody.id);
+      assert.equal(prodInTransit.stockPerWarehouse[whMainId], 100);
+      assert.equal(Number(prodInTransit.stockPerWarehouse[repVanWhId] || 0), 0);
+
+      const stmtPending = (await req(baseUrl, 'GET', `/api/inventory/rep-custody/statement?repId=${repProfileId}`, { token: adminToken })).json.statement;
+      const pendingItem = stmtPending.itemsSummary.find((i) => i.productId === prodCustody.id);
+      assert.equal(pendingItem.pendingReceiveQty, 100);
+
+      // Rep confirms receipt -> van credited +100 (0 -> 100)
+      const recRes = await req(baseUrl, 'POST', `/api/inventory/rep-item-transfers/${dispRes.json.request.id}/status`, {
+        token: tokenRep,
+        body: { status: 'received', notes: 'تم استلام العهدة بالكامل' },
+      });
+      assert.equal(recRes.status, 200);
+
+      const bootAfterRec = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      assert.equal(bootAfterRec.products.find((p) => p.id === prodCustody.id).stockPerWarehouse[repVanWhId], 100);
+
+      // Partial custody delivery: 30 of 100 -> leaves 70 remainingCustodyQty
+      const delivRes = await req(baseUrl, 'POST', '/api/inventory/rep-custody/deliver', {
+        token: tokenRep,
+        headers: { 'Idempotency-Key': 'custody-deliv-43-1' },
+        body: {
+          representativeId: repProfileId,
+          customerId: custA.id,
+          items: [{ productId: prodCustody.id, unit: 'قطعة', quantity: 30 }],
+          notes: 'تسليم جزئي أول للعميل',
+        },
+      });
+      assert.equal(delivRes.status, 201);
+
+      const stmtAfterDeliv = (await req(baseUrl, 'GET', `/api/inventory/rep-custody/statement?repId=${repProfileId}`, { token: adminToken })).json.statement;
+      const custItemSum = stmtAfterDeliv.itemsSummary.find((i) => i.productId === prodCustody.id);
+      assert.equal(custItemSum.receivedQty, 100);
+      assert.equal(custItemSum.deliveredToCustomersQty, 30);
+      assert.equal(custItemSum.remainingCustodyQty, 70);
+      assert.equal(custItemSum.vanPhysicalStockQty, 70);
+
+      // 4. Rep creates confirmed sales invoice -> needs_review -> mark-reviewed with ZERO duplicate stock/GL/balance effect
+      const repSaleRes = await req(baseUrl, 'POST', '/api/invoices/sales', {
+        token: tokenRep,
+        body: {
+          customerId: custA.id,
+          warehouseId: repVanWhId,
+          cashboxId: cashboxMainId,
+          status: 'confirmed',
+          paymentType: 'credit',
+          paidAmount: 0,
+          items: [{ productId: prod1.id, productName: prod1.name, unit: 'قطعة', unitFactor: 1, quantity: 2, unitPrice: 15 }],
+        },
+      });
+      assert.equal(repSaleRes.status, 201);
+      const repSaleInv = repSaleRes.json.invoice;
+      assert.equal(repSaleInv.reviewStatus, 'needs_review');
+
+      // Rep blocked from marking own invoice reviewed -> 403
+      const repSelfRev = await req(baseUrl, 'POST', `/api/invoices/${repSaleInv.id}/mark-reviewed`, {
+        token: tokenRep,
+        body: { notes: 'محاولة مراجعة ذاتية' },
+      });
+      assert.equal(repSelfRev.status, 403);
+
+      const bootPreReview = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const prod1StockPre = bootPreReview.products.find((p) => p.id === prod1.id).stockPerWarehouse[repVanWhId];
+      const custABalPre = bootPreReview.customers.find((c) => c.id === custA.id).currentBalance;
+      const txCountPre = bootPreReview.financialTransactions.length;
+
+      const adminRevRes = await req(baseUrl, 'POST', `/api/invoices/${repSaleInv.id}/mark-reviewed`, {
+        token: adminToken,
+        body: { notes: 'تمت مراجعة الفاتورة ومطابقة الأسعار' },
+      });
+      assert.equal(adminRevRes.status, 200);
+      assert.equal(adminRevRes.json.invoice.reviewStatus, 'reviewed');
+      assert.ok(adminRevRes.json.invoice.reviewedBy);
+
+      const bootPostReview = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      assert.equal(bootPostReview.products.find((p) => p.id === prod1.id).stockPerWarehouse[repVanWhId], prod1StockPre);
+      assert.equal(bootPostReview.customers.find((c) => c.id === custA.id).currentBalance, custABalPre);
+      assert.equal(bootPostReview.financialTransactions.length, txCountPre);
+    });
+
+    await test('44. Sales quote + 1:1 convert, cost-based Item Movement Report, 9-stage order lifecycle & purchases role RBAC', async () => {
+      // 1. Create Quote -> zero stock/balance/GL impact; then convert 1:1 to confirmed sales invoice
+      const bootPreQuote = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const stockPreQuote = bootPreQuote.products.find((p) => p.id === prodCustody.id).stockPerWarehouse[whMainId];
+      const balPreQuote = bootPreQuote.customers.find((c) => c.id === custA.id).currentBalance;
+      const ftPreQuote = bootPreQuote.financialTransactions.length;
+
+      const quoteRes = await req(baseUrl, 'POST', '/api/invoices/quotes', {
+        token: adminToken,
+        body: {
+          customerId: custA.id,
+          warehouseId: whMainId,
+          cashboxId: cashboxMainId,
+          items: [{ productId: prodCustody.id, productName: prodCustody.name, unit: 'قطعة', unitFactor: 1, quantity: 5, unitPrice: 20 }],
+          notes: 'عرض سعر ساري 7 أيام',
+        },
+      });
+      assert.equal(quoteRes.status, 201);
+      const quote = quoteRes.json.invoice;
+      assert.equal(quote.type, 'quote');
+      assert.equal(quote.grandTotal, 100);
+
+      const bootPostQuote = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      assert.equal(bootPostQuote.products.find((p) => p.id === prodCustody.id).stockPerWarehouse[whMainId], stockPreQuote);
+      assert.equal(bootPostQuote.customers.find((c) => c.id === custA.id).currentBalance, balPreQuote);
+      assert.equal(bootPostQuote.financialTransactions.length, ftPreQuote);
+
+      const convQuoteRes = await req(baseUrl, 'POST', `/api/invoices/quotes/${quote.id}/convert`, {
+        token: adminToken,
+        body: { status: 'confirmed', paymentType: 'credit', paidAmount: 0 },
+      });
+      assert.equal(convQuoteRes.status, 201);
+      const convertedInv = convQuoteRes.json.invoice;
+      assert.equal(convertedInv.type, 'sales');
+      assert.equal(convertedInv.status, 'confirmed');
+      assert.equal(convertedInv.grandTotal, 100);
+
+      const bootPostConv = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      assert.equal(bootPostConv.products.find((p) => p.id === prodCustody.id).stockPerWarehouse[whMainId], stockPreQuote - 5);
+      assert.equal(bootPostConv.customers.find((c) => c.id === custA.id).currentBalance, balPreQuote + 100);
+
+      // 2. Direct warehouse transfer (10 units) + Item Movement Report cost-based profit verification
+      const whTrRes = await req(baseUrl, 'POST', '/api/inventory/transfer', {
+        token: adminToken,
+        body: {
+          productId: prodCustody.id,
+          fromWarehouseId: whMainId,
+          toWarehouseId: whSecondId,
+          quantity: 10,
+          notes: 'نقل تجريبي للفرع',
+        },
+      });
+      assert.equal(whTrRes.status, 200);
+
+      const movRepRes = await req(baseUrl, 'GET', `/api/inventory/item-movement-report?productId=${prodCustody.id}`, { token: adminToken });
+      assert.equal(movRepRes.status, 200);
+      const report = movRepRes.json.report;
+      assert.ok(report.sections.sales.length === 1);
+      assert.ok(report.sections.transfers.length >= 1);
+      assert.ok(report.sections.custody_sent.length >= 1);
+      assert.ok(report.sections.custody_received.length >= 1);
+      assert.ok(report.sections.custody_deliveries.length >= 1);
+      // 5 sold @ 20 = 100, cost = 5 * 10 = 50 -> profit = 50; warehouse transfers must NOT inflate sales totals!
+      assert.equal(report.totals.totalSalesQty, 5);
+      assert.equal(report.totals.totalSalesValue, 100);
+      assert.equal(report.totals.totalCostOfGoodsSold, 50);
+      assert.equal(report.totals.totalProfit, 50);
+
+      // 3. 9-stage customer order lifecycle + linked invoice payment summary
+      const ord9Res = await req(baseUrl, 'POST', '/api/orders', {
+        token: tokenCustA,
+        body: {
+          items: [{ productId: prodCustody.id, unit: 'قطعة', quantity: 4 }],
+          notes: 'طلب 9 مراحل',
+        },
+      });
+      assert.equal(ord9Res.status, 201);
+      const ord9Id = ord9Res.json.order.id;
+
+      assert.equal((await req(baseUrl, 'POST', `/api/orders/${ord9Id}/review`, { token: adminToken, body: {} })).status, 200);
+      assert.equal((await req(baseUrl, 'POST', `/api/orders/${ord9Id}/approve`, { token: adminToken, body: {} })).status, 200);
+
+      const prepRes = await req(baseUrl, 'POST', `/api/orders/${ord9Id}/stage`, {
+        token: adminToken,
+        body: { stage: 'preparing', notes: 'جاري تجهيز الطلب' },
+      });
+      assert.equal(prepRes.status, 200);
+      assert.equal(prepRes.json.order.status, 'preparing');
+
+      const assignRes = await req(baseUrl, 'POST', `/api/orders/${ord9Id}/assign-rep`, {
+        token: adminToken,
+        body: { repId: repProfileId },
+      });
+      assert.equal(assignRes.status, 200);
+      assert.equal(assignRes.json.order.status, 'rep_assigned');
+
+      const invOrd9 = await req(baseUrl, 'POST', `/api/orders/${ord9Id}/convert-to-invoice`, {
+        token: adminToken,
+        body: {
+          warehouseId: whMainId,
+          cashboxId: cashboxMainId,
+          status: 'confirmed',
+          paymentType: 'credit',
+          paidAmount: 0,
+        },
+      });
+      assert.equal(invOrd9.status, 201);
+      assert.equal(invOrd9.json.order.status, 'invoiced');
+
+      assert.equal(
+        (await req(baseUrl, 'POST', `/api/orders/${ord9Id}/stage`, { token: tokenRep, body: { stage: 'out_for_delivery' } })).status,
+        200
+      );
+      assert.equal(
+        (await req(baseUrl, 'POST', `/api/orders/${ord9Id}/stage`, { token: tokenRep, body: { stage: 'delivered' } })).status,
+        200
+      );
+      const collectRes = await req(baseUrl, 'POST', `/api/orders/${ord9Id}/stage`, {
+        token: tokenRep,
+        body: { stage: 'collected', collectedAmount: 40, cashboxId: cashboxMainId, paymentMethod: 'cash', notes: 'تحصيل جزئي 40' },
+      });
+      assert.equal(collectRes.status, 200);
+      assert.equal(collectRes.json.order.status, 'collected');
+
+      const closeRes = await req(baseUrl, 'POST', `/api/orders/${ord9Id}/stage`, {
+        token: adminToken,
+        body: { stage: 'closed', notes: 'إغلاق نهائي للطلب' },
+      });
+      assert.equal(closeRes.status, 200);
+
+      const finalOrd9 = (await req(baseUrl, 'GET', `/api/orders/${ord9Id}`, { token: adminToken })).json.order;
+      assert.equal(finalOrd9.status, 'closed');
+      assert.equal(finalOrd9.invoiceTotal, 72); // 4 * 18
+      assert.equal(finalOrd9.invoicePaidAmount, 40);
+      assert.equal(finalOrd9.invoiceRemainingAmount, 32);
+      assert.equal(finalOrd9.paymentStatus, 'partial');
+      assert.ok(Array.isArray(finalOrd9.paymentsHistory) && finalOrd9.paymentsHistory.length === 1);
+
+      // 4. 'purchases' role RBAC enforcement
+      const purUserRes = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'موظف مشتريات اختبار',
+          username: 'pur_clerk_1',
+          password: 'PurPassword!123',
+          role: 'purchases',
+          permissions: {
+            canView: true,
+            canAdd: true,
+            canEdit: true,
+            canManagePurchases: true,
+            canManageSuppliers: true,
+            canManageInventory: true,
+            canManageWarehouses: true,
+            canViewReports: true,
+          },
+        },
+      });
+      assert.equal(purUserRes.status, 201);
+      const tokenPurchases = (await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: 'pur_clerk_1', password: 'PurPassword!123' },
+      })).json.accessToken;
+
+      const bootPur = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: tokenPurchases })).json.data;
+      const suppIdPur = bootPur.suppliers[0].id;
+
+      // Allowed: Purchase invoice + Inventory transfer
+      const okPurInv = await req(baseUrl, 'POST', '/api/invoices/purchase', {
+        token: tokenPurchases,
+        body: {
+          supplierId: suppIdPur,
+          warehouseId: whMainId,
+          cashboxId: cashboxMainId,
+          paymentType: 'credit',
+          paidAmount: 0,
+          status: 'confirmed',
+          items: [{ productId: prodCustody.id, productName: prodCustody.name, unit: 'قطعة', unitFactor: 1, quantity: 5, unitPrice: 10 }],
+        },
+      });
+      assert.equal(okPurInv.status, 201);
+      assert.equal(
+        (await req(baseUrl, 'POST', '/api/inventory/transfer', {
+          token: tokenPurchases,
+          body: { productId: prodCustody.id, fromWarehouseId: whMainId, toWarehouseId: whSecondId, quantity: 1 },
+        })).status,
+        200
+      );
+
+      // Blocked 403: Sales invoice, Cashboxes / Cash operations, Users management
+      assert.equal(
+        (await req(baseUrl, 'POST', '/api/invoices/sales', {
+          token: tokenPurchases,
+          body: {
+            customerId: custA.id,
+            warehouseId: whMainId,
+            cashboxId: cashboxMainId,
+            status: 'draft',
+            paymentType: 'credit',
+            paidAmount: 0,
+            items: [{ productId: prodCustody.id, productName: prodCustody.name, unit: 'قطعة', unitFactor: 1, quantity: 1, unitPrice: 18 }],
+          },
+        })).status,
+        403
+      );
+      assert.equal(
+        (await req(baseUrl, 'POST', '/api/admin/cashboxes', {
+          token: tokenPurchases,
+          body: { name: 'خزينة غير مصرحة', type: 'cashbox', openingBalance: 0 },
+        })).status,
+        403
+      );
+      assert.equal(
+        (await req(baseUrl, 'POST', '/api/admin/cash-operations', {
+          token: tokenPurchases,
+          body: { type: 'cash_deposit', cashboxId: cashboxMainId, amount: 10 },
+        })).status,
+        403
+      );
+      assert.equal(
+        (await req(baseUrl, 'POST', '/api/admin/users', {
+          token: tokenPurchases,
+          body: { fullName: 'X', username: 'pur_mk_usr', password: 'Password!123', role: 'sales' },
+        })).status,
+        403
+      );
+    });
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -1953,6 +2934,635 @@ async function runSuiteB_PostgresPgMem() {
       );
       assert.ok(mvRows.rows.some((r) => r.movement_type === 'transfer_out') && mvRows.rows.some((r) => r.movement_type === 'transfer_in'), 'Expected PG transfer stock_movements with out/in rows');
       assert.ok(mvRows.rows.every((r) => r.movement_number && r.unit && r.balance_after !== null));
+    });
+
+    await test('36. Live PostgreSQL HTTP API enforces permission escalation block, dated price history, payment idempotency & supplier advance settlement', async () => {
+      const adminLogin = await req(baseUrlPg, 'POST', '/api/auth/login', {
+        body: { username: 'owner_tarek', password: 'OwnerStrongPassword!99' },
+      });
+      const pgAdminToken = adminLogin.json.accessToken;
+      const boot = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      const cb1 = boot.cashboxes[0].id;
+      const wh1 = boot.warehouses[0].id;
+      const cust = boot.customers[0];
+      const supp = boot.suppliers[0];
+      const prod = boot.products.find((p) => p.code === 'P-100') || boot.products[0];
+
+      // Phone login for manager + escalation block in PG
+      const mgrUser = boot.users.find((u) => u.username === 'mgr_scope_test');
+      assert.ok(mgrUser);
+      const pgMgrLogin = await req(baseUrlPg, 'POST', '/api/auth/login', {
+        body: { username: '01055551234', password: 'MgrPassword!99' },
+      });
+      assert.equal(pgMgrLogin.status, 200);
+      assert.equal(pgMgrLogin.json.user.role, 'manager');
+      const pgEsc = await req(baseUrlPg, 'POST', '/api/admin/users', {
+        token: pgMgrLogin.json.accessToken,
+        body: {
+          fullName: 'تصعيد PG',
+          username: 'pg_esc_u',
+          password: 'Password!99',
+          role: 'sales',
+          permissions: { canManageSettings: true },
+        },
+      });
+      assert.equal(pgEsc.status, 403);
+      assert.equal(pgEsc.json.code, 'FORBIDDEN_PERMISSION_ESCALATION');
+
+      // Dated priceHistory + idempotent customer payment on PG
+      const cbBefore = Number(boot.cashboxes[0].currentBalance || 0);
+      const cpPg1 = await req(baseUrlPg, 'POST', `/api/customers/${cust.id}/payment`, {
+        token: pgAdminToken,
+        headers: { 'Idempotency-Key': 'pg-idem-cp-36' },
+        body: { amount: 15, cashboxId: cb1, paymentMethod: 'cash' },
+      });
+      assert.equal(cpPg1.status, 200);
+      const cpPg2 = await req(baseUrlPg, 'POST', `/api/customers/${cust.id}/payment`, {
+        token: pgAdminToken,
+        headers: { 'Idempotency-Key': 'pg-idem-cp-36' },
+        body: { amount: 15, cashboxId: cb1, paymentMethod: 'cash' },
+      });
+      assert.equal(cpPg2.status, 200);
+      assert.equal(cpPg2.json.deduplicated, true);
+
+      const pgInvDate = new Date().toISOString().split('T')[0];
+      const salePg = await req(baseUrlPg, 'POST', '/api/invoices/sales', {
+        token: pgAdminToken,
+        headers: { 'Idempotency-Key': 'pg-idem-sale-36' },
+        body: {
+          date: pgInvDate,
+          customerId: cust.id,
+          warehouseId: wh1,
+          cashboxId: cb1,
+          paymentType: 'credit',
+          paidAmount: 0,
+          status: 'confirmed',
+          items: [{ productId: prod.id, productName: prod.name, unit: 'قطعة', unitFactor: 1, quantity: 1, unitPrice: 88 }],
+        },
+      });
+      assert.equal(salePg.status, 201);
+      const salePgDup = await req(baseUrlPg, 'POST', '/api/invoices/sales', {
+        token: pgAdminToken,
+        headers: { 'Idempotency-Key': 'pg-idem-sale-36' },
+        body: {
+          date: pgInvDate,
+          customerId: cust.id,
+          warehouseId: wh1,
+          cashboxId: cb1,
+          paymentType: 'credit',
+          paidAmount: 0,
+          status: 'confirmed',
+          items: [{ productId: prod.id, productName: prod.name, unit: 'قطعة', unitFactor: 1, quantity: 1, unitPrice: 88 }],
+        },
+      });
+      assert.equal(salePgDup.status, 201);
+      assert.equal(salePgDup.json.invoice.id, salePg.json.invoice.id);
+
+      const pgPh = await req(baseUrlPg, 'GET', `/api/customers/${cust.id}/price-history`, { token: pgAdminToken });
+      assert.equal(pgPh.status, 200);
+      const pgLast = (pgPh.json.priceHistory[prod.id] || []).slice(-1)[0];
+      assert.equal(pgLast.price, 88);
+      assert.equal(pgLast.date, pgInvDate);
+
+      // Supplier advance payment + zero-cashbox settle-advance in PG
+      await req(baseUrlPg, 'POST', '/api/admin/suppliers/payment', {
+        token: pgAdminToken,
+        headers: { 'Idempotency-Key': 'pg-idem-sp-36' },
+        body: { supplierId: supp.id, amount: 400, cashboxId: cb1, notes: 'مقدم PG' },
+      });
+      const purPg = await req(baseUrlPg, 'POST', '/api/invoices/purchase', {
+        token: pgAdminToken,
+        body: {
+          supplierId: supp.id,
+          warehouseId: wh1,
+          cashboxId: cb1,
+          paymentType: 'credit',
+          paidAmount: 0,
+          status: 'confirmed',
+          items: [{ productId: prod.id, productName: prod.name, unit: 'قطعة', unitFactor: 1, quantity: 2, unitPrice: 55 }],
+        },
+      });
+      assert.equal(purPg.status, 201);
+      const settlePg = await req(baseUrlPg, 'POST', `/api/admin/suppliers/${supp.id}/settle-advance`, {
+        token: pgAdminToken,
+        headers: { 'Idempotency-Key': 'pg-idem-settle-36' },
+        body: { invoiceId: purPg.json.invoice.id, amount: 110, notes: 'تسوية PG' },
+      });
+      assert.equal(settlePg.status, 200);
+      assert.equal(settlePg.json.invoice.paidAmount, 110);
+      assert.equal(settlePg.json.invoice.remainingAmount, 0);
+
+      const bootEnd = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      assert.equal(bootEnd.cashboxes.find((c) => c.id === cb1).currentBalance, cbBefore + 15 - 400);
+    });
+
+    await test('38. Dual/Multi-Connection System (PostgreSQL pg-mem): preserves single DB, enforces HTTPS & strips secrets', async () => {
+      const adminLogin = await req(baseUrlPg, 'POST', '/api/auth/login', {
+        body: { username: 'owner_tarek', password: 'OwnerStrongPassword!99' },
+      });
+      const pgAdminToken = adminLogin.json.accessToken;
+
+      const pgMgrLogin = await req(baseUrlPg, 'POST', '/api/auth/login', {
+        body: { username: 'mgr_scope_test', password: 'MgrPassword!99' },
+      });
+      assert.equal(pgMgrLogin.status, 200);
+      assert.equal((await req(baseUrlPg, 'GET', '/api/admin/server-info', { token: pgMgrLogin.json.accessToken })).status, 403);
+      assert.equal(
+        (
+          await req(baseUrlPg, 'PUT', '/api/admin/settings', {
+            token: pgMgrLogin.json.accessToken,
+            body: { extraSettings: { connectionConfig: { activeMode: 'cloud_vps' } } },
+          })
+        ).status,
+        403
+      );
+
+      const srvPg = await req(baseUrlPg, 'GET', '/api/admin/server-info', { token: pgAdminToken });
+      assert.equal(srvPg.status, 200);
+      assert.equal(srvPg.json.databaseMode, 'postgresql-enterprise');
+
+      const bootBefore = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      const beforeInvoices = bootBefore.invoices.length;
+
+      // Enforce HTTPS on PG settings update
+      const badPgRemote = await req(baseUrlPg, 'PUT', '/api/admin/settings', {
+        token: pgAdminToken,
+        body: {
+          extraSettings: {
+            connectionConfig: {
+              activeMode: 'cloud_vps',
+              cloudVps: { vpsUrl: 'http://unencrypted-vps.example.com' },
+            },
+          },
+        },
+      });
+      assert.equal(badPgRemote.status, 400);
+      assert.equal(badPgRemote.json.code, 'HTTPS_REQUIRED_FOR_REMOTE');
+
+      const savePg = await req(baseUrlPg, 'PUT', '/api/admin/settings', {
+        token: pgAdminToken,
+        body: {
+          extraSettings: {
+            connectionConfig: {
+              activeMode: 'free_remote',
+              localNetwork: { ip: '192.168.1.200', port: 3000, hostname: 'pg-central' },
+              freeRemote: { tunnelUrl: 'https://pg-shop.trycloudflare.com', tunnelToken: 'NO_LEAK' },
+              proRemote: { domainUrl: 'https://pg-erp.awladselim.com' },
+              cloudVps: { vpsUrl: 'https://pg-vps.awladselim.com', notes: 'PG Cloud' },
+            },
+          },
+        },
+      });
+      assert.equal(savePg.status, 200);
+      const pgCfg = savePg.json.settings.extraSettings.connectionConfig;
+      assert.equal(pgCfg.activeMode, 'free_remote');
+      assert.ok(!JSON.stringify(pgCfg).includes('NO_LEAK'));
+
+      const bootAfter = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      assert.equal(bootAfter.invoices.length, beforeInvoices);
+      assert.equal(bootAfter.settings.extraSettings.connectionConfig.proRemote.domainUrl, 'https://pg-erp.awladselim.com');
+    });
+
+    await test('42. Live PostgreSQL HTTP API verifies Rep Orders, Review->Approve isolation & Auto 1:1 Customer User Linking + Repair', async () => {
+      const pgAdminToken = (
+        await req(baseUrlPg, 'POST', '/api/auth/login', {
+          body: { username: 'owner_tarek', password: 'OwnerStrongPassword!99' },
+        })
+      ).json.accessToken;
+      const pgRepToken = (
+        await req(baseUrlPg, 'POST', '/api/auth/login', {
+          body: { username: 'rep_karim', password: 'RepPassword!123' },
+        })
+      ).json.accessToken;
+      const pgCustBToken = (
+        await req(baseUrlPg, 'POST', '/api/auth/login', {
+          body: { username: 'cust_salam', password: 'CustomerPassword!2' },
+        })
+      ).json.accessToken;
+
+      const boot0 = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      const repCustomers = (await req(baseUrlPg, 'GET', '/api/customers', { token: pgRepToken })).json.customers;
+      assert.ok(repCustomers.length >= 1);
+      const assignedCust = repCustomers[0];
+      const prod = boot0.products.find((p) => p.code === 'P-100') || boot0.products[0];
+      const invBefore = boot0.invoices.length;
+
+      // Rep submits order on PG
+      const repOrd = await req(baseUrlPg, 'POST', '/api/orders', {
+        token: pgRepToken,
+        body: {
+          customerId: assignedCust.id,
+          items: [{ productId: prod.id, unit: prod.baseUnit, quantity: 1.5 }],
+          notes: 'طلب مندوب PG',
+        },
+      });
+      assert.equal(repOrd.status, 201);
+      assert.equal(repOrd.json.order.requesterType, 'representative');
+      assert.ok(Number(repOrd.json.order.totalAmount) > 0);
+
+      // Customer B creates own order on PG -> hidden from Rep
+      const custBOrd = await req(baseUrlPg, 'POST', '/api/orders', {
+        token: pgCustBToken,
+        body: { items: [{ productId: prod.id, unit: prod.baseUnit, quantity: 1 }] },
+      });
+      assert.equal(custBOrd.status, 201);
+      const repOrdersPg = (await req(baseUrlPg, 'GET', '/api/orders', { token: pgRepToken })).json.orders;
+      assert.ok(repOrdersPg.some((o) => o.id === repOrd.json.order.id));
+      assert.equal(repOrdersPg.some((o) => o.id === custBOrd.json.order.id), false);
+
+      // Review & Approve on PG do NOT create invoice; duplicate approve -> 409
+      assert.equal((await req(baseUrlPg, 'POST', `/api/orders/${repOrd.json.order.id}/review`, { token: pgAdminToken, body: {} })).status, 200);
+      assert.equal((await req(baseUrlPg, 'POST', `/api/orders/${repOrd.json.order.id}/approve`, { token: pgAdminToken, body: {} })).status, 200);
+      assert.equal((await req(baseUrlPg, 'POST', `/api/orders/${repOrd.json.order.id}/approve`, { token: pgAdminToken, body: {} })).status, 409);
+
+      const bootAfterApp = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      assert.equal(bootAfterApp.invoices.length, invBefore);
+
+      // Reject requires reason on PG
+      assert.equal((await req(baseUrlPg, 'POST', `/api/orders/${custBOrd.json.order.id}/reject`, { token: pgAdminToken, body: { reason: '' } })).status, 400);
+      assert.equal((await req(baseUrlPg, 'POST', `/api/orders/${custBOrd.json.order.id}/reject`, { token: pgAdminToken, body: { reason: 'غير متوفر' } })).status, 200);
+
+      // Auto 1:1 customer link + duplicate 409 + fix-unlinked on PG
+      const pgAutoUser = await req(baseUrlPg, 'POST', '/api/admin/users', {
+        token: pgAdminToken,
+        body: {
+          fullName: 'عميل PG التلقائي',
+          username: 'pg_cust_auto',
+          password: 'PgPassword!123',
+          phone: '01066665555',
+          role: 'customer',
+        },
+      });
+      assert.equal(pgAutoUser.status, 201);
+      assert.ok(pgAutoUser.json.user.linkedCustomerId);
+
+      const pgDupLink = await req(baseUrlPg, 'POST', '/api/admin/users', {
+        token: pgAdminToken,
+        body: {
+          fullName: 'تضارب PG',
+          username: 'pg_cust_conflict',
+          password: 'PgPassword!123',
+          role: 'customer',
+          linkedCustomerId: pgAutoUser.json.user.linkedCustomerId,
+        },
+      });
+      assert.equal(pgDupLink.status, 409);
+
+      const pgUnlinked = await req(baseUrlPg, 'POST', '/api/admin/users', {
+        token: pgAdminToken,
+        body: {
+          fullName: 'عميل PG بدون ربط',
+          username: 'pg_cust_unlinked',
+          password: 'PgPassword!123',
+          role: 'customer',
+          autoCreateCustomerProfile: false,
+        },
+      });
+      assert.equal(pgUnlinked.status, 201);
+      const pgFix = await req(baseUrlPg, 'POST', '/api/customers/conflicts/fix-unlinked', { token: pgAdminToken });
+      assert.equal(pgFix.status, 200);
+      assert.ok(pgFix.json.repaired.some((r) => r.userId === pgUnlinked.json.user.id));
+    });
+
+    let pgProdNew;
+
+    await test('45. Live PostgreSQL HTTP API verifies public registration, direct custody dispatch + partial delivery & rep invoice review', async () => {
+      const pgAdminToken = (
+        await req(baseUrlPg, 'POST', '/api/auth/login', {
+          body: { username: 'owner_tarek', password: 'OwnerStrongPassword!99' },
+        })
+      ).json.accessToken;
+      const pgRepToken = (
+        await req(baseUrlPg, 'POST', '/api/auth/login', {
+          body: { username: 'rep_karim', password: 'RepPassword!123' },
+        })
+      ).json.accessToken;
+
+      // 1. Public registration on PG
+      const pgRegAdmin = await req(baseUrlPg, 'POST', '/api/auth/register', {
+        body: { fullName: 'أدمن PG', username: 'pg_reg_adm', password: 'Password!123', phone: '01090000001', role: 'admin' },
+      });
+      assert.equal(pgRegAdmin.status, 403);
+
+      const pgRegCust = await req(baseUrlPg, 'POST', '/api/auth/register', {
+        body: {
+          fullName: 'عميل تسجيل PG',
+          username: 'pg_reg_cust_1',
+          password: 'Password!123',
+          phone: '01090000002',
+          address: 'طنطا',
+          role: 'customer',
+        },
+      });
+      assert.equal(pgRegCust.status, 201);
+      assert.equal(pgRegCust.json.user.role, 'customer');
+      assert.ok(pgRegCust.json.customerProfile?.id);
+
+      const pgRegRep = await req(baseUrlPg, 'POST', '/api/auth/register', {
+        body: {
+          fullName: 'مندوب تسجيل PG',
+          username: 'pg_reg_rep_1',
+          password: 'Password!123',
+          phone: '01090000003',
+          vehicleNumber: 'PG-900',
+          role: 'representative',
+        },
+      });
+      assert.equal(pgRegRep.status, 201);
+      assert.equal(pgRegRep.json.user.role, 'representative');
+      assert.ok(pgRegRep.json.representativeProfile?.warehouseId);
+
+      // 2. Fresh PG product for custody & movement tests
+      const boot0 = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      const wh1 = boot0.warehouses[0].id;
+      const cb1 = boot0.cashboxes[0].id;
+      const rep0 = boot0.representatives.find((r) => r.name === 'كريم المندوب') || boot0.representatives[0];
+      const cust0 = boot0.customers.find((c) => c.code === 'C-001') || boot0.customers.find((c) => c.assignedRepId === rep0.id || (c.allowedRepIds || []).includes(rep0.id)) || boot0.customers[0];
+
+      const pNewRes = await req(baseUrlPg, 'POST', '/api/products', {
+        token: pgAdminToken,
+        body: {
+          code: 'P-PG-45',
+          barcode: '622888045',
+          name: 'شاي عهدة PG',
+          category: 'مشروبات',
+          baseUnit: 'قطعة',
+          purchasePrice: 15,
+          sellingPrice: 25,
+          minStockLevel: 5,
+          stockPerWarehouse: { [wh1]: 200 },
+          status: 'active',
+        },
+      });
+      assert.equal(pNewRes.status, 201);
+      pgProdNew = pNewRes.json.product;
+
+      const vanBefore = Number(pgProdNew.stockPerWarehouse[rep0.warehouseId] || 0);
+      assert.equal(vanBefore, 0);
+
+      // Direct custody dispatch 100 units on PG
+      const dispPg = await req(baseUrlPg, 'POST', '/api/inventory/rep-item-transfers', {
+        token: pgAdminToken,
+        body: {
+          representativeId: rep0.id,
+          sourceWarehouseId: wh1,
+          targetWarehouseId: rep0.warehouseId,
+          transferMode: 'custody_dispatch',
+          autoDispatch: true,
+          items: [{ productId: pgProdNew.id, productName: pgProdNew.name, unit: 'قطعة', requestedQty: 100 }],
+        },
+      });
+      assert.equal(dispPg.status, 201);
+      assert.equal(dispPg.json.request.status, 'executed');
+
+      // Main deducted 200 -> 100 immediately, van STILL 0 until 'received'
+      const bootMid = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      const pMid = bootMid.products.find((p) => p.id === pgProdNew.id);
+      assert.equal(pMid.stockPerWarehouse[wh1], 100);
+      assert.equal(Number(pMid.stockPerWarehouse[rep0.warehouseId] || 0), 0);
+
+      assert.equal(
+        (await req(baseUrlPg, 'POST', `/api/inventory/rep-item-transfers/${dispPg.json.request.id}/status`, {
+          token: pgRepToken,
+          body: { status: 'received' },
+        })).status,
+        200
+      );
+
+      // Partial custody delivery 30 of 100 on PG
+      const delivPg = await req(baseUrlPg, 'POST', '/api/inventory/rep-custody/deliver', {
+        token: pgRepToken,
+        headers: { 'Idempotency-Key': 'pg-cust-deliv-45' },
+        body: {
+          representativeId: rep0.id,
+          customerId: cust0.id,
+          items: [{ productId: pgProdNew.id, unit: 'قطعة', quantity: 30 }],
+        },
+      });
+      assert.equal(delivPg.status, 201);
+
+      const stmtPg = (await req(baseUrlPg, 'GET', `/api/inventory/rep-custody/statement?repId=${rep0.id}`, { token: pgAdminToken })).json.statement;
+      const itemSumPg = stmtPg.itemsSummary.find((i) => i.productId === pgProdNew.id);
+      assert.equal(itemSumPg.receivedQty, 100);
+      assert.equal(itemSumPg.deliveredToCustomersQty, 30);
+      assert.equal(itemSumPg.remainingCustodyQty, 70);
+      assert.equal(itemSumPg.vanPhysicalStockQty, 70);
+
+      // Rep confirmed sale invoice on PG -> mark-reviewed with zero duplicate stock/GL/balance effect
+      const repSalePg = await req(baseUrlPg, 'POST', '/api/invoices/sales', {
+        token: pgRepToken,
+        body: {
+          customerId: cust0.id,
+          warehouseId: rep0.warehouseId,
+          cashboxId: cb1,
+          status: 'confirmed',
+          paymentType: 'credit',
+          paidAmount: 0,
+          items: [{ productId: pgProdNew.id, productName: pgProdNew.name, unit: 'قطعة', unitFactor: 1, quantity: 2, unitPrice: 25 }],
+        },
+      });
+      assert.equal(repSalePg.status, 201);
+      assert.equal(repSalePg.json.invoice.reviewStatus, 'needs_review');
+
+      const preRevBoot = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      const stockPreRev = preRevBoot.products.find((p) => p.id === pgProdNew.id).stockPerWarehouse[rep0.warehouseId];
+      const custBalPreRev = preRevBoot.customers.find((c) => c.id === cust0.id).currentBalance;
+      const ftPreRev = preRevBoot.financialTransactions.length;
+
+      const revOkPg = await req(baseUrlPg, 'POST', `/api/invoices/${repSalePg.json.invoice.id}/mark-reviewed`, {
+        token: pgAdminToken,
+        body: { notes: 'مراجعة PG' },
+      });
+      assert.equal(revOkPg.status, 200);
+      assert.equal(revOkPg.json.invoice.reviewStatus, 'reviewed');
+
+      const postRevBoot = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      assert.equal(postRevBoot.products.find((p) => p.id === pgProdNew.id).stockPerWarehouse[rep0.warehouseId], stockPreRev);
+      assert.equal(postRevBoot.customers.find((c) => c.id === cust0.id).currentBalance, custBalPreRev);
+      assert.equal(postRevBoot.financialTransactions.length, ftPreRev);
+    });
+
+    await test('46. Live PostgreSQL HTTP API verifies Quote + 1:1 Convert, Item Movement Report profit, 9-stage orders & purchases RBAC', async () => {
+      const pgAdminToken = (
+        await req(baseUrlPg, 'POST', '/api/auth/login', {
+          body: { username: 'owner_tarek', password: 'OwnerStrongPassword!99' },
+        })
+      ).json.accessToken;
+      const pgRepToken = (
+        await req(baseUrlPg, 'POST', '/api/auth/login', {
+          body: { username: 'rep_karim', password: 'RepPassword!123' },
+        })
+      ).json.accessToken;
+      const pgCustAToken = (
+        await req(baseUrlPg, 'POST', '/api/auth/login', {
+          body: { username: 'cust_baraka', password: 'CustomerPassword!1' },
+        })
+      ).json.accessToken;
+
+      const boot0 = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      const wh1 = boot0.warehouses[0].id;
+      const wh2 = boot0.warehouses[1].id;
+      const cb1 = boot0.cashboxes[0].id;
+      const custA0 = boot0.customers.find((c) => c.code === 'C-001') || boot0.customers[0];
+      const supp0 = boot0.suppliers[0];
+      const rep0 = boot0.representatives.find((r) => r.name === 'كريم المندوب') || boot0.representatives[0];
+
+      // 1. Fresh product for clean item movement report profit assertion on PG
+      const pRepRes = await req(baseUrlPg, 'POST', '/api/products', {
+        token: pgAdminToken,
+        body: {
+          code: 'P-PG-MOV',
+          barcode: '622888046',
+          name: 'قهوة تقرير PG',
+          category: 'مشروبات',
+          baseUnit: 'قطعة',
+          purchasePrice: 20,
+          sellingPrice: 30,
+          stockPerWarehouse: { [wh1]: 50 },
+          status: 'active',
+        },
+      });
+      assert.equal(pRepRes.status, 201);
+      const pgProdMov = pRepRes.json.product;
+
+      // Quote (0 stock/balance/GL impact) -> Convert 1:1
+      const balPreQ = (await req(baseUrlPg, 'GET', `/api/customers/${custA0.id}`, { token: pgAdminToken })).json.customer.currentBalance;
+      const ftPreQ = boot0.financialTransactions.length;
+
+      const pgQuoteRes = await req(baseUrlPg, 'POST', '/api/invoices/quotes', {
+        token: pgAdminToken,
+        body: {
+          customerId: custA0.id,
+          warehouseId: wh1,
+          cashboxId: cb1,
+          items: [{ productId: pgProdMov.id, productName: pgProdMov.name, unit: 'قطعة', unitFactor: 1, quantity: 4, unitPrice: 30 }],
+        },
+      });
+      assert.equal(pgQuoteRes.status, 201);
+      assert.equal(pgQuoteRes.json.invoice.type, 'quote');
+
+      const bootAfterQ = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      assert.equal(bootAfterQ.products.find((p) => p.id === pgProdMov.id).stockPerWarehouse[wh1], 50);
+      assert.equal(bootAfterQ.customers.find((c) => c.id === custA0.id).currentBalance, balPreQ);
+      assert.equal(bootAfterQ.financialTransactions.length, ftPreQ);
+
+      const pgConvQ = await req(baseUrlPg, 'POST', `/api/invoices/quotes/${pgQuoteRes.json.invoice.id}/convert`, {
+        token: pgAdminToken,
+        body: { status: 'confirmed', paymentType: 'credit', paidAmount: 0 },
+      });
+      assert.equal(pgConvQ.status, 201);
+      assert.equal(pgConvQ.json.invoice.type, 'sales');
+      assert.equal(pgConvQ.json.invoice.grandTotal, 120);
+
+      // Direct warehouse transfer 6 units (must NOT enter sales totals)
+      assert.equal(
+        (await req(baseUrlPg, 'POST', '/api/inventory/transfer', {
+          token: pgAdminToken,
+          body: { productId: pgProdMov.id, fromWarehouseId: wh1, toWarehouseId: wh2, quantity: 6 },
+        })).status,
+        200
+      );
+
+      const pgReportRes = await req(baseUrlPg, 'GET', `/api/inventory/item-movement-report?productId=${pgProdMov.id}`, { token: pgAdminToken });
+      assert.equal(pgReportRes.status, 200);
+      const pgRep = pgReportRes.json.report;
+      assert.equal(pgRep.sections.sales.length, 1);
+      assert.ok(pgRep.sections.transfers.length >= 1);
+      // 4 * 30 = 120 sales; 4 * 20 = 80 COGS; profit = 40
+      assert.equal(pgRep.totals.totalSalesQty, 4);
+      assert.equal(pgRep.totals.totalSalesValue, 120);
+      assert.equal(pgRep.totals.totalCostOfGoodsSold, 80);
+      assert.equal(pgRep.totals.totalProfit, 40);
+
+      // 2. 9-stage customer order lifecycle + linked invoice payment summary on PG
+      const pgOrd9 = await req(baseUrlPg, 'POST', '/api/orders', {
+        token: pgCustAToken,
+        body: { items: [{ productId: pgProdMov.id, unit: 'قطعة', quantity: 2 }] },
+      });
+      assert.equal(pgOrd9.status, 201);
+      const ordId = pgOrd9.json.order.id;
+
+      assert.equal((await req(baseUrlPg, 'POST', `/api/orders/${ordId}/review`, { token: pgAdminToken, body: {} })).status, 200);
+      assert.equal((await req(baseUrlPg, 'POST', `/api/orders/${ordId}/approve`, { token: pgAdminToken, body: {} })).status, 200);
+      assert.equal((await req(baseUrlPg, 'POST', `/api/orders/${ordId}/stage`, { token: pgAdminToken, body: { stage: 'preparing' } })).status, 200);
+      assert.equal((await req(baseUrlPg, 'POST', `/api/orders/${ordId}/assign-rep`, { token: pgAdminToken, body: { repId: rep0.id } })).status, 200);
+      assert.equal(
+        (await req(baseUrlPg, 'POST', `/api/orders/${ordId}/convert-to-invoice`, {
+          token: pgAdminToken,
+          body: { warehouseId: wh1, cashboxId: cb1, status: 'confirmed', paymentType: 'credit', paidAmount: 0 },
+        })).status,
+        201
+      );
+      assert.equal((await req(baseUrlPg, 'POST', `/api/orders/${ordId}/stage`, { token: pgRepToken, body: { stage: 'out_for_delivery' } })).status, 200);
+      assert.equal((await req(baseUrlPg, 'POST', `/api/orders/${ordId}/stage`, { token: pgRepToken, body: { stage: 'delivered' } })).status, 200);
+      assert.equal(
+        (await req(baseUrlPg, 'POST', `/api/orders/${ordId}/stage`, {
+          token: pgRepToken,
+          body: { stage: 'collected', collectedAmount: 25, cashboxId: cb1, paymentMethod: 'cash' },
+        })).status,
+        200
+      );
+      assert.equal((await req(baseUrlPg, 'POST', `/api/orders/${ordId}/stage`, { token: pgAdminToken, body: { stage: 'closed' } })).status, 200);
+
+      const finalPgOrd = (await req(baseUrlPg, 'GET', `/api/orders/${ordId}`, { token: pgAdminToken })).json.order;
+      assert.equal(finalPgOrd.status, 'closed');
+      assert.equal(finalPgOrd.invoiceTotal, 60); // 2 * 30
+      assert.equal(finalPgOrd.invoicePaidAmount, 25);
+      assert.equal(finalPgOrd.invoiceRemainingAmount, 35);
+      assert.equal(finalPgOrd.paymentStatus, 'partial');
+      assert.equal(finalPgOrd.paymentsHistory.length, 1);
+
+      // 3. 'purchases' role RBAC enforcement on PG (user pur_clerk_1 migrated from Suite A)
+      const pgPurToken = (
+        await req(baseUrlPg, 'POST', '/api/auth/login', {
+          body: { username: 'pur_clerk_1', password: 'PurPassword!123' },
+        })
+      ).json.accessToken;
+
+      assert.equal(
+        (await req(baseUrlPg, 'POST', '/api/invoices/purchase', {
+          token: pgPurToken,
+          body: {
+            supplierId: supp0.id,
+            warehouseId: wh1,
+            cashboxId: cb1,
+            paymentType: 'credit',
+            paidAmount: 0,
+            status: 'confirmed',
+            items: [{ productId: pgProdMov.id, productName: pgProdMov.name, unit: 'قطعة', unitFactor: 1, quantity: 3, unitPrice: 20 }],
+          },
+        })).status,
+        201
+      );
+      assert.equal(
+        (await req(baseUrlPg, 'POST', '/api/invoices/sales', {
+          token: pgPurToken,
+          body: {
+            customerId: custA0.id,
+            warehouseId: wh1,
+            cashboxId: cb1,
+            status: 'draft',
+            paymentType: 'credit',
+            paidAmount: 0,
+            items: [{ productId: pgProdMov.id, productName: pgProdMov.name, unit: 'قطعة', unitFactor: 1, quantity: 1, unitPrice: 30 }],
+          },
+        })).status,
+        403
+      );
+      assert.equal(
+        (await req(baseUrlPg, 'POST', '/api/admin/cash-operations', {
+          token: pgPurToken,
+          body: { type: 'cash_deposit', cashboxId: cb1, amount: 10 },
+        })).status,
+        403
+      );
+      assert.equal(
+        (await req(baseUrlPg, 'POST', '/api/admin/users', {
+          token: pgPurToken,
+          body: { fullName: 'X', username: 'pg_pur_blk', password: 'Password!123', role: 'sales' },
+        })).status,
+        403
+      );
     });
   } finally {
     setInjectedPool(null);
