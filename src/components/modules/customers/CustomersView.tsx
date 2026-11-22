@@ -10,6 +10,7 @@ import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useShortcuts } from '../../../context/ShortcutsContext';
 import { apiRequest } from '../../../services/api';
+import { getCurrentLocationSafe, parseLatLngCoords, reverseGeocodeCoords } from '../../../services/native';
 import { Customer, Invoice, CustomerItemOrderRequest } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
@@ -55,6 +56,7 @@ export const CustomersView: React.FC = () => {
   const [customerBanner, setCustomerBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [phoneActionNotice, setPhoneActionNotice] = useState<{ type: 'info' | 'error'; text: string } | null>(null);
   const [mapActionWarning, setMapActionWarning] = useState<string | null>(null);
+  const [isLocatingGeo, setIsLocatingGeo] = useState(false);
   const [customerFormError, setCustomerFormError] = useState<string | null>(null);
 
   // Invoice view modal
@@ -420,6 +422,35 @@ export const CustomersView: React.FC = () => {
     setFormData(prev => ({ ...prev, photo: '' }));
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
+    }
+  };
+
+  const handleCaptureCustomerGeo = async () => {
+    setIsLocatingGeo(true);
+    setMapActionWarning(null);
+    try {
+      const res = await getCurrentLocationSafe();
+      if (!res.ok || !res.coords) {
+        setMapActionWarning(res.error || 'تعذر الحصول على إحداثيات GPS من الجهاز.');
+        return;
+      }
+      setFormData((prev) => ({ ...prev, geoCoordinates: res.coords! }));
+      const parsed = parseLatLngCoords(res.coords);
+      if (parsed) {
+        const rev = await reverseGeocodeCoords(parsed.lat, parsed.lng);
+        if (rev.ok) {
+          setFormData((prev) => ({
+            ...prev,
+            geoCoordinates: res.coords!,
+            address: rev.address,
+            area: prev.area.trim() ? prev.area : rev.area || prev.area,
+          }));
+        } else {
+          setMapActionWarning(rev.error);
+        }
+      }
+    } finally {
+      setIsLocatingGeo(false);
     }
   };
 
@@ -805,6 +836,20 @@ export const CustomersView: React.FC = () => {
                     <Phone className="w-4 h-4 text-emerald-600" />
                     <span>{selectedCustomer.phone}</span>
                   </a>
+
+                  {(() => {
+                    const secClean = String(selectedCustomer.secondaryPhone || '').replace(/[^\d+]/g, '');
+                    return secClean.replace(/\D/g, '').length >= 7 ? (
+                      <a
+                        href={`tel:${secClean}`}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 font-mono font-black border border-teal-200 shadow-xs transition-all active:scale-95 cursor-pointer"
+                        title="اتصال بالهاتف الإضافي"
+                      >
+                        <Phone className="w-4 h-4 text-teal-600" />
+                        <span>{selectedCustomer.secondaryPhone}</span>
+                      </a>
+                    ) : null;
+                  })()}
 
                   {/* Google Maps Location Button */}
                   <a
@@ -2330,13 +2375,53 @@ export const CustomersView: React.FC = () => {
               <label className="block font-bold text-slate-700 mb-1">
                 رقم هاتف إضافي:
               </label>
-              <input
-                type="tel"
-                placeholder="مثال: 01123456789"
-                value={formData.secondaryPhone}
-                onChange={(e) => setFormData({ ...formData, secondaryPhone: e.target.value })}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-mono font-bold focus:border-blue-600 outline-hidden"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="tel"
+                  placeholder="مثال: 01123456789"
+                  value={formData.secondaryPhone}
+                  onChange={(e) => {
+                    setFormData({ ...formData, secondaryPhone: e.target.value });
+                    if (phoneActionNotice) setPhoneActionNotice(null);
+                  }}
+                  className="flex-1 bg-white border border-slate-300 rounded-xl p-2.5 font-mono font-bold focus:border-blue-600 outline-hidden"
+                />
+                {(() => {
+                  const cleanedSec = formData.secondaryPhone.replace(/[^\d+]/g, '');
+                  const isValidSec = cleanedSec.replace(/\D/g, '').length >= 7;
+                  return isValidSec ? (
+                    <a
+                      href={`tel:${cleanedSec}`}
+                      onClick={() =>
+                        setPhoneActionNotice({
+                          type: 'info',
+                          text: `جاري فتح الاتصال بالرقم الإضافي (${cleanedSec}) عبر تطبيق الهاتف.`,
+                        })
+                      }
+                      className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold shrink-0 transition-colors"
+                      title="اتصال هاتفي بالرقم الإضافي"
+                    >
+                      <Phone className="w-4 h-4 text-emerald-700" />
+                      <span>اتصال</span>
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPhoneActionNotice({
+                          type: 'error',
+                          text: 'يرجى إدخال رقم هاتف إضافي صحيح (7 أرقام على الأقل) لإجراء الاتصال.',
+                        })
+                      }
+                      className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300 font-bold shrink-0 cursor-pointer transition-colors"
+                      title="اتصال هاتفي بالرقم الإضافي"
+                    >
+                      <Phone className="w-4 h-4" />
+                      <span>اتصال</span>
+                    </button>
+                  );
+                })()}
+              </div>
             </div>
 
             <div>
@@ -2356,13 +2441,28 @@ export const CustomersView: React.FC = () => {
               <label className="block font-bold text-slate-700 mb-1">
                 الموقع الجغرافي / إحداثيات GPS (أو رابط خرائط):
               </label>
-              <input
-                type="text"
-                placeholder="مثال: 30.0444, 31.2357 أو رابط خرائط"
-                value={formData.geoCoordinates}
-                onChange={(e) => setFormData({ ...formData, geoCoordinates: e.target.value })}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-mono text-xs focus:border-blue-600 outline-hidden"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="مثال: 30.0444, 31.2357 أو رابط خرائط"
+                  value={formData.geoCoordinates}
+                  onChange={(e) => {
+                    setFormData({ ...formData, geoCoordinates: e.target.value });
+                    if (mapActionWarning) setMapActionWarning(null);
+                  }}
+                  className="flex-1 bg-white border border-slate-300 rounded-xl p-2.5 font-mono text-xs focus:border-blue-600 outline-hidden"
+                />
+                <button
+                  type="button"
+                  disabled={isLocatingGeo}
+                  onClick={handleCaptureCustomerGeo}
+                  className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 font-bold shrink-0 cursor-pointer disabled:opacity-50 transition-colors"
+                  title="تحديد موقعي الحالي عبر GPS وجلب العنوان تلقائياً"
+                >
+                  <MapPin className="w-4 h-4 text-blue-700" />
+                  <span>{isLocatingGeo ? 'تحديد...' : 'موقعي GPS'}</span>
+                </button>
+              </div>
             </div>
           </div>
 

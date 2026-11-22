@@ -1065,6 +1065,84 @@ export async function deleteCategory(categoryId, actor) {
   return { ok: true };
 }
 
+export function normalizeArabicProductText(value) {
+  return String(value || '')
+    .trim()
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+export function findProductDuplicateMatchInList(products = [], candidate = {}) {
+  const cleanBarcode = String(candidate.barcode || '').trim().toLowerCase();
+  const cleanCode = String(candidate.code || '').trim().toLowerCase();
+  const normName = normalizeArabicProductText(candidate.name || '');
+  const normCat = normalizeArabicProductText(candidate.category || 'عام');
+  const normUnit = normalizeArabicProductText(candidate.baseUnit || 'قطعة');
+
+  let exactMatch = null;
+  let matchReason = null;
+
+  if (cleanBarcode) {
+    const byBarcode = products.find((p) => {
+      if (String(p.barcode || '').trim().toLowerCase() === cleanBarcode) return true;
+      return Array.isArray(p.units) && p.units.some((u) => String(u.barcode || '').trim().toLowerCase() === cleanBarcode);
+    });
+    if (byBarcode) {
+      exactMatch = byBarcode;
+      matchReason = 'barcode';
+    }
+  }
+
+  if (!exactMatch && cleanCode) {
+    const byCode = products.find((p) => String(p.code || '').trim().toLowerCase() === cleanCode);
+    if (byCode) {
+      exactMatch = byCode;
+      matchReason = 'code';
+    }
+  }
+
+  if (!exactMatch && normName) {
+    const byComposite = products.find((p) => {
+      const pName = normalizeArabicProductText(p.name || '');
+      const pCat = normalizeArabicProductText(p.category || 'عام');
+      const pUnit = normalizeArabicProductText(p.baseUnit || 'قطعة');
+      return pName === normName && pCat === normCat && pUnit === normUnit;
+    });
+    if (byComposite) {
+      exactMatch = byComposite;
+      matchReason = 'name_category_unit';
+    }
+  }
+
+  const similarMatches = [];
+  if (normName && normName.length >= 2) {
+    for (const p of products) {
+      if (exactMatch && p.id === exactMatch.id) continue;
+      const pName = normalizeArabicProductText(p.name || '');
+      if (!pName) continue;
+      if (pName === normName || (normName.length >= 3 && (pName.includes(normName) || normName.includes(pName)))) {
+        similarMatches.push(p);
+        if (similarMatches.length >= 5) break;
+      }
+    }
+  }
+
+  return {
+    exactMatch,
+    matchReason,
+    similarMatches,
+  };
+}
+
+export async function checkProductDuplicate(candidate = {}) {
+  const products = await listProducts();
+  return findProductDuplicateMatchInList(products, candidate);
+}
+
 export async function listProducts({ forCustomer = false, allowCustomerPriceView = true } = {}) {
   let products = [];
   if (await isPgMode()) {

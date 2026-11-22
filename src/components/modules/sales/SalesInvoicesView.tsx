@@ -77,6 +77,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
   const [editDate, setEditDate] = useState<string>('');
   const [editDiscount, setEditDiscount] = useState<number>(0);
   const [editNotes, setEditNotes] = useState<string>('');
+  const [editReason, setEditReason] = useState<string>('');
   const [editItems, setEditItems] = useState<InvoiceItem[]>([]);
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -238,6 +239,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
     setEditDate(inv.date);
     setEditDiscount(inv.discountTotal || 0);
     setEditNotes(inv.notes || '');
+    setEditReason('');
     setEditItems(inv.items.map(it => ({ ...it })));
     setEditError(null);
   };
@@ -245,12 +247,17 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
   const handleSubmitEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editModalInvoice) return;
+    if (!editReason.trim()) {
+      setEditError('يرجى كتابة سبب تعديل الفاتورة لتوثيقه في سجل المراجعة.');
+      return;
+    }
     setEditError(null);
     setIsSubmittingEdit(true);
     const res = await editSalesInvoice(editModalInvoice.id, {
       date: editDate,
       discountTotal: editDiscount,
       notes: editNotes,
+      reason: editReason.trim(),
       items: editItems,
     });
     setIsSubmittingEdit(false);
@@ -668,6 +675,41 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
               )}
             </div>
 
+            {Array.isArray(activeInvoice.editHistory) && activeInvoice.editHistory.length > 0 && (
+              <div className="mb-4 p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-amber-700" />
+                  <h4 className="text-xs font-black text-amber-950">
+                    سجل التعديلات السابقة ({activeInvoice.editHistory.length})
+                  </h4>
+                </div>
+                <div className="space-y-1.5">
+                  {activeInvoice.editHistory.map((entry, idx) => (
+                    <div
+                      key={`${entry.editedAt}-${idx}`}
+                      className="p-2.5 bg-white border border-amber-200/80 rounded-lg text-[11px] flex flex-col sm:flex-row sm:items-center justify-between gap-1.5"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="font-bold text-slate-900">
+                          بواسطة: {entry.editedBy || 'غير محدد'}
+                          {entry.reason ? ` · السبب: ${entry.reason}` : ''}
+                        </div>
+                        {entry.before && entry.after && (
+                          <div className="text-slate-600 font-mono">
+                            الإجمالي: {Number(entry.before.grandTotal ?? 0).toLocaleString()} →{' '}
+                            <strong className="text-blue-900">{Number(entry.after.grandTotal ?? 0).toLocaleString()} {settings.currency}</strong>
+                          </div>
+                        )}
+                      </div>
+                      <span className="font-mono text-[10px] text-slate-500 shrink-0" dir="ltr">
+                        {entry.editedAt ? new Date(entry.editedAt).toLocaleString('ar-EG') : ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="flex justify-between items-center pt-3 border-t text-xs">
               <div className="flex items-center gap-4 text-slate-600">
                 <span>الإجمالي: <strong className="text-sm font-black text-slate-900">{activeInvoice.grandTotal.toLocaleString()} {settings.currency}</strong></span>
@@ -931,6 +973,20 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   value={editNotes}
                   onChange={(e) => setEditNotes(e.target.value)}
                   className="w-full p-2.5 rounded-xl border border-slate-300"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  سبب التعديل (إلزامي للتدقيق): <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editReason}
+                  onChange={(e) => setEditReason(e.target.value)}
+                  placeholder="مثال: تصحيح كمية الصنف أو تعديل السعر المتفق عليه..."
+                  className="w-full p-2.5 rounded-xl border border-slate-300 font-semibold focus:border-blue-600 outline-hidden"
                 />
               </div>
 

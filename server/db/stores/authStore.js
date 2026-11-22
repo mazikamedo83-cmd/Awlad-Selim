@@ -81,6 +81,8 @@ export async function recordAuditLog({
       action,
       module,
       recordId: recordId || undefined,
+      oldValues: oldValues ?? undefined,
+      newValues: newValues ?? undefined,
       details: detailsText,
       ipAddress: ipAddress || '',
       deviceInfo: deviceInfo || '',
@@ -95,6 +97,8 @@ export async function recordAuditLog({
     action,
     module,
     recordId: recordId || undefined,
+    oldValues: oldValues ?? undefined,
+    newValues: newValues ?? undefined,
     details: detailsText,
   };
 }
@@ -104,7 +108,7 @@ export async function listAuditLogs(limit = 300) {
   if (await isPgMode()) {
     const pool = getPool();
     const res = await pool.query(
-      `SELECT id, timestamp, user_id, user_name, action, module, record_id, notes, new_values
+      `SELECT id, timestamp, user_id, user_name, action, module, record_id, old_values, new_values, notes
        FROM audit_logs ORDER BY timestamp DESC LIMIT $1`,
       [safeLimit]
     );
@@ -116,6 +120,8 @@ export async function listAuditLogs(limit = 300) {
       action: r.action,
       module: r.module,
       recordId: r.record_id || undefined,
+      oldValues: r.old_values ?? undefined,
+      newValues: r.new_values ?? undefined,
       details: r.notes || (r.new_values ? JSON.stringify(r.new_values) : r.action),
     }));
   }

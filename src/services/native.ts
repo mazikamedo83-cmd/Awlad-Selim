@@ -140,6 +140,94 @@ export async function getCurrentLocationSafe(): Promise<{
   return { ok: false, error: 'خدمة تحديد الموقع غير مدعومة على هذا الجهاز.' };
 }
 
+export function parseLatLngCoords(raw: string): { lat: number; lng: number } | null {
+  const m = String(raw || '')
+    .trim()
+    .match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+  if (!m) return null;
+  const lat = Number(m[1]);
+  const lng = Number(m[2]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return { lat, lng };
+}
+
+export async function reverseGeocodeCoords(
+  lat: number,
+  lng: number
+): Promise<{ ok: true; address: string; area?: string } | { ok: false; error: string }> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return { ok: false, error: 'إحداثيات GPS غير صالحة لتحويلها إلى عنوان.' };
+  }
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return {
+      ok: false,
+      error: 'الجهاز غير متصل بالإنترنت؛ تم حفظ الإحداثيات فقط ويمكنك كتابة العنوان يدوياً.',
+    };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(
+      String(lat)
+    )}&lon=${encodeURIComponent(String(lng))}&accept-language=ar`;
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: 'تعذر تحويل الإحداثيات لعنوان تلقائياً الآن؛ تم حفظ الإحداثيات ويمكنك كتابة العنوان يدوياً.',
+      };
+    }
+    const json: any = await res.json().catch(() => null);
+    const addrObj = json?.address && typeof json.address === 'object' ? json.address : {};
+    const area =
+      String(
+        addrObj.suburb ||
+          addrObj.neighbourhood ||
+          addrObj.city_district ||
+          addrObj.city ||
+          addrObj.town ||
+          addrObj.village ||
+          addrObj.state ||
+          ''
+      ).trim() || undefined;
+
+    const parts = [
+      addrObj.road,
+      addrObj.neighbourhood || addrObj.suburb,
+      addrObj.city || addrObj.town || addrObj.village,
+      addrObj.state,
+    ]
+      .map((p) => String(p || '').trim())
+      .filter(Boolean);
+
+    const address =
+      parts.length > 0
+        ? Array.from(new Set(parts)).join('، ')
+        : String(json?.display_name || '').trim();
+
+    if (!address) {
+      return {
+        ok: false,
+        error: 'لم تُرجع خدمة الخرائط عنواناً وصفياً لهذه الإحداثيات؛ يمكنك كتابة العنوان يدوياً.',
+      };
+    }
+    return { ok: true, address, area };
+  } catch {
+    return {
+      ok: false,
+      error: 'تعذر جلب العنوان من الخرائط (انتهت المهلة أو تعذر الاتصال)؛ تم الاحتفاظ بالإحداثيات فقط.',
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function saveAndShareDocument(params: {
   filename: string;
   content: string;

@@ -2,6 +2,7 @@ import type { SyncConflictRecord, SyncOperationType, SyncQueueItem } from '../ty
 import { apiRequest } from './api';
 import { localDb } from './localDb';
 import { getOrCreatePersistentDeviceId } from './native';
+import { logDiagnostic } from './diagnostics';
 
 export type SyncCycleMode = 'full' | 'send_only' | 'receive_only';
 
@@ -220,8 +221,27 @@ async function executeSyncCycle(params: {
           ok: failedCount === 0 && conflictCount === 0,
           error: failedCount > 0 ? 'تعذر إرسال بعض العمليات وبقيت محفوظة لإعادة المحاولة.' : undefined,
         });
+        if (failedCount > 0 || newConflicts.length > 0) {
+          logDiagnostic({
+            category: 'sync_issue',
+            severity: failedCount > 0 ? 'error' : 'warning',
+            source: 'syncEngine.push',
+            message:
+              failedCount > 0
+                ? `فشل إرسال (${failedCount}) عملية من طابور المزامنة وبقيت محفوظة لإعادة المحاولة`
+                : `تم رصد (${newConflicts.length}) تعارض مزامنة يحتاج مراجعة`,
+            details: { pushedCount, syncedCount, failedCount, conflictCount, mode },
+          });
+        }
       } catch (err: any) {
         const errMsg = err?.message || 'تعذر مزامنة العمليات مع قاعدة البيانات المركزية';
+        logDiagnostic({
+          category: isAuthRevokedError(err) ? 'auth' : 'sync_issue',
+          severity: 'error',
+          source: 'syncEngine.push',
+          message: errMsg,
+          details: { status: err?.status, code: err?.code, pendingCount: dueOperations.length, mode },
+        });
         if (isAuthRevokedError(err)) {
           return {
             ok: false,
@@ -356,6 +376,13 @@ async function executeSyncCycle(params: {
       receivedCount,
     };
   } catch (err: any) {
+    logDiagnostic({
+      category: isAuthRevokedError(err) ? 'auth' : 'sync_issue',
+      severity: 'error',
+      source: 'syncEngine.pull',
+      message: err?.message || 'تعذر سحب أحدث بيانات من السيرفر',
+      details: { status: err?.status, code: err?.code, mode },
+    });
     if (isAuthRevokedError(err)) {
       return {
         ok: false,

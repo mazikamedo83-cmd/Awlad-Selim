@@ -3,7 +3,7 @@ import { Minus, Plus } from 'lucide-react';
 import { clampQuantity, formatQuantity, normalizeNumericText, parseQuantity, round3 } from '../../utils/quantity';
 
 export interface QuantityInputProps {
-  value: number;
+  value: number | '';
   onChange: (value: number) => void;
   min?: number;
   max?: number;
@@ -37,16 +37,20 @@ export const QuantityInput: React.FC<QuantityInputProps> = ({
   disabled = false,
   placeholder,
 }) => {
-  const [text, setText] = useState<string>(() => formatQuantity(value));
+  const [text, setText] = useState<string>(() => (value === '' ? '' : formatQuantity(value)));
   const [isFocused, setIsFocused] = useState(false);
 
   useEffect(() => {
     if (!isFocused) {
-      setText(formatQuantity(value));
+      setText(value === '' ? '' : formatQuantity(value));
     }
   }, [value, isFocused]);
 
   const commitValue = (rawValue: string) => {
+    if (rawValue.trim() === '' && value === '') {
+      setText('');
+      return;
+    }
     const parsed = parseQuantity(rawValue, allowDecimals, min);
     const clamped = clampQuantity(parsed, min, max, allowDecimals);
     setText(formatQuantity(clamped));
@@ -136,7 +140,7 @@ export const QuantityInput: React.FC<QuantityInputProps> = ({
       <button
         type="button"
         onClick={handleDecrement}
-        disabled={disabled || (value <= min && !onRemoveWhenZero)}
+        disabled={disabled || ((Number(value) || 0) <= min && !onRemoveWhenZero)}
         aria-label={`إنقاص ${ariaLabel}`}
         className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold disabled:opacity-40 cursor-pointer"
       >
@@ -168,7 +172,7 @@ export const QuantityInput: React.FC<QuantityInputProps> = ({
       <button
         type="button"
         onClick={handleIncrement}
-        disabled={disabled || (max !== undefined && value >= max)}
+        disabled={disabled || (max !== undefined && (Number(value) || 0) >= max)}
         aria-label={`زيادة ${ariaLabel}`}
         className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold disabled:opacity-40 cursor-pointer"
       >

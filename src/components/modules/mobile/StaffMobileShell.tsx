@@ -260,6 +260,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
           { key: 'online-sync-settings', label: 'المزامنة أونلاين', permission: 'canManageSettings' },
           { key: 'services-settings', label: 'الخدمات والتنبيهات', permission: 'canManageSettings' },
           { key: 'server-settings', label: 'إعدادات السيرفر والاتصال', permission: 'canManageSettings' },
+          { key: 'diagnostics-settings', label: 'سجل التشخيص والأخطاء', permission: 'canManageSettings' },
           { key: 'backup', label: 'النسخ الاحتياطي والاستعادة', permission: 'canManageSettings' },
           { key: 'migration', label: 'PostgreSQL وسجل الترحيل', permission: 'canManageSettings' },
         ],

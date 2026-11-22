@@ -389,7 +389,8 @@ async function loadFullReportDataset(actor) {
           unit: sm.unit || '',
           unitFactor: Number(sm.unit_factor || 1),
           unitCost: Number(sm.unit_cost || 0),
-          balanceAfter: sm.balance_after !== null ? Number(sm.balance_after) : undefined,
+          balanceBefore: sm.balance_before !== null && sm.balance_before !== undefined ? Number(sm.balance_before) : undefined,
+          balanceAfter: sm.balance_after !== null && sm.balance_after !== undefined ? Number(sm.balance_after) : undefined,
           relatedDocType: sm.related_doc_type || undefined,
           referenceId: sm.related_doc_id || undefined,
           referenceNumber: sm.related_doc_number || undefined,
@@ -2003,7 +2004,7 @@ function buildProductLifecycleHistory(productId, data, resolvers, filterOpts = {
   for (const sm of data.stockMovements || []) {
     if (sm.productId !== productId) continue;
     if (sm.referenceId && handledDocRefs.has(sm.referenceId)) continue;
-    if (['sale', 'purchase', 'sales_return', 'purchase_return', 'custody_delivery', 'custody_return'].includes(sm.type)) {
+    if (['sale', 'purchase', 'sales_return', 'purchase_return', 'custody_delivery', 'custody_return', 'sale_edit', 'purchase_edit', 'sale_cancel', 'purchase_cancel'].includes(sm.type)) {
       continue;
     }
     if (filterWh && sm.warehouseId !== filterWh) continue;

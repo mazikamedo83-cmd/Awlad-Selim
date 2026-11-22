@@ -10,6 +10,7 @@ import {
   deleteCategory,
   getSystemSettingsSafe,
   deleteImportedProductsBatch,
+  checkProductDuplicate,
 } from '../db/stores/catalogStore.js';
 import {
   requireAuth,
@@ -75,6 +76,23 @@ router.delete(
   asyncHandler(async (req, res) => {
     await deleteCategory(req.params.id, req.auth.user);
     res.json({ ok: true });
+  })
+);
+
+router.post(
+  '/check-duplicate',
+  requireStaff,
+  asyncHandler(async (req, res) => {
+    const u = req.auth.user;
+    if (u.role !== 'admin' && !u.permissions?.canManageInventory && !u.permissions?.canManagePurchases) {
+      return res.status(403).json({
+        ok: false,
+        code: 'FORBIDDEN_PERMISSION',
+        error: 'ليس لديك صلاحية فحص تكرار الأصناف',
+      });
+    }
+    const result = await checkProductDuplicate(req.body || {});
+    res.json({ ok: true, ...result });
   })
 );
 
