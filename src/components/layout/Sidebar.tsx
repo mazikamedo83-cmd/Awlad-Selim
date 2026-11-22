@@ -49,6 +49,9 @@ export type NavItemKey =
   | 'stock-movements'
   | 'item-movement-report'
   | 'abu-selim-import'
+  | 'accounts'
+  | 'customer-accounts'
+  | 'supplier-accounts'
   | 'cashboxes'
   | 'cashbox-transfer'
   | 'expenses'
@@ -201,15 +204,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
       },
       {
         id: 'finance',
-        title: 'المالية والخزائن',
+        title: 'الحسابات والخزائن',
         icon: Wallet,
         headerGradient: 'bg-gradient-to-l from-emerald-50/90 via-teal-50/65 to-white text-emerald-950 border-emerald-100',
         iconAccent: 'bg-emerald-100/80 text-emerald-800',
-        permission: 'canManageCashboxes',
+        permission: ['canManageCashboxes', 'canManageAccounts'],
         items: [
-          { key: 'cashboxes', label: 'الخزائن والبنوك' },
-          { key: 'cashbox-transfer', label: 'تحويل بين الخزائن' },
-          { key: 'expenses', label: 'المصروفات والإيرادات' },
+          {
+            key: 'customer-accounts',
+            label: 'حسابات العملاء وكشوف الحساب',
+            badge: 'العملاء',
+            permission: ['canManageAccounts', 'canManageCashboxes'],
+          },
+          {
+            key: 'supplier-accounts',
+            label: 'حسابات الموردين وكشوف الحساب',
+            badge: 'الموردون',
+            permission: ['canManageAccounts', 'canManageCashboxes'],
+          },
+          { key: 'cashboxes', label: 'الخزائن والبنوك', permission: 'canManageCashboxes' },
+          { key: 'cashbox-transfer', label: 'تحويل بين الخزائن', permission: 'canManageCashboxes' },
+          { key: 'expenses', label: 'المصروفات والإيرادات', permission: 'canManageCashboxes' },
           {
             key: 'personal-accounts',
             label: 'الحسابات الشخصية للملاك',

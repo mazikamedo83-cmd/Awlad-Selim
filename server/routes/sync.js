@@ -350,7 +350,13 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
   }
 
   if (opType === 'record_customer_payment') {
-    assertStaffPermission(user, 'canManageAccounts');
+    const canCollectPayment =
+      user.role === 'admin' ||
+      Boolean(user.permissions?.canManageAccounts) ||
+      (user.role === 'representative' && Boolean(user.permissions?.canManageSales));
+    if (!canCollectPayment) {
+      throw new AppError(403, 'ليس لديك صلاحية تسجيل تحصيل دفعات العملاء', 'FORBIDDEN_PERMISSION');
+    }
     const customerId = payload.customerId || op.entityId;
     if (user.role === 'representative') {
       const cust = await getCustomerById(customerId);
@@ -457,6 +463,12 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
     const serverCust = await getCustomerById(customerId);
     if (!serverCust) {
       throw new AppError(404, 'العميل غير موجود على السيرفر', 'CUSTOMER_NOT_FOUND');
+    }
+    if (user.role === 'representative') {
+      const rep = authContext.representativeProfile || (await getRepresentativeByUserId(user.id));
+      if (!rep || !isCustomerAllowedForRep(serverCust, rep.id)) {
+        throw new AppError(403, 'غير مصرح لك بتعديل بيانات عميل غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
+      }
     }
     if (
       !ignoreVersionCheck &&

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
-  Truck, Plus, Search, Phone, MapPin, DollarSign, FileText, 
-  ArrowUpRight, Printer, Download, Edit, Trash2, AlertCircle, CheckCircle2 
+  Plus, Search, Phone, MapPin, DollarSign, FileText, 
+  ArrowUpRight, Printer, Edit, Trash2, AlertCircle, CheckCircle2, ShieldAlert 
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -10,7 +10,7 @@ import { Supplier } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
-import { exportToExcel } from '../../common/ExcelExporter';
+import { SuppliersTruckIcon } from '../../common/AppIcons';
 
 export const SuppliersView: React.FC = () => {
   const {
@@ -18,6 +18,10 @@ export const SuppliersView: React.FC = () => {
     addSupplier, updateSupplier, deleteSupplier, recordSupplierPayment, settleSupplierAdvance
   } = useData();
   const { currentUser, hasPermission } = useAuth();
+  const canApproveOverpayment =
+    currentUser?.role === 'admin' ||
+    currentUser?.role === 'manager' ||
+    hasPermission('canApprove');
 
   const { registerHandler, consumePendingAction } = useShortcuts();
 
@@ -165,6 +169,12 @@ export const SuppliersView: React.FC = () => {
       setPaymentError('يرجى اختيار الخزينة أو الحساب البنكي المسدد منه.');
       return;
     }
+    const debt = Math.max(0, Number(paymentSupplier.currentBalance || 0));
+    const overpayment = Math.max(0, Number((paymentAmount - debt).toFixed(2)));
+    if (overpayment > 0.009 && !canApproveOverpayment) {
+      setPaymentError('المبلغ المدخل يتجاوز المستحق للمورد — يتطلب سداد الدفعة الزائدة/المقدمة موافقة المدير أو صلاحية الاعتماد.');
+      return;
+    }
 
     setIsSubmittingPayment(true);
     try {
@@ -297,6 +307,12 @@ export const SuppliersView: React.FC = () => {
     invoices
       .filter(i => i.supplierId === statementSupplier.id && i.status === 'confirmed' && i.type === 'purchase')
       .forEach(inv => {
+        const cashPaidAtInvoice =
+          Array.isArray(inv.payments) && inv.payments.length > 0
+            ? inv.payments
+                .filter((p) => p.paymentMethod !== 'advance_settlement')
+                .reduce((ps, p) => ps + Number(p.amount || 0), 0)
+            : Number(inv.paidAtInvoice ?? inv.paidAmount ?? 0);
         events.push({
           id: inv.id,
           date: inv.date,
@@ -305,7 +321,7 @@ export const SuppliersView: React.FC = () => {
           badgeClass: 'bg-purple-50 text-purple-800',
           description: `توريد بضاعة للمستودع (${inv.warehouseName})`,
           credit: inv.grandTotal,
-          debit: inv.paidAmount > 0 ? inv.paidAmount : 0,
+          debit: cashPaidAtInvoice > 0 ? cashPaidAtInvoice : 0,
           timestamp: new Date(inv.date).getTime(),
         });
       });
@@ -354,11 +370,16 @@ export const SuppliersView: React.FC = () => {
     <div className="space-y-5">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-        <div>
-          <h2 className="text-lg font-black text-slate-900 tracking-tight">دليل الموردين والمطاحن</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            إدارة حسابات ومستحقات شركات ومصانع الأغذية وسداد الدفعات النقدية
-          </p>
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0">
+            <SuppliersTruckIcon className="w-9 h-9" />
+          </div>
+          <div>
+            <h2 className="text-lg font-black text-slate-900 tracking-tight">دليل الموردين والمطاحن</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              إدارة حسابات ومستحقات شركات ومصانع الأغذية وسداد الدفعات النقدية
+            </p>
+          </div>
         </div>
 
         <button
@@ -567,12 +588,13 @@ export const SuppliersView: React.FC = () => {
                     <th className="p-2.5 text-center">له / مشتريات (دائن)</th>
                     <th className="p-2.5 text-center">سداد / مرتجع (مدين)</th>
                     <th className="p-2.5 text-center">الرصيد التراكمي</th>
+                    <th className="p-2.5 text-center">الاتجاه</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {supplierMovements.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="p-6 text-center text-slate-400">
+                      <td colSpan={8} className="p-6 text-center text-slate-400">
                         لا توجد فواتير أو حركات مشتريات مسجلة لهذا المورد بعد. الرصيد الافتتاحي هو: {statementSupplier.openingBalance.toLocaleString()} {settings.currency}
                       </td>
                     </tr>
@@ -589,7 +611,14 @@ export const SuppliersView: React.FC = () => {
                         <td className="p-2.5 text-slate-700">{mov.description}</td>
                         <td className="p-2.5 text-center font-mono font-bold text-slate-900">{mov.credit > 0 ? mov.credit.toLocaleString() : '-'}</td>
                         <td className="p-2.5 text-center font-mono font-bold text-emerald-700">{mov.debit > 0 ? mov.debit.toLocaleString() : '-'}</td>
-                        <td className="p-2.5 text-center font-mono font-black text-purple-900">{mov.runningBalance.toLocaleString()}</td>
+                        <td className="p-2.5 text-center font-mono font-black text-purple-900 tabular-nums">{Math.abs(mov.runningBalance).toLocaleString()}</td>
+                        <td className="p-2.5 text-center">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                            mov.runningBalance > 0.005 ? 'bg-purple-50 text-purple-800' : mov.runningBalance < -0.005 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            {mov.runningBalance > 0.005 ? 'علينا' : mov.runningBalance < -0.005 ? 'لنا (مقدم)' : 'متوازن'}
+                          </span>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -679,6 +708,13 @@ export const SuppliersView: React.FC = () => {
           isOpen={!!paymentSupplier}
           onClose={() => setPaymentSupplier(null)}
           title={`سداد دفعة للمورد: ${paymentSupplier.name}`}
+          subtitle={
+            paymentSupplier.currentBalance > 0
+              ? `المستحق للمورد (علينا): ${paymentSupplier.currentBalance.toLocaleString()} ${settings.currency}`
+              : paymentSupplier.currentBalance < 0
+              ? `دفعة مقدمة لنا عند المورد: ${Math.abs(paymentSupplier.currentBalance).toLocaleString()} ${settings.currency}`
+              : 'حساب المورد متوازن حالياً (0)'
+          }
           maxWidth="md"
         >
           <form onSubmit={handleRecordPayment} className="space-y-4 text-xs">
@@ -692,13 +728,47 @@ export const SuppliersView: React.FC = () => {
               <label className="block font-bold mb-1">المبلغ المسدد ({settings.currency}):</label>
               <input
                 type="number"
-                min="1"
+                min="0.01"
+                step="0.01"
                 required
                 value={paymentAmount || ''}
                 onChange={(e) => setPaymentAmount(Number(e.target.value))}
                 className="w-full border rounded-xl p-2.5 text-center text-purple-900 font-mono font-black text-sm"
               />
             </div>
+
+            {(() => {
+              const debt = Math.max(0, Number(paymentSupplier.currentBalance || 0));
+              const overpayment = Math.max(0, Number((paymentAmount - debt).toFixed(2)));
+              if (overpayment <= 0.009) return null;
+              return (
+                <div
+                  className={`p-3 rounded-xl border font-bold leading-relaxed space-y-1 ${
+                    canApproveOverpayment
+                      ? 'bg-amber-50 border-amber-200 text-amber-950'
+                      : 'bg-red-50 border-red-200 text-red-900'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 font-black">
+                    <ShieldAlert className="w-4 h-4 shrink-0" />
+                    <span>
+                      {canApproveOverpayment
+                        ? 'تنبيه دفعة مقدمة للمورد (رصيد لنا)'
+                        : 'سداد يتجاوز المستحق يتطلب صلاحية اعتماد إدارية'}
+                    </span>
+                  </div>
+                  <p>
+                    المبلغ المدخل يتجاوز المديونية القائمة ({debt.toLocaleString()} {settings.currency}) بمقدار {overpayment.toLocaleString()} {settings.currency} — سيُسجل كدفعة مقدمة لنا عند المورد.
+                  </p>
+                  {!canApproveOverpayment && (
+                    <p className="text-[11px] underline">
+                      لا تملك صلاحية اعتماد الدفعة الزائدة للمورد (مسموح للمدير العام / مدير الفرع / صلاحية الاعتماد فقط).
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
+
             <div>
               <label className="block font-bold mb-1">الخزينة أو الحساب المسدد منه:</label>
               <select
@@ -723,7 +793,15 @@ export const SuppliersView: React.FC = () => {
             </div>
             <div className="flex justify-end gap-2 pt-2 border-t">
               <button type="button" onClick={() => setPaymentSupplier(null)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">إلغاء</button>
-              <button type="submit" disabled={isSubmittingPayment} className="px-6 py-2 bg-purple-600 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50">
+              <button
+                type="submit"
+                disabled={
+                  isSubmittingPayment ||
+                  (paymentAmount - Math.max(0, Number(paymentSupplier.currentBalance || 0)) > 0.009 &&
+                    !canApproveOverpayment)
+                }
+                className="px-6 py-2 bg-purple-600 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50"
+              >
                 {isSubmittingPayment ? 'جاري الصرف...' : 'تأكيد الصرف'}
               </button>
             </div>

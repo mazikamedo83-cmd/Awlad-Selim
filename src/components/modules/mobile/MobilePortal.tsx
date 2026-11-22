@@ -20,11 +20,12 @@ import {
   X,
   ChevronLeft,
   AlertCircle,
+  Settings,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
 import { getStoredTokens } from '../../../services/api';
-import { registerAndroidBackButton } from '../../../services/native';
+import { isMobileAppPlatform, registerAndroidBackButton } from '../../../services/native';
 import { MobileNotificationItem } from '../../../types';
 import { CustomerPortal, CustomerTabKey } from './CustomerPortal';
 import { RepPortal, RepTabKey } from './RepPortal';
@@ -46,6 +47,7 @@ export const MobilePortal: React.FC = () => {
   } = useAuth();
   const data = useData();
   const isRep = currentUser?.role === 'representative';
+  const hideSectionsNav = isMobileAppPlatform();
 
   const [customerTab, setCustomerTab] = useState<CustomerTabKey>('home');
   const [repTab, setRepTab] = useState<RepTabKey>('home');
@@ -53,6 +55,7 @@ export const MobilePortal: React.FC = () => {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
   const [isSyncCenterOpen, setIsSyncCenterOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [hasUnsavedRepInvoice, setHasUnsavedRepInvoice] = useState(false);
   const [pendingRepTab, setPendingRepTab] = useState<RepTabKey | null>(null);
 
@@ -71,6 +74,10 @@ export const MobilePortal: React.FC = () => {
     return registerAndroidBackButton(() => {
       if (pendingRepTab) {
         setPendingRepTab(null);
+        return true;
+      }
+      if (isSettingsModalOpen) {
+        setIsSettingsModalOpen(false);
         return true;
       }
       if (isSyncCenterOpen) {
@@ -99,7 +106,7 @@ export const MobilePortal: React.FC = () => {
       }
       return false;
     });
-  }, [pendingRepTab, isSyncCenterOpen, isNotificationsOpen, isServerModalOpen, isDrawerOpen, isRep, repTab, customerTab, hasUnsavedRepInvoice]);
+  }, [pendingRepTab, isSettingsModalOpen, isSyncCenterOpen, isNotificationsOpen, isServerModalOpen, isDrawerOpen, isRep, repTab, customerTab, hasUnsavedRepInvoice]);
 
   useEffect(() => {
     if (!isDrawerOpen) return;
@@ -256,6 +263,16 @@ export const MobilePortal: React.FC = () => {
 
               <button
                 type="button"
+                onClick={() => setIsSettingsModalOpen(true)}
+                className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+                title="الإعدادات"
+                aria-label="الإعدادات"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
                 onClick={logout}
                 className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-red-600/90 hover:bg-red-700 text-white cursor-pointer"
                 title="تسجيل الخروج"
@@ -266,24 +283,26 @@ export const MobilePortal: React.FC = () => {
             </div>
           </div>
 
-          {/* 5-Button Top Blue Navigation Strip (Ordered Right-to-Left) */}
+          {/* Top Blue Navigation Strip (Ordered Right-to-Left; الأقسام hidden ONLY on Android/iOS) */}
           <nav
             aria-label="التنقل الرئيسي"
-            className="border-t border-white/15 py-1.5 grid grid-cols-5 gap-1"
+            className={`border-t border-white/15 py-1.5 grid ${hideSectionsNav ? 'grid-cols-4' : 'grid-cols-5'} gap-1`}
           >
-            <button
-              type="button"
-              onClick={() => setIsDrawerOpen((prev) => !prev)}
-              aria-expanded={isDrawerOpen}
-              className={`min-h-[42px] px-1 py-1.5 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 text-[11px] sm:text-xs whitespace-nowrap transition-all cursor-pointer ${
-                isDrawerOpen
-                  ? 'bg-white text-blue-950 font-black shadow-sm'
-                  : 'bg-white/10 text-blue-50 hover:bg-white/20 font-bold'
-              }`}
-            >
-              <LayoutGrid className="w-4 h-4 shrink-0" />
-              <span className="leading-none truncate max-w-full">الأقسام</span>
-            </button>
+            {!hideSectionsNav && (
+              <button
+                type="button"
+                onClick={() => setIsDrawerOpen((prev) => !prev)}
+                aria-expanded={isDrawerOpen}
+                className={`min-h-[42px] px-1 py-1.5 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 text-[11px] sm:text-xs whitespace-nowrap transition-all cursor-pointer ${
+                  isDrawerOpen
+                    ? 'bg-white text-blue-950 font-black shadow-sm'
+                    : 'bg-white/10 text-blue-50 hover:bg-white/20 font-bold'
+                }`}
+              >
+                <LayoutGrid className="w-4 h-4 shrink-0" />
+                <span className="leading-none truncate max-w-full">الأقسام</span>
+              </button>
+            )}
 
             {topQuickButtons.map((btn) => {
               const Icon = btn.icon;
@@ -308,14 +327,15 @@ export const MobilePortal: React.FC = () => {
         </div>
       </header>
 
-      {/* Soft-Gradient Sliding Sections Drawer */}
-      {isDrawerOpen && (
+      {/* Soft-Gradient Sliding Sections Drawer (Windows/Web only) */}
+      {!hideSectionsNav && isDrawerOpen && (
         <div
           className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-[2px] transition-opacity"
           onClick={() => setIsDrawerOpen(false)}
           aria-hidden="true"
         />
       )}
+      {!hideSectionsNav && (
       <aside
         aria-label="قائمة أقسام البوابة"
         aria-hidden={!isDrawerOpen}
@@ -374,6 +394,7 @@ export const MobilePortal: React.FC = () => {
           })}
         </div>
       </aside>
+      )}
 
       <main className="max-w-5xl mx-auto p-3.5 space-y-3.5">
         {linkWarning && (
@@ -533,6 +554,92 @@ export const MobilePortal: React.FC = () => {
         isOpen={isSyncCenterOpen}
         onClose={() => setIsSyncCenterOpen(false)}
       />
+
+      {isSettingsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl border border-slate-200 space-y-3 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-800 flex items-center justify-center">
+                  <Settings className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm text-slate-900">إعدادات التطبيق والحساب</h3>
+                  <p className="text-[11px] text-slate-500">
+                    {isRep ? 'بوابة المندوب' : 'بوابة العميل'} · {currentUser?.fullName}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSettingsModalOpen(false)}
+                className="min-h-[36px] min-w-[36px] rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700 cursor-pointer"
+                aria-label="إغلاق"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSettingsModalOpen(false);
+                  setIsServerModalOpen(true);
+                }}
+                className="w-full min-h-[44px] px-3.5 rounded-2xl bg-slate-50 hover:bg-blue-50 border border-slate-200 flex items-center justify-between font-bold text-slate-800 cursor-pointer"
+              >
+                <span className="flex items-center gap-2">
+                  <Server className="w-4 h-4 text-blue-700" />
+                  <span>عنوان السيرفر والاتصال المركزي</span>
+                </span>
+                <ChevronLeft className="w-4 h-4 text-slate-400" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSettingsModalOpen(false);
+                  setIsSyncCenterOpen(true);
+                }}
+                className="w-full min-h-[44px] px-3.5 rounded-2xl bg-slate-50 hover:bg-blue-50 border border-slate-200 flex items-center justify-between font-bold text-slate-800 cursor-pointer"
+              >
+                <span className="flex items-center gap-2">
+                  <CloudOff className="w-4 h-4 text-amber-600" />
+                  <span>مركز المزامنة والعمليات المعلقة</span>
+                </span>
+                <span className="px-2 py-0.5 rounded-lg bg-slate-200 text-slate-800 text-[10px] font-black">
+                  {syncBadgeCount}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSettingsModalOpen(false);
+                  data.triggerManualSync();
+                }}
+                className="w-full min-h-[44px] px-3.5 rounded-2xl bg-blue-900 hover:bg-blue-950 text-white flex items-center justify-center gap-2 font-black cursor-pointer"
+              >
+                <RefreshCw className={`w-4 h-4 ${data.networkStatus === 'synchronizing' ? 'animate-spin' : ''}`} />
+                <span>مزامنة البيانات الآن</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSettingsModalOpen(false);
+                  logout();
+                }}
+                className="w-full min-h-[44px] px-3.5 rounded-2xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 flex items-center justify-center gap-2 font-black cursor-pointer"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>تسجيل الخروج من الحساب</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

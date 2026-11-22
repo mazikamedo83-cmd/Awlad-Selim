@@ -22,6 +22,7 @@ import {
 } from '../../utils/idempotency.js';
 import {
   isPgMode,
+  FULL_ADMIN_PERMISSIONS,
   getDefaultPermissionsForRole,
   normalizeCustomerPhonesList,
   mapPgUserRow,
@@ -32,6 +33,8 @@ import {
   isoDateOnly,
   isoTimestamp,
 } from './mode.js';
+
+const EMPTY_PERMISSIONS = Object.fromEntries(Object.keys(FULL_ADMIN_PERMISSIONS).map((k) => [k, false]));
 import { recordAuditLog, listAuditLogs } from './authStore.js';
 import {
   listCustomers,
@@ -2223,7 +2226,10 @@ export async function createAdminUser(payload, actor) {
   const hasExplicitPermissions =
     payload.permissions && typeof payload.permissions === 'object' && Object.keys(payload.permissions).length > 0;
   const resolvedPermissions = hasExplicitPermissions
-    ? { ...getDefaultPermissionsForRole(targetRole), ...payload.permissions }
+    ? {
+        ...EMPTY_PERMISSIONS,
+        ...Object.fromEntries(Object.entries(payload.permissions).map(([k, v]) => [k, Boolean(v)])),
+      }
     : getDefaultPermissionsForRole(targetRole);
   assertNoPermissionEscalation(resolvedPermissions, actor);
   if (!username || username.length < 3) throw new AppError(400, 'اسم المستخدم يجب أن لا يقل عن 3 أحرف', 'INVALID_USERNAME');
@@ -2588,9 +2594,95 @@ export async function updateAdminUser(userId, updates, actor) {
           }
         }
       }
+      let resolvedLinkedRepId;
+      const shouldEnsureRepProfile =
+        effectiveRole === 'representative' &&
+        (updates.autoCreateRepProfile === true ||
+          (updates.role === 'representative' && cur.role !== 'representative' && updates.autoCreateRepProfile !== false));
+      if (shouldEnsureRepProfile) {
+        const curLinkedRep = await client.query('SELECT * FROM representatives WHERE user_id = $1 LIMIT 1', [userId]);
+        if (curLinkedRep.rows[0]) {
+          resolvedLinkedRepId = curLinkedRep.rows[0].id;
+          if (!curLinkedRep.rows[0].warehouse_id) {
+            const vanId = generateServerId('WH');
+            const vanCode = `VAN-${String(Date.now()).slice(-4)}-${Math.floor(10 + Math.random() * 89)}`;
+            const repDisplayName = curLinkedRep.rows[0].name || updates.fullName || cur.full_name;
+            await client.query(
+              `INSERT INTO warehouses (id, name, code, location, manager_name, phone, is_default, status, created_at)
+               VALUES ($1,$2,$3,'مخزون سيارة مندوب',$4,$5,FALSE,'active',$6)`,
+              [vanId, `سيارة المندوب - ${repDisplayName}`, vanCode, repDisplayName, updates.phone ?? cur.phone ?? '', now]
+            );
+            await client.query('UPDATE representatives SET warehouse_id = $1 WHERE id = $2', [vanId, resolvedLinkedRepId]);
+          }
+        } else {
+          const repPhone = updates.phone ?? cur.phone ?? '';
+          const normPhone = normalizePhoneDigits(repPhone);
+          let matchedRep = null;
+          if (normPhone && updates.autoMatchExisting !== false) {
+            const unlinkedRepsRes = await client.query('SELECT * FROM representatives WHERE user_id IS NULL FOR UPDATE');
+            const matches = unlinkedRepsRes.rows.filter((rp) => normalizePhoneDigits(rp.phone) === normPhone);
+            if (matches.length === 1) matchedRep = matches[0];
+          }
+          if (matchedRep) {
+            let targetWhId = matchedRep.warehouse_id || null;
+            if (!targetWhId) {
+              targetWhId = generateServerId('WH');
+              const vanCode = `VAN-${String(Date.now()).slice(-4)}-${Math.floor(10 + Math.random() * 89)}`;
+              const repDisplayName = matchedRep.name || updates.fullName || cur.full_name;
+              await client.query(
+                `INSERT INTO warehouses (id, name, code, location, manager_name, phone, is_default, status, created_at)
+                 VALUES ($1,$2,$3,'مخزون سيارة مندوب',$4,$5,FALSE,'active',$6)`,
+                [targetWhId, `سيارة المندوب - ${repDisplayName}`, vanCode, repDisplayName, repPhone, now]
+              );
+            }
+            await client.query('UPDATE representatives SET user_id = $1, warehouse_id = $2 WHERE id = $3', [
+              userId,
+              targetWhId,
+              matchedRep.id,
+            ]);
+            resolvedLinkedRepId = matchedRep.id;
+          } else {
+            const repDisplayName = updates.fullName ?? cur.full_name;
+            const vanId = generateServerId('WH');
+            const vanCode = `VAN-${String(Date.now()).slice(-4)}-${Math.floor(10 + Math.random() * 89)}`;
+            await client.query(
+              `INSERT INTO warehouses (id, name, code, location, manager_name, phone, is_default, status, created_at)
+               VALUES ($1,$2,$3,'مخزون سيارة مندوب',$4,$5,FALSE,'active',$6)`,
+              [vanId, `سيارة المندوب - ${repDisplayName}`, vanCode, repDisplayName, repPhone, now]
+            );
+            const autoRepId = generateServerId('REP');
+            const repCode = `REP-${String(Date.now()).slice(-5)}`;
+            await client.query(
+              `INSERT INTO representatives (id, code, user_id, name, phone, vehicle_number, address, opening_balance, current_balance, commission_rate, warehouse_id, notes, status, created_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,0,0,0,$8,$9,$10,$11)`,
+              [
+                autoRepId,
+                repCode,
+                userId,
+                repDisplayName,
+                repPhone,
+                updates.vehicleNumber || '',
+                updates.address ?? cur.address ?? '',
+                vanId,
+                updates.notes || 'ملف مندوب ومستودع سيارة مُنشأ تلقائيًا عند تحديث الحساب',
+                (updates.isActive ?? cur.is_active) === false ? 'inactive' : 'active',
+                now,
+              ]
+            );
+            resolvedLinkedRepId = autoRepId;
+          }
+        }
+      } else if (effectiveRole === 'representative') {
+        const curLinkedRep = await client.query('SELECT id FROM representatives WHERE user_id = $1 LIMIT 1', [userId]);
+        if (curLinkedRep.rows[0]) resolvedLinkedRepId = curLinkedRep.rows[0].id;
+      }
       const next = await client.query('SELECT * FROM users WHERE id = $1', [userId]);
       const sanitized = sanitizeUser(mapPgUserRow(next.rows[0]));
-      return resolvedLinkedCustomerId ? { ...sanitized, linkedCustomerId: resolvedLinkedCustomerId } : sanitized;
+      return {
+        ...sanitized,
+        ...(resolvedLinkedCustomerId ? { linkedCustomerId: resolvedLinkedCustomerId } : {}),
+        ...(resolvedLinkedRepId ? { linkedRepresentativeId: resolvedLinkedRepId } : {}),
+      };
     });
     await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تحديث حساب مستخدم (${user.username})`, module: 'المستخدمون', recordId: userId });
     return user;
@@ -2603,7 +2695,16 @@ export async function updateAdminUser(userId, updates, actor) {
     if (actor?.role !== 'admin' && cur.role === 'admin') {
       throw new AppError(403, 'غير مصرح لغير المدير العام بتعديل بيانات أو صلاحيات حساب المدير العام', 'FORBIDDEN_ADMIN_ESCALATION');
     }
-    const { newPassword, passwordHash: _ignoredHash, linkedCustomerId, autoCreateCustomerProfile, ...rest } = updates;
+    const {
+      newPassword,
+      passwordHash: _ignoredHash,
+      linkedCustomerId,
+      autoCreateCustomerProfile,
+      autoCreateRepProfile,
+      autoMatchExisting,
+      forceNewCustomerProfile,
+      ...rest
+    } = updates;
     const effectiveRole = rest.role ?? cur.role;
     const resolvedPerms =
       updates.permissions !== undefined
@@ -2637,7 +2738,7 @@ export async function updateAdminUser(userId, updates, actor) {
         const targetPhone = db.users[idx].phone || '';
         const normPhone = normalizePhoneDigits(targetPhone);
         let matchedExisting = null;
-        if (normPhone && updates.autoMatchExisting !== false && !updates.forceNewCustomerProfile) {
+        if (normPhone && autoMatchExisting !== false && !forceNewCustomerProfile) {
           const matches = (db.customers || []).filter((c) => !c.userId && customerMatchesPhoneDigits(c, normPhone));
           if (matches.length > 1) {
             throw new AppError(
@@ -2676,8 +2777,98 @@ export async function updateAdminUser(userId, updates, actor) {
         }
       }
     }
+    let resolvedLinkedRepId;
+    const shouldEnsureRepProfile =
+      effectiveRole === 'representative' &&
+      (autoCreateRepProfile === true ||
+        (updates.role === 'representative' && cur.role !== 'representative' && autoCreateRepProfile !== false));
+    if (shouldEnsureRepProfile) {
+      const existingRep = (db.representatives || []).find((rp) => rp.userId === userId);
+      if (existingRep) {
+        resolvedLinkedRepId = existingRep.id;
+        if (!existingRep.warehouseId) {
+          const vanId = generateServerId('WH');
+          const vanCode = `VAN-${String(Date.now()).slice(-4)}-${Math.floor(10 + Math.random() * 89)}`;
+          const repDisplayName = existingRep.name || db.users[idx].fullName;
+          db.warehouses.push({
+            id: vanId,
+            name: `سيارة المندوب - ${repDisplayName}`,
+            code: vanCode,
+            location: 'مخزون سيارة مندوب',
+            managerName: repDisplayName,
+            phone: db.users[idx].phone || '',
+            isDefault: false,
+            status: 'active',
+          });
+          existingRep.warehouseId = vanId;
+        }
+      } else {
+        const repPhone = db.users[idx].phone || '';
+        const normPhone = normalizePhoneDigits(repPhone);
+        const unlinkedMatches = normPhone
+          ? (db.representatives || []).filter((rp) => !rp.userId && normalizePhoneDigits(rp.phone) === normPhone)
+          : [];
+        if (unlinkedMatches.length === 1) {
+          const matchedRep = unlinkedMatches[0];
+          if (!matchedRep.warehouseId) {
+            const vanId = generateServerId('WH');
+            const vanCode = `VAN-${String(Date.now()).slice(-4)}-${Math.floor(10 + Math.random() * 89)}`;
+            const repDisplayName = matchedRep.name || db.users[idx].fullName;
+            db.warehouses.push({
+              id: vanId,
+              name: `سيارة المندوب - ${repDisplayName}`,
+              code: vanCode,
+              location: 'مخزون سيارة مندوب',
+              managerName: repDisplayName,
+              phone: repPhone,
+              isDefault: false,
+              status: 'active',
+            });
+            matchedRep.warehouseId = vanId;
+          }
+          matchedRep.userId = userId;
+          resolvedLinkedRepId = matchedRep.id;
+        } else {
+          const vanId = generateServerId('WH');
+          const vanCode = `VAN-${String(Date.now()).slice(-4)}-${Math.floor(10 + Math.random() * 89)}`;
+          const repDisplayName = db.users[idx].fullName;
+          db.warehouses.push({
+            id: vanId,
+            name: `سيارة المندوب - ${repDisplayName}`,
+            code: vanCode,
+            location: 'مخزون سيارة مندوب',
+            managerName: repDisplayName,
+            phone: repPhone,
+            isDefault: false,
+            status: 'active',
+          });
+          const autoRepId = generateServerId('REP');
+          db.representatives.push({
+            id: autoRepId,
+            userId,
+            name: repDisplayName,
+            phone: repPhone,
+            vehicleNumber: updates.vehicleNumber || '',
+            warehouseId: vanId,
+            openingBalance: 0,
+            currentBalance: 0,
+            commissionRate: 0,
+            notes: updates.notes || 'ملف مندوب ومستودع سيارة مُنشأ تلقائيًا عند تحديث الحساب',
+            status: db.users[idx].isActive === false ? 'inactive' : 'active',
+          });
+          resolvedLinkedRepId = autoRepId;
+        }
+      }
+    } else if (effectiveRole === 'representative') {
+      const existingRep = (db.representatives || []).find((rp) => rp.userId === userId);
+      if (existingRep) resolvedLinkedRepId = existingRep.id;
+    }
     const sanitized = sanitizeUser(db.users[idx]);
-    return resolvedLinkedCustomerId ? { ...sanitized, linkedCustomerId: resolvedLinkedCustomerId } : sanitized;
+    return {
+      ...sanitized,
+      ...(resolvedLinkedCustomerId ? { linkedCustomerId: resolvedLinkedCustomerId } : {}),
+      ...(resolvedLinkedRepId ? { linkedRepresentativeId: resolvedLinkedRepId } : {}),
+    };
   });
   await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تحديث حساب مستخدم (${user.username})`, module: 'المستخدمون', recordId: userId });
   return user;
@@ -2779,6 +2970,8 @@ export async function deleteSupplier(id, actor) {
 export async function recordSupplierPayment({ supplierId, amount, cashboxId, notes = '', date }, actor, idempotencyKey = '') {
   const payAmount = round2(amount);
   if (!Number.isFinite(payAmount) || payAmount <= 0) throw new AppError(400, 'المبلغ يجب أن يكون أكبر من صفر', 'INVALID_AMOUNT');
+  const canApproveOverpayment =
+    actor?.role === 'admin' || actor?.role === 'manager' || Boolean(actor?.permissions?.canApprove);
   const now = nowIso();
   const txDate = date || todayIso();
   const txId = generateServerId('FT');
@@ -2795,8 +2988,16 @@ export async function recordSupplierPayment({ supplierId, amount, cashboxId, not
       if (!sRes.rows[0]) throw new AppError(404, 'المورد غير موجود', 'SUPPLIER_NOT_FOUND');
       const cbRes = await client.query('SELECT * FROM cashboxes WHERE id = $1 FOR UPDATE', [cashboxId]);
       if (!cbRes.rows[0]) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
-      const curSuppBal = Number(sRes.rows[0].current_balance || 0);
-      const isAdvance = curSuppBal <= 0 || payAmount > curSuppBal;
+      const curSuppBal = round2(sRes.rows[0].current_balance || 0);
+      const overpaymentAmount = round2(Math.max(0, payAmount - Math.max(0, curSuppBal)));
+      const isAdvance = overpaymentAmount > 0.009;
+      if (isAdvance && !canApproveOverpayment) {
+        throw new AppError(
+          403,
+          'دفع مبلغ يتجاوز المستحق للمورد (دفعة مقدمة / رصيد لنا) يتطلب موافقة المدير العام أو صاحب الصلاحية',
+          'SUPPLIER_OVERPAYMENT_APPROVAL_REQUIRED'
+        );
+      }
       const nextSupp = round2(curSuppBal - payAmount);
       const nextCb = round2(Number(cbRes.rows[0].current_balance || 0) - payAmount);
       const desc = `سداد للمورد ${sRes.rows[0].name}${isAdvance ? ' (دفعة مقدمة / رصيد لنا)' : ''}`;
@@ -2807,7 +3008,17 @@ export async function recordSupplierPayment({ supplierId, amount, cashboxId, not
          VALUES ($1,$2,$3,'supplier_payment',$4,$5,$6,$7,'سداد لمورد',$8,$9,$10,$11,$12,$13)`,
         [txId, txNo, txDate, payAmount, cbRes.rows[0].id, cbRes.rows[0].name, nextCb, supplierId, sRes.rows[0].name, desc, notes, actor.fullName, now]
       );
-      const payloadOut = { ok: true, transactionId: txId, transactionNumber: txNo, supplierBalance: nextSupp, cashboxBalance: nextCb, supplierName: sRes.rows[0].name };
+      const payloadOut = {
+        ok: true,
+        transactionId: txId,
+        transactionNumber: txNo,
+        supplierBalance: nextSupp,
+        cashboxBalance: nextCb,
+        supplierName: sRes.rows[0].name,
+        isAdvancePayment: nextSupp < 0,
+        overpaymentAmount,
+        advanceCreditBalance: nextSupp < 0 ? round2(Math.abs(nextSupp)) : 0,
+      };
       await savePgIdempotency(client, scopedIdem, actor, endpoint, payloadOut);
       return { deduplicated: false, ...payloadOut };
     });
@@ -2824,8 +3035,16 @@ export async function recordSupplierPayment({ supplierId, amount, cashboxId, not
     const supp = db.suppliers.find((s) => s.id === supplierId);
     const cb = db.cashboxes.find((c) => c.id === cashboxId);
     if (!supp || !cb) throw new AppError(404, 'المورد أو الخزينة غير موجودة', 'NOT_FOUND');
-    const curSuppBal = Number(supp.currentBalance || 0);
-    const isAdvance = curSuppBal <= 0 || payAmount > curSuppBal;
+    const curSuppBal = round2(supp.currentBalance || 0);
+    const overpaymentAmount = round2(Math.max(0, payAmount - Math.max(0, curSuppBal)));
+    const isAdvance = overpaymentAmount > 0.009;
+    if (isAdvance && !canApproveOverpayment) {
+      throw new AppError(
+        403,
+        'دفع مبلغ يتجاوز المستحق للمورد (دفعة مقدمة / رصيد لنا) يتطلب موافقة المدير العام أو صاحب الصلاحية',
+        'SUPPLIER_OVERPAYMENT_APPROVAL_REQUIRED'
+      );
+    }
     supp.currentBalance = round2(curSuppBal - payAmount);
     cb.currentBalance = round2(Number(cb.currentBalance || 0) - payAmount);
     const desc = `سداد للمورد ${supp.name}${isAdvance ? ' (دفعة مقدمة / رصيد لنا)' : ''}`;
@@ -2847,7 +3066,17 @@ export async function recordSupplierPayment({ supplierId, amount, cashboxId, not
       createdBy: actor.fullName,
       createdAt: now,
     });
-    const payloadOut = { ok: true, transactionId: txId, transactionNumber: txNo, supplierBalance: supp.currentBalance, cashboxBalance: cb.currentBalance, supplierName: supp.name };
+    const payloadOut = {
+      ok: true,
+      transactionId: txId,
+      transactionNumber: txNo,
+      supplierBalance: supp.currentBalance,
+      cashboxBalance: cb.currentBalance,
+      supplierName: supp.name,
+      isAdvancePayment: supp.currentBalance < 0,
+      overpaymentAmount,
+      advanceCreditBalance: supp.currentBalance < 0 ? round2(Math.abs(supp.currentBalance)) : 0,
+    };
     saveJsonIdempotency(scopedIdem, payloadOut);
     return { deduplicated: false, ...payloadOut };
   });
@@ -3044,6 +3273,258 @@ export async function settleSupplierAdvance({ supplierId, invoiceId, amount, not
     });
   }
   return out;
+}
+
+export async function getSupplierStatementData(supplierId) {
+  let supplier = null;
+  let invoices = [];
+  let returns = [];
+  let paymentTxs = [];
+
+  if (await isPgMode()) {
+    const pool = getPool();
+    const sRes = await pool.query('SELECT * FROM suppliers WHERE id = $1', [supplierId]);
+    if (!sRes.rows[0]) throw new AppError(404, 'المورد غير موجود', 'SUPPLIER_NOT_FOUND');
+    const sRow = sRes.rows[0];
+    supplier = {
+      id: sRow.id,
+      code: sRow.code,
+      name: sRow.name,
+      phone: sRow.phone || '',
+      address: sRow.address || '',
+      openingBalance: round2(sRow.opening_balance || 0),
+      currentBalance: round2(sRow.current_balance || 0),
+      notes: sRow.notes || '',
+      status: sRow.status || 'active',
+      createdAt: isoTimestamp(sRow.created_at),
+    };
+
+    const invRes = await pool.query(
+      `SELECT * FROM invoices WHERE supplier_id = $1 AND type = 'purchase' AND status = 'confirmed' ORDER BY date DESC, created_at DESC`,
+      [supplierId]
+    );
+    const invIds = invRes.rows.map((r) => r.id);
+    const itemsMap = new Map();
+    const payMap = new Map();
+    if (invIds.length > 0) {
+      const itRes = await pool.query(`SELECT * FROM invoice_items WHERE invoice_id = ANY($1::varchar[])`, [invIds]);
+      for (const it of itRes.rows) {
+        const arr = itemsMap.get(it.invoice_id) || [];
+        arr.push(it);
+        itemsMap.set(it.invoice_id, arr);
+      }
+      const pyRes = await pool.query(`SELECT * FROM invoice_payments WHERE invoice_id = ANY($1::varchar[]) ORDER BY created_at ASC`, [invIds]);
+      for (const py of pyRes.rows) {
+        const arr = payMap.get(py.invoice_id) || [];
+        arr.push(py);
+        payMap.set(py.invoice_id, arr);
+      }
+    }
+    invoices = invRes.rows.map((r) => mapPgInvoiceRow(r, itemsMap.get(r.id) || [], payMap.get(r.id) || []));
+
+    const retRes = await pool.query(
+      `SELECT * FROM invoice_returns WHERE party_id = $1 AND type = 'purchase_return' ORDER BY date DESC, created_at DESC`,
+      [supplierId]
+    );
+    returns = retRes.rows.map((r) => ({
+      id: r.id,
+      returnNumber: r.return_number,
+      type: r.type,
+      originalInvoiceId: r.original_invoice_id,
+      originalInvoiceNumber: r.original_invoice_number,
+      date: isoDateOnly(r.date),
+      partyId: r.party_id,
+      partyName: r.party_name,
+      grandTotal: round2(r.grand_total || 0),
+      refundType: r.refund_type,
+      reason: r.reason || '',
+      createdAt: isoTimestamp(r.created_at),
+    }));
+
+    const txRes = await pool.query(
+      `SELECT * FROM financial_transactions WHERE related_entity_id = $1 AND type = 'supplier_payment' ORDER BY date ASC, created_at ASC`,
+      [supplierId]
+    );
+    paymentTxs = txRes.rows.map((r) => ({
+      id: r.id,
+      transactionNumber: r.transaction_number,
+      date: isoDateOnly(r.date),
+      amount: round2(r.amount || 0),
+      relatedDocType: r.related_doc_type,
+      relatedDocId: r.related_doc_id,
+      cashboxName: r.cashbox_name || '',
+      description: r.description || '',
+      notes: r.notes || '',
+      createdAt: isoTimestamp(r.created_at),
+    }));
+  } else {
+    const db = readJsonDatabase();
+    const sRow = (db.suppliers || []).find((s) => s.id === supplierId);
+    if (!sRow) throw new AppError(404, 'المورد غير موجود', 'SUPPLIER_NOT_FOUND');
+    supplier = {
+      ...sRow,
+      openingBalance: round2(sRow.openingBalance || 0),
+      currentBalance: round2(sRow.currentBalance || 0),
+    };
+    invoices = (db.invoices || [])
+      .filter((i) => i.supplierId === supplierId && i.type === 'purchase' && i.status === 'confirmed')
+      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    returns = (db.invoiceReturns || [])
+      .filter((r) => r.partyId === supplierId && r.type === 'purchase_return')
+      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    paymentTxs = (db.financialTransactions || [])
+      .filter((tx) => (tx.relatedEntityId === supplierId || tx.partyId === supplierId) && tx.type === 'supplier_payment')
+      .sort((a, b) => String(a.createdAt || a.date || '').localeCompare(String(b.createdAt || b.date || '')));
+  }
+
+  const rawEntries = [];
+  const openingBal = round2(supplier.openingBalance || 0);
+  if (openingBal !== 0) {
+    rawEntries.push({
+      id: `OPEN-${supplier.id}`,
+      docId: supplier.id,
+      docType: 'opening_balance',
+      date: (supplier.createdAt || '').split('T')[0] || '-',
+      sortKey: `0000-${supplier.createdAt || ''}`,
+      docNumber: supplier.code || '-',
+      type: 'opening_balance',
+      label: 'رصيد افتتاحي للمورد',
+      description: openingBal > 0 ? 'رصيد افتتاحي مستحق للمورد (علينا)' : 'رصيد افتتاحي مقدم عند المورد (لنا)',
+      credit: openingBal > 0 ? openingBal : 0,
+      debit: openingBal < 0 ? round2(Math.abs(openingBal)) : 0,
+      paidAmount: 0,
+      remainingAmount: 0,
+    });
+  }
+
+  const confirmedInvIds = new Set(invoices.map((i) => i.id));
+  for (const inv of invoices) {
+    const invCashAtCreate = round2(inv.paidAtInvoice ?? inv.paidAmount ?? 0);
+    // Count only non-settlement payments recorded directly against the invoice if no separate FT skips them,
+    // actually supplier_payment FT is created for explicit supplier payments; invoice initial payment is in paidAtInvoice / paidAmount excluding advance_settlement
+    const nonSettlementPaid = round2(
+      Array.isArray(inv.payments) && inv.payments.length > 0
+        ? inv.payments
+            .filter((p) => p.paymentMethod !== 'advance_settlement')
+            .reduce((s, p) => s + Number(p.amount || 0), 0)
+        : invCashAtCreate
+    );
+    rawEntries.push({
+      id: `PINV-${inv.id}`,
+      docId: inv.id,
+      docType: 'purchase',
+      date: inv.date || '',
+      sortKey: `${inv.date || ''}-${inv.createdAt || inv.id}`,
+      docNumber: inv.invoiceNumber,
+      type: 'purchase_invoice',
+      label: `فاتورة مشتريات (${inv.items?.length || 0} صنف)`,
+      description:
+        nonSettlementPaid > 0
+          ? `إجمالي المشتريات ${round2(inv.grandTotal)} · مسدد عند الفوترة ${nonSettlementPaid}`
+          : `فاتورة مشتريات آجلة — رقم ${inv.invoiceNumber}`,
+      credit: round2(inv.grandTotal || 0),
+      debit: nonSettlementPaid,
+      paidAmount: round2(inv.paidAmount || 0),
+      remainingAmount: round2(inv.remainingAmount || 0),
+    });
+  }
+
+  for (const tx of paymentTxs) {
+    if (tx.relatedDocType === 'purchase' && tx.relatedDocId && confirmedInvIds.has(tx.relatedDocId)) {
+      continue;
+    }
+    rawEntries.push({
+      id: `SPAY-${tx.id}`,
+      docId: tx.id,
+      docType: 'supplier_payment',
+      date: tx.date || '',
+      sortKey: `${tx.date || ''}-${tx.createdAt || tx.id}`,
+      docNumber: tx.transactionNumber || tx.id,
+      type: 'supplier_payment',
+      label: 'سند صرف / سداد للمورد',
+      description: tx.description || 'دفعة مسددة للمورد',
+      credit: 0,
+      debit: round2(tx.amount || 0),
+      paidAmount: round2(tx.amount || 0),
+      remainingAmount: 0,
+    });
+  }
+
+  for (const ret of returns) {
+    rawEntries.push({
+      id: `PRET-${ret.id}`,
+      docId: ret.id,
+      docType: 'purchase_return',
+      date: ret.date || '',
+      sortKey: `${ret.date || ''}-${ret.createdAt || ret.id}`,
+      docNumber: ret.returnNumber,
+      type: 'purchase_return',
+      label: 'مرتجع مشتريات',
+      description: ret.reason || `مرتجع على فاتورة ${ret.originalInvoiceNumber || '-'}`,
+      credit: 0,
+      debit: ret.refundType === 'balance' ? round2(ret.grandTotal || 0) : 0,
+      paidAmount: ret.refundType === 'cash' ? round2(ret.grandTotal || 0) : 0,
+      remainingAmount: 0,
+    });
+  }
+
+  rawEntries.sort((a, b) => String(a.sortKey).localeCompare(String(b.sortKey)));
+
+  let running = 0;
+  let totalCredit = 0;
+  let totalDebit = 0;
+  const entries = rawEntries.map(({ sortKey: _s, ...entry }) => {
+    totalCredit = round2(totalCredit + entry.credit);
+    totalDebit = round2(totalDebit + entry.debit);
+    running = round2(running + entry.credit - entry.debit);
+    return {
+      ...entry,
+      runningBalance: running,
+    };
+  });
+
+  const curBal = round2(supplier.currentBalance || 0);
+  const totalPurchases = round2(invoices.reduce((s, i) => s + Number(i.grandTotal || 0), 0));
+  const standalonePaid = round2(
+    paymentTxs
+      .filter((tx) => !(tx.relatedDocType === 'purchase' && tx.relatedDocId && confirmedInvIds.has(tx.relatedDocId)))
+      .reduce((s, tx) => s + Number(tx.amount || 0), 0)
+  );
+  const invoiceCashPaid = round2(
+    invoices.reduce((s, i) => {
+      const cashPart = Array.isArray(i.payments) && i.payments.length > 0
+        ? i.payments.filter((p) => p.paymentMethod !== 'advance_settlement').reduce((ps, p) => ps + Number(p.amount || 0), 0)
+        : Number(i.paidAtInvoice ?? i.paidAmount ?? 0);
+      return s + cashPart;
+    }, 0)
+  );
+  const totalPaid = round2(invoiceCashPaid + standalonePaid);
+  const sortedInvs = [...invoices].sort((a, b) => `${b.date || ''}-${b.createdAt || ''}`.localeCompare(`${a.date || ''}-${a.createdAt || ''}`));
+  const lastInv = sortedInvs[0] || null;
+  const lastEntry = entries.length > 0 ? entries[entries.length - 1] : null;
+
+  return {
+    supplier,
+    invoices,
+    returns,
+    entries,
+    summary: {
+      openingBalance: openingBal,
+      totalPurchases,
+      totalCredit,
+      totalDebit,
+      totalPaid,
+      currentBalance: curBal,
+      payableAmount: curBal > 0 ? curBal : 0,
+      advanceCreditAmount: curBal < 0 ? round2(Math.abs(curBal)) : 0,
+      balanceDirection: curBal > 0.005 ? 'payable' : curBal < -0.005 ? 'advance' : 'settled',
+      invoicesCount: invoices.length,
+      returnsCount: returns.length,
+      lastInvoiceDate: lastInv?.date || null,
+      lastInvoiceNumber: lastInv?.invoiceNumber || null,
+      lastTransactionDate: lastEntry?.date || null,
+    },
+  };
 }
 
 export async function createCashbox(payload, actor) {

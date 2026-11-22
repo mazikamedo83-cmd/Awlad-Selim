@@ -190,6 +190,7 @@ export interface Warehouse {
 export interface CustomerPhoneEntry {
   id: string;
   phone: string;
+  number?: string;
   label?: string;
   isPrimary?: boolean;
 }
@@ -1385,6 +1386,8 @@ export interface MobileNotificationItem {
 
 export interface CustomerStatementEntry {
   id: string;
+  docId?: string;
+  docType?: 'opening_balance' | 'sales' | 'customer_payment' | 'order_advance' | 'sales_return';
   date: string;
   docNumber: string;
   type: 'opening_balance' | 'sales_invoice' | 'customer_payment' | 'order_advance' | 'sales_return';
@@ -1392,6 +1395,8 @@ export interface CustomerStatementEntry {
   description: string;
   debit: number | null;
   credit: number | null;
+  paidAmount?: number | null;
+  remainingAmount?: number | null;
   runningBalance: number | null;
 }
 
@@ -1399,21 +1404,71 @@ export interface CustomerStatementResponse {
   customer: Customer | null;
   customerType?: 'regular' | 'app' | 'hybrid';
   allowPriceView: boolean;
+  invoices?: Invoice[];
+  returns?: InvoiceReturn[];
   orders?: CustomerItemOrderRequest[];
   advancePayments?: OrderAdvancePayment[];
   summary: {
     openingBalance: number | null;
     totalDebit: number | null;
     totalCredit: number | null;
+    totalSales?: number | null;
+    totalPaid?: number | null;
     currentBalance: number | null;
+    debtAmount?: number | null;
+    creditAmount?: number | null;
+    balanceDirection?: 'debt' | 'credit' | 'settled';
     activeAdvanceBalance?: number | null;
     openOrdersCount?: number;
     openOrdersEstimatedTotal?: number | null;
     invoicesCount: number;
     returnsCount: number;
     ordersCount?: number;
+    lastInvoiceDate?: string | null;
+    lastInvoiceNumber?: string | null;
+    lastPaymentDate?: string | null;
+    lastTransactionDate?: string | null;
   };
   entries: CustomerStatementEntry[];
+}
+
+export interface SupplierStatementEntry {
+  id: string;
+  docId?: string;
+  docType?: 'opening_balance' | 'purchase' | 'supplier_payment' | 'purchase_return';
+  date: string;
+  docNumber: string;
+  type: 'opening_balance' | 'purchase_invoice' | 'supplier_payment' | 'purchase_return';
+  label: string;
+  description: string;
+  credit: number;
+  debit: number;
+  paidAmount?: number;
+  remainingAmount?: number;
+  runningBalance: number;
+}
+
+export interface SupplierStatementResponse {
+  supplier: Supplier;
+  invoices: Invoice[];
+  returns: InvoiceReturn[];
+  summary: {
+    openingBalance: number;
+    totalPurchases: number;
+    totalCredit: number;
+    totalDebit: number;
+    totalPaid: number;
+    currentBalance: number;
+    payableAmount: number;
+    advanceCreditAmount: number;
+    balanceDirection: 'payable' | 'advance' | 'settled';
+    invoicesCount: number;
+    returnsCount: number;
+    lastInvoiceDate?: string | null;
+    lastInvoiceNumber?: string | null;
+    lastTransactionDate?: string | null;
+  };
+  entries: SupplierStatementEntry[];
 }
 
 export type SyncQueueStatus = 'local' | 'pending' | 'syncing' | 'synced' | 'failed' | 'needs_review';

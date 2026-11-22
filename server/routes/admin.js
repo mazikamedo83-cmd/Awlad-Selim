@@ -10,6 +10,7 @@ import {
   deleteSupplier,
   recordSupplierPayment,
   settleSupplierAdvance,
+  getSupplierStatementData,
   createCashbox,
   updateCashbox,
   transferCashbox,
@@ -297,6 +298,10 @@ router.post('/suppliers/:id/settle-advance', requirePermission('canManageAccount
     idempotencyKey
   );
   res.json({ ok: true, ...result });
+}));
+router.get('/suppliers/:id/statement', requireAnyPermission('canManageAccounts', 'canManagePurchases', 'canViewReports'), asyncHandler(async (req, res) => {
+  const statement = await getSupplierStatementData(req.params.id);
+  res.json({ ok: true, statement });
 }));
 
 // Cashboxes & Expenses

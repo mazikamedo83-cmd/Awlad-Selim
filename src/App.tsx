@@ -76,6 +76,9 @@ const PAGE_PERMISSIONS: Partial<Record<NavItemKey, keyof UserPermissions | Array
   'damaged-stock': 'canManageInventory',
   'stock-movements': 'canManageInventory',
   'item-movement-report': ['canManageInventory', 'canViewReports'],
+  'accounts': ['canManageAccounts', 'canManageCashboxes'],
+  'customer-accounts': ['canManageAccounts', 'canManageCashboxes'],
+  'supplier-accounts': ['canManageAccounts', 'canManageCashboxes'],
   'cashboxes': 'canManageCashboxes',
   'cashbox-transfer': 'canManageCashboxes',
   'expenses': 'canManageCashboxes',
@@ -494,6 +497,11 @@ const MainAppContent: React.FC = () => {
       case 'abu-selim-import':
         return <SettingsView initialTab="abu-selim" />;
 
+      case 'accounts':
+      case 'customer-accounts':
+        return <FinanceView initialTab="customer-accounts" />;
+      case 'supplier-accounts':
+        return <FinanceView initialTab="supplier-accounts" />;
       case 'cashboxes':
         return <FinanceView initialTab="cashboxes" />;
       case 'cashbox-transfer':

@@ -63,6 +63,7 @@ import {
   StockTransferRequest,
   CustomerPriceHistoryEntry,
   CustomerStatementResponse,
+  SupplierStatementResponse,
   MobileNotificationItem,
   ConnectionMode,
   ConnectionProfilesConfig,
@@ -96,6 +97,8 @@ export interface DataContextType extends DatabaseState {
   markNotificationsRead: () => void;
   refreshMobileNotifications: () => Promise<void>;
   refreshCustomerStatement: () => Promise<void>;
+  getCustomerStatement: (customerId: string) => Promise<CustomerStatementResponse | null>;
+  getSupplierStatement: (supplierId: string) => Promise<SupplierStatementResponse | null>;
   getCustomerPriceHistory: (customerId: string) => Promise<Record<string, CustomerPriceHistoryEntry[]>>;
   triggerSync: (forceAll?: boolean) => Promise<void>;
   triggerManualSync: () => Promise<void>;
@@ -147,7 +150,7 @@ export interface DataContextType extends DatabaseState {
   addSupplier: (supplier: Omit<Supplier, 'id' | 'createdAt' | 'currentBalance'>) => Promise<Supplier>;
   updateSupplier: (id: string, updates: Partial<Supplier>) => Promise<void>;
   deleteSupplier: (id: string) => Promise<void>;
-  recordSupplierPayment: (supplierId: string, amount: number, cashboxId: string, notes: string) => Promise<{ success: boolean; error?: string }>;
+  recordSupplierPayment: (supplierId: string, amount: number, cashboxId: string, notes: string) => Promise<{ success: boolean; code?: string; isAdvancePayment?: boolean; advanceCreditBalance?: number; error?: string }>;
   settleSupplierAdvance: (supplierId: string, payload: { invoiceId: string; amount: number; notes?: string; date?: string }) => Promise<{ success: boolean; availableAdvanceAfter?: number; settledAmount?: number; error?: string }>;
 
   // Sales & Purchases & Quotes
@@ -254,8 +257,8 @@ export interface DataContextType extends DatabaseState {
 
   // Users & Settings
   auditLogs: AuditLogItem[];
-  addUser: (userData: Omit<User, 'id' | 'createdAt'> & { password?: string; linkedCustomerId?: string; autoCreateCustomerProfile?: boolean; autoCreateRepProfile?: boolean }) => Promise<{ success: boolean; user?: User; linkedCustomerId?: string; error?: string }>;
-  updateUser: (id: string, updates: Partial<User> & { newPassword?: string; linkedCustomerId?: string; autoCreateCustomerProfile?: boolean; autoCreateRepProfile?: boolean }) => Promise<{ success: boolean; error?: string }>;
+  addUser: (userData: Omit<User, 'id' | 'createdAt'> & { password?: string; linkedCustomerId?: string; autoCreateCustomerProfile?: boolean; autoCreateRepProfile?: boolean }) => Promise<{ success: boolean; user?: User; linkedCustomerId?: string; linkedRepresentativeId?: string; error?: string }>;
+  updateUser: (id: string, updates: Partial<User> & { newPassword?: string; linkedCustomerId?: string; autoCreateCustomerProfile?: boolean; autoCreateRepProfile?: boolean }) => Promise<{ success: boolean; user?: User; linkedCustomerId?: string; linkedRepresentativeId?: string; error?: string }>;
   deleteUser: (id: string) => Promise<{ success: boolean; error?: string }>;
   updateSettings: (newSettings: Partial<SystemSettings>) => Promise<void>;
 
@@ -751,8 +754,8 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
       const targetId = op.localId || op.operationId;
       if (!customers.some((c) => c.id === targetId)) {
         const nextPhones = Array.isArray(p.phones) ? p.phones : undefined;
-        const primaryPhone = p.phone || nextPhones?.[0]?.phone || '';
-        const secondaryPhone = p.secondaryPhone || nextPhones?.[1]?.phone || undefined;
+        const primaryPhone = p.phone || nextPhones?.[0]?.phone || nextPhones?.[0]?.number || '';
+        const secondaryPhone = p.secondaryPhone || nextPhones?.[1]?.phone || nextPhones?.[1]?.number || undefined;
         customers.unshift({
           id: targetId,
           code: p.code || `LOC-${op.operationId.slice(-4)}`,
@@ -792,8 +795,8 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
           cust.phones = p.phones;
           const primaryEntry = p.phones.find((x: any) => x?.isPrimary) || p.phones[0];
           const secondEntry = p.phones.find((x: any) => x !== primaryEntry);
-          cust.phone = primaryEntry?.phone || p.phone || '';
-          cust.secondaryPhone = secondEntry?.phone || '';
+          cust.phone = primaryEntry?.phone || primaryEntry?.number || p.phone || '';
+          cust.secondaryPhone = secondEntry?.phone || secondEntry?.number || '';
         } else {
           if (p.phone !== undefined) cust.phone = p.phone;
           if (p.secondaryPhone !== undefined) cust.secondaryPhone = p.secondaryPhone;
@@ -1789,6 +1792,290 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [isAuthenticated, currentUser?.role]);
 
+  const getCustomerStatement = useCallback(
+    async (customerId: string): Promise<CustomerStatementResponse | null> => {
+      if (!customerId) return null;
+      try {
+        const res = await apiRequest<{ ok: boolean; statement: CustomerStatementResponse }>(
+          `/api/customers/${customerId}/statement`
+        );
+        if (res?.statement) return res.statement;
+      } catch {
+        // fallback cleanly to local offline computation below
+      }
+      const cust = data.customers.find((c) => c.id === customerId);
+      if (!cust) return null;
+      const custInvoices = (data.invoices || [])
+        .filter((i) => i.customerId === customerId && i.type === 'sales' && i.status === 'confirmed')
+        .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+      const custReturns = (data.invoiceReturns || [])
+        .filter((r) => r.partyId === customerId && r.type === 'sales_return');
+      const custPayments = (data.financialTransactions || [])
+        .filter((tx) => (tx.partyId === customerId || (tx as any).relatedEntityId === customerId) && tx.type === 'customer_payment');
+      const confirmedIds = new Set(custInvoices.map((i) => i.id));
+      const rawEntries: Array<any> = [];
+      const openBal = Number(cust.openingBalance || 0);
+      if (openBal !== 0) {
+        rawEntries.push({
+          id: `OPEN-${cust.id}`,
+          docId: cust.id,
+          docType: 'opening_balance',
+          date: (cust.createdAt || '').split('T')[0] || '-',
+          sortKey: `0000-${cust.createdAt || ''}`,
+          docNumber: cust.code || '-',
+          type: 'opening_balance',
+          label: 'رصيد افتتاحي',
+          description: 'الرصيد الافتتاحي للحساب',
+          debit: openBal > 0 ? openBal : 0,
+          credit: openBal < 0 ? Math.abs(openBal) : 0,
+          paidAmount: 0,
+          remainingAmount: 0,
+        });
+      }
+      for (const inv of custInvoices) {
+        const cashAtInv = Math.max(0, Number(inv.paidAmount || 0) - Number(inv.appliedAdvanceAmount || 0));
+        rawEntries.push({
+          id: `INV-${inv.id}`,
+          docId: inv.id,
+          docType: 'sales',
+          date: inv.date || '',
+          sortKey: `${inv.date || ''}-${inv.createdAt || inv.id}`,
+          docNumber: inv.invoiceNumber,
+          type: 'sales_invoice',
+          label: `فاتورة مبيعات (${inv.items?.length || 0} صنف)`,
+          description: `إجمالي الفاتورة ${inv.grandTotal}`,
+          debit: Number(inv.grandTotal || 0),
+          credit: cashAtInv,
+          paidAmount: Number(inv.paidAmount || 0),
+          remainingAmount: Number(inv.remainingAmount || 0),
+        });
+      }
+      for (const tx of custPayments) {
+        if (tx.relatedDocType === 'sales' && tx.relatedDocId && confirmedIds.has(tx.relatedDocId)) continue;
+        rawEntries.push({
+          id: `PAY-${tx.id}`,
+          docId: tx.id,
+          docType: tx.relatedDocType === 'order_advance' ? 'order_advance' : 'customer_payment',
+          date: tx.date || '',
+          sortKey: `${tx.date || ''}-${tx.createdAt || tx.id}`,
+          docNumber: tx.transactionNumber || tx.id,
+          type: tx.relatedDocType === 'order_advance' ? 'order_advance' : 'customer_payment',
+          label: 'سند تحصيل / دفعة حساب',
+          description: tx.description || 'سداد نقدي من العميل',
+          debit: 0,
+          credit: Number(tx.amount || 0),
+          paidAmount: Number(tx.amount || 0),
+          remainingAmount: 0,
+        });
+      }
+      for (const ret of custReturns) {
+        rawEntries.push({
+          id: `RET-${ret.id}`,
+          docId: ret.id,
+          docType: 'sales_return',
+          date: ret.date || '',
+          sortKey: `${ret.date || ''}-${ret.createdAt || ret.id}`,
+          docNumber: ret.returnNumber,
+          type: 'sales_return',
+          label: 'مرتجع مبيعات',
+          description: ret.reason || `مرتجع على فاتورة ${ret.originalInvoiceNumber || '-'}`,
+          debit: 0,
+          credit: ret.refundType === 'balance' ? Number(ret.grandTotal || 0) : 0,
+          paidAmount: ret.refundType === 'cash' ? Number(ret.grandTotal || 0) : 0,
+          remainingAmount: 0,
+        });
+      }
+      rawEntries.sort((a, b) => String(a.sortKey).localeCompare(String(b.sortKey)));
+      let run = 0;
+      let totalDebit = 0;
+      let totalCredit = 0;
+      const entries = rawEntries.map(({ sortKey: _s, ...entry }) => {
+        totalDebit += Number(entry.debit || 0);
+        totalCredit += Number(entry.credit || 0);
+        run += Number(entry.debit || 0) - Number(entry.credit || 0);
+        return { ...entry, runningBalance: Number(run.toFixed(2)) };
+      });
+      const totalSales = custInvoices.reduce((s, i) => s + Number(i.grandTotal || 0), 0);
+      const totalPaid =
+        custInvoices.reduce((s, i) => s + Math.max(0, Number(i.paidAmount || 0) - Number(i.appliedAdvanceAmount || 0)), 0) +
+        custPayments
+          .filter((tx) => !(tx.relatedDocType === 'sales' && tx.relatedDocId && confirmedIds.has(tx.relatedDocId)))
+          .reduce((s, tx) => s + Number(tx.amount || 0), 0);
+      const curBal = Number(cust.currentBalance || 0);
+      const lastInv = [...custInvoices].sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
+      const lastPay = [...custPayments].sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
+      return {
+        customer: cust,
+        allowPriceView: true,
+        invoices: custInvoices,
+        returns: custReturns,
+        summary: {
+          openingBalance: openBal,
+          totalDebit: Number(totalDebit.toFixed(2)),
+          totalCredit: Number(totalCredit.toFixed(2)),
+          totalSales: Number(totalSales.toFixed(2)),
+          totalPaid: Number(totalPaid.toFixed(2)),
+          currentBalance: curBal,
+          debtAmount: curBal > 0 ? curBal : 0,
+          creditAmount: curBal < 0 ? Math.abs(curBal) : 0,
+          balanceDirection: curBal > 0.005 ? 'debt' : curBal < -0.005 ? 'credit' : 'settled',
+          invoicesCount: custInvoices.length,
+          returnsCount: custReturns.length,
+          lastInvoiceDate: lastInv?.date || null,
+          lastInvoiceNumber: lastInv?.invoiceNumber || null,
+          lastPaymentDate: lastPay?.date || null,
+          lastTransactionDate: entries[entries.length - 1]?.date || null,
+        },
+        entries,
+      };
+    },
+    [data.customers, data.invoices, data.invoiceReturns, data.financialTransactions]
+  );
+
+  const getSupplierStatement = useCallback(
+    async (supplierId: string): Promise<SupplierStatementResponse | null> => {
+      if (!supplierId) return null;
+      try {
+        const res = await apiRequest<{ ok: boolean; statement: SupplierStatementResponse }>(
+          `/api/admin/suppliers/${supplierId}/statement`
+        );
+        if (res?.statement) return res.statement;
+      } catch {
+        // fallback cleanly to local offline computation below
+      }
+      const supp = data.suppliers.find((s) => s.id === supplierId);
+      if (!supp) return null;
+      const suppInvoices = (data.invoices || [])
+        .filter((i) => i.supplierId === supplierId && i.type === 'purchase' && i.status === 'confirmed')
+        .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+      const suppReturns = (data.invoiceReturns || [])
+        .filter((r) => r.partyId === supplierId && r.type === 'purchase_return');
+      const suppPayments = (data.financialTransactions || [])
+        .filter((tx) => (tx.partyId === supplierId || (tx as any).relatedEntityId === supplierId) && tx.type === 'supplier_payment');
+      const confirmedIds = new Set(suppInvoices.map((i) => i.id));
+      const rawEntries: Array<any> = [];
+      const openBal = Number(supp.openingBalance || 0);
+      if (openBal !== 0) {
+        rawEntries.push({
+          id: `OPEN-${supp.id}`,
+          docId: supp.id,
+          docType: 'opening_balance',
+          date: (supp.createdAt || '').split('T')[0] || '-',
+          sortKey: `0000-${supp.createdAt || ''}`,
+          docNumber: supp.code || '-',
+          type: 'opening_balance',
+          label: 'رصيد افتتاحي للمورد',
+          description: openBal > 0 ? 'رصيد افتتاحي مستحق للمورد (علينا)' : 'رصيد افتتاحي مقدم عند المورد (لنا)',
+          credit: openBal > 0 ? openBal : 0,
+          debit: openBal < 0 ? Math.abs(openBal) : 0,
+          paidAmount: 0,
+          remainingAmount: 0,
+        });
+      }
+      for (const inv of suppInvoices) {
+        const nonSettlePaid = Array.isArray(inv.payments) && inv.payments.length > 0
+          ? inv.payments.filter((p: any) => p.paymentMethod !== 'advance_settlement').reduce((s, p) => s + Number(p.amount || 0), 0)
+          : Number(inv.paidAtInvoice ?? inv.paidAmount ?? 0);
+        rawEntries.push({
+          id: `PINV-${inv.id}`,
+          docId: inv.id,
+          docType: 'purchase',
+          date: inv.date || '',
+          sortKey: `${inv.date || ''}-${inv.createdAt || inv.id}`,
+          docNumber: inv.invoiceNumber,
+          type: 'purchase_invoice',
+          label: `فاتورة مشتريات (${inv.items?.length || 0} صنف)`,
+          description: `إجمالي المشتريات ${inv.grandTotal}`,
+          credit: Number(inv.grandTotal || 0),
+          debit: nonSettlePaid,
+          paidAmount: Number(inv.paidAmount || 0),
+          remainingAmount: Number(inv.remainingAmount || 0),
+        });
+      }
+      for (const tx of suppPayments) {
+        if (tx.relatedDocType === 'purchase' && tx.relatedDocId && confirmedIds.has(tx.relatedDocId)) continue;
+        rawEntries.push({
+          id: `SPAY-${tx.id}`,
+          docId: tx.id,
+          docType: 'supplier_payment',
+          date: tx.date || '',
+          sortKey: `${tx.date || ''}-${tx.createdAt || tx.id}`,
+          docNumber: tx.transactionNumber || tx.id,
+          type: 'supplier_payment',
+          label: 'سند صرف / سداد للمورد',
+          description: tx.description || 'دفعة مسددة للمورد',
+          credit: 0,
+          debit: Number(tx.amount || 0),
+          paidAmount: Number(tx.amount || 0),
+          remainingAmount: 0,
+        });
+      }
+      for (const ret of suppReturns) {
+        rawEntries.push({
+          id: `PRET-${ret.id}`,
+          docId: ret.id,
+          docType: 'purchase_return',
+          date: ret.date || '',
+          sortKey: `${ret.date || ''}-${ret.createdAt || ret.id}`,
+          docNumber: ret.returnNumber,
+          type: 'purchase_return',
+          label: 'مرتجع مشتريات',
+          description: ret.reason || `مرتجع على فاتورة ${ret.originalInvoiceNumber || '-'}`,
+          credit: 0,
+          debit: ret.refundType === 'balance' ? Number(ret.grandTotal || 0) : 0,
+          paidAmount: ret.refundType === 'cash' ? Number(ret.grandTotal || 0) : 0,
+          remainingAmount: 0,
+        });
+      }
+      rawEntries.sort((a, b) => String(a.sortKey).localeCompare(String(b.sortKey)));
+      let run = 0;
+      let totalCredit = 0;
+      let totalDebit = 0;
+      const entries = rawEntries.map(({ sortKey: _s, ...entry }) => {
+        totalCredit += Number(entry.credit || 0);
+        totalDebit += Number(entry.debit || 0);
+        run += Number(entry.credit || 0) - Number(entry.debit || 0);
+        return { ...entry, runningBalance: Number(run.toFixed(2)) };
+      });
+      const totalPurchases = suppInvoices.reduce((s, i) => s + Number(i.grandTotal || 0), 0);
+      const totalPaid =
+        suppInvoices.reduce((s, i) => {
+          const cashPart = Array.isArray(i.payments) && i.payments.length > 0
+            ? i.payments.filter((p: any) => p.paymentMethod !== 'advance_settlement').reduce((ps, p) => ps + Number(p.amount || 0), 0)
+            : Number(i.paidAtInvoice ?? i.paidAmount ?? 0);
+          return s + cashPart;
+        }, 0) +
+        suppPayments
+          .filter((tx) => !(tx.relatedDocType === 'purchase' && tx.relatedDocId && confirmedIds.has(tx.relatedDocId)))
+          .reduce((s, tx) => s + Number(tx.amount || 0), 0);
+      const curBal = Number(supp.currentBalance || 0);
+      const lastInv = [...suppInvoices].sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
+      return {
+        supplier: supp,
+        invoices: suppInvoices,
+        returns: suppReturns,
+        summary: {
+          openingBalance: openBal,
+          totalPurchases: Number(totalPurchases.toFixed(2)),
+          totalCredit: Number(totalCredit.toFixed(2)),
+          totalDebit: Number(totalDebit.toFixed(2)),
+          totalPaid: Number(totalPaid.toFixed(2)),
+          currentBalance: curBal,
+          payableAmount: curBal > 0 ? curBal : 0,
+          advanceCreditAmount: curBal < 0 ? Math.abs(curBal) : 0,
+          balanceDirection: curBal > 0.005 ? 'payable' : curBal < -0.005 ? 'advance' : 'settled',
+          invoicesCount: suppInvoices.length,
+          returnsCount: suppReturns.length,
+          lastInvoiceDate: lastInv?.date || null,
+          lastInvoiceNumber: lastInv?.invoiceNumber || null,
+          lastTransactionDate: entries[entries.length - 1]?.date || null,
+        },
+        entries,
+      };
+    },
+    [data.suppliers, data.invoices, data.invoiceReturns, data.financialTransactions]
+  );
+
   const getCustomerPriceHistory = useCallback(
     async (customerId: string): Promise<Record<string, CustomerPriceHistoryEntry[]>> => {
       if (!customerId) return {};
@@ -2273,15 +2560,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const recordSupplierPayment = async (supplierId: string, amount: number, cashboxId: string, notes: string) => {
     try {
-      await apiRequest('/api/admin/suppliers/payment', {
+      const res = await apiRequest<{ ok: boolean; isAdvancePayment?: boolean; advanceCreditBalance?: number }>('/api/admin/suppliers/payment', {
         method: 'POST',
         body: { supplierId, amount, cashboxId, notes },
         idempotencyKey: generateId('IDEMP'),
       });
       await loadRoleScopedData();
-      return { success: true };
+      return {
+        success: true,
+        isAdvancePayment: res.isAdvancePayment,
+        advanceCreditBalance: res.advanceCreditBalance,
+      };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'فشل سداد المورد' };
+      return { success: false, code: err?.code, error: err?.message || 'فشل سداد المورد' };
     }
   };
 
@@ -3844,6 +4135,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         markNotificationsRead,
         refreshMobileNotifications,
         refreshCustomerStatement,
+        getCustomerStatement,
+        getSupplierStatement,
         getCustomerPriceHistory,
         triggerSync,
         triggerManualSync,

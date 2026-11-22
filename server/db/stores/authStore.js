@@ -708,12 +708,29 @@ function normalizeRegPhone(raw) {
   return d;
 }
 
+function sanitizeRegisterPhoto(raw) {
+  if (raw === undefined || raw === null) return undefined;
+  const trimmed = String(raw).trim();
+  if (!trimmed) return undefined;
+  if (/^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=\s]+$/i.test(trimmed)) {
+    return trimmed;
+  }
+  if (/^\/api\/[A-Za-z0-9_./-]+$/.test(trimmed) || /^https:\/\/[^\s"'<>]+$/i.test(trimmed)) {
+    return trimmed;
+  }
+  throw new AppError(
+    400,
+    'صيغة صورة المحل غير مدعومة أو غير آمنة (يُسمح بصور PNG أو JPG أو WEBP أو رابط HTTPS فقط)',
+    'INVALID_CUSTOMER_PHOTO'
+  );
+}
+
 function customerHasRegPhone(cust, normPhone) {
   if (!normPhone || !cust) return false;
   if (normalizeRegPhone(cust.phone) === normPhone) return true;
   if (normalizeRegPhone(cust.secondary_phone ?? cust.secondaryPhone) === normPhone) return true;
   if (Array.isArray(cust.phones)) {
-    return cust.phones.some((p) => normalizeRegPhone(typeof p === 'string' ? p : p?.number) === normPhone);
+    return cust.phones.some((p) => normalizeRegPhone(typeof p === 'string' ? p : (p?.number ?? p?.phone)) === normPhone);
   }
   return false;
 }
@@ -760,9 +777,14 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
   const phone = String(payload.phone || '').trim();
   const address = String(payload.address || '').trim();
   const shopName = String(payload.shopName || '').trim();
+  const governorate = String(payload.governorate || '').trim();
   const area = String(payload.area || '').trim();
   const vehicleNumber = String(payload.vehicleNumber || '').trim();
   const geoCoordinates = String(payload.geoCoordinates || '').trim();
+  const safeShopPhoto = role === 'customer' ? sanitizeRegisterPhoto(payload.shopPhoto ?? payload.photo) : undefined;
+  const regPhones = role === 'customer'
+    ? normalizeCustomerPhonesList(Array.isArray(payload.phones) ? payload.phones : [], phone, '')
+    : [];
   const cleanDeviceId = String(payload.deviceId || meta.deviceId || '').trim().slice(0, 64);
 
   if (fullName.length < 2) {
@@ -884,13 +906,16 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
           if (unlinkedMatches.length === 1) {
             const target = unlinkedMatches[0];
             await client.query(
-              `UPDATE customers SET user_id = $1, shop_name = $2, address = $3, area = $4, geo_coordinates = $5, updated_at = $6 WHERE id = $7`,
+              `UPDATE customers SET user_id = $1, shop_name = $2, shop_photo = $3, photo = $3, address = $4, governorate = $5, area = $6, geo_coordinates = $7, phones = $8, updated_at = $9 WHERE id = $10`,
               [
                 userId,
                 shopName || target.shop_name || null,
+                safeShopPhoto || target.shop_photo || target.photo || null,
                 address || target.address || '',
+                governorate || target.governorate || '',
                 area || target.area || null,
                 geoCoordinates || target.geo_coordinates || null,
+                JSON.stringify(normalizeCustomerPhonesList(target.phones, phone || target.phone || '', target.secondary_phone || '')),
                 now,
                 target.id,
               ]
@@ -900,11 +925,28 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
           } else {
             const custId = generateServerId('CUS');
             const custCode = `CUS-${String(Date.now()).slice(-5)}-${Math.floor(10 + Math.random() * 89)}`;
-            const initialPhones = normalizeCustomerPhonesList([], phone, '');
+            const initialPhones = regPhones.length > 0 ? regPhones : normalizeCustomerPhonesList([], phone, '');
+            const primaryRegPhone = initialPhones.find((p) => p.isPrimary)?.number || initialPhones[0]?.number || phone;
+            const secondaryRegPhone = initialPhones.find((p) => !p.isPrimary && p.number !== primaryRegPhone)?.number || null;
             await client.query(
-              `INSERT INTO customers (id, code, user_id, name, phone, phones, shop_name, address, shop_address, area, geo_coordinates, opening_balance, current_balance, notes, status, created_at, updated_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8,$9,$10,0,0,'عميل مسجل ذاتيًا عبر التطبيق','active',$11,$11)`,
-              [custId, custCode, userId, fullName, phone, JSON.stringify(initialPhones), shopName || null, address, area || null, geoCoordinates || null, now]
+              `INSERT INTO customers (id, code, user_id, name, phone, secondary_phone, phones, shop_name, shop_photo, photo, address, shop_address, governorate, area, geo_coordinates, opening_balance, current_balance, notes, status, created_at, updated_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10,$10,$11,$12,$13,0,0,'عميل مسجل ذاتيًا عبر التطبيق','active',$14,$14)`,
+              [
+                custId,
+                custCode,
+                userId,
+                fullName,
+                primaryRegPhone,
+                secondaryRegPhone,
+                JSON.stringify(initialPhones),
+                shopName || null,
+                safeShopPhoto || null,
+                address,
+                governorate,
+                area || null,
+                geoCoordinates || null,
+                now,
+              ]
             );
             const refreshed = await client.query(`SELECT * FROM customers WHERE id = $1 LIMIT 1`, [custId]);
             customerProfile = mapPgCustomerRow(refreshed.rows[0]);
@@ -1144,23 +1186,36 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
         const target = unlinkedMatches[0];
         target.userId = userId;
         if (shopName) target.shopName = shopName;
+        if (safeShopPhoto) {
+          target.shopPhoto = safeShopPhoto;
+          target.photo = safeShopPhoto;
+        }
         if (address) target.address = address;
+        if (governorate) target.governorate = governorate;
         if (area) target.area = area;
         if (geoCoordinates) target.geoCoordinates = geoCoordinates;
+        target.phones = normalizeCustomerPhonesList(target.phones, phone || target.phone || '', target.secondaryPhone || '');
         target.updatedAt = now;
         customerProfile = target;
       } else {
         const custId = generateServerId('CUS');
         const custCode = `CUS-${String(Date.now()).slice(-5)}-${Math.floor(10 + Math.random() * 89)}`;
+        const initialPhones = regPhones.length > 0 ? regPhones : normalizeCustomerPhonesList([], phone, '');
+        const primaryRegPhone = initialPhones.find((p) => p.isPrimary)?.number || initialPhones[0]?.number || phone;
+        const secondaryRegPhone = initialPhones.find((p) => !p.isPrimary && p.number !== primaryRegPhone)?.number || undefined;
         customerProfile = {
           id: custId,
           code: custCode,
           userId,
           name: fullName,
-          phone,
-          phones: normalizeCustomerPhonesList([], phone, ''),
+          phone: primaryRegPhone,
+          secondaryPhone: secondaryRegPhone,
+          phones: initialPhones,
           shopName: shopName || undefined,
+          shopPhoto: safeShopPhoto || undefined,
+          photo: safeShopPhoto || undefined,
           address,
+          governorate: governorate || undefined,
           area: area || undefined,
           geoCoordinates: geoCoordinates || undefined,
           openingBalance: 0,

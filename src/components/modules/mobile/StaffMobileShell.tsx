@@ -24,15 +24,39 @@ import {
   WifiOff,
   ChevronLeft,
   ChevronDown,
+  ArrowRight,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
-import { registerAndroidBackButton } from '../../../services/native';
+import { isMobileAppPlatform, registerAndroidBackButton } from '../../../services/native';
 import { CashOperationType, MobileNotificationItem, UserPermissions } from '../../../types';
 import { NavItemKey } from '../../layout/Sidebar';
 import { MobileNotificationsSheet } from './MobileNotificationsSheet';
 import { MobileServerModal } from './MobileServerModal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
+import {
+  SalesInvoiceIcon,
+  PurchaseInvoiceIcon,
+  SalesReturnIcon,
+  PurchaseReturnIcon,
+  CustomersGroupIcon,
+  SuppliersTruckIcon,
+  WarehouseBoxesIcon,
+  AccountsLedgerIcon,
+  SafeVaultIcon,
+  ExpensesCashIcon,
+  ChequesIcon,
+  InstallmentsIcon,
+  RepsFleetIcon,
+  EmployeesHrIcon,
+  ReportsChartIcon,
+  UsersShieldIcon,
+  BackupCloudIcon,
+  SettingsTwinGearsIcon,
+  LogoutDoorIcon,
+  OrdersClipboardIcon,
+  PriceQuoteIcon,
+} from '../../common/AppIcons';
 
 interface StaffMobileShellProps {
   currentPage: NavItemKey;
@@ -66,6 +90,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
 }) => {
   const { currentUser, hasPermission, logout, refreshAuthContext } = useAuth();
   const data = useData();
+  const hideSectionsNav = isMobileAppPlatform();
 
   const [isLauncherOpen, setIsLauncherOpen] = useState(false);
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<Record<string, boolean>>({});
@@ -185,14 +210,26 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
       },
       {
         id: 'finance',
-        title: 'المالية والخزائن',
+        title: 'الحسابات والخزائن',
         icon: Wallet,
         colorClass: 'bg-emerald-50 text-emerald-900 border-emerald-200',
-        permission: 'canManageCashboxes',
+        permission: ['canManageCashboxes', 'canManageAccounts'],
         items: [
-          { key: 'cashboxes', label: 'الخزائن والبنوك والحركة النقدية' },
-          { key: 'cashbox-transfer', label: 'تحويل بين الخزائن' },
-          { key: 'expenses', label: 'المصروفات والإيرادات' },
+          {
+            key: 'customer-accounts',
+            label: 'حسابات العملاء وكشوف الحساب',
+            badge: 'العملاء',
+            permission: ['canManageAccounts', 'canManageCashboxes'],
+          },
+          {
+            key: 'supplier-accounts',
+            label: 'حسابات الموردين وكشوف الحساب',
+            badge: 'الموردون',
+            permission: ['canManageAccounts', 'canManageCashboxes'],
+          },
+          { key: 'cashboxes', label: 'الخزائن والبنوك والحركة النقدية', permission: 'canManageCashboxes' },
+          { key: 'cashbox-transfer', label: 'تحويل بين الخزائن', permission: 'canManageCashboxes' },
+          { key: 'expenses', label: 'المصروفات والإيرادات', permission: 'canManageCashboxes' },
           { key: 'personal-accounts', label: 'الحسابات الشخصية للملاك', permission: 'canViewPersonalAccounts' },
         ],
       },
@@ -393,14 +430,28 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm(['canManageCashboxes', 'canManageAccounts'])) {
       tabs.push({
         key: 'finance',
-        label: 'المالية',
+        label: 'الحسابات',
         icon: Wallet,
-        active: ['cashboxes', 'cashbox-transfer', 'expenses', 'personal-accounts', 'cheques', 'installments'].includes(
-          currentPage
-        ),
+        active: [
+          'accounts',
+          'customer-accounts',
+          'supplier-accounts',
+          'cashboxes',
+          'cashbox-transfer',
+          'expenses',
+          'personal-accounts',
+          'cheques',
+          'installments',
+        ].includes(currentPage),
         onClick: () => {
           setIsLauncherOpen(false);
-          onNavigate(checkPerm('canManageCashboxes') ? 'cashboxes' : 'cheques');
+          onNavigate(
+            checkPerm('canManageAccounts')
+              ? 'customer-accounts'
+              : checkPerm('canManageCashboxes')
+              ? 'cashboxes'
+              : 'cheques'
+          );
         },
       });
     } else if (checkPerm('canViewReports')) {
@@ -418,6 +469,199 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
 
     return tabs;
   }, [currentPage, currentUser, onNavigate]);
+
+  const mobileGridTiles = useMemo(() => {
+    const tiles: Array<{
+      id: string;
+      label: string;
+      icon: React.ReactNode;
+      onClick: () => void;
+    }> = [];
+
+    if (checkPerm('canManageSales')) {
+      tiles.push({
+        id: 'new-sale',
+        label: 'فاتورة بيع',
+        icon: <SalesInvoiceIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('new-sale'),
+      });
+      tiles.push({
+        id: 'sales-invoices',
+        label: 'عرض فواتير البيع',
+        icon: <SalesInvoiceIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('sales-invoices'),
+      });
+      tiles.push({
+        id: 'sales-returns',
+        label: 'مرتجع بيع',
+        icon: <SalesReturnIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('sales-returns'),
+      });
+      tiles.push({
+        id: 'customer-orders',
+        label: 'طلبات العملاء',
+        icon: <OrdersClipboardIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('customer-orders'),
+      });
+      tiles.push({
+        id: 'quotes',
+        label: 'عروض الأسعار',
+        icon: <PriceQuoteIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('quotes'),
+      });
+      tiles.push({
+        id: 'customers',
+        label: 'العملاء',
+        icon: <CustomersGroupIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('customers'),
+      });
+    }
+
+    if (checkPerm(['canManagePurchases', 'canCreatePurchase'])) {
+      tiles.push({
+        id: 'new-purchase',
+        label: 'فاتورة شراء',
+        icon: <PurchaseInvoiceIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('new-purchase'),
+      });
+      tiles.push({
+        id: 'purchase-invoices',
+        label: 'عرض فواتير الشراء',
+        icon: <PurchaseInvoiceIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('purchase-invoices'),
+      });
+      tiles.push({
+        id: 'suppliers',
+        label: 'الموردون',
+        icon: <SuppliersTruckIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('suppliers'),
+      });
+    }
+    if (checkPerm('canManagePurchases')) {
+      tiles.push({
+        id: 'purchase-returns',
+        label: 'مرتجع شراء',
+        icon: <PurchaseReturnIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('purchase-returns'),
+      });
+    }
+
+    if (checkPerm(['canManageInventory', 'canManageWarehouses', 'canCreateStockCount'])) {
+      tiles.push({
+        id: 'inventory',
+        label: 'المخزن والأصناف',
+        icon: <WarehouseBoxesIcon className="w-11 h-11" />,
+        onClick: () =>
+          onNavigate(
+            checkPerm('canManageInventory')
+              ? 'products'
+              : checkPerm('canManageWarehouses')
+              ? 'warehouses'
+              : 'stock-counts'
+          ),
+      });
+    }
+
+    if (checkPerm(['canManageAccounts', 'canManageCashboxes'])) {
+      tiles.push({
+        id: 'customer-accounts',
+        label: 'الحسابات الشاملة',
+        icon: <AccountsLedgerIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('customer-accounts'),
+      });
+    }
+
+    if (checkPerm('canManageCashboxes')) {
+      tiles.push({
+        id: 'cashboxes',
+        label: 'الخزينة',
+        icon: <SafeVaultIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('cashboxes'),
+      });
+      tiles.push({
+        id: 'expenses',
+        label: 'المصروفات',
+        icon: <ExpensesCashIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('expenses'),
+      });
+    }
+
+    if (checkPerm('canManageAccounts')) {
+      tiles.push({
+        id: 'cheques',
+        label: 'الشيكات',
+        icon: <ChequesIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('cheques'),
+      });
+      tiles.push({
+        id: 'installments',
+        label: 'الأقساط',
+        icon: <InstallmentsIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('installments'),
+      });
+    }
+
+    if (checkPerm('canManageReps')) {
+      tiles.push({
+        id: 'reps',
+        label: 'المندوبون',
+        icon: <RepsFleetIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('reps'),
+      });
+    }
+
+    if (checkPerm('canManageEmployees')) {
+      tiles.push({
+        id: 'employees',
+        label: 'شؤون الموظفين',
+        icon: <EmployeesHrIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('employees'),
+      });
+    }
+
+    if (checkPerm('canViewReports')) {
+      tiles.push({
+        id: 'reports',
+        label: 'التقارير والأرباح',
+        icon: <ReportsChartIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('reports'),
+      });
+    }
+
+    if (checkPerm('canManageUsers')) {
+      tiles.push({
+        id: 'users',
+        label: 'المستخدمون',
+        icon: <UsersShieldIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('users'),
+      });
+    }
+
+    if (checkPerm('canManageSettings')) {
+      tiles.push({
+        id: 'backup',
+        label: 'النسخ الاحتياطي',
+        icon: <BackupCloudIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('backup'),
+      });
+    }
+
+    tiles.push({
+      id: 'system-settings',
+      label: 'الإعدادات',
+      icon: <SettingsTwinGearsIcon className="w-11 h-11" />,
+      onClick: () => onNavigate('system-settings'),
+    });
+
+    tiles.push({
+      id: 'logout',
+      label: 'تسجيل الخروج',
+      icon: <LogoutDoorIcon className="w-11 h-11" />,
+      onClick: () => setShowLogoutConfirm(true),
+    });
+
+    return tiles;
+  }, [currentUser, onNavigate]);
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 font-['Cairo'] antialiased pb-6">
@@ -446,22 +690,26 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
               aria-label="التنقل الرئيسي"
               className="hidden lg:flex items-center gap-1.5 flex-1 justify-center min-w-0"
             >
-              <button
-                type="button"
-                onClick={() => setIsLauncherOpen((prev) => !prev)}
-                aria-expanded={isLauncherOpen}
-                aria-controls="staff-sections-drawer"
-                className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 border transition-colors cursor-pointer ${
-                  isLauncherOpen
-                    ? 'bg-sky-400/20 text-white border-sky-300/70'
-                    : 'bg-white/10 text-blue-50 border-white/15 hover:bg-white/20 hover:text-white'
-                }`}
-              >
-                <Menu className="w-4 h-4 shrink-0" />
-                <span>الأقسام</span>
-              </button>
+              {!hideSectionsNav && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsLauncherOpen((prev) => !prev)}
+                    aria-expanded={isLauncherOpen}
+                    aria-controls="staff-sections-drawer"
+                    className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 border transition-colors cursor-pointer ${
+                      isLauncherOpen
+                        ? 'bg-sky-400/20 text-white border-sky-300/70'
+                        : 'bg-white/10 text-blue-50 border-white/15 hover:bg-white/20 hover:text-white'
+                    }`}
+                  >
+                    <Menu className="w-4 h-4 shrink-0" />
+                    <span>الأقسام</span>
+                  </button>
 
-              <div className="h-5 w-px bg-white/15 mx-0.5 shrink-0" aria-hidden="true" />
+                  <div className="h-5 w-px bg-white/15 mx-0.5 shrink-0" aria-hidden="true" />
+                </>
+              )}
 
               {topNavTabs.map((tab) => {
                 const TabIcon = tab.icon;
@@ -526,6 +774,18 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
 
               <button
                 type="button"
+                onClick={() => onNavigate('system-settings')}
+                className={`min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl text-white cursor-pointer ${
+                  currentPage === 'system-settings' ? 'bg-white text-blue-950' : 'bg-white/10 hover:bg-white/20'
+                }`}
+                title="الإعدادات"
+                aria-label="الإعدادات"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setShowLogoutConfirm(true)}
                 className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-red-600/90 hover:bg-red-700 text-white cursor-pointer"
                 title="تسجيل الخروج"
@@ -541,22 +801,26 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
             aria-label="أزرار التنقل الرئيسية"
             className="lg:hidden border-t border-white/10 py-1.5 flex items-center justify-between sm:justify-start gap-1 sm:gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none]"
           >
-            <button
-              type="button"
-              onClick={() => setIsLauncherOpen((prev) => !prev)}
-              aria-expanded={isLauncherOpen}
-              aria-controls="staff-sections-drawer"
-              className={`min-h-[40px] px-2 sm:px-3.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold flex items-center gap-1 sm:gap-1.5 whitespace-nowrap shrink-0 border transition-colors cursor-pointer ${
-                isLauncherOpen
-                  ? 'bg-sky-400/20 text-white border-sky-300/70'
-                  : 'bg-white/10 text-blue-50 border-white/15 hover:bg-white/20 hover:text-white'
-              }`}
-            >
-              <Menu className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-              <span>الأقسام</span>
-            </button>
+            {!hideSectionsNav && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setIsLauncherOpen((prev) => !prev)}
+                  aria-expanded={isLauncherOpen}
+                  aria-controls="staff-sections-drawer"
+                  className={`min-h-[40px] px-2 sm:px-3.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold flex items-center gap-1 sm:gap-1.5 whitespace-nowrap shrink-0 border transition-colors cursor-pointer ${
+                    isLauncherOpen
+                      ? 'bg-sky-400/20 text-white border-sky-300/70'
+                      : 'bg-white/10 text-blue-50 border-white/15 hover:bg-white/20 hover:text-white'
+                  }`}
+                >
+                  <Menu className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                  <span>الأقسام</span>
+                </button>
 
-            <div className="h-5 w-px bg-white/15 shrink-0" aria-hidden="true" />
+                <div className="h-5 w-px bg-white/15 shrink-0" aria-hidden="true" />
+              </>
+            )}
 
             {topNavTabs.map((tab) => {
               const TabIcon = tab.icon;
@@ -604,11 +868,43 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
           </div>
         )}
 
+        {hideSectionsNav && currentPage !== 'dashboard' && (
+          <div className="flex items-center justify-between bg-white rounded-2xl border border-slate-200 px-3 py-2 shadow-2xs no-print">
+            <button
+              type="button"
+              onClick={() => onNavigate('dashboard')}
+              className="min-h-[40px] px-3 py-1.5 rounded-xl bg-blue-50 text-blue-900 hover:bg-blue-100 text-xs font-black flex items-center gap-1.5 cursor-pointer"
+            >
+              <ArrowRight className="w-4 h-4 shrink-0" />
+              <span>العودة للرئيسية</span>
+            </button>
+            <span className="text-[11px] font-bold text-slate-500">AWLAD SELIM</span>
+          </div>
+        )}
+
+        {hideSectionsNav && currentPage === 'dashboard' && (
+          <section aria-label="الأقسام والخدمات السريعة" className="space-y-2.5 no-print">
+            <div className="grid grid-cols-3 gap-2.5">
+              {mobileGridTiles.map((tile) => (
+                <button
+                  key={tile.id}
+                  type="button"
+                  onClick={tile.onClick}
+                  className="bg-white rounded-2xl border border-slate-200/90 shadow-xs hover:border-blue-300 hover:shadow-md active:scale-[0.98] p-3 min-h-[104px] flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer"
+                >
+                  <div className="flex items-center justify-center">{tile.icon}</div>
+                  <span className="text-xs font-black text-slate-800 leading-tight">{tile.label}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
         {children}
       </main>
 
-      {/* Side Drawer Backdrop */}
-      {isLauncherOpen && (
+      {/* Side Drawer Backdrop & Aside (Windows/Web only — completely removed on Android & iOS) */}
+      {!hideSectionsNav && isLauncherOpen && (
         <div
           className="fixed inset-0 z-40 bg-slate-950/55 backdrop-blur-xs transition-opacity no-print"
           onClick={() => setIsLauncherOpen(false)}
@@ -616,7 +912,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         />
       )}
 
-      {/* RTL Sliding Side Drawer (Triggered exclusively by «الأقسام» button) */}
+      {!hideSectionsNav && (
       <aside
         id="staff-sections-drawer"
         aria-label="قائمة الأقسام الجانبية"
@@ -787,6 +1083,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
           })}
         </div>
       </aside>
+      )}
 
       <MobileNotificationsSheet
         isOpen={isNotificationsOpen}

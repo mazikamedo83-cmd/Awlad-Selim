@@ -12,6 +12,8 @@ process.env.JWT_SECRET = 'rep_purchase_customer_rbac_jwt_secret_key_awlad_selim_
 const { createApiApp } = await import('../app.js');
 const { setInjectedPool, initializeSchema } = await import('../db/postgres.js');
 const { resetPgModeCache, REP_DEFAULT_PERMISSIONS, CUSTOMER_DEFAULT_PERMISSIONS } = await import('../db/stores/mode.js');
+const { runDataMigration } = await import('../db/migrator.js');
+const { readJsonDatabase } = await import('../db/jsonLedger.js');
 
 const TINY_PNG_DATA_URL =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
@@ -150,6 +152,9 @@ async function runSuite(label, isPg = false, pgPool = null) {
       }
       assert.equal(regRep.json.user.permissions.canCreatePurchase, true);
       assert.equal(regRep.json.user.permissions.canManagePurchases, false);
+      assert.equal(regRep.json.user.permissions.canManageAccounts, false);
+      assert.equal(regRep.json.user.permissions.canManageReps, false);
+      assert.equal(regRep.json.user.permissions.canViewReports, false);
     });
 
     // ------------------------------------------------------------------
@@ -228,6 +233,42 @@ async function runSuite(label, isPg = false, pgPool = null) {
       const linkedReps = bootAfter.json.data.representatives.filter((r) => r.userId === limitedRepUserId);
       assert.equal(linkedReps.length, 1, 'Repeated update must NOT create duplicate representative records');
 
+      // Scenario 12b: Create employee as sales then promote role -> 'representative' via updateAdminUser -> idempotent 1:1 rep + van warehouse
+      const empCreate = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'كريم موظف ترقية لمندوب',
+          username: 'emp_to_rep',
+          password: 'PromoPassword!123',
+          phone: '01299997777',
+          role: 'sales',
+        },
+      });
+      assert.equal(empCreate.status, 201);
+      const empId = empCreate.json.user.id;
+
+      const promote1 = await req(baseUrl, 'PUT', `/api/admin/users/${empId}`, {
+        token: adminToken,
+        body: { role: 'representative' },
+      });
+      assert.equal(promote1.status, 200);
+      assert.ok(promote1.json.user?.linkedRepresentativeId, 'Promoting user to representative must link a 1:1 representative profile');
+
+      const promote2 = await req(baseUrl, 'PUT', `/api/admin/users/${empId}`, {
+        token: adminToken,
+        body: { role: 'representative', fullName: 'كريم موظف ترقية لمندوب - محدث' },
+      });
+      assert.equal(promote2.status, 200);
+      assert.equal(promote2.json.user?.linkedRepresentativeId, promote1.json.user?.linkedRepresentativeId);
+
+      const bootPromo = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const promoReps = bootPromo.representatives.filter((r) => r.userId === empId);
+      assert.equal(promoReps.length, 1, 'Idempotent promotion to representative must not duplicate representative records');
+      assert.ok(
+        bootPromo.warehouses.some((w) => w.id === promoReps[0].warehouseId),
+        'Promoted representative must have a van warehouse'
+      );
+
       // Also create a Purchasing Officer account to receive & confirm rep purchases
       const purchUser = await req(baseUrl, 'POST', '/api/admin/users', {
         token: adminToken,
@@ -268,7 +309,7 @@ async function runSuite(label, isPg = false, pgPool = null) {
       ).json.supplier.id;
       assert.ok(suppId, 'Rep with canCreatePurchase must be able to create supplier');
 
-      const prodRes = await req(baseUrl, 'POST', '/api/inventory/products', {
+      const prodRes = await req(baseUrl, 'POST', '/api/products', {
         token: adminToken,
         body: {
           name: 'سكر الأسرة 1 كجم',
@@ -278,7 +319,7 @@ async function runSuite(label, isPg = false, pgPool = null) {
           baseUnit: 'كيس',
           purchasePrice: 50,
           sellingPrice: 65,
-          initialStock: { [whMainId]: 100 },
+          stockPerWarehouse: { [whMainId]: 100 },
         },
       });
       assert.equal(prodRes.status, 201);
@@ -289,7 +330,32 @@ async function runSuite(label, isPg = false, pgPool = null) {
     // Scenario 1 & 2: Rep creates draft purchase invoice -> NO stock/balance impact & blocked from confirming (403)
     // ------------------------------------------------------------------
     await test(`${label} | 1 & 2. Rep creates purchase draft -> ZERO stock/balance impact & direct confirm blocked (403)`, async () => {
-      // Scenario 2a: Rep tries POST /api/invoices/purchase with status: 'confirmed' -> stays draft or blocked cleanly; confirm route -> 403!
+      // Scenario 2a: Rep tries POST /api/invoices/purchase with status: 'confirmed' -> MUST return 403
+      const blockedConfirmCreate = await req(baseUrl, 'POST', '/api/invoices/purchase', {
+        token: repToken,
+        body: {
+          supplierId: suppId,
+          warehouseId: whMainId,
+          date: '2026-04-15',
+          paymentType: 'cash',
+          paymentMethod: 'cash',
+          cashboxId: cbMainId,
+          paidAmount: 800,
+          status: 'confirmed',
+          items: [
+            {
+              productId: prodId,
+              unit: 'كيس',
+              unitFactor: 1,
+              quantity: 10,
+              unitPrice: 80,
+              discount: 0,
+            },
+          ],
+        },
+      });
+      assert.equal(blockedConfirmCreate.status, 403, 'Rep passing status=confirmed directly must be blocked (403)');
+
       const createRes = await req(baseUrl, 'POST', '/api/invoices/purchase', {
         token: repToken,
         body: {
@@ -300,7 +366,7 @@ async function runSuite(label, isPg = false, pgPool = null) {
           paymentMethod: 'cash',
           cashboxId: cbMainId,
           paidAmount: 800,
-          status: 'confirmed', // Rep attempt to force confirm must be forced to draft!
+          status: 'draft',
           sendNow: false,
           notes: 'مسودة شراء أولية من المندوب',
           items: [
@@ -309,7 +375,7 @@ async function runSuite(label, isPg = false, pgPool = null) {
               unit: 'كيس',
               unitFactor: 1,
               quantity: 10,
-              unitPrice: 80, // total 800 (will affect weighted avg cost once confirmed later: (100*50 + 10*80)/110 = 52.73)
+              unitPrice: 80, // total 800 (will affect weighted avg cost once confirmed later)
               discount: 0,
             },
           ],
@@ -374,6 +440,13 @@ async function runSuite(label, isPg = false, pgPool = null) {
       assert.equal(inv.recipientUserId, adminUserId);
       assert.ok(inv.dispatchHistory.some((h) => h.action === 'sent'));
 
+      // Duplicate send must fail cleanly (409)
+      const dupSendRes = await req(baseUrl, 'POST', `/api/invoices/purchase/${repDraftInvId}/send`, {
+        token: repToken,
+        body: { recipientUserId: adminUserId, notes: 'محاولة إرسال مكرر' },
+      });
+      assert.equal(dupSendRes.status, 409, 'Duplicate send on already-sent purchase invoice must be blocked');
+
       // Stock & balances remain completely unchanged
       const boot = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
       assert.equal(Number(boot.products.find((p) => p.id === prodId).stockPerWarehouse[whMainId]), 100);
@@ -393,6 +466,13 @@ async function runSuite(label, isPg = false, pgPool = null) {
       assert.equal(recRes.json.invoice.status, 'draft');
       assert.equal(recRes.json.invoice.dispatchStatus, 'received');
       assert.ok(recRes.json.invoice.receivedBy);
+
+      // Duplicate receive must fail cleanly (409)
+      const dupRecRes = await req(baseUrl, 'POST', `/api/invoices/purchase/${repDraftInvId}/receive`, {
+        token: adminToken,
+        body: { notes: 'محاولة استلام مكرر' },
+      });
+      assert.equal(dupRecRes.status, 409, 'Duplicate receive on already-received purchase invoice must be blocked');
 
       // Empty rejection reason -> 400
       const badReject = await req(baseUrl, 'POST', `/api/invoices/purchase/${repDraftInvId}/reject`, {
@@ -489,9 +569,9 @@ async function runSuite(label, isPg = false, pgPool = null) {
       const supp = boot.suppliers.find((s) => s.id === suppId);
       const cb = boot.cashboxes.find((c) => c.id === cbMainId);
 
-      // Initial 100 @ 50 + Purchased 10 @ 70 => Qty = 110, Weighted Avg Cost = (5000+700)/110 = 51.82
+      // Initial 100 @ 50 + Purchased 10 @ 70 => Qty = 110, Latest confirmed purchase cost = 70
       assert.equal(Number(prod.stockPerWarehouse[whMainId]), 110);
-      assert.ok(Math.abs(Number(prod.purchasePrice) - 51.82) <= 0.02, `Expected weighted avg ~51.82, got ${prod.purchasePrice}`);
+      assert.equal(Number(prod.purchasePrice), 70);
       // Initial supplier balance 1000 + remaining 200 = 1200
       assert.equal(Number(supp.currentBalance), 1200);
       // Initial cashbox 10000 - paid 500 = 9500
@@ -576,6 +656,84 @@ async function runSuite(label, isPg = false, pgPool = null) {
       assert.equal(clearPhotoRes.status, 200);
       assert.ok(!clearPhotoRes.json.customer.shopPhoto, 'clearShopPhoto: true must remove shopPhoto');
       assert.ok(!clearPhotoRes.json.customer.photo, 'clearShopPhoto: true must remove photo');
+
+      // Scenario 8c: Rep RBAC + ownership guards + customer payment via canManageSales
+      const adminAuditForbidden = await req(baseUrl, 'GET', '/api/admin/audit-logs', { token: repToken });
+      assert.equal(adminAuditForbidden.status, 403, 'Tightened rep permissions must block /api/admin/audit-logs');
+
+      const cashOpForbidden = await req(baseUrl, 'POST', '/api/admin/cash-operations', {
+        token: repToken,
+        body: { type: 'cash_deposit', cashboxId: cbMainId, amount: 100 },
+      });
+      assert.equal(cashOpForbidden.status, 403, 'Tightened rep permissions must block accounting cash operations');
+
+      // Rep collects payment on their assigned customer using canManageSales
+      const repCustPay = await req(baseUrl, 'POST', `/api/customers/${cust.id}/payment`, {
+        token: repToken,
+        body: { amount: 150, cashboxId: cbMainId, paymentMethod: 'cash', notes: 'تحصيل مندوب' },
+      });
+      assert.equal(repCustPay.status, 200, 'Rep with canManageSales must still collect assigned customer payment');
+      assert.equal(Number(repCustPay.json.customer.currentBalance), 300);
+
+      // Rep cannot overwrite protected customer fields on assigned customer update
+      const protectedAttempt = await req(baseUrl, 'PUT', `/api/customers/${cust.id}`, {
+        token: repToken,
+        body: {
+          userId: adminUserId,
+          status: 'suspended',
+          allowedRepIds: [],
+          currentBalance: 0,
+          notes: 'ملاحظة مسموحة',
+        },
+      });
+      assert.equal(protectedAttempt.status, 200);
+      assert.equal(protectedAttempt.json.customer.status, 'active');
+      assert.notEqual(protectedAttempt.json.customer.userId, adminUserId);
+      assert.equal(Number(protectedAttempt.json.customer.currentBalance), 300);
+      assert.ok(protectedAttempt.json.customer.allowedRepIds.includes(repId));
+
+      // Create unassigned customer (admin only) and verify rep cannot view/edit/collect or sync-update them
+      const unassignedRes = await req(baseUrl, 'POST', '/api/customers', {
+        token: adminToken,
+        body: {
+          name: 'عميل غير معين للمندوب',
+          shopName: 'متجر خاص',
+          phone: '01066669999',
+          openingBalance: 200,
+        },
+      });
+      assert.equal(unassignedRes.status, 201);
+      const unassignedId = unassignedRes.json.customer.id;
+
+      const repEditUnassigned = await req(baseUrl, 'PUT', `/api/customers/${unassignedId}`, {
+        token: repToken,
+        body: { notes: 'محاولة تعديل غير مصرح بها' },
+      });
+      assert.equal(repEditUnassigned.status, 403, 'Rep must be blocked 403 from editing unassigned customer');
+
+      const repPayUnassigned = await req(baseUrl, 'POST', `/api/customers/${unassignedId}/payment`, {
+        token: repToken,
+        body: { amount: 50, cashboxId: cbMainId },
+      });
+      assert.equal(repPayUnassigned.status, 403, 'Rep must be blocked 403 from collecting from unassigned customer');
+
+      const repSyncEditUnassigned = await req(baseUrl, 'POST', '/api/sync/push', {
+        token: repToken,
+        body: {
+          deviceId: 'DEV-ANDROID-01',
+          operations: [
+            {
+              operationId: 'OP-UNASSIGNED-CUST-UPD',
+              operationType: 'update_customer',
+              entityType: 'customer',
+              entityId: unassignedId,
+              payload: { customerId: unassignedId, notes: 'محاولة مزامنة غير مصرح بها' },
+            },
+          ],
+        },
+      });
+      assert.equal(repSyncEditUnassigned.status, 200);
+      assert.equal(repSyncEditUnassigned.json.results[0].status, 'failed');
     });
 
     // ------------------------------------------------------------------
@@ -640,11 +798,11 @@ async function runSuite(label, isPg = false, pgPool = null) {
       });
       assert.equal(syncRes1.status, 200);
       assert.equal(syncRes1.json.results.length, 2);
-      assert.equal(syncRes1.json.results[0].status, 'applied');
-      assert.equal(syncRes1.json.results[1].status, 'applied');
+      assert.equal(syncRes1.json.results[0].status, 'synced');
+      assert.equal(syncRes1.json.results[1].status, 'synced');
 
-      offlineCustId = syncRes1.json.results[0].data.id;
-      const syncedPurchaseInv = syncRes1.json.results[1].data;
+      offlineCustId = syncRes1.json.results[0].result.id;
+      const syncedPurchaseInv = syncRes1.json.results[1].result;
       assert.equal(syncedPurchaseInv.status, 'draft');
       assert.equal(syncedPurchaseInv.dispatchStatus, 'sent');
 
@@ -654,8 +812,10 @@ async function runSuite(label, isPg = false, pgPool = null) {
         body: pushPayload,
       });
       assert.equal(syncReplay.status, 200);
-      assert.equal(syncReplay.json.results[0].status, 'deduplicated');
-      assert.equal(syncReplay.json.results[1].status, 'deduplicated');
+      assert.equal(syncReplay.json.results[0].status, 'synced');
+      assert.equal(syncReplay.json.results[0].deduplicated, true);
+      assert.equal(syncReplay.json.results[1].status, 'synced');
+      assert.equal(syncReplay.json.results[1].deduplicated, true);
 
       // Now update customer via sync/push without shopPhoto -> preserves photo
       const syncCustUpdate = await req(baseUrl, 'POST', '/api/sync/push', {
@@ -678,34 +838,69 @@ async function runSuite(label, isPg = false, pgPool = null) {
         },
       });
       assert.equal(syncCustUpdate.status, 200);
-      assert.equal(syncCustUpdate.json.results[0].status, 'applied');
-      assert.equal(syncCustUpdate.json.results[0].data.area, 'سيدي جابر');
-      assert.equal(syncCustUpdate.json.results[0].data.shopPhoto, TINY_PNG_DATA_URL);
+      assert.equal(syncCustUpdate.json.results[0].status, 'synced');
+      assert.equal(syncCustUpdate.json.results[0].result.area, 'سيدي جابر');
+      assert.equal(syncCustUpdate.json.results[0].result.shopPhoto, TINY_PNG_DATA_URL);
     });
 
     // ------------------------------------------------------------------
     // Scenario 15: Postgres schema & column parity verification when running in pg-mem mode
     // ------------------------------------------------------------------
     if (isPg && pgPool) {
-      await test(`${label} | 15. Verify PostgreSQL columns (governorate, phones_json, shop_photo, dispatch_status, is_rep_purchase, recipient_user_id) persisted cleanly`, async () => {
+      await test(`${label} | 15. Verify PostgreSQL columns (governorate, phones, shop_photo, dispatch_status, sent_by_user_id, recipient_user_id) persisted cleanly`, async () => {
         const custDbRes = await pgPool.query(
-          `SELECT id, governorate, phones_json, shop_photo FROM customers WHERE id = $1`,
+          `SELECT id, governorate, phones, shop_photo FROM customers WHERE id = $1`,
           [offlineCustId]
         );
         assert.equal(custDbRes.rows.length, 1);
         assert.equal(custDbRes.rows[0].governorate, 'الإسكندرية');
         assert.equal(custDbRes.rows[0].shop_photo, TINY_PNG_DATA_URL);
-        assert.equal(custDbRes.rows[0].phones_json.length, 2);
+        assert.equal(custDbRes.rows[0].phones.length, 2);
 
         const invDbRes = await pgPool.query(
-          `SELECT id, status, dispatch_status, is_rep_purchase, recipient_user_id, dispatch_history FROM invoices WHERE id = $1`,
+          `SELECT id, status, dispatch_status, representative_id, sent_by_user_id, recipient_user_id, dispatch_history FROM invoices WHERE id = $1`,
           [repDraftInvId]
         );
         assert.equal(invDbRes.rows.length, 1);
         assert.equal(invDbRes.rows[0].status, 'confirmed');
         assert.equal(invDbRes.rows[0].dispatch_status, 'confirmed');
-        assert.equal(invDbRes.rows[0].is_rep_purchase, true);
+        assert.equal(invDbRes.rows[0].sent_by_user_id, repUserId);
         assert.ok(Array.isArray(invDbRes.rows[0].dispatch_history));
+
+        const invApiRes = await req(baseUrl, 'GET', '/api/invoices', { token: adminToken });
+        assert.equal(invApiRes.status, 200);
+        const mappedInv = invApiRes.json.invoices.find((i) => i.id === repDraftInvId);
+        assert.equal(mappedInv?.isRepPurchase, true);
+      });
+    } else {
+      // Scenario 15-JSON: Verify JSON Ledger -> Postgres migrator persists customer phones/governorate/shopPhoto & invoice dispatch_* columns
+      await test(`${label} | 15b. Verify migrator preserves customer phones/governorate & invoice 14 dispatch_* columns in PG`, async () => {
+        const jsonDb = readJsonDatabase();
+        const migPool = createPgMemPool();
+        const migResult = await runDataMigration(jsonDb, 'مدير النظام الرئيسي', {
+          targetPool: migPool,
+          isTestRun: true,
+        });
+        assert.equal(migResult.success, true, `Migration failed: ${migResult.error}`);
+
+        const custMig = await migPool.query(
+          `SELECT id, governorate, phones, shop_photo FROM customers WHERE id = $1`,
+          [offlineCustId]
+        );
+        assert.equal(custMig.rows.length, 1);
+        assert.equal(custMig.rows[0].governorate, 'الإسكندرية');
+        assert.equal(custMig.rows[0].shop_photo, TINY_PNG_DATA_URL);
+        assert.equal(custMig.rows[0].phones.length, 2);
+
+        const invMig = await migPool.query(
+          `SELECT id, status, dispatch_status, sent_by, sent_by_user_id, recipient_user_id, recipient_name, received_by, received_by_user_id, rejected_by, rejection_reason, dispatch_history FROM invoices WHERE id = $1`,
+          [repDraftInvId]
+        );
+        assert.equal(invMig.rows.length, 1);
+        assert.equal(invMig.rows[0].dispatch_status, 'confirmed');
+        assert.equal(invMig.rows[0].sent_by_user_id, repUserId);
+        assert.equal(invMig.rows[0].recipient_user_id, adminUserId);
+        assert.ok(Array.isArray(invMig.rows[0].dispatch_history));
       });
     }
   } finally {

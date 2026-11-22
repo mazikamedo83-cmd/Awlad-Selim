@@ -91,7 +91,7 @@ export function customerMatchesPhoneDigits(customer, normDigits) {
   if (normalizePhoneDigits(customer.phone) === normDigits) return true;
   if (normalizePhoneDigits(customer.secondaryPhone) === normDigits) return true;
   if (Array.isArray(customer.phones)) {
-    return customer.phones.some((p) => normalizePhoneDigits(typeof p === 'string' ? p : p?.number) === normDigits);
+    return customer.phones.some((p) => normalizePhoneDigits(typeof p === 'string' ? p : (p?.number ?? p?.phone)) === normDigits);
   }
   return false;
 }
@@ -341,7 +341,14 @@ function resolveUpdatedCustomerPhonesAndPhoto(cur, updates) {
   if (Array.isArray(updates.phones)) {
     nextPhones = normalizeCustomerPhonesList(updates.phones, '', '');
   } else if (updates.phone !== undefined || updates.secondaryPhone !== undefined) {
-    const baseOtherPhones = (cur.phones || []).filter((p) => !p.isPrimary && p.number !== cur.secondaryPhone);
+    const curSecDigits = normalizePhoneDigits(cur.secondaryPhone || '');
+    const baseOtherPhones = (cur.phones || [])
+      .filter((p) => {
+        if (p.isPrimary) return false;
+        const pDigits = normalizePhoneDigits(p.number ?? p.phone ?? '');
+        return !curSecDigits || pDigits !== curSecDigits;
+      })
+      .map((p) => ({ number: p.number ?? p.phone ?? '', label: p.label || '', isPrimary: false }));
     const mergedList = [
       ...(updates.phone !== undefined ? [{ number: updates.phone, label: 'رئيسي', isPrimary: true }] : cur.phone ? [{ number: cur.phone, label: 'رئيسي', isPrimary: true }] : []),
       ...(updates.secondaryPhone !== undefined ? (updates.secondaryPhone ? [{ number: updates.secondaryPhone, label: 'إضافي', isPrimary: false }] : []) : cur.secondaryPhone ? [{ number: cur.secondaryPhone, label: 'إضافي', isPrimary: false }] : []),
@@ -378,14 +385,26 @@ function resolveUpdatedCustomerPhonesAndPhoto(cur, updates) {
 
 export async function updateCustomer(customerId, updates, actor) {
   const now = nowIso();
+  const isRepActor = actor?.role === 'representative';
+  const repActor = isRepActor ? await getRepresentativeByUserId(actor.id) : null;
+  if (isRepActor && !repActor) {
+    throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
+  }
+
   if (await isPgMode()) {
     const updated = await withTransaction(async (client) => {
       const existing = await client.query('SELECT * FROM customers WHERE id = $1 FOR UPDATE', [customerId]);
       if (!existing.rows[0]) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
       const cur = mapPgCustomerRow(existing.rows[0]);
 
-      const nextUserId = updates.userId !== undefined ? (updates.userId || null) : (cur.userId || null);
-      if (nextUserId && nextUserId !== cur.userId) {
+      if (isRepActor && !isCustomerAllowedForRep(cur, repActor.id)) {
+        throw new AppError(403, 'غير مصرح لك بتعديل بيانات عميل غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
+      }
+
+      const nextUserId = isRepActor
+        ? (cur.userId || null)
+        : (updates.userId !== undefined ? (updates.userId || null) : (cur.userId || null));
+      if (!isRepActor && nextUserId && nextUserId !== cur.userId) {
         const dupLink = await client.query('SELECT id FROM customers WHERE user_id = $1 AND id <> $2 LIMIT 1', [
           nextUserId,
           customerId,
@@ -395,13 +414,14 @@ export async function updateCustomer(customerId, updates, actor) {
         }
       }
 
-      const repAlloc =
-        updates.allowedRepIds !== undefined || updates.assignedRepId !== undefined
-          ? normalizeAllowedRepIds(
-              updates.assignedRepId !== undefined ? updates.assignedRepId : undefined,
-              updates.allowedRepIds !== undefined ? updates.allowedRepIds : cur.allowedRepIds
-            )
-          : normalizeAllowedRepIds(cur.assignedRepId, cur.allowedRepIds);
+      const repAlloc = isRepActor
+        ? normalizeAllowedRepIds(cur.assignedRepId, cur.allowedRepIds)
+        : (updates.allowedRepIds !== undefined || updates.assignedRepId !== undefined
+            ? normalizeAllowedRepIds(
+                updates.assignedRepId !== undefined ? updates.assignedRepId : undefined,
+                updates.allowedRepIds !== undefined ? updates.allowedRepIds : cur.allowedRepIds
+              )
+            : normalizeAllowedRepIds(cur.assignedRepId, cur.allowedRepIds));
 
       const { nextPhones, nextPrimary, nextSecondary, nextPhoto, nextGeo } = resolveUpdatedCustomerPhonesAndPhoto(cur, updates);
 
@@ -424,7 +444,7 @@ export async function updateCustomer(customerId, updates, actor) {
           updates.area ?? cur.area ?? null,
           nextGeo ?? null,
           updates.notes ?? cur.notes ?? '',
-          updates.status ?? cur.status,
+          isRepActor ? cur.status : (updates.status ?? cur.status),
           nextUserId,
           repAlloc.assignedRepId || null,
           JSON.stringify(repAlloc.allowedRepIds),
@@ -450,22 +470,29 @@ export async function updateCustomer(customerId, updates, actor) {
     const idx = db.customers.findIndex((c) => c.id === customerId);
     if (idx === -1) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
     const cur = normalizeCustomerRecordShape(db.customers[idx]);
-    if (updates.userId && updates.userId !== cur.userId && db.customers.some((c) => c.userId === updates.userId && c.id !== customerId)) {
+    if (isRepActor && !isCustomerAllowedForRep(cur, repActor.id)) {
+      throw new AppError(403, 'غير مصرح لك بتعديل بيانات عميل غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
+    }
+    if (!isRepActor && updates.userId && updates.userId !== cur.userId && db.customers.some((c) => c.userId === updates.userId && c.id !== customerId)) {
       throw new AppError(409, 'حساب المستخدم المختار مرتبط بعميل آخر', 'USER_ALREADY_LINKED');
     }
-    const repAlloc =
-      updates.allowedRepIds !== undefined || updates.assignedRepId !== undefined
-        ? normalizeAllowedRepIds(
-            updates.assignedRepId !== undefined ? updates.assignedRepId : undefined,
-            updates.allowedRepIds !== undefined ? updates.allowedRepIds : cur.allowedRepIds
-          )
-        : normalizeAllowedRepIds(cur.assignedRepId, cur.allowedRepIds);
+    const repAlloc = isRepActor
+      ? normalizeAllowedRepIds(cur.assignedRepId, cur.allowedRepIds)
+      : (updates.allowedRepIds !== undefined || updates.assignedRepId !== undefined
+          ? normalizeAllowedRepIds(
+              updates.assignedRepId !== undefined ? updates.assignedRepId : undefined,
+              updates.allowedRepIds !== undefined ? updates.allowedRepIds : cur.allowedRepIds
+            )
+          : normalizeAllowedRepIds(cur.assignedRepId, cur.allowedRepIds));
     const { nextPhones, nextPrimary, nextSecondary, nextPhoto, nextGeo } = resolveUpdatedCustomerPhonesAndPhoto(cur, updates);
     const { clearShopPhoto: _ignoreClear, ...cleanUpdates } = updates;
     const merged = normalizeCustomerRecordShape({
       ...cur,
       ...cleanUpdates,
       id: cur.id,
+      userId: isRepActor ? cur.userId : (cleanUpdates.userId !== undefined ? cleanUpdates.userId : cur.userId),
+      status: isRepActor ? cur.status : (cleanUpdates.status ?? cur.status),
+      openingBalance: cur.openingBalance,
       phone: nextPrimary,
       secondaryPhone: nextSecondary,
       phones: nextPhones,
@@ -494,18 +521,35 @@ export async function updateCustomer(customerId, updates, actor) {
 }
 
 export async function deleteCustomer(customerId, actor) {
+  const isRepActor = actor?.role === 'representative';
+  const repActor = isRepActor ? await getRepresentativeByUserId(actor.id) : null;
+
   if (await isPgMode()) {
     const deleted = await withTransaction(async (client) => {
       const existing = await client.query('SELECT * FROM customers WHERE id = $1 FOR UPDATE', [customerId]);
       if (!existing.rows[0]) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
       const cur = mapPgCustomerRow(existing.rows[0]);
+      if (isRepActor && (!repActor || !isCustomerAllowedForRep(cur, repActor.id))) {
+        throw new AppError(403, 'غير مصرح لك بحذف عميل غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
+      }
       if (Math.abs(cur.currentBalance) > 0.001) {
         throw new AppError(409, 'لا يمكن حذف عميل عليه رصيد مالي غير مسوّى', 'CUSTOMER_HAS_BALANCE');
       }
-      const invRef = await client.query('SELECT id FROM invoices WHERE customer_id = $1 LIMIT 1', [customerId]);
-      const ordRef = await client.query('SELECT id FROM customer_item_orders WHERE customer_id = $1 LIMIT 1', [customerId]);
-      if (invRef.rows[0] || ordRef.rows[0]) {
-        throw new AppError(409, 'لا يمكن حذف عميل مرتبط بفواتير أو طلبات. يمكنك حظره أو إيقافه بدلاً من الحذف.', 'CUSTOMER_REFERENCED');
+      const [invRef, ordRef, txRef, chqRef] = await Promise.all([
+        client.query('SELECT id FROM invoices WHERE customer_id = $1 LIMIT 1', [customerId]),
+        client.query('SELECT id FROM customer_item_orders WHERE customer_id = $1 LIMIT 1', [customerId]),
+        client.query(
+          `SELECT id FROM financial_transactions WHERE related_entity_id = $1 AND type = 'customer_payment' LIMIT 1`,
+          [customerId]
+        ),
+        client.query('SELECT id FROM cheques WHERE party_id = $1 LIMIT 1', [customerId]),
+      ]);
+      if (invRef.rows[0] || ordRef.rows[0] || txRef.rows[0] || chqRef.rows[0]) {
+        throw new AppError(
+          409,
+          'لا يمكن حذف عميل مرتبط بفواتير أو طلبات أو حركات مالية. يمكنك إيقافه أو حظره بدلاً من الحذف.',
+          'CUSTOMER_REFERENCED'
+        );
       }
       await client.query('DELETE FROM customers WHERE id = $1', [customerId]);
       return cur;
@@ -523,11 +567,27 @@ export async function deleteCustomer(customerId, actor) {
   const deleted = await withJsonTransaction(async (db) => {
     const cur = db.customers.find((c) => c.id === customerId);
     if (!cur) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
+    if (isRepActor && (!repActor || !isCustomerAllowedForRep(cur, repActor.id))) {
+      throw new AppError(403, 'غير مصرح لك بحذف عميل غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
+    }
     if (Math.abs(Number(cur.currentBalance || 0)) > 0.001) {
       throw new AppError(409, 'لا يمكن حذف عميل عليه رصيد مالي غير مسوّى', 'CUSTOMER_HAS_BALANCE');
     }
-    if (db.invoices.some((i) => i.customerId === customerId) || db.customerItemOrders.some((o) => o.customerId === customerId)) {
-      throw new AppError(409, 'لا يمكن حذف عميل مرتبط بفواتير أو طلبات. يمكنك إيقافه بدلاً من الحذف.', 'CUSTOMER_REFERENCED');
+    const hasPayments = (db.financialTransactions || []).some(
+      (tx) => (tx.relatedEntityId === customerId || tx.partyId === customerId) && tx.type === 'customer_payment'
+    );
+    const hasCheques = (db.cheques || []).some((ch) => ch.partyId === customerId);
+    if (
+      (db.invoices || []).some((i) => i.customerId === customerId) ||
+      (db.customerItemOrders || []).some((o) => o.customerId === customerId) ||
+      hasPayments ||
+      hasCheques
+    ) {
+      throw new AppError(
+        409,
+        'لا يمكن حذف عميل مرتبط بفواتير أو طلبات أو حركات مالية. يمكنك إيقافه بدلاً من الحذف.',
+        'CUSTOMER_REFERENCED'
+      );
     }
     db.customers = db.customers.filter((c) => c.id !== customerId);
     return cur;
@@ -743,12 +803,15 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
       );
 
       const updatedCust = await client.query('SELECT * FROM customers WHERE id = $1', [customerId]);
+      const mappedCust = mapPgCustomerRow(updatedCust.rows[0]);
       const payloadOut = {
-        customer: mapPgCustomerRow(updatedCust.rows[0]),
+        customer: mappedCust,
         cashboxBalance: nextCbBalance,
         paymentMethod: cleanMethod,
         transactionId: txId,
         transactionNumber: txNumber,
+        isAdvanceCredit: mappedCust.currentBalance < 0,
+        creditAmount: mappedCust.currentBalance < 0 ? round2(Math.abs(mappedCust.currentBalance)) : 0,
       };
       await savePgIdempotency(client, scopedIdem, actor, endpoint, payloadOut);
       return { deduplicated: false, ...payloadOut };
@@ -807,6 +870,8 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
       paymentMethod: cleanMethod,
       transactionId: txId,
       transactionNumber: txNumber,
+      isAdvanceCredit: Number(cust.currentBalance || 0) < 0,
+      creditAmount: Number(cust.currentBalance || 0) < 0 ? round2(Math.abs(Number(cust.currentBalance || 0))) : 0,
     };
     saveJsonIdempotency(scopedIdem, payloadOut);
     return { deduplicated: false, ...payloadOut };
@@ -1982,6 +2047,8 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
     if (inv.linkedCustomerOrderId) descParts.push('محولة من طلب');
     rawEntries.push({
       id: `INV-${inv.id}`,
+      docId: inv.id,
+      docType: 'sales',
       date: inv.date || '',
       sortKey: `${inv.date || ''}-${inv.createdAt || inv.id}`,
       docNumber: inv.invoiceNumber,
@@ -1993,6 +2060,8 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
           : `فاتورة مبيعات آجلة — رقم ${inv.invoiceNumber}`,
       debit: round2(inv.grandTotal || 0),
       credit: cashAtInvoice,
+      paidAmount: round2(inv.paidAmount || 0),
+      remainingAmount: round2(inv.remainingAmount || 0),
     });
   }
 
@@ -2005,6 +2074,8 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
     const isOrderAdv = tx.relatedDocType === 'order_advance';
     rawEntries.push({
       id: `PAY-${tx.id}`,
+      docId: tx.id,
+      docType: isOrderAdv ? 'order_advance' : 'customer_payment',
       date: tx.date || '',
       sortKey: `${tx.date || ''}-${tx.createdAt || tx.id}`,
       docNumber: tx.transactionNumber || tx.id,
@@ -2013,12 +2084,16 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
       description: tx.description || 'سداد نقدي من العميل',
       debit: 0,
       credit: round2(tx.amount || 0),
+      paidAmount: round2(tx.amount || 0),
+      remainingAmount: 0,
     });
   }
 
   for (const ret of returns) {
     rawEntries.push({
       id: `RET-${ret.id}`,
+      docId: ret.id,
+      docType: 'sales_return',
       date: ret.date || '',
       sortKey: `${ret.date || ''}-${ret.createdAt || ret.id}`,
       docNumber: ret.returnNumber,
@@ -2027,6 +2102,8 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
       description: ret.reason || `مرتجع على فاتورة ${ret.originalInvoiceNumber || '-'}`,
       debit: 0,
       credit: ret.refundType === 'balance' ? round2(ret.grandTotal || 0) : 0,
+      paidAmount: ret.refundType === 'cash' ? round2(ret.grandTotal || 0) : 0,
+      remainingAmount: 0,
     });
   }
 
@@ -2043,6 +2120,8 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
       ...entry,
       debit: allowPriceView ? entry.debit : null,
       credit: allowPriceView ? entry.credit : null,
+      paidAmount: allowPriceView ? (entry.paidAmount ?? null) : null,
+      remainingAmount: allowPriceView ? (entry.remainingAmount ?? null) : null,
       runningBalance: allowPriceView ? running : null,
     };
   });
@@ -2055,6 +2134,27 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
   const appSourceFlag = Boolean(customer.userId) || orders.length > 0;
   const customerType =
     appSourceFlag && directSalesCount > 0 ? 'hybrid' : appSourceFlag ? 'app' : 'regular';
+
+  const curBal = round2(customer.currentBalance || 0);
+  const totalSales = round2(confirmedRaw.reduce((s, i) => s + Number(i.grandTotal || 0), 0));
+  const standalonePaid = round2(
+    paymentTxs
+      .filter((tx) => !(tx.relatedDocType === 'sales' && tx.relatedDocId && confirmedInvoiceIds.has(tx.relatedDocId)))
+      .reduce((s, tx) => s + Number(tx.amount || 0), 0)
+  );
+  const invoicePaidCash = round2(
+    confirmedRaw.reduce((s, i) => s + Math.max(0, Number(i.paidAmount || 0) - Number(i.appliedAdvanceAmount || 0)), 0)
+  );
+  const totalPaid = round2(invoicePaidCash + standalonePaid);
+  const sortedConfirmedByDate = [...confirmedRaw].sort((a, b) =>
+    `${b.date || ''}-${b.createdAt || ''}`.localeCompare(`${a.date || ''}-${a.createdAt || ''}`)
+  );
+  const lastInv = sortedConfirmedByDate[0] || null;
+  const sortedPaymentsByDate = [...paymentTxs].sort((a, b) =>
+    `${b.date || ''}-${b.createdAt || ''}`.localeCompare(`${a.date || ''}-${a.createdAt || ''}`)
+  );
+  const lastPay = sortedPaymentsByDate[0] || null;
+  const lastEntry = entries.length > 0 ? entries[entries.length - 1] : null;
 
   return {
     allowPriceView: Boolean(allowPriceView),
@@ -2078,7 +2178,12 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
       openingBalance: allowPriceView ? openingBal : null,
       totalDebit: allowPriceView ? totalDebit : null,
       totalCredit: allowPriceView ? totalCredit : null,
-      currentBalance: allowPriceView ? round2(customer.currentBalance || 0) : null,
+      totalSales: allowPriceView ? totalSales : null,
+      totalPaid: allowPriceView ? totalPaid : null,
+      currentBalance: allowPriceView ? curBal : null,
+      debtAmount: allowPriceView ? (curBal > 0 ? curBal : 0) : null,
+      creditAmount: allowPriceView ? (curBal < 0 ? round2(Math.abs(curBal)) : 0) : null,
+      balanceDirection: curBal > 0.005 ? 'debt' : curBal < -0.005 ? 'credit' : 'settled',
       activeAdvanceBalance: allowPriceView ? activeAdvanceBalance : null,
       openOrdersCount: openOrders.length,
       openOrdersEstimatedTotal: allowPriceView
@@ -2087,6 +2192,10 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
       invoicesCount: confirmedRaw.length,
       returnsCount: returns.length,
       ordersCount: orders.length,
+      lastInvoiceDate: lastInv?.date || null,
+      lastInvoiceNumber: lastInv?.invoiceNumber || null,
+      lastPaymentDate: lastPay?.date || null,
+      lastTransactionDate: lastEntry?.date || null,
     },
     entries,
   };

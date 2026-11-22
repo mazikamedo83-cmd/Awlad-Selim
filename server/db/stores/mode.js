@@ -203,9 +203,9 @@ export const REP_DEFAULT_PERMISSIONS = {
   canCreatePurchase: true,
   canManagePurchases: false,
   canManageTransfers: true,
-  canManageAccounts: true,
-  canManageReps: true,
-  canViewReports: true,
+  canManageAccounts: false,
+  canManageReps: false,
+  canViewReports: false,
   canSend: true,
   canReceive: true,
 };
@@ -376,6 +376,7 @@ export function normalizeCustomerPhonesList(inputPhones, fallbackPrimary = '', f
     entries.push({
       id: String(id || `ph-${entries.length + 1}`),
       number: num,
+      phone: num,
       label: String(label || (entries.length === 0 ? 'رئيسي' : `رقم ${entries.length + 1}`)).trim(),
       isPrimary: Boolean(isPrimary),
     });
@@ -578,6 +579,7 @@ export function mapPgInvoiceRow(r, items = [], payments = []) {
     supplierName: r.supplier_name || undefined,
     representativeId: r.representative_id || undefined,
     representativeName: r.representative_name || undefined,
+    isRepPurchase: r.type === 'purchase' && Boolean(r.representative_id || (r.sent_by_user_id && r.dispatch_status)),
     warehouseId: r.warehouse_id,
     warehouseName: r.warehouse_name,
     items: items.map((it) => ({

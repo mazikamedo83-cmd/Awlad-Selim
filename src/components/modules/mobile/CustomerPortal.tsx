@@ -13,6 +13,12 @@ import { exportHtmlToPdf } from '../../common/PdfExporter';
 import { exportToExcel } from '../../common/ExcelExporter';
 import { QuantityInput } from '../../common/QuantityInput';
 import { computeLineTotal, round3 } from '../../../utils/quantity';
+import {
+  WarehouseBoxesIcon,
+  OrdersClipboardIcon,
+  SalesInvoiceIcon,
+  AccountsLedgerIcon,
+} from '../../common/AppIcons';
 
 export type CustomerTabKey = 'home' | 'catalog' | 'cart' | 'orders' | 'account';
 
@@ -507,22 +513,40 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               <button
                 type="button"
                 onClick={() => onTabChange('catalog')}
-                className="min-h-[48px] rounded-2xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black flex items-center justify-center gap-2 cursor-pointer"
+                className="min-h-[96px] p-3 rounded-2xl bg-white hover:bg-blue-50/70 border border-slate-200 hover:border-blue-300 shadow-2xs flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer"
               >
-                <Package className="w-4 h-4" />
-                <span>تصفح المنتجات وطلب بضاعة</span>
+                <WarehouseBoxesIcon className="w-10 h-10" />
+                <span className="text-xs font-black text-slate-800">تصفح الأصناف</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onTabChange('cart')}
+                className="min-h-[96px] p-3 rounded-2xl bg-white hover:bg-blue-50/70 border border-slate-200 hover:border-blue-300 shadow-2xs flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer relative"
+              >
+                <SalesInvoiceIcon className="w-10 h-10" />
+                <span className="text-xs font-black text-slate-800">
+                  سلة الطلب ({cartItems.length})
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onTabChange('orders')}
+                className="min-h-[96px] p-3 rounded-2xl bg-white hover:bg-blue-50/70 border border-slate-200 hover:border-blue-300 shadow-2xs flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer"
+              >
+                <OrdersClipboardIcon className="w-10 h-10" />
+                <span className="text-xs font-black text-slate-800">طلباتي ({myOrders.length})</span>
               </button>
               <button
                 type="button"
                 onClick={() => onTabChange('account')}
-                className="min-h-[48px] rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-black flex items-center justify-center gap-2 cursor-pointer"
+                className="min-h-[96px] p-3 rounded-2xl bg-white hover:bg-blue-50/70 border border-slate-200 hover:border-blue-300 shadow-2xs flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer"
               >
-                <Receipt className="w-4 h-4" />
-                <span>فواتيري وكشف الحساب</span>
+                <AccountsLedgerIcon className="w-10 h-10" />
+                <span className="text-xs font-black text-slate-800">فواتيري وحسابي</span>
               </button>
             </div>
           </div>

@@ -17,6 +17,7 @@ import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
 import { exportTableToPdf } from '../../common/PdfExporter';
 import { compressImageFileToDataUrl } from '../../../utils/image';
+import { CustomersGroupIcon } from '../../common/AppIcons';
 import type { NavItemKey } from '../../layout/Sidebar';
 
 interface CustomersViewProps {
@@ -223,7 +224,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
         (c.area && c.area.toLowerCase().includes(q)) ||
         c.phone.includes(searchTerm) ||
         (c.secondaryPhone && c.secondaryPhone.includes(searchTerm)) ||
-        (Array.isArray(c.phones) && c.phones.some((p) => String(p.phone || '').includes(searchTerm))) ||
+        (Array.isArray(c.phones) && c.phones.some((p) => String(p.phone || p.number || '').includes(searchTerm))) ||
         c.code.toLowerCase().includes(q) ||
         c.address.toLowerCase().includes(q);
       
@@ -455,7 +456,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
     const extras: Array<{ id: string; phone: string; label: string }> = [];
     if (Array.isArray(c.phones)) {
       c.phones.forEach((p, idx) => {
-        const val = String(p?.phone || '').trim();
+        const val = String(p?.phone || p?.number || '').trim();
         if (!val) return;
         if (val === primaryClean && (p.isPrimary || idx === 0)) return;
         if (extras.some((ex) => ex.phone === val)) return;
@@ -1064,7 +1065,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                               : []),
                           ];
                     return allPhones.map((ph, idx) => {
-                      const clean = String(ph.phone || '').replace(/[^\d+]/g, '');
+                      const rawPhone = String(ph.phone || ph.number || '').trim();
+                      const clean = rawPhone.replace(/[^\d+]/g, '');
                       if (clean.replace(/\D/g, '').length < 5) return null;
                       return (
                         <a
@@ -1078,7 +1080,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                           title={`اتصال مباشر (${ph.label || 'هاتف'})`}
                         >
                           <Phone className="w-3.5 h-3.5 shrink-0" />
-                          <span>{ph.phone}</span>
+                          <span>{rawPhone}</span>
                           {ph.label && (
                             <span className="font-sans text-[10px] opacity-80">({ph.label})</span>
                           )}
@@ -1991,16 +1993,21 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
 
       {/* Top Header Card */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-black text-slate-900 tracking-tight">العملاء والأرصدة</h2>
-            <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-900 text-xs font-black border border-blue-200">
-              {customers.length} محل
-            </span>
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0">
+            <CustomersGroupIcon className="w-9 h-9" />
           </div>
-          <p className="text-xs text-slate-500 mt-1">
-            منظومة العملاء الموحدة — أرصدة وكشوف حسابات موحدة لجميع المبيعات المباشرة وطلبات التطبيق والمندوبين والدفعات المقدمة
-          </p>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-black text-slate-900 tracking-tight">العملاء والأرصدة</h2>
+              <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-900 text-xs font-black border border-blue-200">
+                {customers.length} محل
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              منظومة العملاء الموحدة — أرصدة وكشوف حسابات موحدة لجميع المبيعات المباشرة وطلبات التطبيق والمندوبين والدفعات المقدمة
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
@@ -3110,7 +3117,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
 
             {paymentAmount > 0 && (paymentCustomer.currentBalance <= 0 || paymentAmount > paymentCustomer.currentBalance) && (
               <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-bold leading-relaxed">
-                تنبيه محاسبي: المبلغ المدخل يتجاوز المديونية القائمة للعميل — سيتم قيد الزيادة كـ "رصيد دائن للعميل (دفعة مقدمة)" ({(paymentCustomer.currentBalance - paymentAmount).toLocaleString()} {settings.currency}) ولن يُحتسب كإيراد مبيعات.
+                تنبيه محاسبي: المبلغ المدخل يتجاوز المديونية القائمة للعميل — سيتم قيد الزيادة كـ "رصيد دائن للعميل / دفعة مقدمة (علينا)" ({Math.abs(paymentCustomer.currentBalance - paymentAmount).toLocaleString()} {settings.currency}) دون تصفير الرصيد السالب ولن يُحتسب كإيراد مبيعات.
               </div>
             )}
 

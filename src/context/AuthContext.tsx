@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { Customer, MobileConfig, Representative, User, UserRole, UserShortcutItem } from '../types';
+import { Customer, CustomerPhoneEntry, MobileConfig, Representative, User, UserRole, UserShortcutItem } from '../types';
 import {
   DEFAULT_DB_UNAVAILABLE_MESSAGE,
   apiRequest,
@@ -412,7 +412,10 @@ interface AuthContextType {
     phone: string;
     address?: string;
     shopName?: string;
+    governorate?: string;
     area?: string;
+    shopPhoto?: string;
+    phones?: CustomerPhoneEntry[];
     vehicleNumber?: string;
     geoCoordinates?: string;
   }) => Promise<{ success: boolean; error?: string }>;
@@ -650,7 +653,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     phone: string;
     address?: string;
     shopName?: string;
+    governorate?: string;
     area?: string;
+    shopPhoto?: string;
+    phones?: CustomerPhoneEntry[];
     vehicleNumber?: string;
     geoCoordinates?: string;
   }): Promise<{ success: boolean; error?: string }> => {

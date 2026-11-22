@@ -25,6 +25,11 @@ export function getNativePlatform(): 'android' | 'ios' | 'web' {
   }
 }
 
+export function isMobileAppPlatform(): boolean {
+  const platform = getNativePlatform();
+  return platform === 'android' || platform === 'ios';
+}
+
 export function syncNativeStatusBarStyle(appearance: 'light-header' | 'dark-header'): void {
   if (!isNativeCapacitor()) return;
   try {

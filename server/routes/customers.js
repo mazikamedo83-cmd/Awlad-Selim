@@ -212,12 +212,19 @@ router.post(
 router.post(
   '/:id/payment',
   requireStaff,
-  requirePermission('canManageAccounts'),
   asyncHandler(async (req, res) => {
-    if (req.auth.user.role === 'representative') {
+    const authUser = req.auth.user;
+    const canCollectPayment =
+      authUser.role === 'admin' ||
+      Boolean(authUser.permissions?.canManageAccounts) ||
+      (authUser.role === 'representative' && Boolean(authUser.permissions?.canManageSales));
+    if (!canCollectPayment) {
+      throw new AppError(403, 'ليس لديك صلاحية تسجيل تحصيل دفعات العملاء', 'FORBIDDEN_PERMISSION');
+    }
+    if (authUser.role === 'representative') {
       const customer = await getCustomerById(req.params.id);
       if (!customer) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
-      const rep = req.auth.representativeProfile || (await getRepresentativeByUserId(req.auth.user.id));
+      const rep = req.auth.representativeProfile || (await getRepresentativeByUserId(authUser.id));
       if (!rep || !isCustomerAllowedForRep(customer, rep.id)) {
         throw new AppError(403, 'غير مصرح لك بتحصيل مبالغ من عميل غير معين ضمن قائمتك', 'CUSTOMER_NOT_ASSIGNED_TO_REP');
       }

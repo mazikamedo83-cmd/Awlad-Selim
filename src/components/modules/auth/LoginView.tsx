@@ -41,6 +41,7 @@ export const LoginView: React.FC = () => {
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [shopName, setShopName] = useState('');
+  const [governorate, setGovernorate] = useState('');
   const [area, setArea] = useState('');
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -171,6 +172,7 @@ export const LoginView: React.FC = () => {
         password,
         address: address.trim(),
         shopName: authMode === 'register_customer' ? shopName.trim() : undefined,
+        governorate: authMode === 'register_customer' ? governorate.trim() : undefined,
         area: authMode === 'register_customer' ? area.trim() : undefined,
         vehicleNumber: authMode === 'register_rep' ? vehicleNumber.trim() : undefined,
       });
@@ -479,12 +481,22 @@ export const LoginView: React.FC = () => {
                         />
                       </div>
                       <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">المحافظة</label>
+                        <input
+                          type="text"
+                          value={governorate}
+                          onChange={(e) => setGovernorate(e.target.value)}
+                          placeholder="مثال: القاهرة / الجيزة"
+                          className="w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                        />
+                      </div>
+                      <div>
                         <label className="block text-xs font-bold text-slate-700 mb-1">المنطقة</label>
                         <input
                           type="text"
                           value={area}
                           onChange={(e) => setArea(e.target.value)}
-                          placeholder="مثال: الجيزة / شبرا"
+                          placeholder="مثال: شبرا / المعادي"
                           className="w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
                         />
                       </div>
@@ -501,7 +513,7 @@ export const LoginView: React.FC = () => {
                       />
                     </div>
                   )}
-                  <div className={authMode === 'register_customer' ? 'sm:col-span-2' : ''}>
+                  <div className={authMode === 'register_customer' ? '' : ''}>
                     <label className="block text-xs font-bold text-slate-700 mb-1">العنوان</label>
                     <input
                       type="text"

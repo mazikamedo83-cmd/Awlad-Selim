@@ -12,6 +12,7 @@ import {
   ArrowLeftRight,
   AlertTriangle,
   Server,
+  Settings,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
@@ -20,6 +21,7 @@ import { NavItemKey } from './Sidebar';
 import { MobileNotificationItem, UserPermissions } from '../../types';
 import { MobileNotificationsSheet } from '../modules/mobile/MobileNotificationsSheet';
 import { MobileServerModal } from '../modules/mobile/MobileServerModal';
+import { isMobileAppPlatform } from '../../services/native';
 
 interface HeaderProps {
   currentPage: NavItemKey;
@@ -44,6 +46,9 @@ const INVENTORY_KEYS: NavItemKey[] = [
 ];
 
 const FINANCE_KEYS: NavItemKey[] = [
+  'accounts',
+  'customer-accounts',
+  'supplier-accounts',
   'cashboxes',
   'cashbox-transfer',
   'expenses',
@@ -89,8 +94,9 @@ export const Header: React.FC<HeaderProps> = ({
     return hasPermission(perm);
   };
 
-  // Exact 5 primary navigation buttons in exact requested order:
-  // 1. الأقسام  2. الرئيسية  3. المخزون  4. المالية  5. المبيعات
+  const hideSectionsNav = isMobileAppPlatform();
+
+  // Primary navigation buttons (Keep الأقسام on Windows; remove ONLY on Android & iOS)
   const primaryNavButtons: Array<{
     key: string;
     label: string;
@@ -99,14 +105,18 @@ export const Header: React.FC<HeaderProps> = ({
     onClick: () => void;
     controlsDrawer?: boolean;
   }> = [
-    {
-      key: 'sections',
-      label: 'الأقسام',
-      icon: LayoutGrid,
-      active: isSidebarOpen,
-      onClick: onToggleSidebar,
-      controlsDrawer: true,
-    },
+    ...(!hideSectionsNav
+      ? [
+          {
+            key: 'sections',
+            label: 'الأقسام',
+            icon: LayoutGrid,
+            active: isSidebarOpen,
+            onClick: onToggleSidebar,
+            controlsDrawer: true,
+          },
+        ]
+      : []),
     {
       key: 'dashboard',
       label: 'الرئيسية',
@@ -130,10 +140,17 @@ export const Header: React.FC<HeaderProps> = ({
     },
     {
       key: 'finance',
-      label: 'المالية',
+      label: 'الحسابات',
       icon: Wallet,
       active: FINANCE_KEYS.includes(currentPage),
-      onClick: () => onNavigate(canPerm('canManageCashboxes') ? 'cashboxes' : 'cheques'),
+      onClick: () =>
+        onNavigate(
+          canPerm('canManageAccounts')
+            ? 'customer-accounts'
+            : canPerm('canManageCashboxes')
+            ? 'cashboxes'
+            : 'cheques'
+        ),
     },
     {
       key: 'sales',
@@ -310,6 +327,16 @@ export const Header: React.FC<HeaderProps> = ({
 
               <button
                 type="button"
+                onClick={() => onNavigate('system-settings')}
+                className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer"
+                title="الإعدادات"
+                aria-label="الإعدادات"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
                 onClick={toggleFullscreen}
                 className="hidden md:flex min-h-[38px] min-w-[38px] items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer"
                 title="ملء الشاشة"
@@ -331,10 +358,10 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Mobile & Tablet (< lg): Exact 5 Primary Navigation Buttons Inside Top Blue Rectangle */}
+          {/* Mobile & Tablet (< lg): Primary Navigation Buttons Inside Top Blue Rectangle */}
           <nav
             aria-label="التنقل الرئيسي للجوال"
-            className="lg:hidden border-t border-white/15 py-1.5 grid grid-cols-5 gap-1"
+            className={`lg:hidden border-t border-white/15 py-1.5 grid ${hideSectionsNav ? 'grid-cols-4' : 'grid-cols-5'} gap-1`}
           >
             {primaryNavButtons.map((btn) => {
               const Icon = btn.icon;

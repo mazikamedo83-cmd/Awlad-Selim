@@ -15,6 +15,7 @@ import {
   CustomerPhoneEntry,
   CustomerItemOrderRequest,
   CustomerPriceHistoryEntry,
+  CustomerStatementResponse,
   Invoice,
   InvoiceReturn,
   RepCustodyStatementResponse,
@@ -25,6 +26,22 @@ import { QuantityInput } from '../../common/QuantityInput';
 import { computeLineTotal } from '../../../utils/quantity';
 import { compressImageFileToDataUrl } from '../../../utils/image';
 import { RefreshSyncScreen } from './RefreshSyncScreen';
+import { ConfirmDialog } from '../../common/ConfirmDialog';
+import {
+  SalesInvoiceIcon,
+  PurchaseInvoiceIcon,
+  SalesReturnIcon,
+  PurchaseReturnIcon,
+  PriceQuoteIcon,
+  CustomerAddIcon,
+  CustomersGroupIcon,
+  SupplierAddIcon,
+  TransferArrowsIcon,
+  RefreshCloudIcon,
+  ChequesIcon,
+  WalletCashIcon,
+  ExpensesCashIcon,
+} from '../../common/AppIcons';
 
 const REP_ORDER_STATUS_LABELS: Record<string, string> = {
   pending: 'جديد',
@@ -95,6 +112,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const canAccounts = isAdmin || hasPermission('canManageAccounts');
   const canInventory = isAdmin || hasPermission('canManageInventory') || canTransfers;
   const canAddCustomer = isAdmin || canSales || hasPermission('canAdd');
+  const canEditCustomer = isAdmin || hasPermission('canEdit');
+  const canDeleteCustomer = isAdmin || hasPermission('canDelete');
 
   const rep =
     representativeProfile ||
@@ -152,6 +171,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [isSubmittingInvoice, setIsSubmittingInvoice] = useState(false);
   const [pendingLeaveTab, setPendingLeaveTab] = useState<RepTabKey | null>(null);
   const [selectedCustomerDetail, setSelectedCustomerDetail] = useState<Customer | null>(null);
+  const [customerFilterMode, setCustomerFilterMode] = useState<'all' | 'current' | 'debtors' | 'credits'>('all');
+  const [customerSortMode, setCustomerSortMode] = useState<'debt_desc' | 'credit_desc' | 'name'>('debt_desc');
+  const [customerDetailSubTab, setCustomerDetailSubTab] = useState<'overview' | 'statement'>('overview');
+  const [customerDetailStatement, setCustomerDetailStatement] = useState<CustomerStatementResponse | null>(null);
+  const [isLoadingCustomerStatement, setIsLoadingCustomerStatement] = useState(false);
+  const [statementPreviewDoc, setStatementPreviewDoc] = useState<{
+    type: 'invoice' | 'payment';
+    docId: string;
+    title: string;
+  } | null>(null);
+  const [deleteCustomerTarget, setDeleteCustomerTarget] = useState<Customer | null>(null);
+  const [isDeletingCustomer, setIsDeletingCustomer] = useState(false);
   const [actualDrawerCash, setActualDrawerCash] = useState<string>('');
 
   // ==================== 2. PURCHASE INVOICE STATE ====================
@@ -187,6 +218,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [sendingRecipientUserId, setSendingRecipientUserId] = useState('');
   const [isSendingPurchase, setIsSendingPurchase] = useState(false);
   const [historyPurchaseTarget, setHistoryPurchaseTarget] = useState<Invoice | null>(null);
+  const [selectedPurchaseDetail, setSelectedPurchaseDetail] = useState<Invoice | null>(null);
   const [previewShopPhoto, setPreviewShopPhoto] = useState<string | null>(null);
 
   // ==================== 3. RETURNS STATE (Sales Return & Purchase Return) ====================
@@ -265,6 +297,27 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [isSavingCustomer, setIsSavingCustomer] = useState(false);
   const custCameraInputRef = useRef<HTMLInputElement | null>(null);
   const custGalleryInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [editingCustomerTarget, setEditingCustomerTarget] = useState<Customer | null>(null);
+  const [editCustName, setEditCustName] = useState('');
+  const [editCustShop, setEditCustShop] = useState('');
+  const [editCustPhone, setEditCustPhone] = useState('');
+  const [editCustExtraPhones, setEditCustExtraPhones] = useState<Array<{ id: string; phone: string; label: string }>>([]);
+  const [editCustGovernorate, setEditCustGovernorate] = useState('');
+  const [editCustArea, setEditCustArea] = useState('');
+  const [editCustAddress, setEditCustAddress] = useState('');
+  const [editCustGeo, setEditCustGeo] = useState('');
+  const [editCustShopPhoto, setEditCustShopPhoto] = useState('');
+  const [editCustPhotoChanged, setEditCustPhotoChanged] = useState(false);
+  const [editCustClearPhoto, setEditCustClearPhoto] = useState(false);
+  const [editCustNotes, setEditCustNotes] = useState('');
+  const [isLocatingEditCust, setIsLocatingEditCust] = useState(false);
+  const [isUploadingEditCustPhoto, setIsUploadingEditCustPhoto] = useState(false);
+  const [editCustPhoneNotice, setEditCustPhoneNotice] = useState<{ type: 'info' | 'error'; text: string } | null>(null);
+  const [editCustMapNotice, setEditCustMapNotice] = useState<string | null>(null);
+  const [isSavingEditCustomer, setIsSavingEditCustomer] = useState(false);
+  const editCustCameraInputRef = useRef<HTMLInputElement | null>(null);
+  const editCustGalleryInputRef = useRef<HTMLInputElement | null>(null);
 
   const [newSupName, setNewSupName] = useState('');
   const [newSupCompany, setNewSupCompany] = useState('');
@@ -415,6 +468,30 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   useEffect(() => {
     onUnsavedInvoiceChange?.(activeTab === 'new-invoice' && invItems.length > 0);
   }, [activeTab, invItems.length, onUnsavedInvoiceChange]);
+
+  useEffect(() => {
+    let active = true;
+    if (!selectedCustomerDetail) {
+      setCustomerDetailStatement(null);
+      setCustomerDetailSubTab('overview');
+      setStatementPreviewDoc(null);
+      return;
+    }
+    setIsLoadingCustomerStatement(true);
+    data
+      .getCustomerStatement(selectedCustomerDetail.id)
+      .then((res) => {
+        if (active && res.success && res.statement) {
+          setCustomerDetailStatement(res.statement);
+        }
+      })
+      .finally(() => {
+        if (active) setIsLoadingCustomerStatement(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedCustomerDetail?.id, data.getCustomerStatement]);
 
   const loadCustodyStatement = useCallback(async () => {
     setIsLoadingCustodyStmt(true);
@@ -1238,6 +1315,169 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     }
   };
 
+  const openEditCustomerSheet = (c: Customer) => {
+    const primaryClean = String(c.phone || '').trim();
+    const extras: Array<{ id: string; phone: string; label: string }> = [];
+    if (Array.isArray(c.phones)) {
+      c.phones.forEach((p, idx) => {
+        const val = String(p?.phone || p?.number || '').trim();
+        if (!val) return;
+        if (val === primaryClean && (p.isPrimary || idx === 0)) return;
+        if (extras.some((ex) => ex.phone === val)) return;
+        extras.push({
+          id: p.id || `ph-${idx + 1}`,
+          phone: val,
+          label: p.label || 'إضافي',
+        });
+      });
+    }
+    if (
+      c.secondaryPhone &&
+      String(c.secondaryPhone).trim() !== primaryClean &&
+      !extras.some((ex) => ex.phone === String(c.secondaryPhone).trim())
+    ) {
+      extras.unshift({
+        id: 'ph-sec',
+        phone: String(c.secondaryPhone).trim(),
+        label: 'إضافي',
+      });
+    }
+    setEditingCustomerTarget(c);
+    setEditCustName(c.name || '');
+    setEditCustShop(c.shopName || '');
+    setEditCustPhone(primaryClean);
+    setEditCustExtraPhones(extras);
+    setEditCustGovernorate(c.governorate || '');
+    setEditCustArea(c.area || '');
+    setEditCustAddress(c.address || '');
+    setEditCustGeo(c.geoCoordinates || '');
+    setEditCustShopPhoto(c.shopPhoto || c.photo || '');
+    setEditCustPhotoChanged(false);
+    setEditCustClearPhoto(false);
+    setEditCustNotes(c.notes || '');
+    setEditCustPhoneNotice(null);
+    setEditCustMapNotice(null);
+  };
+
+  const handleEditCustPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsUploadingEditCustPhoto(true);
+      const dataUrl = await compressImageFileToDataUrl(file);
+      setEditCustShopPhoto(dataUrl);
+      setEditCustPhotoChanged(true);
+      setEditCustClearPhoto(false);
+    } catch (err: any) {
+      setFeedback({ type: 'error', text: err?.message || 'تعذر معالجة صورة المحل' });
+    } finally {
+      setIsUploadingEditCustPhoto(false);
+    }
+  };
+
+  const handleCaptureEditCustLocation = async () => {
+    setIsLocatingEditCust(true);
+    try {
+      const res = await getCurrentLocationSafe();
+      if (res.ok && res.coords) {
+        setEditCustGeo(res.coords);
+        setEditCustMapNotice(null);
+        const parsed = parseLatLngCoords(res.coords);
+        if (parsed) {
+          const rev = await reverseGeocodeCoords(parsed.lat, parsed.lng);
+          if (rev.ok) {
+            setEditCustAddress((prev) => (prev.trim() && prev.trim() !== '-' ? prev : rev.address));
+            if (rev.area) setEditCustArea((prev) => prev.trim() || rev.area || '');
+            if (rev.governorate) setEditCustGovernorate((prev) => prev.trim() || rev.governorate || '');
+            setFeedback({ type: 'success', text: 'تم تحديث إحداثيات GPS وجلب العنوان والمحافظة تلقائياً.' });
+            return;
+          }
+          setEditCustMapNotice(rev.error);
+          setFeedback({ type: 'warning', text: 'تم تحديث إحداثيات GPS، وتعذر جلب العنوان تلقائياً — يمكنك كتابته يدوياً.' });
+          return;
+        }
+        setFeedback({ type: 'success', text: 'تم تحديث إحداثيات GPS للعميل.' });
+      } else {
+        setFeedback({ type: 'error', text: res.error || 'تعذر تحديد الموقع الجغرافي' });
+      }
+    } finally {
+      setIsLocatingEditCust(false);
+    }
+  };
+
+  const handleSaveEditedCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCustomerTarget) return;
+    const primaryPhoneClean = editCustPhone.trim();
+    const extraClean = editCustExtraPhones
+      .map((p, idx) => ({
+        id: p.id || `ph-${idx + 1}`,
+        phone: p.phone.trim(),
+        label: p.label.trim() || 'إضافي',
+        isPrimary: false,
+      }))
+      .filter((p) => p.phone && p.phone !== primaryPhoneClean);
+
+    if (!editCustName.trim() || !primaryPhoneClean) {
+      setFeedback({ type: 'error', text: 'يرجى إدخال اسم العميل ورقم الهاتف الرئيسي.' });
+      return;
+    }
+
+    const consolidatedPhones: CustomerPhoneEntry[] = [
+      { id: 'ph-primary', phone: primaryPhoneClean, label: 'رئيسي', isPrimary: true },
+      ...extraClean,
+    ];
+
+    const updatesPayload: Partial<Customer> = {
+      name: editCustName.trim(),
+      shopName: editCustShop.trim() || editCustName.trim(),
+      phone: primaryPhoneClean,
+      secondaryPhone: extraClean[0]?.phone || undefined,
+      phones: consolidatedPhones,
+      governorate: editCustGovernorate.trim() || '',
+      area: editCustArea.trim() || undefined,
+      address: editCustAddress.trim() || editCustArea.trim() || '-',
+      geoCoordinates: editCustGeo.trim() || undefined,
+      notes: editCustNotes.trim() || '',
+      ...(editCustClearPhoto
+        ? { clearShopPhoto: true }
+        : editCustPhotoChanged && editCustShopPhoto
+        ? { shopPhoto: editCustShopPhoto, photo: editCustShopPhoto }
+        : {}),
+    };
+
+    setIsSavingEditCustomer(true);
+    setFeedback(null);
+    try {
+      const res = await data.updateCustomer(editingCustomerTarget.id, updatesPayload);
+      const nextPhotoVal = editCustClearPhoto
+        ? undefined
+        : editCustPhotoChanged && editCustShopPhoto
+        ? editCustShopPhoto
+        : (editingCustomerTarget.shopPhoto || editingCustomerTarget.photo);
+      const nextDetail: Customer = {
+        ...editingCustomerTarget,
+        ...updatesPayload,
+        shopPhoto: nextPhotoVal,
+        photo: nextPhotoVal,
+      };
+      if (selectedCustomerDetail?.id === editingCustomerTarget.id) {
+        setSelectedCustomerDetail(nextDetail);
+      }
+      setEditingCustomerTarget(null);
+      setFeedback({
+        type: (res as any)?.queuedOffline ? 'warning' : 'success',
+        text: (res as any)?.queuedOffline
+          ? `تم حفظ تعديل بيانات (${nextDetail.shopName || nextDetail.name}) محلياً بانتظار المزامنة.`
+          : `تم تحديث بيانات (${nextDetail.shopName || nextDetail.name}) بنجاح.`,
+      });
+    } catch (err: any) {
+      setFeedback({ type: 'error', text: err?.message || 'تعذر حفظ تعديلات العميل' });
+    } finally {
+      setIsSavingEditCustomer(false);
+    }
+  };
+
   const handleSaveNewSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSupName.trim() || !newSupPhone.trim()) {
@@ -1645,15 +1885,66 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
   const filteredCustomers = useMemo(() => {
     const q = customerSearch.trim().toLowerCase();
-    return data.customers.filter(
-      (c) =>
+    const matched = data.customers.filter((c) => {
+      const matchesSearch =
         !q ||
         c.name.toLowerCase().includes(q) ||
         (c.shopName && c.shopName.toLowerCase().includes(q)) ||
+        c.code.toLowerCase().includes(q) ||
         c.phone.includes(q) ||
-        (c.area && c.area.toLowerCase().includes(q))
-    );
-  }, [data.customers, customerSearch]);
+        (c.area && c.area.toLowerCase().includes(q)) ||
+        (c.governorate && c.governorate.toLowerCase().includes(q));
+      if (!matchesSearch) return false;
+      if (customerFilterMode === 'current') return c.status !== 'inactive';
+      if (customerFilterMode === 'debtors') return Number(c.currentBalance || 0) > 0.009;
+      if (customerFilterMode === 'credits') return Number(c.currentBalance || 0) < -0.009;
+      return true;
+    });
+
+    return [...matched].sort((a, b) => {
+      if (customerSortMode === 'debt_desc') {
+        return Number(b.currentBalance || 0) - Number(a.currentBalance || 0);
+      }
+      if (customerSortMode === 'credit_desc') {
+        return Number(a.currentBalance || 0) - Number(b.currentBalance || 0);
+      }
+      return (a.shopName || a.name).localeCompare(b.shopName || b.name, 'ar');
+    });
+  }, [data.customers, customerSearch, customerFilterMode, customerSortMode]);
+
+  const repCustomersStats = useMemo(() => {
+    const total = data.customers.length;
+    const debtors = data.customers.filter((c) => Number(c.currentBalance || 0) > 0.009);
+    const credits = data.customers.filter((c) => Number(c.currentBalance || 0) < -0.009);
+    const totalDue = debtors.reduce((sum, c) => sum + Number(c.currentBalance || 0), 0);
+    const totalCredit = credits.reduce((sum, c) => sum + Math.abs(Number(c.currentBalance || 0)), 0);
+    const debtorPct = total > 0 ? Math.round((debtors.length / total) * 100) : 0;
+    return {
+      total,
+      debtorsCount: debtors.length,
+      creditsCount: credits.length,
+      totalDue,
+      totalCredit,
+      debtorPct,
+    };
+  }, [data.customers]);
+
+  const handleConfirmDeleteCustomer = async () => {
+    if (!deleteCustomerTarget) return;
+    setIsDeletingCustomer(true);
+    const res = await data.deleteCustomer(deleteCustomerTarget.id);
+    setIsDeletingCustomer(false);
+    if (res.success) {
+      setFeedback({ type: 'success', text: `تم حذف العميل (${deleteCustomerTarget.shopName || deleteCustomerTarget.name}) بنجاح.` });
+      if (selectedCustomerDetail?.id === deleteCustomerTarget.id) {
+        setSelectedCustomerDetail(null);
+      }
+      setDeleteCustomerTarget(null);
+    } else {
+      setFeedback({ type: 'error', text: res.error || 'تعذر حذف العميل.' });
+      setDeleteCustomerTarget(null);
+    }
+  };
 
   const canConfirmDraft = (inv: Invoice): { ready: boolean; reason?: string } => {
     if (inv.linkedRepTransferId) {
@@ -1898,7 +2189,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const homeTiles: Array<{
     key: RepTabKey;
     label: string;
-    icon: React.ElementType;
+    iconNode: React.ReactNode;
     allowed: boolean;
     tone: string;
     badgeCount?: number;
@@ -1907,90 +2198,90 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     {
       key: 'new-purchase',
       label: 'فاتورة شراء',
-      icon: ShoppingBag,
+      iconNode: <PurchaseInvoiceIcon className="w-11 h-11" />,
       allowed: canCreatePurchase,
-      tone: 'bg-indigo-50 text-indigo-900 border-indigo-200',
+      tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
     },
     {
       key: 'sales-return',
       label: 'مرتجع بيع',
-      icon: RotateCcw,
+      iconNode: <SalesReturnIcon className="w-11 h-11" />,
       allowed: canSales,
-      tone: 'bg-rose-50 text-rose-900 border-rose-200',
+      tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
     },
     {
       key: 'new-invoice',
       label: 'فاتورة بيع',
-      icon: FilePlus2,
+      iconNode: <SalesInvoiceIcon className="w-11 h-11" />,
       allowed: canSales,
-      tone: 'bg-blue-900 text-white border-blue-950',
+      tone: 'bg-white text-blue-950 border-blue-200 ring-1 ring-blue-100 hover:border-blue-400',
     },
     // Row 2
     {
       key: 'cash-deposit',
       label: 'إيداع نقدي',
-      icon: ArrowDownCircle,
+      iconNode: <ExpensesCashIcon className="w-11 h-11" />,
       allowed: canCashOps || canAccounts || canSales,
-      tone: 'bg-emerald-50 text-emerald-900 border-emerald-200',
+      tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
     },
     {
       key: 'custody-transfer',
-      label: 'تحويل',
-      icon: ArrowLeftRight,
+      label: 'تحويل عهدة',
+      iconNode: <TransferArrowsIcon className="w-11 h-11" />,
       allowed: canTransfers,
-      tone: 'bg-cyan-50 text-cyan-900 border-cyan-200',
+      tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
     },
     {
       key: 'purchase-return',
       label: 'مرتجع شراء',
-      icon: RotateCcw,
+      iconNode: <PurchaseReturnIcon className="w-11 h-11" />,
       allowed: canPurchases,
-      tone: 'bg-orange-50 text-orange-900 border-orange-200',
+      tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
     },
     // Row 3
     {
       key: 'cash-withdrawal',
       label: 'سحب نقدي',
-      icon: ArrowUpCircle,
+      iconNode: <WalletCashIcon className="w-11 h-11" />,
       allowed: canCashOps,
-      tone: 'bg-amber-50 text-amber-900 border-amber-200',
+      tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
     },
     {
       key: 'new-customer',
       label: 'عميل جديد',
-      icon: UserPlus,
+      iconNode: <CustomerAddIcon className="w-11 h-11" />,
       allowed: canAddCustomer,
-      tone: 'bg-sky-50 text-sky-900 border-sky-200',
+      tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
     },
     {
       key: 'new-supplier',
       label: 'مورد جديد',
-      icon: Building2,
+      iconNode: <SupplierAddIcon className="w-11 h-11" />,
       allowed: canCreatePurchase,
-      tone: 'bg-purple-50 text-purple-900 border-purple-200',
+      tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
     },
     // Row 4
     {
       key: 'refresh',
-      label: 'REFRESH',
-      icon: RefreshCw,
+      label: 'تحديث ومزامنة',
+      iconNode: <RefreshCloudIcon className="w-11 h-11" />,
       allowed: true,
-      tone: 'bg-slate-900 text-white border-slate-950',
+      tone: 'bg-white text-slate-900 border-blue-200 hover:border-blue-400',
       badgeCount: data.pendingSyncCount,
     },
     {
       key: 'cheques-installments',
       label: 'شيك وقسط',
-      icon: CreditCard,
+      iconNode: <ChequesIcon className="w-11 h-11" />,
       allowed: canAccounts,
-      tone: 'bg-teal-50 text-teal-900 border-teal-200',
+      tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
     },
     {
       key: 'new-quote',
       label: 'عرض سعر',
-      icon: FileSpreadsheet,
+      iconNode: <PriceQuoteIcon className="w-11 h-11" />,
       allowed: canSales,
-      tone: 'bg-blue-50 text-blue-950 border-blue-200',
+      tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
     },
   ];
 
@@ -2231,10 +2522,39 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             )}
           </div>
 
+          {/* Quick Customers & Purchases Access Strip */}
+          <div className="grid grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              onClick={() => onTabChange('customers')}
+              className="bg-white rounded-2xl border border-slate-200 hover:border-blue-300 shadow-2xs p-3 flex items-center gap-2.5 text-right cursor-pointer"
+            >
+              <CustomersGroupIcon className="w-9 h-9 shrink-0" />
+              <div className="min-w-0">
+                <span className="block text-xs font-black text-slate-900 truncate">العملاء والحسابات</span>
+                <span className="block text-[10px] text-slate-500 font-semibold truncate">
+                  {data.customers.length} عميل · متابعة وكشوف
+                </span>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => onTabChange('purchases-list')}
+              className="bg-white rounded-2xl border border-slate-200 hover:border-blue-300 shadow-2xs p-3 flex items-center gap-2.5 text-right cursor-pointer"
+            >
+              <PurchaseInvoiceIcon className="w-9 h-9 shrink-0" />
+              <div className="min-w-0">
+                <span className="block text-xs font-black text-slate-900 truncate">فواتير الشراء</span>
+                <span className="block text-[10px] text-slate-500 font-semibold truncate">
+                  {myPurchaseInvoices.length} فاتورة · إرسال ومتابعة
+                </span>
+              </div>
+            </button>
+          </div>
+
           {/* 4x3 Operation Tile Grid */}
           <div className="grid grid-cols-3 gap-2.5">
             {homeTiles.map((tile) => {
-              const Icon = tile.icon;
               return (
                 <button
                   key={tile.key}
@@ -2249,10 +2569,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     }
                     onTabChange(tile.key);
                   }}
-                  className={`relative min-h-[88px] p-3 rounded-2xl border flex flex-col items-center justify-center gap-2 text-center transition-transform active:scale-97 cursor-pointer shadow-2xs ${
+                  className={`relative min-h-[104px] p-3 rounded-2xl border flex flex-col items-center justify-center gap-2 text-center transition-all active:scale-97 cursor-pointer shadow-xs ${
                     tile.allowed
                       ? tile.tone
-                      : 'bg-slate-100 text-slate-400 border-slate-200 opacity-75'
+                      : 'bg-slate-100 text-slate-400 border-slate-200 opacity-70'
                   }`}
                 >
                   {!tile.allowed && (
@@ -2263,7 +2583,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       {tile.badgeCount}
                     </span>
                   ) : null}
-                  <Icon className="w-6 h-6 shrink-0" />
+                  <div className="flex items-center justify-center">{tile.iconNode}</div>
                   <span className="text-xs font-black leading-tight">{tile.label}</span>
                 </button>
               );
@@ -2498,34 +2818,108 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       {/* ==================== REFRESH SCREEN ==================== */}
       {activeTab === 'refresh' && <RefreshSyncScreen onBack={() => onTabChange('home')} />}
 
-      {/* ==================== ALLOWED CUSTOMERS LIST (with Safe Call & Google Maps) ==================== */}
+      {/* ==================== ALLOWED CUSTOMERS LIST (Action Bar, Live Stats, Filters & Safe Actions) ==================== */}
       {activeTab === 'customers' && (
         <div className="space-y-3">
-          <div className="bg-white rounded-2xl border border-slate-200 p-3 shadow-xs flex items-center gap-2">
-            <div className="relative flex-1">
-              <input
-                type="text"
-                value={customerSearch}
-                onChange={(e) => setCustomerSearch(e.target.value)}
-                placeholder="ابحث باسم العميل أو المحل أو المنطقة أو الهاتف..."
-                className="w-full rounded-xl border border-slate-300 py-3 pr-10 pl-3 text-xs font-semibold outline-hidden focus:border-blue-600"
-              />
-              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3.5" />
+          {/* Header Action Bar */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                <CustomersGroupIcon className="w-9 h-9 shrink-0" />
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">العملاء والمحلات والحسابات</h3>
+                  <p className="text-[11px] text-slate-500">عرض المحلات، المبالغ المتبقية، الإحصائيات وكشف الحساب التفصيلي</p>
+                </div>
+              </div>
+              {canAddCustomer && (
+                <button
+                  type="button"
+                  onClick={() => onTabChange('new-customer')}
+                  className="min-h-[42px] px-3.5 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>إضافة عميل جديد</span>
+                </button>
+              )}
             </div>
-            {canAddCustomer && (
-              <button
-                type="button"
-                onClick={() => onTabChange('new-customer')}
-                className="min-h-[44px] px-3.5 rounded-xl bg-blue-900 text-white text-xs font-black shrink-0 cursor-pointer"
+
+            {/* Live Scoped Customer Statistics Cards (NEVER merging لنا and علينا) */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs tabular-nums">
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                <span className="text-[10px] text-slate-500 block">إجمالي العملاء</span>
+                <strong className="text-base font-black text-slate-900">{repCustomersStats.total}</strong>
+                <span className="block text-[10px] text-slate-500">نسبة المديونية: {repCustomersStats.debtorPct}%</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200">
+                <span className="text-[10px] text-rose-700 block">العملاء المدينون ({repCustomersStats.debtorsCount})</span>
+                <strong className="text-base font-black font-mono text-rose-800">
+                  {repCustomersStats.totalDue.toLocaleString()} {data.settings.currency}
+                </strong>
+                <span className="block text-[10px] text-rose-700 font-bold">المبالغ المتبقية (لنا)</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
+                <span className="text-[10px] text-emerald-700 block">أرصدة دائنة للعملاء ({repCustomersStats.creditsCount})</span>
+                <strong className="text-base font-black font-mono text-emerald-800">
+                  {repCustomersStats.totalCredit.toLocaleString()} {data.settings.currency}
+                </strong>
+                <span className="block text-[10px] text-emerald-700 font-bold">دفعات مقدمة (علينا)</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 flex flex-col justify-between">
+                <span className="text-[10px] text-blue-800 block">العملاء المطابقون للبحث</span>
+                <strong className="text-base font-black text-blue-950">{filteredCustomers.length}</strong>
+                <span className="block text-[10px] text-blue-700">عميل في العرض الحالي</span>
+              </div>
+            </div>
+
+            {/* Search, Filter Buttons & Sort */}
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={customerSearch}
+                  onChange={(e) => setCustomerSearch(e.target.value)}
+                  placeholder="ابحث باسم العميل أو المحل أو الكود أو المنطقة أو الهاتف..."
+                  className="w-full rounded-xl border border-slate-300 py-2.5 pr-10 pl-3 text-xs font-semibold outline-hidden focus:border-blue-600"
+                />
+                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+              </div>
+              <select
+                value={customerSortMode}
+                onChange={(e) => setCustomerSortMode(e.target.value as any)}
+                className="min-h-[42px] rounded-xl border border-slate-300 px-3 text-xs font-bold bg-white"
               >
-                + عميل
-              </button>
-            )}
+                <option value="debt_desc">ترتيب: الأعلى مديونية</option>
+                <option value="credit_desc">ترتيب: الأعلى رصيداً دائناً</option>
+                <option value="name">ترتيب: أبجدياً</option>
+              </select>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5 text-[11px] font-bold">
+              {[
+                { id: 'all', label: `الكل (${repCustomersStats.total})` },
+                { id: 'current', label: 'العملاء الحاليين' },
+                { id: 'debtors', label: `المبالغ المتبقية (${repCustomersStats.debtorsCount})` },
+                { id: 'credits', label: `أرصدة دائنة (${repCustomersStats.creditsCount})` },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setCustomerFilterMode(tab.id as any)}
+                  className={`min-h-[36px] px-3 rounded-xl border transition-colors cursor-pointer ${
+                    customerFilterMode === tab.id
+                      ? 'bg-blue-900 text-white border-blue-900 font-black'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {filteredCustomers.length === 0 ? (
             <div className="bg-white rounded-3xl border border-slate-200 p-10 text-center text-xs text-slate-500">
-              لا يوجد عملاء مخصصون لحسابك حالياً.
+              لا يوجد عملاء مطابقون لمعايير البحث أو التصفية الحالية.
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -2588,11 +2982,19 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       </div>
                       <div className="text-left shrink-0">
                         <span className="block text-[10px] text-slate-500">
-                          {c.currentBalance < 0 ? 'رصيد دائن للعميل' : c.currentBalance > 0 ? 'مديونية على العميل' : 'الرصيد'}
+                          {c.currentBalance < -0.009
+                            ? 'رصيد دائن للعميل (علينا)'
+                            : c.currentBalance > 0.009
+                            ? 'مستحق على العميل (لنا)'
+                            : 'الحساب متوازن'}
                         </span>
                         <strong
                           className={`font-mono text-sm tabular-nums ${
-                            c.currentBalance > 0 ? 'text-red-700' : 'text-emerald-700'
+                            c.currentBalance > 0.009
+                              ? 'text-red-700'
+                              : c.currentBalance < -0.009
+                              ? 'text-emerald-700'
+                              : 'text-slate-700'
                           }`}
                         >
                           {Math.abs(c.currentBalance).toLocaleString()} {data.settings.currency}
@@ -2600,13 +3002,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-1.5">
                       {hasValidPhone ? (
                         <a
                           href={`tel:${cleanedPhone}`}
-                          className="min-h-[42px] px-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono font-bold inline-flex items-center gap-1.5"
+                          className="min-h-[40px] px-2.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono font-bold inline-flex items-center gap-1"
                         >
-                          <Phone className="w-4 h-4" />
+                          <Phone className="w-3.5 h-3.5" />
                           <span>{c.phone}</span>
                         </a>
                       ) : (
@@ -2615,44 +3017,64 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           onClick={() =>
                             setFeedback({ type: 'warning', text: `رقم هاتف العميل (${c.name}) غير مكتمل أو غير صالح للاتصال.` })
                           }
-                          className="min-h-[42px] px-3 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                          className="min-h-[40px] px-2.5 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 font-bold inline-flex items-center gap-1 cursor-pointer"
                         >
-                          <Phone className="w-4 h-4" />
+                          <Phone className="w-3.5 h-3.5" />
                           <span>{c.phone || 'بدون هاتف'}</span>
                         </button>
                       )}
-                      {hasValidMap ? (
+                      {hasValidMap && (
                         <a
                           href={mapsHref}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="min-h-[42px] px-3 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1.5"
+                          className="min-h-[40px] px-2.5 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1"
                         >
-                          <MapPin className="w-4 h-4" />
+                          <MapPin className="w-3.5 h-3.5 text-red-600" />
                           <span>الموقع</span>
                         </a>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setFeedback({ type: 'warning', text: `لا يوجد عنوان أو موقع جغرافي مسجل للعميل (${c.name}).` })
-                          }
-                          className="min-h-[42px] px-3 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 font-bold inline-flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <MapPin className="w-4 h-4" />
-                          <span>بدون عنوان</span>
-                        </button>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedCustomerDetail(c);
+                          setCustomerDetailSubTab('statement');
+                        }}
+                        className="min-h-[40px] px-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-bold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>كشف حساب</span>
+                      </button>
                       <button
                         type="button"
                         onClick={() => {
                           setInvCustomerId(c.id);
                           onTabChange('new-invoice');
                         }}
-                        className="min-h-[42px] flex-1 px-3 rounded-xl bg-blue-900 text-white font-bold cursor-pointer"
+                        className="min-h-[40px] flex-1 px-3 rounded-xl bg-blue-900 text-white font-bold cursor-pointer"
                       >
-                        فاتورة جديدة
+                        فاتورة
                       </button>
+                      {canEditCustomer && (
+                        <button
+                          type="button"
+                          onClick={() => openEditCustomerSheet(c)}
+                          className="min-h-[40px] px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 font-bold cursor-pointer"
+                          title="تعديل بيانات العميل"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {canDeleteCustomer && (
+                        <button
+                          type="button"
+                          onClick={() => setDeleteCustomerTarget(c)}
+                          className="min-h-[40px] px-2.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold cursor-pointer"
+                          title="حذف العميل"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -3778,7 +4200,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             {/* 1. Shop Name & 2. Customer Name */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">اسم المحل / النشاط</label>
+                <label className="block font-bold text-slate-700 mb-1">اسم المحل</label>
                 <input
                   type="text"
                   value={newCustShop}
@@ -3788,13 +4210,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 />
               </div>
               <div>
-                <label className="block font-bold text-slate-700 mb-1">اسم العميل / المسؤول *</label>
+                <label className="block font-bold text-slate-700 mb-1">اسم العميل / صاحب المحل *</label>
                 <input
                   type="text"
                   required
                   value={newCustName}
                   onChange={(e) => setNewCustName(e.target.value)}
-                  placeholder="الاسم الكامل للعميل"
+                  placeholder="الاسم الكامل للعميل أو صاحب المحل"
                   className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold"
                 />
               </div>
@@ -3862,7 +4284,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
             {/* 4. Address + adjacent GPS Icon Button + Maps Preview */}
             <div>
-              <label className="block font-bold text-slate-700 mb-1">العنوان التفصيلي</label>
+              <label className="block font-bold text-slate-700 mb-1">عنوان المحل الرئيسي</label>
               <div className="flex items-center gap-1.5">
                 <input
                   type="text"
@@ -4654,6 +5076,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 )}
 
                 <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPurchaseDetail(inv)}
+                    className="min-h-[38px] px-3 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>تفاصيل الفاتورة</span>
+                  </button>
                   {canSendOrEdit && (
                     <>
                       <button
@@ -5528,16 +5958,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         </div>
       )}
 
-      {/* Customer Tap-for-Details Sheet */}
+      {/* Customer Tap-for-Details & Account Statement Sheet */}
       {selectedCustomerDetail && (() => {
         const c = selectedCustomerDetail;
         const custInvoices = myInvoices
           .filter((inv) => inv.customerId === c.id)
-          .slice(0, 5);
+          .slice(0, 10);
         const latestInvoice = custInvoices[0];
         const latestPaymentTx = (data.financialTransactions || []).find(
           (tx) => tx.partyId === c.id || tx.notes?.includes(c.name)
         );
+        const stmtSummary = customerDetailStatement?.summary;
         const allPhones: CustomerPhoneEntry[] =
           Array.isArray(c.phones) && c.phones.length > 0
             ? c.phones
@@ -5552,9 +5983,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           mapRaw.startsWith('http://') || mapRaw.startsWith('https://')
             ? mapRaw
             : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapRaw)}`;
+        const previewInvoiceObj =
+          statementPreviewDoc?.type === 'invoice'
+            ? data.invoices.find((inv) => inv.id === statementPreviewDoc.docId || inv.invoiceNumber === statementPreviewDoc.title) || null
+            : null;
+        const previewPaymentObj =
+          statementPreviewDoc?.type === 'payment'
+            ? data.financialTransactions.find((tx) => tx.id === statementPreviewDoc.docId) || null
+            : null;
         return (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
-            <div className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 max-h-[88vh] overflow-y-auto flex flex-col gap-3 text-xs pb-safe">
+            <div className="w-full max-w-2xl bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto flex flex-col gap-3 text-xs pb-safe">
               <div className="flex items-start justify-between gap-2 border-b pb-3">
                 <div className="flex items-start gap-3">
                   {(c.shopPhoto || c.photo) ? (
@@ -5599,97 +6038,314 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 </button>
               </div>
 
-              <div className="grid grid-cols-3 gap-2 text-center tabular-nums">
-                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                  <span className="text-[10px] text-slate-500 block">
-                    {c.currentBalance < 0 ? 'رصيد دائن للعميل' : 'الرصيد المستحق'}
-                  </span>
-                  <strong className={`font-mono text-sm ${c.currentBalance > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
-                    {Math.abs(c.currentBalance).toLocaleString()} {data.settings.currency}
-                  </strong>
-                </div>
-                <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200">
-                  <span className="text-[10px] text-blue-800 block">آخر تعامل</span>
-                  <strong className="font-mono text-[11px] text-blue-950">
-                    {latestInvoice ? `${latestInvoice.date} (${latestInvoice.invoiceNumber})` : 'لا يوجد'}
-                  </strong>
-                </div>
-                <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
-                  <span className="text-[10px] text-emerald-800 block">آخر سداد</span>
-                  <strong className="font-mono text-[11px] text-emerald-950">
-                    {latestPaymentTx ? `${latestPaymentTx.amount.toLocaleString()} (${latestPaymentTx.date})` : 'لا يوجد'}
-                  </strong>
-                </div>
+              {/* Detail Modal Sub-Tabs */}
+              <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-2xl">
+                <button
+                  type="button"
+                  onClick={() => setCustomerDetailSubTab('overview')}
+                  className={`min-h-[40px] rounded-xl font-black cursor-pointer ${
+                    customerDetailSubTab === 'overview' ? 'bg-blue-900 text-white shadow-xs' : 'text-slate-700'
+                  }`}
+                >
+                  ملف العميل والملخص
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCustomerDetailSubTab('statement')}
+                  className={`min-h-[40px] rounded-xl font-black cursor-pointer ${
+                    customerDetailSubTab === 'statement' ? 'bg-blue-900 text-white shadow-xs' : 'text-slate-700'
+                  }`}
+                >
+                  كشف الحساب التفصيلي
+                </button>
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                {allPhones.map((ph, idx) => {
-                  const clean = String(ph.phone || '').replace(/[^\d+]/g, '');
-                  if (clean.replace(/\D/g, '').length < 5) return null;
-                  return (
-                    <a
-                      key={ph.id || idx}
-                      href={`tel:${clean}`}
-                      className={`min-h-[42px] px-3 rounded-xl font-mono font-bold inline-flex items-center gap-1.5 border ${
-                        ph.isPrimary || idx === 0
-                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                          : 'bg-teal-50 text-teal-800 border-teal-200'
-                      }`}
-                    >
-                      <Phone className="w-4 h-4" />
-                      <span>{ph.phone}</span>
-                      {ph.label && <span className="font-sans text-[10px]">({ph.label})</span>}
-                    </a>
-                  );
-                })}
-                {hasValidMap && (
-                  <a
-                    href={mapsHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="min-h-[42px] px-3 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1.5"
-                  >
-                    <MapPin className="w-4 h-4 text-red-600" />
-                    <span>فتح في الخرائط</span>
-                  </a>
-                )}
-              </div>
-
-              {parsedMap && (() => {
-                const delta = 0.005;
-                const bbox = `${parsedMap.lng - delta},${parsedMap.lat - delta},${parsedMap.lng + delta},${parsedMap.lat + delta}`;
-                return (
-                  <div className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-50">
-                    <iframe
-                      title="معاينة موقع العميل"
-                      src={`https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${parsedMap.lat},${parsedMap.lng}`}
-                      className="w-full h-36 border-0"
-                      loading="lazy"
-                    />
-                  </div>
-                );
-              })()}
-
-              <div className="flex-1 overflow-y-auto space-y-1.5 border border-slate-200 rounded-2xl p-3">
-                <span className="font-black text-slate-800 block mb-1">آخر فواتير العميل ({custInvoices.length})</span>
-                {custInvoices.length === 0 ? (
-                  <p className="text-slate-400 text-center py-3">لا توجد فواتير مسجلة لهذا العميل.</p>
-                ) : (
-                  custInvoices.map((inv) => (
-                    <div key={inv.id} className="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0">
-                      <div>
-                        <span className="font-mono font-bold text-blue-950">{inv.invoiceNumber}</span>
-                        <span className="text-[10px] text-slate-500 mr-2">{inv.date}</span>
-                      </div>
-                      <strong className="font-mono text-slate-900 tabular-nums">
-                        {inv.grandTotal.toLocaleString()} {data.settings.currency}
+              {customerDetailSubTab === 'overview' && (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-center tabular-nums">
+                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] text-slate-500 block">
+                        {c.currentBalance < -0.009
+                          ? 'رصيد دائن للعميل (علينا)'
+                          : c.currentBalance > 0.009
+                          ? 'المبلغ المتبقي (لنا)'
+                          : 'الحساب متوازن'}
+                      </span>
+                      <strong
+                        className={`font-mono text-sm ${
+                          c.currentBalance > 0.009 ? 'text-red-700' : 'text-emerald-700'
+                        }`}
+                      >
+                        {Math.abs(c.currentBalance).toLocaleString()} {data.settings.currency}
                       </strong>
                     </div>
-                  ))
-                )}
-              </div>
+                    <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200">
+                      <span className="text-[10px] text-blue-800 block">إجمالي المشتريات/الفواتير</span>
+                      <strong className="font-mono text-sm text-blue-950">
+                        {(stmtSummary?.totalSales ?? custInvoices.reduce((s, i) => s + Number(i.grandTotal || 0), 0)).toLocaleString()} {data.settings.currency}
+                      </strong>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
+                      <span className="text-[10px] text-emerald-800 block">إجمالي المدفوع والمحصل</span>
+                      <strong className="font-mono text-sm text-emerald-950">
+                        {(stmtSummary?.totalPaid ?? stmtSummary?.totalCredit ?? 0).toLocaleString()} {data.settings.currency}
+                      </strong>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] text-slate-500 block">آخر فاتورة</span>
+                      <strong className="font-mono text-[11px] text-blue-950">
+                        {stmtSummary?.lastInvoiceDate
+                          ? `${stmtSummary.lastInvoiceDate} (${stmtSummary.lastInvoiceNumber || ''})`
+                          : latestInvoice
+                          ? `${latestInvoice.date} (${latestInvoice.invoiceNumber})`
+                          : 'لا يوجد'}
+                      </strong>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 col-span-1 sm:col-span-2">
+                      <span className="text-[10px] text-slate-500 block">آخر تحصيل / سداد</span>
+                      <strong className="font-mono text-[11px] text-emerald-900">
+                        {stmtSummary?.lastPaymentDate
+                          ? stmtSummary.lastPaymentDate
+                          : latestPaymentTx
+                          ? `${latestPaymentTx.amount.toLocaleString()} (${latestPaymentTx.date})`
+                          : 'لا يوجد'}
+                      </strong>
+                    </div>
+                  </div>
 
-              <div className="grid grid-cols-2 gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    {allPhones.map((ph, idx) => {
+                      const rawPhone = String(ph.phone || ph.number || '').trim();
+                      const clean = rawPhone.replace(/[^\d+]/g, '');
+                      if (clean.replace(/\D/g, '').length < 5) return null;
+                      return (
+                        <a
+                          key={ph.id || idx}
+                          href={`tel:${clean}`}
+                          className={`min-h-[42px] px-3 rounded-xl font-mono font-bold inline-flex items-center gap-1.5 border ${
+                            ph.isPrimary || idx === 0
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              : 'bg-teal-50 text-teal-800 border-teal-200'
+                          }`}
+                        >
+                          <Phone className="w-4 h-4" />
+                          <span>{rawPhone}</span>
+                          {ph.label && <span className="font-sans text-[10px]">({ph.label})</span>}
+                        </a>
+                      );
+                    })}
+                    {hasValidMap && (
+                      <a
+                        href={mapsHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="min-h-[42px] px-3 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1.5"
+                      >
+                        <MapPin className="w-4 h-4 text-red-600" />
+                        <span>فتح في الخرائط</span>
+                      </a>
+                    )}
+                  </div>
+
+                  {parsedMap && (() => {
+                    const delta = 0.005;
+                    const bbox = `${parsedMap.lng - delta},${parsedMap.lat - delta},${parsedMap.lng + delta},${parsedMap.lat + delta}`;
+                    return (
+                      <div className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-50">
+                        <iframe
+                          title="معاينة موقع العميل"
+                          src={`https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${parsedMap.lat},${parsedMap.lng}`}
+                          className="w-full h-36 border-0"
+                          loading="lazy"
+                        />
+                      </div>
+                    );
+                  })()}
+
+                  <div className="space-y-1.5 border border-slate-200 rounded-2xl p-3">
+                    <span className="font-black text-slate-800 block mb-1">آخر فواتير العميل ({custInvoices.length})</span>
+                    {custInvoices.length === 0 ? (
+                      <p className="text-slate-400 text-center py-3">لا توجد فواتير مسجلة لهذا العميل.</p>
+                    ) : (
+                      custInvoices.map((inv) => (
+                        <button
+                          key={inv.id}
+                          type="button"
+                          onClick={() =>
+                            setStatementPreviewDoc({
+                              type: 'invoice',
+                              docId: inv.id,
+                              title: inv.invoiceNumber,
+                            })
+                          }
+                          className="w-full flex items-center justify-between py-2 px-2 rounded-xl hover:bg-blue-50/70 border-b border-slate-100 last:border-0 text-right cursor-pointer"
+                        >
+                          <div>
+                            <span className="font-mono font-bold text-blue-950">{inv.invoiceNumber}</span>
+                            <span className="text-[10px] text-slate-500 mr-2">{inv.date}</span>
+                          </div>
+                          <div className="text-left">
+                            <strong className="font-mono text-slate-900 tabular-nums block">
+                              {inv.grandTotal.toLocaleString()} {data.settings.currency}
+                            </strong>
+                            {inv.remainingAmount > 0 && (
+                              <span className="text-[10px] font-bold text-red-700">
+                                متبقي: {inv.remainingAmount.toLocaleString()}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+
+              {customerDetailSubTab === 'statement' && (
+                <div className="space-y-3">
+                  {isLoadingCustomerStatement ? (
+                    <p className="text-center py-8 text-slate-500 font-bold">جاري تحميل كشف الحساب التفصيلي...</p>
+                  ) : (
+                    <>
+                      {stmtSummary && (
+                        <div className="grid grid-cols-3 gap-2 text-center tabular-nums">
+                          <div className="p-2.5 rounded-xl bg-red-50 border border-red-200">
+                            <span className="text-[10px] text-red-700 block">إجمالي مدين (لنا)</span>
+                            <strong className="font-mono text-sm text-red-800">
+                              {stmtSummary.totalDebit.toLocaleString()}
+                            </strong>
+                          </div>
+                          <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
+                            <span className="text-[10px] text-emerald-700 block">إجمالي دائن (سداد/مرتجع)</span>
+                            <strong className="font-mono text-sm text-emerald-800">
+                              {stmtSummary.totalCredit.toLocaleString()}
+                            </strong>
+                          </div>
+                          <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200">
+                            <span className="text-[10px] text-blue-800 block">
+                              {stmtSummary.currentBalance > 0.009
+                                ? 'الرصيد (لنا)'
+                                : stmtSummary.currentBalance < -0.009
+                                ? 'رصيد دائن (علينا)'
+                                : 'متوازن'}
+                            </span>
+                            <strong className="font-mono text-sm text-blue-950">
+                              {Math.abs(stmtSummary.currentBalance).toLocaleString()}
+                            </strong>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="border border-slate-200 rounded-2xl overflow-hidden">
+                        {(customerDetailStatement?.entries || []).length === 0 ? (
+                          <p className="text-center text-slate-400 py-6">لا توجد حركات مسجلة في كشف حساب العميل.</p>
+                        ) : (
+                          <div className="divide-y divide-slate-100 max-h-[42vh] overflow-y-auto">
+                            {customerDetailStatement!.entries.map((entry) => {
+                              const rb = Number(entry.runningBalance ?? 0);
+                              const dirLabel = rb > 0.009 ? 'لنا' : rb < -0.009 ? 'علينا' : 'متوازن';
+                              const clickable = Boolean(entry.docId && (entry.docType === 'invoice' || entry.docType === 'payment'));
+                              return (
+                                <div
+                                  key={entry.id}
+                                  onClick={() => {
+                                    if (clickable && entry.docId) {
+                                      setStatementPreviewDoc({
+                                        type: entry.docType === 'payment' ? 'payment' : 'invoice',
+                                        docId: entry.docId,
+                                        title: entry.docNumber || entry.label,
+                                      });
+                                    }
+                                  }}
+                                  className={`p-3 space-y-1 ${clickable ? 'hover:bg-blue-50/70 cursor-pointer' : ''}`}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="font-black text-slate-900">{entry.label}</span>
+                                    <span className="font-mono text-[11px] text-slate-500">
+                                      {entry.docNumber} · {entry.date}
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-slate-600">{entry.description}</p>
+                                  <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] tabular-nums pt-0.5">
+                                    <span className="text-red-700">
+                                      {entry.debit ? `مدين: ${entry.debit.toLocaleString()}` : ''}
+                                    </span>
+                                    <span className="text-emerald-700">
+                                      {entry.credit ? `دائن: ${entry.credit.toLocaleString()}` : ''}
+                                    </span>
+                                    {typeof entry.remainingAmount === 'number' && entry.remainingAmount > 0 && (
+                                      <span className="text-amber-700">
+                                        متبقي: {entry.remainingAmount.toLocaleString()}
+                                      </span>
+                                    )}
+                                    <span className="font-black text-blue-950">
+                                      الرصيد: {Math.abs(rb).toLocaleString()} ({dirLabel})
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {statementPreviewDoc && (
+                <div className="p-3 rounded-2xl bg-blue-50 border border-blue-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <strong className="text-blue-950 font-black">
+                      تفاصيل المستند: {statementPreviewDoc.title}
+                    </strong>
+                    <button
+                      type="button"
+                      onClick={() => setStatementPreviewDoc(null)}
+                      className="px-2.5 py-1 rounded-lg bg-white text-slate-700 font-bold cursor-pointer"
+                    >
+                      إغلاق
+                    </button>
+                  </div>
+                  {previewInvoiceObj ? (
+                    <div className="space-y-1 text-[11px]">
+                      <div className="flex justify-between font-bold text-slate-700">
+                        <span>التاريخ: {previewInvoiceObj.date}</span>
+                        <span>الإجمالي: {previewInvoiceObj.grandTotal.toLocaleString()} {data.settings.currency}</span>
+                      </div>
+                      <div className="divide-y divide-blue-200/70 bg-white rounded-xl p-2">
+                        {(previewInvoiceObj.items || []).map((it, idx) => (
+                          <div key={idx} className="py-1 flex justify-between">
+                            <span>{it.productName} ({it.quantity} {it.unit})</span>
+                            <strong className="font-mono">{it.total.toLocaleString()}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : previewPaymentObj ? (
+                    <div className="bg-white rounded-xl p-2.5 space-y-1 text-[11px]">
+                      <div className="flex justify-between">
+                        <span>التاريخ:</span>
+                        <strong className="font-mono">{previewPaymentObj.date}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>المبلغ المحصل:</span>
+                        <strong className="font-mono text-emerald-700">
+                          {previewPaymentObj.amount.toLocaleString()} {data.settings.currency}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>البيان:</span>
+                        <span>{previewPaymentObj.notes || '-'}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-600">لا تتوفر تفاصيل إضافية لهذا المستند محلياً.</p>
+                  )}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2 pt-1">
                 <button
                   type="button"
                   onClick={() => {
@@ -5697,7 +6353,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     setSelectedCustomerDetail(null);
                     onTabChange('new-invoice');
                   }}
-                  className="min-h-[46px] rounded-xl bg-blue-900 text-white font-black cursor-pointer"
+                  className="min-h-[44px] rounded-xl bg-blue-900 text-white font-black cursor-pointer"
                 >
                   + فاتورة جديدة
                 </button>
@@ -5709,10 +6365,32 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     setSelectedCustomerDetail(null);
                     onTabChange('cash-deposit');
                   }}
-                  className="min-h-[46px] rounded-xl bg-emerald-700 text-white font-black cursor-pointer"
+                  className="min-h-[44px] rounded-xl bg-emerald-700 text-white font-black cursor-pointer"
                 >
                   + تحصيل دفعة
                 </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {canEditCustomer && (
+                  <button
+                    type="button"
+                    onClick={() => openEditCustomerSheet(c)}
+                    className="min-h-[42px] flex-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-300 font-bold inline-flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Edit className="w-4 h-4" />
+                    <span>تعديل بيانات العميل</span>
+                  </button>
+                )}
+                {canDeleteCustomer && (
+                  <button
+                    type="button"
+                    onClick={() => setDeleteCustomerTarget(c)}
+                    className="min-h-[42px] px-4 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>حذف</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -6017,6 +6695,476 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           </div>
         </div>
       )}
+
+      {/* Rep Purchase Invoice Full Detail Modal */}
+      {selectedPurchaseDetail && (() => {
+        const pur = selectedPurchaseDetail;
+        const meta = getPurchaseDispatchMeta(pur);
+        const canSendOrEdit = pur.status === 'draft' && (meta.key === 'draft' || meta.key === 'rejected');
+        return (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
+            <div className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 max-h-[88vh] flex flex-col gap-3 text-xs pb-safe">
+              <div className="flex items-start justify-between gap-2 border-b pb-3">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="font-black text-base text-slate-900 font-mono">{pur.invoiceNumber}</h4>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${meta.badgeClass}`}>
+                      {meta.label}
+                    </span>
+                  </div>
+                  <p className="text-slate-600 mt-0.5">
+                    {pur.supplierName || 'مورد'} · {pur.date} · {pur.warehouseName || 'المخزن الرئيسي'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPurchaseDetail(null)}
+                  className="min-h-[38px] px-3 rounded-xl bg-slate-100 font-bold text-slate-700 cursor-pointer shrink-0"
+                >
+                  إغلاق
+                </button>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                <p>
+                  طريقة السداد: <strong>{pur.paymentType === 'cash' ? 'نقدي' : pur.paymentType === 'credit' ? 'آجل' : 'جزئي'}</strong>
+                  {pur.paidAmount > 0 ? ` · مدفوع: ${pur.paidAmount.toLocaleString()} ${data.settings.currency}` : ''}
+                </p>
+                {pur.sentAt && (
+                  <p>
+                    وقت الإرسال: <strong dir="ltr" className="font-mono">{new Date(pur.sentAt).toLocaleString('ar-EG')}</strong>
+                    {pur.recipientName ? ` · موجهة إلى: ${pur.recipientName}` : ''}
+                  </p>
+                )}
+                {pur.receivedBy && (
+                  <p className="text-sky-800 font-bold">
+                    المستلم الفعلي: {pur.receivedBy}
+                    {pur.receivedAt ? ` (${new Date(pur.receivedAt).toLocaleString('ar-EG')})` : ''}
+                  </p>
+                )}
+                {pur.dispatchStatus === 'rejected' && pur.rejectionReason && (
+                  <p className="text-rose-800 font-bold">
+                    سبب الرفض ({pur.rejectedBy || 'الإدارة'}): {pur.rejectionReason}
+                  </p>
+                )}
+                {pur.notes && <p className="text-slate-600">ملاحظات: {pur.notes}</p>}
+              </div>
+
+              <div className="flex-1 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-2xl px-3">
+                {(pur.items || []).map((it, idx) => (
+                  <div key={idx} className="py-2.5 flex items-center justify-between gap-2">
+                    <div>
+                      <p className="font-bold text-slate-900">{it.productName}</p>
+                      <p className="text-[11px] text-slate-500 font-mono">
+                        {it.quantity} {it.unit} × {it.unitPrice.toLocaleString()}
+                        {Number(it.discount || 0) > 0 ? ` (خصم ${it.discount})` : ''}
+                      </p>
+                    </div>
+                    <strong className="font-mono text-indigo-950 tabular-nums">
+                      {it.total.toLocaleString()} {data.settings.currency}
+                    </strong>
+                  </div>
+                ))}
+              </div>
+
+              <div className="p-3 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-between font-black text-sm text-indigo-950 tabular-nums">
+                <span>صافي الإجمالي:</span>
+                <strong className="font-mono">
+                  {pur.grandTotal.toLocaleString()} {data.settings.currency}
+                </strong>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {canSendOrEdit && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPurchaseDetail(null);
+                        setSendingPurchaseTarget(pur);
+                        setSendingRecipientUserId(pur.recipientUserId || '');
+                      }}
+                      className="min-h-[42px] px-4 rounded-xl bg-indigo-900 text-white font-black inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Send className="w-4 h-4" />
+                      <span>إرسال للإدارة</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPurchaseDetail(null);
+                        handleStartEditPurchase(pur);
+                      }}
+                      className="min-h-[42px] px-4 rounded-xl bg-amber-50 text-amber-900 border border-amber-200 font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Edit className="w-4 h-4" />
+                      <span>تعديل</span>
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPurchaseDetail(null);
+                    setHistoryPurchaseTarget(pur);
+                  }}
+                  className="min-h-[42px] px-3 rounded-xl bg-slate-100 text-slate-800 font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <History className="w-4 h-4" />
+                  <span>سجل الحالات</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => exportInvoiceDocument(pur)}
+                  className="min-h-[42px] px-3 rounded-xl bg-slate-100 text-slate-800 font-bold cursor-pointer"
+                >
+                  طباعة / PDF
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Edit Existing Customer Sheet for Representative */}
+      {editingCustomerTarget && (() => {
+        const cleanedEditPhone = editCustPhone.replace(/[^\d+]/g, '');
+        const editPhoneValid = cleanedEditPhone.replace(/\D/g, '').length >= 7;
+        const mapQ = (editCustGeo || editCustAddress).trim();
+        const mapsHref =
+          mapQ.startsWith('http://') || mapQ.startsWith('https://')
+            ? mapQ
+            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQ)}`;
+        return (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/65 backdrop-blur-xs">
+            <form
+              onSubmit={handleSaveEditedCustomer}
+              className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto space-y-3.5 text-xs pb-safe"
+            >
+              <div className="flex items-center justify-between border-b pb-3">
+                <h4 className="font-black text-base text-slate-900">
+                  تعديل بيانات العميل — {editingCustomerTarget.shopName || editingCustomerTarget.name}
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setEditingCustomerTarget(null)}
+                  className="min-h-[38px] px-3 rounded-xl bg-slate-100 font-bold text-slate-700 cursor-pointer"
+                >
+                  إغلاق
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">اسم المحل</label>
+                  <input
+                    type="text"
+                    value={editCustShop}
+                    onChange={(e) => setEditCustShop(e.target.value)}
+                    placeholder="اسم المحل أو النشاط"
+                    className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">اسم العميل / صاحب المحل *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editCustName}
+                    onChange={(e) => setEditCustName(e.target.value)}
+                    placeholder="الاسم الكامل"
+                    className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+                <label className="block font-black text-slate-800">صورة المحل</label>
+                <div className="flex items-center gap-3">
+                  <div className="w-20 h-20 rounded-2xl border-2 border-slate-300 bg-white overflow-hidden flex items-center justify-center shrink-0">
+                    {editCustShopPhoto ? (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewShopPhoto(editCustShopPhoto)}
+                        className="w-full h-full cursor-pointer"
+                      >
+                        <img src={editCustShopPhoto} alt="صورة المحل" className="w-full h-full object-cover" />
+                      </button>
+                    ) : (
+                      <Store className="w-7 h-7 text-slate-300" />
+                    )}
+                  </div>
+                  <div className="flex-1 flex flex-wrap gap-2">
+                    <label className="min-h-[40px] px-3 rounded-xl bg-blue-900 text-white font-bold inline-flex items-center gap-1.5 cursor-pointer">
+                      <Camera className="w-4 h-4" />
+                      <span>{editCustShopPhoto ? 'التقاط صورة جديدة' : 'التقاط بالكاميرا'}</span>
+                      <input
+                        ref={editCustCameraInputRef}
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={handleEditCustPhotoUpload}
+                        className="hidden"
+                      />
+                    </label>
+                    <label className="min-h-[40px] px-3 rounded-xl bg-white text-slate-800 border border-slate-300 font-bold inline-flex items-center gap-1.5 cursor-pointer">
+                      <Upload className="w-4 h-4" />
+                      <span>من المعرض</span>
+                      <input
+                        ref={editCustGalleryInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleEditCustPhotoUpload}
+                        className="hidden"
+                      />
+                    </label>
+                    {editCustShopPhoto && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditCustShopPhoto('');
+                          setEditCustPhotoChanged(false);
+                          setEditCustClearPhoto(true);
+                          if (editCustCameraInputRef.current) editCustCameraInputRef.current.value = '';
+                          if (editCustGalleryInputRef.current) editCustGalleryInputRef.current.value = '';
+                        }}
+                        className="min-h-[40px] px-3 rounded-xl bg-red-50 text-red-700 border border-red-200 font-bold cursor-pointer"
+                      >
+                        حذف الصورة
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {isUploadingEditCustPhoto && <p className="text-[11px] font-bold text-blue-900">جاري ضغط وتجهيز الصورة...</p>}
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">عنوان المحل الرئيسي</label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={editCustAddress}
+                    onChange={(e) => {
+                      setEditCustAddress(e.target.value);
+                      if (editCustMapNotice) setEditCustMapNotice(null);
+                    }}
+                    placeholder="الشارع، المنطقة، علامة مميزة..."
+                    className="flex-1 min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold"
+                  />
+                  <button
+                    type="button"
+                    disabled={isLocatingEditCust}
+                    onClick={handleCaptureEditCustLocation}
+                    className="min-h-[44px] px-3 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer disabled:opacity-50"
+                    title="تحديد الموقع الحالي GPS وجلب العنوان تلقائياً"
+                  >
+                    <MapPin className="w-4 h-4" />
+                    <span>{isLocatingEditCust ? 'تحديد...' : 'GPS'}</span>
+                  </button>
+                  {mapQ && (
+                    <a
+                      href={mapsHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="min-h-[44px] px-3 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1 shrink-0"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  )}
+                </div>
+                {editCustGeo && (
+                  <p className="text-[10px] font-mono text-emerald-700 mt-1" dir="ltr">
+                    GPS: {editCustGeo}
+                  </p>
+                )}
+                {editCustMapNotice && <p className="text-[11px] font-bold text-red-600 mt-1">{editCustMapNotice}</p>}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">المحافظة</label>
+                  <input
+                    type="text"
+                    value={editCustGovernorate}
+                    onChange={(e) => setEditCustGovernorate(e.target.value)}
+                    placeholder="المحافظة"
+                    className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-semibold"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">المنطقة / خط السير</label>
+                  <input
+                    type="text"
+                    value={editCustArea}
+                    onChange={(e) => setEditCustArea(e.target.value)}
+                    placeholder="المنطقة / خط السير"
+                    className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-semibold"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">رقم التليفون الرئيسي *</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="tel"
+                      required
+                      value={editCustPhone}
+                      onChange={(e) => {
+                        setEditCustPhone(e.target.value);
+                        if (editCustPhoneNotice) setEditCustPhoneNotice(null);
+                      }}
+                      placeholder="01012345678"
+                      className="flex-1 min-h-[44px] rounded-xl border border-slate-300 px-3 font-mono font-bold bg-white"
+                    />
+                    {editPhoneValid ? (
+                      <a
+                        href={`tel:${cleanedEditPhone}`}
+                        className="min-h-[44px] px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold inline-flex items-center gap-1.5 shrink-0"
+                      >
+                        <Phone className="w-4 h-4" />
+                        <span>اتصال</span>
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setEditCustPhoneNotice({ type: 'error', text: 'يرجى إدخال رقم هاتف صحيح (7 أرقام على الأقل) أولاً.' })
+                        }
+                        className="min-h-[44px] px-3 rounded-xl bg-slate-100 text-slate-600 border border-slate-300 font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer"
+                      >
+                        <Phone className="w-4 h-4" />
+                        <span>اتصال</span>
+                      </button>
+                    )}
+                  </div>
+                  {editCustPhoneNotice && (
+                    <p className="text-[11px] font-bold text-red-600 mt-1">{editCustPhoneNotice.text}</p>
+                  )}
+                </div>
+
+                {editCustExtraPhones.length > 0 && (
+                  <div className="space-y-2">
+                    <label className="block font-bold text-slate-600 text-[11px]">أرقام تليفون إضافية:</label>
+                    {editCustExtraPhones.map((extra, idx) => {
+                      const cleanEx = extra.phone.replace(/[^\d+]/g, '');
+                      const validEx = cleanEx.replace(/\D/g, '').length >= 7;
+                      return (
+                        <div key={extra.id || idx} className="flex flex-wrap sm:flex-nowrap items-center gap-1.5">
+                          <input
+                            type="tel"
+                            value={extra.phone}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setEditCustExtraPhones((prev) => prev.map((row, i) => (i === idx ? { ...row, phone: v } : row)));
+                            }}
+                            placeholder="رقم إضافي..."
+                            className="flex-1 min-w-[120px] min-h-[40px] rounded-xl border border-slate-300 px-3 font-mono font-bold bg-white"
+                          />
+                          <select
+                            value={extra.label}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setEditCustExtraPhones((prev) => prev.map((row, i) => (i === idx ? { ...row, label: v } : row)));
+                            }}
+                            className="min-h-[40px] rounded-xl border border-slate-300 px-2 font-bold bg-white"
+                          >
+                            <option value="موبايل">موبايل</option>
+                            <option value="محل">تليفون المحل</option>
+                            <option value="واتساب">واتساب</option>
+                            <option value="إضافي">إضافي</option>
+                          </select>
+                          {validEx && (
+                            <a
+                              href={`tel:${cleanEx}`}
+                              className="min-h-[40px] px-2.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center"
+                            >
+                              <Phone className="w-4 h-4" />
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const val = extra.phone.trim();
+                              if (!val) return;
+                              const prevPrimary = editCustPhone.trim();
+                              setEditCustPhone(val);
+                              setEditCustExtraPhones((prev) =>
+                                prev
+                                  .map((row, i) => (i === idx ? { ...row, phone: prevPrimary } : row))
+                                  .filter((row) => row.phone.trim() !== '')
+                              );
+                            }}
+                            className="min-h-[40px] px-2.5 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 text-[10px] font-bold cursor-pointer shrink-0"
+                          >
+                            رئيسي
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditCustExtraPhones((prev) => prev.filter((_, i) => i !== idx))}
+                            className="min-h-[40px] px-2.5 rounded-xl bg-red-50 text-red-600 border border-red-200 cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEditCustExtraPhones((prev) => [
+                      ...prev,
+                      { id: `ph-${Date.now()}-${prev.length}`, phone: '', label: 'موبايل' },
+                    ])
+                  }
+                  className="min-h-[38px] px-3 rounded-xl bg-white hover:bg-blue-50 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ إضافة رقم تليفون آخر</span>
+                </button>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">ملاحظات</label>
+                <input
+                  type="text"
+                  value={editCustNotes}
+                  onChange={(e) => setEditCustNotes(e.target.value)}
+                  placeholder="ملاحظات عن المحل أو المواعيد (اختياري)"
+                  className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSavingEditCustomer || isUploadingEditCustPhoto}
+                className="w-full min-h-[48px] rounded-2xl bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
+              >
+                {isSavingEditCustomer ? 'جاري حفظ التعديلات...' : 'حفظ التعديلات'}
+              </button>
+            </form>
+          </div>
+        );
+      })()}
+
+      <ConfirmDialog
+        isOpen={Boolean(deleteCustomerTarget)}
+        onClose={() => !isDeletingCustomer && setDeleteCustomerTarget(null)}
+        onConfirm={handleConfirmDeleteCustomer}
+        isBusy={isDeletingCustomer}
+        variant="danger"
+        title="تأكيد حذف العميل"
+        message={
+          deleteCustomerTarget
+            ? `هل أنت متأكد من حذف العميل (${deleteCustomerTarget.shopName || deleteCustomerTarget.name})؟ يُسمح بالحذف فقط إذا لم يكن للعميل فواتير أو حركات مالية أو رصيد مفتوح.`
+            : ''
+        }
+        confirmLabel="نعم، حذف العميل"
+      />
     </div>
   );
 };

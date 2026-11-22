@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getPool, withTransaction, initializeSchema, checkPostgresHealth, isStrictPostgresMode } from './postgres.js';
 import { generateServerId } from '../utils/crypto.js';
+import { normalizeCustomerPhonesList } from './stores/mode.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = process.env.AWLAD_DATA_DIR
@@ -461,9 +462,11 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             ].filter(Boolean))
           );
           const assignedRepId = c.assignedRepId || allowedRepIds[0] || null;
+          const normalizedPhones = normalizeCustomerPhonesList(c.phones, c.phone || '', secondaryPhone);
+          const governorate = c.governorate || '';
           await client.query(`
-            INSERT INTO customers (id, code, user_id, assigned_rep_id, allowed_rep_ids, name, phone, secondary_phone, phone2, shop_name, shop_photo, photo, address, shop_address, area, geo_coordinates, map_location, opening_balance, current_balance, price_history, notes, status, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+            INSERT INTO customers (id, code, user_id, assigned_rep_id, allowed_rep_ids, name, phone, secondary_phone, phone2, phones, shop_name, shop_photo, photo, address, shop_address, governorate, area, geo_coordinates, map_location, opening_balance, current_balance, price_history, notes, status, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
             ON CONFLICT (id) DO UPDATE SET
               user_id = COALESCE(EXCLUDED.user_id, customers.user_id),
               assigned_rep_id = COALESCE(EXCLUDED.assigned_rep_id, customers.assigned_rep_id),
@@ -471,7 +474,11 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
               name = EXCLUDED.name,
               phone = EXCLUDED.phone,
               secondary_phone = EXCLUDED.secondary_phone,
+              phones = EXCLUDED.phones,
+              shop_photo = CASE WHEN COALESCE(EXCLUDED.shop_photo, '') <> '' THEN EXCLUDED.shop_photo ELSE customers.shop_photo END,
+              photo = CASE WHEN COALESCE(EXCLUDED.photo, '') <> '' THEN EXCLUDED.photo ELSE customers.photo END,
               address = EXCLUDED.address,
+              governorate = CASE WHEN COALESCE(EXCLUDED.governorate, '') <> '' THEN EXCLUDED.governorate ELSE customers.governorate END,
               geo_coordinates = EXCLUDED.geo_coordinates,
               current_balance = EXCLUDED.current_balance,
               price_history = EXCLUDED.price_history,
@@ -486,11 +493,13 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             c.phone || '',
             secondaryPhone,
             secondaryPhone,
+            JSON.stringify(normalizedPhones),
             c.shopName || '',
             c.shopPhoto || '',
             c.photo || '',
             address,
             address,
+            governorate,
             c.area || '',
             geo,
             geo,
@@ -585,8 +594,8 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
           const whId = warehouseIds.has(inv.warehouseId) ? inv.warehouseId : fallbackWarehouseId;
           const cbId = cashboxIds.has(inv.cashboxId) ? inv.cashboxId : fallbackCashboxId;
           await client.query(`
-            INSERT INTO invoices (id, invoice_number, type, date, customer_id, customer_name, supplier_id, supplier_name, representative_id, representative_name, warehouse_id, warehouse_name, subtotal, discount_total, tax_total, grand_total, paid_amount, applied_advance_amount, remaining_amount, payment_type, payment_method, cashbox_id, status, notes, linked_rep_transfer_id, linked_rep_transfer_number, linked_customer_order_id, returned_quantity_by_item, review_status, reviewed_by, reviewed_at, review_notes, edited_by, edited_at, cancelled_by, cancelled_at, cancel_reason, version, created_by, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40)
+            INSERT INTO invoices (id, invoice_number, type, date, customer_id, customer_name, supplier_id, supplier_name, representative_id, representative_name, warehouse_id, warehouse_name, subtotal, discount_total, tax_total, grand_total, paid_amount, applied_advance_amount, remaining_amount, payment_type, payment_method, cashbox_id, status, notes, linked_rep_transfer_id, linked_rep_transfer_number, linked_customer_order_id, returned_quantity_by_item, review_status, reviewed_by, reviewed_at, review_notes, edited_by, edited_at, cancelled_by, cancelled_at, cancel_reason, dispatch_status, sent_by, sent_by_user_id, sent_at, recipient_user_id, recipient_name, received_by, received_by_user_id, received_at, rejected_by, rejected_by_user_id, rejected_at, rejection_reason, dispatch_history, version, created_by, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54)
             ON CONFLICT (id) DO UPDATE SET
               paid_amount = EXCLUDED.paid_amount,
               applied_advance_amount = EXCLUDED.applied_advance_amount,
@@ -595,7 +604,21 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
               review_status = EXCLUDED.review_status,
               reviewed_by = EXCLUDED.reviewed_by,
               reviewed_at = EXCLUDED.reviewed_at,
-              returned_quantity_by_item = EXCLUDED.returned_quantity_by_item;
+              returned_quantity_by_item = EXCLUDED.returned_quantity_by_item,
+              dispatch_status = EXCLUDED.dispatch_status,
+              sent_by = EXCLUDED.sent_by,
+              sent_by_user_id = EXCLUDED.sent_by_user_id,
+              sent_at = EXCLUDED.sent_at,
+              recipient_user_id = EXCLUDED.recipient_user_id,
+              recipient_name = EXCLUDED.recipient_name,
+              received_by = EXCLUDED.received_by,
+              received_by_user_id = EXCLUDED.received_by_user_id,
+              received_at = EXCLUDED.received_at,
+              rejected_by = EXCLUDED.rejected_by,
+              rejected_by_user_id = EXCLUDED.rejected_by_user_id,
+              rejected_at = EXCLUDED.rejected_at,
+              rejection_reason = EXCLUDED.rejection_reason,
+              dispatch_history = EXCLUDED.dispatch_history;
           `, [
             inv.id,
             inv.invoiceNumber,
@@ -634,6 +657,20 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             inv.cancelledBy || null,
             inv.cancelledAt || null,
             inv.cancelReason || '',
+            inv.dispatchStatus || (inv.status === 'confirmed' ? 'confirmed' : 'draft'),
+            inv.sentBy || null,
+            inv.sentByUserId || null,
+            inv.sentAt || null,
+            inv.recipientUserId || null,
+            inv.recipientName || null,
+            inv.receivedBy || null,
+            inv.receivedByUserId || null,
+            inv.receivedAt || null,
+            inv.rejectedBy || null,
+            inv.rejectedByUserId || null,
+            inv.rejectedAt || null,
+            inv.rejectionReason || '',
+            JSON.stringify(Array.isArray(inv.dispatchHistory) ? inv.dispatchHistory : []),
             Number(inv.version || 1),
             inv.createdBy || 'المدير العام',
             inv.createdAt || new Date().toISOString(),

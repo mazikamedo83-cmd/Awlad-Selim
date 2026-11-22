@@ -12,6 +12,16 @@ import { Modal } from '../../common/Modal';
 import { NewSaleInvoiceModal } from '../sales/NewSaleInvoiceModal';
 import { CashOperationModal } from '../finance/CashOperationModal';
 import { CreateStockTransferModal } from '../inventory/StockTransfersView';
+import {
+  SalesInvoiceIcon,
+  PurchaseInvoiceIcon,
+  SafeVaultIcon,
+  WarehouseBoxesIcon,
+  CustomersGroupIcon,
+  SuppliersTruckIcon,
+  ExpensesCashIcon,
+  AccountsLedgerIcon,
+} from '../../common/AppIcons';
 
 interface DashboardViewProps {
   onNavigate: (page: NavItemKey) => void;
@@ -407,11 +417,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onView
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:border-blue-400 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-slate-500">إجمالي المبيعات</span>
-            <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-900 flex items-center justify-center">
-              <ShoppingCart className="w-4 h-4" />
-            </div>
+            <SalesInvoiceIcon className="w-9 h-9" />
           </div>
-          <div className="text-lg sm:text-xl font-black text-slate-900">
+          <div className="text-lg sm:text-xl font-black text-slate-900 tabular-nums">
             {totalSales.toLocaleString()} <span className="text-xs font-semibold text-slate-500">{settings.currency}</span>
           </div>
           <div className="flex items-center gap-1 text-[11px] text-emerald-600 font-bold mt-2">
@@ -424,11 +432,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onView
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:border-blue-400 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-slate-500">إجمالي المشتريات</span>
-            <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-900 flex items-center justify-center">
-              <Truck className="w-4 h-4" />
-            </div>
+            <PurchaseInvoiceIcon className="w-9 h-9" />
           </div>
-          <div className="text-lg sm:text-xl font-black text-slate-900">
+          <div className="text-lg sm:text-xl font-black text-slate-900 tabular-nums">
             {totalPurchases.toLocaleString()} <span className="text-xs font-semibold text-slate-500">{settings.currency}</span>
           </div>
           <div className="flex items-center gap-1 text-[11px] text-indigo-600 font-bold mt-2">
@@ -441,11 +447,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onView
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:border-emerald-400 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-slate-500">أرصدة الخزائن والبنوك</span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-900 flex items-center justify-center">
-              <Wallet className="w-4 h-4" />
-            </div>
+            <SafeVaultIcon className="w-9 h-9" />
           </div>
-          <div className="text-lg sm:text-xl font-black text-emerald-700">
+          <div className="text-lg sm:text-xl font-black text-emerald-700 tabular-nums">
             {totalCashAndBanks.toLocaleString()} <span className="text-xs font-semibold text-slate-500">{settings.currency}</span>
           </div>
           <div className="text-[11px] text-slate-500 font-semibold mt-2">
@@ -457,11 +461,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onView
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:border-amber-400 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-slate-500">قيمة بضاعة المخزون</span>
-            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-900 flex items-center justify-center">
-              <Boxes className="w-4 h-4" />
-            </div>
+            <WarehouseBoxesIcon className="w-9 h-9" />
           </div>
-          <div className="text-lg sm:text-xl font-black text-slate-900">
+          <div className="text-lg sm:text-xl font-black text-slate-900 tabular-nums">
             {inventoryValue.toLocaleString()} <span className="text-xs font-semibold text-slate-500">{settings.currency}</span>
           </div>
           <div className="text-[11px] text-slate-500 font-semibold mt-2">
@@ -470,34 +472,36 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onView
         </div>
 
         {/* Customer Debts */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:border-rose-400 transition-all">
+        <div
+          onClick={() => onNavigate('customer-accounts')}
+          className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:border-rose-400 transition-all cursor-pointer"
+        >
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-slate-500">ديون العملاء (مستحقاتنا)</span>
-            <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-900 flex items-center justify-center">
-              <ArrowDownRight className="w-4 h-4" />
-            </div>
+            <CustomersGroupIcon className="w-9 h-9" />
           </div>
-          <div className="text-lg sm:text-xl font-black text-rose-700">
+          <div className="text-lg sm:text-xl font-black text-rose-700 tabular-nums">
             {customerDebtsTotal.toLocaleString()} <span className="text-xs font-semibold text-slate-500">{settings.currency}</span>
           </div>
           <div className="text-[11px] text-slate-500 font-semibold mt-2">
-            مديونيات آجلة على {customers.length} عميل
+            مديونيات آجلة على {customers.length} عميل · اضغط لكشف الحساب
           </div>
         </div>
 
         {/* Supplier Debts */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:border-purple-400 transition-all">
+        <div
+          onClick={() => onNavigate('supplier-accounts')}
+          className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:border-purple-400 transition-all cursor-pointer"
+        >
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-slate-500">مستحقات الموردين علينا</span>
-            <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-900 flex items-center justify-center">
-              <ArrowUpRight className="w-4 h-4" />
-            </div>
+            <SuppliersTruckIcon className="w-9 h-9" />
           </div>
-          <div className="text-lg sm:text-xl font-black text-purple-700">
+          <div className="text-lg sm:text-xl font-black text-purple-700 tabular-nums">
             {supplierDebtsTotal.toLocaleString()} <span className="text-xs font-semibold text-slate-500">{settings.currency}</span>
           </div>
           <div className="text-[11px] text-slate-500 font-semibold mt-2">
-            فواتير آجلة لـ {suppliers.length} مورد
+            فواتير آجلة لـ {suppliers.length} مورد · اضغط لكشف الحساب
           </div>
         </div>
 
@@ -505,11 +509,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onView
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:border-slate-400 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-slate-500">إجمالي المصروفات</span>
-            <div className="w-8 h-8 rounded-xl bg-orange-50 text-orange-900 flex items-center justify-center">
-              <TrendingDown className="w-4 h-4" />
-            </div>
+            <ExpensesCashIcon className="w-9 h-9" />
           </div>
-          <div className="text-lg sm:text-xl font-black text-orange-700">
+          <div className="text-lg sm:text-xl font-black text-orange-700 tabular-nums">
             {totalExpenses.toLocaleString()} <span className="text-xs font-semibold text-slate-500">{settings.currency}</span>
           </div>
           <div className="text-[11px] text-slate-500 font-semibold mt-2">
@@ -521,11 +523,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onView
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:border-teal-400 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-slate-500">الإيرادات المتنوعة</span>
-            <div className="w-8 h-8 rounded-xl bg-teal-50 text-teal-900 flex items-center justify-center">
-              <TrendingUp className="w-4 h-4" />
-            </div>
+            <AccountsLedgerIcon className="w-9 h-9" />
           </div>
-          <div className="text-lg sm:text-xl font-black text-teal-700">
+          <div className="text-lg sm:text-xl font-black text-teal-700 tabular-nums">
             {totalIncome.toLocaleString()} <span className="text-xs font-semibold text-slate-500">{settings.currency}</span>
           </div>
           <div className="text-[11px] text-slate-500 font-semibold mt-2">
