@@ -41,10 +41,10 @@ import {
 
 const CUSTOMER_PHONE_CONFLICT_MARKER = '[LINK_CONFLICT:CUSTOMER_PHONE]';
 const CUSTOMER_PHONE_CONFLICT_WARNING =
-  'يوجد تعارض على رقم الهاتف في دليل العملاء (الرقم مسجل مسبقًا لحساب آخر أو متكرر). تم تفعيل حسابك دون ربط تلقائي لحين مراجعة الإدارة.';
+  'يوجد تعارض على رقم الهاتف في دليل العملاء (الرقم مسجل مسبقًا لحساب آخر أو متكرر). تم إيقاف التسجيل الذاتي لحين مراجعة الإدارة أو تسجيل الدخول بالحساب القائم.';
 const REP_PHONE_CONFLICT_MARKER = '[LINK_CONFLICT:REP_PHONE]';
 const REP_PHONE_CONFLICT_WARNING =
-  'يوجد تعارض على رقم الهاتف في سجل المناديب (الرقم مسجل مسبقًا لحساب آخر أو متكرر). تم تفعيل حسابك دون ربط تلقائي لحين مراجعة الإدارة.';
+  'يوجد تعارض على رقم الهاتف في سجل المناديب (الرقم مسجل مسبقًا لحساب آخر أو متكرر). تم إيقاف التسجيل الذاتي لحين مراجعة الإدارة أو تسجيل الدخول بالحساب القائم.';
 
 const ACCESS_TOKEN_TTL_SEC = 900; // 15 minutes
 const REFRESH_TOKEN_TTL_DAYS = 30;
@@ -60,6 +60,7 @@ export async function recordAuditLog({
   ipAddress = '',
   deviceInfo = '',
   notes = '',
+  client = null,
 }) {
   const id = generateServerId('AUD');
   const timestamp = nowIso();
@@ -67,11 +68,11 @@ export async function recordAuditLog({
     notes ||
     (newValues && typeof newValues === 'object' ? JSON.stringify(newValues) : String(action || ''));
 
-  if (await isPgMode()) {
-    const pool = getPool();
-    if (pool) {
+  if (client || (await isPgMode())) {
+    const executor = client || getPool();
+    if (executor) {
       try {
-        await pool.query(
+        await executor.query(
           `INSERT INTO audit_logs (id, timestamp, user_id, user_name, action, module, record_id, old_values, new_values, ip_address, device_info, notes)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
           [
@@ -90,6 +91,7 @@ export async function recordAuditLog({
           ]
         );
       } catch (err) {
+        if (client) throw err;
         if (isStrictPostgresMode() && isPgConnectionError(err)) {
           markPgUnavailable('audit_log_connection_error');
           throw createDatabaseUnavailableError('audit_log_connection_error');
@@ -221,11 +223,21 @@ export async function getAuthStatus() {
   };
 }
 
-export async function bootstrapAdmin({ fullName, username, password, phone = '', companyName = '' }, meta = {}) {
+export async function bootstrapAdmin(
+  { fullName, username, password, phone = '', companyName = '', bootstrapSecret = '' },
+  meta = {}
+) {
   const cleanUser = String(username || '').trim();
   const cleanName = String(fullName || '').trim();
   const cleanPass = String(password || '');
   const cleanCompany = String(companyName || '').trim();
+  const expectedSecret = String(process.env.BOOTSTRAP_ADMIN_SECRET || '').trim();
+  if (expectedSecret) {
+    const providedSecret = String(meta.bootstrapSecret || bootstrapSecret || '').trim();
+    if (!providedSecret || providedSecret !== expectedSecret) {
+      throw new AppError(403, 'مفتاح التهيئة الأولية (Bootstrap Secret) غير صحيح أو مفقود', 'BOOTSTRAP_SECRET_REQUIRED');
+    }
+  }
   if (!cleanUser || cleanUser.length < 3) {
     throw new AppError(400, 'اسم المستخدم يجب أن لا يقل عن 3 أحرف', 'INVALID_USERNAME');
   }
@@ -236,68 +248,110 @@ export async function bootstrapAdmin({ fullName, username, password, phone = '',
     throw new AppError(400, 'كلمة المرور يجب أن لا تقل عن 6 أحرف', 'WEAK_PASSWORD');
   }
 
-  const passwordHash = await hashPasswordBcrypt(cleanPass);
-  const adminId = generateServerId('USR');
-  const now = nowIso();
-  const ensuredInstallationId = await ensureInstallationId();
+  return withRegistrationLocks(['__bootstrap_admin__'], async () => {
+    const passwordHash = await hashPasswordBcrypt(cleanPass);
+    const adminId = generateServerId('USR');
+    const now = nowIso();
+    const ensuredInstallationId = await ensureInstallationId();
 
-  if (await isPgMode()) {
-    const created = await withTransaction(async (client) => {
-      const existing = await client.query(
-        `SELECT COUNT(*)::int AS cnt, COUNT(*) FILTER (WHERE role = 'admin')::int AS admin_cnt FROM users`
-      );
-      if (Number(existing.rows[0]?.cnt || 0) > 0 || Number(existing.rows[0]?.admin_cnt || 0) > 0) {
+    if (await isPgMode()) {
+      const created = await withTransaction(async (client) => {
+        const existingUsers = await client.query(`SELECT id, role FROM users FOR UPDATE`);
+        const totalUsers = existingUsers.rows.length;
+        const adminCount = existingUsers.rows.filter((r) => r.role === 'admin').length;
+        if (totalUsers > 0 || adminCount > 0) {
+          throw new AppError(403, 'تم تهيئة حساب المدير مسبقًا. استخدم تسجيل الدخول.', 'ALREADY_BOOTSTRAPPED');
+        }
+
+        await client.query(
+          `INSERT INTO users (id, full_name, username, password_hash, password_algo, phone, role, job_title, department, is_active, must_change_password, permissions, created_at)
+           VALUES ($1, $2, $3, $4, 'bcrypt', $5, 'admin', 'المدير العام', 'الإدارة', TRUE, FALSE, $6, $7)`,
+          [adminId, cleanName, cleanUser, passwordHash, phone || '', JSON.stringify(FULL_ADMIN_PERMISSIONS), now]
+        );
+
+        const whCheck = await client.query('SELECT COUNT(*)::int AS cnt FROM warehouses');
+        if (Number(whCheck.rows[0]?.cnt || 0) === 0) {
+          await client.query(
+            `INSERT INTO warehouses (id, name, code, location, is_default, status) VALUES ('wh-main', 'المستودع الرئيسي', 'WH-01', 'المقر الرئيسي', TRUE, 'active')`
+          );
+        }
+
+        const cbCheck = await client.query('SELECT COUNT(*)::int AS cnt FROM cashboxes');
+        if (Number(cbCheck.rows[0]?.cnt || 0) === 0) {
+          await client.query(
+            `INSERT INTO cashboxes (id, name, type, opening_balance, current_balance, is_default) VALUES ('cb-main', 'الخزينة الرئيسية', 'cashbox', 0, 0, TRUE)`
+          );
+        }
+
+        const stRes = await client.query('SELECT id, extra_settings FROM system_settings LIMIT 1');
+        if (!stRes.rows[0]) {
+          await client.query(
+            `INSERT INTO system_settings (id, company_name, company_subtitle, currency, default_print_mode, invoice_notes, allow_negative_stock, extra_settings)
+             VALUES ('default', $1, 'نظام المحاسبة وإدارة الأعمال المتكامل', 'ج.م', 'a4', 'شكرًا لتعاملكم معنا', FALSE, $2)`,
+            [cleanCompany || 'مؤسسة أولاد سليم للتجارة والتوزيع', JSON.stringify({ installationId: ensuredInstallationId })]
+          );
+        } else {
+          const curRow = stRes.rows[0];
+          const nextExtra = {
+            ...(curRow.extra_settings || {}),
+            installationId: curRow.extra_settings?.installationId || ensuredInstallationId,
+          };
+          if (cleanCompany) {
+            await client.query(
+              `UPDATE system_settings SET company_name = $1, extra_settings = $2 WHERE id = $3`,
+              [cleanCompany, JSON.stringify(nextExtra), curRow.id]
+            );
+          } else if (!curRow.extra_settings?.installationId) {
+            await client.query(`UPDATE system_settings SET extra_settings = $1 WHERE id = $2`, [
+              JSON.stringify(nextExtra),
+              curRow.id,
+            ]);
+          }
+        }
+
+        const uRes = await client.query('SELECT * FROM users WHERE id = $1', [adminId]);
+        return mapPgUserRow(uRes.rows[0]);
+      });
+
+      await recordAuditLog({
+        userId: created.id,
+        userName: created.fullName,
+        action: 'تهيئة حساب المدير العام لأول مرة',
+        module: 'المصادقة',
+        recordId: created.id,
+        ipAddress: meta.ipAddress,
+        deviceInfo: meta.deviceInfo,
+      });
+
+      return sanitizeUser(created);
+    }
+
+    const created = await withJsonTransaction(async (db) => {
+      const hasAdmin = (db.users || []).some((u) => u?.role === 'admin');
+      if (db.users.length > 0 || hasAdmin) {
         throw new AppError(403, 'تم تهيئة حساب المدير مسبقًا. استخدم تسجيل الدخول.', 'ALREADY_BOOTSTRAPPED');
       }
-
-      await client.query(
-        `INSERT INTO users (id, full_name, username, password_hash, password_algo, phone, role, job_title, department, is_active, must_change_password, permissions, created_at)
-         VALUES ($1, $2, $3, $4, 'bcrypt', $5, 'admin', 'المدير العام', 'الإدارة', TRUE, FALSE, $6, $7)`,
-        [adminId, cleanName, cleanUser, passwordHash, phone || '', JSON.stringify(FULL_ADMIN_PERMISSIONS), now]
-      );
-
-      const whCheck = await client.query('SELECT COUNT(*)::int AS cnt FROM warehouses');
-      if (Number(whCheck.rows[0]?.cnt || 0) === 0) {
-        await client.query(
-          `INSERT INTO warehouses (id, name, code, location, is_default, status) VALUES ('wh-main', 'المستودع الرئيسي', 'WH-01', 'المقر الرئيسي', TRUE, 'active')`
-        );
+      if (!db.installationId) {
+        db.installationId = ensuredInstallationId;
       }
-
-      const cbCheck = await client.query('SELECT COUNT(*)::int AS cnt FROM cashboxes');
-      if (Number(cbCheck.rows[0]?.cnt || 0) === 0) {
-        await client.query(
-          `INSERT INTO cashboxes (id, name, type, opening_balance, current_balance, is_default) VALUES ('cb-main', 'الخزينة الرئيسية', 'cashbox', 0, 0, TRUE)`
-        );
-      }
-
-      const stRes = await client.query('SELECT id, extra_settings FROM system_settings LIMIT 1');
-      if (!stRes.rows[0]) {
-        await client.query(
-          `INSERT INTO system_settings (id, company_name, company_subtitle, currency, default_print_mode, invoice_notes, allow_negative_stock, extra_settings)
-           VALUES ('default', $1, 'نظام المحاسبة وإدارة الأعمال المتكامل', 'ج.م', 'a4', 'شكرًا لتعاملكم معنا', FALSE, $2)`,
-          [cleanCompany || 'مؤسسة أولاد سليم للتجارة والتوزيع', JSON.stringify({ installationId: ensuredInstallationId })]
-        );
-      } else {
-        const curRow = stRes.rows[0];
-        const nextExtra = {
-          ...(curRow.extra_settings || {}),
-          installationId: curRow.extra_settings?.installationId || ensuredInstallationId,
-        };
-        if (cleanCompany) {
-          await client.query(
-            `UPDATE system_settings SET company_name = $1, extra_settings = $2 WHERE id = $3`,
-            [cleanCompany, JSON.stringify(nextExtra), curRow.id]
-          );
-        } else if (!curRow.extra_settings?.installationId) {
-          await client.query(`UPDATE system_settings SET extra_settings = $1 WHERE id = $2`, [
-            JSON.stringify(nextExtra),
-            curRow.id,
-          ]);
-        }
-      }
-
-      const uRes = await client.query('SELECT * FROM users WHERE id = $1', [adminId]);
-      return mapPgUserRow(uRes.rows[0]);
+      const adminUser = {
+        id: adminId,
+        fullName: cleanName,
+        username: cleanUser,
+        passwordHash,
+        passwordAlgo: 'bcrypt',
+        phone: phone || '',
+        role: 'admin',
+        jobTitle: 'المدير العام',
+        department: 'الإدارة',
+        isActive: true,
+        mustChangePassword: false,
+        permissions: FULL_ADMIN_PERMISSIONS,
+        createdAt: now,
+      };
+      db.users.push(adminUser);
+      if (cleanCompany) db.settings.companyName = cleanCompany;
+      return adminUser;
     });
 
     await recordAuditLog({
@@ -311,47 +365,7 @@ export async function bootstrapAdmin({ fullName, username, password, phone = '',
     });
 
     return sanitizeUser(created);
-  }
-
-  const created = await withJsonTransaction(async (db) => {
-    const hasAdmin = (db.users || []).some((u) => u?.role === 'admin');
-    if (db.users.length > 0 || hasAdmin) {
-      throw new AppError(403, 'تم تهيئة حساب المدير مسبقًا. استخدم تسجيل الدخول.', 'ALREADY_BOOTSTRAPPED');
-    }
-    if (!db.installationId) {
-      db.installationId = ensuredInstallationId;
-    }
-    const adminUser = {
-      id: adminId,
-      fullName: cleanName,
-      username: cleanUser,
-      passwordHash,
-      passwordAlgo: 'bcrypt',
-      phone: phone || '',
-      role: 'admin',
-      jobTitle: 'المدير العام',
-      department: 'الإدارة',
-      isActive: true,
-      mustChangePassword: false,
-      permissions: FULL_ADMIN_PERMISSIONS,
-      createdAt: now,
-    };
-    db.users.push(adminUser);
-    if (cleanCompany) db.settings.companyName = cleanCompany;
-    return adminUser;
   });
-
-  await recordAuditLog({
-    userId: created.id,
-    userName: created.fullName,
-    action: 'تهيئة حساب المدير العام لأول مرة',
-    module: 'المصادقة',
-    recordId: created.id,
-    ipAddress: meta.ipAddress,
-    deviceInfo: meta.deviceInfo,
-  });
-
-  return sanitizeUser(created);
 }
 
 async function resolveLinkedProfilesPg(clientOrPool, user) {
@@ -873,9 +887,7 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
 
         let customerProfile = null;
         let representativeProfile = null;
-        let linkWarning = null;
-        let conflictReason = null;
-        let userNotes = 'حساب مسجل ذاتيًا عبر الموبايل';
+        const userNotes = 'حساب مسجل ذاتيًا عبر الموبايل';
 
         if (role === 'customer') {
           const custRes = await client.query(`SELECT * FROM customers FOR UPDATE`);
@@ -885,9 +897,7 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
           const hasAlreadyLinkedMatch = allMatches.some((c) => Boolean(c.user_id));
 
           if (allMatches.length > 1 || hasAlreadyLinkedMatch) {
-            conflictReason = 'CUSTOMER_PHONE_CONFLICT';
-            linkWarning = CUSTOMER_PHONE_CONFLICT_WARNING;
-            userNotes = `${userNotes} ${CUSTOMER_PHONE_CONFLICT_MARKER}`;
+            throw new AppError(409, CUSTOMER_PHONE_CONFLICT_WARNING, 'CUSTOMER_PHONE_CONFLICT');
           }
         } else {
           const repRes = await client.query(`SELECT * FROM representatives FOR UPDATE`);
@@ -897,9 +907,7 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
           const hasAlreadyLinkedRep = repMatches.some((r) => Boolean(r.user_id));
 
           if (repMatches.length > 1 || hasAlreadyLinkedRep) {
-            conflictReason = 'REP_PHONE_CONFLICT';
-            linkWarning = REP_PHONE_CONFLICT_WARNING;
-            userNotes = `${userNotes} ${REP_PHONE_CONFLICT_MARKER}`;
+            throw new AppError(409, REP_PHONE_CONFLICT_WARNING, 'REP_PHONE_CONFLICT');
           }
         }
 
@@ -925,7 +933,7 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
           ]
         );
 
-        if (role === 'customer' && !conflictReason) {
+        if (role === 'customer') {
           const custRes = await client.query(`SELECT * FROM customers FOR UPDATE`);
           const unlinkedMatches = normPhone
             ? custRes.rows.filter((c) => !c.user_id && customerHasRegPhone(c, normPhone))
@@ -979,7 +987,7 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
             const refreshed = await client.query(`SELECT * FROM customers WHERE id = $1 LIMIT 1`, [custId]);
             customerProfile = mapPgCustomerRow(refreshed.rows[0]);
           }
-        } else if (role === 'representative' && !conflictReason) {
+        } else if (role === 'representative') {
           const repRes = await client.query(`SELECT * FROM representatives FOR UPDATE`);
           const unlinkedRepMatches = normPhone
             ? repRes.rows.filter((r) => !r.user_id && normalizeRegPhone(r.phone) === normPhone)
@@ -1089,7 +1097,7 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
           user: sanitizeUser(mappedUser),
           customerProfile,
           representativeProfile,
-          linkWarning,
+          linkWarning: null,
         };
         if (scopedIdem) {
           await savePgIdempotency(client, scopedIdem, { id: mappedUser.id }, 'POST /api/auth/register', {
@@ -1097,9 +1105,25 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
             response,
           });
         }
-        return { deduplicated: false, user: mappedUser, conflictReason, linkWarning, response };
+        return { deduplicated: false, user: mappedUser, response };
       });
     } catch (err) {
+      if (err?.code === 'CUSTOMER_PHONE_CONFLICT' || err?.code === 'REP_PHONE_CONFLICT') {
+        await recordAuditLog({
+          userId: null,
+          userName: fullName,
+          action:
+            err.code === 'REP_PHONE_CONFLICT'
+              ? `رفض تسجيل ذاتي لتعارض رقم هاتف مندوب (${phone})`
+              : `رفض تسجيل ذاتي لتعارض رقم هاتف عميل (${phone})`,
+          module: 'المصادقة',
+          recordId: cleanDeviceId || username,
+          notes: err.message,
+          ipAddress: meta.ipAddress,
+          deviceInfo: meta.deviceInfo,
+        });
+        throw err;
+      }
       if (scopedIdem && (err?.code === 'DUPLICATE_USERNAME' || err?.code === '23505')) {
         const racedDup = await findPgIdempotency(getPool(), scopedIdem);
         if (racedDup?.response && racedDup.payloadDigest === payloadDigest) {
@@ -1126,88 +1150,68 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
       deviceInfo: meta.deviceInfo,
     });
 
-    if (result.conflictReason) {
-      await recordAuditLog({
-        userId: result.user.id,
-        userName: result.user.fullName,
-        action:
-          result.conflictReason === 'REP_PHONE_CONFLICT'
-            ? `رصد تعارض رقم هاتف مندوب عند التسجيل الذاتي (${phone})`
-            : `رصد تعارض رقم هاتف عميل عند التسجيل الذاتي (${phone})`,
-        module: 'المصادقة',
-        recordId: result.user.id,
-        notes: result.linkWarning || '',
-        ipAddress: meta.ipAddress,
-        deviceInfo: meta.deviceInfo,
-      });
-    }
-
     return result.response;
   }
 
   // JSON Ledger mode
-  const found = await withJsonTransaction(async (db) => {
-    if (scopedIdem) {
-      const dup = findJsonIdempotency(scopedIdem);
-      if (dup?.response && dup.payloadDigest === payloadDigest) {
-        return { deduplicated: true, response: dup.response };
+  let found;
+  try {
+    found = await withJsonTransaction(async (db) => {
+      if (scopedIdem) {
+        const dup = findJsonIdempotency(scopedIdem);
+        if (dup?.response && dup.payloadDigest === payloadDigest) {
+          return { deduplicated: true, response: dup.response };
+        }
       }
-    }
 
-    if ((db.users || []).some((u) => String(u.username || '').toLowerCase() === cleanUsernameLower)) {
-      throw new AppError(409, 'اسم المستخدم مسجل مسبقًا، يرجى اختيار اسم آخر أو تسجيل الدخول', 'DUPLICATE_USERNAME');
-    }
-
-    let customerProfile = null;
-    let representativeProfile = null;
-    let linkWarning = null;
-    let conflictReason = null;
-    let userNotes = 'حساب مسجل ذاتيًا عبر الموبايل';
-
-    if (role === 'customer') {
-      const allMatches = normPhone
-        ? (db.customers || []).filter((c) => customerHasRegPhone(c, normPhone))
-        : [];
-      const hasAlreadyLinkedMatch = allMatches.some((c) => Boolean(c.userId));
-      if (allMatches.length > 1 || hasAlreadyLinkedMatch) {
-        conflictReason = 'CUSTOMER_PHONE_CONFLICT';
-        linkWarning = CUSTOMER_PHONE_CONFLICT_WARNING;
-        userNotes = `${userNotes} ${CUSTOMER_PHONE_CONFLICT_MARKER}`;
+      if ((db.users || []).some((u) => String(u.username || '').toLowerCase() === cleanUsernameLower)) {
+        throw new AppError(409, 'اسم المستخدم مسجل مسبقًا، يرجى اختيار اسم آخر أو تسجيل الدخول', 'DUPLICATE_USERNAME');
       }
-    } else {
-      const repMatches = normPhone
-        ? (db.representatives || []).filter((r) => normalizeRegPhone(r.phone) === normPhone)
-        : [];
-      const hasAlreadyLinkedRep = repMatches.some((r) => Boolean(r.userId));
-      if (repMatches.length > 1 || hasAlreadyLinkedRep) {
-        conflictReason = 'REP_PHONE_CONFLICT';
-        linkWarning = REP_PHONE_CONFLICT_WARNING;
-        userNotes = `${userNotes} ${REP_PHONE_CONFLICT_MARKER}`;
+
+      let customerProfile = null;
+      let representativeProfile = null;
+      const userNotes = 'حساب مسجل ذاتيًا عبر الموبايل';
+
+      if (role === 'customer') {
+        const allMatches = normPhone
+          ? (db.customers || []).filter((c) => customerHasRegPhone(c, normPhone))
+          : [];
+        const hasAlreadyLinkedMatch = allMatches.some((c) => Boolean(c.userId));
+        if (allMatches.length > 1 || hasAlreadyLinkedMatch) {
+          throw new AppError(409, CUSTOMER_PHONE_CONFLICT_WARNING, 'CUSTOMER_PHONE_CONFLICT');
+        }
+      } else {
+        const repMatches = normPhone
+          ? (db.representatives || []).filter((r) => normalizeRegPhone(r.phone) === normPhone)
+          : [];
+        const hasAlreadyLinkedRep = repMatches.some((r) => Boolean(r.userId));
+        if (repMatches.length > 1 || hasAlreadyLinkedRep) {
+          throw new AppError(409, REP_PHONE_CONFLICT_WARNING, 'REP_PHONE_CONFLICT');
+        }
       }
-    }
 
-    const livePermissions = resolveDefaultPermissionsForRole(role, db.settings?.extraSettings || {});
-    const newUser = {
-      id: userId,
-      fullName,
-      username,
-      passwordHash,
-      passwordAlgo: 'bcrypt',
-      phone,
-      address,
-      notes: userNotes,
-      role,
-      jobTitle: role === 'representative' ? 'مندوب مبيعات' : 'عميل',
-      department: role === 'representative' ? 'المندوبون' : 'العملاء',
-      isActive: true,
-      mustChangePassword: false,
-      permissions: livePermissions,
-      shortcuts: [],
-      createdAt: now,
-    };
-    db.users.push(newUser);
+      const livePermissions = resolveDefaultPermissionsForRole(role, db.settings?.extraSettings || {});
+      const newUser = {
+        id: userId,
+        fullName,
+        username,
+        passwordHash,
+        passwordAlgo: 'bcrypt',
+        phone,
+        address,
+        notes: userNotes,
+        role,
+        jobTitle: role === 'representative' ? 'مندوب مبيعات' : 'عميل',
+        department: role === 'representative' ? 'المندوبون' : 'العملاء',
+        isActive: true,
+        mustChangePassword: false,
+        permissions: livePermissions,
+        shortcuts: [],
+        createdAt: now,
+      };
+      db.users.push(newUser);
 
-    if (role === 'customer' && !conflictReason) {
+      if (role === 'customer') {
       const unlinkedMatches = normPhone
         ? (db.customers || []).filter((c) => !c.userId && customerHasRegPhone(c, normPhone))
         : [];
@@ -1257,7 +1261,7 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
         };
         db.customers.unshift(customerProfile);
       }
-    } else if (role === 'representative' && !conflictReason) {
+    } else if (role === 'representative') {
       const unlinkedRepMatches = normPhone
         ? (db.representatives || []).filter((r) => !r.userId && normalizeRegPhone(r.phone) === normPhone)
         : [];
@@ -1377,15 +1381,33 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
       user: sanitizeUser(newUser),
       customerProfile,
       representativeProfile,
-      linkWarning,
+      linkWarning: null,
     };
 
     if (scopedIdem) {
       saveJsonIdempotency(scopedIdem, { payloadDigest, response });
     }
 
-    return { deduplicated: false, user: newUser, conflictReason, linkWarning, response };
-  });
+    return { deduplicated: false, user: newUser, response };
+    });
+  } catch (err) {
+    if (err?.code === 'CUSTOMER_PHONE_CONFLICT' || err?.code === 'REP_PHONE_CONFLICT') {
+      await recordAuditLog({
+        userId: null,
+        userName: fullName,
+        action:
+          err.code === 'REP_PHONE_CONFLICT'
+            ? `رفض تسجيل ذاتي لتعارض رقم هاتف مندوب (${phone})`
+            : `رفض تسجيل ذاتي لتعارض رقم هاتف عميل (${phone})`,
+        module: 'المصادقة',
+        recordId: cleanDeviceId || username,
+        notes: err.message,
+        ipAddress: meta.ipAddress,
+        deviceInfo: meta.deviceInfo,
+      });
+    }
+    throw err;
+  }
 
   if (found.deduplicated) {
     return found.response;
@@ -1400,22 +1422,6 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
     ipAddress: meta.ipAddress,
     deviceInfo: meta.deviceInfo,
   });
-
-  if (found.conflictReason) {
-    await recordAuditLog({
-      userId: found.user.id,
-      userName: found.user.fullName,
-      action:
-        found.conflictReason === 'REP_PHONE_CONFLICT'
-          ? `رصد تعارض رقم هاتف مندوب عند التسجيل الذاتي (${phone})`
-          : `رصد تعارض رقم هاتف عميل عند التسجيل الذاتي (${phone})`,
-      module: 'المصادقة',
-      recordId: found.user.id,
-      notes: found.linkWarning || '',
-      ipAddress: meta.ipAddress,
-      deviceInfo: meta.deviceInfo,
-    });
-  }
 
   return found.response;
   });

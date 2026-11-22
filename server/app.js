@@ -172,8 +172,12 @@ export function createApiApp() {
       } catch {
         // ignore malformed origin URL
       }
-      if (!allowedList) return cb(null, { ...corsOptions, origin: true });
-      if (allowedList.some((pat) => matchesOriginPattern(origin, pat))) {
+      if (!allowedList) {
+        if (process.env.NODE_ENV === 'production') {
+          return cb(new AppError(403, 'Origin not allowed by CORS', 'CORS_FORBIDDEN'));
+        }
+        // Check explicit tunnel/LAN patterns even if allowedList is unset
+      } else if (allowedList.some((pat) => matchesOriginPattern(origin, pat))) {
         return cb(null, { ...corsOptions, origin: true });
       }
       if (
@@ -188,11 +192,23 @@ export function createApiApp() {
       ) {
         return cb(null, { ...corsOptions, origin: true });
       }
+      if (!allowedList && process.env.NODE_ENV !== 'production') {
+        return cb(null, { ...corsOptions, origin: true });
+      }
       return cb(new AppError(403, 'Origin not allowed by CORS', 'CORS_FORBIDDEN'));
     })
   );
 
-  app.use(express.json({ limit: '50mb' }));
+  // Higher 50mb payload allowance ONLY on media/backup/sync endpoints before 5mb global parser
+  const largeJsonParser = express.json({ limit: '50mb' });
+  app.use('/api/database', largeJsonParser);
+  app.use('/api/admin/backup', largeJsonParser);
+  app.use('/api/customers', largeJsonParser);
+  app.use('/api/products', largeJsonParser);
+  app.use('/api/orders', largeJsonParser);
+  app.use('/api/inventory', largeJsonParser);
+  app.use('/api/sync', largeJsonParser);
+  app.use(express.json({ limit: '5mb' }));
 
   app.use('/api', (req, res, next) => {
     const start = Date.now();

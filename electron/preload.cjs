@@ -13,4 +13,9 @@ contextBridge.exposeInMainWorld('awladDesktop', {
     writeMedia: (mediaKey, dataUrl) => ipcRenderer.invoke('awlad:offline-media-write', mediaKey, dataUrl),
     readMedia: (mediaKey) => ipcRenderer.invoke('awlad:offline-media-read', mediaKey),
   },
+  secureVault: {
+    getItem: (key) => ipcRenderer.invoke('awlad:secure-vault-get', key),
+    setItem: (key, value) => ipcRenderer.invoke('awlad:secure-vault-set', key, value),
+    removeItem: (key) => ipcRenderer.invoke('awlad:secure-vault-delete', key),
+  },
 });

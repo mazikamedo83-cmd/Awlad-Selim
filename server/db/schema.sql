@@ -995,4 +995,12 @@ CREATE TABLE IF NOT EXISTS rep_custody_operations (
 CREATE INDEX IF NOT EXISTS idx_rep_custody_ops_rep ON rep_custody_operations(representative_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_rep_custody_ops_prod ON rep_custody_operations(product_id);
 
+-- Composite indexes for enterprise report & ledger queries
+CREATE INDEX IF NOT EXISTS idx_invoices_wh_date ON invoices(warehouse_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_invoices_cust_date ON invoices(customer_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_invoices_supp_date ON invoices(supplier_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_invoice_returns_date_wh ON invoice_returns(date DESC, warehouse_id);
+CREATE INDEX IF NOT EXISTS idx_fin_tx_date_type ON financial_transactions(date DESC, type);
+CREATE INDEX IF NOT EXISTS idx_expenses_incomes_date_type ON expenses_incomes(date DESC, type);
+
 

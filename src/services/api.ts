@@ -8,12 +8,17 @@ import {
 } from './native';
 import type { ConnectionMode, ConnectionProfilesConfig } from '../types';
 import { logDiagnostic } from './diagnostics';
+import { removeSealedKey, sealJson, unsealJson } from './secureVault';
 
 const TOKENS_KEY = 'awlad_selim_auth_tokens_v3';
+const VAULT_TOKENS_KEY = 'auth_tokens_v1';
 const SERVER_URL_KEY = 'awlad_selim_server_base_url';
 const CONNECTION_PROFILES_KEY = 'awlad_selim_connection_profiles_v1';
 const FALLBACK_ENDPOINTS_KEY = 'awlad_selim_fallback_endpoints_v1';
 const INSTALLATION_ID_KEY = 'awlad_selim_server_installation_id_v1';
+
+let inMemoryTokens: StoredTokens | null = null;
+let tokenHydrated = false;
 
 export interface StoredTokens {
   accessToken: string;
@@ -76,15 +81,68 @@ function notifyServerDbStatus(available: boolean, message?: string): void {
   }
 }
 
+function purgeLegacyPlaintextTokens(): void {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(TOKENS_KEY);
+    }
+  } catch {
+    // ignore
+  }
+  if (isNativeCapacitor()) {
+    removePref(TOKENS_KEY).catch(() => {});
+  }
+}
+
+export async function initSecureTokenCache(): Promise<void> {
+  if (tokenHydrated && inMemoryTokens) return;
+  try {
+    const sealed = await unsealJson<StoredTokens>(VAULT_TOKENS_KEY);
+    if (sealed?.accessToken && sealed?.refreshToken && !inMemoryTokens) {
+      inMemoryTokens = {
+        accessToken: String(sealed.accessToken),
+        refreshToken: String(sealed.refreshToken),
+      };
+    } else if (!inMemoryTokens) {
+      let legacyRaw: string | null = null;
+      try {
+        legacyRaw = typeof localStorage !== 'undefined' ? localStorage.getItem(TOKENS_KEY) : null;
+      } catch {
+        legacyRaw = null;
+      }
+      if (legacyRaw) {
+        try {
+          const parsed = JSON.parse(legacyRaw);
+          if (parsed?.accessToken && parsed?.refreshToken) {
+            const migrated: StoredTokens = {
+              accessToken: String(parsed.accessToken),
+              refreshToken: String(parsed.refreshToken),
+            };
+            inMemoryTokens = migrated;
+            await sealJson(VAULT_TOKENS_KEY, migrated).catch(() => {});
+          }
+        } catch {
+          // ignore malformed legacy entry
+        }
+      }
+    }
+  } catch {
+    // ignore vault hydration failure
+  } finally {
+    tokenHydrated = true;
+    purgeLegacyPlaintextTokens();
+  }
+}
+
 export async function hydrateServerUrlFromNative(): Promise<void> {
   await hydrateNativePreferences([
     SERVER_URL_KEY,
     CONNECTION_PROFILES_KEY,
     FALLBACK_ENDPOINTS_KEY,
-    TOKENS_KEY,
     DEVICE_ID_STORAGE_KEY,
     INSTALLATION_ID_KEY,
   ]);
+  await initSecureTokenCache();
   getOrCreatePersistentDeviceId();
 }
 
@@ -471,23 +529,23 @@ export function detectModeFromUrl(
 }
 
 export function getStoredTokens(): StoredTokens | null {
-  try {
-    const raw = localStorage.getItem(TOKENS_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (parsed?.accessToken && parsed?.refreshToken) return parsed;
-    return null;
-  } catch {
-    return null;
+  if (inMemoryTokens?.accessToken && inMemoryTokens?.refreshToken) {
+    return inMemoryTokens;
   }
+  return null;
 }
 
 export async function saveStoredTokensAsync(tokens: StoredTokens | null): Promise<void> {
+  tokenHydrated = true;
+  inMemoryTokens = tokens?.accessToken && tokens?.refreshToken
+    ? { accessToken: String(tokens.accessToken), refreshToken: String(tokens.refreshToken) }
+    : null;
+  purgeLegacyPlaintextTokens();
   try {
-    if (!tokens) {
-      await removePref(TOKENS_KEY);
+    if (!inMemoryTokens) {
+      await removeSealedKey(VAULT_TOKENS_KEY);
     } else {
-      await setPref(TOKENS_KEY, JSON.stringify(tokens));
+      await sealJson(VAULT_TOKENS_KEY, inMemoryTokens);
     }
   } catch {
     // ignore storage quota errors
@@ -495,7 +553,11 @@ export async function saveStoredTokensAsync(tokens: StoredTokens | null): Promis
 }
 
 export function saveStoredTokens(tokens: StoredTokens | null): void {
-  saveStoredTokensAsync(tokens).catch(() => {});
+  tokenHydrated = true;
+  inMemoryTokens = tokens?.accessToken && tokens?.refreshToken
+    ? { accessToken: String(tokens.accessToken), refreshToken: String(tokens.refreshToken) }
+    : null;
+  saveStoredTokensAsync(inMemoryTokens).catch(() => {});
 }
 
 export function getConfiguredApiBaseUrl(): string {

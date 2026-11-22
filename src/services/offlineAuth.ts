@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs';
 import type { Customer, Representative, User } from '../types';
 import { getKV, removeKV, setKV } from './localDb';
 
@@ -59,32 +60,12 @@ function hexToBytes(hex: string): Uint8Array {
 }
 
 function randomSaltHex(len = 16): string {
+  if (typeof crypto === 'undefined' || typeof crypto.getRandomValues !== 'function') {
+    throw new Error('Secure random generator is unavailable in this environment');
+  }
   const bytes = new Uint8Array(len);
-  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
-    crypto.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < len; i += 1) {
-      bytes[i] = Math.floor(Math.random() * 256);
-    }
-  }
+  crypto.getRandomValues(bytes);
   return bytesToHex(bytes);
-}
-
-// Pure-JS fallback key derivation when crypto.subtle is unavailable (e.g., plain HTTP LAN origins)
-function fallbackDeriveHex(password: string, saltHex: string): string {
-  let h1 = 0x811c9dc5;
-  let h2 = 0x9e3779b9;
-  const input = `${saltHex}::${password}`;
-  for (let round = 0; round < 512; round += 1) {
-    for (let i = 0; i < input.length; i += 1) {
-      const code = input.charCodeAt(i);
-      h1 ^= code ^ (round & 0xff);
-      h1 = Math.imul(h1, 0x01000193);
-      h2 = (h2 ^ ((h1 >>> 16) + code + round)) >>> 0;
-      h2 = Math.imul(h2, 0x85ebca6b);
-    }
-  }
-  return `fb_${(h1 >>> 0).toString(16).padStart(8, '0')}${(h2 >>> 0).toString(16).padStart(8, '0')}`;
 }
 
 async function deriveVerifierHex(password: string, saltHex: string): Promise<string> {
@@ -111,10 +92,10 @@ async function deriveVerifierHex(password: string, saltHex: string): Promise<str
       );
       return `pbkdf2_${bytesToHex(new Uint8Array(derived))}`;
     } catch {
-      // fall back below if WebCrypto fails in restricted context
+      // fall back to bcryptjs below if WebCrypto subtle is blocked
     }
   }
-  return fallbackDeriveHex(password, saltHex);
+  return await bcrypt.hash(password, 10);
 }
 
 function credKey(serverOrigin: string, usernameLower: string, installationId = ''): string {
@@ -276,14 +257,26 @@ export async function verifyOfflineLogin(params: {
     };
   }
 
-  let candidateHex: string;
+  let passwordVerified = false;
   if (record.verifierHex.startsWith('fb_')) {
-    candidateHex = fallbackDeriveHex(params.password, record.saltHex);
+    return {
+      ok: false,
+      error: 'يرجى تسجيل الدخول أثناء الاتصال بالخادم لتحديث بيانات الأمان المحلية.',
+    };
+  } else if (record.verifierHex.startsWith('$2')) {
+    passwordVerified = await bcrypt.compare(params.password, record.verifierHex);
   } else {
-    candidateHex = await deriveVerifierHex(params.password, record.saltHex);
+    const candidateHex = await deriveVerifierHex(params.password, record.saltHex);
+    if (candidateHex.length === record.verifierHex.length) {
+      let diff = 0;
+      for (let i = 0; i < candidateHex.length; i += 1) {
+        diff |= candidateHex.charCodeAt(i) ^ record.verifierHex.charCodeAt(i);
+      }
+      passwordVerified = diff === 0;
+    }
   }
 
-  if (candidateHex !== record.verifierHex) {
+  if (!passwordVerified) {
     return { ok: false, error: 'اسم المستخدم أو كلمة المرور غير صحيحة.' };
   }
 

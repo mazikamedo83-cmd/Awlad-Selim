@@ -3634,185 +3634,233 @@ export async function markInvoiceReviewed(invoiceId, { notes = '' } = {}, actor)
   return updated;
 }
 
-export async function addInvoicePayment(invoiceId, paymentData, actor, idempotencyKey = '') {
+export async function addInvoicePaymentPgTx(client, invoiceId, paymentData, actor, idempotencyKey = '', options = {}) {
   const amount = round2(paymentData.amount);
   if (amount <= 0) throw new AppError(400, 'مبلغ الدفعة يجب أن يكون أكبر من الصفر', 'INVALID_AMOUNT');
   const now = nowIso();
   const payDate = paymentData.date || todayIso();
   const payId = generateServerId('PAY');
   const endpoint = `POST /api/invoices/${invoiceId}/payments`;
-  const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
+  const scopedIdem = idempotencyKey ? buildScopedIdemKey(endpoint, actor, idempotencyKey) : '';
+
+  if (scopedIdem) {
+    const dup = await findPgIdempotency(client, scopedIdem);
+    if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice };
+  }
+
+  const invRes = await client.query(`SELECT * FROM invoices WHERE id = $1 FOR UPDATE`, [invoiceId]);
+  const inv = invRes.rows[0];
+  if (!inv) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
+  if (inv.status !== 'confirmed') throw new AppError(409, 'لا يمكن تسجيل دفعة إلا على فاتورة معتمدة', 'INVOICE_NOT_CONFIRMED');
+  if (amount > round2(inv.remaining_amount) + 0.01) {
+    throw new AppError(400, `قيمة الدفعة (${amount}) تتجاوز المتبقي (${inv.remaining_amount})`, 'EXCEEDS_REMAINING');
+  }
+
+  let cashboxId = paymentData.cashboxId;
+  if (!cashboxId) {
+    const defCb = await client.query(`SELECT id FROM cashboxes ORDER BY is_default DESC LIMIT 1`);
+    cashboxId = defCb.rows[0]?.id;
+  }
+  if (!cashboxId) throw new AppError(400, 'لا توجد خزينة متاحة لتسجيل الدفعة', 'CASHBOX_REQUIRED');
+  const cbRes = await client.query(`SELECT * FROM cashboxes WHERE id = $1 FOR UPDATE`, [cashboxId]);
+  if (!cbRes.rows[0]) throw new AppError(404, 'الخزينة المحددة غير موجودة', 'CASHBOX_NOT_FOUND');
+
+  const newPaid = round2(Number(inv.paid_amount || 0) + amount);
+  const newRem = round2(Math.max(0, Number(inv.grand_total || 0) - newPaid));
+  const newPayType = newRem <= 0 ? 'cash' : 'partial';
+
+  await client.query(
+    `UPDATE invoices SET paid_amount = $1, remaining_amount = $2, payment_type = $3, updated_at = $4 WHERE id = $5`,
+    [newPaid, newRem, newPayType, now, invoiceId]
+  );
+  await client.query(
+    `INSERT INTO invoice_payments (id, invoice_id, invoice_number, amount, date, payment_method, cashbox_id, cashbox_name, notes, created_by, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+    [
+      payId,
+      invoiceId,
+      inv.invoice_number,
+      amount,
+      payDate,
+      paymentData.paymentMethod || 'cash',
+      cbRes.rows[0].id,
+      cbRes.rows[0].name,
+      paymentData.notes || 'سداد دفعة على الفاتورة',
+      actor.fullName,
+      now,
+    ]
+  );
+
+  const isSales = inv.type === 'sales';
+  if (isSales && inv.customer_id) {
+    const cRes = await client.query(`SELECT current_balance FROM customers WHERE id = $1 FOR UPDATE`, [inv.customer_id]);
+    if (cRes.rows[0]) {
+      await client.query(`UPDATE customers SET current_balance = $1 WHERE id = $2`, [
+        round2(Number(cRes.rows[0].current_balance || 0) - amount),
+        inv.customer_id,
+      ]);
+    }
+  } else if (!isSales && inv.supplier_id) {
+    const sRes = await client.query(`SELECT current_balance FROM suppliers WHERE id = $1 FOR UPDATE`, [inv.supplier_id]);
+    if (sRes.rows[0]) {
+      await client.query(`UPDATE suppliers SET current_balance = $1 WHERE id = $2`, [
+        round2(Number(sRes.rows[0].current_balance || 0) - amount),
+        inv.supplier_id,
+      ]);
+    }
+  }
+
+  const nextCb = isSales
+    ? round2(Number(cbRes.rows[0].current_balance || 0) + amount)
+    : round2(Number(cbRes.rows[0].current_balance || 0) - amount);
+  await client.query(`UPDATE cashboxes SET current_balance = $1 WHERE id = $2`, [nextCb, cbRes.rows[0].id]);
+
+  const txId = generateServerId('FT');
+  await client.query(
+    `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, notes, created_by, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+    [
+      txId,
+      `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`,
+      payDate,
+      isSales ? 'customer_payment' : 'supplier_payment',
+      amount,
+      cbRes.rows[0].id,
+      cbRes.rows[0].name,
+      nextCb,
+      isSales ? 'تحصيل دفعة مبيعات' : 'سداد دفعة مشتريات',
+      isSales ? inv.customer_id : inv.supplier_id,
+      isSales ? inv.customer_name : inv.supplier_name,
+      inv.type,
+      inv.id,
+      inv.invoice_number,
+      `دفعة مسجلة على الفاتورة رقم ${inv.invoice_number} (${cbRes.rows[0].name})`,
+      paymentData.notes || '',
+      actor.fullName,
+      now,
+    ]
+  );
+
+  const updatedInv = await fetchFullInvoicePg(client, invoiceId);
+  if (!options.skipAuditLog) {
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `تسجيل دفعة (${amount}) على فاتورة ${updatedInv.invoiceNumber}`,
+      module: 'المالية',
+      recordId: invoiceId,
+      client,
+    });
+  }
+  if (scopedIdem) {
+    await savePgIdempotency(client, scopedIdem, actor, endpoint, { invoice: updatedInv });
+  }
+  return { deduplicated: false, invoice: updatedInv };
+}
+
+export function addInvoicePaymentJsonTx(db, invoiceId, paymentData, actor, idempotencyKey = '') {
+  const amount = round2(paymentData.amount);
+  if (amount <= 0) throw new AppError(400, 'مبلغ الدفعة يجب أن يكون أكبر من الصفر', 'INVALID_AMOUNT');
+  const now = nowIso();
+  const payDate = paymentData.date || todayIso();
+  const payId = generateServerId('PAY');
+  const endpoint = `POST /api/invoices/${invoiceId}/payments`;
+  const scopedIdem = idempotencyKey ? buildScopedIdemKey(endpoint, actor, idempotencyKey) : '';
+
+  if (scopedIdem) {
+    const dup = findJsonIdempotency(scopedIdem);
+    if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice };
+  }
+
+  const inv = db.invoices.find((i) => i.id === invoiceId);
+  if (!inv) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
+  if (inv.status !== 'confirmed') throw new AppError(409, 'لا يمكن تسجيل دفعة إلا على فاتورة معتمدة', 'INVOICE_NOT_CONFIRMED');
+  if (amount > round2(inv.remainingAmount) + 0.01) {
+    throw new AppError(400, `قيمة الدفعة (${amount}) تتجاوز المتبقي (${inv.remainingAmount})`, 'EXCEEDS_REMAINING');
+  }
+  const cb = paymentData.cashboxId
+    ? db.cashboxes.find((c) => c.id === paymentData.cashboxId)
+    : db.cashboxes.find((c) => c.isDefault) || db.cashboxes[0];
+  if (!cb) throw new AppError(404, 'الخزينة المحددة غير موجودة', 'CASHBOX_NOT_FOUND');
+
+  const newPayment = {
+    id: payId,
+    invoiceId: inv.id,
+    invoiceNumber: inv.invoiceNumber,
+    amount,
+    date: payDate,
+    paymentMethod: paymentData.paymentMethod || 'cash',
+    cashboxId: cb.id,
+    cashboxName: cb.name,
+    notes: paymentData.notes || 'سداد دفعة على الفاتورة',
+    createdBy: actor.fullName,
+    createdAt: now,
+  };
+
+  inv.paidAmount = round2(Number(inv.paidAmount || 0) + amount);
+  inv.remainingAmount = round2(Math.max(0, Number(inv.grandTotal || 0) - inv.paidAmount));
+  inv.paymentType = inv.remainingAmount <= 0 ? 'cash' : 'partial';
+  inv.payments = [...(inv.payments || []), newPayment];
+
+  const isSales = inv.type === 'sales';
+  if (isSales && inv.customerId) {
+    const cust = db.customers.find((c) => c.id === inv.customerId);
+    if (cust) cust.currentBalance = round2(Number(cust.currentBalance || 0) - amount);
+  } else if (!isSales && inv.supplierId) {
+    const supp = db.suppliers.find((s) => s.id === inv.supplierId);
+    if (supp) supp.currentBalance = round2(Number(supp.currentBalance || 0) - amount);
+  }
+
+  cb.currentBalance = isSales ? round2(Number(cb.currentBalance || 0) + amount) : round2(Number(cb.currentBalance || 0) - amount);
+
+  db.financialTransactions.unshift({
+    id: generateServerId('FT'),
+    transactionNumber: `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`,
+    date: payDate,
+    type: isSales ? 'customer_payment' : 'supplier_payment',
+    cashboxId: cb.id,
+    cashboxName: cb.name,
+    amount,
+    category: isSales ? 'تحصيل دفعة مبيعات' : 'سداد دفعة مشتريات',
+    relatedDocType: inv.type,
+    relatedDocId: inv.id,
+    relatedDocNumber: inv.invoiceNumber,
+    partyId: isSales ? inv.customerId : inv.supplierId,
+    partyName: isSales ? inv.customerName : inv.supplierName,
+    description: `دفعة مسجلة على الفاتورة رقم ${inv.invoiceNumber} (${cb.name})`,
+    notes: paymentData.notes || '',
+    createdBy: actor.fullName,
+    createdAt: now,
+  });
+  if (scopedIdem) {
+    saveJsonIdempotency(scopedIdem, { invoice: inv });
+  }
+  return { deduplicated: false, invoice: inv };
+}
+
+export async function addInvoicePayment(invoiceId, paymentData, actor, idempotencyKey = '') {
+  const amount = round2(paymentData.amount);
+  if (amount <= 0) throw new AppError(400, 'مبلغ الدفعة يجب أن يكون أكبر من الصفر', 'INVALID_AMOUNT');
 
   if (await isPgMode()) {
-    const out = await withTransaction(async (client) => {
-      const dup = await findPgIdempotency(client, scopedIdem);
-      if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice };
-
-      const invRes = await client.query(`SELECT * FROM invoices WHERE id = $1 FOR UPDATE`, [invoiceId]);
-      const inv = invRes.rows[0];
-      if (!inv) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
-      if (inv.status !== 'confirmed') throw new AppError(409, 'لا يمكن تسجيل دفعة إلا على فاتورة معتمدة', 'INVOICE_NOT_CONFIRMED');
-      if (amount > round2(inv.remaining_amount) + 0.01) {
-        throw new AppError(400, `قيمة الدفعة (${amount}) تتجاوز المتبقي (${inv.remaining_amount})`, 'EXCEEDS_REMAINING');
-      }
-      const cbRes = await client.query(`SELECT * FROM cashboxes WHERE id = $1 FOR UPDATE`, [paymentData.cashboxId]);
-      if (!cbRes.rows[0]) throw new AppError(404, 'الخزينة المحددة غير موجودة', 'CASHBOX_NOT_FOUND');
-
-      const newPaid = round2(Number(inv.paid_amount || 0) + amount);
-      const newRem = round2(Math.max(0, Number(inv.grand_total || 0) - newPaid));
-      const newPayType = newRem <= 0 ? 'cash' : 'partial';
-
-      await client.query(
-        `UPDATE invoices SET paid_amount = $1, remaining_amount = $2, payment_type = $3, updated_at = $4 WHERE id = $5`,
-        [newPaid, newRem, newPayType, now, invoiceId]
-      );
-      await client.query(
-        `INSERT INTO invoice_payments (id, invoice_id, invoice_number, amount, date, payment_method, cashbox_id, cashbox_name, notes, created_by, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-        [
-          payId,
-          invoiceId,
-          inv.invoice_number,
-          amount,
-          payDate,
-          paymentData.paymentMethod || 'cash',
-          cbRes.rows[0].id,
-          cbRes.rows[0].name,
-          paymentData.notes || 'سداد دفعة على الفاتورة',
-          actor.fullName,
-          now,
-        ]
-      );
-
-      const isSales = inv.type === 'sales';
-      if (isSales && inv.customer_id) {
-        const cRes = await client.query(`SELECT current_balance FROM customers WHERE id = $1 FOR UPDATE`, [inv.customer_id]);
-        if (cRes.rows[0]) {
-          await client.query(`UPDATE customers SET current_balance = $1 WHERE id = $2`, [
-            round2(Number(cRes.rows[0].current_balance || 0) - amount),
-            inv.customer_id,
-          ]);
-        }
-      } else if (!isSales && inv.supplier_id) {
-        const sRes = await client.query(`SELECT current_balance FROM suppliers WHERE id = $1 FOR UPDATE`, [inv.supplier_id]);
-        if (sRes.rows[0]) {
-          await client.query(`UPDATE suppliers SET current_balance = $1 WHERE id = $2`, [
-            round2(Number(sRes.rows[0].current_balance || 0) - amount),
-            inv.supplier_id,
-          ]);
-        }
-      }
-
-      const nextCb = isSales
-        ? round2(Number(cbRes.rows[0].current_balance || 0) + amount)
-        : round2(Number(cbRes.rows[0].current_balance || 0) - amount);
-      await client.query(`UPDATE cashboxes SET current_balance = $1 WHERE id = $2`, [nextCb, cbRes.rows[0].id]);
-
-      const txId = generateServerId('FT');
-      await client.query(
-        `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, notes, created_by, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
-        [
-          txId,
-          `TRX-${Date.now().toString().slice(-6)}`,
-          payDate,
-          isSales ? 'customer_payment' : 'supplier_payment',
-          amount,
-          cbRes.rows[0].id,
-          cbRes.rows[0].name,
-          nextCb,
-          isSales ? 'تحصيل دفعة مبيعات' : 'سداد دفعة مشتريات',
-          isSales ? inv.customer_id : inv.supplier_id,
-          isSales ? inv.customer_name : inv.supplier_name,
-          inv.type,
-          inv.id,
-          inv.invoice_number,
-          `دفعة مسجلة على الفاتورة رقم ${inv.invoice_number} (${cbRes.rows[0].name})`,
-          paymentData.notes || '',
-          actor.fullName,
-          now,
-        ]
-      );
-
-      const updatedInv = await fetchFullInvoicePg(client, invoiceId);
-      await savePgIdempotency(client, scopedIdem, actor, endpoint, { invoice: updatedInv });
-      return { deduplicated: false, invoice: updatedInv };
-    });
-
-    if (!out.deduplicated) {
-      await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تسجيل دفعة (${amount}) على فاتورة ${out.invoice.invoiceNumber}`, module: 'المالية', recordId: invoiceId });
-    }
+    const out = await withTransaction((client) =>
+      addInvoicePaymentPgTx(client, invoiceId, paymentData, actor, idempotencyKey)
+    );
     return out.invoice;
   }
 
-  const out = await withJsonTransaction(async (db) => {
-    const dup = findJsonIdempotency(scopedIdem);
-    if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice };
-
-    const inv = db.invoices.find((i) => i.id === invoiceId);
-    if (!inv) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
-    if (inv.status !== 'confirmed') throw new AppError(409, 'لا يمكن تسجيل دفعة إلا على فاتورة معتمدة', 'INVOICE_NOT_CONFIRMED');
-    if (amount > round2(inv.remainingAmount) + 0.01) {
-      throw new AppError(400, `قيمة الدفعة (${amount}) تتجاوز المتبقي (${inv.remainingAmount})`, 'EXCEEDS_REMAINING');
-    }
-    const cb = db.cashboxes.find((c) => c.id === paymentData.cashboxId);
-    if (!cb) throw new AppError(404, 'الخزينة المحددة غير موجودة', 'CASHBOX_NOT_FOUND');
-
-    const newPayment = {
-      id: payId,
-      invoiceId: inv.id,
-      invoiceNumber: inv.invoiceNumber,
-      amount,
-      date: payDate,
-      paymentMethod: paymentData.paymentMethod || 'cash',
-      cashboxId: cb.id,
-      cashboxName: cb.name,
-      notes: paymentData.notes || 'سداد دفعة على الفاتورة',
-      createdBy: actor.fullName,
-      createdAt: now,
-    };
-
-    inv.paidAmount = round2(Number(inv.paidAmount || 0) + amount);
-    inv.remainingAmount = round2(Math.max(0, Number(inv.grandTotal || 0) - inv.paidAmount));
-    inv.paymentType = inv.remainingAmount <= 0 ? 'cash' : 'partial';
-    inv.payments = [...(inv.payments || []), newPayment];
-
-    const isSales = inv.type === 'sales';
-    if (isSales && inv.customerId) {
-      const cust = db.customers.find((c) => c.id === inv.customerId);
-      if (cust) cust.currentBalance = round2(Number(cust.currentBalance || 0) - amount);
-    } else if (!isSales && inv.supplierId) {
-      const supp = db.suppliers.find((s) => s.id === inv.supplierId);
-      if (supp) supp.currentBalance = round2(Number(supp.currentBalance || 0) - amount);
-    }
-
-    cb.currentBalance = isSales ? round2(Number(cb.currentBalance || 0) + amount) : round2(Number(cb.currentBalance || 0) - amount);
-
-    db.financialTransactions.unshift({
-      id: generateServerId('FT'),
-      transactionNumber: `TRX-${Date.now().toString().slice(-6)}`,
-      date: payDate,
-      type: isSales ? 'customer_payment' : 'supplier_payment',
-      cashboxId: cb.id,
-      cashboxName: cb.name,
-      amount,
-      category: isSales ? 'تحصيل دفعة مبيعات' : 'سداد دفعة مشتريات',
-      relatedDocType: inv.type,
-      relatedDocId: inv.id,
-      relatedDocNumber: inv.invoiceNumber,
-      partyId: isSales ? inv.customerId : inv.supplierId,
-      partyName: isSales ? inv.customerName : inv.supplierName,
-      description: `دفعة مسجلة على الفاتورة رقم ${inv.invoiceNumber} (${cb.name})`,
-      notes: paymentData.notes || '',
-      createdBy: actor.fullName,
-      createdAt: now,
-    });
-    saveJsonIdempotency(scopedIdem, { invoice: inv });
-    return { deduplicated: false, invoice: inv };
-  });
+  const out = await withJsonTransaction((db) =>
+    addInvoicePaymentJsonTx(db, invoiceId, paymentData, actor, idempotencyKey)
+  );
 
   if (!out.deduplicated) {
-    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تسجيل دفعة (${amount}) على فاتورة ${out.invoice.invoiceNumber}`, module: 'المالية', recordId: invoiceId });
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `تسجيل دفعة (${amount}) على فاتورة ${out.invoice.invoiceNumber}`,
+      module: 'المالية',
+      recordId: invoiceId,
+    });
   }
   return out.invoice;
 }

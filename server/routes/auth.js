@@ -37,6 +37,7 @@ router.post(
     const user = await bootstrapAdmin(req.body || {}, {
       ipAddress: getClientIp(req),
       deviceInfo: req.get('user-agent') || '',
+      bootstrapSecret: req.get('x-bootstrap-secret') || req.body?.bootstrapSecret || '',
     });
     res.status(201).json({ ok: true, user });
   })

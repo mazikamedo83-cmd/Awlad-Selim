@@ -1,0 +1,103 @@
+name: AWLAD SELIM CI Verification (TypeScript, Security & PostgreSQL)
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-all:
+    name: Build, Lint & Full Test Matrix (JSON + Real PostgreSQL 16)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: awlad_selim_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_postgres_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Setup Bun 1.4.4
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.4'
+
+      - name: Install dependencies with frozen lockfile
+        run: bun install --frozen-lockfile
+
+      - name: TypeScript & type check
+        run: bun run lint
+
+      - name: Build production web bundle & verify asset hygiene
+        run: |
+          bun run build
+          test -s dist/index.html
+          test ! -e dist/assets/aistudio
+
+      - name: Run full backend, reports, audit, pairing & client verification suites
+        run: |
+          node server/tests/runAllTests.mjs
+          node server/tests/repPurchaseCustomerRbacTests.mjs
+          node server/tests/masterRepairVerificationTests.mjs
+          node server/tests/comprehensiveReportsTests.mjs
+          node server/tests/auditVerificationTests.mjs
+          npx tsx server/tests/pairingVerificationTests.mts
+          node server/tests/strictPostgresModeTests.mjs
+          npx tsx server/tests/strictClientBehaviorTests.mts
+          node server/tests/verifyElectronBootstrap.mjs
+
+      - name: Verify schema & transactional store roundtrip against real PostgreSQL 16
+        env:
+          DATABASE_URL: postgres://postgres:ci_postgres_password@localhost:5432/awlad_selim_ci
+          DB_STRICT_MODE: 'true'
+          JWT_SECRET: ci_test_jwt_secret_key_for_postgres_verification_2026
+        run: |
+          node --input-type=module -e '
+            import assert from "node:assert/strict";
+            import os from "node:os";
+            import fs from "node:fs";
+            import path from "node:path";
+            const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "awlad_pg_ci_"));
+            process.env.AWLAD_DATA_DIR = tmp;
+            try {
+              const { initializeSchema, query, isStrictPostgresMode } = await import("./server/db/postgres.js");
+              const { bootstrapAdmin } = await import("./server/db/stores/authStore.js");
+              const { loadFullReportDataset } = await import("./server/db/stores/reportsStore.js");
+              assert.equal(isStrictPostgresMode(), true);
+              const init = await initializeSchema();
+              assert.equal(init.success, true, init.error || "Schema init failed");
+              const idx = await query("SELECT indexname FROM pg_indexes WHERE tablename IN (\x27invoices\x27,\x27invoice_returns\x27,\x27financial_transactions\x27,\x27expenses_incomes\x27)");
+              assert.ok(idx.rows.some((r) => r.indexname === "idx_invoices_wh_date"));
+              const res = await bootstrapAdmin({ fullName: "مدير CI", username: "ci_admin", password: "CiPassword!2026" }, {});
+              assert.equal(res.user.role, "admin");
+              const ds = await loadFullReportDataset(res.user, { dateFrom: "2026-01-01" });
+              assert.ok(Array.isArray(ds.invoices));
+              console.log("Real PostgreSQL 16 schema, composite indexes, bootstrap & SQL pushdown verified.");
+            } finally {
+              fs.rmSync(tmp, { recursive: true, force: true });
+            }
+          '

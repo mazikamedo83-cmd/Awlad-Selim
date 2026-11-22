@@ -46,6 +46,10 @@ async function startUnifiedServer() {
   const app = createApiApp();
   const httpServer = http.createServer(app);
 
+  app.use('/assets/aistudio', (_req, res) => {
+    res.status(404).end();
+  });
+
   if (!isProduction) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({

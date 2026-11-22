@@ -57,21 +57,29 @@ jobs:
       - name: Run TypeScript check
         run: bun run lint
 
-      - name: Run backend and PostgreSQL test suites
+      - name: Run full backend, reports, audit, pairing & client test suites
         run: |
           node server/tests/runAllTests.mjs
+          node server/tests/repPurchaseCustomerRbacTests.mjs
+          node server/tests/masterRepairVerificationTests.mjs
+          node server/tests/comprehensiveReportsTests.mjs
+          node server/tests/auditVerificationTests.mjs
           npx tsx server/tests/pairingVerificationTests.mts
           node server/tests/strictPostgresModeTests.mjs
           npx tsx server/tests/strictClientBehaviorTests.mts
 
       - name: Build production web bundle
-        run: bun run build
+        run: |
+          bun run build
+          test ! -e dist/assets/aistudio
 
       - name: Run Electron bootstrap and offline dist verification
         run: node server/tests/verifyElectronBootstrap.mjs
 
       - name: Sync Capacitor Android project
-        run: npx cap sync android
+        run: |
+          npx cap sync android
+          test ! -e android/app/src/main/assets/public/assets/aistudio
 
       - name: Validate Production Signing Secrets & Decode Keystore
         env:

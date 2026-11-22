@@ -2,9 +2,11 @@ import type { Customer, Representative, User, UserRole } from '../types';
 import { getKV, setKV } from './localDb';
 import { getOrCreatePersistentDeviceId, getPref, setPref } from './native';
 import { normalizeServerOrigin } from './offlineAuth';
+import { removeSealedKey, sealJson, unsealJson } from './secureVault';
 
 const VAULT_NAMESPACE = 'account_vault';
 const VAULT_RECORDS_KEY = 'saved_accounts_v1';
+const VAULT_TOKENS_SECRET_KEY = 'account_vault_tokens_v1';
 const ACTIVE_ACCOUNT_PREF_KEY = 'awlad_selim_active_account_id_v1';
 const RUNTIME_UNLOCKED_KEY = 'awlad_selim_runtime_unlocked_uid';
 const ACCOUNT_INDEX_LS_KEY = 'awlad_selim_saved_accounts_meta_v1';
@@ -112,17 +114,61 @@ function persistDisplayMetaCache(records: SavedDeviceAccount[]): void {
   }
 }
 
+type SealedAccountTokenMap = Record<string, { accessToken?: string; refreshToken?: string }>;
+
 async function loadRawAccounts(): Promise<SavedDeviceAccount[]> {
   const fromVault = await getKV<SavedDeviceAccount[]>(VAULT_NAMESPACE, VAULT_RECORDS_KEY);
-  if (Array.isArray(fromVault)) {
-    return fromVault;
+  if (!Array.isArray(fromVault)) {
+    return [];
   }
-  return [];
+  const sealedTokens = (await unsealJson<SealedAccountTokenMap>(VAULT_TOKENS_SECRET_KEY)) || {};
+  let hadLegacyPlaintextTokens = false;
+  const migratedTokens: SealedAccountTokenMap = { ...sealedTokens };
+
+  const hydrated = fromVault.map((entry) => {
+    const uid = entry.userId;
+    if (entry.accessToken || entry.refreshToken) {
+      hadLegacyPlaintextTokens = true;
+      if (!migratedTokens[uid]?.refreshToken && entry.refreshToken) {
+        migratedTokens[uid] = {
+          accessToken: entry.accessToken,
+          refreshToken: entry.refreshToken,
+        };
+      }
+    }
+    const secret = migratedTokens[uid];
+    return {
+      ...entry,
+      accessToken: secret?.accessToken ?? entry.accessToken,
+      refreshToken: secret?.refreshToken ?? entry.refreshToken,
+    };
+  });
+
+  if (hadLegacyPlaintextTokens) {
+    await sealJson(VAULT_TOKENS_SECRET_KEY, migratedTokens).catch(() => {});
+    await setKV(VAULT_NAMESPACE, VAULT_RECORDS_KEY, stripSensitiveTokensForDisplayMeta(hydrated)).catch(() => {});
+  }
+
+  return hydrated;
 }
 
 async function saveRawAccounts(records: SavedDeviceAccount[]): Promise<void> {
   const sorted = [...records].sort((a, b) => String(b.lastLoginAt || '').localeCompare(String(a.lastLoginAt || '')));
-  await setKV(VAULT_NAMESPACE, VAULT_RECORDS_KEY, sorted);
+  const tokenMap: SealedAccountTokenMap = {};
+  for (const entry of sorted) {
+    if (entry.accessToken || entry.refreshToken) {
+      tokenMap[entry.userId] = {
+        ...(entry.accessToken ? { accessToken: entry.accessToken } : {}),
+        ...(entry.refreshToken ? { refreshToken: entry.refreshToken } : {}),
+      };
+    }
+  }
+  if (Object.keys(tokenMap).length > 0) {
+    await sealJson(VAULT_TOKENS_SECRET_KEY, tokenMap);
+  } else {
+    await removeSealedKey(VAULT_TOKENS_SECRET_KEY);
+  }
+  await setKV(VAULT_NAMESPACE, VAULT_RECORDS_KEY, stripSensitiveTokensForDisplayMeta(sorted));
   persistDisplayMetaCache(sorted);
 }
 

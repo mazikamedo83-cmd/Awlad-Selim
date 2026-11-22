@@ -789,7 +789,7 @@ async function runMasterRepairSuite(label) {
       assert.ok(auditPur.json.logs.some((l) => l.recordId === pInv.id && String(l.action).includes('تعديل فاتورة مشتريات')));
     });
 
-    await test(`${label} | 6. Concurrent 2-device self-registration serializes cleanly without 500/23505 or duplicate customer records`, async () => {
+    await test(`${label} | 6. Concurrent 2-device self-registration serializes cleanly without 500/23505 or duplicate phone/customer records`, async () => {
       const sharedPhone = '01299998888';
       const [r1, r2] = await Promise.all([
         req(baseUrl, 'POST', '/api/auth/register', {
@@ -813,13 +813,20 @@ async function runMasterRepairSuite(label) {
           },
         }),
       ]);
-      assert.equal(r1.status, 201);
-      assert.equal(r2.status, 201);
+      const phoneRaceStatuses = [r1.status, r2.status].sort((a, b) => a - b);
+      assert.deepEqual(phoneRaceStatuses, [201, 409], 'Duplicate phone registration must block 2nd device cleanly with 409');
+      const blockedPhone = r1.status === 409 ? r1 : r2;
+      assert.equal(blockedPhone.json.code, 'CUSTOMER_PHONE_CONFLICT');
       const boot = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
       const matchedCusts = (boot.customers || []).filter((c) => c.phone === sharedPhone);
       assert.equal(matchedCusts.length, 1, 'Concurrent registration on same phone must create exactly 1 customer profile');
-      const conflictCount = [r1.json.linkWarning, r2.json.linkWarning].filter(Boolean).length;
-      assert.equal(conflictCount, 1, 'Second concurrent registration with same phone must flag linkWarning cleanly');
+      const matchedUsers = (boot.users || []).filter((u) => u.username === 'race_cust_1' || u.username === 'race_cust_2');
+      assert.equal(matchedUsers.length, 1, 'Blocked phone conflict must leave zero orphan user records');
+      const auditPhone = await req(baseUrl, 'GET', '/api/admin/audit-logs?limit=30', { token: adminToken });
+      assert.ok(
+        (auditPhone.json.logs || []).some((l) => String(l.action || '').includes('رفض تسجيل')),
+        'Blocked duplicate-phone registration must be recorded in audit_logs'
+      );
 
       // Duplicate username race across 2 devices -> one 201 and one 409 DUPLICATE_USERNAME (never 500!)
       const [u1, u2] = await Promise.all([
@@ -924,6 +931,135 @@ async function runMasterRepairSuite(label) {
 
       const bootAfter = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
       assert.equal(Number(bootAfter.products.find((p) => p.id === prodId).stockPerWarehouse[vanWhId]), 10);
+    });
+
+    await test(`${label} | 9. Atomic order collection race protection, stage transition validation & Idempotency-Key replay`, async () => {
+      // Create an invoice-backed order directly via rep order creation & approve -> convert -> collect
+      const ordCreate = await req(baseUrl, 'POST', '/api/orders', {
+        token: rep1Token,
+        body: {
+          customerId: custId,
+          items: [{ productId: prodId, productName: 'شاي أحمد ناعم 250 جم', unit: 'عبوة', unitFactor: 1, quantity: 2, unitPrice: 55 }],
+          notes: 'اختبار ذرية التحصيل',
+        },
+      });
+      assert.equal(ordCreate.status, 201);
+      const ordId = ordCreate.json.order.id;
+
+      const appRes = await req(baseUrl, 'POST', `/api/orders/${ordId}/approve`, {
+        token: adminToken,
+        body: { representativeId: rep1Id },
+      });
+      assert.equal(appRes.status, 200);
+
+      const convRes = await req(baseUrl, 'POST', `/api/orders/${ordId}/convert-to-invoice`, {
+        token: adminToken,
+        body: {
+          warehouseId: whMainId,
+          cashboxId: cbMainId,
+          status: 'confirmed',
+          paymentType: 'credit',
+          paidAmount: 0,
+        },
+      });
+      assert.equal(convRes.status, 201);
+      const linkedInvId = convRes.json.invoice.id;
+      const invoiceTotal = Number(convRes.json.invoice.grandTotal);
+      assert.ok(invoiceTotal > 0);
+
+      // Disallow skipping straight to 'closed' from 'invoiced'
+      const invalidJump = await req(baseUrl, 'POST', `/api/orders/${ordId}/stage`, {
+        token: adminToken,
+        body: { stage: 'closed', notes: 'قفز غير صالح' },
+      });
+      assert.equal(invalidJump.status, 409);
+      assert.equal(invalidJump.json.code, 'INVALID_ORDER_TRANSITION');
+
+      // Record cashbox balance before concurrent collection
+      const bootBefore = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const cbBefore = Number(bootBefore.cashboxes.find((c) => c.id === cbMainId).currentBalance);
+
+      // Attempt collection with nonexistent cashbox -> must fail atomically without updating order stage or invoice
+      const failBadCb = await req(baseUrl, 'POST', `/api/orders/${ordId}/stage`, {
+        token: adminToken,
+        body: { stage: 'delivered', collectedAmount: 10, cashboxId: 'CB-NONEXISTENT-999' },
+      });
+      assert.ok(failBadCb.status >= 400);
+      const orderAfterFail = (await req(baseUrl, 'GET', `/api/orders/${ordId}`, { token: adminToken })).json.order;
+      assert.equal(orderAfterFail.status, 'invoiced', 'Failed payment inside tx must roll back order stage too');
+
+      // Replay-safe idempotent collection of half amount
+      const halfAmount = Number((invoiceTotal / 2).toFixed(2));
+      const collectKey = `ORD-COLLECT-${Date.now()}`;
+      const col1 = await req(baseUrl, 'POST', `/api/orders/${ordId}/stage`, {
+        token: adminToken,
+        headers: { 'Idempotency-Key': collectKey },
+        body: { stage: 'delivered', collectedAmount: halfAmount, cashboxId: cbMainId },
+      });
+      assert.equal(col1.status, 200);
+      const colReplay = await req(baseUrl, 'POST', `/api/orders/${ordId}/stage`, {
+        token: adminToken,
+        headers: { 'Idempotency-Key': collectKey },
+        body: { stage: 'delivered', collectedAmount: halfAmount, cashboxId: cbMainId },
+      });
+      assert.equal(colReplay.status, 200);
+      assert.equal(colReplay.json.deduplicated, true);
+
+      // Concurrent race on two devices trying to collect full remaining balance simultaneously
+      const rem = Number((invoiceTotal - halfAmount).toFixed(2));
+      const [raceA, raceB] = await Promise.all([
+        req(baseUrl, 'POST', `/api/orders/${ordId}/stage`, {
+          token: adminToken,
+          body: { stage: 'collected', collectedAmount: rem, cashboxId: cbMainId },
+        }),
+        req(baseUrl, 'POST', `/api/orders/${ordId}/stage`, {
+          token: adminToken,
+          body: { stage: 'collected', collectedAmount: rem, cashboxId: cbMainId },
+        }),
+      ]);
+      const okCount = [raceA.status, raceB.status].filter((s) => s === 200).length;
+      const errCount = [raceA.status, raceB.status].filter((s) => s === 400 || s === 409).length;
+      assert.equal(okCount, 1, 'Only one concurrent full-collection device may succeed');
+      assert.equal(errCount, 1, 'Second concurrent collection exceeding invoice remaining must fail cleanly');
+
+      const bootAfter = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const cbAfter = Number(bootAfter.cashboxes.find((c) => c.id === cbMainId).currentBalance);
+      assert.equal(Number((cbAfter - cbBefore).toFixed(2)), invoiceTotal, 'Cashbox balance must reflect exact invoiceTotal once');
+      const finalInv = bootAfter.invoices.find((i) => i.id === linkedInvId);
+      assert.equal(Number(finalInv.remainingAmount), 0);
+    });
+
+    await test(`${label} | 10. Security hardening: production CORS deny-unlisted & strict /assets/aistudio block`, async () => {
+      const prevNodeEnv = process.env.NODE_ENV;
+      const prevAllowedOrigins = process.env.ALLOWED_ORIGINS;
+      try {
+        process.env.NODE_ENV = 'production';
+        delete process.env.ALLOWED_ORIGINS;
+        const prodApp = createApiApp();
+        const prodServer = http.createServer(prodApp);
+        await new Promise((resolve) => prodServer.listen(0, '127.0.0.1', resolve));
+        const { port: prodPort } = prodServer.address();
+        try {
+          const evilRes = await fetch(`http://127.0.0.1:${prodPort}/api/health`, {
+            headers: { Origin: 'https://evil-attacker.example' },
+          });
+          assert.equal(evilRes.status, 403, 'Production CORS without ALLOWED_ORIGINS must reject unknown external origins');
+          assert.equal(evilRes.headers.get('access-control-allow-origin'), null);
+
+          const capRes = await fetch(`http://127.0.0.1:${prodPort}/api/health`, {
+            headers: { Origin: 'capacitor://localhost' },
+          });
+          assert.notEqual(capRes.status, 403, 'Capacitor origin must pass production CORS middleware');
+          assert.equal(capRes.headers.get('access-control-allow-origin'), 'capacitor://localhost');
+        } finally {
+          await new Promise((resolve) => prodServer.close(resolve));
+        }
+      } finally {
+        if (prevNodeEnv === undefined) delete process.env.NODE_ENV;
+        else process.env.NODE_ENV = prevNodeEnv;
+        if (prevAllowedOrigins === undefined) delete process.env.ALLOWED_ORIGINS;
+        else process.env.ALLOWED_ORIGINS = prevAllowedOrigins;
+      }
     });
   } finally {
     await new Promise((resolve) => server.close(resolve));

@@ -293,7 +293,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               <span className="text-[11px] text-slate-500 block">صافي الكمية: {fmtQty(selectedPnl.netSalesQty)} (خصم: {fmt(selectedPnl.totalDiscounts)})</span>
             </div>
             <div className="p-3 bg-white border border-slate-200 rounded-xl shadow-2xs">
-              <span className="text-slate-500 block">تكلفة البضاعة المباعة (COGS)</span>
+              <span className="text-slate-500 block">تكلفة البضاعة المباعة</span>
               <strong className="text-base font-black text-amber-800">{fmt(selectedPnl.cogs)} {currency}</strong>
               <span className="text-[11px] text-slate-500 block">مرتجع بيع: {fmt(selectedPnl.salesReturnsValue)}</span>
             </div>
@@ -446,7 +446,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
                     <th className="p-2 border-l border-slate-200">المجموعة</th>
                     <th className="p-2 border-l border-slate-200 text-center">مشتريات</th>
                     <th className="p-2 border-l border-slate-200 text-center">صافي المبيعات</th>
-                    <th className="p-2 border-l border-slate-200 text-center">COGS</th>
+                    <th className="p-2 border-l border-slate-200 text-center">تكلفة البضاعة المباعة</th>
                     <th className="p-2 border-l border-slate-200 text-center">الخصومات</th>
                     <th className="p-2 border-l border-slate-200 text-center">مرتجعات بيع</th>
                     <th className="p-2 border-l border-slate-200 text-center">التوالف / المصاريف</th>

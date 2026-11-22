@@ -73,6 +73,10 @@ export async function startStandaloneServer(options = {}) {
   await initializeServerRuntime();
   const app = createApiApp();
 
+  app.use('/assets/aistudio', (_req, res) => {
+    res.status(404).end();
+  });
+
   if (fs.existsSync(distDir)) {
     const setNoCacheHeaders = (res) => {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');

@@ -813,6 +813,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const removeSavedAccountFromDevice = async (userId: string) => {
     const isRemovingActive = currentUserRef.current?.id === userId;
+    const entry = await getSavedAccount(userId).catch(() => null);
+    if (entry?.refreshToken) {
+      await apiRequest('/api/auth/logout', {
+        method: 'POST',
+        skipAuth: true,
+        body: { refreshToken: entry.refreshToken },
+      }).catch(() => {});
+    }
     await removeSavedAccount(userId);
     await revokeOfflineUser(userId).catch(() => {});
     clearReadCache(userId);

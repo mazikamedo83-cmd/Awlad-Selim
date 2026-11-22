@@ -1,7 +1,10 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { verifyJwt } from '../utils/crypto.js';
 import { validateActiveSession, recordAuditLog, checkDeviceAuthGuard } from '../db/stores/authStore.js';
 import { AppError } from '../utils/errors.js';
 import { isPgConnectionError, isStrictPostgresMode, sanitizePgErrorMessage } from '../db/postgres.js';
+import { getDataPaths } from '../db/jsonLedger.js';
 import {
   DATABASE_UNAVAILABLE_CODE,
   DATABASE_UNAVAILABLE_MESSAGE,
@@ -14,16 +17,66 @@ const failedLoginMap = new Map();
 const PAIRING_RATE_WINDOW_MS = 5 * 60 * 1000;
 const MAX_PAIRING_REQUESTS = 90;
 const pairingRateMap = new Map();
+let rateLimitsHydrated = false;
+
+function getRateLimitFilePath() {
+  try {
+    const { dataDir } = getDataPaths();
+    return path.join(dataDir, 'login_rate_limits.json');
+  } catch {
+    return null;
+  }
+}
+
+function hydrateRateLimitsFromDisk() {
+  if (rateLimitsHydrated) return;
+  rateLimitsHydrated = true;
+  const filePath = getRateLimitFilePath();
+  if (!filePath) return;
+  try {
+    if (!fs.existsSync(filePath)) return;
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    const now = Date.now();
+    if (parsed && typeof parsed === 'object') {
+      for (const [k, v] of Object.entries(parsed)) {
+        if (v && typeof v.count === 'number' && typeof v.firstAttemptAt === 'number' && now - v.firstAttemptAt < RATE_WINDOW_MS) {
+          failedLoginMap.set(k, { count: v.count, firstAttemptAt: v.firstAttemptAt });
+        }
+      }
+    }
+  } catch {
+    // Ignore corrupt or unavailable rate limit cache
+  }
+}
+
+function persistRateLimitsToDisk() {
+  const filePath = getRateLimitFilePath();
+  if (!filePath) return;
+  try {
+    const now = Date.now();
+    const obj = {};
+    for (const [k, v] of failedLoginMap.entries()) {
+      if (v && now - v.firstAttemptAt < RATE_WINDOW_MS) {
+        obj[k] = v;
+      }
+    }
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) return;
+    const tmp = `${filePath}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(obj), 'utf8');
+    fs.renameSync(tmp, filePath);
+  } catch {
+    // Non-fatal in read-only or ephemeral test environments
+  }
+}
 
 export function getClientIp(req) {
-  const fwd = req.headers['x-forwarded-for'];
-  if (typeof fwd === 'string' && fwd.length > 0) {
-    return fwd.split(',')[0].trim();
-  }
-  return req.socket?.remoteAddress || req.ip || 'unknown';
+  return req.ip || req.socket?.remoteAddress || 'unknown';
 }
 
 export function checkLoginRateLimit(req, res, next) {
+  hydrateRateLimitsFromDisk();
   const ip = getClientIp(req);
   const username = String(req.body?.username || '').trim().toLowerCase();
   const key = `${ip}::${username}`;
@@ -40,12 +93,14 @@ export function checkLoginRateLimit(req, res, next) {
   }
   if (entry && now - entry.firstAttemptAt >= RATE_WINDOW_MS) {
     failedLoginMap.delete(key);
+    persistRateLimitsToDisk();
   }
   req._rateLimitKey = key;
   next();
 }
 
 export async function recordLoginFailure(req, username) {
+  hydrateRateLimitsFromDisk();
   const key = req._rateLimitKey || `${getClientIp(req)}::${String(username || '').toLowerCase()}`;
   const now = Date.now();
   const entry = failedLoginMap.get(key);
@@ -55,6 +110,7 @@ export async function recordLoginFailure(req, username) {
     entry.count += 1;
     failedLoginMap.set(key, entry);
   }
+  persistRateLimitsToDisk();
   if (failedLoginMap.get(key).count >= MAX_FAILED_ATTEMPTS) {
     await recordAuditLog({
       userName: String(username || 'مجهول'),
@@ -67,14 +123,24 @@ export async function recordLoginFailure(req, username) {
 }
 
 export function clearLoginFailure(req) {
-  if (req._rateLimitKey) {
+  if (req._rateLimitKey && failedLoginMap.has(req._rateLimitKey)) {
     failedLoginMap.delete(req._rateLimitKey);
+    persistRateLimitsToDisk();
   }
 }
 
 export function resetAllRateLimitsForTests() {
   failedLoginMap.clear();
   pairingRateMap.clear();
+  rateLimitsHydrated = true;
+  const filePath = getRateLimitFilePath();
+  if (filePath) {
+    try {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch {
+      // ignore
+    }
+  }
 }
 
 export function checkPairingRateLimit(req, res, next) {

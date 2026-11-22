@@ -922,4 +922,70 @@ await test('15. ACCOUNT_DEACTIVATED, ACCOUNT_SUSPENDED, DEVICE_REVOKED, and 401 
   }
 });
 
+await test('16. Auth tokens stay absent from plaintext localStorage & offlineAuth falls back to bcryptjs cleanly', async () => {
+  const { verifyOfflineLogin } = await import('../../src/services/offlineAuth.ts');
+  const { upsertSavedAccount, getSavedAccount, removeSavedAccount } = await import('../../src/services/accountVault.ts');
+
+  saveStoredTokens({ accessToken: 'vault-only-acc', refreshToken: 'vault-only-ref' });
+  assert.equal(localStorageMock.getItem('awlad_selim_auth_tokens_v3'), null, 'JWT tokens must NEVER be stored in plaintext localStorage');
+  assert.equal(getStoredTokens()?.refreshToken, 'vault-only-ref');
+
+  await upsertSavedAccount({
+    serverUrl: 'https://erp.example.com',
+    installationId: 'INST-503',
+    user: SAMPLE_REP_USER as any,
+    customerProfile: null,
+    representativeProfile: SAMPLE_REP_PROFILE as any,
+    accessToken: 'vault-acc-2',
+    refreshToken: 'vault-ref-2',
+    sessionStatus: 'active',
+  });
+  const storedRawMeta = localStorageMock.getItem('awlad_selim_saved_accounts_meta_v1') || '';
+  assert.equal(storedRawMeta.includes('vault-ref-2'), false, 'Account display meta cache must strip refresh tokens');
+  const loadedEntry = await getSavedAccount(SAMPLE_REP_USER.id);
+  assert.equal(loadedEntry?.refreshToken, 'vault-ref-2');
+  await removeSavedAccount(SAMPLE_REP_USER.id);
+
+  // Verify offlineAuth stores bcrypt hash ($2a$/$2b$) and never fb_ when subtle is absent
+  const origCrypto = globalThis.crypto;
+  const cryptoNoSubtle = {
+    getRandomValues: <T extends ArrayBufferView | null>(arr: T): T => origCrypto.getRandomValues(arr as never) as T,
+  };
+  Object.defineProperty(globalThis, 'crypto', { value: cryptoNoSubtle, configurable: true });
+  try {
+    await saveVerifiedOnlineCredentials({
+      serverUrl: 'http://192.168.1.50:3000',
+      installationId: 'INST-LAN',
+      username: 'lan_user_bcrypt',
+      password: 'LanStrongPassword#1',
+      user: { ...SAMPLE_REP_USER, id: 'USR-LAN-1', username: 'lan_user_bcrypt' } as any,
+      customerProfile: null,
+      representativeProfile: SAMPLE_REP_PROFILE as any,
+    });
+    const credKey = Array.from(memStore.keys()).find((k) => k.includes('lan_user_bcrypt'));
+    assert.ok(credKey, 'Offline cred record should exist');
+    const storedVal = memStore.get(credKey!) || '';
+    assert.equal(storedVal.includes('fb_'), false, 'Legacy weak fb_ verifier must NEVER be generated');
+    assert.match(storedVal, /"\$2[aby]\$/);
+
+    const okLogin = await verifyOfflineLogin({
+      serverUrl: 'http://192.168.1.50:3000',
+      installationId: 'INST-LAN',
+      username: 'lan_user_bcrypt',
+      password: 'LanStrongPassword#1',
+    });
+    assert.equal(okLogin.ok, true);
+
+    const badLogin = await verifyOfflineLogin({
+      serverUrl: 'http://192.168.1.50:3000',
+      installationId: 'INST-LAN',
+      username: 'lan_user_bcrypt',
+      password: 'WrongPassword',
+    });
+    assert.equal(badLogin.ok, false);
+  } finally {
+    Object.defineProperty(globalThis, 'crypto', { value: origCrypto, configurable: true });
+  }
+});
+
 console.log(`\nALL CLIENT 503 STRICT MODE TESTS PASSED (${passed} assertions groups)!`);

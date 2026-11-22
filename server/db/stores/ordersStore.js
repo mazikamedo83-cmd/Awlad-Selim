@@ -15,7 +15,12 @@ import {
 } from '../../utils/idempotency.js';
 import { isPgMode, mapPgOrderRow, mapPgCustomerRow, isoDateOnly, isoTimestamp } from './mode.js';
 import { recordAuditLog } from './authStore.js';
-import { createInvoiceInsidePgTx, createInvoiceInsideJsonTx, addInvoicePayment } from './invoicesStore.js';
+import {
+  createInvoiceInsidePgTx,
+  createInvoiceInsideJsonTx,
+  addInvoicePaymentPgTx,
+  addInvoicePaymentJsonTx,
+} from './invoicesStore.js';
 import {
   getRepresentativeByUserId,
   isCustomerAllowedForRep,
@@ -1555,7 +1560,29 @@ export async function recordOrderAdvancePayment(orderId, payload, actor, idempot
   return out;
 }
 
+const orderMutationQueues = new Map();
+async function withOrderLock(orderId, fn) {
+  const key = String(orderId || '__default__');
+  const prev = orderMutationQueues.get(key) || Promise.resolve();
+  let release;
+  const gate = new Promise((r) => {
+    release = r;
+  });
+  const chained = prev.then(() => gate);
+  orderMutationQueues.set(key, chained);
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (orderMutationQueues.get(key) === chained) {
+      orderMutationQueues.delete(key);
+    }
+  }
+}
+
 export async function updateOrderDeliveryStatus(orderId, payload, authContext) {
+  return withOrderLock(orderId, async () => {
   const actor = authContext.user;
   const targetStatus = String(payload.status || '').trim();
   if (!['out_for_delivery', 'delivered'].includes(targetStatus)) {
@@ -1583,14 +1610,21 @@ export async function updateOrderDeliveryStatus(orderId, payload, authContext) {
       deliveryNotes = deliveryNotes ? `${deliveryNotes} ${proofWarn}` : proofWarn;
     }
   }
+  const endpoint = `POST /api/orders/${orderId}/delivery-status`;
   const idempotencyKey = payload.idempotencyKey ? String(payload.idempotencyKey).trim() : '';
+  const scopedIdem = idempotencyKey ? buildScopedIdemKey(endpoint, actor, idempotencyKey) : '';
 
   if (await isPgMode()) {
     const out = await withTransaction(async (client) => {
+      if (scopedIdem) {
+        const dup = await findPgIdempotency(client, scopedIdem);
+        if (dup?.order) return { ...dup, deduplicated: true };
+      }
+
       const ordRes = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1 FOR UPDATE`, [orderId]);
       const row = ordRes.rows[0];
       if (!row) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
-      if (['rejected', 'cancelled', 'invoiced'].includes(row.status)) {
+      if (['rejected', 'cancelled', 'closed'].includes(row.status)) {
         throw new AppError(409, `لا يمكن تحديث التوصيل لطلب بحالة (${row.status})`, 'INVALID_ORDER_TRANSITION');
       }
       if (isRep) {
@@ -1598,9 +1632,50 @@ export async function updateOrderDeliveryStatus(orderId, payload, authContext) {
         if (!allowed) throw new AppError(403, 'غير مصرح لك بتحديث حالة تسليم طلب لم يتم تعيينك له', 'FORBIDDEN_ORDER_ACCESS');
       }
 
+      let advanceResult = null;
+      let invoiceResult = null;
+      if (collectedAmount > 0) {
+        if (row.invoice_id) {
+          invoiceResult = await addInvoicePaymentPgTx(
+            client,
+            row.invoice_id,
+            {
+              amount: collectedAmount,
+              cashboxId: payload.cashboxId,
+              paymentMethod: payload.paymentMethod || 'cash',
+              date: payload.date || todayIso(),
+              notes: deliveryNotes || `تحصيل مندوب عند تسليم الطلب رقم ${row.request_number}`,
+            },
+            actor,
+            '',
+            { skipAuditLog: true }
+          );
+        } else {
+          advanceResult = await recordOrderAdvancePaymentPgTx(
+            client,
+            orderId,
+            {
+              amount: collectedAmount,
+              cashboxId: payload.cashboxId,
+              paymentMethod: payload.paymentMethod || 'cash',
+              date: payload.date || todayIso(),
+              notes: deliveryNotes || `تحصيل مندوب عند تسليم الطلب رقم ${row.request_number}`,
+              originDeviceId: payload.originDeviceId,
+            },
+            actor,
+            idempotencyKey ? `${idempotencyKey}-adv` : ''
+          );
+        }
+      }
+
+      const freshOrd = (await client.query(`SELECT * FROM customer_item_orders WHERE id = $1`, [orderId])).rows[0];
       const prevStatus = row.status;
-      const nextCollected = round2(Number(row.collected_amount || 0) + collectedAmount);
-      const nextRemaining = Math.max(0, round2(Number(row.total_amount || 0) - Number(row.advance_paid_amount || 0) - collectedAmount));
+      const nextCollected = invoiceResult
+        ? round2(invoiceResult.invoice.paidAmount)
+        : round2(Number(freshOrd.collected_amount || 0) + collectedAmount);
+      const nextRemaining = invoiceResult
+        ? round2(invoiceResult.invoice.remainingAmount)
+        : Math.max(0, round2(Number(freshOrd.total_amount || 0) - Number(freshOrd.advance_paid_amount || 0)));
 
       await client.query(
         `UPDATE customer_item_orders
@@ -1628,6 +1703,12 @@ export async function updateOrderDeliveryStatus(orderId, payload, authContext) {
         ]
       );
 
+      const reasonText =
+        deliveryNotes ||
+        (targetStatus === 'delivered'
+          ? `تم تسليم الطلب للعميل${collectedAmount > 0 ? ` مع تحصيل ${collectedAmount}` : ''}`
+          : 'بدء توصيل الطلب للعميل');
+
       await client.query(
         `INSERT INTO order_status_history (id, order_id, from_status, to_status, changed_by_user_id, changed_by_name, reason, changed_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
@@ -1638,59 +1719,88 @@ export async function updateOrderDeliveryStatus(orderId, payload, authContext) {
           targetStatus,
           actor.id,
           actor.fullName,
-          deliveryNotes || (targetStatus === 'delivered' ? `تم تسليم الطلب للعميل${collectedAmount > 0 ? ` مع تحصيل ${collectedAmount}` : ''}` : 'بدء توصيل الطلب للعميل'),
+          reasonText,
           now,
         ]
       );
 
-      let advanceResult = null;
-      if (collectedAmount > 0) {
-        advanceResult = await recordOrderAdvancePaymentPgTx(
-          client,
-          orderId,
-          {
-            amount: collectedAmount,
-            cashboxId: payload.cashboxId,
-            paymentMethod: payload.paymentMethod || 'cash',
-            date: payload.date || todayIso(),
-            notes: deliveryNotes || `تحصيل مندوب عند تسليم الطلب رقم ${row.request_number}`,
-            originDeviceId: payload.originDeviceId,
-          },
-          actor,
-          idempotencyKey ? `${idempotencyKey}-adv` : ''
-        );
-      }
+      await recordAuditLog({
+        userId: actor.id,
+        userName: actor.fullName,
+        action: `تحديث حالة توصيل الطلب (${row.request_number}) إلى ${targetStatus}`,
+        module: 'طلبات العملاء والمندوبين',
+        recordId: orderId,
+        notes: reasonText,
+        client,
+      });
 
       const [updatedOrd, itemsRes, histRes] = await Promise.all([
         client.query(`SELECT * FROM customer_item_orders WHERE id = $1`, [orderId]),
         client.query(`SELECT * FROM customer_item_order_items WHERE order_id = $1`, [orderId]),
         client.query(`SELECT * FROM order_status_history WHERE order_id = $1 ORDER BY changed_at ASC`, [orderId]),
       ]);
-      return {
+      const payloadOut = {
         order: mapPgOrderRow(updatedOrd.rows[0], itemsRes.rows, histRes.rows),
+        invoice: invoiceResult?.invoice || null,
         advancePayment: advanceResult?.advancePayment || null,
       };
+      if (scopedIdem) {
+        await savePgIdempotency(client, scopedIdem, actor, endpoint, payloadOut);
+      }
+      return { deduplicated: false, ...payloadOut };
     });
-
-    await recordAuditLog({
-      userId: actor.id,
-      userName: actor.fullName,
-      action: `تحديث حالة توصيل الطلب (${out.order.requestNumber}) إلى ${targetStatus}`,
-      module: 'طلبات العملاء والمندوبين',
-      recordId: orderId,
-    });
-    return out;
+    return { order: out.order, invoice: out.invoice || null, advancePayment: out.advancePayment || null };
   }
 
   const out = await withJsonTransaction(async (db) => {
+    if (scopedIdem) {
+      const dup = findJsonIdempotency(scopedIdem);
+      if (dup?.order) return { ...dup, deduplicated: true };
+    }
+
     const ord = db.customerItemOrders.find((o) => o.id === orderId);
     if (!ord) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
-    if (['rejected', 'cancelled', 'invoiced'].includes(ord.status)) {
+    if (['rejected', 'cancelled', 'closed'].includes(ord.status)) {
       throw new AppError(409, `لا يمكن تحديث التوصيل لطلب بحالة (${ord.status})`, 'INVALID_ORDER_TRANSITION');
     }
     if (isRep) {
       const allowed = ord.deliveryRepId === rep.id || ord.representativeId === rep.id || ord.userId === actor.id;
       if (!allowed) throw new AppError(403, 'غير مصرح لك بتحديث حالة تسليم طلب لم يتم تعيينك له', 'FORBIDDEN_ORDER_ACCESS');
+    }
+
+    let advanceResult = null;
+    let invoiceResult = null;
+    if (collectedAmount > 0) {
+      if (ord.invoiceId) {
+        invoiceResult = addInvoicePaymentJsonTx(
+          db,
+          ord.invoiceId,
+          {
+            amount: collectedAmount,
+            cashboxId: payload.cashboxId,
+            paymentMethod: payload.paymentMethod || 'cash',
+            date: payload.date || todayIso(),
+            notes: deliveryNotes || `تحصيل مندوب عند تسليم الطلب رقم ${ord.requestNumber}`,
+          },
+          actor,
+          ''
+        );
+      } else {
+        advanceResult = recordOrderAdvancePaymentJsonTx(
+          db,
+          orderId,
+          {
+            amount: collectedAmount,
+            cashboxId: payload.cashboxId,
+            paymentMethod: payload.paymentMethod || 'cash',
+            date: payload.date || todayIso(),
+            notes: deliveryNotes || `تحصيل مندوب عند تسليم الطلب رقم ${ord.requestNumber}`,
+            originDeviceId: payload.originDeviceId,
+          },
+          actor,
+          idempotencyKey ? `${idempotencyKey}-adv` : ''
+        );
+      }
     }
 
     const prevStatus = ord.status;
@@ -1704,7 +1814,13 @@ export async function updateOrderDeliveryStatus(orderId, payload, authContext) {
     }
     if (deliveryNotes) ord.deliveryNotes = deliveryNotes;
     if (deliveryProof) ord.deliveryProof = deliveryProof;
-    ord.collectedAmount = round2(Number(ord.collectedAmount || 0) + collectedAmount);
+    if (invoiceResult) {
+      ord.collectedAmount = round2(invoiceResult.invoice.paidAmount);
+      ord.remainingAmount = round2(invoiceResult.invoice.remainingAmount);
+    } else {
+      ord.collectedAmount = round2(Number(ord.collectedAmount || 0) + collectedAmount);
+      ord.remainingAmount = Math.max(0, round2(Number(ord.totalAmount || 0) - Number(ord.advancePaidAmount || 0)));
+    }
     ord.version = Number(ord.version || 1) + 1;
     ord.updatedAt = now;
     ord.statusHistory = ord.statusHistory || [];
@@ -1717,35 +1833,28 @@ export async function updateOrderDeliveryStatus(orderId, payload, authContext) {
       changedAt: now,
     });
 
-    let advanceResult = null;
-    if (collectedAmount > 0) {
-      advanceResult = recordOrderAdvancePaymentJsonTx(
-        db,
-        orderId,
-        {
-          amount: collectedAmount,
-          cashboxId: payload.cashboxId,
-          paymentMethod: payload.paymentMethod || 'cash',
-          date: payload.date || todayIso(),
-          notes: deliveryNotes || `تحصيل مندوب عند تسليم الطلب رقم ${ord.requestNumber}`,
-          originDeviceId: payload.originDeviceId,
-        },
-        actor,
-        idempotencyKey ? `${idempotencyKey}-adv` : ''
-      );
+    const payloadOut = {
+      order: ord,
+      invoice: invoiceResult?.invoice || null,
+      advancePayment: advanceResult?.advancePayment || null,
+    };
+    if (scopedIdem) {
+      saveJsonIdempotency(scopedIdem, payloadOut);
     }
-
-    return { order: ord, advancePayment: advanceResult?.advancePayment || null };
+    return { deduplicated: false, ...payloadOut };
   });
 
-  await recordAuditLog({
-    userId: actor.id,
-    userName: actor.fullName,
-    action: `تحديث حالة توصيل الطلب (${out.order.requestNumber}) إلى ${targetStatus}`,
-    module: 'طلبات العملاء والمندوبين',
-    recordId: orderId,
+  if (!out.deduplicated) {
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `تحديث حالة توصيل الطلب (${out.order.requestNumber}) إلى ${targetStatus}`,
+      module: 'طلبات العملاء والمندوبين',
+      recordId: orderId,
+    });
+  }
+  return { deduplicated: Boolean(out.deduplicated), order: out.order, invoice: out.invoice || null, advancePayment: out.advancePayment || null };
   });
-  return out;
 }
 
 const CONVERTIBLE_ORDER_STATUSES = new Set(['approved', 'rep_assigned', 'out_for_delivery', 'delivered']);
@@ -1948,7 +2057,20 @@ const VALID_LIFECYCLE_STAGES = new Set([
   'closed',
 ]);
 
+const ORDER_STAGE_TRANSITIONS = {
+  pending: new Set(['preparing']),
+  reviewed: new Set(['preparing']),
+  approved: new Set(['preparing', 'out_for_delivery', 'delivered']),
+  rep_assigned: new Set(['preparing', 'out_for_delivery', 'delivered']),
+  invoiced: new Set(['preparing', 'out_for_delivery', 'delivered', 'collected']),
+  preparing: new Set(['out_for_delivery', 'delivered', 'collected']),
+  out_for_delivery: new Set(['delivered', 'collected']),
+  delivered: new Set(['collected', 'closed']),
+  collected: new Set(['collected', 'closed']),
+};
+
 export async function advanceOrderStage(orderId, payload, authContext) {
+  return withOrderLock(orderId, async () => {
   const actor = authContext.user;
   const targetStage = String(payload.stage || payload.status || '').trim();
   if (!VALID_LIFECYCLE_STAGES.has(targetStage)) {
@@ -1964,56 +2086,16 @@ export async function advanceOrderStage(orderId, payload, authContext) {
     if (!['out_for_delivery', 'delivered', 'collected'].includes(targetStage)) {
       throw new AppError(403, 'صلاحية المندوب تقتصر على التوصيل والتسليم والتحصيل فقط', 'FORBIDDEN_STAGE_BY_REP');
     }
+  } else if (actor.role !== 'admin' && !actor.permissions?.canManageSales && !actor.permissions?.canManageAccounts && !actor.permissions?.canApprove) {
+    throw new AppError(403, 'غير مصرح لك بتحديث مراحل الطلب', 'FORBIDDEN_ORDER_ACCESS');
   }
 
   const collectedAmount = round2(Math.max(0, Number(payload.collectedAmount || 0)));
   const notes = String(payload.notes || payload.deliveryNotes || '').trim();
   const idempotencyKey = payload.idempotencyKey ? String(payload.idempotencyKey).trim() : '';
+  const endpoint = `POST /api/orders/${orderId}/stage`;
+  const scopedIdem = idempotencyKey ? buildScopedIdemKey(endpoint, actor, idempotencyKey) : '';
   const now = nowIso();
-
-  // Check current order and handle linked invoice payment before order transaction if needed
-  const currentOrder = await getOrderById(orderId, authContext);
-  if (['rejected', 'cancelled', 'closed'].includes(currentOrder.status)) {
-    throw new AppError(409, `لا يمكن تعديل مرحلة طلب بحالة (${currentOrder.status})`, 'INVALID_ORDER_TRANSITION');
-  }
-  if (isRep) {
-    const allowed =
-      currentOrder.deliveryRepId === rep.id ||
-      currentOrder.representativeId === rep.id ||
-      currentOrder.userId === actor.id;
-    if (!allowed) {
-      throw new AppError(403, 'غير مصرح لك بتحديث حالة أو تحصيل طلب غير مخصص لك', 'FORBIDDEN_ORDER_ACCESS');
-    }
-  }
-
-  let updatedInvoice = null;
-  let advancePayment = null;
-
-  if (collectedAmount > 0 && currentOrder.invoiceId) {
-    let cashboxId = payload.cashboxId;
-    if (!cashboxId) {
-      if (await isPgMode()) {
-        const defCb = await getPool().query(`SELECT id FROM cashboxes ORDER BY is_default DESC LIMIT 1`);
-        cashboxId = defCb.rows[0]?.id;
-      } else {
-        const db = readJsonDatabase();
-        cashboxId = (db.cashboxes.find((c) => c.isDefault) || db.cashboxes[0])?.id;
-      }
-    }
-    if (!cashboxId) throw new AppError(400, 'لا توجد خزينة متاحة لتسجيل التحصيل', 'CASHBOX_REQUIRED');
-    updatedInvoice = await addInvoicePayment(
-      currentOrder.invoiceId,
-      {
-        amount: collectedAmount,
-        cashboxId,
-        paymentMethod: payload.paymentMethod || 'cash',
-        date: payload.date || todayIso(),
-        notes: notes || `تحصيل على الطلب رقم ${currentOrder.requestNumber}`,
-      },
-      actor,
-      idempotencyKey ? `${idempotencyKey}-invpay` : ''
-    );
-  }
 
   const stageLabelMap = {
     preparing: 'بدء تجهيز الطلب',
@@ -2025,27 +2107,75 @@ export async function advanceOrderStage(orderId, payload, authContext) {
   const reasonText = notes || stageLabelMap[targetStage] || `تحديث مرحلة الطلب إلى ${targetStage}`;
 
   if (await isPgMode()) {
-    await withTransaction(async (client) => {
+    const out = await withTransaction(async (client) => {
+      if (scopedIdem) {
+        const dup = await findPgIdempotency(client, scopedIdem);
+        if (dup?.order) return { ...dup, deduplicated: true };
+      }
+
       const ordRes = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1 FOR UPDATE`, [orderId]);
       const row = ordRes.rows[0];
       if (!row) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
 
-      if (collectedAmount > 0 && !row.invoice_id) {
-        const advRes = await recordOrderAdvancePaymentPgTx(
-          client,
-          orderId,
-          {
-            amount: collectedAmount,
-            cashboxId: payload.cashboxId,
-            paymentMethod: payload.paymentMethod || 'cash',
-            date: payload.date || todayIso(),
-            notes: reasonText,
-            originDeviceId: payload.originDeviceId,
-          },
-          actor,
-          idempotencyKey ? `${idempotencyKey}-adv` : ''
+      if (['rejected', 'cancelled', 'closed'].includes(row.status)) {
+        throw new AppError(409, `لا يمكن تعديل مرحلة طلب بحالة (${row.status})`, 'INVALID_ORDER_TRANSITION');
+      }
+      const allowedNext = ORDER_STAGE_TRANSITIONS[row.status];
+      if (!allowedNext || !allowedNext.has(targetStage)) {
+        throw new AppError(
+          409,
+          `لا يمكن الانتقال مباشرة من مرحلة (${row.status}) إلى (${targetStage})`,
+          'INVALID_ORDER_TRANSITION'
         );
-        advancePayment = advRes?.advancePayment || null;
+      }
+
+      if (isRep) {
+        const allowed =
+          row.delivery_rep_id === rep.id ||
+          row.representative_id === rep.id ||
+          row.user_id === actor.id;
+        if (!allowed) {
+          throw new AppError(403, 'غير مصرح لك بتحديث حالة أو تحصيل طلب غير مخصص لك', 'FORBIDDEN_ORDER_ACCESS');
+        }
+      }
+
+      let updatedInvoice = null;
+      let advancePayment = null;
+
+      if (collectedAmount > 0) {
+        if (row.invoice_id) {
+          const payRes = await addInvoicePaymentPgTx(
+            client,
+            row.invoice_id,
+            {
+              amount: collectedAmount,
+              cashboxId: payload.cashboxId,
+              paymentMethod: payload.paymentMethod || 'cash',
+              date: payload.date || todayIso(),
+              notes: notes || `تحصيل على الطلب رقم ${row.request_number}`,
+            },
+            actor,
+            '',
+            { skipAuditLog: true }
+          );
+          updatedInvoice = payRes.invoice;
+        } else {
+          const advRes = await recordOrderAdvancePaymentPgTx(
+            client,
+            orderId,
+            {
+              amount: collectedAmount,
+              cashboxId: payload.cashboxId,
+              paymentMethod: payload.paymentMethod || 'cash',
+              date: payload.date || todayIso(),
+              notes: reasonText,
+              originDeviceId: payload.originDeviceId,
+            },
+            actor,
+            idempotencyKey ? `${idempotencyKey}-adv` : ''
+          );
+          advancePayment = advRes?.advancePayment || null;
+        }
       }
 
       const freshOrd = (await client.query(`SELECT * FROM customer_item_orders WHERE id = $1`, [orderId])).rows[0];
@@ -2085,13 +2215,132 @@ export async function advanceOrderStage(orderId, payload, authContext) {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
         [generateServerId('OSH'), orderId, freshOrd.status, targetStage, actor.id, actor.fullName, reasonText, now]
       );
-    });
-  } else {
-    await withJsonTransaction(async (db) => {
-      const ord = db.customerItemOrders.find((o) => o.id === orderId);
-      if (!ord) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
 
-      if (collectedAmount > 0 && !ord.invoiceId) {
+      await recordAuditLog({
+        userId: actor.id,
+        userName: actor.fullName,
+        action: `تحديث مرحلة الطلب (${row.request_number}) إلى ${targetStage}`,
+        module: 'طلبات العملاء والمندوبين',
+        recordId: orderId,
+        notes: reasonText,
+        client,
+      });
+
+      const [updatedOrd, itemsRes, histRes, prodImgRes, advPayRes, invRes, invPayRes] = await Promise.all([
+        client.query(`SELECT * FROM customer_item_orders WHERE id = $1`, [orderId]),
+        client.query(`SELECT * FROM customer_item_order_items WHERE order_id = $1`, [orderId]),
+        client.query(`SELECT * FROM order_status_history WHERE order_id = $1 ORDER BY changed_at ASC`, [orderId]),
+        client.query(`SELECT id, image FROM products WHERE image IS NOT NULL AND image <> ''`),
+        client.query(`SELECT * FROM order_advance_payments WHERE order_id = $1 ORDER BY created_at ASC`, [orderId]),
+        row.invoice_id
+          ? client.query(`SELECT id, invoice_number, grand_total, paid_amount, remaining_amount FROM invoices WHERE id = $1`, [row.invoice_id])
+          : Promise.resolve({ rows: [] }),
+        row.invoice_id
+          ? client.query(`SELECT * FROM invoice_payments WHERE invoice_id = $1 ORDER BY created_at ASC`, [row.invoice_id])
+          : Promise.resolve({ rows: [] }),
+      ]);
+      const productImageMap = new Map(prodImgRes.rows.map((p) => [p.id, p.image]));
+      const invoiceMap = new Map();
+      if (invRes.rows[0]) {
+        const invRow = invRes.rows[0];
+        invoiceMap.set(invRow.id, {
+          id: invRow.id,
+          invoiceNumber: invRow.invoice_number,
+          grandTotal: Number(invRow.grand_total || 0),
+          paidAmount: Number(invRow.paid_amount || 0),
+          remainingAmount: Number(invRow.remaining_amount || 0),
+          payments: invPayRes.rows.map((p) => ({
+            id: p.id,
+            invoiceNumber: p.invoice_number,
+            amount: Number(p.amount || 0),
+            date: isoDateOnly(p.date),
+            paymentMethod: p.payment_method,
+            cashboxName: p.cashbox_name,
+            notes: p.notes || '',
+            createdBy: p.created_by,
+            createdAt: isoTimestamp(p.created_at),
+          })),
+        });
+      }
+      const advPaymentsMap = new Map();
+      advPaymentsMap.set(
+        orderId,
+        advPayRes.rows.map((a) => ({ ...a, date: isoDateOnly(a.date), createdAt: isoTimestamp(a.created_at) }))
+      );
+      const enrichedOrder = enrichOrderCollection(
+        [mapPgOrderRow(updatedOrd.rows[0], itemsRes.rows, histRes.rows)],
+        productImageMap,
+        invoiceMap,
+        advPaymentsMap
+      )[0];
+
+      const payloadOut = { order: enrichedOrder, invoice: updatedInvoice, advancePayment };
+      if (scopedIdem) {
+        await savePgIdempotency(client, scopedIdem, actor, endpoint, payloadOut);
+      }
+      return { deduplicated: false, ...payloadOut };
+    });
+
+    return {
+      deduplicated: Boolean(out.deduplicated),
+      order: out.order,
+      invoice: out.invoice,
+      advancePayment: out.advancePayment,
+    };
+  }
+
+  // JSON Ledger mode
+  const out = await withJsonTransaction(async (db) => {
+    if (scopedIdem) {
+      const dup = findJsonIdempotency(scopedIdem);
+      if (dup?.order) return { ...dup, deduplicated: true };
+    }
+
+    const ord = db.customerItemOrders.find((o) => o.id === orderId);
+    if (!ord) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
+
+    if (['rejected', 'cancelled', 'closed'].includes(ord.status)) {
+      throw new AppError(409, `لا يمكن تعديل مرحلة طلب بحالة (${ord.status})`, 'INVALID_ORDER_TRANSITION');
+    }
+    const allowedNext = ORDER_STAGE_TRANSITIONS[ord.status];
+    if (!allowedNext || !allowedNext.has(targetStage)) {
+      throw new AppError(
+        409,
+        `لا يمكن الانتقال مباشرة من مرحلة (${ord.status}) إلى (${targetStage})`,
+        'INVALID_ORDER_TRANSITION'
+      );
+    }
+
+    if (isRep) {
+      const allowed =
+        ord.deliveryRepId === rep.id ||
+        ord.representativeId === rep.id ||
+        ord.userId === actor.id;
+      if (!allowed) {
+        throw new AppError(403, 'غير مصرح لك بتحديث حالة أو تحصيل طلب غير مخصص لك', 'FORBIDDEN_ORDER_ACCESS');
+      }
+    }
+
+    let updatedInvoice = null;
+    let advancePayment = null;
+
+    if (collectedAmount > 0) {
+      if (ord.invoiceId) {
+        const payRes = addInvoicePaymentJsonTx(
+          db,
+          ord.invoiceId,
+          {
+            amount: collectedAmount,
+            cashboxId: payload.cashboxId,
+            paymentMethod: payload.paymentMethod || 'cash',
+            date: payload.date || todayIso(),
+            notes: notes || `تحصيل على الطلب رقم ${ord.requestNumber}`,
+          },
+          actor,
+          ''
+        );
+        updatedInvoice = payRes.invoice;
+      } else {
         const advRes = recordOrderAdvancePaymentJsonTx(
           db,
           orderId,
@@ -2108,46 +2357,68 @@ export async function advanceOrderStage(orderId, payload, authContext) {
         );
         advancePayment = advRes?.advancePayment || null;
       }
+    }
 
-      const prevStatus = ord.status;
-      ord.status = targetStage;
-      if (targetStage === 'delivered' && !ord.deliveredAt) ord.deliveredAt = now;
-      if (!ord.deliveryRepId && (rep || payload.deliveryRepId)) {
-        ord.deliveryRepId = rep?.id || payload.deliveryRepId;
-        ord.deliveryRepName = rep?.name || payload.deliveryRepName || '';
-      }
-      if (notes) ord.deliveryNotes = notes;
-      if (updatedInvoice) {
-        ord.collectedAmount = round2(updatedInvoice.paidAmount);
-        ord.remainingAmount = round2(updatedInvoice.remainingAmount);
-      } else {
-        ord.collectedAmount = round2(Number(ord.collectedAmount || 0) + collectedAmount);
-        ord.remainingAmount = Math.max(0, round2(Number(ord.totalAmount || 0) - Number(ord.advancePaidAmount || 0)));
-      }
-      ord.version = Number(ord.version || 1) + 1;
-      ord.updatedAt = now;
-      ord.statusHistory = ord.statusHistory || [];
-      ord.statusHistory.push({
-        id: generateServerId('OSH'),
-        fromStatus: prevStatus,
-        toStatus: targetStage,
-        changedByName: actor.fullName,
-        reason: reasonText,
-        changedAt: now,
-      });
+    const prevStatus = ord.status;
+    ord.status = targetStage;
+    if (targetStage === 'delivered' && !ord.deliveredAt) ord.deliveredAt = now;
+    if (!ord.deliveryRepId && (rep || payload.deliveryRepId)) {
+      ord.deliveryRepId = rep?.id || payload.deliveryRepId;
+      ord.deliveryRepName = rep?.name || payload.deliveryRepName || '';
+    }
+    if (notes) ord.deliveryNotes = notes;
+    if (updatedInvoice) {
+      ord.collectedAmount = round2(updatedInvoice.paidAmount);
+      ord.remainingAmount = round2(updatedInvoice.remainingAmount);
+    } else {
+      ord.collectedAmount = round2(Number(ord.collectedAmount || 0) + collectedAmount);
+      ord.remainingAmount = Math.max(0, round2(Number(ord.totalAmount || 0) - Number(ord.advancePaidAmount || 0)));
+    }
+    ord.version = Number(ord.version || 1) + 1;
+    ord.updatedAt = now;
+    ord.statusHistory = ord.statusHistory || [];
+    ord.statusHistory.push({
+      id: generateServerId('OSH'),
+      fromStatus: prevStatus,
+      toStatus: targetStage,
+      changedByName: actor.fullName,
+      reason: reasonText,
+      changedAt: now,
+    });
+
+    const productImageMap = new Map((db.products || []).filter((p) => p.image).map((p) => [p.id, p.image]));
+    const invoiceMap = new Map((db.invoices || []).map((inv) => [inv.id, inv]));
+    const advPaymentsMap = new Map();
+    advPaymentsMap.set(
+      orderId,
+      (db.orderAdvancePayments || []).filter((a) => a.orderId === orderId)
+    );
+    const enrichedOrder = enrichOrderCollection([ord], productImageMap, invoiceMap, advPaymentsMap)[0];
+
+    const payloadOut = { order: enrichedOrder, invoice: updatedInvoice, advancePayment };
+    if (scopedIdem) {
+      saveJsonIdempotency(scopedIdem, payloadOut);
+    }
+    return { deduplicated: false, ...payloadOut };
+  });
+
+  if (!out.deduplicated) {
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `تحديث مرحلة الطلب (${out.order.requestNumber}) إلى ${targetStage}`,
+      module: 'طلبات العملاء والمندوبين',
+      recordId: orderId,
+      notes: reasonText,
     });
   }
 
-  await recordAuditLog({
-    userId: actor.id,
-    userName: actor.fullName,
-    action: `تحديث مرحلة الطلب (${currentOrder.requestNumber}) إلى ${targetStage}`,
-    module: 'طلبات العملاء والمندوبين',
-    recordId: orderId,
-    notes: reasonText,
+  return {
+    deduplicated: Boolean(out.deduplicated),
+    order: out.order,
+    invoice: out.invoice,
+    advancePayment: out.advancePayment,
+  };
   });
-
-  const enrichedOrder = await getOrderById(orderId, authContext);
-  return { order: enrichedOrder, invoice: updatedInvoice, advancePayment };
 }
 

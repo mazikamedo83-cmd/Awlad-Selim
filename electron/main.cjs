@@ -211,15 +211,21 @@ function ensureOfflineClientKey() {
     }
   }
 
+  const requireOsKeychain =
+    app.isPackaged && (process.platform === 'win32' || process.platform === 'darwin');
   const key = nodeCrypto.randomBytes(32);
   if (canUseSafeStorage) {
     try {
       const encrypted = safeStorage.encryptString(key.toString('hex'));
       fs.writeFileSync(encKeyPath, encrypted, { mode: 0o600 });
       return key;
-    } catch {
-      // fall back below if OS encryption throws
+    } catch (err) {
+      if (requireOsKeychain) {
+        throw new Error(`OS credential storage unavailable for vault encryption: ${err?.message || String(err)}`);
+      }
     }
+  } else if (requireOsKeychain) {
+    throw new Error('OS credential encryption (safeStorage) is required in packaged desktop builds');
   }
   fs.writeFileSync(legacyKeyPath, key, { mode: 0o600 });
   return key;
@@ -353,6 +359,51 @@ function registerIpcHandlers() {
       return { ok: true, dataUrl: buf ? buf.toString('utf8') : null };
     } catch (err) {
       return { ok: false, dataUrl: null, error: err?.message || String(err) };
+    }
+  });
+
+  ipcMain.handle('awlad:secure-vault-get', (_event, key) => {
+    try {
+      if (!desktopState.offlineClientDir) return { ok: false, value: null };
+      const filePath = path.join(
+        desktopState.offlineClientDir,
+        'secure_vault',
+        `${sanitizeKeySegment(key)}.enc`
+      );
+      const buf = readEncryptedOfflineFile(filePath);
+      return { ok: true, value: buf ? buf.toString('utf8') : null };
+    } catch (err) {
+      return { ok: false, value: null, error: err?.message || String(err) };
+    }
+  });
+
+  ipcMain.handle('awlad:secure-vault-set', (_event, key, value) => {
+    try {
+      if (!desktopState.offlineClientDir) return { ok: false };
+      const filePath = path.join(
+        desktopState.offlineClientDir,
+        'secure_vault',
+        `${sanitizeKeySegment(key)}.enc`
+      );
+      writeEncryptedOfflineFile(filePath, Buffer.from(String(value || ''), 'utf8'));
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err?.message || String(err) };
+    }
+  });
+
+  ipcMain.handle('awlad:secure-vault-delete', (_event, key) => {
+    try {
+      if (!desktopState.offlineClientDir) return { ok: false };
+      const filePath = path.join(
+        desktopState.offlineClientDir,
+        'secure_vault',
+        `${sanitizeKeySegment(key)}.enc`
+      );
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err?.message || String(err) };
     }
   });
 }

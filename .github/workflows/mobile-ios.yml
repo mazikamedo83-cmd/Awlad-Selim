@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   ios-release:
-    name: Build & Sign iOS IPA (macOS)
+    name: Build, Sign & Export iOS Production IPA (macOS)
     runs-on: macos-latest
 
     steps:
@@ -20,52 +20,196 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Setup Bun
+      - name: Setup Bun 1.4.4
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.4.4'
 
-      - name: Install dependencies with Bun
-        run: bun install --frozen-lockfile
+      - name: Read app release version
+        id: meta
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [ -z "$VERSION" ]; then
+            echo "ERROR: Missing version in package.json"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Target iOS Release version: $VERSION"
+
+      - name: Verify bun.lock exists & install dependencies
+        run: |
+          test -f bun.lock
+          bun install --frozen-lockfile
 
       - name: Run TypeScript check
         run: bun run lint
 
+      - name: Run full verification test suites
+        run: |
+          node server/tests/runAllTests.mjs
+          node server/tests/repPurchaseCustomerRbacTests.mjs
+          node server/tests/masterRepairVerificationTests.mjs
+          node server/tests/comprehensiveReportsTests.mjs
+          node server/tests/auditVerificationTests.mjs
+          npx tsx server/tests/pairingVerificationTests.mts
+          node server/tests/strictPostgresModeTests.mjs
+          npx tsx server/tests/strictClientBehaviorTests.mts
+
       - name: Build production web bundle
-        run: bun run build
+        run: |
+          bun run build
+          test ! -e dist/assets/aistudio
 
       - name: Sync Capacitor iOS project
-        run: npx cap sync ios
+        run: |
+          npx cap sync ios
+          test ! -e ios/App/App/public/assets/aistudio
 
-      - name: Validate Apple Signing Secrets
+      - name: Validate Apple Production Signing Secrets
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           IOS_DIST_CERT_BASE64: ${{ secrets.IOS_DIST_CERT_BASE64 }}
+          IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
           IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
         run: |
-          if [ -z "$APPLE_TEAM_ID" ] || [ -z "$IOS_DIST_CERT_BASE64" ] || [ -z "$IOS_PROVISIONING_PROFILE_BASE64" ]; then
-            echo "ERROR: Missing iOS production signing secrets (APPLE_TEAM_ID, IOS_DIST_CERT_BASE64, IOS_PROVISIONING_PROFILE_BASE64)."
+          if [ -z "$APPLE_TEAM_ID" ] || [ -z "$IOS_DIST_CERT_BASE64" ] || [ -z "$IOS_DIST_CERT_PASSWORD" ] || [ -z "$IOS_PROVISIONING_PROFILE_BASE64" ]; then
+            echo "ERROR: Missing iOS production signing secrets (APPLE_TEAM_ID, IOS_DIST_CERT_BASE64, IOS_DIST_CERT_PASSWORD, IOS_PROVISIONING_PROFILE_BASE64)."
             exit 1
           fi
 
-      - name: Archive & Export Signed iOS App
+      - name: Setup Ephemeral Keychain & Install Signing Certificate + Provisioning Profile
+        id: ios_sign
+        env:
+          IOS_DIST_CERT_BASE64: ${{ secrets.IOS_DIST_CERT_BASE64 }}
+          IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          KEYCHAIN_PATH="${{ runner.temp }}/awlad-selim-signing.keychain-db"
+          KEYCHAIN_PASS="awlad_ephemeral_${GITHUB_RUN_ID}_${RANDOM}"
+          CERT_P12="${{ runner.temp }}/dist_cert.p12"
+          PROFILE_FILE="${{ runner.temp }}/profile.mobileprovision"
+
+          printf '%s' "$IOS_DIST_CERT_BASE64" | tr -d '[:space:]' | base64 -d > "$CERT_P12"
+          printf '%s' "$IOS_PROVISIONING_PROFILE_BASE64" | tr -d '[:space:]' | base64 -d > "$PROFILE_FILE"
+          test -s "$CERT_P12"
+          test -s "$PROFILE_FILE"
+
+          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          security import "$CERT_P12" -P "$IOS_DIST_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+
+          PROFILE_PLIST="${{ runner.temp }}/profile.plist"
+          security cms -D -i "$PROFILE_FILE" > "$PROFILE_PLIST"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" "$PROFILE_PLIST")
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print Name" "$PROFILE_PLIST")
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$PROFILE_FILE" "$HOME/Library/MobileDevice/Provisioning Profiles/${PROFILE_UUID}.mobileprovision"
+
+          {
+            echo "keychain_path=$KEYCHAIN_PATH"
+            echo "profile_uuid=$PROFILE_UUID"
+            echo "profile_name=$PROFILE_NAME"
+          } >> "$GITHUB_OUTPUT"
+          rm -f "$CERT_P12" "$PROFILE_FILE" "$PROFILE_PLIST"
+
+      - name: Archive & Export Signed iOS IPA
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          EXPORT_METHOD: ${{ vars.IOS_EXPORT_METHOD || 'app-store-connect' }}
         run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          ARCHIVE_PATH="${{ runner.temp }}/AWLAD-SELIM.xcarchive"
+          EXPORT_DIR="dist-ios"
+          EXPORT_PLIST="${{ runner.temp }}/ExportOptions.plist"
+          mkdir -p "$EXPORT_DIR"
+
+          cat > "$EXPORT_PLIST" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>${EXPORT_METHOD}</string>
+            <key>teamID</key>
+            <string>${APPLE_TEAM_ID}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.awladselim.erp</key>
+              <string>${{ steps.ios_sign.outputs.profile_name }}</string>
+            </dict>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+
           xcodebuild \
             -project ios/App/App.xcodeproj \
             -scheme App \
             -configuration Release \
             -sdk iphoneos \
-            -archivePath build-ios/AWLAD-SELIM.xcarchive \
+            -archivePath "$ARCHIVE_PATH" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE_SPECIFIER="${{ steps.ios_sign.outputs.profile_uuid }}" \
+            OTHER_CODE_SIGN_FLAGS="--keychain ${{ steps.ios_sign.outputs.keychain_path }}" \
             archive
-          codesign --verify --deep --strict --verbose=2 build-ios/AWLAD-SELIM.xcarchive/Products/Applications/App.app
 
-      - name: Upload iOS Archive Artifact
+          codesign --verify --deep --strict --verbose=2 "$ARCHIVE_PATH/Products/Applications/App.app"
+
+          xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$EXPORT_DIR" \
+            -exportOptionsPlist "$EXPORT_PLIST"
+
+          IPA_SRC=$(find "$EXPORT_DIR" -maxdepth 1 -name "*.ipa" | head -n 1)
+          test -s "$IPA_SRC"
+          OUT_IPA="$EXPORT_DIR/AWLAD-SELIM-${VERSION}-Release.ipa"
+          if [ "$IPA_SRC" != "$OUT_IPA" ]; then
+            mv "$IPA_SRC" "$OUT_IPA"
+          fi
+
+          if unzip -l "$OUT_IPA" | grep -iE "\.env$|\.jwt_secret$|database\.json$|assets/aistudio/"; then
+            echo "ERROR: Secret, data, or non-production asset leaked inside IPA!"
+            exit 1
+          fi
+
+          IPA_SHA256=$(shasum -a 256 "$OUT_IPA" | awk '{print $1}')
+          {
+            echo "## iOS Production Release v${VERSION}"
+            echo "| File | SHA-256 |"
+            echo "|---|---|"
+            echo "| \`AWLAD-SELIM-${VERSION}-Release.ipa\` | \`${IPA_SHA256}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Cleanup Ephemeral Keychain & Signing Artifacts
+        if: always()
+        run: |
+          if [ -n "${{ steps.ios_sign.outputs.keychain_path }}" ]; then
+            security delete-keychain "${{ steps.ios_sign.outputs.keychain_path }}" || true
+          fi
+          if [ -n "${{ steps.ios_sign.outputs.profile_uuid }}" ]; then
+            rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/${{ steps.ios_sign.outputs.profile_uuid }}.mobileprovision"
+          fi
+          rm -f "${{ runner.temp }}/dist_cert.p12" "${{ runner.temp }}/profile.mobileprovision" "${{ runner.temp }}/profile.plist" "${{ runner.temp }}/ExportOptions.plist"
+
+      - name: Upload Signed iOS Production IPA Artifact
         uses: actions/upload-artifact@v6
         with:
-          name: AWLAD-SELIM-iOS-Archive
-          path: build-ios/AWLAD-SELIM.xcarchive
+          name: AWLAD-SELIM-iOS-${{ steps.meta.outputs.version }}
+          path: dist-ios/AWLAD-SELIM-${{ steps.meta.outputs.version }}-Release.ipa
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
+
+      - name: Attach iOS Release IPA to GitHub Release (on tag push)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist-ios/AWLAD-SELIM-${{ steps.meta.outputs.version }}-Release.ipa

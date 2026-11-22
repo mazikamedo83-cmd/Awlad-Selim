@@ -72,10 +72,18 @@ jobs:
         shell: pwsh
         run: bun run lint
 
-      - name: Run backend and PostgreSQL test suite
+      - name: Run full backend, reports, audit, pairing & client test suites
         shell: pwsh
         run: |
           node server/tests/runAllTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/repPurchaseCustomerRbacTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/masterRepairVerificationTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/comprehensiveReportsTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/auditVerificationTests.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npx tsx server/tests/pairingVerificationTests.mts
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

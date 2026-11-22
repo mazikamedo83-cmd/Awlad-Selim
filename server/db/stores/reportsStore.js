@@ -95,13 +95,139 @@ function calcMarginOnSales(profit, netSales) {
   return 0;
 }
 
-async function loadFullReportDataset(actor) {
+async function loadFullReportDataset(actor, filterHints = {}) {
   const settings = await getSystemSettingsSafe();
   const isRep = actor?.role === 'representative';
   const repProfile = isRep ? await getRepresentativeByUserId(actor.id) : null;
 
   if (await isPgMode()) {
     const pool = getPool();
+    const hintDateFrom = filterHints.dateFrom ? String(filterHints.dateFrom).split('T')[0] : null;
+    const hintDateTo = filterHints.dateTo ? String(filterHints.dateTo).split('T')[0] : null;
+    const hintWh = filterHints.warehouseId && filterHints.warehouseId !== 'all' ? String(filterHints.warehouseId) : null;
+    const hintProd = filterHints.productId && filterHints.productId !== 'all' ? String(filterHints.productId) : null;
+
+    // Preserve full cross-history ONLY when product lifecycle history is requested (productId set).
+    // Even then, push product_id predicate to PostgreSQL!
+    const buildRangeWhere = (extraClauses = [], includeDateTo = true) => {
+      const clauses = [...extraClauses];
+      const params = [];
+      if (!hintProd && hintDateFrom) {
+        params.push(hintDateFrom);
+        clauses.push(`date >= $${params.length}`);
+      }
+      if (!hintProd && includeDateTo && hintDateTo) {
+        params.push(hintDateTo);
+        clauses.push(`date <= $${params.length}`);
+      }
+      return {
+        whereSql: clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '',
+        params,
+      };
+    };
+
+    // financial_transactions keeps date >= dateFrom (no upper dateTo cap) so summary.drawerBalance & deltaAfterDateTo stay exact
+    const ftFilter = buildRangeWhere([], false);
+
+    // invoice_returns filter
+    const retClauses = [];
+    const retParams = [];
+    if (!hintProd && hintDateFrom) {
+      retParams.push(hintDateFrom);
+      retClauses.push(`date >= $${retParams.length}`);
+    }
+    if (!hintProd && hintDateTo) {
+      retParams.push(hintDateTo);
+      retClauses.push(`date <= $${retParams.length}`);
+    }
+    if (hintWh) {
+      retParams.push(hintWh);
+      retClauses.push(`warehouse_id = $${retParams.length}`);
+    }
+    if (hintProd) {
+      retParams.push(hintProd);
+      retClauses.push(`id IN (SELECT return_id FROM invoice_return_items WHERE product_id = $${retParams.length})`);
+    }
+    const retWhereSql = retClauses.length > 0 ? `WHERE ${retClauses.join(' AND ')}` : '';
+
+    // invoices filter (keep original invoices referenced by in-period returns so return cost & customer match 100%)
+    const invClauses = [];
+    const invParams = [];
+    if (!hintProd && (hintDateFrom || hintDateTo)) {
+      const dParts = [];
+      const subParts = [];
+      if (hintDateFrom) {
+        invParams.push(hintDateFrom);
+        const pIdx = `$${invParams.length}`;
+        dParts.push(`date >= ${pIdx}`);
+        subParts.push(`r.date >= ${pIdx}`);
+      }
+      if (hintDateTo) {
+        invParams.push(hintDateTo);
+        const pIdx = `$${invParams.length}`;
+        dParts.push(`date <= ${pIdx}`);
+        subParts.push(`r.date <= ${pIdx}`);
+      }
+      const subCond = subParts.length > 0 ? `WHERE ${subParts.join(' AND ')}` : '';
+      invClauses.push(`((${dParts.join(' AND ')}) OR id IN (SELECT r.original_invoice_id FROM invoice_returns r ${subCond}))`);
+    }
+    if (hintWh) {
+      invParams.push(hintWh);
+      invClauses.push(`warehouse_id = $${invParams.length}`);
+    }
+    if (hintProd) {
+      invParams.push(hintProd);
+      invClauses.push(`id IN (SELECT ii.invoice_id FROM invoice_items ii WHERE ii.product_id = $${invParams.length})`);
+    }
+    const invWhereSql = invClauses.length > 0 ? `WHERE ${invClauses.join(' AND ')}` : '';
+    const invItemWhereSql = invClauses.length > 0 ? `WHERE invoice_id IN (SELECT id FROM invoices ${invWhereSql})` : '';
+    const invPayWhereSql = invItemWhereSql;
+
+    // stock_movements filter
+    const smClauses = [];
+    const smParams = [];
+    if (!hintProd && hintDateFrom) {
+      smParams.push(hintDateFrom);
+      smClauses.push(`date >= $${smParams.length}`);
+    }
+    if (!hintProd && hintDateTo) {
+      smParams.push(hintDateTo);
+      smClauses.push(`date <= $${smParams.length}`);
+    }
+    if (hintWh) {
+      smParams.push(hintWh);
+      smClauses.push(`(warehouse_id = $${smParams.length} OR target_warehouse_id = $${smParams.length})`);
+    }
+    if (hintProd) {
+      smParams.push(hintProd);
+      smClauses.push(`product_id = $${smParams.length}`);
+    }
+    const smWhereSql = smClauses.length > 0 ? `WHERE ${smClauses.join(' AND ')}` : '';
+
+    // rep_custody_operations filter
+    const rcoClauses = [];
+    const rcoParams = [];
+    if (!hintProd && hintDateFrom) {
+      rcoParams.push(hintDateFrom);
+      rcoClauses.push(`date >= $${rcoParams.length}`);
+    }
+    if (!hintProd && hintDateTo) {
+      rcoParams.push(hintDateTo);
+      rcoClauses.push(`date <= $${rcoParams.length}`);
+    }
+    if (hintProd) {
+      rcoParams.push(hintProd);
+      rcoClauses.push(`product_id = $${rcoParams.length}`);
+    }
+    const rcoWhereSql = rcoClauses.length > 0 ? `WHERE ${rcoClauses.join(' AND ')}` : '';
+
+    const expFilter = buildRangeWhere([], true);
+    const advFilter = buildRangeWhere([], true);
+    const needsLinkedDocMeta = Boolean(hintWh || (!hintProd && (hintDateFrom || hintDateTo)));
+    const ftLinkedSubWhere = ftFilter.whereSql
+      ? `${ftFilter.whereSql} AND related_doc_id IS NOT NULL`
+      : 'WHERE related_doc_id IS NOT NULL';
+
     const [
       whRes,
       cbRes,
@@ -131,6 +257,8 @@ async function loadFullReportDataset(actor) {
       advRes,
       payRes,
       auditRes,
+      linkedInvMetaRes,
+      linkedRetMetaRes,
     ] = await Promise.all([
       pool.query('SELECT * FROM warehouses ORDER BY created_at ASC'),
       pool.query('SELECT * FROM cashboxes ORDER BY created_at ASC'),
@@ -142,24 +270,41 @@ async function loadFullReportDataset(actor) {
       pool.query('SELECT * FROM representatives ORDER BY created_at ASC'),
       pool.query('SELECT * FROM employees ORDER BY created_at ASC'),
       pool.query('SELECT id, full_name, username, role, job_title FROM users ORDER BY full_name ASC'),
-      pool.query('SELECT * FROM invoices ORDER BY date DESC, created_at DESC'),
-      pool.query('SELECT * FROM invoice_items'),
-      pool.query('SELECT * FROM invoice_payments ORDER BY created_at ASC'),
-      pool.query('SELECT * FROM invoice_returns ORDER BY date DESC, created_at DESC'),
-      pool.query('SELECT * FROM invoice_return_items'),
-      pool.query('SELECT * FROM financial_transactions ORDER BY date DESC, created_at DESC'),
-      pool.query('SELECT * FROM stock_movements ORDER BY date DESC, created_at DESC'),
+      pool.query(`SELECT * FROM invoices ${invWhereSql} ORDER BY date DESC, created_at DESC`, invParams),
+      pool.query(`SELECT * FROM invoice_items ${invItemWhereSql}`, invParams),
+      pool.query(`SELECT * FROM invoice_payments ${invPayWhereSql} ORDER BY created_at ASC`, invParams),
+      pool.query(`SELECT * FROM invoice_returns ${retWhereSql} ORDER BY date DESC, created_at DESC`, retParams),
+      pool.query(
+        retClauses.length > 0
+          ? `SELECT * FROM invoice_return_items WHERE return_id IN (SELECT id FROM invoice_returns ${retWhereSql})`
+          : 'SELECT * FROM invoice_return_items',
+        retParams
+      ),
+      pool.query(`SELECT * FROM financial_transactions ${ftFilter.whereSql} ORDER BY date DESC, created_at DESC`, ftFilter.params),
+      pool.query(`SELECT * FROM stock_movements ${smWhereSql} ORDER BY date DESC, created_at DESC`, smParams),
       pool.query('SELECT * FROM stock_counts ORDER BY date DESC, created_at DESC'),
       pool.query('SELECT * FROM stock_count_items'),
       pool.query('SELECT * FROM stock_transfer_requests ORDER BY date DESC, created_at DESC'),
       pool.query('SELECT * FROM stock_transfer_request_items'),
       pool.query('SELECT * FROM rep_item_transfers ORDER BY date DESC, created_at DESC'),
       pool.query('SELECT * FROM rep_item_transfer_items'),
-      pool.query('SELECT * FROM rep_custody_operations ORDER BY date DESC, created_at DESC'),
-      pool.query('SELECT * FROM expenses_incomes ORDER BY date DESC, created_at DESC'),
-      pool.query('SELECT * FROM advances_deductions ORDER BY date DESC, created_at DESC'),
+      pool.query(`SELECT * FROM rep_custody_operations ${rcoWhereSql} ORDER BY date DESC, created_at DESC`, rcoParams),
+      pool.query(`SELECT * FROM expenses_incomes ${expFilter.whereSql} ORDER BY date DESC, created_at DESC`, expFilter.params),
+      pool.query(`SELECT * FROM advances_deductions ${advFilter.whereSql} ORDER BY date DESC, created_at DESC`, advFilter.params),
       pool.query('SELECT * FROM payrolls ORDER BY created_at DESC'),
       pool.query('SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 2000'),
+      needsLinkedDocMeta
+        ? pool.query(
+            `SELECT id, warehouse_id, representative_id, representative_name, cashbox_id, customer_id, supplier_id FROM invoices WHERE id IN (SELECT related_doc_id FROM financial_transactions ${ftLinkedSubWhere})`,
+            ftFilter.params
+          )
+        : Promise.resolve({ rows: [] }),
+      needsLinkedDocMeta
+        ? pool.query(
+            `SELECT id, warehouse_id FROM invoice_returns WHERE id IN (SELECT related_doc_id FROM financial_transactions ${ftLinkedSubWhere})`,
+            ftFilter.params
+          )
+        : Promise.resolve({ rows: [] }),
     ]);
 
     const unitsByProd = new Map();
@@ -478,6 +623,29 @@ async function loadFullReportDataset(actor) {
         newValues: a.new_values || null,
         notes: a.notes || '',
       })),
+      linkedInvMetaMap: new Map(
+        (linkedInvMetaRes?.rows || []).map((r) => [
+          r.id,
+          {
+            id: r.id,
+            warehouseId: r.warehouse_id,
+            representativeId: r.representative_id || undefined,
+            representativeName: r.representative_name || undefined,
+            cashboxId: r.cashbox_id || undefined,
+            customerId: r.customer_id || undefined,
+            supplierId: r.supplier_id || undefined,
+          },
+        ])
+      ),
+      linkedRetMetaMap: new Map(
+        (linkedRetMetaRes?.rows || []).map((r) => [
+          r.id,
+          {
+            id: r.id,
+            warehouseId: r.warehouse_id,
+          },
+        ])
+      ),
     };
   }
 
@@ -679,7 +847,7 @@ function computeSignedCashDelta(tx, targetCashboxSet, cashboxNameToId) {
 }
 
 export async function getComprehensiveReport(filters = {}, actor) {
-  const data = await loadFullReportDataset(actor);
+  const data = await loadFullReportDataset(actor, filters);
   const resolvers = buildBranchResolvers(data);
   const { branchById, branchByWh, branchByCb, cashboxMap, resolveBranchName, resolveCashboxName } = resolvers;
 
@@ -1320,9 +1488,11 @@ export async function getComprehensiveReport(filters = {}, actor) {
     const partyName = tx.relatedEntityName || tx.partyName || partyObj?.name || tx.description || tx.category || '-';
     const partyLabel = partyObj?.phone ? `${partyName} (${partyObj.phone})` : partyName;
 
-    const linkedInv = tx.relatedDocId && ['sales', 'purchase'].includes(tx.relatedDocType) ? invoiceMap.get(tx.relatedDocId) : null;
+    const linkedInv = tx.relatedDocId && ['sales', 'purchase'].includes(tx.relatedDocType)
+      ? (invoiceMap.get(tx.relatedDocId) || data.linkedInvMetaMap?.get(tx.relatedDocId) || null)
+      : null;
     const linkedRet = tx.relatedDocId && ['sales_return', 'purchase_return'].includes(tx.relatedDocType)
-      ? (data.invoiceReturns || []).find((r) => r.id === tx.relatedDocId)
+      ? ((data.invoiceReturns || []).find((r) => r.id === tx.relatedDocId) || data.linkedRetMetaMap?.get(tx.relatedDocId) || null)
       : null;
     const linkedWarehouseId = linkedInv?.warehouseId || linkedRet?.warehouseId || undefined;
     const empName = linkedInv?.representativeName || tx.createdBy || '-';
