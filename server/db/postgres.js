@@ -598,6 +598,7 @@ export async function initializeSchema(customPool = null) {
         total NUMERIC(14, 2) NOT NULL DEFAULT 0.00
       )`,
       'CREATE INDEX IF NOT EXISTS idx_invoices_created_by_uid ON invoices(created_by_user_id)',
+      'CREATE INDEX IF NOT EXISTS idx_invoices_cust_type_status_date ON invoices(customer_id, type, status, date DESC, created_at DESC)',
       'CREATE INDEX IF NOT EXISTS idx_invoice_payments_created_by_uid ON invoice_payments(created_by_user_id)',
       'CREATE INDEX IF NOT EXISTS idx_invoice_returns_created_by_uid ON invoice_returns(created_by_user_id)',
       'CREATE INDEX IF NOT EXISTS idx_fin_tx_created_by_uid ON financial_transactions(created_by_user_id)',

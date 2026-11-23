@@ -3569,7 +3569,7 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
       newValues: out.newValues,
       notes: cleanReason,
     });
-    return out.updatedInv;
+    return actor?.role === 'representative' ? sanitizeInvoiceForRepresentative(out.updatedInv) : out.updatedInv;
   }
 
   const out = await withJsonTransaction(async (db) => {

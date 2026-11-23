@@ -1016,6 +1016,7 @@ CREATE INDEX IF NOT EXISTS idx_reps_norm_phone ON representatives(normalized_pho
 -- Composite indexes for enterprise report & ledger queries
 CREATE INDEX IF NOT EXISTS idx_invoices_wh_date ON invoices(warehouse_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_invoices_cust_date ON invoices(customer_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_invoices_cust_type_status_date ON invoices(customer_id, type, status, date DESC, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_invoices_supp_date ON invoices(supplier_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_invoices_cashbox_date ON invoices(cashbox_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_invoices_number ON invoices(invoice_number);

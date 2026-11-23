@@ -763,7 +763,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           .map((it, idx) => {
             const p = prodLookup.get(it.productId);
             const qty = Number(it.quantity || 0);
-            const retQty = Math.min(qty, Number(retMap[`${it.productId}::${it.unit}`] || 0));
+            const retQty = Math.min(qty, Number(retMap[`${it.productId}::${it.unit}`] ?? retMap[it.productId] ?? 0));
             const netQty = Math.max(0, qty - retQty);
             const retVal = qty > 0 ? (Number(it.total || 0) * retQty) / qty : 0;
             const netVal = Math.max(0, Number(it.total || 0) - retVal);
@@ -852,7 +852,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     const collections = (data.financialTransactions || [])
       .filter((tx) => {
         if (!matchDates(tx.date)) return false;
-        if (tx.category !== 'تحصيل من عميل' && tx.type !== 'deposit' && tx.type !== 'income' && tx.type !== 'customer_payment') return false;
+        if (tx.category !== 'تحصيل من عميل' && tx.type !== 'customer_payment') return false;
         if (rptCustomerId && tx.partyId !== rptCustomerId) return false;
         return true;
       })
@@ -9142,10 +9142,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   pur.status === 'confirmed' &&
                   Number(pur.remainingAmount || 0) > 0.009 &&
                   (!isRepRoleAccount ||
-                    !pur.createdBy ||
-                    pur.createdBy === currentUser?.id ||
-                    pur.createdByName === currentUser?.fullName ||
-                    pur.representativeId === rep?.id) && (
+                    pur.createdByUserId === currentUser?.id ||
+                    pur.sentByUserId === currentUser?.id ||
+                    pur.representativeId === rep?.id ||
+                    (!pur.createdByUserId &&
+                      !pur.representativeId &&
+                      !pur.sentByUserId &&
+                      (pur.createdBy === currentUser?.id ||
+                        pur.createdByName === currentUser?.fullName))) && (
                     <button
                       type="button"
                       onClick={() => {

@@ -1419,6 +1419,189 @@ async function runFullModeAudit(modeName) {
       assert.equal(Number(auditSupRow.companyBalance), 1525, 'Company balance must reflect opening + admin + rep purchases - rep payments (1000+400+200-75)');
       assert.equal(Number(auditSupRow.repPurchasesTotal), 200, 'Supplier repPurchasesTotal must count only rep own purchases');
     });
+
+    await test(`[${modeName}] 14. Customer statement rep RBAC/sanitization, same-fullName rep collision guard, & notifications with purchase return requests`, async () => {
+      // Same fullName collision guard on supplier & customer statements
+      const dupNameReg = await req(baseUrl, 'POST', '/api/auth/register', {
+        body: {
+          fullName: 'مندوب المشتريات المخول',
+          username: `dup_rep_pur_${modeName}`,
+          password: 'Password123!',
+          phone: '01099887766',
+          role: 'representative',
+        },
+      });
+      assert.equal(dupNameReg.status, 201);
+      await req(baseUrl, 'PUT', `/api/admin/users/${dupNameReg.json.user.id}`, {
+        token: adminToken,
+        body: { permissions: { canCreatePurchase: true, canManageSales: true, canView: true, canAdd: true } },
+      });
+      const dupLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: `dup_rep_pur_${modeName}`, password: 'Password123!' },
+      });
+      assert.equal(dupLogin.status, 200);
+      const dupRepToken = dupLogin.json.accessToken;
+
+      const dupPur = await req(baseUrl, 'POST', '/api/invoices/purchase', {
+        token: dupRepToken,
+        body: {
+          supplierId: supAuditId,
+          warehouseId: mainWhId,
+          cashboxId,
+          date: '2026-11-20',
+          paidAmount: 0,
+          paymentType: 'credit',
+          items: [{ productId, quantity: 2, unit: 'زجاجة', unitPrice: 40 }],
+        },
+      });
+      assert.equal(dupPur.status, 201);
+      await req(baseUrl, 'POST', `/api/invoices/purchase/${dupPur.json.invoice.id}/send`, { token: dupRepToken, body: {} });
+      await req(baseUrl, 'POST', `/api/invoices/purchase/${dupPur.json.invoice.id}/receive`, {
+        token: adminToken,
+        body: { confirmNow: true, warehouseId: mainWhId, cashboxId },
+      });
+
+      // repPurToken has identical fullName 'مندوب المشتريات المخول' — MUST NOT see dupRep's invoice!
+      const supStmtAfter = await req(baseUrl, 'GET', `/api/admin/suppliers/${supAuditId}/statement`, {
+        token: repPurToken,
+      });
+      assert.equal(supStmtAfter.status, 200);
+      assert.equal(supStmtAfter.json.invoices.some((i) => i.id === dupPur.json.invoice.id), false, 'Same fullName must NOT leak another rep purchase invoice');
+
+      // Rep purchase return request -> GET /api/mobile/notifications must return 200 (never 500 created_by_user_id)
+      const repPurList = supStmtAfter.json.invoices;
+      assert.ok(repPurList.length >= 1);
+      const prReqRes = await req(baseUrl, 'POST', '/api/invoices/purchase-return-requests', {
+        token: repPurToken,
+        body: {
+          originalInvoiceId: repPurList[0].id,
+          reason: 'تلف جزئي عند المراجعة',
+          refundType: 'credit',
+          items: [{ productId, unit: 'زجاجة', unitFactor: 1, quantity: 1 }],
+        },
+      });
+      assert.equal(prReqRes.status, 201);
+      const repNotifs = await req(baseUrl, 'GET', '/api/mobile/notifications', { token: repPurToken });
+      assert.equal(repNotifs.status, 200);
+      assert.ok(Array.isArray(repNotifs.json.notifications));
+
+      // Customer statement called by rep -> company-wide balance retained, only own invoices shown, zero cost/cashbox leaked
+      const adminSaleForCust = await req(baseUrl, 'POST', '/api/invoices/sales', {
+        token: adminToken,
+        body: {
+          customerId: custUnassignedToRep1Id,
+          warehouseId: mainWhId,
+          cashboxId,
+          date: '2026-11-20',
+          paidAmount: 0,
+          paymentType: 'credit',
+          items: [{ productId, quantity: 2, unit: 'زجاجة', unitPrice: 60 }],
+        },
+      });
+      assert.equal(adminSaleForCust.status, 201);
+      const custStmtRep = await req(baseUrl, 'GET', `/api/customers/${custUnassignedToRep1Id}/statement`, {
+        token: rep1Token,
+      });
+      assert.equal(custStmtRep.status, 200);
+      const stmt = custStmtRep.json.statement;
+      assert.equal(stmt.scope?.accountBalanceScope, 'company_wide');
+      assert.equal(stmt.scope?.operationsScope, 'representative_own_only');
+      assert.equal(
+        stmt.invoices.some((i) => i.id === adminSaleForCust.json.invoice.id),
+        false,
+        'Customer statement for rep must NOT expose admin/other-rep invoice details'
+      );
+      for (const inv of stmt.invoices) {
+        assert.equal(inv.cashboxId || '', '', 'Customer statement for rep must strip cashboxId');
+        assert.equal(inv.cashboxName || '-', '-', 'Customer statement for rep must strip cashboxName');
+        for (const it of inv.items || []) {
+          assert.equal(Number(it.purchasePriceAtTime || 0), 0, 'Customer statement for rep must zero purchasePriceAtTime');
+        }
+      }
+      assert.ok(Number(stmt.summary.currentBalance) > 0, 'Customer statement must preserve full company-wide customer balance');
+    });
+
+    await test(`[${modeName}] 15. Paginated sales reports preserve full-dataset totals, admin reportProfit, & exact 'أصناف البيع' title`, async () => {
+      const fullRes = await req(
+        baseUrl,
+        'GET',
+        '/api/reports/comprehensive?reportType=sales_items&dateFrom=2026-11-20&dateTo=2026-11-20',
+        { token: adminToken }
+      );
+      assert.equal(fullRes.status, 200);
+      const fullRpt = fullRes.json.report;
+      assert.equal(fullRpt.sections[0].title, 'أصناف البيع');
+      const fullTotals = fullRpt.sections[0].totals;
+      assert.ok(fullTotals.count >= 2, 'Expected at least 2 sales item rows for pagination parity test');
+
+      const page1Res = await req(
+        baseUrl,
+        'GET',
+        '/api/reports/comprehensive?reportType=sales_items&dateFrom=2026-11-20&dateTo=2026-11-20&page=1&pageSize=1',
+        { token: adminToken }
+      );
+      const page2Res = await req(
+        baseUrl,
+        'GET',
+        '/api/reports/comprehensive?reportType=sales_items&dateFrom=2026-11-20&dateTo=2026-11-20&page=2&pageSize=1',
+        { token: adminToken }
+      );
+      assert.equal(page1Res.status, 200);
+      assert.equal(page2Res.status, 200);
+      const p1 = page1Res.json.report;
+      const p2 = page2Res.json.report;
+      assert.equal(p1.sections[0].title, 'أصناف البيع');
+      assert.equal(p1.sections[0].rows.length, 1);
+      assert.equal(p2.sections[0].rows.length, 1);
+      assert.notEqual(p1.sections[0].rows[0].docId + p1.sections[0].rows[0].productId + p1.sections[0].rows[0].rawCreatedAt, '');
+      assert.equal(Number(p1.sections[0].totals.quantity), Number(fullTotals.quantity), 'Page 1 totals.quantity must equal full dataset');
+      assert.equal(Number(p2.sections[0].totals.quantity), Number(fullTotals.quantity), 'Page 2 totals.quantity must equal full dataset');
+      assert.equal(Number(p1.sections[0].totals.profit), Number(fullTotals.profit), 'Page 1 totals.profit must equal full dataset');
+      assert.equal(Number(p1.sections[0].totals.costValue), Number(fullTotals.costValue), 'Page 1 totals.costValue must equal full dataset');
+      assert.equal(Number(p1.summary.reportProfit), Number(fullRpt.summary.reportProfit), 'Paginated admin reportProfit must equal unpaged reportProfit');
+      assert.equal(Number(p1.summary.reportProfitPercent), Number(fullRpt.summary.reportProfitPercent), 'Paginated admin reportProfitPercent must equal unpaged');
+    });
+
+    await test(`[${modeName}] 16. Rep cancelInvoice enforces canDelete & returns sanitized invoice (zero purchasePriceAtTime)`, async () => {
+      const repDraftRes = await req(baseUrl, 'POST', '/api/invoices/sales', {
+        token: rep1Token,
+        body: {
+          customerId: custUnassignedToRep1Id,
+          warehouseId: mainWhId,
+          cashboxId,
+          date: '2026-11-20',
+          status: 'draft',
+          paidAmount: 0,
+          paymentType: 'credit',
+          items: [{ productId, quantity: 1, unit: 'زجاجة', unitPrice: 60 }],
+        },
+      });
+      assert.equal(repDraftRes.status, 201);
+
+      // Without canDelete permission -> 403
+      const deniedCancel = await req(baseUrl, 'POST', `/api/invoices/${repDraftRes.json.invoice.id}/cancel`, {
+        token: rep1Token,
+        body: { reason: 'اختبار رفض الإلغاء بدون صلاحية' },
+      });
+      assert.equal(deniedCancel.status, 403);
+
+      // Grant canDelete to rep1 and retry -> 200 + sanitized zero purchasePriceAtTime
+      const grantDel = await req(baseUrl, 'PUT', `/api/admin/users/${rep1User.id}`, {
+        token: adminToken,
+        body: { permissions: { canDelete: true } },
+      });
+      assert.equal(grantDel.status, 200);
+
+      const cancelRes = await req(baseUrl, 'POST', `/api/invoices/${repDraftRes.json.invoice.id}/cancel`, {
+        token: rep1Token,
+        body: { reason: 'اختبار إلغاء مسودة المندوب' },
+      });
+      assert.equal(cancelRes.status, 200);
+      assert.equal(cancelRes.json.invoice.status, 'cancelled');
+      for (const it of cancelRes.json.invoice.items || []) {
+        assert.equal(Number(it.purchasePriceAtTime || 0), 0, 'cancelInvoice must zero purchasePriceAtTime for rep');
+      }
+    });
   } finally {
     await new Promise((resolve) => server.close(resolve));
     setInjectedPool(null);

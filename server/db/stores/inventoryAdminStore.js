@@ -214,7 +214,7 @@ export async function getStaffBootstrapData(actor) {
       canViewPurchaseReturnReqs
         ? isRep
           ? pool.query(
-              'SELECT * FROM purchase_return_requests WHERE created_by_user_id = $1 OR ($2::varchar IS NOT NULL AND representative_id = $2) ORDER BY created_at DESC',
+              'SELECT * FROM purchase_return_requests WHERE requested_by_user_id = $1 OR ($2::varchar IS NOT NULL AND representative_id = $2) ORDER BY created_at DESC',
               [actor.id, repProfile?.id || null]
             )
           : pool.query('SELECT * FROM purchase_return_requests ORDER BY created_at DESC')
@@ -690,7 +690,7 @@ export async function getStaffBootstrapData(actor) {
             (repProfile && inv.representativeId === repProfile.id) ||
             inv.createdByUserId === actor.id ||
             inv.sentByUserId === actor.id ||
-            (!inv.createdByUserId && !inv.representativeId && (inv.createdBy === actor.id || inv.createdBy === actor.fullName));
+            (!inv.createdByUserId && !inv.representativeId && !inv.sentByUserId && (inv.createdBy === actor.id || inv.createdBy === actor.fullName));
           if (!isOwnInv) return false;
           if (inv.type === 'sales' || inv.type === 'quote') return true;
           if (inv.type === 'purchase') return canViewSuppliers;
@@ -702,7 +702,10 @@ export async function getStaffBootstrapData(actor) {
   const scopedPrReqs = canViewPurchaseReturnReqs
     ? isRep
       ? (db.purchaseReturnRequests || []).filter(
-          (r) => r.createdByUserId === actor.id || (repProfile && r.representativeId === repProfile.id)
+          (r) =>
+            r.requestedByUserId === actor.id ||
+            r.createdByUserId === actor.id ||
+            (repProfile && r.representativeId === repProfile.id)
         )
       : (db.purchaseReturnRequests || [])
     : [];
@@ -746,7 +749,7 @@ export async function getStaffBootstrapData(actor) {
             status: r.status || 'active',
           })),
     repTransfers: isRep
-      ? (repProfile ? (db.repTransfers || []).filter((rt) => rt.senderId === repProfile.id || rt.receiverId === repProfile.id) : [])
+      ? (repProfile ? (db.repTransfers || []).filter((rt) => rt.representativeId === repProfile.id || rt.senderId === repProfile.id || rt.receiverId === repProfile.id) : [])
       : db.repTransfers,
     repItemTransfers: isRep
       ? (repProfile ? (db.repItemTransfers || []).filter((rit) => rit.representativeId === repProfile.id) : [])
@@ -3582,9 +3585,12 @@ export async function getSupplierStatementData(supplierId, actor = null) {
   const isRepOwnInvoice = (inv) =>
     Boolean(
       (repProfile && inv.representativeId === repProfile.id) ||
+        inv.createdByUserId === actor.id ||
         inv.sentByUserId === actor.id ||
-        inv.createdBy === actor.fullName ||
-        inv.createdBy === actor.id
+        (!inv.createdByUserId &&
+          !inv.representativeId &&
+          !inv.sentByUserId &&
+          (inv.createdBy === actor.id || inv.createdBy === actor.fullName))
     );
 
   let supplier = null;

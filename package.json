@@ -72,6 +72,10 @@
     "tsx": "^4.21.0",
     "typescript": "^7.0.2"
   },
+  "overrides": {
+    "app-builder-lib>minimatch": "^11.0.9",
+    "@electron/universal>minimatch": "^11.0.9"
+  },
   "author": "AWLAD SELIM",
   "build": {
     "appId": "com.awladselim.erp",

@@ -1332,18 +1332,36 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
       const offset = (safePage - 1) * pageSize;
 
       const pageParams = [...retParams, pageSize, offset];
-      const pageRetRes = await pool.query(
-        `SELECT r.* FROM invoice_returns r ${whereSql} ORDER BY r.date DESC, r.created_at DESC LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
-        pageParams
-      );
+      const [pageRetRes, aggQtyRes] = await Promise.all([
+        pool.query(
+          `SELECT r.* FROM invoice_returns r ${whereSql} ORDER BY r.date DESC, r.created_at DESC, r.id DESC LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
+          pageParams
+        ),
+        pool.query(
+          `SELECT COALESCE(SUM(iri.quantity), 0) AS sum_qty
+           FROM invoice_return_items iri
+           JOIN invoice_returns r ON r.id = iri.return_id
+           ${whereSql}`,
+          retParams
+        ),
+      ]);
       const pageRetIds = pageRetRes.rows.map((x) => x.id);
       const pageOrigInvIds = [...new Set(pageRetRes.rows.map((x) => x.original_invoice_id).filter(Boolean))];
-      const [retItemsRes, origInvItemsRes] = await Promise.all([
+      const [retItemsRes, origInvItemsRes, fullRetCostItemsRes] = await Promise.all([
         pageRetIds.length > 0
           ? pool.query(`SELECT * FROM invoice_return_items WHERE return_id = ANY($1::varchar[])`, [pageRetIds])
           : Promise.resolve({ rows: [] }),
         pageOrigInvIds.length > 0 && !isRep && isSales
           ? pool.query(`SELECT invoice_id, product_id, purchase_price_at_time FROM invoice_items WHERE invoice_id = ANY($1::varchar[])`, [pageOrigInvIds])
+          : Promise.resolve({ rows: [] }),
+        !isRep
+          ? pool.query(
+              `SELECT iri.product_id, iri.unit, iri.unit_factor, iri.quantity, r.original_invoice_id
+               FROM invoice_return_items iri
+               JOIN invoice_returns r ON r.id = iri.return_id
+               ${whereSql}`,
+              retParams
+            )
           : Promise.resolve({ rows: [] }),
       ]);
       const retItemsById = new Map();
@@ -1355,6 +1373,18 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
       const origCostByInvProd = new Map();
       for (const it of origInvItemsRes.rows) {
         origCostByInvProd.set(`${it.invoice_id}::${it.product_id}`, Number(it.purchase_price_at_time || 0));
+      }
+      if (!isRep && isSales && fullRetCostItemsRes.rows.length > 0) {
+        const missingOrigIds = [...new Set(fullRetCostItemsRes.rows.map((x) => x.original_invoice_id).filter((id) => id && !pageOrigInvIds.includes(id)))];
+        if (missingOrigIds.length > 0) {
+          const extraOrigRes = await pool.query(
+            `SELECT invoice_id, product_id, purchase_price_at_time FROM invoice_items WHERE invoice_id = ANY($1::varchar[])`,
+            [missingOrigIds]
+          );
+          for (const it of extraOrigRes.rows) {
+            origCostByInvProd.set(`${it.invoice_id}::${it.product_id}`, Number(it.purchase_price_at_time || 0));
+          }
+        }
       }
 
       rows = pageRetRes.rows.map((r) => {
@@ -1411,16 +1441,30 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
           scopeType: 'inventory',
         };
       });
+      const fullRetTotalVal = round2(countRes.rows[0]?.sum_total || 0);
+      const fullRetCost = isRep
+        ? 0
+        : round2(
+            fullRetCostItemsRes.rows.reduce((s, it) => {
+              const prod = productMap.get(it.product_id);
+              const uf = Number(it.unit_factor || resolveUnitFactor(prod, it.unit) || 1);
+              const bQty = round3(Number(it.quantity || 0) * uf);
+              const origCost = isSales ? origCostByInvProd.get(`${it.original_invoice_id}::${it.product_id}`) || 0 : 0;
+              const costPerBase = origCost > 0 ? origCost : Number(prod?.purchasePrice || 0);
+              return s + costPerBase * bQty;
+            }, 0)
+          );
+      const fullRetProfit = isRep || !isSales ? 0 : round2(-(fullRetTotalVal - fullRetCost));
       totalsObj = {
         count: totalUnpaginatedRows,
-        quantity: round3(rows.reduce((s, r) => s + Number(r.quantity || 0), 0)),
-        priceOrTotal: round2(countRes.rows[0]?.sum_total || 0),
+        quantity: round3(aggQtyRes.rows[0]?.sum_qty || 0),
+        priceOrTotal: fullRetTotalVal,
         valueOrPaid: round2(countRes.rows[0]?.sum_cash || 0),
         remaining: round2(countRes.rows[0]?.sum_bal || 0),
-        profit: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.profit || 0), 0)),
-        costValue: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.costValue || 0), 0)),
+        profit: fullRetProfit,
+        costValue: fullRetCost,
         discount: 0,
-        profitPercent: 0,
+        profitPercent: isRep || !isSales ? 0 : calcProfitPctOnCost(fullRetProfit, fullRetCost),
       };
     } else {
       if (productId) {
@@ -1441,19 +1485,36 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
       const offset = (safePage - 1) * pageSize;
 
       const pageParams = [...retParams, pageSize, offset];
-      const pageRetItemRes = await pool.query(
-        `SELECT iri.*, r.return_number, r.type AS ret_type, r.original_invoice_id, r.original_invoice_number,
-                r.date, r.created_at, r.created_by, r.party_id, r.party_name, r.warehouse_id, r.warehouse_name, r.cashbox_id, r.refund_type, r.reason, r.notes AS ret_notes
-         FROM invoice_return_items iri
-         JOIN invoice_returns r ON r.id = iri.return_id
-         ${whereSql}
-         ORDER BY r.date DESC, r.created_at DESC
-         LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
-        pageParams
-      );
-      const pageOrigInvIds = [...new Set(pageRetItemRes.rows.map((x) => x.original_invoice_id).filter(Boolean))];
-      const origInvItemsRes = pageOrigInvIds.length > 0 && !isRep && isSales
-        ? await pool.query(`SELECT invoice_id, product_id, purchase_price_at_time FROM invoice_items WHERE invoice_id = ANY($1::varchar[])`, [pageOrigInvIds])
+      const [pageRetItemRes, fullRetCostItemsRes] = await Promise.all([
+        pool.query(
+          `SELECT iri.*, r.return_number, r.type AS ret_type, r.original_invoice_id, r.original_invoice_number,
+                  r.date, r.created_at, r.created_by, r.party_id, r.party_name, r.warehouse_id, r.warehouse_name, r.cashbox_id, r.refund_type, r.reason, r.notes AS ret_notes
+           FROM invoice_return_items iri
+           JOIN invoice_returns r ON r.id = iri.return_id
+           ${whereSql}
+           ORDER BY r.date DESC, r.created_at DESC, r.id DESC, iri.id DESC
+           LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
+          pageParams
+        ),
+        !isRep
+          ? pool.query(
+              `SELECT iri.product_id, iri.unit, iri.unit_factor, iri.quantity, iri.total, r.original_invoice_id
+               FROM invoice_return_items iri
+               JOIN invoice_returns r ON r.id = iri.return_id
+               ${whereSql}`,
+              retParams
+            )
+          : Promise.resolve({ rows: [] }),
+      ]);
+      const origInvIdsForCost = [
+        ...new Set(
+          (fullRetCostItemsRes.rows.length > 0 ? fullRetCostItemsRes.rows : pageRetItemRes.rows)
+            .map((x) => x.original_invoice_id)
+            .filter(Boolean)
+        ),
+      ];
+      const origInvItemsRes = origInvIdsForCost.length > 0 && !isRep && isSales
+        ? await pool.query(`SELECT invoice_id, product_id, purchase_price_at_time FROM invoice_items WHERE invoice_id = ANY($1::varchar[])`, [origInvIdsForCost])
         : { rows: [] };
       const origCostByInvProd = new Map();
       for (const it of origInvItemsRes.rows) {
@@ -1512,16 +1573,30 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
           scopeType: 'inventory',
         };
       });
+      const fullRetItemVal = round2(countRes.rows[0]?.sum_val || 0);
+      const fullRetItemCost = isRep
+        ? 0
+        : round2(
+            fullRetCostItemsRes.rows.reduce((s, it) => {
+              const prod = productMap.get(it.product_id);
+              const uf = Number(it.unit_factor || resolveUnitFactor(prod, it.unit) || 1);
+              const bQty = round3(Number(it.quantity || 0) * uf);
+              const origCost = isSales ? origCostByInvProd.get(`${it.original_invoice_id}::${it.product_id}`) || 0 : 0;
+              const costPerBase = origCost > 0 ? origCost : Number(prod?.purchasePrice || 0);
+              return s + costPerBase * bQty;
+            }, 0)
+          );
+      const fullRetItemProfit = isRep || !isSales ? 0 : round2(-(fullRetItemVal - fullRetItemCost));
       totalsObj = {
         count: totalUnpaginatedRows,
         quantity: round3(countRes.rows[0]?.sum_qty || 0),
         priceOrTotal: null,
-        valueOrPaid: round2(countRes.rows[0]?.sum_val || 0),
+        valueOrPaid: fullRetItemVal,
         remaining: null,
-        profit: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.profit || 0), 0)),
-        costValue: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.costValue || 0), 0)),
+        profit: fullRetItemProfit,
+        costValue: fullRetItemCost,
         discount: 0,
-        profitPercent: 0,
+        profitPercent: isRep || !isSales ? 0 : calcProfitPctOnCost(fullRetItemProfit, fullRetItemCost),
       };
     }
   } else {
@@ -1583,10 +1658,21 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
       const offset = (safePage - 1) * pageSize;
 
       const pageParams = [...params, pageSize, offset];
-      const pageInvRes = await pool.query(
-        `SELECT i.* FROM invoices i ${whereSql} ORDER BY i.date DESC, i.created_at DESC LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
-        pageParams
-      );
+      const [pageInvRes, fullInvAggRes] = await Promise.all([
+        pool.query(
+          `SELECT i.* FROM invoices i ${whereSql} ORDER BY i.date DESC, i.created_at DESC, i.id DESC LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
+          pageParams
+        ),
+        pool.query(
+          `SELECT COALESCE(SUM(it.quantity), 0) AS sum_qty,
+                  COALESCE(SUM(CASE WHEN COALESCE(it.purchase_price_at_time, 0) > 0 THEN it.purchase_price_at_time ELSE COALESCE(p.purchase_price, 0) END * (it.quantity * COALESCE(it.unit_factor, 1))), 0) AS sum_cost
+           FROM invoice_items it
+           JOIN invoices i ON i.id = it.invoice_id
+           LEFT JOIN products p ON p.id = it.product_id
+           ${whereSql}`,
+          params
+        ),
+      ]);
       const pageInvIds = pageInvRes.rows.map((r) => r.id);
       const itemsByInv = new Map();
       if (pageInvIds.length > 0) {
@@ -1657,16 +1743,19 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
         };
       });
 
+      const fullInvTotal = round2(countRes.rows[0]?.sum_total || 0);
+      const fullInvCost = isRep ? 0 : round2(fullInvAggRes.rows[0]?.sum_cost || 0);
+      const fullInvProfit = isRep || !isSales ? 0 : round2(fullInvTotal - fullInvCost);
       totalsObj = {
         count: totalUnpaginatedRows,
-        quantity: round3(rows.reduce((s, r) => s + Number(r.quantity || 0), 0)),
-        priceOrTotal: round2(countRes.rows[0]?.sum_total || 0),
+        quantity: round3(fullInvAggRes.rows[0]?.sum_qty || 0),
+        priceOrTotal: fullInvTotal,
         valueOrPaid: round2(countRes.rows[0]?.sum_paid || 0),
         remaining: round2(countRes.rows[0]?.sum_rem || 0),
-        profit: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.profit || 0), 0)),
-        costValue: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.costValue || 0), 0)),
+        profit: fullInvProfit,
+        costValue: fullInvCost,
         discount: round2(countRes.rows[0]?.sum_disc || 0),
-        profitPercent: 0,
+        profitPercent: isRep || !isSales ? 0 : calcProfitPctOnCost(fullInvProfit, fullInvCost),
       };
     } else {
       if (productId) {
@@ -1675,9 +1764,14 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
       }
       const whereSql = `WHERE ${clauses.join(' AND ')}`;
       const countRes = await pool.query(
-        `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(it.quantity),0) AS sum_qty, COALESCE(SUM(it.total),0) AS sum_val, COALESCE(SUM(it.discount),0) AS sum_disc
+        `SELECT COUNT(*)::int AS cnt,
+                COALESCE(SUM(it.quantity), 0) AS sum_qty,
+                COALESCE(SUM(it.total), 0) AS sum_val,
+                COALESCE(SUM(it.discount), 0) AS sum_disc,
+                COALESCE(SUM(CASE WHEN COALESCE(it.purchase_price_at_time, 0) > 0 THEN it.purchase_price_at_time ELSE COALESCE(p.purchase_price, 0) END * (it.quantity * COALESCE(it.unit_factor, 1))), 0) AS sum_cost
          FROM invoice_items it
          JOIN invoices i ON i.id = it.invoice_id
+         LEFT JOIN products p ON p.id = it.product_id
          ${whereSql}`,
         params
       );
@@ -1692,7 +1786,7 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
          FROM invoice_items it
          JOIN invoices i ON i.id = it.invoice_id
          ${whereSql}
-         ORDER BY i.date DESC, i.created_at DESC
+         ORDER BY i.date DESC, i.created_at DESC, i.id DESC, it.id DESC
          LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
         pageParams
       );
@@ -1764,16 +1858,19 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
         };
       });
 
+      const fullItemVal = round2(countRes.rows[0]?.sum_val || 0);
+      const fullItemCost = isRep ? 0 : round2(countRes.rows[0]?.sum_cost || 0);
+      const fullItemProfit = isRep || !isSales ? 0 : round2(fullItemVal - fullItemCost);
       totalsObj = {
         count: totalUnpaginatedRows,
         quantity: round3(countRes.rows[0]?.sum_qty || 0),
         priceOrTotal: null,
-        valueOrPaid: round2(countRes.rows[0]?.sum_val || 0),
+        valueOrPaid: fullItemVal,
         remaining: null,
-        profit: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.profit || 0), 0)),
-        costValue: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.costValue || 0), 0)),
+        profit: fullItemProfit,
+        costValue: fullItemCost,
         discount: round2(countRes.rows[0]?.sum_disc || 0),
-        profitPercent: 0,
+        profitPercent: isRep || !isSales ? 0 : calcProfitPctOnCost(fullItemProfit, fullItemCost),
       };
     }
   }
@@ -1783,7 +1880,7 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
   const titleMap = {
     sales_invoices: 'فواتير بيع',
     purchase_invoices: 'فواتير شراء',
-    sales_items: 'أصناف بيع',
+    sales_items: 'أصناف البيع',
     purchase_items: 'أصناف شراء',
     sales_return_invoices: 'فواتير مرتجع بيع',
     purchase_return_invoices: 'فواتير مرتجع شراء',
@@ -1944,8 +2041,8 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
       drawerBalance,
       reportBalance,
       carriedFromYesterday,
-      reportProfit: 0,
-      reportProfitPercent: 0,
+      reportProfit: isRep || !isSales ? 0 : round2(totalsObj.profit || 0),
+      reportProfitPercent: isRep || !isSales ? 0 : calcProfitPctOnCost(totalsObj.profit || 0, totalsObj.costValue || 0),
       filteredSalesNet: exactFilteredSalesNet,
       filteredPurchasesNet: exactFilteredPurchasesNet,
       filteredCashIn: 0,
@@ -2786,7 +2883,7 @@ export async function getComprehensiveReport(filters = {}, actor) {
   let sections = [];
   switch (reportType) {
     case 'sales_items':
-      sections = [makeSection('sales_items', 'أصناف بيع', 'sage', false, salesItemRows)];
+      sections = [makeSection('sales_items', 'أصناف البيع', 'sage', false, salesItemRows)];
       break;
     case 'sales_invoices':
       sections = [makeSection('sales_invoices', 'فواتير بيع', 'sage', true, salesInvoiceRows)];
@@ -2897,7 +2994,7 @@ export async function getComprehensiveReport(filters = {}, actor) {
     case 'all':
     default: {
       const candidateSections = [
-        makeSection('sales_items', 'أصناف بيع', 'sage', false, salesItemRows),
+        makeSection('sales_items', 'أصناف البيع', 'sage', false, salesItemRows),
         makeSection('sales_invoices', 'فواتير بيع', 'sage', true, salesInvoiceRows),
         makeSection('sales_return_items', 'أصناف مرتجع بيع', 'sage', false, salesReturnItemRows),
         makeSection('sales_return_invoices', 'فواتير مرتجع بيع', 'sage', true, salesReturnInvoiceRows),
@@ -4710,6 +4807,7 @@ export async function getRepDetailedReport(filters = {}, actor) {
       totalReturns: scopedReturns.length,
       totalCollections: collections.length,
       totalPurchaseReturnRequests: scopedPurchaseReturnRequests.length,
+      totalPurchasePayments: purchasePayments.length,
       totalPages,
       hasNextPage: hasPagination && safePage < totalPages,
       hasPrevPage: hasPagination && safePage > 1,

@@ -91,6 +91,7 @@ router.get(
     }
     const statement = await getCustomerStatementData(cust.id, {
       allowPriceView: Boolean(settings.mobileConfig?.allowCustomerPriceView),
+      actor: req.auth.user,
     });
     res.json({ ok: true, ...statement, mobileConfig: settings.mobileConfig });
   })
@@ -146,7 +147,10 @@ router.get(
   asyncHandler(async (req, res) => {
     const customer = await getCustomerById(req.params.id);
     if (!customer) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
-    const statement = await getCustomerStatementData(customer.id, { allowPriceView: true });
+    const statement = await getCustomerStatementData(customer.id, {
+      allowPriceView: true,
+      actor: req.auth.user,
+    });
     res.json({ ok: true, statement });
   })
 );

@@ -8,6 +8,7 @@ import {
   round2,
   sanitizeProductForCustomer,
   sanitizeProductForRepresentative,
+  sanitizeInvoiceForRepresentative,
   sanitizeUser,
   canViewCashboxBalances,
   normalizePhoneDigits as normalizePhoneDigitsShared,
@@ -1996,6 +1997,8 @@ export async function deleteImportedProductsBatch({ batchId = null, deleteAllImp
   return result;
 }
 
+let pgSupportsWindowFunctions = null;
+
 export async function getCustomerProductPriceHistory(customerId, productId = null) {
   const customer = await getCustomerById(customerId);
   if (!customer) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
@@ -2005,24 +2008,61 @@ export async function getCustomerProductPriceHistory(customerId, productId = nul
 
   if (await isPgMode()) {
     const pool = getPool();
-    const res = cleanProdId
-      ? await pool.query(
-          `SELECT i.id, i.invoice_number, i.date, i.created_at, it.product_id, it.unit, it.unit_factor, it.quantity, it.unit_price
-           FROM invoices i
-           JOIN invoice_items it ON it.invoice_id = i.id
-           WHERE i.customer_id = $1 AND i.type = 'sales' AND i.status = 'confirmed' AND it.product_id = $2
-           ORDER BY i.date DESC, i.created_at DESC
-           LIMIT 3`,
-          [customerId, cleanProdId]
-        )
-      : await pool.query(
-          `SELECT i.id, i.invoice_number, i.date, i.created_at, it.product_id, it.unit, it.unit_factor, it.quantity, it.unit_price
-           FROM invoices i
-           JOIN invoice_items it ON it.invoice_id = i.id
-           WHERE i.customer_id = $1 AND i.type = 'sales' AND i.status = 'confirmed'
-           ORDER BY i.date DESC, i.created_at DESC`,
+    let res;
+    if (cleanProdId) {
+      res = await pool.query(
+        `SELECT i.id, i.invoice_number, i.date, i.created_at, it.product_id, it.unit, it.unit_factor, it.quantity, it.unit_price
+         FROM invoices i
+         JOIN invoice_items it ON it.invoice_id = i.id
+         WHERE i.customer_id = $1 AND i.type = 'sales' AND i.status = 'confirmed' AND it.product_id = $2
+         ORDER BY i.date DESC, i.created_at DESC, i.id DESC, it.id DESC
+         LIMIT 3`,
+        [customerId, cleanProdId]
+      );
+    } else if (pgSupportsWindowFunctions !== false) {
+      try {
+        res = await pool.query(
+          `SELECT id, invoice_number, date, created_at, product_id, unit, unit_factor, quantity, unit_price
+           FROM (
+             SELECT i.id, i.invoice_number, i.date, i.created_at, it.product_id, it.unit, it.unit_factor, it.quantity, it.unit_price,
+                    ROW_NUMBER() OVER (
+                      PARTITION BY it.product_id
+                      ORDER BY i.date DESC, i.created_at DESC, i.id DESC, it.id DESC
+                    ) AS rn
+             FROM invoices i
+             JOIN invoice_items it ON it.invoice_id = i.id
+             WHERE i.customer_id = $1 AND i.type = 'sales' AND i.status = 'confirmed'
+           ) ranked
+           WHERE rn <= 3
+           ORDER BY date DESC, created_at DESC, id DESC`,
           [customerId]
         );
+        pgSupportsWindowFunctions = true;
+      } catch (err) {
+        if (/OVER|window/i.test(String(err?.message || ''))) {
+          pgSupportsWindowFunctions = false;
+          res = await pool.query(
+            `SELECT i.id, i.invoice_number, i.date, i.created_at, it.product_id, it.unit, it.unit_factor, it.quantity, it.unit_price
+             FROM invoices i
+             JOIN invoice_items it ON it.invoice_id = i.id
+             WHERE i.customer_id = $1 AND i.type = 'sales' AND i.status = 'confirmed'
+             ORDER BY i.date DESC, i.created_at DESC, i.id DESC, it.id DESC`,
+            [customerId]
+          );
+        } else {
+          throw err;
+        }
+      }
+    } else {
+      res = await pool.query(
+        `SELECT i.id, i.invoice_number, i.date, i.created_at, it.product_id, it.unit, it.unit_factor, it.quantity, it.unit_price
+         FROM invoices i
+         JOIN invoice_items it ON it.invoice_id = i.id
+         WHERE i.customer_id = $1 AND i.type = 'sales' AND i.status = 'confirmed'
+         ORDER BY i.date DESC, i.created_at DESC, i.id DESC, it.id DESC`,
+        [customerId]
+      );
+    }
     for (const row of res.rows) {
       const list = historyMap[row.product_id] || [];
       if (list.length >= 3) continue;
@@ -2040,7 +2080,12 @@ export async function getCustomerProductPriceHistory(customerId, productId = nul
     const db = readJsonDatabase();
     const custInvoices = (db.invoices || [])
       .filter((i) => i.customerId === customerId && i.type === 'sales' && i.status === 'confirmed')
-      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+      .sort(
+        (a, b) =>
+          String(b.date || '').localeCompare(String(a.date || '')) ||
+          String(b.createdAt || '').localeCompare(String(a.createdAt || '')) ||
+          String(b.id || '').localeCompare(String(a.id || ''))
+      );
     for (const inv of custInvoices) {
       for (const it of inv.items || []) {
         if (cleanProdId && it.productId !== cleanProdId) continue;
@@ -2088,9 +2133,21 @@ export async function getCustomerProductPriceHistory(customerId, productId = nul
   return historyMap;
 }
 
-export async function getCustomerStatementData(customerId, { allowPriceView = true } = {}) {
+export async function getCustomerStatementData(customerId, { allowPriceView = true, actor = null } = {}) {
   const customer = await getCustomerById(customerId);
   if (!customer) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
+  const isRep = actor?.role === 'representative';
+  const repProfile = isRep ? await getRepresentativeByUserId(actor.id) : null;
+  const isRepOwnCustInv = (inv) =>
+    Boolean(
+      (repProfile && inv.representativeId === repProfile.id) ||
+        inv.createdByUserId === actor.id ||
+        inv.sentByUserId === actor.id ||
+        (!inv.createdByUserId &&
+          !inv.representativeId &&
+          !inv.sentByUserId &&
+          (inv.createdBy === actor.id || inv.createdBy === actor.fullName))
+    );
 
   let invoices = [];
   let returns = [];
@@ -2222,25 +2279,37 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
       .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
   }
 
-  const sanitizedInvoices = invoices.map((inv) => ({
-    ...inv,
-    items: (inv.items || []).map((it) => ({
-      productId: it.productId,
-      productName: it.productName,
-      unit: it.unit,
-      unitFactor: it.unitFactor,
-      quantity: it.quantity,
-      unitPrice: allowPriceView ? it.unitPrice : 0,
-      discount: allowPriceView ? it.discount : 0,
-      total: allowPriceView ? it.total : 0,
-    })),
-    subtotal: allowPriceView ? inv.subtotal : 0,
-    discountTotal: allowPriceView ? inv.discountTotal : 0,
-    grandTotal: allowPriceView ? inv.grandTotal : 0,
-    paidAmount: allowPriceView ? inv.paidAmount : 0,
-    appliedAdvanceAmount: allowPriceView ? Number(inv.appliedAdvanceAmount || 0) : 0,
-    remainingAmount: allowPriceView ? inv.remainingAmount : 0,
-  }));
+  const visibleInvoices = isRep ? invoices.filter(isRepOwnCustInv) : invoices;
+  const sanitizedInvoices = visibleInvoices.map((inv) => {
+    const baseInv = {
+      ...inv,
+      ...(isRep || actor?.role === 'customer' ? { cashboxId: '', cashboxName: '-' } : {}),
+      items: (inv.items || []).map((it) => ({
+        productId: it.productId,
+        productName: it.productName,
+        unit: it.unit,
+        unitFactor: it.unitFactor,
+        quantity: it.quantity,
+        unitPrice: allowPriceView ? it.unitPrice : 0,
+        discount: allowPriceView ? it.discount : 0,
+        total: allowPriceView ? it.total : 0,
+      })),
+      payments: Array.isArray(inv.payments)
+        ? inv.payments.map((p) => ({
+            ...p,
+            ...(isRep || actor?.role === 'customer' ? { cashboxId: '', cashboxName: '-' } : {}),
+            amount: allowPriceView ? Number(p.amount || 0) : 0,
+          }))
+        : [],
+      subtotal: allowPriceView ? inv.subtotal : 0,
+      discountTotal: allowPriceView ? inv.discountTotal : 0,
+      grandTotal: allowPriceView ? inv.grandTotal : 0,
+      paidAmount: allowPriceView ? inv.paidAmount : 0,
+      appliedAdvanceAmount: allowPriceView ? Number(inv.appliedAdvanceAmount || 0) : 0,
+      remainingAmount: allowPriceView ? inv.remainingAmount : 0,
+    };
+    return isRep ? sanitizeInvoiceForRepresentative(baseInv) : baseInv;
+  });
 
   const confirmedRaw = invoices.filter((i) => i.status === 'confirmed');
   const rawEntries = [];
@@ -2379,6 +2448,11 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
 
   return {
     allowPriceView: Boolean(allowPriceView),
+    scope: {
+      isRepScoped: isRep,
+      accountBalanceScope: 'company_wide',
+      operationsScope: isRep ? 'representative_own_only' : 'company_wide',
+    },
     customer: {
       ...customer,
       assignedRep: assignedRep || customer.assignedRep || undefined,
@@ -2395,7 +2469,11 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
       advancePaidAmount: allowPriceView ? o.advancePaidAmount : 0,
       remainingAmount: allowPriceView ? o.remainingAmount : 0,
     })),
-    advancePayments: advancePayments.map((a) => ({ ...a, amount: allowPriceView ? a.amount : 0 })),
+    advancePayments: advancePayments.map((a) => ({
+      ...a,
+      ...(isRep || actor?.role === 'customer' ? { cashboxId: '', cashboxName: '-' } : {}),
+      amount: allowPriceView ? a.amount : 0,
+    })),
     summary: {
       openingBalance: allowPriceView ? openingBal : null,
       totalDebit: allowPriceView ? totalDebit : null,

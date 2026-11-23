@@ -101,7 +101,7 @@ const TABLE_COLUMNS: Array<{ key: SortColumnKey; label: string; align?: 'right' 
   { key: 'businessDate', label: 'اليومية', align: 'center' },
   { key: 'profit', label: 'الربح', align: 'center' },
   { key: 'barcode', label: 'الباركود', align: 'center' },
-  { key: 'displayId', label: 'ID', align: 'center' },
+  { key: 'displayId', label: 'كود السجل', align: 'center' },
   { key: 'invoiceNumber', label: 'رقم الفاتورة', align: 'center' },
   { key: 'branchName', label: 'الفرع', align: 'center' },
   { key: 'cashboxName', label: 'الخزنة', align: 'center' },
@@ -197,6 +197,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
   const [sourceDoc, setSourceDoc] = useState<ReportSourceDocumentResponse | null>(null);
   const [printModalData, setPrintModalData] = useState<PrintData | null>(null);
   const [exportScope, setExportScope] = useState<'filtered' | 'all'>('filtered');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(0);
 
   useEffect(() => {
     if (initialProductId) {
@@ -241,6 +243,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
           invoiceNumber: invoiceNumber.trim() || undefined,
           recordId: recordId.trim() || undefined,
           search: search.trim() || undefined,
+          ...(pageSize > 0 ? { page, pageSize } : {}),
         });
         setReportData(data);
       } catch (err: any) {
@@ -268,6 +271,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
       invoiceNumber,
       recordId,
       search,
+      page,
+      pageSize,
     ]
   );
 
@@ -277,6 +282,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
   }, [loadReport]);
 
   const applyPeriodPreset = (preset: typeof periodPreset) => {
+    setPage(1);
     setPeriodPreset(preset);
     const now = new Date();
     const y = now.getFullYear();
@@ -311,6 +317,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
   };
 
   const handleResetFilters = () => {
+    setPage(1);
     setReportType('all');
     const t = todayYmd();
     setPeriodPreset('today');
@@ -426,6 +433,14 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
         });
       }
 
+      const useServerTotals = Boolean(reportData?.pagination?.enabled && !q);
+      if (useServerTotals) {
+        return {
+          ...sec,
+          rows,
+        };
+      }
+
       const qtySum = rows.reduce((s, r) => s + Number(r.quantity || 0), 0);
       const priceSum = sec.isInvoiceLayout ? rows.reduce((s, r) => s + Number(r.priceOrTotal || 0), 0) : null;
       const valueSum = rows.reduce((s, r) => s + Number(r.valueOrPaid || 0), 0);
@@ -452,7 +467,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
         },
       };
     });
-  }, [reportData?.sections, inlineTableSearch, sortCol, sortDir]);
+  }, [reportData?.sections, reportData?.pagination?.enabled, inlineTableSearch, sortCol, sortDir]);
 
   const activeReportOption =
     REPORT_TYPE_OPTIONS.find((t) => t.key === reportType) || REPORT_TYPE_OPTIONS[0];
@@ -543,35 +558,47 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
     const rows: Array<Array<string | number>> = [];
     for (const sec of secsToExport) {
       rows.push([
-        `[ ${sec.title} ]`,
-        sec.totals.quantity,
+        `[ ${sec.title} (${sec.totals.count}) ]`,
+        fmtNum(sec.totals.quantity),
         '',
         '',
-        sec.totals.priceOrTotal ?? '-',
-        sec.totals.valueOrPaid,
-        sec.totals.remaining ?? '-',
-        '',
-        ...(isRepRole ? [] : [sec.totals.profit]),
+        sec.totals.priceOrTotal !== null ? fmtMoney(sec.totals.priceOrTotal) : '-',
+        fmtMoney(sec.totals.valueOrPaid),
+        sec.totals.remaining !== null ? fmtMoney(sec.totals.remaining) : '-',
         '',
         '',
         '',
-        sec.totals.discount,
+        ...(isRepRole ? [] : [fmtMoney(sec.totals.profit)]),
+        '',
+        '',
+        '',
+        '',
+        ...(isRepRole ? [] : ['']),
+        '',
+        fmtMoney(sec.totals.discount),
+        ...(isRepRole ? [] : [`${sec.totals.profitPercent}%`]),
       ]);
       for (const r of sec.rows) {
         rows.push([
           r.operationLabel,
-          r.quantity,
+          fmtNum(r.quantity),
           r.unit,
           r.actualDateTime,
           fmtMoney(r.priceOrTotal),
           fmtMoney(r.valueOrPaid),
           typeof r.movementOrRemaining === 'number' ? fmtMoney(r.movementOrRemaining) : r.movementOrRemaining,
+          r.employeeName,
           r.userName,
+          r.businessDate,
           ...(isRepRole ? [] : [fmtMoney(r.profit)]),
+          r.barcode,
+          r.displayId,
           r.invoiceNumber,
           r.branchName,
           ...(isRepRole ? [] : [r.cashboxName]),
+          r.notes,
           fmtMoney(r.discount),
+          ...(isRepRole ? [] : [`${r.profitPercent}%`]),
         ]);
       }
     }
@@ -1342,6 +1369,52 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
         </div>
       )}
 
+      {/* Optional Server-Side Pagination Controls */}
+      {viewMode === 'unified_grid' && (reportData?.summary?.totalRows || 0) > 0 && (
+        <div className="bg-white border border-slate-300 rounded-xl px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-slate-700">حجم الصفحة:</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              aria-label="حجم الصفحة"
+              className="h-8 bg-slate-50 border border-slate-300 rounded px-2 text-xs font-bold text-slate-800 outline-hidden"
+            >
+              <option value={0}>الكل ({reportData?.summary?.totalRows ?? 0})</option>
+              <option value={50}>50 صف</option>
+              <option value={100}>100 صف</option>
+              <option value={200}>200 صف</option>
+            </select>
+          </div>
+          {reportData?.pagination?.enabled && (
+            <div className="flex items-center gap-2">
+              <span className="text-slate-600 font-bold">
+                صفحة {reportData.pagination.page} من {reportData.pagination.totalPages} (إجمالي: {reportData.pagination.totalRows})
+              </span>
+              <button
+                type="button"
+                disabled={!reportData.pagination.hasPrevPage || isLoading}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="px-2.5 py-1 rounded border border-slate-300 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 font-bold cursor-pointer"
+              >
+                السابق
+              </button>
+              <button
+                type="button"
+                disabled={!reportData.pagination.hasNextPage || isLoading}
+                onClick={() => setPage((p) => p + 1)}
+                className="px-2.5 py-1 rounded border border-slate-300 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 font-bold cursor-pointer"
+              >
+                التالي
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* FIXED BOTTOM BAR: Cashbox Balances + Report Selector («نوع التقرير») + عرض التقرير */}
       <div className="bg-[#eef0f3] border border-slate-400 rounded-xl p-2.5 shadow-sm flex flex-wrap items-center justify-between gap-2.5">
         {/* 4 Summary Boxes matching Brand Store Reference (hidden financial/profit boxes for rep role) */}
@@ -1428,6 +1501,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                         data-report-type={opt.key}
                         onClick={() => {
                           setReportType(opt.key);
+                          setPage(1);
                           setViewMode('unified_grid');
                           setIsReportDropdownOpen(false);
                         }}
