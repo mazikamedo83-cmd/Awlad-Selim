@@ -235,6 +235,7 @@ export interface Supplier {
   id: string;
   code: string;
   name: string;
+  companyName?: string;
   phone: string;
   address: string;
   notes?: string;
@@ -389,6 +390,7 @@ export interface Invoice {
   version?: number;
   updatedAt?: string;
   createdBy: string;
+  createdByName?: string;
   createdAt: string;
   returnedQuantityByItem?: Record<string, number>;
 }
@@ -464,6 +466,7 @@ export interface FinancialTransaction {
   relatedDocNumber?: string;
   partyId?: string;
   partyName?: string;
+  paymentMethod?: 'cash' | 'bank' | 'cheque';
   description: string;
   notes?: string;
   syncStatus?: SyncQueueStatus | 'synced';

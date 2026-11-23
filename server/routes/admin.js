@@ -64,6 +64,18 @@ const router = Router();
 
 router.use(requireAuth, requireStaff);
 
+function blockRepAndCustomer(req, res, next) {
+  const role = req.auth?.user?.role;
+  if (role === 'representative' || role === 'customer') {
+    return res.status(403).json({
+      ok: false,
+      code: 'FORBIDDEN_ADMIN_ROUTE',
+      error: 'هذا المسار غير متاح لحسابات المناديب أو العملاء',
+    });
+  }
+  return next();
+}
+
 router.get(
   '/bootstrap',
   asyncHandler(async (req, res) => {
@@ -74,6 +86,7 @@ router.get(
 
 router.get(
   '/server-info',
+  blockRepAndCustomer,
   requirePermission('canManageSettings'),
   asyncHandler(async (req, res) => {
     const port = Number(process.env.AWLAD_ACTIVE_PORT || process.env.PORT || process.env.API_PORT || 3000);
@@ -145,6 +158,7 @@ router.get(
 // Smart Device Pairing & Connection Management (Permitted Admin / Settings Manager only)
 router.get(
   '/pairing/tokens',
+  blockRepAndCustomer,
   requirePermission('canManageSettings'),
   asyncHandler(async (_req, res) => {
     const tokens = await listPairingTokens();
@@ -154,6 +168,7 @@ router.get(
 
 router.post(
   '/pairing/tokens',
+  blockRepAndCustomer,
   requirePermission('canManageSettings'),
   asyncHandler(async (req, res) => {
     const created = await createPairingToken(req.body || {}, req.auth.user, req);
@@ -163,6 +178,7 @@ router.post(
 
 router.post(
   '/pairing/tokens/:id/revoke',
+  blockRepAndCustomer,
   requirePermission('canManageSettings'),
   asyncHandler(async (req, res) => {
     const result = await revokePairingToken(req.params.id, req.auth.user);
@@ -172,6 +188,7 @@ router.post(
 
 router.get(
   '/devices',
+  blockRepAndCustomer,
   requirePermission('canManageSettings'),
   asyncHandler(async (_req, res) => {
     const result = await listPairedDevices();
@@ -181,6 +198,7 @@ router.get(
 
 router.post(
   '/devices/:deviceId/approve',
+  blockRepAndCustomer,
   requirePermission('canManageSettings'),
   asyncHandler(async (req, res) => {
     const device = await approvePairedDevice(req.params.deviceId, req.auth.user);
@@ -190,6 +208,7 @@ router.post(
 
 router.post(
   '/devices/:deviceId/revoke',
+  blockRepAndCustomer,
   requirePermission('canManageSettings'),
   asyncHandler(async (req, res) => {
     const device = await revokePairedDevice(req.params.deviceId, req.auth.user);
@@ -199,6 +218,7 @@ router.post(
 
 router.post(
   '/devices/:deviceId/resend-link',
+  blockRepAndCustomer,
   requirePermission('canManageSettings'),
   asyncHandler(async (req, res) => {
     const { devices } = await listPairedDevices();
@@ -221,6 +241,7 @@ router.post(
 
 router.post(
   '/connection/push-update',
+  blockRepAndCustomer,
   requirePermission('canManageSettings'),
   asyncHandler(async (req, res) => {
     const connectionConfig = await pushConnectionConfigUpdate(req.auth.user);
@@ -230,6 +251,7 @@ router.post(
 
 router.post(
   '/tunnel-status',
+  blockRepAndCustomer,
   requirePermission('canManageSettings'),
   asyncHandler(async (req, res) => {
     const result = await updateTunnelRuntimeStatus(req.body || {}, req.auth.user);
@@ -240,6 +262,7 @@ router.post(
 // Users management
 router.post(
   '/users',
+  blockRepAndCustomer,
   requirePermission('canManageUsers'),
   asyncHandler(async (req, res) => {
     const user = await createAdminUser(req.body || {}, req.auth.user);
@@ -249,6 +272,7 @@ router.post(
 
 router.put(
   '/users/:id',
+  blockRepAndCustomer,
   requirePermission('canManageUsers'),
   asyncHandler(async (req, res) => {
     const user = await updateAdminUser(req.params.id, req.body || {}, req.auth.user);
@@ -258,6 +282,7 @@ router.put(
 
 router.delete(
   '/users/:id',
+  blockRepAndCustomer,
   requirePermission('canManageUsers'),
   asyncHandler(async (req, res) => {
     await deleteAdminUser(req.params.id, req.auth.user);
@@ -267,6 +292,7 @@ router.delete(
 
 router.get(
   '/audit-logs',
+  blockRepAndCustomer,
   requirePermission('canManageUsers'),
   asyncHandler(async (req, res) => {
     const logs = await listAuditLogs(req.query.limit);
@@ -276,6 +302,7 @@ router.get(
 
 router.get(
   '/permission-presets',
+  blockRepAndCustomer,
   requirePermission('canManageUsers'),
   asyncHandler(async (_req, res) => {
     const presets = await getRolePermissionPresets();
@@ -285,6 +312,7 @@ router.get(
 
 router.put(
   '/permission-presets',
+  blockRepAndCustomer,
   requirePermission('canManageUsers'),
   asyncHandler(async (req, res) => {
     const presets = await updateRolePermissionPresets(req.body?.presets || req.body || {}, req.auth.user);
@@ -297,11 +325,11 @@ router.post('/suppliers', requireAnyPermission('canManagePurchases', 'canCreateP
   const supplier = await createSupplier(req.body || {}, req.auth.user);
   res.status(201).json({ ok: true, supplier });
 }));
-router.put('/suppliers/:id', requirePermission('canManagePurchases'), asyncHandler(async (req, res) => {
+router.put('/suppliers/:id', blockRepAndCustomer, requirePermission('canManagePurchases'), asyncHandler(async (req, res) => {
   await updateSupplier(req.params.id, req.body || {}, req.auth.user);
   res.json({ ok: true });
 }));
-router.delete('/suppliers/:id', requirePermission('canDelete'), asyncHandler(async (req, res) => {
+router.delete('/suppliers/:id', blockRepAndCustomer, requirePermission('canDelete'), asyncHandler(async (req, res) => {
   await deleteSupplier(req.params.id, req.auth.user);
   res.json({ ok: true });
 }));
@@ -351,7 +379,7 @@ router.get('/suppliers/:id/statement', requireAnyPermission('canManageAccounts',
     });
   }
   const statement = await getSupplierStatementData(req.params.id, u);
-  res.json({ ok: true, statement });
+  res.json({ ok: true, ...statement, statement });
 }));
 
 // Cashboxes & Expenses
@@ -418,67 +446,67 @@ router.post('/installments/:id/pay', requirePermission('canManageAccounts'), asy
 }));
 
 // Representatives
-router.post('/representatives', requirePermission('canManageReps'), asyncHandler(async (req, res) => {
+router.post('/representatives', blockRepAndCustomer, requirePermission('canManageReps'), asyncHandler(async (req, res) => {
   const representative = await addRepresentative(req.body || {}, req.auth.user);
   res.status(201).json({ ok: true, representative });
 }));
-router.put('/representatives/:id', requirePermission('canManageReps'), asyncHandler(async (req, res) => {
+router.put('/representatives/:id', blockRepAndCustomer, requirePermission('canManageReps'), asyncHandler(async (req, res) => {
   await updateRepresentative(req.params.id, req.body || {}, req.auth.user);
   res.json({ ok: true });
 }));
 
 // Employees & Payroll
-router.post('/employees', requirePermission('canManageEmployees'), asyncHandler(async (req, res) => {
+router.post('/employees', blockRepAndCustomer, requirePermission('canManageEmployees'), asyncHandler(async (req, res) => {
   const employee = await addEmployee(req.body || {}, req.auth.user);
   res.status(201).json({ ok: true, employee });
 }));
-router.put('/employees/:id', requirePermission('canManageEmployees'), asyncHandler(async (req, res) => {
+router.put('/employees/:id', blockRepAndCustomer, requirePermission('canManageEmployees'), asyncHandler(async (req, res) => {
   await updateEmployee(req.params.id, req.body || {}, req.auth.user);
   res.json({ ok: true });
 }));
-router.post('/advances', requirePermission('canManageSalaries'), asyncHandler(async (req, res) => {
+router.post('/advances', blockRepAndCustomer, requirePermission('canManageSalaries'), asyncHandler(async (req, res) => {
   const item = await addAdvanceDeduction(req.body || {}, req.auth.user);
   res.status(201).json({ ok: true, item });
 }));
-router.post('/attendance', requirePermission('canManageEmployees'), asyncHandler(async (req, res) => {
+router.post('/attendance', blockRepAndCustomer, requirePermission('canManageEmployees'), asyncHandler(async (req, res) => {
   const record = await recordAttendance(req.body || {}, req.auth.user);
   res.status(201).json({ ok: true, record });
 }));
-router.post('/payrolls', requirePermission('canManageSalaries'), asyncHandler(async (req, res) => {
+router.post('/payrolls', blockRepAndCustomer, requirePermission('canManageSalaries'), asyncHandler(async (req, res) => {
   const payroll = await issuePayroll(req.body || {}, req.auth.user);
   res.status(201).json({ ok: true, payroll });
 }));
 
 // System Settings
-router.put('/settings', requirePermission('canManageSettings'), asyncHandler(async (req, res) => {
+router.put('/settings', blockRepAndCustomer, requirePermission('canManageSettings'), asyncHandler(async (req, res) => {
   const settings = await updateSystemSettings(req.body || {}, req.auth.user);
   res.json({ ok: true, settings });
 }));
 
 // Backup Export & Safe Restore (Admin or Settings Manager only)
-router.get('/backup/export', requirePermission('canManageSettings'), asyncHandler(async (req, res) => {
+router.get('/backup/export', blockRepAndCustomer, requirePermission('canManageSettings'), asyncHandler(async (req, res) => {
   const backup = await exportFullBackup(req.auth.user);
   res.json({ ok: true, backup });
 }));
-router.post('/backup/restore', requireAdmin, asyncHandler(async (req, res) => {
+router.post('/backup/restore', blockRepAndCustomer, requireAdmin, asyncHandler(async (req, res) => {
   const result = await restoreFullBackup(req.body?.backup || req.body, req.auth.user);
   res.json(result);
 }));
 
 // Database Diagnostics & Migration (Admin only)
-router.get('/db/health', requirePermission('canManageSettings'), asyncHandler(async (_req, res) => {
+router.get('/db/health', blockRepAndCustomer, requirePermission('canManageSettings'), asyncHandler(async (_req, res) => {
   const health = await checkPostgresHealth();
   res.json({ ok: true, health });
 }));
-router.post('/db/init-schema', requireAdmin, asyncHandler(async (_req, res) => {
+router.post('/db/init-schema', blockRepAndCustomer, requireAdmin, asyncHandler(async (_req, res) => {
   const result = await initializeSchema();
   if (!result.success) return res.status(500).json({ ok: false, error: result.error });
   res.json({ ok: true, message: result.message });
 }));
-router.get('/migration/logs', requirePermission('canManageSettings'), asyncHandler(async (_req, res) => {
+router.get('/migration/logs', blockRepAndCustomer, requirePermission('canManageSettings'), asyncHandler(async (_req, res) => {
   res.json({ ok: true, logs: readMigrationLogs() });
 }));
-router.post('/migration/run', requireAdmin, asyncHandler(async (req, res) => {
+router.post('/migration/run', blockRepAndCustomer, requireAdmin, asyncHandler(async (req, res) => {
   const pgHealth = await checkPostgresHealth();
   if (pgHealth.status !== 'online') {
     return res.status(400).json({
@@ -506,7 +534,7 @@ router.post('/migration/run', requireAdmin, asyncHandler(async (req, res) => {
   if (!result.success) return res.status(500).json({ ok: false, error: result.error, log: result.log });
   res.json({ ok: true, log: result.log });
 }));
-router.post('/migration/rollback', requireAdmin, asyncHandler(async (req, res) => {
+router.post('/migration/rollback', blockRepAndCustomer, requireAdmin, asyncHandler(async (req, res) => {
   if (isStrictPostgresMode()) {
     return res.status(403).json({
       ok: false,

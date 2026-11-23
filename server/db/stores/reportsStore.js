@@ -632,8 +632,8 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
       ),
       categories: catRes.rows.map((c) => ({ id: c.id, name: c.name })),
       products,
-      customers: custRes.rows.map((c) => ({ id: c.id, code: c.code, name: c.name, phone: c.phone || '', assignedRepId: c.assigned_rep_id || undefined, currentBalance: Number(c.current_balance || 0) })),
-      suppliers: isRep && !isRepCanPurchase ? [] : suppRes.rows.map((s) => ({ id: s.id, code: s.code, name: s.name, phone: s.phone || '', currentBalance: Number(s.current_balance || 0) })),
+      customers: custRes.rows.map((c) => ({ id: c.id, code: c.code, name: c.name, shopName: c.shop_name || undefined, phone: c.phone || '', assignedRepId: c.assigned_rep_id || undefined, currentBalance: Number(c.current_balance || 0) })),
+      suppliers: isRep && !isRepCanPurchase ? [] : suppRes.rows.map((s) => ({ id: s.id, code: s.code, name: s.name, companyName: s.company_name || undefined, phone: s.phone || '', currentBalance: Number(s.current_balance || 0) })),
       representatives: repRes.rows.map((r) => ({ id: r.id, userId: r.user_id || undefined, code: r.code || '', name: r.name, phone: isRep ? '' : (r.phone || ''), warehouseId: r.warehouse_id || undefined })),
       employees: isRep ? [] : empRes.rows.map((e) => ({ id: e.id, code: e.code, name: e.full_name, jobTitle: e.job_title || '', department: e.department || '' })),
       users: isRep ? [] : userRes.rows.map((u) => ({ id: u.id, fullName: u.full_name, username: u.username, role: u.role })),
@@ -1422,6 +1422,55 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
     carriedFromYesterday = round2(drawerBalance - reportBalance);
   }
 
+    let returnsDeduction = 0;
+    if (!invoiceNumber) {
+      const retClauses = [`type = $1`];
+      const retParams = [isSales ? 'sales_return' : 'purchase_return'];
+      if (isRep) {
+        retParams.push(actor.fullName);
+        retClauses.push(`created_by = $${retParams.length}`);
+      }
+      if (dateFrom) {
+        retParams.push(dateFrom);
+        retClauses.push(`date >= $${retParams.length}`);
+      }
+      if (dateTo) {
+        retParams.push(dateTo);
+        retClauses.push(`date <= $${retParams.length}`);
+      }
+      if (warehouseId) {
+        retParams.push(warehouseId);
+        retClauses.push(`warehouse_id = $${retParams.length}`);
+      }
+      if (isSales && customerId) {
+        retParams.push(customerId);
+        retClauses.push(`party_id = $${retParams.length}`);
+      }
+      if (!isSales && supplierId) {
+        retParams.push(supplierId);
+        retClauses.push(`party_id = $${retParams.length}`);
+      }
+      if (productId) {
+        retParams.push(productId);
+        const rRetRes = await pool.query(
+          `SELECT COALESCE(SUM(iri.total), 0) AS sum_ret
+           FROM invoice_return_items iri
+           JOIN invoice_returns r ON r.id = iri.return_id
+           WHERE ${retClauses.map((c) => c.replace(/\b(type|created_by|date|warehouse_id|party_id)\b/g, 'r.$1')).join(' AND ')} AND iri.product_id = $${retParams.length}`,
+          retParams
+        );
+        returnsDeduction = round2(rRetRes.rows[0]?.sum_ret || 0);
+      } else {
+        const rRetRes = await pool.query(
+          `SELECT COALESCE(SUM(grand_total), 0) AS sum_ret FROM invoice_returns WHERE ${retClauses.join(' AND ')}`,
+          retParams
+        );
+        returnsDeduction = round2(rRetRes.rows[0]?.sum_ret || 0);
+      }
+    }
+    const baseNetSalesOrPurch = isInvoiceLayout ? Number(totalsObj.priceOrTotal || 0) : Number(totalsObj.valueOrPaid || 0);
+    const exactFilteredNet = round2(baseNetSalesOrPurch - returnsDeduction);
+
   return {
     reportType,
     reportTypeLabel: REPORT_TYPES_LIST.find((t) => t.key === reportType)?.label || 'الكل',
@@ -1483,8 +1532,8 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
       carriedFromYesterday,
       reportProfit: 0,
       reportProfitPercent: 0,
-      filteredSalesNet: isSales ? round2(totalsObj.valueOrPaid) : 0,
-      filteredPurchasesNet: !isSales ? round2(totalsObj.valueOrPaid) : 0,
+      filteredSalesNet: isSales ? exactFilteredNet : 0,
+      filteredPurchasesNet: !isSales ? exactFilteredNet : 0,
       filteredCashIn: 0,
       filteredCashOut: 0,
       totalRows: totalUnpaginatedRows,
@@ -3712,28 +3761,25 @@ export async function getSourceDocumentForReport(docType, docId, actor) {
 export async function getRepDetailedReport(filters = {}, actor) {
   const isRepActor = actor?.role === 'representative';
   const ownProfile = isRepActor ? await getRepresentativeByUserId(actor.id) : null;
-  const targetRepActor = isRepActor
-    ? actor
-    : actor;
   const canPurchase = isRepActor
     ? Boolean(actor?.permissions?.canCreatePurchase || actor?.permissions?.canManagePurchases)
     : true;
 
-  const data = await loadFullReportDataset(targetRepActor, filters);
+  const data = await loadFullReportDataset(actor, filters);
   const dateFrom = filters.dateFrom ? String(filters.dateFrom).split('T')[0] : null;
   const dateTo = filters.dateTo ? String(filters.dateTo).split('T')[0] : null;
   const customerId = filters.customerId && filters.customerId !== 'all' ? String(filters.customerId) : null;
-  const supplierId = filters.supplierId && filters.supplierId !== 'all' ? String(filters.supplierId) : null;
+  const supplierId = canPurchase && filters.supplierId && filters.supplierId !== 'all' ? String(filters.supplierId) : null;
   const productId = filters.productId && filters.productId !== 'all' ? String(filters.productId) : null;
   const invoiceNumber = filters.invoiceNumber ? String(filters.invoiceNumber).trim().toLowerCase() : '';
   const opType = filters.opType && filters.opType !== 'all' ? String(filters.opType) : 'all';
-  const paymentStatusFilter = filters.paymentStatus && filters.paymentStatus !== 'all' ? String(filters.paymentStatus) : 'all';
+  const paymentStatusFilterRaw = filters.paymentStatus && filters.paymentStatus !== 'all' ? String(filters.paymentStatus) : 'all';
+  const paymentStatusFilter = paymentStatusFilterRaw === 'unpaid' ? 'credit' : paymentStatusFilterRaw;
   const invoiceStatusFilter = filters.invoiceStatus && filters.invoiceStatus !== 'all' ? String(filters.invoiceStatus) : 'all';
   const search = filters.search ? String(filters.search).trim().toLowerCase() : '';
 
   const productMap = new Map((data.products || []).map((p) => [p.id, p]));
   const customerMap = new Map((data.customers || []).map((c) => [c.id, c]));
-  const supplierMap = new Map((data.suppliers || []).map((s) => [s.id, s]));
 
   const inDateRange = (d) => {
     const clean = d ? String(d).split('T')[0] : '';
@@ -3746,18 +3792,21 @@ export async function getRepDetailedReport(filters = {}, actor) {
     const paid = Number(inv.paidAmount || 0);
     if (rem <= 0.01) return 'paid';
     if (paid > 0.01) return 'partial';
-    return 'unpaid';
+    return 'credit';
   };
   const matchesInvFilters = (inv) => {
+    if (opType === 'sales' && inv.type !== 'sales') return false;
+    if (opType === 'purchase' && inv.type !== 'purchase') return false;
+    if (opType === 'sales_return' || opType === 'purchase_return' || opType === 'collection' || opType === 'purchase_payment') {
+      return false;
+    }
     if (!inDateRange(inv.date)) return false;
     if (invoiceStatusFilter !== 'all' && inv.status !== invoiceStatusFilter) return false;
     const paySt = resolvePayStatus(inv);
     if (paymentStatusFilter !== 'all' && paySt !== paymentStatusFilter) return false;
     if (invoiceNumber && !String(inv.invoiceNumber || '').toLowerCase().includes(invoiceNumber)) return false;
-    if (customerId && inv.type === 'sales' && inv.customerId !== customerId) return false;
-    if (supplierId && inv.type === 'purchase' && inv.supplierId !== supplierId) return false;
-    if (customerId && inv.type !== 'sales') return false;
-    if (supplierId && inv.type !== 'purchase') return false;
+    if (customerId && (inv.type !== 'sales' || inv.customerId !== customerId)) return false;
+    if (supplierId && (inv.type !== 'purchase' || inv.supplierId !== supplierId)) return false;
     if (productId && !(inv.items || []).some((it) => it.productId === productId)) return false;
     if (search) {
       const hay = [
@@ -3775,10 +3824,8 @@ export async function getRepDetailedReport(filters = {}, actor) {
     return true;
   };
 
-  const salesInvoices = [];
-  const salesItems = [];
-  const purchaseInvoices = [];
-  const purchaseItems = [];
+  const invoices = [];
+  const itemRows = [];
   const purchasePayments = [];
 
   for (const inv of data.invoices || []) {
@@ -3786,42 +3833,76 @@ export async function getRepDetailedReport(filters = {}, actor) {
     if (inv.type === 'purchase' && !canPurchase) continue;
     if (!matchesInvFilters(inv)) continue;
     const payStatus = resolvePayStatus(inv);
-    const invSummary = {
+    const partyId = inv.type === 'sales' ? (inv.customerId || '') : (inv.supplierId || '');
+    const partyName =
+      inv.type === 'sales'
+        ? (inv.customerName || 'عميل نقدي')
+        : (inv.supplierName || 'مورد نقدي');
+
+    const safeItems = (inv.items || [])
+      .filter((it) => !productId || it.productId === productId)
+      .map((it) => {
+        const prod = productMap.get(it.productId);
+        return {
+          productId: it.productId,
+          productName: it.productName || prod?.name || '',
+          productCode: prod?.code || '',
+          barcode: it.barcode || prod?.barcode || '',
+          unit: it.unit,
+          unitFactor: Number(it.unitFactor || 1),
+          quantity: Number(it.quantity || 0),
+          unitPrice: round2(it.unitPrice || 0),
+          discount: round2(it.discount || 0),
+          total: round2(it.total ?? (Number(it.unitPrice || 0) * Number(it.quantity || 0) - Number(it.discount || 0))),
+        };
+      });
+
+    invoices.push({
       id: inv.id,
       invoiceNumber: inv.invoiceNumber,
-      type: inv.type,
       date: inv.date,
-      customerId: inv.customerId,
-      customerName: inv.customerName,
-      supplierId: inv.supplierId,
-      supplierName: inv.supplierName,
-      warehouseName: inv.warehouseName,
+      type: inv.type,
+      status: inv.status,
+      ...(inv.dispatchStatus ? { dispatchStatus: inv.dispatchStatus } : {}),
+      partyId,
+      partyName,
+      warehouseId: inv.warehouseId || '',
+      warehouseName: inv.warehouseName || '',
+      ...(inv.representativeId ? { representativeId: inv.representativeId } : {}),
+      ...(inv.representativeName ? { representativeName: inv.representativeName } : {}),
       grandTotal: round2(inv.grandTotal || 0),
       paidAmount: round2(inv.paidAmount || 0),
-      remainingAmount: round2(inv.remainingAmount || 0),
-      discountTotal: round2(inv.discountTotal || 0),
-      paymentType: inv.paymentType,
+      remainingAmount: Math.max(0, round2(inv.remainingAmount || 0)),
       paymentStatus: payStatus,
-      status: inv.status,
-      dispatchStatus: inv.dispatchStatus,
       itemsCount: (inv.items || []).length,
-      items: (inv.items || []).map((it) => ({
-        productId: it.productId,
-        productCode: productMap.get(it.productId)?.code || '',
-        productName: it.productName,
-        unit: it.unit,
-        unitFactor: Number(it.unitFactor || 1),
-        quantity: Number(it.quantity || 0),
-        unitPrice: round2(it.unitPrice || 0),
-        discount: round2(it.discount || 0),
-        total: round2(it.total || 0),
-      })),
+      items: safeItems,
       notes: inv.notes || '',
-    };
-    if (inv.type === 'sales') {
-      salesInvoices.push(invSummary);
-    } else {
-      purchaseInvoices.push(invSummary);
+    });
+
+    safeItems.forEach((it, idx) => {
+      itemRows.push({
+        rowId: `${inv.id}-${idx}`,
+        invoiceId: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        date: inv.date,
+        opType: inv.type === 'purchase' ? 'purchase' : 'sales',
+        status: inv.status,
+        partyId,
+        partyName,
+        productId: it.productId,
+        productName: it.productName,
+        productCode: it.productCode,
+        barcode: it.barcode,
+        unit: it.unit,
+        quantity: it.quantity,
+        unitFactor: it.unitFactor,
+        unitPrice: it.unitPrice,
+        discount: it.discount,
+        total: it.total,
+      });
+    });
+
+    if (inv.type === 'purchase') {
       for (const py of inv.payments || []) {
         purchasePayments.push({
           id: py.id,
@@ -3836,50 +3917,42 @@ export async function getRepDetailedReport(filters = {}, actor) {
         });
       }
     }
-
-    for (const it of inv.items || []) {
-      if (productId && it.productId !== productId) continue;
-      const prod = productMap.get(it.productId);
-      const itemRow = {
-        id: `${inv.id}-${it.productId}-${it.unit}`,
-        invoiceId: inv.id,
-        invoiceNumber: inv.invoiceNumber,
-        type: inv.type,
-        date: inv.date,
-        partyId: inv.type === 'sales' ? inv.customerId : inv.supplierId,
-        partyName: inv.type === 'sales' ? (inv.customerName || 'عميل نقدي') : (inv.supplierName || 'مورد نقدي'),
-        productId: it.productId,
-        productCode: prod?.code || '',
-        productName: it.productName || prod?.name || '',
-        unit: it.unit,
-        unitFactor: Number(it.unitFactor || 1),
-        quantity: Number(it.quantity || 0),
-        unitPrice: round2(it.unitPrice || 0),
-        discount: round2(it.discount || 0),
-        total: round2(it.total || Number(it.unitPrice || 0) * Number(it.quantity || 0) - Number(it.discount || 0)),
-        invoiceStatus: inv.status,
-        paymentStatus: payStatus,
-      };
-      if (inv.type === 'sales') salesItems.push(itemRow);
-      else purchaseItems.push(itemRow);
-    }
   }
 
-  const salesReturns = [];
-  const purchaseReturns = [];
+  const scopedReturns = [];
   for (const ret of data.invoiceReturns || []) {
     const isSalesRet = ret.type === 'sales_return';
     if (!isSalesRet && !canPurchase) continue;
+    if (opType === 'sales' || opType === 'purchase' || opType === 'collection' || opType === 'purchase_payment') continue;
+    if (opType === 'sales_return' && !isSalesRet) continue;
+    if (opType === 'purchase_return' && isSalesRet) continue;
     if (!inDateRange(ret.date)) continue;
-    if (customerId && isSalesRet && ret.partyId !== customerId) continue;
-    if (supplierId && !isSalesRet && ret.partyId !== supplierId) continue;
-    if (customerId && !isSalesRet) continue;
-    if (supplierId && isSalesRet) continue;
+    if (customerId && (!isSalesRet || ret.partyId !== customerId)) continue;
+    if (supplierId && (isSalesRet || ret.partyId !== supplierId)) continue;
     if (productId && !(ret.items || []).some((it) => it.productId === productId)) continue;
-    if (invoiceNumber && !String(ret.returnNumber || '').toLowerCase().includes(invoiceNumber) && !String(ret.originalInvoiceNumber || '').toLowerCase().includes(invoiceNumber)) {
+    if (
+      invoiceNumber &&
+      !String(ret.returnNumber || '').toLowerCase().includes(invoiceNumber) &&
+      !String(ret.originalInvoiceNumber || '').toLowerCase().includes(invoiceNumber)
+    ) {
       continue;
     }
-    const retObj = {
+    const safeRetItems = (ret.items || [])
+      .filter((it) => !productId || it.productId === productId)
+      .map((it) => {
+        const prod = productMap.get(it.productId);
+        return {
+          productId: it.productId,
+          productName: it.productName || prod?.name || '',
+          unit: it.unit,
+          unitFactor: Number(it.unitFactor || 1),
+          quantity: Number(it.quantity || 0),
+          unitPrice: round2(it.unitPrice || 0),
+          total: round2(it.total || 0),
+        };
+      });
+
+    scopedReturns.push({
       id: ret.id,
       returnNumber: ret.returnNumber,
       type: ret.type,
@@ -3888,148 +3961,167 @@ export async function getRepDetailedReport(filters = {}, actor) {
       date: ret.date,
       partyId: ret.partyId,
       partyName: ret.partyName,
+      warehouseId: ret.warehouseId,
+      warehouseName: ret.warehouseName || '',
       grandTotal: round2(ret.grandTotal || 0),
-      refundType: ret.refundType,
+      refundType: ret.refundType || 'balance',
       reason: ret.reason || '',
-      items: ret.items || [],
-    };
-    if (isSalesRet) salesReturns.push(retObj);
-    else purchaseReturns.push(retObj);
-  }
+      notes: ret.notes || '',
+      items: safeRetItems,
+    });
 
-  const collections = [];
-  for (const tx of data.financialTransactions || []) {
-    if (tx.type !== 'customer_payment') continue;
-    if (!inDateRange(tx.date)) continue;
-    const cid = tx.relatedEntityId || tx.partyId;
-    if (customerId && cid !== customerId) continue;
-    if (supplierId || productId) continue;
-    if (invoiceNumber && !String(tx.relatedDocNumber || tx.transactionNumber || '').toLowerCase().includes(invoiceNumber)) continue;
-    if (search) {
-      const hay = [tx.transactionNumber, tx.relatedDocNumber, tx.relatedEntityName, tx.partyName, tx.description, tx.notes]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      if (!hay.includes(search)) continue;
-    }
-    collections.push({
-      id: tx.id,
-      transactionNumber: tx.transactionNumber,
-      date: tx.date,
-      customerId: cid,
-      customerName: tx.relatedEntityName || tx.partyName || customerMap.get(cid)?.name || '-',
-      invoiceId: tx.relatedDocId || undefined,
-      invoiceNumber: tx.relatedDocNumber || undefined,
-      amount: round2(tx.amount || 0),
-      description: tx.description || 'تحصيل من العميل',
-      notes: tx.notes || '',
+    safeRetItems.forEach((it, idx) => {
+      const prod = productMap.get(it.productId);
+      itemRows.push({
+        rowId: `${ret.id}-${idx}`,
+        invoiceId: ret.id,
+        invoiceNumber: ret.returnNumber,
+        date: ret.date,
+        opType: isSalesRet ? 'sales_return' : 'purchase_return',
+        status: 'confirmed',
+        partyId: ret.partyId,
+        partyName: ret.partyName,
+        productId: it.productId,
+        productName: it.productName,
+        productCode: prod?.code || '',
+        barcode: prod?.barcode || '',
+        unit: it.unit,
+        quantity: it.quantity,
+        unitFactor: it.unitFactor,
+        unitPrice: it.unitPrice,
+        discount: 0,
+        total: it.total,
+      });
     });
   }
 
-  // Customer balances (Company-wide current balance vs rep-executed operations)
-  const customerBalances = (data.customers || [])
+  const collections = [];
+  if (opType === 'all' || opType === 'collection' || opType === 'sales') {
+    for (const tx of data.financialTransactions || []) {
+      if (tx.type !== 'customer_payment') continue;
+      if (!inDateRange(tx.date)) continue;
+      const cid = tx.relatedEntityId || tx.partyId;
+      if (customerId && cid !== customerId) continue;
+      if (supplierId || productId) continue;
+      if (
+        invoiceNumber &&
+        !String(tx.relatedDocNumber || tx.transactionNumber || '').toLowerCase().includes(invoiceNumber)
+      ) {
+        continue;
+      }
+      if (search) {
+        const hay = [tx.transactionNumber, tx.relatedDocNumber, tx.relatedEntityName, tx.partyName, tx.description, tx.notes]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        if (!hay.includes(search)) continue;
+      }
+      collections.push({
+        id: tx.id,
+        transactionNumber: tx.transactionNumber || undefined,
+        date: tx.date,
+        amount: round2(tx.amount || 0),
+        partyId: cid || undefined,
+        partyName: tx.relatedEntityName || tx.partyName || customerMap.get(cid)?.name || 'عميل',
+        paymentMethod: tx.paymentMethod || 'cash',
+        relatedDocId: tx.relatedDocId || undefined,
+        notes: tx.notes || '',
+      });
+    }
+  }
+
+  const confirmedSales = invoices.filter((i) => i.type === 'sales' && i.status === 'confirmed');
+  const confirmedPurchases = canPurchase ? invoices.filter((i) => i.type === 'purchase' && i.status === 'confirmed') : [];
+  const salesReturns = scopedReturns.filter((r) => r.type === 'sales_return');
+  const purchaseReturns = canPurchase ? scopedReturns.filter((r) => r.type === 'purchase_return') : [];
+
+  const salesTotal = round2(confirmedSales.reduce((s, i) => s + Number(i.grandTotal || 0), 0));
+  const salesReturnsTotal = round2(salesReturns.reduce((s, r) => s + Number(r.grandTotal || 0), 0));
+  const purchasesTotal = round2(confirmedPurchases.reduce((s, i) => s + Number(i.grandTotal || 0), 0));
+  const purchaseReturnsTotal = round2(purchaseReturns.reduce((s, r) => s + Number(r.grandTotal || 0), 0));
+
+  const customersSummary = (data.customers || [])
     .filter((c) => !customerId || c.id === customerId)
-    .filter((c) => !search || [c.name, c.phone, c.code].filter(Boolean).join(' ').toLowerCase().includes(search))
+    .filter((c) => !search || [c.name, c.shopName, c.phone, c.code].filter(Boolean).join(' ').toLowerCase().includes(search))
     .map((c) => {
-      const cSales = salesInvoices.filter((i) => i.customerId === c.id);
-      const cCol = collections.filter((x) => x.customerId === c.id);
+      const cSales = confirmedSales.filter((i) => i.partyId === c.id);
+      const cCol = collections.filter((x) => x.partyId === c.id);
       return {
         id: c.id,
-        code: c.code,
         name: c.name,
+        ...(c.shopName ? { shopName: c.shopName } : {}),
         phone: c.phone || '',
-        companyCurrentBalance: round2(c.currentBalance || 0),
-        balanceScope: 'company_wide',
+        companyBalance: round2(c.currentBalance || 0),
         repSalesCount: cSales.length,
         repSalesTotal: round2(cSales.reduce((s, i) => s + i.grandTotal, 0)),
+        repPaidTotal: round2(cSales.reduce((s, i) => s + i.paidAmount, 0)),
         repCollectionsTotal: round2(cCol.reduce((s, x) => s + x.amount, 0)),
       };
     });
 
-  // Supplier balances (Only when rep has purchase permission)
-  const supplierBalances = canPurchase
+  const suppliersSummary = canPurchase
     ? (data.suppliers || [])
         .filter((s) => !supplierId || s.id === supplierId)
-        .filter((s) => !search || [s.name, s.phone, s.code].filter(Boolean).join(' ').toLowerCase().includes(search))
+        .filter((s) => !search || [s.name, s.companyName, s.phone, s.code].filter(Boolean).join(' ').toLowerCase().includes(search))
         .map((s) => {
-          const sPurchases = purchaseInvoices.filter((i) => i.supplierId === s.id);
+          const sPurchases = confirmedPurchases.filter((i) => i.partyId === s.id);
           return {
             id: s.id,
-            code: s.code,
             name: s.name,
+            ...(s.companyName ? { companyName: s.companyName } : {}),
             phone: s.phone || '',
-            companyCurrentBalance: round2(s.currentBalance || 0),
-            balanceScope: 'company_wide',
+            companyBalance: round2(s.currentBalance || 0),
             repPurchasesCount: sPurchases.length,
             repPurchasesTotal: round2(sPurchases.reduce((acc, i) => acc + i.grandTotal, 0)),
             repPaidTotal: round2(sPurchases.reduce((acc, i) => acc + i.paidAmount, 0)),
-            repRemainingTotal: round2(sPurchases.reduce((acc, i) => acc + i.remainingAmount, 0)),
           };
         })
     : [];
 
-  const confirmedSales = salesInvoices.filter((i) => i.status === 'confirmed');
-  const confirmedPurchases = purchaseInvoices.filter((i) => i.status === 'confirmed');
-
   return {
-    representative: ownProfile
-      ? { id: ownProfile.id, name: ownProfile.name, warehouseId: ownProfile.warehouseId }
-      : { id: actor.id, name: actor.fullName },
-    permissions: {
-      canManageSales: Boolean(actor?.permissions?.canManageSales || actor?.role === 'admin'),
-      canCreatePurchase: canPurchase,
-    },
-    balanceSemantics: {
-      customerBalance: 'رصيد العميل الحالي على مستوى الشركة بالكامل، بينما عمليات الفواتير والتحصيلات تخص هذا المندوب.',
-      supplierBalance: 'رصيد المورد الحالي على مستوى الشركة بالكامل، بينما فواتير المشتريات والمدفوعات تخص هذا المندوب فقط.',
-    },
-    filters: {
-      dateFrom,
-      dateTo,
-      customerId: customerId || 'all',
-      supplierId: supplierId || 'all',
-      productId: productId || 'all',
-      invoiceNumber,
-      opType,
-      paymentStatus: paymentStatusFilter,
-      invoiceStatus: invoiceStatusFilter,
-      search,
-    },
-    filterOptions: {
-      customers: (data.customers || []).map((c) => ({ id: c.id, name: c.name, phone: c.phone })),
-      suppliers: canPurchase ? (data.suppliers || []).map((s) => ({ id: s.id, name: s.name, phone: s.phone })) : [],
-      products: (data.products || []).map((p) => ({ id: p.id, code: p.code, name: p.name, baseUnit: p.baseUnit })),
+    scope: {
+      isRepScoped: isRepActor,
+      representativeId: ownProfile?.id || actor?.id,
+      representativeName: ownProfile?.name || actor?.fullName || '',
+      canViewSuppliers: canPurchase,
+      accountBalanceNote:
+        'الأرصدة الظاهرة للعملاء والموردين تمثل الرصيد المالي العام على مستوى الشركة بالكامل، بينما إحصائيات وفواتير وتحصيلات التقرير تمثل عمليات هذا المندوب فقط.',
     },
     summary: {
       salesCount: confirmedSales.length,
-      salesTotal: round2(confirmedSales.reduce((s, i) => s + i.grandTotal, 0)),
-      salesPaid: round2(confirmedSales.reduce((s, i) => s + i.paidAmount, 0)),
-      salesRemaining: round2(confirmedSales.reduce((s, i) => s + i.remainingAmount, 0)),
-      salesReturnCount: salesReturns.length,
-      salesReturnTotal: round2(salesReturns.reduce((s, r) => s + r.grandTotal, 0)),
-      collectionsCount: collections.length,
-      collectionsTotal: round2(collections.reduce((s, c) => s + c.amount, 0)),
+      salesTotal,
+      salesPaid: round2(confirmedSales.reduce((s, i) => s + Number(i.paidAmount || 0), 0)),
+      salesRemaining: round2(confirmedSales.reduce((s, i) => s + Math.max(0, Number(i.remainingAmount || 0)), 0)),
+      salesReturnsCount: salesReturns.length,
+      salesReturnsTotal,
+      netSalesTotal: round2(Math.max(0, salesTotal - salesReturnsTotal)),
       purchasesCount: canPurchase ? confirmedPurchases.length : 0,
-      purchasesTotal: canPurchase ? round2(confirmedPurchases.reduce((s, i) => s + i.grandTotal, 0)) : 0,
-      purchasesPaid: canPurchase ? round2(confirmedPurchases.reduce((s, i) => s + i.paidAmount, 0)) : 0,
-      purchasesRemaining: canPurchase ? round2(confirmedPurchases.reduce((s, i) => s + i.remainingAmount, 0)) : 0,
-      purchaseReturnCount: canPurchase ? purchaseReturns.length : 0,
-      purchaseReturnTotal: canPurchase ? round2(purchaseReturns.reduce((s, r) => s + r.grandTotal, 0)) : 0,
-      purchasePaymentsTotal: canPurchase ? round2(purchasePayments.reduce((s, p) => s + p.amount, 0)) : 0,
-      customersTotalBalance: round2(customerBalances.reduce((s, c) => s + c.companyCurrentBalance, 0)),
-      suppliersTotalBalance: canPurchase ? round2(supplierBalances.reduce((s, sup) => s + sup.companyCurrentBalance, 0)) : 0,
+      purchasesTotal: canPurchase ? purchasesTotal : 0,
+      purchasesPaid: canPurchase ? round2(confirmedPurchases.reduce((s, i) => s + Number(i.paidAmount || 0), 0)) : 0,
+      purchasesRemaining: canPurchase
+        ? round2(confirmedPurchases.reduce((s, i) => s + Math.max(0, Number(i.remainingAmount || 0)), 0))
+        : 0,
+      purchaseReturnsCount: canPurchase ? purchaseReturns.length : 0,
+      purchaseReturnsTotal: canPurchase ? purchaseReturnsTotal : 0,
+      collectionsCount: collections.length,
+      collectionsTotal: round2(collections.reduce((s, c) => s + Number(c.amount || 0), 0)),
+      purchasePaymentsTotal: canPurchase
+        ? round2(
+            purchasePayments.length > 0
+              ? purchasePayments.reduce((s, p) => s + Number(p.amount || 0), 0)
+              : confirmedPurchases.reduce((s, i) => s + Number(i.paidAmount || 0), 0)
+          )
+        : 0,
+      totalCustomerReceivables: round2((data.customers || []).reduce((s, c) => s + Number(c.currentBalance || 0), 0)),
+      totalSupplierPayables: canPurchase
+        ? round2((data.suppliers || []).reduce((s, sup) => s + Number(sup.currentBalance || 0), 0))
+        : 0,
     },
-    sections: {
-      salesInvoices: opType === 'all' || opType === 'sales' ? salesInvoices : [],
-      salesItems: opType === 'all' || opType === 'sales' ? salesItems : [],
-      salesReturns: opType === 'all' || opType === 'sales_return' ? salesReturns : [],
-      collections: opType === 'all' || opType === 'collection' ? collections : [],
-      purchaseInvoices: canPurchase && (opType === 'all' || opType === 'purchase') ? purchaseInvoices : [],
-      purchaseItems: canPurchase && (opType === 'all' || opType === 'purchase') ? purchaseItems : [],
-      purchaseReturns: canPurchase && (opType === 'all' || opType === 'purchase_return') ? purchaseReturns : [],
-      purchasePayments: canPurchase && (opType === 'all' || opType === 'purchase_payment') ? purchasePayments : [],
-      customerBalances,
-      supplierBalances,
-    },
+    customersSummary,
+    suppliersSummary,
+    invoices,
+    itemRows,
+    returns: scopedReturns,
+    collections,
   };
 }

@@ -1385,7 +1385,8 @@ async function runFullModeAudit(modeName) {
         },
       });
       assert.equal(syncCashOp.status, 200);
-      assert.equal(syncCashOp.json.results[0].status, 'rejected');
+      assert.equal(syncCashOp.json.results[0].status, 'failed');
+      assert.equal(syncCashOp.json.results[0].code, 'FORBIDDEN_REP_CASHBOX_OP');
     });
 
     await test(`[${modeName}] 13. Dedicated Rep Summary Report (/api/reports/rep-summary) scope & zero cost/profit/cashbox leaks`, async () => {

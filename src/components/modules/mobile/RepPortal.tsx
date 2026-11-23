@@ -7452,6 +7452,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         status: (row.status as any) || 'confirmed',
                         dispatchStatus: row.dispatchStatus as any,
                         notes: row.notes,
+                        createdBy: currentUser?.fullName || '',
                         createdAt: row.date,
                       };
                       return (

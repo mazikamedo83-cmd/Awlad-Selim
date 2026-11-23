@@ -1350,104 +1350,214 @@ export async function receivePurchaseInvoice(invoiceId, payload = {}, actor, ide
   if (actor?.role === 'representative' || actor?.role === 'customer') {
     throw new AppError(403, 'غير مصرح للمندوب أو العميل باستلام فواتير الشراء الواردة', 'FORBIDDEN_RECEIVE_PURCHASE');
   }
-  if (actor?.role !== 'admin' && !perms.canManagePurchases && !perms.canApprove && !perms.canReceive) {
+  const confirmNow = Boolean(payload?.confirmNow);
+  if (confirmNow) {
+    if (actor?.role !== 'admin' && !perms.canManagePurchases && !perms.canApprove) {
+      throw new AppError(403, 'ليس لديك صلاحية اعتماد وترحيل فواتير الشراء', 'FORBIDDEN_PERMISSION');
+    }
+  } else if (actor?.role !== 'admin' && !perms.canManagePurchases && !perms.canApprove && !perms.canReceive) {
     throw new AppError(403, 'ليس لديك صلاحية استلام فواتير الشراء', 'FORBIDDEN_PERMISSION');
   }
 
   const now = nowIso();
-  const receiveNotes = String(payload.notes || '').trim();
+  const receiveNotes = String(payload?.notes || '').trim();
+  const overrideWarehouseId = payload?.warehouseId ? String(payload.warehouseId).trim() : '';
+  const overrideCashboxId = payload?.cashboxId ? String(payload.cashboxId).trim() : '';
   const endpoint = `POST /api/invoices/purchase/${invoiceId}/receive`;
   const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
 
   const out = (await isPgMode())
     ? await withTransaction(async (client) => {
         const dup = await findPgIdempotency(client, scopedIdem);
-        if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice };
+        if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice, confirmedNow: Boolean(dup.confirmedNow) };
 
         const inv = await fetchFullInvoicePg(client, invoiceId);
         if (!inv) throw new AppError(404, 'فاتورة الشراء غير موجودة', 'INVOICE_NOT_FOUND');
         if (inv.type !== 'purchase') throw new AppError(400, 'المستند المحدد ليس فاتورة شراء', 'NOT_PURCHASE_INVOICE');
         if (inv.status === 'confirmed') throw new AppError(409, 'تم اعتماد وترحيل الفاتورة مسبقًا', 'ALREADY_CONFIRMED');
         if (inv.status !== 'draft') throw new AppError(409, 'لا يمكن استلام فاتورة شراء ملغاة', 'INVALID_INVOICE_STATUS');
-        if (inv.dispatchStatus === 'received') {
+        if (inv.dispatchStatus === 'received' && !confirmNow) {
           throw new AppError(409, 'تم استلام هذه الفاتورة مسبقًا', 'ALREADY_RECEIVED');
         }
-        if (inv.dispatchStatus !== 'sent') {
+        if (inv.dispatchStatus !== 'sent' && !(confirmNow && inv.dispatchStatus === 'received')) {
           throw new AppError(409, 'لا يمكن استلام الفاتورة إلا بعد إرسالها من المندوب', 'PURCHASE_NOT_SENT');
         }
 
-        const nextHistory = [
-          ...(Array.isArray(inv.dispatchHistory) ? inv.dispatchHistory : []),
-          {
+        let targetWarehouseId = inv.warehouseId;
+        let targetWarehouseName = inv.warehouseName;
+        if (overrideWarehouseId) {
+          const whRow = (await client.query(`SELECT id, name FROM warehouses WHERE id = $1 LIMIT 1`, [overrideWarehouseId])).rows[0];
+          if (!whRow) throw new AppError(404, 'المستودع غير موجود', 'WAREHOUSE_NOT_FOUND');
+          targetWarehouseId = whRow.id;
+          targetWarehouseName = whRow.name;
+        }
+
+        let targetCashboxId = inv.cashboxId;
+        if (overrideCashboxId) {
+          const cbRow = (await client.query(`SELECT id FROM cashboxes WHERE id = $1 LIMIT 1`, [overrideCashboxId])).rows[0];
+          if (!cbRow) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
+          targetCashboxId = cbRow.id;
+        }
+
+        const nextHistory = [...(Array.isArray(inv.dispatchHistory) ? inv.dispatchHistory : [])];
+        if (inv.dispatchStatus !== 'received') {
+          nextHistory.push({
             id: generateServerId('DSP'),
             action: 'received',
             at: now,
             by: actor.fullName,
             byUserId: actor.id,
-            notes: receiveNotes || 'تم الاستلام وبانتظار المراجعة والاعتماد',
-          },
-        ];
+            notes: receiveNotes || (confirmNow ? 'تم الاستلام والاعتماد المباشر' : 'تم الاستلام وبانتظار المراجعة والاعتماد'),
+          });
+        }
 
-        await client.query(
-          `UPDATE invoices SET
-            dispatch_status = 'received',
-            received_by = $1,
-            received_by_user_id = $2,
-            received_at = $3,
-            dispatch_history = $4,
-            version = COALESCE(version, 1) + 1,
-            updated_at = $3
-           WHERE id = $5`,
-          [actor.fullName, actor.id, now, JSON.stringify(nextHistory), invoiceId]
-        );
+        if (confirmNow) {
+          const invToConfirm = {
+            ...inv,
+            warehouseId: targetWarehouseId,
+            warehouseName: targetWarehouseName,
+            cashboxId: targetCashboxId,
+          };
+          await applyConfirmedEffectsPgTx(client, invToConfirm, actor);
+          nextHistory.push({
+            id: generateServerId('DSP'),
+            action: 'confirmed',
+            at: now,
+            by: actor.fullName,
+            byUserId: actor.id,
+            notes: receiveNotes || 'استلام واعتماد وترحيل للمخزون والحسابات',
+          });
+          await client.query(
+            `UPDATE invoices SET
+              status = 'confirmed',
+              dispatch_status = 'confirmed',
+              warehouse_id = $1,
+              warehouse_name = $2,
+              cashbox_id = $3,
+              received_by = COALESCE(received_by, $4),
+              received_by_user_id = COALESCE(received_by_user_id, $5),
+              received_at = COALESCE(received_at, $6),
+              dispatch_history = $7,
+              version = COALESCE(version, 1) + 1,
+              updated_at = $6
+             WHERE id = $8`,
+            [
+              targetWarehouseId,
+              targetWarehouseName,
+              targetCashboxId,
+              actor.fullName,
+              actor.id,
+              now,
+              JSON.stringify(nextHistory),
+              invoiceId,
+            ]
+          );
+        } else {
+          await client.query(
+            `UPDATE invoices SET
+              dispatch_status = 'received',
+              warehouse_id = $1,
+              warehouse_name = $2,
+              cashbox_id = $3,
+              received_by = $4,
+              received_by_user_id = $5,
+              received_at = $6,
+              dispatch_history = $7,
+              version = COALESCE(version, 1) + 1,
+              updated_at = $6
+             WHERE id = $8`,
+            [
+              targetWarehouseId,
+              targetWarehouseName,
+              targetCashboxId,
+              actor.fullName,
+              actor.id,
+              now,
+              JSON.stringify(nextHistory),
+              invoiceId,
+            ]
+          );
+        }
 
         const updatedInv = await fetchFullInvoicePg(client, invoiceId);
-        await savePgIdempotency(client, scopedIdem, actor, endpoint, { invoice: updatedInv });
-        return { deduplicated: false, invoice: updatedInv };
+        await savePgIdempotency(client, scopedIdem, actor, endpoint, { invoice: updatedInv, confirmedNow: confirmNow });
+        return { deduplicated: false, invoice: updatedInv, confirmedNow: confirmNow };
       })
     : await withJsonTransaction((db) => {
         const dup = findJsonIdempotency(scopedIdem);
-        if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice };
+        if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice, confirmedNow: Boolean(dup.confirmedNow) };
 
         const inv = db.invoices.find((i) => i.id === invoiceId);
         if (!inv) throw new AppError(404, 'فاتورة الشراء غير موجودة', 'INVOICE_NOT_FOUND');
         if (inv.type !== 'purchase') throw new AppError(400, 'المستند المحدد ليس فاتورة شراء', 'NOT_PURCHASE_INVOICE');
         if (inv.status === 'confirmed') throw new AppError(409, 'تم اعتماد وترحيل الفاتورة مسبقًا', 'ALREADY_CONFIRMED');
         if (inv.status !== 'draft') throw new AppError(409, 'لا يمكن استلام فاتورة شراء ملغاة', 'INVALID_INVOICE_STATUS');
-        if (inv.dispatchStatus === 'received') {
+        if (inv.dispatchStatus === 'received' && !confirmNow) {
           throw new AppError(409, 'تم استلام هذه الفاتورة مسبقًا', 'ALREADY_RECEIVED');
         }
-        if (inv.dispatchStatus !== 'sent') {
+        if (inv.dispatchStatus !== 'sent' && !(confirmNow && inv.dispatchStatus === 'received')) {
           throw new AppError(409, 'لا يمكن استلام الفاتورة إلا بعد إرسالها من المندوب', 'PURCHASE_NOT_SENT');
         }
 
-        inv.dispatchStatus = 'received';
-        inv.receivedBy = actor.fullName;
-        inv.receivedByUserId = actor.id;
-        inv.receivedAt = now;
-        inv.dispatchHistory = [
-          ...(Array.isArray(inv.dispatchHistory) ? inv.dispatchHistory : []),
-          {
+        if (overrideWarehouseId) {
+          const wh = (db.warehouses || []).find((w) => w.id === overrideWarehouseId);
+          if (!wh) throw new AppError(404, 'المستودع غير موجود', 'WAREHOUSE_NOT_FOUND');
+          inv.warehouseId = wh.id;
+          inv.warehouseName = wh.name;
+        }
+        if (overrideCashboxId) {
+          const cb = (db.cashboxes || []).find((c) => c.id === overrideCashboxId);
+          if (!cb) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
+          inv.cashboxId = cb.id;
+        }
+
+        const wasReceived = inv.dispatchStatus === 'received';
+        const nextHistory = [...(Array.isArray(inv.dispatchHistory) ? inv.dispatchHistory : [])];
+        if (!wasReceived) {
+          nextHistory.push({
             id: generateServerId('DSP'),
             action: 'received',
             at: now,
             by: actor.fullName,
             byUserId: actor.id,
-            notes: receiveNotes || 'تم الاستلام وبانتظار المراجعة والاعتماد',
-          },
-        ];
+            notes: receiveNotes || (confirmNow ? 'تم الاستلام والاعتماد المباشر' : 'تم الاستلام وبانتظار المراجعة والاعتماد'),
+          });
+        }
+        if (!inv.receivedBy) inv.receivedBy = actor.fullName;
+        if (!inv.receivedByUserId) inv.receivedByUserId = actor.id;
+        if (!inv.receivedAt) inv.receivedAt = now;
+
+        if (confirmNow) {
+          applyConfirmedEffectsJsonTx(db, inv, actor);
+          inv.status = 'confirmed';
+          inv.dispatchStatus = 'confirmed';
+          nextHistory.push({
+            id: generateServerId('DSP'),
+            action: 'confirmed',
+            at: now,
+            by: actor.fullName,
+            byUserId: actor.id,
+            notes: receiveNotes || 'استلام واعتماد وترحيل للمخزون والحسابات',
+          });
+        } else {
+          inv.dispatchStatus = 'received';
+        }
+
+        inv.dispatchHistory = nextHistory;
         inv.version = Number(inv.version || 1) + 1;
         inv.updatedAt = now;
 
-        saveJsonIdempotency(scopedIdem, { invoice: inv });
-        return { deduplicated: false, invoice: inv };
+        saveJsonIdempotency(scopedIdem, { invoice: inv, confirmedNow: confirmNow });
+        return { deduplicated: false, invoice: inv, confirmedNow: confirmNow };
       });
 
   if (!out.deduplicated) {
     await recordAuditLog({
       userId: actor.id,
       userName: actor.fullName,
-      action: `استلام فاتورة شراء من المندوب (${out.invoice.invoiceNumber}) دون ترحيل مخزني`,
+      action: out.confirmedNow
+        ? `استلام واعتماد فاتورة شراء من المندوب (${out.invoice.invoiceNumber}) وترحيل المخزون`
+        : `استلام فاتورة شراء من المندوب (${out.invoice.invoiceNumber}) دون ترحيل مخزني`,
       module: 'المشتريات',
       recordId: invoiceId,
       notes: receiveNotes,
