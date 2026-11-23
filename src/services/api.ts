@@ -1087,3 +1087,19 @@ export async function fetchReportSourceDocument(docType: string, docId: string):
   return apiRequest<import('../types').ReportSourceDocumentResponse>(`/api/reports/source-document?${qs.toString()}`);
 }
 
+export async function fetchRepSummaryReport(
+  params: Record<string, string | number | undefined> = {}
+): Promise<import('../types').RepDetailedReportResponse> {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== '' && v !== 'all') {
+      qs.set(k, String(v));
+    }
+  }
+  const queryStr = qs.toString();
+  const res = await apiRequest<{ ok: boolean; report: import('../types').RepDetailedReportResponse }>(
+    `/api/reports/rep-summary${queryStr ? `?${queryStr}` : ''}`
+  );
+  return res.report;
+}
+

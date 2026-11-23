@@ -365,7 +365,15 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
   }
 
   if (opType === 'add_invoice_payment') {
-    assertStaffPermission(user, 'canManageAccounts');
+    const canAttemptPayment =
+      user.role === 'admin' ||
+      Boolean(user.permissions?.canManageAccounts) ||
+      Boolean(user.permissions?.canManageSales) ||
+      Boolean(user.permissions?.canManagePurchases) ||
+      Boolean(user.permissions?.canCreatePurchase);
+    if (!canAttemptPayment) {
+      throw new AppError(403, 'ليس لديك صلاحية تسجيل دفعات على الفواتير', 'FORBIDDEN_PERMISSION');
+    }
     return addInvoicePayment(payload.invoiceId || op.entityId, payload, user, opId);
   }
 
@@ -415,6 +423,9 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
   }
 
   if (opType === 'execute_cash_operation') {
+    if (user.role === 'representative' || user.role === 'customer') {
+      throw new AppError(403, 'العمليات الإدارية للخزائن والمصروفات والموردين غير متاحة للمندوبين', 'FORBIDDEN_REP_CASHBOX_OP');
+    }
     if (payload?.type === 'cashbox_transfer') {
       assertStaffPermission(user, 'canManageCashboxes');
     } else if (user.role !== 'admin' && !user.permissions?.canManageCashboxes && !user.permissions?.canManageAccounts) {

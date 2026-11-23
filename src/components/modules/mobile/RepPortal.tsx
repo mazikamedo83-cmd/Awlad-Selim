@@ -21,8 +21,11 @@ import {
   InvoiceReturn,
   Product,
   RepCustodyStatementResponse,
+  RepDetailedReportResponse,
+  Supplier,
+  SupplierStatementResponse,
 } from '../../../types';
-import { apiRequest } from '../../../services/api';
+import { apiRequest, fetchRepSummaryReport } from '../../../services/api';
 import { exportHtmlToPdf } from '../../common/PdfExporter';
 import { getCurrentLocationSafe, isNativeCapacitor, parseLatLngCoords, reverseGeocodeCoords } from '../../../services/native';
 import { QuantityInput } from '../../common/QuantityInput';
@@ -145,7 +148,9 @@ export type RepTabKey =
   | 'purchases-list'
   | 'sales-returns-list'
   | 'purchase-returns-list'
-  | 'custody';
+  | 'custody'
+  | 'suppliers'
+  | 'rep-reports';
 
 interface RepPortalProps {
   activeTab: RepTabKey;
@@ -167,12 +172,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const isNative = isNativeCapacitor();
 
   const isAdmin = currentUser?.role === 'admin';
+  const isRepRoleAccount = currentUser?.role === 'representative';
   const canSales = isAdmin || hasPermission('canManageSales');
   const canPurchases = isAdmin || hasPermission('canManagePurchases');
   const canCreatePurchase = canPurchases || hasPermission('canCreatePurchase');
-  const canCashOps = isAdmin || hasPermission('canManageCashboxes') || hasPermission('canManageAccounts');
+  // Representative accounts never perform general treasury cashbox deposits/withdrawals
+  const canCashOps = !isRepRoleAccount && (isAdmin || hasPermission('canManageCashboxes') || hasPermission('canManageAccounts'));
   const canTransfers = isAdmin || hasPermission('canManageTransfers');
-  const canCash = canCashOps || canTransfers;
+  const canCash = canCashOps || canTransfers || canSales;
   const canAccounts = isAdmin || hasPermission('canManageAccounts');
   const canInventory = isAdmin || hasPermission('canManageInventory') || canTransfers;
   const canAddCustomer = isAdmin || canSales || hasPermission('canAdd');
@@ -499,6 +506,35 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [deliveryProof, setDeliveryProof] = useState<string>('');
   const [isUpdatingDelivery, setIsUpdatingDelivery] = useState(false);
 
+  // ==================== 10. SUPPLIERS, PURCHASE PAYMENTS & REP REPORTS ====================
+  const [supSearch, setSupSearch] = useState('');
+  const [selectedSupplierDetail, setSelectedSupplierDetail] = useState<Supplier | null>(null);
+  const [supplierStatement, setSupplierStatement] = useState<SupplierStatementResponse | null>(null);
+  const [isLoadingSupplierStmt, setIsLoadingSupplierStmt] = useState(false);
+  const [supStmtError, setSupStmtError] = useState<string | null>(null);
+
+  const [payingPurchaseTarget, setPayingPurchaseTarget] = useState<Invoice | null>(null);
+  const [purPayAmount, setPurPayAmount] = useState<number>(0);
+  const [purPayMethod, setPurPayMethod] = useState<'cash' | 'bank' | 'cheque'>('cash');
+  const [purPayDate, setPurPayDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [purPayNotes, setPurPayNotes] = useState<string>('');
+  const [isSubmittingPurPayment, setIsSubmittingPurPayment] = useState(false);
+
+  const [repReportData, setRepReportData] = useState<RepDetailedReportResponse | null>(null);
+  const [isLoadingRepReport, setIsLoadingRepReport] = useState(false);
+  const [repReportError, setRepReportError] = useState<string | null>(null);
+  const [repReportIsOfflineFallback, setRepReportIsOfflineFallback] = useState(false);
+  const [rptDateFrom, setRptDateFrom] = useState('');
+  const [rptDateTo, setRptDateTo] = useState('');
+  const [rptCustomerId, setRptCustomerId] = useState('');
+  const [rptSupplierId, setRptSupplierId] = useState('');
+  const [rptProductId, setRptProductId] = useState('');
+  const [rptInvoiceNumber, setRptInvoiceNumber] = useState('');
+  const [rptOpType, setRptOpType] = useState<'all' | 'sales' | 'purchase' | 'sales_return' | 'purchase_return'>('all');
+  const [rptPaymentStatus, setRptPaymentStatus] = useState<'all' | 'paid' | 'partial' | 'credit'>('all');
+  const [rptInvoiceStatus, setRptInvoiceStatus] = useState<'all' | 'confirmed' | 'draft' | 'cancelled'>('all');
+  const [rptSubView, setRptSubView] = useState<'summary' | 'invoices' | 'items' | 'collections'>('summary');
+
   useEffect(() => {
     if (!invWarehouseId && vanWarehouse?.id) setInvWarehouseId(vanWarehouse.id);
     if (!purWarehouseId && mainWarehouse?.id) setPurWarehouseId(mainWarehouse.id);
@@ -574,6 +610,340 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       active = false;
     };
   }, [selectedCustomerDetail?.id, data.getCustomerStatement]);
+
+  useEffect(() => {
+    let active = true;
+    if (!selectedSupplierDetail) {
+      setSupplierStatement(null);
+      setSupStmtError(null);
+      return;
+    }
+    setIsLoadingSupplierStmt(true);
+    setSupStmtError(null);
+    data
+      .getSupplierStatement(selectedSupplierDetail.id)
+      .then((res) => {
+        if (!active) return;
+        if (res) {
+          setSupplierStatement(res);
+        } else {
+          setSupStmtError('تعذر تحميل كشف حساب المورد.');
+        }
+      })
+      .catch((err: any) => {
+        if (active) setSupStmtError(err?.message || 'تعذر تحميل كشف حساب المورد.');
+      })
+      .finally(() => {
+        if (active) setIsLoadingSupplierStmt(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedSupplierDetail?.id, data.getSupplierStatement]);
+
+  const buildOfflineRepSummary = useCallback((): RepDetailedReportResponse => {
+    const matchDates = (d?: string) => {
+      const dateStr = String(d || '').slice(0, 10);
+      if (rptDateFrom && dateStr < rptDateFrom) return false;
+      if (rptDateTo && dateStr > rptDateTo) return false;
+      return true;
+    };
+    const qInvNum = rptInvoiceNumber.trim().toLowerCase();
+
+    const scopedInvoices = (data.invoices || []).filter((inv) => {
+      if (inv.type === 'purchase' && !canCreatePurchase) return false;
+      if (rptOpType === 'sales' && inv.type !== 'sales') return false;
+      if (rptOpType === 'purchase' && inv.type !== 'purchase') return false;
+      if (rptOpType === 'sales_return' || rptOpType === 'purchase_return') return false;
+      if (!matchDates(inv.date)) return false;
+      if (rptInvoiceStatus !== 'all' && inv.status !== rptInvoiceStatus) return false;
+      if (rptCustomerId && inv.customerId !== rptCustomerId) return false;
+      if (rptSupplierId && inv.supplierId !== rptSupplierId) return false;
+      if (qInvNum && !String(inv.invoiceNumber || '').toLowerCase().includes(qInvNum)) return false;
+      const pStatus: 'paid' | 'partial' | 'credit' =
+        Number(inv.remainingAmount || 0) <= 0.009
+          ? 'paid'
+          : Number(inv.paidAmount || 0) > 0.009
+          ? 'partial'
+          : 'credit';
+      if (rptPaymentStatus !== 'all' && pStatus !== rptPaymentStatus) return false;
+      if (rptProductId && !(inv.items || []).some((it) => it.productId === rptProductId)) return false;
+      return true;
+    });
+
+    const scopedReturns = (data.invoiceReturns || []).filter((ret: InvoiceReturn) => {
+      if (ret.type === 'purchase_return' && !canCreatePurchase) return false;
+      if (rptOpType === 'sales_return' && ret.type !== 'sales_return') return false;
+      if (rptOpType === 'purchase_return' && ret.type !== 'purchase_return') return false;
+      if (rptOpType === 'sales' || rptOpType === 'purchase') return false;
+      if (!matchDates(ret.date)) return false;
+      if (rptCustomerId && (ret.type !== 'sales_return' || ret.partyId !== rptCustomerId)) return false;
+      if (rptSupplierId && (ret.type !== 'purchase_return' || ret.partyId !== rptSupplierId)) return false;
+      if (qInvNum && !String(ret.returnNumber || '').toLowerCase().includes(qInvNum)) return false;
+      if (rptProductId && !(ret.items || []).some((it) => it.productId === rptProductId)) return false;
+      return true;
+    });
+
+    const invoiceRows = scopedInvoices.map((inv) => {
+      const paymentStatus: 'paid' | 'partial' | 'credit' =
+        Number(inv.remainingAmount || 0) <= 0.009
+          ? 'paid'
+          : Number(inv.paidAmount || 0) > 0.009
+          ? 'partial'
+          : 'credit';
+      return {
+        id: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        date: inv.date,
+        type: inv.type,
+        status: inv.status,
+        dispatchStatus: inv.dispatchStatus,
+        partyId: inv.customerId || inv.supplierId || '',
+        partyName: inv.customerName || inv.supplierName || '',
+        warehouseId: inv.warehouseId,
+        warehouseName: inv.warehouseName || '',
+        representativeId: inv.representativeId,
+        representativeName: inv.representativeName,
+        grandTotal: Number(inv.grandTotal || 0),
+        paidAmount: Number(inv.paidAmount || 0),
+        remainingAmount: Math.max(0, Number(inv.remainingAmount || 0)),
+        paymentStatus,
+        itemsCount: (inv.items || []).length,
+        items: (inv.items || [])
+          .filter((it) => !rptProductId || it.productId === rptProductId)
+          .map((it) => ({
+            productId: it.productId,
+            productName: it.productName,
+            barcode: it.barcode,
+            unit: it.unit,
+            unitFactor: Number(it.unitFactor || 1),
+            quantity: Number(it.quantity || 0),
+            unitPrice: Number(it.unitPrice || 0),
+            discount: Number(it.discount || 0),
+            total: Number(it.total || 0),
+          })),
+        notes: inv.notes,
+      };
+    });
+
+    const itemRows = [
+      ...scopedInvoices.flatMap((inv) =>
+        (inv.items || [])
+          .filter((it) => !rptProductId || it.productId === rptProductId)
+          .map((it, idx) => ({
+            rowId: `${inv.id}-${idx}`,
+            invoiceId: inv.id,
+            invoiceNumber: inv.invoiceNumber,
+            date: inv.date,
+            opType: (inv.type === 'purchase' ? 'purchase' : 'sales') as 'sales' | 'purchase',
+            status: inv.status,
+            partyId: inv.customerId || inv.supplierId || '',
+            partyName: inv.customerName || inv.supplierName || '',
+            productId: it.productId,
+            productName: it.productName,
+            barcode: it.barcode,
+            unit: it.unit,
+            quantity: Number(it.quantity || 0),
+            unitFactor: Number(it.unitFactor || 1),
+            unitPrice: Number(it.unitPrice || 0),
+            discount: Number(it.discount || 0),
+            total: Number(it.total || 0),
+          }))
+      ),
+      ...scopedReturns.flatMap((ret) =>
+        (ret.items || [])
+          .filter((it) => !rptProductId || it.productId === rptProductId)
+          .map((it, idx) => ({
+            rowId: `${ret.id}-${idx}`,
+            invoiceId: ret.id,
+            invoiceNumber: ret.returnNumber,
+            date: ret.date,
+            opType: (ret.type === 'purchase_return' ? 'purchase_return' : 'sales_return') as
+              | 'sales_return'
+              | 'purchase_return',
+            status: 'confirmed',
+            partyId: ret.partyId,
+            partyName: ret.partyName,
+            productId: it.productId,
+            productName: it.productName,
+            unit: it.unit,
+            quantity: Number(it.quantity || 0),
+            unitFactor: Number(it.unitFactor || 1),
+            unitPrice: Number(it.unitPrice || 0),
+            discount: 0,
+            total: Number(it.total || 0),
+          }))
+      ),
+    ];
+
+    const confirmedSales = scopedInvoices.filter((i) => i.type === 'sales' && i.status === 'confirmed');
+    const confirmedPurchases = scopedInvoices.filter((i) => i.type === 'purchase' && i.status === 'confirmed');
+    const salesReturns = scopedReturns.filter((r) => r.type === 'sales_return');
+    const purchaseReturns = scopedReturns.filter((r) => r.type === 'purchase_return');
+
+    const collections = (data.financialTransactions || [])
+      .filter((tx) => {
+        if (!matchDates(tx.date)) return false;
+        if (tx.category !== 'تحصيل من عميل' && tx.type !== 'deposit' && tx.type !== 'income') return false;
+        if (rptCustomerId && tx.partyId !== rptCustomerId) return false;
+        return true;
+      })
+      .map((tx) => ({
+        id: tx.id,
+        transactionNumber: tx.transactionNumber,
+        date: tx.date,
+        amount: Number(tx.amount || 0),
+        partyId: tx.partyId,
+        partyName: tx.partyName || 'عميل',
+        paymentMethod: tx.paymentMethod,
+        relatedDocId: tx.relatedDocId,
+        notes: tx.notes,
+      }));
+
+    const salesTotal = confirmedSales.reduce((s, i) => s + Number(i.grandTotal || 0), 0);
+    const salesReturnsTotal = salesReturns.reduce((s, r) => s + Number(r.grandTotal || 0), 0);
+    const purchasesTotal = confirmedPurchases.reduce((s, i) => s + Number(i.grandTotal || 0), 0);
+    const purchaseReturnsTotal = purchaseReturns.reduce((s, r) => s + Number(r.grandTotal || 0), 0);
+    const collectionsTotal = collections.reduce((s, c) => s + Number(c.amount || 0), 0);
+
+    return {
+      scope: {
+        isRepScoped: isRepRoleAccount,
+        representativeId: rep?.id,
+        representativeName: rep?.name || currentUser?.fullName,
+        canViewSuppliers: canCreatePurchase,
+        accountBalanceNote:
+          'الأرصدة الظاهرة للعملاء والموردين تمثل الرصيد المالي العام على مستوى الشركة بالكامل، بينما إحصائيات وفواتير وتحصيلات التقرير تمثل عمليات هذا المندوب فقط.',
+      },
+      summary: {
+        salesCount: confirmedSales.length,
+        salesTotal,
+        salesPaid: confirmedSales.reduce((s, i) => s + Number(i.paidAmount || 0), 0),
+        salesRemaining: confirmedSales.reduce((s, i) => s + Math.max(0, Number(i.remainingAmount || 0)), 0),
+        salesReturnsCount: salesReturns.length,
+        salesReturnsTotal,
+        netSalesTotal: Math.max(0, salesTotal - salesReturnsTotal),
+        purchasesCount: confirmedPurchases.length,
+        purchasesTotal,
+        purchasesPaid: confirmedPurchases.reduce((s, i) => s + Number(i.paidAmount || 0), 0),
+        purchasesRemaining: confirmedPurchases.reduce((s, i) => s + Math.max(0, Number(i.remainingAmount || 0)), 0),
+        purchaseReturnsCount: purchaseReturns.length,
+        purchaseReturnsTotal,
+        collectionsCount: collections.length,
+        collectionsTotal,
+        purchasePaymentsTotal: confirmedPurchases.reduce((s, i) => s + Number(i.paidAmount || 0), 0),
+        totalCustomerReceivables: data.customers.reduce((s, c) => s + Number(c.currentBalance || 0), 0),
+        totalSupplierPayables: canCreatePurchase
+          ? data.suppliers.reduce((s, sup) => s + Number(sup.currentBalance || 0), 0)
+          : 0,
+      },
+      customersSummary: data.customers
+        .filter((c) => !rptCustomerId || c.id === rptCustomerId)
+        .map((c) => {
+          const cSales = confirmedSales.filter((i) => i.customerId === c.id);
+          const cColls = collections.filter((tx) => tx.partyId === c.id);
+          return {
+            id: c.id,
+            name: c.name,
+            shopName: c.shopName,
+            phone: c.phone,
+            companyBalance: Number(c.currentBalance || 0),
+            repSalesCount: cSales.length,
+            repSalesTotal: cSales.reduce((s, i) => s + Number(i.grandTotal || 0), 0),
+            repPaidTotal: cSales.reduce((s, i) => s + Number(i.paidAmount || 0), 0),
+            repCollectionsTotal: cColls.reduce((s, tx) => s + Number(tx.amount || 0), 0),
+          };
+        }),
+      suppliersSummary: canCreatePurchase
+        ? data.suppliers
+            .filter((s) => !rptSupplierId || s.id === rptSupplierId)
+            .map((sup) => {
+              const sPur = confirmedPurchases.filter((i) => i.supplierId === sup.id);
+              return {
+                id: sup.id,
+                name: sup.name,
+                companyName: sup.companyName,
+                phone: sup.phone,
+                companyBalance: Number(sup.currentBalance || 0),
+                repPurchasesCount: sPur.length,
+                repPurchasesTotal: sPur.reduce((s, i) => s + Number(i.grandTotal || 0), 0),
+                repPaidTotal: sPur.reduce((s, i) => s + Number(i.paidAmount || 0), 0),
+              };
+            })
+        : [],
+      invoices: invoiceRows,
+      itemRows,
+      returns: scopedReturns,
+      collections,
+    };
+  }, [
+    data.invoices,
+    data.invoiceReturns,
+    data.financialTransactions,
+    data.customers,
+    data.suppliers,
+    canCreatePurchase,
+    isRepRoleAccount,
+    rep?.id,
+    rep?.name,
+    currentUser?.fullName,
+    rptDateFrom,
+    rptDateTo,
+    rptInvoiceNumber,
+    rptOpType,
+    rptInvoiceStatus,
+    rptCustomerId,
+    rptSupplierId,
+    rptPaymentStatus,
+    rptProductId,
+  ]);
+
+  const loadRepSummaryReport = useCallback(async () => {
+    setIsLoadingRepReport(true);
+    setRepReportError(null);
+    setRepReportIsOfflineFallback(false);
+    try {
+      const report = await fetchRepSummaryReport({
+        dateFrom: rptDateFrom || undefined,
+        dateTo: rptDateTo || undefined,
+        customerId: rptCustomerId || undefined,
+        supplierId: canCreatePurchase && rptSupplierId ? rptSupplierId : undefined,
+        productId: rptProductId || undefined,
+        invoiceNumber: rptInvoiceNumber.trim() || undefined,
+        opType: rptOpType,
+        paymentStatus: rptPaymentStatus,
+        invoiceStatus: rptInvoiceStatus,
+      });
+      setRepReportData(report);
+    } catch (err: any) {
+      const fallback = buildOfflineRepSummary();
+      setRepReportData(fallback);
+      setRepReportIsOfflineFallback(true);
+      if (err?.status && err.status >= 400 && err.status < 500) {
+        setRepReportError(err?.message || 'تعذر تحميل التقرير من الخادم.');
+      }
+    } finally {
+      setIsLoadingRepReport(false);
+    }
+  }, [
+    rptDateFrom,
+    rptDateTo,
+    rptCustomerId,
+    rptSupplierId,
+    rptProductId,
+    rptInvoiceNumber,
+    rptOpType,
+    rptPaymentStatus,
+    rptInvoiceStatus,
+    canCreatePurchase,
+    buildOfflineRepSummary,
+  ]);
+
+  useEffect(() => {
+    if (activeTab === 'rep-reports') {
+      loadRepSummaryReport();
+    }
+  }, [activeTab, loadRepSummaryReport]);
 
   const loadCustodyStatement = useCallback(async () => {
     setIsLoadingCustodyStmt(true);
@@ -1378,6 +1748,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setFeedback({ type: 'error', text: 'يرجى إدخال مبلغ صحيح أكبر من الصفر.' });
       return;
     }
+    if (isRepRoleAccount && depMode === 'cashbox_deposit') {
+      setFeedback({
+        type: 'error',
+        text: 'غير مصرح للمندوب بتنفيذ إيداع مباشر بالخزينة؛ استخدم تحصيل من عميل أو توريد عهدة.',
+      });
+      return;
+    }
     setIsSubmittingDeposit(true);
     setFeedback(null);
     try {
@@ -1437,6 +1814,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
   const handleSubmitCashWithdrawal = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isRepRoleAccount || !canCashOps) {
+      setFeedback({
+        type: 'error',
+        text: 'غير مصرح لحساب المندوب بتنفيذ سحب أو مصروف مباشر من الخزينة.',
+      });
+      return;
+    }
     if (wdAmount <= 0) {
       setFeedback({ type: 'error', text: 'يرجى إدخال مبلغ سحب صحيح أكبر من الصفر.' });
       return;
@@ -1469,6 +1853,54 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setFeedback({ type: 'error', text: err?.message || 'تعذر تسجيل السحب النقدي' });
     } finally {
       setIsSubmittingWithdrawal(false);
+    }
+  };
+
+  const openPurchasePaymentModal = (inv: Invoice) => {
+    setPayingPurchaseTarget(inv);
+    setPurPayAmount(Math.max(0, Number(inv.remainingAmount || 0)));
+    setPurPayMethod('cash');
+    setPurPayDate(new Date().toISOString().split('T')[0]);
+    setPurPayNotes('');
+  };
+
+  const handleSubmitPurchasePayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!payingPurchaseTarget) return;
+    const rem = Math.max(0, Number(payingPurchaseTarget.remainingAmount || 0));
+    if (purPayAmount <= 0) {
+      setFeedback({ type: 'error', text: 'يرجى إدخال مبلغ سداد صحيح أكبر من الصفر.' });
+      return;
+    }
+    if (purPayAmount > rem + 0.01) {
+      setFeedback({ type: 'error', text: `مبلغ السداد يتجاوز المتبقي على الفاتورة (${rem.toLocaleString()}).` });
+      return;
+    }
+    setIsSubmittingPurPayment(true);
+    setFeedback(null);
+    try {
+      const defaultCb = data.cashboxes[0]?.id || 'CASH-01';
+      const res = await data.addInvoicePayment(payingPurchaseTarget.id, {
+        amount: purPayAmount,
+        paymentMethod: purPayMethod,
+        cashboxId: defaultCb,
+        date: purPayDate || new Date().toISOString().split('T')[0],
+        notes: purPayNotes.trim() || `دفعة سداد فاتورة شراء ${payingPurchaseTarget.invoiceNumber}`,
+      });
+      if (res.success) {
+        const paidNum = payingPurchaseTarget.invoiceNumber;
+        setPayingPurchaseTarget(null);
+        setFeedback({
+          type: res.queuedOffline ? 'warning' : 'success',
+          text: res.queuedOffline
+            ? `تم حفظ دفعة السداد للفاتورة ${paidNum} محلياً بانتظار المزامنة.`
+            : `تم تسجيل دفعة سداد للفاتورة ${paidNum} وتحديث رصيد المورد بنجاح.`,
+        });
+      } else {
+        setFeedback({ type: 'error', text: res.error || 'تعذر تسجيل دفعة السداد' });
+      }
+    } finally {
+      setIsSubmittingPurPayment(false);
     }
   };
 
@@ -2487,9 +2919,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     // Row 2
     {
       key: 'cash-deposit',
-      label: 'إيداع نقدي',
+      label: isRepRoleAccount ? 'تحصيل من عميل' : 'إيداع نقدي',
       iconNode: <ExpensesCashIcon className="w-11 h-11" />,
-      allowed: canCashOps || canAccounts || canSales,
+      allowed: isRepRoleAccount ? (canSales || canAccounts) : (canCashOps || canAccounts || canSales),
       tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
     },
     {
@@ -2507,13 +2939,25 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
     },
     // Row 3
-    {
-      key: 'cash-withdrawal',
-      label: 'سحب نقدي',
-      iconNode: <WalletCashIcon className="w-11 h-11" />,
-      allowed: canCashOps,
-      tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
-    },
+    ...(!isRepRoleAccount
+      ? [
+          {
+            key: 'cash-withdrawal' as RepTabKey,
+            label: 'سحب نقدي',
+            iconNode: <WalletCashIcon className="w-11 h-11" />,
+            allowed: canCashOps,
+            tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
+          },
+        ]
+      : [
+          {
+            key: 'rep-reports' as RepTabKey,
+            label: 'تقارير المندوب',
+            iconNode: <FileSpreadsheet className="w-10 h-10 text-blue-900" />,
+            allowed: true,
+            tone: 'bg-white text-blue-950 border-blue-200 hover:border-blue-400',
+          },
+        ]),
     {
       key: 'new-customer',
       label: 'عميل جديد',
@@ -2537,13 +2981,25 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       tone: 'bg-white text-slate-900 border-blue-200 hover:border-blue-400',
       badgeCount: data.pendingSyncCount,
     },
-    {
-      key: 'cheques-installments',
-      label: 'شيك وقسط',
-      iconNode: <ChequesIcon className="w-11 h-11" />,
-      allowed: canAccounts,
-      tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
-    },
+    ...(!isRepRoleAccount
+      ? [
+          {
+            key: 'cheques-installments' as RepTabKey,
+            label: 'شيك وقسط',
+            iconNode: <ChequesIcon className="w-11 h-11" />,
+            allowed: canAccounts,
+            tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
+          },
+        ]
+      : [
+          {
+            key: 'suppliers' as RepTabKey,
+            label: 'الموردون وكشوفهم',
+            iconNode: <Building2 className="w-10 h-10 text-indigo-800" />,
+            allowed: canCreatePurchase,
+            tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
+          },
+        ]),
     {
       key: 'new-quote',
       label: 'عرض سعر',
@@ -2790,7 +3246,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             )}
           </div>
 
-          {/* Quick Customers & Purchases Access Strip */}
+          {/* Quick Customers, Purchases, Suppliers & Reports Access Strip */}
           <div className="grid grid-cols-2 gap-2.5">
             <button
               type="button"
@@ -2807,17 +3263,47 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => onTabChange('purchases-list')}
-              className="bg-white rounded-2xl border border-slate-200 hover:border-blue-300 shadow-2xs p-3 flex items-center gap-2.5 text-right cursor-pointer"
+              onClick={() => onTabChange('rep-reports')}
+              className="bg-white rounded-2xl border border-blue-200 hover:border-blue-400 shadow-2xs p-3 flex items-center gap-2.5 text-right cursor-pointer"
             >
-              <PurchaseInvoiceIcon className="w-9 h-9 shrink-0" />
+              <FileSpreadsheet className="w-9 h-9 text-blue-900 shrink-0" />
               <div className="min-w-0">
-                <span className="block text-xs font-black text-slate-900 truncate">فواتير الشراء</span>
+                <span className="block text-xs font-black text-blue-950 truncate">تقارير المندوب</span>
                 <span className="block text-[10px] text-slate-500 font-semibold truncate">
-                  {myPurchases.length} فاتورة · إرسال ومتابعة
+                  المبيعات، التحصيلات، والحسابات
                 </span>
               </div>
             </button>
+            {canCreatePurchase && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onTabChange('purchases-list')}
+                  className="bg-white rounded-2xl border border-slate-200 hover:border-blue-300 shadow-2xs p-3 flex items-center gap-2.5 text-right cursor-pointer"
+                >
+                  <PurchaseInvoiceIcon className="w-9 h-9 shrink-0" />
+                  <div className="min-w-0">
+                    <span className="block text-xs font-black text-slate-900 truncate">فواتير الشراء</span>
+                    <span className="block text-[10px] text-slate-500 font-semibold truncate">
+                      {myPurchases.length} فاتورة · سداد ومتابعة
+                    </span>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onTabChange('suppliers')}
+                  className="bg-white rounded-2xl border border-slate-200 hover:border-indigo-300 shadow-2xs p-3 flex items-center gap-2.5 text-right cursor-pointer"
+                >
+                  <Building2 className="w-9 h-9 text-indigo-800 shrink-0" />
+                  <div className="min-w-0">
+                    <span className="block text-xs font-black text-slate-900 truncate">الموردون وكشوفهم</span>
+                    <span className="block text-[10px] text-slate-500 font-semibold truncate">
+                      {data.suppliers.length} مورد · كشف الحساب
+                    </span>
+                  </div>
+                </button>
+              </>
+            )}
           </div>
 
           {/* 4x3 Operation Tile Grid */}
@@ -2878,23 +3364,28 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className={`grid gap-2 ${isRepRoleAccount ? 'grid-cols-2' : 'grid-cols-3'}`}>
               <button
                 type="button"
                 disabled={!(canCashOps || canSales)}
-                onClick={() => onTabChange('cash-deposit')}
+                onClick={() => {
+                  setDepMode('customer_collection');
+                  onTabChange('cash-deposit');
+                }}
                 className="min-h-[44px] rounded-xl bg-emerald-700 text-white font-black cursor-pointer disabled:opacity-45"
               >
-                إيداع نقدي
+                {isRepRoleAccount ? 'تحصيل من عميل' : 'إيداع نقدي'}
               </button>
-              <button
-                type="button"
-                disabled={!canCashOps}
-                onClick={() => onTabChange('cash-withdrawal')}
-                className="min-h-[44px] rounded-xl bg-amber-600 text-white font-black cursor-pointer disabled:opacity-45"
-              >
-                سحب نقدي
-              </button>
+              {!isRepRoleAccount && (
+                <button
+                  type="button"
+                  disabled={!canCashOps}
+                  onClick={() => onTabChange('cash-withdrawal')}
+                  className="min-h-[44px] rounded-xl bg-amber-600 text-white font-black cursor-pointer disabled:opacity-45"
+                >
+                  سحب نقدي
+                </button>
+              )}
               <button
                 type="button"
                 disabled={!canTransfers}
@@ -2904,7 +3395,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 }}
                 className="min-h-[44px] rounded-xl bg-blue-900 text-white font-black cursor-pointer disabled:opacity-45"
               >
-                تحويل للخزينة
+                توريد عهدة للفرع
               </button>
             </div>
           </div>
@@ -3015,7 +3506,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       {activeTab === 'more' && (
         <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs divide-y divide-slate-100 text-xs">
           {[
+            { key: 'rep-reports' as RepTabKey, label: 'تقارير المندوب الشاملة', Icon: FileSpreadsheet, allowed: true },
             { key: 'purchases-list' as RepTabKey, label: 'فواتير الشراء', Icon: PurchaseInvoicesListIcon, allowed: canCreatePurchase },
+            { key: 'suppliers' as RepTabKey, label: 'الموردون وكشف الحساب', Icon: Building2, allowed: canCreatePurchase },
             { key: 'sales-returns-list' as RepTabKey, label: 'مرتجع البيع', Icon: SalesReturnIcon, allowed: canSales },
             { key: 'invoices' as RepTabKey, label: 'فواتير البيع', Icon: SalesInvoicesListIcon, allowed: canSales },
             { key: 'customers' as RepTabKey, label: 'الحسابات والعملاء', Icon: CustomersGroupIcon, allowed: canAccounts || canSales },
@@ -3526,24 +4019,51 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 <div className="p-2.5 rounded-xl bg-white border border-blue-200 space-y-1.5">
                   <div className="flex items-center gap-1.5 font-bold text-blue-950">
                     <History className="w-4 h-4 shrink-0" />
-                    <span>آخر 3 أسعار بيع لهذا العميل:</span>
+                    <span>
+                      آخر 3 أسعار بيع فعلية لهذا العميل ({selectedInvoiceCustomer?.shopName || selectedInvoiceCustomer?.name || ''}) للصنف ({selectedProduct.name}) — من الأقدم للأحدث:
+                    </span>
                   </div>
                   {selectedProdLastPrices.length > 0 ? (
                     <div className="flex flex-wrap gap-2">
-                      {selectedProdLastPrices.map((entry, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => setInvPrice(entry.price)}
-                          className="min-h-[38px] px-3 py-1 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-950 font-mono font-bold text-[11px] cursor-pointer"
-                        >
-                          {entry.price} {data.settings.currency}
-                          {entry.date ? ` · ${entry.date}` : ''}
-                        </button>
-                      ))}
+                      {selectedProdLastPrices.map((entry, idx) => {
+                        const priceVal = Number(entry.price || 0);
+                        const priceDate = entry.date || '';
+                        const entryUnit = entry.unit || '';
+                        const entryQty = entry.quantity;
+                        const entryFactor = Number(entry.unitFactor || 1);
+                        const orderTag = idx === 0 ? 'الأقدم' : idx === selectedProdLastPrices.length - 1 ? 'الأحدث' : 'الوسيط';
+                        const activeUnitFactor =
+                          invUnitName === selectedProduct.baseUnit
+                            ? 1
+                            : selectedProduct.units.find((u) => u.name === invUnitName)?.conversionFactor || 1;
+                        const normalizedPerSelectedUnit =
+                          entryUnit && entryUnit !== invUnitName && entryFactor > 0
+                            ? Math.round((priceVal / entryFactor) * activeUnitFactor * 100) / 100
+                            : null;
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setInvPrice(normalizedPerSelectedUnit ?? priceVal)}
+                            title="انقر لتطبيق هذا السعر يدوياً"
+                            className="min-h-[40px] px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-950 text-right cursor-pointer"
+                          >
+                            <span className="font-mono font-bold text-[11px] block">
+                              {priceVal} {data.settings.currency}
+                              {entryUnit ? ` / ${entryUnit}` : ''}
+                            </span>
+                            <span className="text-[10px] text-slate-600 block">
+                              {orderTag}
+                              {priceDate ? ` · ${priceDate}` : ''}
+                              {typeof entryQty === 'number' && entryQty > 0 ? ` · كمية: ${entryQty}` : ''}
+                              {normalizedPerSelectedUnit !== null ? ` · يعادل ${normalizedPerSelectedUnit} للـ${invUnitName}` : ''}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
                   ) : (
-                    <p className="text-[11px] text-slate-500">لا يوجد سجل أسعار سابق لهذا العميل بهذا الصنف.</p>
+                    <p className="text-[11px] text-slate-500 italic">لا توجد أسعار بيع سابقة لهذا الصنف مع هذا العميل</p>
                   )}
                 </div>
               )}
@@ -4543,34 +5063,42 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       {/* ==================== CASH DEPOSIT / COLLECTION ==================== */}
       {activeTab === 'cash-deposit' && (
         <form onSubmit={handleSubmitCashDeposit} className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs">
-          <h3 className="text-sm font-black text-emerald-900">إيداع نقدي / تحصيل من عميل</h3>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setDepMode('customer_collection')}
-              className={`min-h-[42px] rounded-xl font-bold border cursor-pointer ${
-                depMode === 'customer_collection'
-                  ? 'bg-emerald-700 text-white border-emerald-700'
-                  : 'bg-slate-50 text-slate-700 border-slate-300'
-              }`}
-            >
-              تحصيل من عميل
-            </button>
-            <button
-              type="button"
-              disabled={!canCashOps}
-              onClick={() => setDepMode('cashbox_deposit')}
-              className={`min-h-[42px] rounded-xl font-bold border cursor-pointer disabled:opacity-45 ${
-                depMode === 'cashbox_deposit'
-                  ? 'bg-emerald-700 text-white border-emerald-700'
-                  : 'bg-slate-50 text-slate-700 border-slate-300'
-              }`}
-            >
-              {canCashOps ? 'إيداع مباشر بالخزينة' : 'إيداع بالخزينة (مقيد)'}
-            </button>
-          </div>
+          <h3 className="text-sm font-black text-emerald-900">
+            {isRepRoleAccount ? 'تحصيل نقدي من عميل' : 'إيداع نقدي / تحصيل من عميل'}
+          </h3>
+          {!isRepRoleAccount ? (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setDepMode('customer_collection')}
+                className={`min-h-[42px] rounded-xl font-bold border cursor-pointer ${
+                  depMode === 'customer_collection'
+                    ? 'bg-emerald-700 text-white border-emerald-700'
+                    : 'bg-slate-50 text-slate-700 border-slate-300'
+                }`}
+              >
+                تحصيل من عميل
+              </button>
+              <button
+                type="button"
+                disabled={!canCashOps}
+                onClick={() => setDepMode('cashbox_deposit')}
+                className={`min-h-[42px] rounded-xl font-bold border cursor-pointer disabled:opacity-45 ${
+                  depMode === 'cashbox_deposit'
+                    ? 'bg-emerald-700 text-white border-emerald-700'
+                    : 'bg-slate-50 text-slate-700 border-slate-300'
+                }`}
+              >
+                {canCashOps ? 'إيداع مباشر بالخزينة' : 'إيداع بالخزينة (مقيد)'}
+              </button>
+            </div>
+          ) : (
+            <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 font-bold text-[11px]">
+              تحصيل دفعات العملاء فقط — الإيداعات العامة للخزينة وتوريدات العهدة تتم من تبويب النقدية / تحويل العهدة.
+            </div>
+          )}
 
-          {depMode === 'customer_collection' && (
+          {(depMode === 'customer_collection' || isRepRoleAccount) && (
             <select
               value={depCustomerId}
               onChange={(e) => setDepCustomerId(e.target.value)}
@@ -4585,16 +5113,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </select>
           )}
 
-          <div className="grid grid-cols-2 gap-2">
-            <select
-              value={depCashboxId}
-              onChange={(e) => setDepCashboxId(e.target.value)}
-              className="min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
-            >
-              {data.cashboxes.map((cb) => (
-                <option key={cb.id} value={cb.id}>{cb.name}</option>
-              ))}
-            </select>
+          <div className={`grid gap-2 ${isRepRoleAccount ? 'grid-cols-1' : 'grid-cols-2'}`}>
+            {!isRepRoleAccount && (
+              <select
+                value={depCashboxId}
+                onChange={(e) => setDepCashboxId(e.target.value)}
+                className="min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
+              >
+                {data.cashboxes.map((cb) => (
+                  <option key={cb.id} value={cb.id}>{cb.name}</option>
+                ))}
+              </select>
+            )}
             <select
               value={depMethod}
               onChange={(e) => setDepMethod(e.target.value as any)}
@@ -4620,7 +5150,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             type="text"
             value={depNotes}
             onChange={(e) => setDepNotes(e.target.value)}
-            placeholder="ملاحظات الإيداع / التحصيل..."
+            placeholder="ملاحظات التحصيل..."
             className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
           />
 
@@ -4629,67 +5159,81 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             disabled={isSubmittingDeposit}
             className="w-full min-h-[48px] rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
           >
-            {isSubmittingDeposit ? 'جاري التسجيل...' : 'تأكيد الإيداع / التحصيل'}
+            {isSubmittingDeposit ? 'جاري التسجيل...' : isRepRoleAccount ? 'تأكيد تحصيل الدفعة من العميل' : 'تأكيد الإيداع / التحصيل'}
           </button>
         </form>
       )}
 
       {/* ==================== CASH WITHDRAWAL ==================== */}
       {activeTab === 'cash-withdrawal' && (
-        <form onSubmit={handleSubmitCashWithdrawal} className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs">
-          <h3 className="text-sm font-black text-amber-900">سحب نقدي / تسجيل مصروف</h3>
-          <select
-            value={wdCashboxId}
-            onChange={(e) => setWdCashboxId(e.target.value)}
-            className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
-          >
-            {data.cashboxes.map((cb) => (
-              <option key={cb.id} value={cb.id}>
-                {cb.name}
-                {typeof cb.currentBalance === 'number' && !cb.balanceHidden
-                  ? ` (رصيد: ${cb.currentBalance.toLocaleString()})`
-                  : ''}
-              </option>
-            ))}
-          </select>
-          <input
-            type="text"
-            value={wdCategory}
-            onChange={(e) => setWdCategory(e.target.value)}
-            placeholder="البند / التصنيف (مثال: بنزين / مصروف تشغيل)"
-            className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold"
-          />
-          <input
-            type="text"
-            value={wdBeneficiary}
-            onChange={(e) => setWdBeneficiary(e.target.value)}
-            placeholder="المستفيد (اختياري)"
-            className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
-          />
-          <input
-            type="number"
-            min={1}
-            step="0.01"
-            value={wdAmount || ''}
-            onChange={(e) => setWdAmount(Math.max(0, Number(e.target.value)))}
-            placeholder={`مبلغ السحب (${data.settings.currency})`}
-            className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-mono font-black text-center text-red-700"
-          />
-          <input
-            type="text"
-            value={wdNotes}
-            onChange={(e) => setWdNotes(e.target.value)}
-            placeholder="بيان السحب / المصروف..."
-            className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
-          />
-          <button
-            type="submit"
-            disabled={isSubmittingWithdrawal}
-            className="w-full min-h-[48px] rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-black cursor-pointer disabled:opacity-50"
-          >
-            {isSubmittingWithdrawal ? 'جاري التسجيل...' : 'تأكيد السحب النقدي'}
-          </button>
-        </form>
+        isRepRoleAccount || !canCashOps ? (
+          <div className="bg-white rounded-3xl border border-red-200 p-6 text-center space-y-3 text-xs">
+            <ShieldAlert className="w-8 h-8 text-red-600 mx-auto" />
+            <p className="font-black text-red-800">غير مصرح لحساب المندوب بتنفيذ سحب أو مصروف مباشر من الخزائن.</p>
+            <button
+              type="button"
+              onClick={() => onTabChange('home')}
+              className="px-4 py-2 rounded-xl bg-slate-100 font-bold text-slate-800 cursor-pointer"
+            >
+              العودة للرئيسية
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmitCashWithdrawal} className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs">
+            <h3 className="text-sm font-black text-amber-900">سحب نقدي / تسجيل مصروف</h3>
+            <select
+              value={wdCashboxId}
+              onChange={(e) => setWdCashboxId(e.target.value)}
+              className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
+            >
+              {data.cashboxes.map((cb) => (
+                <option key={cb.id} value={cb.id}>
+                  {cb.name}
+                  {typeof cb.currentBalance === 'number' && !cb.balanceHidden
+                    ? ` (رصيد: ${cb.currentBalance.toLocaleString()})`
+                    : ''}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={wdCategory}
+              onChange={(e) => setWdCategory(e.target.value)}
+              placeholder="البند / التصنيف (مثال: بنزين / مصروف تشغيل)"
+              className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold"
+            />
+            <input
+              type="text"
+              value={wdBeneficiary}
+              onChange={(e) => setWdBeneficiary(e.target.value)}
+              placeholder="المستفيد (اختياري)"
+              className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+            />
+            <input
+              type="number"
+              min={1}
+              step="0.01"
+              value={wdAmount || ''}
+              onChange={(e) => setWdAmount(Math.max(0, Number(e.target.value)))}
+              placeholder={`مبلغ السحب (${data.settings.currency})`}
+              className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-mono font-black text-center text-red-700"
+            />
+            <input
+              type="text"
+              value={wdNotes}
+              onChange={(e) => setWdNotes(e.target.value)}
+              placeholder="بيان السحب / المصروف..."
+              className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+            />
+            <button
+              type="submit"
+              disabled={isSubmittingWithdrawal}
+              className="w-full min-h-[48px] rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-black cursor-pointer disabled:opacity-50"
+            >
+              {isSubmittingWithdrawal ? 'جاري التسجيل...' : 'تأكيد السحب النقدي'}
+            </button>
+          </form>
+        )
       )}
 
       {/* ==================== NEW CUSTOMER (10-Part Store Profile, Multi-Phone, Camera/Gallery & GPS) ==================== */}
@@ -5547,6 +6091,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             filteredPurchases.map((inv) => {
               const meta = getPurchaseDispatchMeta(inv);
               const canSendOrEdit = inv.status === 'draft' && (meta.key === 'draft' || meta.key === 'rejected');
+              const remainingVal = Math.max(0, Number(inv.remainingAmount || 0));
+              const canRecordPurchasePayment =
+                canCreatePurchase &&
+                inv.status === 'confirmed' &&
+                remainingVal > 0.009 &&
+                (!isRepRoleAccount ||
+                  !inv.createdBy ||
+                  inv.createdBy === currentUser?.id ||
+                  inv.createdByName === currentUser?.fullName ||
+                  inv.representativeId === rep?.id);
               return (
               <div key={inv.id} className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2.5">
                 <div className="flex items-start justify-between gap-2">
@@ -5561,9 +6115,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       {inv.supplierName} · {inv.date} · {inv.warehouseName}
                     </p>
                   </div>
-                  <strong className="font-mono text-sm text-slate-900 shrink-0">
-                    {inv.grandTotal.toLocaleString()} {data.settings.currency}
-                  </strong>
+                  <div className="text-left shrink-0">
+                    <strong className="font-mono text-sm text-slate-900 block">
+                      {inv.grandTotal.toLocaleString()} {data.settings.currency}
+                    </strong>
+                    {inv.status === 'confirmed' && (
+                      <span className={`text-[10px] font-bold block ${remainingVal > 0.009 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                        {remainingVal > 0.009
+                          ? `متبقي: ${remainingVal.toLocaleString()} ${data.settings.currency}`
+                          : 'مسددة بالكامل'}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {inv.recipientName && (
@@ -5592,6 +6155,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     <Eye className="w-3.5 h-3.5" />
                     <span>تفاصيل الفاتورة</span>
                   </button>
+                  {canRecordPurchasePayment && (
+                    <button
+                      type="button"
+                      onClick={() => openPurchasePaymentModal(inv)}
+                      className="min-h-[38px] px-3 rounded-xl bg-emerald-700 text-white font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <CreditCard className="w-3.5 h-3.5" />
+                      <span>تسجيل دفعة سداد</span>
+                    </button>
+                  )}
                   {canSendOrEdit && (
                     <>
                       <button
@@ -6362,6 +6935,663 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 </div>
               ))}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* ==================== SUPPLIERS LIST & STATEMENT (FOR PERMITTED REPS) ==================== */}
+      {activeTab === 'suppliers' && (
+        !canCreatePurchase ? (
+          <div className="bg-white rounded-3xl border border-red-200 p-6 text-center space-y-3 text-xs">
+            <ShieldAlert className="w-8 h-8 text-red-600 mx-auto" />
+            <p className="font-black text-red-800">صلاحيات حسابك لا تسمح بعرض الموردين أو كشوف حساباتهم.</p>
+            <button
+              type="button"
+              onClick={() => onTabChange('home')}
+              className="px-4 py-2 rounded-xl bg-slate-100 font-bold text-slate-800 cursor-pointer"
+            >
+              العودة للرئيسية
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3 text-xs">
+            <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <Building2 className="w-7 h-7 text-indigo-800 shrink-0" />
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900">الموردون وكشوف الحسابات ({data.suppliers.length})</h3>
+                    <p className="text-[11px] text-slate-500">
+                      يعرض الرصيد المالي العام للمورد على مستوى الشركة، وكشف الحساب يعرض فواتيرك ومرتجعاتك فقط.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onTabChange('new-supplier')}
+                  className="min-h-[38px] px-3 rounded-xl bg-indigo-900 text-white font-bold cursor-pointer"
+                >
+                  + مورد جديد
+                </button>
+              </div>
+
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+                <input
+                  type="text"
+                  value={supSearch}
+                  onChange={(e) => setSupSearch(e.target.value)}
+                  placeholder="ابحث باسم المورد أو الشركة أو الكود أو التليفون..."
+                  className="w-full min-h-[42px] rounded-xl border border-slate-300 pr-9 pl-3 font-semibold"
+                />
+              </div>
+            </div>
+
+            {(() => {
+              const q = supSearch.trim().toLowerCase();
+              const filteredSuppliers = data.suppliers.filter((s) => {
+                if (!q) return true;
+                return (
+                  s.name.toLowerCase().includes(q) ||
+                  (s.companyName && s.companyName.toLowerCase().includes(q)) ||
+                  (s.code && s.code.toLowerCase().includes(q)) ||
+                  (s.phone && s.phone.includes(q))
+                );
+              });
+              if (filteredSuppliers.length === 0) {
+                return (
+                  <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center text-slate-400">
+                    لا توجد بيانات موردين مطابقة للبحث.
+                  </div>
+                );
+              }
+              return filteredSuppliers.map((sup) => {
+                const bal = Number(sup.currentBalance || 0);
+                const dirLabel =
+                  bal > 0.009
+                    ? 'رصيد مستحق للمورد (علينا)'
+                    : bal < -0.009
+                    ? 'دفعة مقدمة عند المورد (لنا)'
+                    : 'حساب متوازن';
+                const dirClass =
+                  bal > 0.009
+                    ? 'bg-rose-50 text-rose-800 border-rose-200'
+                    : bal < -0.009
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    : 'bg-slate-50 text-slate-700 border-slate-200';
+                return (
+                  <div key={sup.id} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs space-y-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <h4 className="font-black text-sm text-slate-900 truncate">{sup.name}</h4>
+                        <p className="text-[11px] text-slate-500">
+                          {sup.companyName ? `${sup.companyName} · ` : ''}
+                          {sup.code}
+                          {sup.phone ? ` · ${sup.phone}` : ''}
+                        </p>
+                      </div>
+                      <div className={`px-2.5 py-1.5 rounded-xl border text-left shrink-0 ${dirClass}`}>
+                        <span className="text-[10px] block font-bold">{dirLabel}</span>
+                        <strong className="font-mono text-sm tabular-nums">
+                          {Math.abs(bal).toLocaleString()} {data.settings.currency}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSupplierDetail(sup)}
+                        className="min-h-[40px] rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 font-black cursor-pointer"
+                      >
+                        كشف حساب المورد
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPurSupplierId(sup.id);
+                          setPurEditingInvoiceId(null);
+                          onTabChange('new-purchase');
+                        }}
+                        className="min-h-[40px] rounded-xl bg-indigo-900 hover:bg-indigo-950 text-white font-black cursor-pointer"
+                      >
+                        + فاتورة شراء جديدة
+                      </button>
+                    </div>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        )
+      )}
+
+      {/* ==================== DEDICATED REP REPORTS (تقارير المندوب) ==================== */}
+      {activeTab === 'rep-reports' && (
+        <div className="space-y-3 text-xs">
+          <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                <FileSpreadsheet className="w-7 h-7 text-blue-900 shrink-0" />
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">تقارير المندوب التفصيلية</h3>
+                  <p className="text-[11px] text-slate-500">
+                    متابعة المبيعات، المشتريات المصرحة، المرتجعات، التحصيلات وأرصدة الحسابات
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRptDateFrom('');
+                    setRptDateTo('');
+                    setRptCustomerId('');
+                    setRptSupplierId('');
+                    setRptProductId('');
+                    setRptInvoiceNumber('');
+                    setRptOpType('all');
+                    setRptPaymentStatus('all');
+                    setRptInvoiceStatus('all');
+                  }}
+                  className="min-h-[36px] px-2.5 rounded-xl bg-slate-100 text-slate-700 font-bold cursor-pointer"
+                >
+                  ضبط الفلاتر
+                </button>
+                <button
+                  type="button"
+                  disabled={isLoadingRepReport}
+                  onClick={loadRepSummaryReport}
+                  className="min-h-[36px] px-3 rounded-xl bg-blue-900 text-white font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingRepReport ? 'animate-spin' : ''}`} />
+                  <span>تحديث</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-950 font-bold text-[11px]">
+              {repReportData?.scope?.accountBalanceNote ||
+                'الأرصدة الظاهرة للعملاء والموردين تمثل الرصيد المالي العام على مستوى الشركة بالكامل، بينما إحصائيات وفواتير وتحصيلات التقرير تمثل عمليات هذا المندوب فقط.'}
+            </div>
+
+            {repReportIsOfflineFallback && (
+              <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
+                يتم العرض حالياً من البيانات المحفوظة محلياً (وضع عدم الاتصال أو تعذر الوصول للخادم).
+              </div>
+            )}
+            {repReportError && (
+              <div className="p-2 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold text-[11px]">
+                {repReportError}
+              </div>
+            )}
+
+            {/* Filters Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">من تاريخ</label>
+                <input
+                  type="date"
+                  value={rptDateFrom}
+                  onChange={(e) => setRptDateFrom(e.target.value)}
+                  className="w-full min-h-[38px] rounded-xl border border-slate-300 px-2 font-mono bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">إلى تاريخ</label>
+                <input
+                  type="date"
+                  value={rptDateTo}
+                  onChange={(e) => setRptDateTo(e.target.value)}
+                  className="w-full min-h-[38px] rounded-xl border border-slate-300 px-2 font-mono bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">رقم الفاتورة / المستند</label>
+                <input
+                  type="text"
+                  value={rptInvoiceNumber}
+                  onChange={(e) => setRptInvoiceNumber(e.target.value)}
+                  placeholder="بحث برقم الفاتورة..."
+                  className="w-full min-h-[38px] rounded-xl border border-slate-300 px-2 font-mono bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">العميل</label>
+                <select
+                  value={rptCustomerId}
+                  onChange={(e) => setRptCustomerId(e.target.value)}
+                  className="w-full min-h-[38px] rounded-xl border border-slate-300 px-2 font-bold bg-white"
+                >
+                  <option value="">كل العملاء</option>
+                  {data.customers.map((c) => (
+                    <option key={c.id} value={c.id}>{c.shopName || c.name}</option>
+                  ))}
+                </select>
+              </div>
+              {canCreatePurchase && (
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">المورد</label>
+                  <select
+                    value={rptSupplierId}
+                    onChange={(e) => setRptSupplierId(e.target.value)}
+                    className="w-full min-h-[38px] rounded-xl border border-slate-300 px-2 font-bold bg-white"
+                  >
+                    <option value="">كل الموردين</option>
+                    {data.suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">الصنف</label>
+                <select
+                  value={rptProductId}
+                  onChange={(e) => setRptProductId(e.target.value)}
+                  className="w-full min-h-[38px] rounded-xl border border-slate-300 px-2 font-bold bg-white"
+                >
+                  <option value="">كل الأصناف</option>
+                  {activeProducts.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">نوع العملية</label>
+                <select
+                  value={rptOpType}
+                  onChange={(e) => setRptOpType(e.target.value as any)}
+                  className="w-full min-h-[38px] rounded-xl border border-slate-300 px-2 font-bold bg-white"
+                >
+                  <option value="all">جميع العمليات</option>
+                  <option value="sales">فواتير البيع</option>
+                  {canCreatePurchase && <option value="purchase">فواتير الشراء</option>}
+                  <option value="sales_return">مرتجعات البيع</option>
+                  {canCreatePurchase && <option value="purchase_return">مرتجعات الشراء</option>}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">حالة السداد</label>
+                <select
+                  value={rptPaymentStatus}
+                  onChange={(e) => setRptPaymentStatus(e.target.value as any)}
+                  className="w-full min-h-[38px] rounded-xl border border-slate-300 px-2 font-bold bg-white"
+                >
+                  <option value="all">الكل</option>
+                  <option value="paid">مسددة بالكامل</option>
+                  <option value="partial">مسددة جزئياً</option>
+                  <option value="credit">آجل بالكامل</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">حالة الفاتورة</label>
+                <select
+                  value={rptInvoiceStatus}
+                  onChange={(e) => setRptInvoiceStatus(e.target.value as any)}
+                  className="w-full min-h-[38px] rounded-xl border border-slate-300 px-2 font-bold bg-white"
+                >
+                  <option value="all">الكل</option>
+                  <option value="confirmed">معتمدة</option>
+                  <option value="draft">مسودة / بانتظار المراجعة</option>
+                  <option value="cancelled">ملغاة</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {repReportData && (
+            <>
+              {/* KPI Summary Cards (Zero Profit / Zero Cost / Zero Cashbox Balances) */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 tabular-nums">
+                <div className="bg-white rounded-2xl border border-blue-200 p-3">
+                  <span className="text-[10px] text-slate-500 block">مبيعات المندوب ({repReportData.summary.salesCount})</span>
+                  <strong className="font-mono text-sm text-blue-950">
+                    {repReportData.summary.salesTotal.toLocaleString()} {data.settings.currency}
+                  </strong>
+                </div>
+                <div className="bg-white rounded-2xl border border-rose-200 p-3">
+                  <span className="text-[10px] text-slate-500 block">مرتجعات البيع ({repReportData.summary.salesReturnsCount})</span>
+                  <strong className="font-mono text-sm text-rose-800">
+                    {repReportData.summary.salesReturnsTotal.toLocaleString()} {data.settings.currency}
+                  </strong>
+                </div>
+                <div className="bg-white rounded-2xl border border-emerald-200 p-3">
+                  <span className="text-[10px] text-slate-500 block">صافي البيع</span>
+                  <strong className="font-mono text-sm text-emerald-800">
+                    {repReportData.summary.netSalesTotal.toLocaleString()} {data.settings.currency}
+                  </strong>
+                </div>
+                <div className="bg-white rounded-2xl border border-emerald-200 p-3">
+                  <span className="text-[10px] text-slate-500 block">المحصل بالفواتير / التحصيلات ({repReportData.summary.collectionsCount})</span>
+                  <strong className="font-mono text-sm text-emerald-900">
+                    {repReportData.summary.collectionsTotal.toLocaleString()} {data.settings.currency}
+                  </strong>
+                </div>
+                <div className="bg-white rounded-2xl border border-amber-200 p-3">
+                  <span className="text-[10px] text-slate-500 block">الآجل المتبقي على الفواتير</span>
+                  <strong className="font-mono text-sm text-amber-800">
+                    {repReportData.summary.salesRemaining.toLocaleString()} {data.settings.currency}
+                  </strong>
+                </div>
+                <div className="bg-white rounded-2xl border border-slate-200 p-3">
+                  <span className="text-[10px] text-slate-500 block">أرصدة العملاء (عام الشركة)</span>
+                  <strong className="font-mono text-sm text-slate-900">
+                    {repReportData.summary.totalCustomerReceivables.toLocaleString()} {data.settings.currency}
+                  </strong>
+                </div>
+                {canCreatePurchase && (
+                  <>
+                    <div className="bg-white rounded-2xl border border-indigo-200 p-3">
+                      <span className="text-[10px] text-slate-500 block">مشتريات المندوب ({repReportData.summary.purchasesCount})</span>
+                      <strong className="font-mono text-sm text-indigo-950">
+                        {repReportData.summary.purchasesTotal.toLocaleString()} {data.settings.currency}
+                      </strong>
+                    </div>
+                    <div className="bg-white rounded-2xl border border-emerald-200 p-3">
+                      <span className="text-[10px] text-slate-500 block">المدفوع للمشتريات</span>
+                      <strong className="font-mono text-sm text-emerald-800">
+                        {repReportData.summary.purchasesPaid.toLocaleString()} {data.settings.currency}
+                      </strong>
+                    </div>
+                    <div className="bg-white rounded-2xl border border-orange-200 p-3">
+                      <span className="text-[10px] text-slate-500 block">المتبقي على المشتريات</span>
+                      <strong className="font-mono text-sm text-orange-800">
+                        {repReportData.summary.purchasesRemaining.toLocaleString()} {data.settings.currency}
+                      </strong>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Sub-view Switcher */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-200">
+                {[
+                  { id: 'summary' as const, label: 'أرصدة العملاء والموردين' },
+                  { id: 'invoices' as const, label: `الفواتير (${repReportData.invoices.length})` },
+                  { id: 'items' as const, label: `الأصناف (${repReportData.itemRows.length})` },
+                  { id: 'collections' as const, label: `التحصيلات (${repReportData.collections.length})` },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setRptSubView(tab.id)}
+                    className={`min-h-[38px] rounded-xl font-black cursor-pointer ${
+                      rptSubView === tab.id ? 'bg-blue-900 text-white' : 'text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Sub-view 1: Account Summary & Balances */}
+              {rptSubView === 'summary' && (
+                <div className="space-y-3">
+                  <div className="bg-white rounded-2xl border border-slate-200 p-3.5 space-y-2">
+                    <h4 className="font-black text-slate-900">ملخص العملاء ({repReportData.customersSummary.length})</h4>
+                    {repReportData.customersSummary.length === 0 ? (
+                      <p className="text-slate-400 py-4 text-center">لا توجد بيانات عملاء مطابقة.</p>
+                    ) : (
+                      <div className="divide-y divide-slate-100">
+                        {repReportData.customersSummary.map((cs) => (
+                          <div key={cs.id} className="py-2.5 flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="font-black text-slate-900 truncate">{cs.shopName || cs.name}</p>
+                              <p className="text-[10px] text-slate-500">
+                                مبيعاتك: {cs.repSalesTotal.toLocaleString()} ({cs.repSalesCount}) · تحصيلاتك: {cs.repCollectionsTotal.toLocaleString()}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className={`font-mono font-black ${cs.companyBalance > 0.009 ? 'text-red-700' : cs.companyBalance < -0.009 ? 'text-emerald-700' : 'text-slate-600'}`}>
+                                {Math.abs(cs.companyBalance).toLocaleString()} ({cs.companyBalance > 0.009 ? 'لنا' : cs.companyBalance < -0.009 ? 'علينا' : 'متوازن'})
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const cust = data.customers.find((c) => c.id === cs.id);
+                                  if (cust) {
+                                    setSelectedCustomerDetail(cust);
+                                    setCustomerDetailSubTab('statement');
+                                  }
+                                }}
+                                className="px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-900 border border-blue-200 font-bold cursor-pointer"
+                              >
+                                كشف الحساب
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {canCreatePurchase && (
+                    <div className="bg-white rounded-2xl border border-slate-200 p-3.5 space-y-2">
+                      <h4 className="font-black text-slate-900">ملخص الموردين ({repReportData.suppliersSummary.length})</h4>
+                      {repReportData.suppliersSummary.length === 0 ? (
+                        <p className="text-slate-400 py-4 text-center">لا توجد بيانات موردين مطابقة.</p>
+                      ) : (
+                        <div className="divide-y divide-slate-100">
+                          {repReportData.suppliersSummary.map((ss) => (
+                            <div key={ss.id} className="py-2.5 flex items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="font-black text-slate-900 truncate">{ss.name}</p>
+                                <p className="text-[10px] text-slate-500">
+                                  مشترياتك: {ss.repPurchasesTotal.toLocaleString()} ({ss.repPurchasesCount}) · مدفوع: {ss.repPaidTotal.toLocaleString()}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className={`font-mono font-black ${ss.companyBalance > 0.009 ? 'text-rose-700' : ss.companyBalance < -0.009 ? 'text-emerald-700' : 'text-slate-600'}`}>
+                                  {Math.abs(ss.companyBalance).toLocaleString()} ({ss.companyBalance > 0.009 ? 'علينا' : ss.companyBalance < -0.009 ? 'لنا' : 'متوازن'})
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const sup = data.suppliers.find((s) => s.id === ss.id);
+                                    if (sup) setSelectedSupplierDetail(sup);
+                                  }}
+                                  className="px-2.5 py-1.5 rounded-lg bg-indigo-50 text-indigo-900 border border-indigo-200 font-bold cursor-pointer"
+                                >
+                                  كشف الحساب
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Sub-view 2: Invoices Table */}
+              {rptSubView === 'invoices' && (
+                <div className="space-y-2.5">
+                  {repReportData.invoices.length === 0 ? (
+                    <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400">
+                      لا توجد فواتير مطابقة للفلاتر المحددة.
+                    </div>
+                  ) : (
+                    repReportData.invoices.map((row) => {
+                      const existingInv = (data.invoices || []).find((i) => i.id === row.id);
+                      const fallbackInv: Invoice = existingInv || {
+                        id: row.id,
+                        invoiceNumber: row.invoiceNumber,
+                        date: row.date,
+                        type: row.type,
+                        customerId: row.type === 'sales' ? row.partyId : undefined,
+                        customerName: row.type === 'sales' ? row.partyName : undefined,
+                        supplierId: row.type === 'purchase' ? row.partyId : undefined,
+                        supplierName: row.type === 'purchase' ? row.partyName : undefined,
+                        warehouseId: row.warehouseId || '',
+                        warehouseName: row.warehouseName,
+                        representativeId: row.representativeId,
+                        representativeName: row.representativeName,
+                        items: (row.items || []).map((it) => ({
+                          productId: it.productId,
+                          productName: it.productName,
+                          barcode: it.barcode || '',
+                          unit: it.unit,
+                          unitFactor: it.unitFactor,
+                          quantity: it.quantity,
+                          unitPrice: it.unitPrice,
+                          purchasePriceAtTime: 0,
+                          discount: it.discount,
+                          total: it.total,
+                        })),
+                        subtotal: row.grandTotal,
+                        discountTotal: 0,
+                        taxTotal: 0,
+                        grandTotal: row.grandTotal,
+                        paidAmount: row.paidAmount,
+                        remainingAmount: row.remainingAmount,
+                        paymentType: row.paymentStatus === 'paid' ? 'cash' : row.paymentStatus === 'partial' ? 'partial' : 'credit',
+                        paymentMethod: 'cash',
+                        cashboxId: '',
+                        status: (row.status as any) || 'confirmed',
+                        dispatchStatus: row.dispatchStatus as any,
+                        notes: row.notes,
+                        createdAt: row.date,
+                      };
+                      return (
+                        <div key={row.id} className="bg-white rounded-2xl border border-slate-200 p-3.5 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-mono font-black text-blue-950">{row.invoiceNumber}</span>
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  row.type === 'purchase'
+                                    ? 'bg-indigo-50 text-indigo-900'
+                                    : row.type === 'quote'
+                                    ? 'bg-slate-100 text-slate-700'
+                                    : 'bg-blue-50 text-blue-900'
+                                }`}>
+                                  {row.type === 'purchase' ? 'فاتورة شراء' : row.type === 'quote' ? 'عرض سعر' : 'فاتورة بيع'}
+                                </span>
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  row.paymentStatus === 'paid'
+                                    ? 'bg-emerald-50 text-emerald-800'
+                                    : row.paymentStatus === 'partial'
+                                    ? 'bg-amber-50 text-amber-800'
+                                    : 'bg-red-50 text-red-700'
+                                }`}>
+                                  {row.paymentStatus === 'paid' ? 'مدفوعة' : row.paymentStatus === 'partial' ? 'جزئي' : 'آجل'}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-600 mt-0.5">
+                                {row.partyName} · {row.date} · {row.itemsCount} أصناف
+                              </p>
+                            </div>
+                            <div className="text-left shrink-0 tabular-nums">
+                              <strong className="font-mono text-sm text-slate-900 block">
+                                {row.grandTotal.toLocaleString()} {data.settings.currency}
+                              </strong>
+                              {row.remainingAmount > 0.009 && (
+                                <span className="text-[10px] text-amber-800 font-bold">
+                                  متبقي: {row.remainingAmount.toLocaleString()}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (row.type === 'purchase') {
+                                  setSelectedPurchaseDetail(fallbackInv);
+                                } else {
+                                  setSelectedInvoice(fallbackInv);
+                                }
+                              }}
+                              className="min-h-[36px] px-3 rounded-xl bg-slate-100 text-slate-800 font-bold inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>تفاصيل الفاتورة</span>
+                            </button>
+                            {canCreatePurchase && row.type === 'purchase' && row.status === 'confirmed' && row.remainingAmount > 0.009 && (
+                              <button
+                                type="button"
+                                onClick={() => openPurchasePaymentModal(fallbackInv)}
+                                className="min-h-[36px] px-3 rounded-xl bg-emerald-700 text-white font-bold inline-flex items-center gap-1 cursor-pointer"
+                              >
+                                <CreditCard className="w-3.5 h-3.5" />
+                                <span>تسجيل دفعة سداد</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
+              {/* Sub-view 3: Item Movement Rows */}
+              {rptSubView === 'items' && (
+                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                  {repReportData.itemRows.length === 0 ? (
+                    <p className="text-center text-slate-400 py-8">لا توجد حركات أصناف مطابقة.</p>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {repReportData.itemRows.map((it) => (
+                        <div key={it.rowId} className="p-3 flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-black text-slate-900 truncate">{it.productName}</p>
+                            <p className="text-[10px] text-slate-500">
+                              {it.opType === 'sales'
+                                ? 'بيع'
+                                : it.opType === 'purchase'
+                                ? 'شراء'
+                                : it.opType === 'sales_return'
+                                ? 'مرتجع بيع'
+                                : 'مرتجع شراء'}{' '}
+                              · <span className="font-mono">{it.invoiceNumber}</span> · {it.date} · {it.partyName}
+                            </p>
+                          </div>
+                          <div className="text-left shrink-0 font-mono tabular-nums">
+                            <strong className="block text-slate-900">
+                              {it.total.toLocaleString()} {data.settings.currency}
+                            </strong>
+                            <span className="text-[10px] text-slate-500">
+                              {it.quantity} {it.unit} × {it.unitPrice.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Sub-view 4: Collections */}
+              {rptSubView === 'collections' && (
+                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                  {repReportData.collections.length === 0 ? (
+                    <p className="text-center text-slate-400 py-8">لا توجد تحصيلات نقدية في هذه الفترة.</p>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {repReportData.collections.map((col) => (
+                        <div key={col.id} className="p-3 flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-black text-slate-900 truncate">{col.partyName}</p>
+                            <p className="text-[10px] text-slate-500">
+                              {col.transactionNumber ? `${col.transactionNumber} · ` : ''}
+                              {col.date} · {col.paymentMethod === 'bank' ? 'تحويل بنكي' : col.paymentMethod === 'cheque' ? 'شيك' : 'نقدي'}
+                              {col.notes ? ` · ${col.notes}` : ''}
+                            </p>
+                          </div>
+                          <strong className="font-mono text-sm text-emerald-700 shrink-0 tabular-nums">
+                            {col.amount.toLocaleString()} {data.settings.currency}
+                          </strong>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -7287,14 +8517,44 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 ))}
               </div>
 
-              <div className="p-3 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-between font-black text-sm text-indigo-950 tabular-nums">
-                <span>صافي الإجمالي:</span>
-                <strong className="font-mono">
-                  {pur.grandTotal.toLocaleString()} {data.settings.currency}
-                </strong>
+              <div className="p-3 rounded-2xl bg-indigo-50 border border-indigo-200 space-y-1 text-indigo-950 tabular-nums">
+                <div className="flex items-center justify-between font-black text-sm">
+                  <span>صافي الإجمالي:</span>
+                  <strong className="font-mono">
+                    {pur.grandTotal.toLocaleString()} {data.settings.currency}
+                  </strong>
+                </div>
+                {pur.status === 'confirmed' && (
+                  <div className="flex items-center justify-between text-[11px] font-bold">
+                    <span>المدفوع: {Number(pur.paidAmount || 0).toLocaleString()} {data.settings.currency}</span>
+                    <span className={Number(pur.remainingAmount || 0) > 0.009 ? 'text-amber-800' : 'text-emerald-800'}>
+                      المتبقي: {Math.max(0, Number(pur.remainingAmount || 0)).toLocaleString()} {data.settings.currency}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                {canCreatePurchase &&
+                  pur.status === 'confirmed' &&
+                  Number(pur.remainingAmount || 0) > 0.009 &&
+                  (!isRepRoleAccount ||
+                    !pur.createdBy ||
+                    pur.createdBy === currentUser?.id ||
+                    pur.createdByName === currentUser?.fullName ||
+                    pur.representativeId === rep?.id) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPurchaseDetail(null);
+                        openPurchasePaymentModal(pur);
+                      }}
+                      className="min-h-[42px] px-4 rounded-xl bg-emerald-700 text-white font-black inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <CreditCard className="w-4 h-4" />
+                      <span>تسجيل دفعة سداد</span>
+                    </button>
+                  )}
                 {canSendOrEdit && (
                   <>
                     <button
@@ -7746,6 +9006,191 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 })}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Supplier Account Statement Modal (for Permitted Reps) */}
+      {selectedSupplierDetail && (() => {
+        const sup = selectedSupplierDetail;
+        const stmt = supplierStatement;
+        const bal = Number(stmt?.summary?.currentBalance ?? sup.currentBalance ?? 0);
+        const dirText =
+          bal > 0.009
+            ? 'رصيد مستحق للمورد (علينا)'
+            : bal < -0.009
+            ? 'دفعة مقدمة عند المورد (لنا)'
+            : 'الحساب متوازن';
+        return (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
+            <div className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 max-h-[88vh] overflow-y-auto space-y-3 text-xs pb-safe">
+              <div className="flex items-start justify-between gap-2 border-b pb-3">
+                <div>
+                  <h4 className="font-black text-base text-slate-900">كشف حساب المورد — {sup.name}</h4>
+                  <p className="text-[11px] text-slate-500">
+                    {sup.companyName ? `${sup.companyName} · ` : ''}
+                    {sup.code}
+                    {sup.phone ? ` · ${sup.phone}` : ''}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSupplierDetail(null)}
+                  className="min-h-[38px] px-3 rounded-xl bg-slate-100 font-bold text-slate-700 cursor-pointer"
+                >
+                  إغلاق
+                </button>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-950 font-bold text-[11px]">
+                رصيد حساب المورد يمثل الرصيد العام على مستوى الشركة، بينما الحركات المعروضة أدناه تخص فواتيرك ومرتجعاتك ودفعاتك فقط.
+              </div>
+
+              {isLoadingSupplierStmt ? (
+                <div className="p-6 text-center text-slate-500 font-bold">جاري تحميل كشف حساب المورد...</div>
+              ) : supStmtError ? (
+                <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold">{supStmtError}</div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-2 text-center tabular-nums">
+                    <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-200">
+                      <span className="text-[10px] text-indigo-800 block">مشترياتك</span>
+                      <strong className="font-mono text-sm text-indigo-950">
+                        {Number(stmt?.summary?.totalPurchases || 0).toLocaleString()}
+                      </strong>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
+                      <span className="text-[10px] text-emerald-800 block">سداد/مرتجعك</span>
+                      <strong className="font-mono text-sm text-emerald-800">
+                        {Number(stmt?.summary?.totalDebit || 0).toLocaleString()}
+                      </strong>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200">
+                      <span className="text-[10px] text-rose-800 block">{dirText}</span>
+                      <strong className="font-mono text-sm text-rose-900">
+                        {Math.abs(bal).toLocaleString()}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div className="border border-slate-200 rounded-2xl overflow-hidden">
+                    {(!stmt?.entries || stmt.entries.length === 0) ? (
+                      <p className="text-center text-slate-400 py-6">لا توجد حركات مسجلة لك مع هذا المورد.</p>
+                    ) : (
+                      <div className="divide-y divide-slate-100 max-h-[42vh] overflow-y-auto">
+                        {stmt.entries.map((entry) => (
+                          <div key={entry.id} className="p-3 space-y-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-black text-slate-900">{entry.label}</span>
+                              <span className="font-mono text-[11px] text-slate-500">
+                                {entry.docNumber} · {entry.date}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-600">{entry.description}</p>
+                            <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] tabular-nums">
+                              <span className="text-rose-700">
+                                {entry.credit ? `له (علينا): ${entry.credit.toLocaleString()}` : ''}
+                              </span>
+                              <span className="text-emerald-700">
+                                {entry.debit ? `سداد/مرتجع: ${entry.debit.toLocaleString()}` : ''}
+                              </span>
+                              <span className="font-black text-indigo-950">
+                                الرصيد: {Math.abs(Number(entry.runningBalance || 0)).toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Purchase Invoice Payment Modal (Only Permitted Rep's Own Confirmed Purchases) */}
+      {payingPurchaseTarget && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
+          <form
+            onSubmit={handleSubmitPurchasePayment}
+            className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 space-y-3 text-xs pb-safe"
+          >
+            <div className="flex items-center justify-between border-b pb-3">
+              <div>
+                <h4 className="font-black text-sm text-slate-900">
+                  تسجيل دفعة سداد — {payingPurchaseTarget.invoiceNumber}
+                </h4>
+                <p className="text-[11px] text-slate-500">
+                  {payingPurchaseTarget.supplierName} · المتبقي:{' '}
+                  {Math.max(0, Number(payingPurchaseTarget.remainingAmount || 0)).toLocaleString()} {data.settings.currency}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPayingPurchaseTarget(null)}
+                className="min-h-[36px] px-3 rounded-xl bg-slate-100 font-bold text-slate-700 cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                مبلغ السداد ({data.settings.currency}) *
+              </label>
+              <input
+                type="number"
+                required
+                min={0.01}
+                max={Math.max(0.01, Number(payingPurchaseTarget.remainingAmount || 0))}
+                step="0.01"
+                value={purPayAmount || ''}
+                onChange={(e) => setPurPayAmount(Math.max(0, Number(e.target.value)))}
+                className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-mono font-black text-center text-emerald-800"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">طريقة السداد</label>
+                <select
+                  value={purPayMethod}
+                  onChange={(e) => setPurPayMethod(e.target.value as any)}
+                  className="w-full min-h-[42px] rounded-xl border border-slate-300 px-2 bg-white font-bold"
+                >
+                  <option value="cash">نقدي</option>
+                  <option value="bank">تحويل بنكي</option>
+                  <option value="cheque">شيك</option>
+                </select>
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">التاريخ</label>
+                <input
+                  type="date"
+                  value={purPayDate}
+                  onChange={(e) => setPurPayDate(e.target.value)}
+                  className="w-full min-h-[42px] rounded-xl border border-slate-300 px-2 font-mono bg-white"
+                />
+              </div>
+            </div>
+
+            <input
+              type="text"
+              value={purPayNotes}
+              onChange={(e) => setPurPayNotes(e.target.value)}
+              placeholder="ملاحظات السداد (اختياري)..."
+              className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+            />
+
+            <button
+              type="submit"
+              disabled={isSubmittingPurPayment}
+              className="w-full min-h-[46px] rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
+            >
+              {isSubmittingPurPayment ? 'جاري التسجيل...' : 'تأكيد تسجيل دفعة السداد'}
+            </button>
+          </form>
         </div>
       )}
 

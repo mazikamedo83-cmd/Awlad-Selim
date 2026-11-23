@@ -222,7 +222,7 @@ router.post(
 router.post(
   '/:id/payments',
   requireStaff,
-  requirePermission('canManageAccounts'),
+  requireAnyPermission('canManageAccounts', 'canManageSales', 'canManagePurchases', 'canCreatePurchase'),
   asyncHandler(async (req, res) => {
     const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
     const invoice = await addInvoicePayment(req.params.id, req.body || {}, req.auth.user, idempotencyKey);

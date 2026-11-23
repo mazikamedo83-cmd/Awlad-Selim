@@ -113,7 +113,10 @@ export async function getStaffBootstrapData(actor) {
   const isAdminOrUserMgr = isAdmin || Boolean(perms.canManageUsers);
   const canViewPersonal = isAdmin || Boolean(perms.canViewPersonalAccounts);
   const isRep = actor.role === 'representative';
-  const canViewSuppliers = isAdmin || Boolean(perms.canManagePurchases || perms.canCreatePurchase || perms.canManageAccounts || perms.canViewReports);
+  const canViewSuppliers = isRep
+    ? Boolean(perms.canCreatePurchase || perms.canManagePurchases)
+    : (isAdmin || Boolean(perms.canManagePurchases || perms.canCreatePurchase || perms.canManageAccounts || perms.canViewReports));
+  const canViewPurchaseReceivers = !isRep || Boolean(perms.canCreatePurchase || perms.canManagePurchases);
   const canViewTreasuryLedger = !isRep && (isAdmin || Boolean(perms.canManageCashboxes || perms.canManageAccounts || perms.canViewReports));
   const canViewChequesInstallments = !isRep && (isAdmin || Boolean(perms.canManageAccounts || perms.canViewReports));
   const canViewHrData = !isRep && (isAdmin || Boolean(perms.canManageEmployees || perms.canManageSalaries || perms.canViewReports));
@@ -152,7 +155,7 @@ export async function getStaffBootstrapData(actor) {
       advPayRes,
       conflictsRes,
       custodyOpsRes,
-      receiversRes,
+      purchaseReceiversList,
     ] = await Promise.all([
       isAdminOrUserMgr ? pool.query('SELECT * FROM users ORDER BY created_at DESC') : Promise.resolve({ rows: [] }),
       pool.query('SELECT * FROM warehouses ORDER BY created_at ASC'),
@@ -180,7 +183,14 @@ export async function getStaffBootstrapData(actor) {
       canViewHrData ? pool.query('SELECT * FROM attendance ORDER BY date DESC LIMIT 1000') : Promise.resolve({ rows: [] }),
       canViewHrData ? pool.query('SELECT * FROM payrolls ORDER BY created_at DESC') : Promise.resolve({ rows: [] }),
       canViewTreasuryLedger ? pool.query('SELECT * FROM expenses_incomes ORDER BY created_at DESC') : Promise.resolve({ rows: [] }),
-      pool.query('SELECT * FROM stock_movements ORDER BY created_at DESC LIMIT 1500'),
+      isRep
+        ? repProfile?.warehouseId
+          ? pool.query(
+              'SELECT * FROM stock_movements WHERE (warehouse_id = $1 OR target_warehouse_id = $1) ORDER BY created_at DESC LIMIT 1500',
+              [repProfile.warehouseId]
+            )
+          : Promise.resolve({ rows: [] })
+        : pool.query('SELECT * FROM stock_movements ORDER BY created_at DESC LIMIT 1500'),
       pool.query('SELECT * FROM system_settings LIMIT 1'),
       listOrders({ user: actor, representativeProfile: repProfile }),
       canViewAuditLogs ? listAuditLogs(300) : Promise.resolve([]),
@@ -191,7 +201,7 @@ export async function getStaffBootstrapData(actor) {
       isRep && repProfile
         ? pool.query('SELECT * FROM rep_custody_operations WHERE representative_id = $1 ORDER BY created_at DESC', [repProfile.id])
         : pool.query('SELECT * FROM rep_custody_operations ORDER BY created_at DESC LIMIT 1000'),
-      pool.query("SELECT id, full_name, role, job_title, is_active, permissions FROM users WHERE is_active = TRUE AND role NOT IN ('customer', 'representative') ORDER BY full_name ASC"),
+      canViewPurchaseReceivers ? listPurchaseReceivers() : Promise.resolve([]),
     ]);
 
     const retItemsMap = new Map();
@@ -264,7 +274,7 @@ export async function getStaffBootstrapData(actor) {
     return {
       mode: 'postgresql-enterprise',
       users: usersRes.rows.map((r) => sanitizeUser(mapPgUserRow(r))),
-      purchaseReceivers: resolvePurchaseReceiversFromUsers(receiversRes.rows.map(mapPgUserRow)),
+      purchaseReceivers: purchaseReceiversList,
       warehouses: whRes.rows.map((w) => ({
         id: w.id,
         name: w.name,
@@ -294,7 +304,12 @@ export async function getStaffBootstrapData(actor) {
         : [],
       invoices: invs,
       invoiceReturns: retRes.rows
-        .filter((r) => !isRep || (allowedCustIdSet?.has(r.party_id) || visibleInvIdSet?.has(r.original_invoice_id)))
+        .filter(
+          (r) =>
+            !isRep ||
+            (r.type === 'sales_return' && allowedCustIdSet?.has(r.party_id)) ||
+            (r.type === 'purchase_return' && canViewSuppliers && visibleInvIdSet?.has(r.original_invoice_id))
+        )
         .map((r) => ({
           id: r.id,
           returnNumber: r.return_number,
@@ -641,14 +656,19 @@ export async function getStaffBootstrapData(actor) {
   const scopedCustomerIdSet = new Set(scopedCustomers.map((c) => c.id));
   const scopedInvoices = isRep
     ? (db.invoices || [])
-        .filter(
-          (inv) =>
-            inv.type === 'sales' ||
-            inv.type === 'quote' ||
-            (repProfile && inv.representativeId === repProfile.id) ||
-            inv.createdBy === actor.id ||
-            inv.sentByUserId === actor.id
-        )
+        .filter((inv) => {
+          if (inv.type === 'sales' || inv.type === 'quote') return true;
+          if (inv.type === 'purchase') {
+            if (!canViewSuppliers) return false;
+            return (
+              (repProfile && inv.representativeId === repProfile.id) ||
+              inv.createdBy === actor.id ||
+              inv.createdBy === actor.fullName ||
+              inv.sentByUserId === actor.id
+            );
+          }
+          return false;
+        })
         .map(sanitizeInvoiceForRepresentative)
     : db.invoices;
   const scopedInvIdSet = new Set(scopedInvoices.map((i) => i.id));
@@ -656,7 +676,7 @@ export async function getStaffBootstrapData(actor) {
   return {
     mode: 'local-json-ledger',
     users: isAdminOrUserMgr ? db.users.map(sanitizeUser) : [],
-    purchaseReceivers: resolvePurchaseReceiversFromUsers(db.users || []),
+    purchaseReceivers: canViewPurchaseReceivers ? resolvePurchaseReceiversFromUsers(db.users || []) : [],
     warehouses: db.warehouses,
     categories: db.categories,
     products: isRep ? (db.products || []).map(sanitizeProductForRepresentative) : db.products,
@@ -664,7 +684,11 @@ export async function getStaffBootstrapData(actor) {
     suppliers: canViewSuppliers ? db.suppliers : [],
     invoices: scopedInvoices,
     invoiceReturns: isRep
-      ? (db.invoiceReturns || []).filter((r) => scopedCustomerIdSet.has(r.partyId) || scopedInvIdSet.has(r.originalInvoiceId))
+      ? (db.invoiceReturns || []).filter(
+          (r) =>
+            (r.type === 'sales_return' && scopedCustomerIdSet.has(r.partyId)) ||
+            (r.type === 'purchase_return' && canViewSuppliers && scopedInvIdSet.has(r.originalInvoiceId))
+        )
       : db.invoiceReturns,
     cashboxes: (db.cashboxes || []).map((c) => sanitizeCashboxForViewer(c, actor)),
     financialTransactions: canViewTreasuryLedger ? db.financialTransactions : [],
@@ -3454,7 +3478,23 @@ export async function settleSupplierAdvance({ supplierId, invoiceId, amount, not
   return out;
 }
 
-export async function getSupplierStatementData(supplierId) {
+export async function getSupplierStatementData(supplierId, actor = null) {
+  if (actor?.role === 'customer') {
+    throw new AppError(403, 'غير مصرح للعملاء بعرض كشف حساب المورد', 'FORBIDDEN_PERMISSION');
+  }
+  const isRep = actor?.role === 'representative';
+  if (isRep && !actor.permissions?.canCreatePurchase && !actor.permissions?.canManagePurchases) {
+    throw new AppError(403, 'عرض كشف حساب المورد متاح فقط للمندوبين المصرح لهم بإنشاء أو إدارة المشتريات', 'FORBIDDEN_REP_SUPPLIER_STATEMENT');
+  }
+  const repProfile = isRep ? await getRepresentativeByUserId(actor.id) : null;
+  const isRepOwnInvoice = (inv) =>
+    Boolean(
+      (repProfile && inv.representativeId === repProfile.id) ||
+        inv.sentByUserId === actor.id ||
+        inv.createdBy === actor.fullName ||
+        inv.createdBy === actor.id
+    );
+
   let supplier = null;
   let invoices = [];
   let returns = [];
@@ -3473,7 +3513,7 @@ export async function getSupplierStatementData(supplierId) {
       address: sRow.address || '',
       openingBalance: round2(sRow.opening_balance || 0),
       currentBalance: round2(sRow.current_balance || 0),
-      notes: sRow.notes || '',
+      notes: isRep ? '' : (sRow.notes || ''),
       status: sRow.status || 'active',
       createdAt: isoTimestamp(sRow.created_at),
     };
@@ -3499,66 +3539,77 @@ export async function getSupplierStatementData(supplierId) {
         payMap.set(py.invoice_id, arr);
       }
     }
-    invoices = invRes.rows.map((r) => mapPgInvoiceRow(r, itemsMap.get(r.id) || [], payMap.get(r.id) || []));
+    const mappedInvs = invRes.rows.map((r) => mapPgInvoiceRow(r, itemsMap.get(r.id) || [], payMap.get(r.id) || []));
+    invoices = isRep ? mappedInvs.filter(isRepOwnInvoice).map(sanitizeInvoiceForRepresentative) : mappedInvs;
+    const allowedInvIds = new Set(invoices.map((i) => i.id));
 
     const retRes = await pool.query(
       `SELECT * FROM invoice_returns WHERE party_id = $1 AND type = 'purchase_return' ORDER BY date DESC, created_at DESC`,
       [supplierId]
     );
-    returns = retRes.rows.map((r) => ({
-      id: r.id,
-      returnNumber: r.return_number,
-      type: r.type,
-      originalInvoiceId: r.original_invoice_id,
-      originalInvoiceNumber: r.original_invoice_number,
-      date: isoDateOnly(r.date),
-      partyId: r.party_id,
-      partyName: r.party_name,
-      grandTotal: round2(r.grand_total || 0),
-      refundType: r.refund_type,
-      reason: r.reason || '',
-      createdAt: isoTimestamp(r.created_at),
-    }));
+    returns = retRes.rows
+      .filter((r) => !isRep || allowedInvIds.has(r.original_invoice_id))
+      .map((r) => ({
+        id: r.id,
+        returnNumber: r.return_number,
+        type: r.type,
+        originalInvoiceId: r.original_invoice_id,
+        originalInvoiceNumber: r.original_invoice_number,
+        date: isoDateOnly(r.date),
+        partyId: r.party_id,
+        partyName: r.party_name,
+        grandTotal: round2(r.grand_total || 0),
+        refundType: r.refund_type,
+        reason: r.reason || '',
+        createdAt: isoTimestamp(r.created_at),
+      }));
 
-    const txRes = await pool.query(
-      `SELECT * FROM financial_transactions WHERE related_entity_id = $1 AND type = 'supplier_payment' ORDER BY date ASC, created_at ASC`,
-      [supplierId]
-    );
-    paymentTxs = txRes.rows.map((r) => ({
-      id: r.id,
-      transactionNumber: r.transaction_number,
-      date: isoDateOnly(r.date),
-      amount: round2(r.amount || 0),
-      relatedDocType: r.related_doc_type,
-      relatedDocId: r.related_doc_id,
-      cashboxName: r.cashbox_name || '',
-      description: r.description || '',
-      notes: r.notes || '',
-      createdAt: isoTimestamp(r.created_at),
-    }));
+    if (!isRep) {
+      const txRes = await pool.query(
+        `SELECT * FROM financial_transactions WHERE related_entity_id = $1 AND type = 'supplier_payment' ORDER BY date ASC, created_at ASC`,
+        [supplierId]
+      );
+      paymentTxs = txRes.rows.map((r) => ({
+        id: r.id,
+        transactionNumber: r.transaction_number,
+        date: isoDateOnly(r.date),
+        amount: round2(r.amount || 0),
+        relatedDocType: r.related_doc_type,
+        relatedDocId: r.related_doc_id,
+        cashboxName: r.cashbox_name || '',
+        description: r.description || '',
+        notes: r.notes || '',
+        createdAt: isoTimestamp(r.created_at),
+      }));
+    }
   } else {
     const db = readJsonDatabase();
     const sRow = (db.suppliers || []).find((s) => s.id === supplierId);
     if (!sRow) throw new AppError(404, 'المورد غير موجود', 'SUPPLIER_NOT_FOUND');
     supplier = {
       ...sRow,
+      notes: isRep ? '' : (sRow.notes || ''),
       openingBalance: round2(sRow.openingBalance || 0),
       currentBalance: round2(sRow.currentBalance || 0),
     };
-    invoices = (db.invoices || [])
+    const allSuppInvs = (db.invoices || [])
       .filter((i) => i.supplierId === supplierId && i.type === 'purchase' && i.status === 'confirmed')
       .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    invoices = isRep ? allSuppInvs.filter(isRepOwnInvoice).map(sanitizeInvoiceForRepresentative) : allSuppInvs;
+    const allowedInvIds = new Set(invoices.map((i) => i.id));
     returns = (db.invoiceReturns || [])
-      .filter((r) => r.partyId === supplierId && r.type === 'purchase_return')
+      .filter((r) => r.partyId === supplierId && r.type === 'purchase_return' && (!isRep || allowedInvIds.has(r.originalInvoiceId)))
       .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
-    paymentTxs = (db.financialTransactions || [])
-      .filter((tx) => (tx.relatedEntityId === supplierId || tx.partyId === supplierId) && tx.type === 'supplier_payment')
-      .sort((a, b) => String(a.createdAt || a.date || '').localeCompare(String(b.createdAt || b.date || '')));
+    if (!isRep) {
+      paymentTxs = (db.financialTransactions || [])
+        .filter((tx) => (tx.relatedEntityId === supplierId || tx.partyId === supplierId) && tx.type === 'supplier_payment')
+        .sort((a, b) => String(a.createdAt || a.date || '').localeCompare(String(b.createdAt || b.date || '')));
+    }
   }
 
   const rawEntries = [];
   const openingBal = round2(supplier.openingBalance || 0);
-  if (openingBal !== 0) {
+  if (!isRep && openingBal !== 0) {
     rawEntries.push({
       id: `OPEN-${supplier.id}`,
       docId: supplier.id,
@@ -3579,8 +3630,6 @@ export async function getSupplierStatementData(supplierId) {
   const confirmedInvIds = new Set(invoices.map((i) => i.id));
   for (const inv of invoices) {
     const invCashAtCreate = round2(inv.paidAtInvoice ?? inv.paidAmount ?? 0);
-    // Count only non-settlement payments recorded directly against the invoice if no separate FT skips them,
-    // actually supplier_payment FT is created for explicit supplier payments; invoice initial payment is in paidAtInvoice / paidAmount excluding advance_settlement
     const nonSettlementPaid = round2(
       Array.isArray(inv.payments) && inv.payments.length > 0
         ? inv.payments
@@ -3599,7 +3648,7 @@ export async function getSupplierStatementData(supplierId) {
       label: `فاتورة مشتريات (${inv.items?.length || 0} صنف)`,
       description:
         nonSettlementPaid > 0
-          ? `إجمالي المشتريات ${round2(inv.grandTotal)} · مسدد عند الفوترة ${nonSettlementPaid}`
+          ? `إجمالي المشتريات ${round2(inv.grandTotal)} · مسدد ${nonSettlementPaid}`
           : `فاتورة مشتريات آجلة — رقم ${inv.invoiceNumber}`,
       credit: round2(inv.grandTotal || 0),
       debit: nonSettlementPaid,
@@ -3687,8 +3736,13 @@ export async function getSupplierStatementData(supplierId) {
     invoices,
     returns,
     entries,
+    scope: {
+      isRepScoped: isRep,
+      accountBalanceScope: 'company_wide',
+      operationsScope: isRep ? 'representative_own_only' : 'company_wide',
+    },
     summary: {
-      openingBalance: openingBal,
+      openingBalance: isRep ? 0 : openingBal,
       totalPurchases,
       totalCredit,
       totalDebit,
@@ -6149,21 +6203,66 @@ export async function getItemMovementReport(filters = {}, actor) {
   let allStockMovements = boot.stockMovements || [];
   let allRepCustodyOperations = boot.repCustodyOperations || [];
 
+  const isRepCanPurchase = !isRep || Boolean(actor?.permissions?.canCreatePurchase || actor?.permissions?.canManagePurchases);
   if (await isPgMode()) {
     const pool = getPool();
     const repProfile = isRep ? await getRepresentativeByUserId(actor.id) : null;
 
-    const smQuery = productIdFilter
-      ? pool.query('SELECT * FROM stock_movements WHERE product_id = $1 ORDER BY created_at DESC', [productIdFilter])
-      : pool.query('SELECT * FROM stock_movements ORDER BY created_at DESC');
+    const smClauses = [];
+    const smParams = [];
+    if (productIdFilter) {
+      smParams.push(productIdFilter);
+      smClauses.push(`product_id = $${smParams.length}`);
+    }
+    if (isRep) {
+      if (repProfile?.warehouseId) {
+        smParams.push(repProfile.warehouseId);
+        smClauses.push(`(warehouse_id = $${smParams.length} OR target_warehouse_id = $${smParams.length})`);
+      } else {
+        smClauses.push(`1 = 0`);
+      }
+    } else if (warehouseIdFilter) {
+      smParams.push(warehouseIdFilter);
+      smClauses.push(`(warehouse_id = $${smParams.length} OR target_warehouse_id = $${smParams.length})`);
+    }
+    if (dateFrom) {
+      smParams.push(dateFrom);
+      smClauses.push(`date >= $${smParams.length}`);
+    }
+    if (dateTo) {
+      smParams.push(dateTo);
+      smClauses.push(`date <= $${smParams.length}`);
+    }
+    const smWhereSql = smClauses.length > 0 ? `WHERE ${smClauses.join(' AND ')}` : '';
+    const smQuery = pool.query(`SELECT * FROM stock_movements ${smWhereSql} ORDER BY created_at DESC`, smParams);
 
-    const opQuery = isRep && repProfile
-      ? productIdFilter
-        ? pool.query('SELECT * FROM rep_custody_operations WHERE representative_id = $1 AND product_id = $2 ORDER BY created_at DESC', [repProfile.id, productIdFilter])
-        : pool.query('SELECT * FROM rep_custody_operations WHERE representative_id = $1 ORDER BY created_at DESC', [repProfile.id])
-      : productIdFilter
-      ? pool.query('SELECT * FROM rep_custody_operations WHERE product_id = $1 ORDER BY created_at DESC', [productIdFilter])
-      : pool.query('SELECT * FROM rep_custody_operations ORDER BY created_at DESC');
+    const opClauses = [];
+    const opParams = [];
+    if (isRep) {
+      if (repProfile?.id) {
+        opParams.push(repProfile.id);
+        opClauses.push(`representative_id = $${opParams.length}`);
+      } else {
+        opClauses.push(`1 = 0`);
+      }
+    } else if (repIdFilter) {
+      opParams.push(repIdFilter);
+      opClauses.push(`representative_id = $${opParams.length}`);
+    }
+    if (productIdFilter) {
+      opParams.push(productIdFilter);
+      opClauses.push(`product_id = $${opParams.length}`);
+    }
+    if (dateFrom) {
+      opParams.push(dateFrom);
+      opClauses.push(`date >= $${opParams.length}`);
+    }
+    if (dateTo) {
+      opParams.push(dateTo);
+      opClauses.push(`date <= $${opParams.length}`);
+    }
+    const opWhereSql = opClauses.length > 0 ? `WHERE ${opClauses.join(' AND ')}` : '';
+    const opQuery = pool.query(`SELECT * FROM rep_custody_operations ${opWhereSql} ORDER BY created_at DESC`, opParams);
 
     const [smFullRes, opFullRes] = await Promise.all([smQuery, opQuery]);
     allStockMovements = smFullRes.rows
@@ -6279,7 +6378,7 @@ export async function getItemMovementReport(filters = {}, actor) {
   for (const inv of boot.invoices || []) {
     if (inv.status !== 'confirmed') continue;
     if (inv.type !== 'sales' && inv.type !== 'purchase') continue;
-    if (isRep && inv.type === 'purchase') continue;
+    if (isRep && inv.type === 'purchase' && !isRepCanPurchase) continue;
 
     for (const it of inv.items || []) {
       const prod = productMap.get(it.productId);
@@ -6338,7 +6437,7 @@ export async function getItemMovementReport(filters = {}, actor) {
   // 2. Invoice Returns (Sales Returns & Purchase Returns)
   for (const ret of boot.invoiceReturns || []) {
     const isSalesRet = ret.type === 'sales_return';
-    if (isRep && !isSalesRet) continue;
+    if (isRep && !isSalesRet && !isRepCanPurchase) continue;
     for (const it of ret.items || []) {
       const prod = productMap.get(it.productId);
       const baseQty = round3(Number(it.quantity || 0) * Number(it.unitFactor || 1));
@@ -6680,12 +6779,12 @@ export async function getItemMovementReport(filters = {}, actor) {
     totals: {
       totalSalesQty,
       totalSalesValue,
-      totalPurchaseQty: isRep ? 0 : totalPurchaseQty,
-      totalPurchaseValue: isRep ? 0 : totalPurchaseValue,
+      totalPurchaseQty: isRep && !isRepCanPurchase ? 0 : totalPurchaseQty,
+      totalPurchaseValue: isRep && !isRepCanPurchase ? 0 : totalPurchaseValue,
       totalSalesReturnQty,
       totalSalesReturnValue,
-      totalPurchaseReturnQty: isRep ? 0 : totalPurchaseReturnQty,
-      totalPurchaseReturnValue: isRep ? 0 : totalPurchaseReturnValue,
+      totalPurchaseReturnQty: isRep && !isRepCanPurchase ? 0 : totalPurchaseReturnQty,
+      totalPurchaseReturnValue: isRep && !isRepCanPurchase ? 0 : totalPurchaseReturnValue,
       totalCostOfGoodsSold: netCostOfGoodsSold,
       totalProfit,
       totalQtyIn,

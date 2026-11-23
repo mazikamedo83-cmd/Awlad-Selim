@@ -132,6 +132,8 @@ export const MobilePortal: React.FC = () => {
         item.targetTab === 'custody' ||
         item.targetTab === 'invoices' ||
         item.targetTab === 'purchases-list' ||
+        item.targetTab === 'suppliers' ||
+        item.targetTab === 'rep-reports' ||
         item.targetTab === 'customers' ||
         item.targetTab === 'new-invoice' ||
         item.targetTab === 'orders' ||
@@ -177,8 +179,12 @@ export const MobilePortal: React.FC = () => {
         { key: 'orders', label: 'الطلبات والتسليمات', icon: ClipboardList, active: repTab === 'orders', onSelect: () => requestRepTabChange('orders') },
         { key: 'invoices', label: 'سجل فواتير المبيعات', icon: FileText, active: repTab === 'invoices', onSelect: () => requestRepTabChange('invoices') },
         ...(currentUser?.role === 'admin' || hasPermission('canManagePurchases') || hasPermission('canCreatePurchase')
-          ? [{ key: 'purchases-list', label: 'فواتير الشراء', icon: Receipt, active: repTab === 'purchases-list', onSelect: () => requestRepTabChange('purchases-list') }]
+          ? [
+              { key: 'purchases-list', label: 'فواتير الشراء', icon: Receipt, active: repTab === 'purchases-list', onSelect: () => requestRepTabChange('purchases-list') },
+              { key: 'suppliers', label: 'الموردون وكشف الحساب', icon: Users, active: repTab === 'suppliers', onSelect: () => requestRepTabChange('suppliers') },
+            ]
           : []),
+        { key: 'rep-reports', label: 'تقارير المندوب', icon: FileText, active: repTab === 'rep-reports', onSelect: () => requestRepTabChange('rep-reports') },
         { key: 'custody', label: 'المخزن والعهدة والتحويلات', icon: ArrowLeftRight, active: repTab === 'custody', onSelect: () => requestRepTabChange('custody') },
         { key: 'more', label: 'المزيد والإعدادات', icon: LayoutGrid, active: repTab === 'more', onSelect: () => requestRepTabChange('more') },
       ]

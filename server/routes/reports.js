@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   getComprehensiveReport,
   getSourceDocumentForReport,
+  getRepDetailedReport,
 } from '../db/stores/reportsStore.js';
 import {
   requireAuth,
@@ -25,6 +26,29 @@ function checkReportsAccess(req, res) {
   }
   return true;
 }
+
+router.get(
+  '/rep-summary',
+  asyncHandler(async (req, res) => {
+    const q = req.query || {};
+    const report = await getRepDetailedReport(
+      {
+        dateFrom: typeof q.dateFrom === 'string' ? q.dateFrom : undefined,
+        dateTo: typeof q.dateTo === 'string' ? q.dateTo : undefined,
+        customerId: typeof q.customerId === 'string' ? q.customerId : undefined,
+        supplierId: typeof q.supplierId === 'string' ? q.supplierId : undefined,
+        productId: typeof q.productId === 'string' ? q.productId : undefined,
+        invoiceNumber: typeof q.invoiceNumber === 'string' ? q.invoiceNumber : undefined,
+        opType: typeof q.opType === 'string' ? q.opType : undefined,
+        paymentStatus: typeof q.paymentStatus === 'string' ? q.paymentStatus : undefined,
+        invoiceStatus: typeof q.invoiceStatus === 'string' ? q.invoiceStatus : undefined,
+        search: typeof q.search === 'string' ? q.search : undefined,
+      },
+      req.auth.user
+    );
+    res.json({ ok: true, report });
+  })
+);
 
 router.get(
   '/comprehensive',

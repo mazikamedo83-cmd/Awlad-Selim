@@ -2001,7 +2001,7 @@ export async function getCustomerProductPriceHistory(customerId) {
   if (await isPgMode()) {
     const pool = getPool();
     const res = await pool.query(
-      `SELECT i.id, i.invoice_number, i.date, i.created_at, it.product_id, it.unit, it.unit_price
+      `SELECT i.id, i.invoice_number, i.date, i.created_at, it.product_id, it.unit, it.unit_factor, it.quantity, it.unit_price
        FROM invoices i
        JOIN invoice_items it ON it.invoice_id = i.id
        WHERE i.customer_id = $1 AND i.type = 'sales' AND i.status = 'confirmed'
@@ -2012,9 +2012,11 @@ export async function getCustomerProductPriceHistory(customerId) {
       const list = historyMap[row.product_id] || [];
       list.push({
         price: Number(row.unit_price || 0),
+        quantity: Number(row.quantity || 0),
         date: row.date instanceof Date ? row.date.toISOString().split('T')[0] : String(row.date || '').split('T')[0],
         invoiceNumber: row.invoice_number,
         unit: row.unit || '',
+        unitFactor: Number(row.unit_factor || 1),
       });
       if (list.length > 3) list.shift();
       historyMap[row.product_id] = list;
@@ -2029,9 +2031,11 @@ export async function getCustomerProductPriceHistory(customerId) {
         const list = historyMap[it.productId] || [];
         list.push({
           price: Number(it.unitPrice || 0),
+          quantity: Number(it.quantity || 0),
           date: inv.date || '',
           invoiceNumber: inv.invoiceNumber || '',
           unit: it.unit || '',
+          unitFactor: Number(it.unitFactor || 1),
         });
         if (list.length > 3) list.shift();
         historyMap[it.productId] = list;
@@ -2047,15 +2051,19 @@ export async function getCustomerProductPriceHistory(customerId) {
         typeof entry === 'object' && entry !== null
           ? {
               price: Number(entry.price || 0),
+              quantity: entry.quantity !== undefined ? Number(entry.quantity || 0) : 0,
               date: String(entry.date || ''),
               invoiceNumber: String(entry.invoiceNumber || 'مسجل مسبقاً'),
               unit: String(entry.unit || ''),
+              unitFactor: entry.unitFactor !== undefined ? Number(entry.unitFactor || 1) : 1,
             }
           : {
               price: Number(entry || 0),
+              quantity: 0,
               date: String(customer.createdAt || '').split('T')[0],
               invoiceNumber: 'سجل تاريخي',
               unit: '',
+              unitFactor: 1,
             }
       );
     }

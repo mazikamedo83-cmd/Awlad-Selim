@@ -37,24 +37,24 @@ export interface ReportsViewProps {
 
 export const REPORT_TYPE_OPTIONS: ComprehensiveReportOption[] = [
   { key: 'all', label: 'الكل', group: 1 },
-  { key: 'sales_items', label: 'اصناف البيع', group: 1 },
+  { key: 'sales_items', label: 'أصناف البيع', group: 1 },
   { key: 'sales_invoices', label: 'فواتير بيع', group: 1 },
-  { key: 'sales_items_by_unit', label: 'اصناف بيع/ بالوحدة', group: 1 },
-  { key: 'sales_items_grouped', label: 'اصناف بيع/مَجمع', group: 1 },
-  { key: 'sales_items_grouped_by_customer', label: 'اصناف بيع/مَجمع حسب العميل', group: 1 },
-  { key: 'sales_items_grouped_by_category', label: 'اصناف بيع/مَجمع حسب المجموعة', group: 1 },
-  { key: 'sales_items_grouped_by_category_class1', label: 'اصناف بيع/مَجمع حسب المجموعة وتصنيف 1', group: 1 },
+  { key: 'sales_items_by_unit', label: 'أصناف بيع/ بالوحدة', group: 1 },
+  { key: 'sales_items_grouped', label: 'أصناف بيع/مَجمع', group: 1 },
+  { key: 'sales_items_grouped_by_customer', label: 'أصناف بيع/مَجمع حسب العميل', group: 1 },
+  { key: 'sales_items_grouped_by_category', label: 'أصناف بيع/مَجمع حسب المجموعة', group: 1 },
+  { key: 'sales_items_grouped_by_category_class1', label: 'أصناف بيع/مَجمع حسب المجموعة وتصنيف 1', group: 1 },
 
-  { key: 'sales_return_items', label: 'اصناف مرتجع بيع', group: 2 },
+  { key: 'sales_return_items', label: 'أصناف مرتجع بيع', group: 2 },
   { key: 'sales_return_invoices', label: 'فواتير مرتجع بيع', group: 2 },
 
-  { key: 'purchase_items', label: 'اصناف شراء', group: 3 },
+  { key: 'purchase_items', label: 'أصناف شراء', group: 3 },
   { key: 'purchase_invoices', label: 'فواتير شراء', group: 3 },
 
-  { key: 'purchase_return_items', label: 'اصناف مرتجع شراء', group: 4 },
+  { key: 'purchase_return_items', label: 'أصناف مرتجع شراء', group: 4 },
   { key: 'purchase_return_invoices', label: 'فواتير مرتجع شراء', group: 4 },
 
-  { key: 'damaged_items', label: 'اصناف تالف', group: 5 },
+  { key: 'damaged_items', label: 'أصناف تالف', group: 5 },
   { key: 'damaged_invoices', label: 'فواتير تالف', group: 5 },
 
   { key: 'cash_payment', label: 'سداد نقدى', group: 6 },
@@ -141,7 +141,16 @@ function addDaysYmd(ymd: string, delta: number): string {
 
 export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialProductId }) => {
   const { settings } = useData();
-  const { hasPermission } = useAuth();
+  const { currentUser, hasPermission } = useAuth();
+  const isRepRole = currentUser?.role === 'representative';
+  const visibleColumns = useMemo(
+    () =>
+      isRepRole
+        ? TABLE_COLUMNS.filter((c) => c.key !== 'profit' && c.key !== 'profitPercent' && c.key !== 'cashboxName')
+        : TABLE_COLUMNS,
+    [isRepRole]
+  );
+  const visibleColSpan = visibleColumns.length;
   const currency = settings.currency || 'ج.م';
 
   const [viewMode, setViewMode] = useState<'unified_grid' | 'item_lifecycle'>(
@@ -362,17 +371,17 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
 
     return {
       showWarehouse: !isCashOnly,
-      showCashbox: !isDamaged,
+      showCashbox: !isDamaged && !isRepRole,
       showProductFilters: !isCashOnly,
       showCustomer: reportType === 'all' || isSalesOnly || isCashCustomer || reportType === 'cash_payment' || reportType === 'cash_withdrawal',
-      showSupplier: reportType === 'all' || isPurchaseOnly || isCashSupplier || reportType === 'cash_payment' || reportType === 'cash_withdrawal',
-      showRepresentative: reportType === 'all' || isSalesOnly || isDamaged || (!isCashSupplier && !isCashEmployee),
-      showEmployee: true,
-      showUser: true,
+      showSupplier: !isRepRole ? (reportType === 'all' || isPurchaseOnly || isCashSupplier || reportType === 'cash_payment' || reportType === 'cash_withdrawal') : ((hasPermission('canCreatePurchase') || hasPermission('canManagePurchases')) && (reportType === 'all' || isPurchaseOnly)),
+      showRepresentative: !isRepRole && (reportType === 'all' || isSalesOnly || isDamaged || (!isCashSupplier && !isCashEmployee)),
+      showEmployee: !isRepRole,
+      showUser: !isRepRole,
       showInvoiceNumber: !isCashEmployee,
       showRecordId: true,
     };
-  }, [reportType]);
+  }, [reportType, isRepRole, hasPermission]);
 
   // Apply optional inline search + sorting within each section
   const processedSections = useMemo(() => {
@@ -456,7 +465,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
     const secsToExport = sourceReport ? sourceReport.sections : processedSections;
     const sumToExport = sourceReport ? sourceReport.summary : reportData?.summary;
 
-    const headers = TABLE_COLUMNS.map((c) => c.label);
+    const headers = visibleColumns.map((c) => c.label);
     const rows: Array<Array<string | number>> = [];
 
     // Header info rows for Excel clarity
@@ -468,7 +477,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
         rows.push(['', '', '', '', 'اجمالى', 'مدفوع', 'آجل']);
       }
       for (const r of sec.rows) {
-        rows.push([
+        const baseRow: Array<string | number> = [
           r.operationLabel,
           r.quantity,
           r.unit,
@@ -479,16 +488,17 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
           r.employeeName,
           r.userName,
           r.businessDate,
-          r.profit,
+          ...(isRepRole ? [] : [r.profit]),
           r.barcode,
           r.displayId,
           r.invoiceNumber,
           r.branchName,
-          r.cashboxName,
+          ...(isRepRole ? [] : [r.cashboxName]),
           r.notes,
           r.discount,
-          `${r.profitPercent}%`,
-        ]);
+          ...(isRepRole ? [] : [`${r.profitPercent}%`]),
+        ];
+        rows.push(baseRow);
       }
       rows.push([
         'الإجمالي',
@@ -501,19 +511,19 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
         '',
         '',
         '',
-        sec.totals.profit,
+        ...(isRepRole ? [] : [sec.totals.profit]),
         '',
         '',
         '',
         '',
-        '',
+        ...(isRepRole ? [] : ['']),
         '',
         sec.totals.discount,
-        `${sec.totals.profitPercent}%`,
+        ...(isRepRole ? [] : [`${sec.totals.profitPercent}%`]),
       ]);
     }
 
-    if (sumToExport) {
+    if (sumToExport && !isRepRole) {
       rows.push([]);
       rows.push(['رصيد الدرج', sumToExport.drawerBalance, 'رصيد التقرير', sumToExport.reportBalance, 'مرحل من الأمس', sumToExport.carriedFromYesterday, 'ربح التقرير', sumToExport.reportProfit]);
     }
@@ -529,10 +539,24 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
     const secsToExport = sourceReport ? sourceReport.sections : processedSections;
     const sumToExport = sourceReport ? sourceReport.summary : reportData?.summary;
 
-    const headers = TABLE_COLUMNS.map((c) => c.label);
+    const headers = visibleColumns.map((c) => c.label);
     const rows: Array<Array<string | number>> = [];
     for (const sec of secsToExport) {
-      rows.push([`[ ${sec.title} ]`, sec.totals.quantity, '', '', sec.totals.priceOrTotal ?? '-', sec.totals.valueOrPaid, sec.totals.remaining ?? '-', '', sec.totals.profit, '', '', '', sec.totals.discount]);
+      rows.push([
+        `[ ${sec.title} ]`,
+        sec.totals.quantity,
+        '',
+        '',
+        sec.totals.priceOrTotal ?? '-',
+        sec.totals.valueOrPaid,
+        sec.totals.remaining ?? '-',
+        '',
+        ...(isRepRole ? [] : [sec.totals.profit]),
+        '',
+        '',
+        '',
+        sec.totals.discount,
+      ]);
       for (const r of sec.rows) {
         rows.push([
           r.operationLabel,
@@ -543,10 +567,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
           fmtMoney(r.valueOrPaid),
           typeof r.movementOrRemaining === 'number' ? fmtMoney(r.movementOrRemaining) : r.movementOrRemaining,
           r.userName,
-          fmtMoney(r.profit),
+          ...(isRepRole ? [] : [fmtMoney(r.profit)]),
           r.invoiceNumber,
           r.branchName,
-          r.cashboxName,
+          ...(isRepRole ? [] : [r.cashboxName]),
           fmtMoney(r.discount),
         ]);
       }
@@ -556,12 +580,17 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
       companyName: settings.companyName || 'AWLAD SELIM — أولاد سليم',
       subtitle: 'نظام التقارير الشامل والموحد',
       dateRangeText: `من: ${dateFrom || 'البداية'} إلى: ${useDateTo ? dateTo : 'الآن'}`,
-      summaryPairs: sumToExport
+      summaryPairs: sumToExport && !isRepRole
         ? [
             { label: 'رصيد الدرج', value: `${fmtMoney(sumToExport.drawerBalance)} ${currency}` },
             { label: 'رصيد التقرير', value: `${fmtMoney(sumToExport.reportBalance)} ${currency}` },
             { label: 'مرحل من الأمس', value: `${fmtMoney(sumToExport.carriedFromYesterday)} ${currency}` },
             { label: 'ربح التقرير', value: `${fmtMoney(sumToExport.reportProfit)} ${currency}`, highlight: true },
+          ]
+        : sumToExport
+        ? [
+            { label: 'صافي المبيعات', value: `${fmtMoney(sumToExport.filteredSalesNet)} ${currency}`, highlight: true },
+            { label: 'عدد الحركات', value: String(sumToExport.totalRows ?? 0) },
           ]
         : [],
     });
@@ -1092,7 +1121,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
             <table className="w-full border-collapse text-[11.5px] min-w-[1680px]">
               <thead className="sticky top-0 z-20 bg-[#eef1f4] text-slate-800 border-b-2 border-slate-400">
                 <tr>
-                  {TABLE_COLUMNS.map((col) => (
+                  {visibleColumns.map((col) => (
                     <th
                       key={col.key}
                       onClick={() => handleSort(col.key)}
@@ -1112,7 +1141,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
               <tbody>
                 {processedSections.length === 0 && !isLoading && (
                   <tr>
-                    <td colSpan={19} className="p-10 text-center text-slate-500 font-bold text-sm">
+                    <td colSpan={visibleColSpan} className="p-10 text-center text-slate-500 font-bold text-sm">
                       لا توجد حركات مطابقة لمعايير البحث والتصفية الحالية.
                     </td>
                   </tr>
@@ -1126,7 +1155,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                     <React.Fragment key={section.key}>
                       {/* Section Header Banner Row */}
                       <tr className={`${headerBg} font-extrabold text-xs`}>
-                        <td colSpan={19} className="px-3 py-1.5 border-y border-slate-400">
+                        <td colSpan={visibleColSpan} className="px-3 py-1.5 border-y border-slate-400">
                           <div className="flex items-center justify-between">
                             <span>{section.title}</span>
                             <span className="text-[11px] opacity-90 font-mono">({section.rows.length})</span>
@@ -1144,14 +1173,14 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                           <td className="px-2 py-1 border-l border-slate-300 text-center bg-slate-200/70">اجمالى</td>
                           <td className="px-2 py-1 border-l border-slate-300 text-center bg-slate-200/70">مدفوع</td>
                           <td className="px-2 py-1 border-l border-slate-300 text-center bg-slate-200/70">آجل</td>
-                          <td colSpan={12} className="px-2 py-1" />
+                          <td colSpan={isRepRole ? 9 : 12} className="px-2 py-1" />
                         </tr>
                       )}
 
                       {/* Data Rows */}
                       {section.rows.length === 0 ? (
                         <tr className="bg-slate-50 text-slate-400">
-                          <td colSpan={19} className="px-3 py-3 text-center text-xs">
+                          <td colSpan={visibleColSpan} className="px-3 py-3 text-center text-xs">
                             لا توجد سجلات في قسم ({section.title}) ضمن هذه الفترة
                           </td>
                         </tr>
@@ -1190,7 +1219,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                               <td className="px-2 py-1.5 border-l border-slate-200 text-center whitespace-nowrap">
                                 {r.unit}
                               </td>
-                              {/* 4. التاريخ الفعلى (MANDATORY Column 4 exact title & date+time) */}
+                              {/* 4. التاريخ الفعلى */}
                               <td className="px-2 py-1.5 border-l border-slate-200 text-center font-mono text-[11px] whitespace-nowrap text-slate-700">
                                 {r.actualDateTime}
                               </td>
@@ -1221,17 +1250,19 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                                 {r.businessDate}
                               </td>
                               {/* 11. الربح */}
-                              <td
-                                className={`px-2 py-1.5 border-l border-slate-200 text-center font-mono font-bold whitespace-nowrap ${
-                                  r.profit > 0
-                                    ? 'text-emerald-700'
-                                    : r.profit < 0
-                                    ? 'text-rose-700'
-                                    : 'text-slate-500'
-                                }`}
-                              >
-                                {fmtMoney(r.profit)}
-                              </td>
+                              {!isRepRole && (
+                                <td
+                                  className={`px-2 py-1.5 border-l border-slate-200 text-center font-mono font-bold whitespace-nowrap ${
+                                    r.profit > 0
+                                      ? 'text-emerald-700'
+                                      : r.profit < 0
+                                      ? 'text-rose-700'
+                                      : 'text-slate-500'
+                                  }`}
+                                >
+                                  {fmtMoney(r.profit)}
+                                </td>
+                              )}
                               {/* 12. الباركود */}
                               <td className="px-2 py-1.5 border-l border-slate-200 text-center font-mono whitespace-nowrap text-slate-600">
                                 {r.barcode || '-'}
@@ -1249,9 +1280,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                                 {r.branchName}
                               </td>
                               {/* 16. الخزنة */}
-                              <td className="px-2 py-1.5 border-l border-slate-200 text-center whitespace-nowrap">
-                                {r.cashboxName}
-                              </td>
+                              {!isRepRole && (
+                                <td className="px-2 py-1.5 border-l border-slate-200 text-center whitespace-nowrap">
+                                  {r.cashboxName}
+                                </td>
+                              )}
                               {/* 17. ملاحظات */}
                               <td className="px-2 py-1.5 border-l border-slate-200 whitespace-nowrap text-slate-600">
                                 {r.notes || ''}
@@ -1261,9 +1294,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                                 {r.discount ? fmtMoney(r.discount) : '0'}
                               </td>
                               {/* 19. نسبة الربح */}
-                              <td className="px-2 py-1.5 text-center font-mono whitespace-nowrap font-bold text-slate-700">
-                                {r.profitPercent !== 0 ? `(${r.profitPercent}%)` : '(0%)'}
-                              </td>
+                              {!isRepRole && (
+                                <td className="px-2 py-1.5 text-center font-mono whitespace-nowrap font-bold text-slate-700">
+                                  {r.profitPercent !== 0 ? `(${r.profitPercent}%)` : '(0%)'}
+                                </td>
+                              )}
                             </tr>
                           );
                         })
@@ -1285,12 +1320,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                           {section.totals.remaining !== null ? fmtMoney(section.totals.remaining) : ''}
                         </td>
                         <td colSpan={3} className="px-2 py-1.5 border-l border-slate-300" />
-                        <td className={`px-2 py-1.5 border-l border-slate-300 text-center font-mono ${section.totals.profit >= 0 ? 'text-emerald-800' : 'text-rose-700'}`}>
-                          {fmtMoney(section.totals.profit)}
-                        </td>
-                        <td colSpan={6} className="px-2 py-1.5 border-l border-slate-300" />
+                        {!isRepRole && (
+                          <td className={`px-2 py-1.5 border-l border-slate-300 text-center font-mono ${section.totals.profit >= 0 ? 'text-emerald-800' : 'text-rose-700'}`}>
+                            {fmtMoney(section.totals.profit)}
+                          </td>
+                        )}
+                        <td colSpan={isRepRole ? 5 : 6} className="px-2 py-1.5 border-l border-slate-300" />
                         <td className="px-2 py-1.5 border-l border-slate-300 text-center font-mono">{fmtMoney(section.totals.discount)}</td>
-                        <td className="px-2 py-1.5 text-center font-mono">({section.totals.profitPercent}%)</td>
+                        {!isRepRole && (
+                          <td className="px-2 py-1.5 text-center font-mono">({section.totals.profitPercent}%)</td>
+                        )}
                       </tr>
                     </React.Fragment>
                   );
@@ -1303,37 +1342,54 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
 
       {/* FIXED BOTTOM BAR: Cashbox Balances + Report Selector («نوع التقرير») + عرض التقرير */}
       <div className="bg-[#eef0f3] border border-slate-400 rounded-xl p-2.5 shadow-sm flex flex-wrap items-center justify-between gap-2.5">
-        {/* 4 Summary Boxes matching Brand Store Reference */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 flex-1 min-w-[280px]">
-          <div className="bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs">
-            <span className="block text-[11px] font-bold text-slate-600">رصيد الدرج</span>
-            <strong className="text-sm sm:text-base font-black font-mono text-slate-900">
-              {fmtMoney(summary?.drawerBalance)}
-            </strong>
-          </div>
+        {/* 4 Summary Boxes matching Brand Store Reference (hidden financial/profit boxes for rep role) */}
+        {!isRepRole ? (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 flex-1 min-w-[280px]">
+            <div className="bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs">
+              <span className="block text-[11px] font-bold text-slate-600">رصيد الدرج</span>
+              <strong className="text-sm sm:text-base font-black font-mono text-slate-900">
+                {fmtMoney(summary?.drawerBalance)}
+              </strong>
+            </div>
 
-          <div className="bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs">
-            <span className="block text-[11px] font-bold text-slate-600">رصيد التقرير</span>
-            <strong className={`text-sm sm:text-base font-black font-mono ${(summary?.reportBalance ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-              {fmtMoney(summary?.reportBalance)}
-            </strong>
-          </div>
+            <div className="bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs">
+              <span className="block text-[11px] font-bold text-slate-600">رصيد التقرير</span>
+              <strong className={`text-sm sm:text-base font-black font-mono ${(summary?.reportBalance ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                {fmtMoney(summary?.reportBalance)}
+              </strong>
+            </div>
 
-          <div className="bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs">
-            <span className="block text-[11px] font-bold text-slate-600">مرحل من الأمس</span>
-            <strong className="text-sm sm:text-base font-black font-mono text-blue-900">
-              {fmtMoney(summary?.carriedFromYesterday)}
-            </strong>
-          </div>
+            <div className="bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs">
+              <span className="block text-[11px] font-bold text-slate-600">مرحل من الأمس</span>
+              <strong className="text-sm sm:text-base font-black font-mono text-blue-900">
+                {fmtMoney(summary?.carriedFromYesterday)}
+              </strong>
+            </div>
 
-          <div className="bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs">
-            <span className="block text-[11px] font-bold text-slate-600">ربح التقرير</span>
-            <strong className={`text-sm sm:text-base font-black font-mono ${(summary?.reportProfit ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-              {fmtMoney(summary?.reportProfit)}
-              <span className="text-[10px] text-slate-500 mr-1">({summary?.reportProfitPercent ?? 0}%)</span>
-            </strong>
+            <div className="bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs">
+              <span className="block text-[11px] font-bold text-slate-600">ربح التقرير</span>
+              <strong className={`text-sm sm:text-base font-black font-mono ${(summary?.reportProfit ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                {fmtMoney(summary?.reportProfit)}
+                <span className="text-[10px] text-slate-500 mr-1">({summary?.reportProfitPercent ?? 0}%)</span>
+              </strong>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2 flex-1 min-w-[240px]">
+            <div className="bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs">
+              <span className="block text-[11px] font-bold text-slate-600">صافي المبيعات</span>
+              <strong className="text-sm font-black font-mono text-emerald-700">
+                {fmtMoney(summary?.filteredSalesNet)}
+              </strong>
+            </div>
+            <div className="bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs">
+              <span className="block text-[11px] font-bold text-slate-600">عدد الحركات</span>
+              <strong className="text-sm font-black font-mono text-blue-900">
+                {summary?.totalRows ?? 0}
+              </strong>
+            </div>
+          </div>
+        )}
 
         {/* Single Unified Dropdown «نوع التقرير» with Exact Order & Dividers + عرض التقرير */}
         <div className="flex items-center gap-2 flex-wrap">

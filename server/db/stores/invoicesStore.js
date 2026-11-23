@@ -165,9 +165,11 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
           const hist = Array.isArray(priceHistory[item.productId]) ? [...priceHistory[item.productId]] : [];
           hist.push({
             price: Number(item.unitPrice || 0),
+            quantity: Number(item.quantity || 0),
             date: invoice.date || todayIso(),
             invoiceNumber: invoice.invoiceNumber || '',
             unit: item.unit || '',
+            unitFactor: Number(item.unitFactor || 1),
           });
           if (hist.length > 3) hist.shift();
           priceHistory[item.productId] = hist;
@@ -382,9 +384,11 @@ export function applyConfirmedEffectsJsonTx(db, invoice, actor) {
           const prev = Array.isArray(priceHistory[item.productId]) ? [...priceHistory[item.productId]] : [];
           prev.push({
             price: Number(item.unitPrice || 0),
+            quantity: Number(item.quantity || 0),
             date: invoice.date || todayIso(),
             invoiceNumber: invoice.invoiceNumber || '',
             unit: item.unit || '',
+            unitFactor: Number(item.unitFactor || 1),
           });
           if (prev.length > 3) prev.shift();
           priceHistory[item.productId] = prev;
@@ -3630,6 +3634,40 @@ export async function markInvoiceReviewed(invoiceId, { notes = '' } = {}, actor)
   return updated;
 }
 
+function assertInvoicePaymentAuthorized({ invType, invRepId, invSentByUserId, invCreatedBy }, actor, repProfile) {
+  if (!actor || actor.role === 'customer') {
+    throw new AppError(403, 'غير مصرح للعملاء بتسجيل دفعات على الفواتير', 'FORBIDDEN');
+  }
+  const perms = actor.permissions || {};
+  if (actor.role === 'representative') {
+    if (invType === 'sales') {
+      if (!perms.canManageSales && !perms.canManageAccounts) {
+        throw new AppError(403, 'ليس لديك صلاحية تحصيل دفعات فواتير المبيعات', 'FORBIDDEN_PERMISSION');
+      }
+      return;
+    }
+    if (invType === 'purchase') {
+      if (!perms.canCreatePurchase && !perms.canManagePurchases) {
+        throw new AppError(403, 'ليس لديك صلاحية إدارة أو سداد فواتير المشتريات', 'FORBIDDEN_PERMISSION');
+      }
+      const isOwnPurchase =
+        (repProfile?.id && invRepId === repProfile.id) ||
+        (actor.id && invSentByUserId === actor.id) ||
+        (actor.fullName && invCreatedBy === actor.fullName) ||
+        (actor.id && invCreatedBy === actor.id);
+      if (!isOwnPurchase) {
+        throw new AppError(403, 'غير مصرح للمندوب بسداد فاتورة مشتريات لا تخصه', 'FORBIDDEN_REP_INVOICE_ACCESS');
+      }
+      return;
+    }
+    throw new AppError(403, 'نوع الفاتورة غير مصرح به لتسجيل الدفع', 'FORBIDDEN_PERMISSION');
+  }
+  if (actor.role === 'admin' || perms.canManageAccounts) return;
+  if (invType === 'sales' && perms.canManageSales) return;
+  if (invType === 'purchase' && perms.canManagePurchases) return;
+  throw new AppError(403, 'ليس لديك صلاحية تسجيل دفعات على هذه الفاتورة', 'FORBIDDEN_PERMISSION');
+}
+
 export async function addInvoicePaymentPgTx(client, invoiceId, paymentData, actor, idempotencyKey = '', options = {}) {
   const amount = round2(paymentData.amount);
   if (amount <= 0) throw new AppError(400, 'مبلغ الدفعة يجب أن يكون أكبر من الصفر', 'INVALID_AMOUNT');
@@ -3641,18 +3679,40 @@ export async function addInvoicePaymentPgTx(client, invoiceId, paymentData, acto
 
   if (scopedIdem) {
     const dup = await findPgIdempotency(client, scopedIdem);
-    if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice };
+    if (dup?.invoice) {
+      return {
+        deduplicated: true,
+        invoice: actor?.role === 'representative' ? sanitizeInvoiceForRepresentative(dup.invoice) : dup.invoice,
+      };
+    }
   }
 
   const invRes = await client.query(`SELECT * FROM invoices WHERE id = $1 FOR UPDATE`, [invoiceId]);
   const inv = invRes.rows[0];
   if (!inv) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
+
+  let repProfile = null;
+  if (actor?.role === 'representative') {
+    const repRow = (await client.query(`SELECT id FROM representatives WHERE user_id = $1 LIMIT 1`, [actor.id])).rows[0];
+    repProfile = repRow ? { id: repRow.id } : null;
+  }
+  assertInvoicePaymentAuthorized(
+    {
+      invType: inv.type,
+      invRepId: inv.representative_id,
+      invSentByUserId: inv.sent_by_user_id,
+      invCreatedBy: inv.created_by,
+    },
+    actor,
+    repProfile
+  );
+
   if (inv.status !== 'confirmed') throw new AppError(409, 'لا يمكن تسجيل دفعة إلا على فاتورة معتمدة', 'INVOICE_NOT_CONFIRMED');
   if (amount > round2(inv.remaining_amount) + 0.01) {
     throw new AppError(400, `قيمة الدفعة (${amount}) تتجاوز المتبقي (${inv.remaining_amount})`, 'EXCEEDS_REMAINING');
   }
 
-  let cashboxId = paymentData.cashboxId;
+  let cashboxId = actor?.role === 'representative' ? undefined : paymentData.cashboxId;
   if (!cashboxId) {
     const defCb = await client.query(`SELECT id FROM cashboxes ORDER BY is_default DESC LIMIT 1`);
     cashboxId = defCb.rows[0]?.id;
@@ -3765,18 +3825,38 @@ export function addInvoicePaymentJsonTx(db, invoiceId, paymentData, actor, idemp
 
   if (scopedIdem) {
     const dup = findJsonIdempotency(scopedIdem);
-    if (dup?.invoice) return { deduplicated: true, invoice: dup.invoice };
+    if (dup?.invoice) {
+      return {
+        deduplicated: true,
+        invoice: actor?.role === 'representative' ? sanitizeInvoiceForRepresentative(dup.invoice) : dup.invoice,
+      };
+    }
   }
 
   const inv = db.invoices.find((i) => i.id === invoiceId);
   if (!inv) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
+  const repProfile =
+    actor?.role === 'representative'
+      ? (db.representatives || []).find((r) => r.userId === actor.id) || null
+      : null;
+  assertInvoicePaymentAuthorized(
+    {
+      invType: inv.type,
+      invRepId: inv.representativeId,
+      invSentByUserId: inv.sentByUserId,
+      invCreatedBy: inv.createdBy,
+    },
+    actor,
+    repProfile
+  );
   if (inv.status !== 'confirmed') throw new AppError(409, 'لا يمكن تسجيل دفعة إلا على فاتورة معتمدة', 'INVOICE_NOT_CONFIRMED');
   if (amount > round2(inv.remainingAmount) + 0.01) {
     throw new AppError(400, `قيمة الدفعة (${amount}) تتجاوز المتبقي (${inv.remainingAmount})`, 'EXCEEDS_REMAINING');
   }
-  const cb = paymentData.cashboxId
-    ? db.cashboxes.find((c) => c.id === paymentData.cashboxId)
-    : db.cashboxes.find((c) => c.isDefault) || db.cashboxes[0];
+  const cb =
+    actor?.role !== 'representative' && paymentData.cashboxId
+      ? db.cashboxes.find((c) => c.id === paymentData.cashboxId)
+      : db.cashboxes.find((c) => c.isDefault) || db.cashboxes[0];
   if (!cb) throw new AppError(404, 'الخزينة المحددة غير موجودة', 'CASHBOX_NOT_FOUND');
 
   const newPayment = {
@@ -4246,13 +4326,20 @@ export async function listInvoices(actor = null, filters = {}) {
 
   if (actor?.role === 'representative') {
     const rep = await getRepresentativeByUserId(actor.id);
-    const visible = allInvoices.filter(
-      (inv) =>
-        inv.type === 'sales' ||
-        inv.type === 'quote' ||
-        (rep && inv.representativeId === rep.id) ||
-        inv.sentByUserId === actor.id
-    );
+    const canPurchase = Boolean(actor.permissions?.canCreatePurchase || actor.permissions?.canManagePurchases);
+    const visible = allInvoices.filter((inv) => {
+      if (inv.type === 'sales' || inv.type === 'quote') return true;
+      if (inv.type === 'purchase') {
+        if (!canPurchase) return false;
+        return (
+          (rep && inv.representativeId === rep.id) ||
+          inv.sentByUserId === actor.id ||
+          inv.createdBy === actor.fullName ||
+          inv.createdBy === actor.id
+        );
+      }
+      return false;
+    });
     return visible.map(sanitizeInvoiceForRepresentative);
   }
 

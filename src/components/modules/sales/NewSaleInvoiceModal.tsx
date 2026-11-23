@@ -151,7 +151,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     return products.find((p) => p.id === selectedProductId);
   }, [products, selectedProductId]);
 
-  const [fetchedPriceHistory, setFetchedPriceHistory] = useState<Record<string, Array<{ price: number; date: string; invoiceNumber?: string } | number>>>({});
+  const [fetchedPriceHistory, setFetchedPriceHistory] = useState<Record<string, Array<{ price: number; date: string; invoiceNumber?: string; unit?: string; quantity?: number; unitFactor?: number } | number>>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -616,33 +616,51 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
               <div className="flex items-center gap-2">
                 <History className="w-4 h-4 text-blue-700 shrink-0" />
                 <span className="font-bold text-slate-800">
-                  سجل آخر 3 أسعار بيع فعلية لهذا العميل ({selectedCustomer.name}) للصنف ({selectedProduct.name}):
+                  آخر 3 أسعار بيع فعلية لهذا العميل ({selectedCustomer.name}) للصنف ({selectedProduct.name}) — من الأقدم للأحدث:
                 </span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {lastThreePrices.length > 0 ? (
                   lastThreePrices.map((entry, idx) => {
-                    const priceVal = typeof entry === 'number' ? entry : entry.price;
-                    const priceDate = typeof entry === 'number' ? '' : entry.date;
+                    const priceVal = typeof entry === 'number' ? entry : Number(entry.price || 0);
+                    const priceDate = typeof entry === 'number' ? '' : (entry.date || '');
+                    const entryUnit = typeof entry === 'number' ? '' : (entry.unit || '');
+                    const entryQty = typeof entry === 'number' ? undefined : entry.quantity;
+                    const entryFactor = typeof entry === 'number' ? 1 : Number(entry.unitFactor || 1);
+                    const orderTag = idx === 0 ? 'الأقدم' : idx === lastThreePrices.length - 1 ? 'الأحدث' : 'الوسيط';
+                    const activeUnitFactor =
+                      selectedUnitName === selectedProduct.baseUnit
+                        ? 1
+                        : selectedProduct.units.find((u) => u.name === selectedUnitName)?.conversionFactor || 1;
+                    const normalizedPerSelectedUnit =
+                      entryUnit && entryUnit !== selectedUnitName && entryFactor > 0
+                        ? Math.round((priceVal / entryFactor) * activeUnitFactor * 100) / 100
+                        : null;
                     return (
                       <button
                         key={idx}
                         type="button"
-                        onClick={() => setInputUnitPrice(priceVal)}
-                        title="انقر لنسخ هذا السعر السابق للاسترشاد"
-                        className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-300 font-mono font-bold text-xs transition-colors"
+                        onClick={() => setInputUnitPrice(normalizedPerSelectedUnit ?? priceVal)}
+                        title="انقر لتطبيق هذا السعر يدوياً (مع ضبط الوحدة الحالية عند الحاجة)"
+                        className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-300 text-right transition-colors cursor-pointer"
                       >
-                        {priceVal} {settings.currency}{' '}
-                        <span className="text-[10px] text-slate-500 font-sans">
-                          ({priceDate ? priceDate : idx === 0 ? 'أقدم' : idx === lastThreePrices.length - 1 ? 'أحدث' : 'سابق'})
+                        <span className="font-mono font-bold text-xs block">
+                          {priceVal} {settings.currency}
+                          {entryUnit ? ` / ${entryUnit}` : ''}
+                        </span>
+                        <span className="text-[10px] text-slate-600 block">
+                          {orderTag}
+                          {priceDate ? ` · ${priceDate}` : ''}
+                          {typeof entryQty === 'number' && entryQty > 0 ? ` · كمية: ${entryQty}` : ''}
+                          {normalizedPerSelectedUnit !== null ? ` · يعادل ${normalizedPerSelectedUnit} للـ${selectedUnitName}` : ''}
                         </span>
                       </button>
                     );
                   })
                 ) : (
                   <span className="text-slate-500 italic text-[11px]">
-                    لا توجد عمليات شراء سابقة لهذا العميل بهذا الصنف (السعر الافتراضي هو المطبق)
+                    لا توجد أسعار بيع سابقة لهذا الصنف مع هذا العميل
                   </span>
                 )}
               </div>

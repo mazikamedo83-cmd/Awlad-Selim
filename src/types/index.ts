@@ -1352,6 +1352,8 @@ export interface CustomerPriceHistoryEntry {
   date: string;
   invoiceNumber?: string;
   unit?: string;
+  quantity?: number;
+  unitFactor?: number;
 }
 
 export interface MobileConfig {
@@ -1467,6 +1469,11 @@ export interface SupplierStatementResponse {
   supplier: Supplier;
   invoices: Invoice[];
   returns: InvoiceReturn[];
+  scope?: {
+    isRepScoped?: boolean;
+    accountBalanceScope?: 'company_wide' | string;
+    operationsScope?: string;
+  };
   summary: {
     openingBalance: number;
     totalPurchases: number;
@@ -1708,6 +1715,11 @@ export interface ComprehensiveReportRow {
   partyName?: string;
   representativeId?: string;
   representativeName?: string;
+  productCode?: string;
+  paidAmount?: number;
+  remainingAmount?: number;
+  paymentStatus?: string;
+  invoiceStatus?: string;
   rowTone?: 'default' | 'invoice_blue' | 'cash_green' | 'warning_rose';
 }
 
@@ -1921,6 +1933,125 @@ export interface ReportSourceDocumentResponse {
     module: string;
     oldValues?: Record<string, any> | null;
     newValues?: Record<string, any> | null;
+    notes?: string;
+  }>;
+}
+
+export interface RepDetailedReportInvoiceRow {
+  id: string;
+  invoiceNumber: string;
+  date: string;
+  type: 'sales' | 'purchase' | 'quote';
+  status: string;
+  dispatchStatus?: string;
+  partyId: string;
+  partyName: string;
+  warehouseId?: string;
+  warehouseName: string;
+  representativeId?: string;
+  representativeName?: string;
+  grandTotal: number;
+  paidAmount: number;
+  remainingAmount: number;
+  paymentStatus: 'paid' | 'partial' | 'credit';
+  itemsCount: number;
+  items: Array<{
+    productId: string;
+    productName: string;
+    productCode?: string;
+    barcode?: string;
+    unit: string;
+    unitFactor: number;
+    quantity: number;
+    unitPrice: number;
+    discount: number;
+    total: number;
+  }>;
+  notes?: string;
+}
+
+export interface RepDetailedReportItemRow {
+  rowId: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  date: string;
+  opType: 'sales' | 'purchase' | 'sales_return' | 'purchase_return';
+  status: string;
+  partyId: string;
+  partyName: string;
+  productId: string;
+  productName: string;
+  productCode?: string;
+  barcode?: string;
+  unit: string;
+  quantity: number;
+  unitFactor: number;
+  unitPrice: number;
+  discount: number;
+  total: number;
+}
+
+export interface RepDetailedReportResponse {
+  scope: {
+    isRepScoped: boolean;
+    representativeId?: string;
+    representativeName?: string;
+    canViewSuppliers: boolean;
+    accountBalanceNote: string;
+  };
+  summary: {
+    salesCount: number;
+    salesTotal: number;
+    salesPaid: number;
+    salesRemaining: number;
+    salesReturnsCount: number;
+    salesReturnsTotal: number;
+    netSalesTotal: number;
+    purchasesCount: number;
+    purchasesTotal: number;
+    purchasesPaid: number;
+    purchasesRemaining: number;
+    purchaseReturnsCount: number;
+    purchaseReturnsTotal: number;
+    collectionsCount: number;
+    collectionsTotal: number;
+    purchasePaymentsTotal: number;
+    totalCustomerReceivables: number;
+    totalSupplierPayables: number;
+  };
+  customersSummary: Array<{
+    id: string;
+    name: string;
+    shopName?: string;
+    phone: string;
+    companyBalance: number;
+    repSalesCount: number;
+    repSalesTotal: number;
+    repPaidTotal: number;
+    repCollectionsTotal: number;
+  }>;
+  suppliersSummary: Array<{
+    id: string;
+    name: string;
+    companyName?: string;
+    phone: string;
+    companyBalance: number;
+    repPurchasesCount: number;
+    repPurchasesTotal: number;
+    repPaidTotal: number;
+  }>;
+  invoices: RepDetailedReportInvoiceRow[];
+  itemRows: RepDetailedReportItemRow[];
+  returns: InvoiceReturn[];
+  collections: Array<{
+    id: string;
+    transactionNumber?: string;
+    date: string;
+    amount: number;
+    partyId?: string;
+    partyName: string;
+    paymentMethod?: string;
+    relatedDocId?: string;
     notes?: string;
   }>;
 }

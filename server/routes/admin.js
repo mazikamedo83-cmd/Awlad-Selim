@@ -334,9 +334,23 @@ router.post('/suppliers/:id/settle-advance', requirePermission('canManageAccount
   );
   res.json({ ok: true, ...result });
 }));
-router.get('/suppliers/:id/statement', requireAnyPermission('canManageAccounts', 'canManagePurchases', 'canViewReports'), asyncHandler(async (req, res) => {
-  if (blockRepFromAdminTreasury(req, res)) return;
-  const statement = await getSupplierStatementData(req.params.id);
+router.get('/suppliers/:id/statement', requireAnyPermission('canManageAccounts', 'canManagePurchases', 'canCreatePurchase', 'canViewReports'), asyncHandler(async (req, res) => {
+  const u = req.auth.user;
+  if (u.role === 'customer') {
+    return res.status(403).json({
+      ok: false,
+      code: 'FORBIDDEN_PERMISSION',
+      error: 'غير مصرح للعملاء بعرض كشف حساب المورد',
+    });
+  }
+  if (u.role === 'representative' && !u.permissions?.canCreatePurchase && !u.permissions?.canManagePurchases) {
+    return res.status(403).json({
+      ok: false,
+      code: 'FORBIDDEN_REP_SUPPLIER_STATEMENT',
+      error: 'عرض كشف حساب المورد متاح فقط للمندوبين المصرح لهم بإنشاء أو إدارة المشتريات',
+    });
+  }
+  const statement = await getSupplierStatementData(req.params.id, u);
   res.json({ ok: true, statement });
 }));
 

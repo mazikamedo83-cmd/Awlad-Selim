@@ -19,7 +19,7 @@ const {
   acquirePgTxAdvisoryLock,
 } = await import('../db/stores/authStore.js');
 const { createAdminUser, updateAdminUser } = await import('../db/stores/inventoryAdminStore.js');
-const { getComprehensiveReport } = await import('../db/stores/reportsStore.js');
+const { getComprehensiveReport, loadFullReportDataset } = await import('../db/stores/reportsStore.js');
 const { withJsonTransaction } = await import('../db/jsonLedger.js');
 const { resetAllRateLimitsForTests } = await import('../middleware/auth.js');
 
@@ -168,6 +168,33 @@ await (async () => {
         assert.equal(adminRows.rowCount, 1);
       } finally {
         delete process.env.BOOTSTRAP_ADMIN_SECRET;
+      }
+    });
+
+    await test('2b. initializeSchema surfaces genuine SQL/permission errors and reportsStore exports loadFullReportDataset', async () => {
+      assert.equal(typeof loadFullReportDataset, 'function', 'loadFullReportDataset must be exported from reportsStore.js');
+      const brokenPool = {
+        async query() {
+          throw Object.assign(new Error('permission denied for schema public'), { code: '42501' });
+        },
+        async connect() {
+          return {
+            async query() {
+              throw Object.assign(new Error('permission denied for schema public'), { code: '42501' });
+            },
+            release() {},
+          };
+        },
+      };
+      setInjectedPool(brokenPool);
+      resetPgModeCache();
+      try {
+        const res = await initializeSchema();
+        assert.equal(res.success, false, 'initializeSchema must return success:false on real SQL permission failure');
+        assert.ok(String(res.error || '').includes('permission denied'), 'initializeSchema error must not be swallowed silently');
+      } finally {
+        setInjectedPool(pool);
+        resetPgModeCache();
       }
     });
   } finally {
@@ -1063,6 +1090,332 @@ async function runFullModeAudit(modeName) {
       const myStmt = await req(baseUrl, 'GET', '/api/customers/me/statement', { token: cust1Token });
       assert.equal(myStmt.status, 200);
       assert.equal(myStmt.json.customer?.id, custUnassignedToRep1Id);
+    });
+
+    await test(`[${modeName}] 10. PG SQL LIMIT/OFFSET pushdown on reports & bootstrap stock_movements WHERE before LIMIT 1500`, async () => {
+      if (modeName !== 'pg') return;
+      sqlQueries.length = 0;
+      const pagedRpt = await req(
+        baseUrl,
+        'GET',
+        '/api/reports/comprehensive?reportType=sales_invoices&dateFrom=2026-11-20&dateTo=2026-11-20&page=1&pageSize=2',
+        { token: adminToken }
+      );
+      assert.equal(pagedRpt.status, 200);
+      assert.equal(
+        sqlQueries.some((q) => /FROM\s+invoices/i.test(q.sql) && /LIMIT\s+\$\d+\s+OFFSET\s+\$\d+/i.test(q.sql)),
+        true,
+        'Paged comprehensive sales_invoices report in PG must execute SQL LIMIT $n OFFSET $m'
+      );
+
+      sqlQueries.length = 0;
+      const repBoot = await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: rep1Token });
+      assert.equal(repBoot.status, 200);
+      assert.equal(
+        sqlQueries.some(
+          (q) =>
+            /FROM\s+stock_movements/i.test(q.sql) &&
+            /WHERE\s+\(warehouse_id\s*=\s*\$1\s+OR\s+target_warehouse_id\s*=\s*\$1\)/i.test(q.sql) &&
+            /LIMIT\s+1500/i.test(q.sql)
+        ),
+        true,
+        'Rep PG bootstrap stock_movements must apply WHERE warehouse filter BEFORE LIMIT 1500'
+      );
+    });
+
+    await test(`[${modeName}] 11. Last 3 actual selling prices per customer + product (oldest -> newest, qty, unit, unitFactor, confirmed only)`, async () => {
+      const custRes = await req(baseUrl, 'POST', '/api/customers', {
+        token: adminToken,
+        body: { name: `عميل تاريخ الأسعار ${modeName}`, phone: '01066665555' },
+      });
+      assert.equal(custRes.status, 201);
+      const custId = custRes.json.customer.id;
+
+      const prodRes = await req(baseUrl, 'POST', '/api/products', {
+        token: adminToken,
+        body: {
+          name: `صنف تاريخ الأسعار ${modeName}`,
+          code: `PH-${modeName.toUpperCase()}`,
+          category: 'عام',
+          baseUnit: 'قطعة',
+          purchasePrice: 8,
+          sellingPrice: 15,
+          units: [{ name: 'كرتونة', conversionFactor: 12, purchasePrice: 90, sellingPrice: 160 }],
+          stockPerWarehouse: { [mainWhId]: 500 },
+        },
+      });
+      assert.equal(prodRes.status, 201);
+      const pId = prodRes.json.product.id;
+
+      // Draft & quote must be excluded from actual confirmed selling prices
+      const draftInv = await req(baseUrl, 'POST', '/api/invoices/sales', {
+        token: adminToken,
+        headers: { 'Idempotency-Key': `PH-DRAFT-${modeName}` },
+        body: {
+          customerId: custId,
+          warehouseId: mainWhId,
+          cashboxId,
+          date: '2026-11-05',
+          status: 'draft',
+          paidAmount: 0,
+          items: [{ productId: pId, quantity: 99, unit: 'قطعة', unitFactor: 1, unitPrice: 999 }],
+        },
+      });
+      assert.equal(draftInv.status, 201);
+
+      const quoteInv = await req(baseUrl, 'POST', '/api/invoices/quotes', {
+        token: adminToken,
+        headers: { 'Idempotency-Key': `PH-QUOTE-${modeName}` },
+        body: {
+          customerId: custId,
+          warehouseId: mainWhId,
+          date: '2026-11-06',
+          items: [{ productId: pId, quantity: 50, unit: 'قطعة', unitFactor: 1, unitPrice: 888 }],
+        },
+      });
+      assert.equal(quoteInv.status, 201);
+
+      // Seed 4 confirmed sales invoices chronologically
+      const salesSpec = [
+        { date: '2026-11-01', quantity: 2, unit: 'قطعة', unitFactor: 1, unitPrice: 11 },
+        { date: '2026-11-02', quantity: 3, unit: 'قطعة', unitFactor: 1, unitPrice: 12 },
+        { date: '2026-11-03', quantity: 1, unit: 'كرتونة', unitFactor: 12, unitPrice: 150 },
+        { date: '2026-11-04', quantity: 5, unit: 'قطعة', unitFactor: 1, unitPrice: 14 },
+      ];
+      for (let idx = 0; idx < salesSpec.length; idx++) {
+        const spec = salesSpec[idx];
+        const res = await req(baseUrl, 'POST', '/api/invoices/sales', {
+          token: adminToken,
+          headers: { 'Idempotency-Key': `PH-SALE-${modeName}-${idx}` },
+          body: {
+            customerId: custId,
+            warehouseId: mainWhId,
+            cashboxId,
+            date: spec.date,
+            paidAmount: spec.quantity * spec.unitPrice,
+            items: [{
+              productId: pId,
+              quantity: spec.quantity,
+              unit: spec.unit,
+              unitFactor: spec.unitFactor,
+              unitPrice: spec.unitPrice,
+            }],
+          },
+        });
+        assert.equal(res.status, 201);
+      }
+
+      const histRes = await req(baseUrl, 'GET', `/api/customers/${custId}/price-history`, { token: rep1Token });
+      assert.equal(histRes.status, 200);
+      const list = histRes.json.priceHistory?.[pId] || [];
+      assert.equal(list.length, 3, 'Must return strictly last 3 confirmed sales prices');
+      assert.deepEqual(
+        list.map((e) => ({ price: e.price, quantity: e.quantity, unit: e.unit, unitFactor: e.unitFactor, date: e.date })),
+        [
+          { price: 12, quantity: 3, unit: 'قطعة', unitFactor: 1, date: '2026-11-02' },
+          { price: 150, quantity: 1, unit: 'كرتونة', unitFactor: 12, date: '2026-11-03' },
+          { price: 14, quantity: 5, unit: 'قطعة', unitFactor: 1, date: '2026-11-04' },
+        ],
+        'Must be oldest -> newest with unit conversion factor and ignore draft/quote'
+      );
+    });
+
+    let repPurToken = '';
+    let repPurId = '';
+    let supAuditId = '';
+
+    await test(`[${modeName}] 12. Rep with canCreatePurchase: scoped supplier statement, own purchase payment & treasury blockade`, async () => {
+      const supRes = await req(baseUrl, 'POST', '/api/admin/suppliers', {
+        token: adminToken,
+        body: { name: 'مورد تدقيق المندوب', companyName: 'شركة التوريد', phone: '01099887766', openingBalance: 1000 },
+      });
+      assert.equal(supRes.status, 201);
+      supAuditId = supRes.json.supplier.id;
+
+      // Admin-owned credit purchase (balance increases by 400 -> 1400)
+      const adminPurRes = await req(baseUrl, 'POST', '/api/invoices/purchase', {
+        token: adminToken,
+        headers: { 'Idempotency-Key': `ADM-PUR-${modeName}` },
+        body: {
+          supplierId: supAuditId,
+          warehouseId: mainWhId,
+          cashboxId,
+          date: '2026-11-20',
+          paidAmount: 0,
+          paymentType: 'credit',
+          status: 'confirmed',
+          items: [{ productId, quantity: 10, unit: 'زجاجة', unitPrice: 40 }],
+        },
+      });
+      assert.equal(adminPurRes.status, 201);
+      const adminPurId = adminPurRes.json.invoice.id;
+
+      // Register dedicated purchase-capable rep
+      const rpReg = await req(baseUrl, 'POST', '/api/auth/register', {
+        body: {
+          role: 'representative',
+          fullName: 'مندوب مشتريات مدقق',
+          username: `pur_rep_${modeName}`,
+          phone: '01099881122',
+          password: 'RepPurPassword!2026',
+        },
+      });
+      assert.equal(rpReg.status, 201);
+      const rpUser = rpReg.json.user;
+      repPurId = rpReg.json.representativeProfile?.id;
+
+      const rpUpd = await req(baseUrl, 'PUT', `/api/admin/users/${rpUser.id}`, {
+        token: adminToken,
+        body: {
+          permissions: {
+            canView: true,
+            canAdd: true,
+            canEdit: true,
+            canManageSales: true,
+            canCreatePurchase: true,
+            canViewReports: true,
+          },
+        },
+      });
+      assert.equal(rpUpd.status, 200);
+
+      const rpLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: `pur_rep_${modeName}`, password: 'RepPurPassword!2026' },
+      });
+      assert.equal(rpLogin.status, 200);
+      repPurToken = rpLogin.json.accessToken;
+
+      // Rep creates own purchase invoice -> sends -> admin receives/confirms as credit
+      const repPurRes = await req(baseUrl, 'POST', '/api/invoices/purchase', {
+        token: repPurToken,
+        headers: { 'Idempotency-Key': `REP-PUR-${modeName}` },
+        body: {
+          supplierId: supAuditId,
+          warehouseId: mainWhId,
+          cashboxId,
+          date: '2026-11-20',
+          paidAmount: 0,
+          paymentType: 'credit',
+          items: [{ productId, quantity: 5, unit: 'زجاجة', unitPrice: 40 }],
+        },
+      });
+      assert.equal(repPurRes.status, 201);
+      const repPurInvId = repPurRes.json.invoice.id;
+
+      const sendRes = await req(baseUrl, 'POST', `/api/invoices/purchase/${repPurInvId}/send`, {
+        token: repPurToken,
+        body: {},
+      });
+      assert.equal(sendRes.status, 200);
+
+      const recvRes = await req(baseUrl, 'POST', `/api/invoices/purchase/${repPurInvId}/receive`, {
+        token: adminToken,
+        body: { confirmNow: true, warehouseId: mainWhId, cashboxId },
+      });
+      assert.equal(recvRes.status, 200);
+      assert.equal(recvRes.json.invoice.status, 'confirmed');
+
+      // Non-purchase rep1 remains strictly blocked on supplier statement
+      const forbiddenStmt = await req(baseUrl, 'GET', `/api/admin/suppliers/${supAuditId}/statement`, {
+        token: rep1Token,
+      });
+      assert.equal(forbiddenStmt.status, 403);
+
+      // Permitted rep sees full company supplier balance (1000 + 400 + 200 = 1600) AND only own purchase invoice in entries/invoices
+      const repStmt = await req(baseUrl, 'GET', `/api/admin/suppliers/${supAuditId}/statement`, {
+        token: repPurToken,
+      });
+      assert.equal(repStmt.status, 200);
+      assert.equal(Number(repStmt.json.summary.currentBalance), 1600, 'Supplier statement must keep accurate company-wide balance');
+      assert.equal(repStmt.json.scope?.accountBalanceScope, 'company_wide');
+      assert.equal(repStmt.json.invoices.some((i) => i.id === adminPurId), false, 'Must NOT expose admin purchase invoice to rep');
+      assert.equal(repStmt.json.invoices.some((i) => i.id === repPurInvId), true, 'Must include rep own purchase invoice');
+
+      // Permitted rep can pay ONLY own confirmed purchase via HTTP and /api/sync
+      const payOwnRes = await req(baseUrl, 'POST', `/api/invoices/${repPurInvId}/payments`, {
+        token: repPurToken,
+        headers: { 'Idempotency-Key': `PAY-OWN-${modeName}` },
+        body: { amount: 50, paymentMethod: 'cash', date: '2026-11-20', notes: 'سداد جزء من المندوب' },
+      });
+      assert.equal(payOwnRes.status, 200);
+      assert.equal(Number(payOwnRes.json.invoice.paidAmount), 50);
+      assert.equal(Number(payOwnRes.json.invoice.remainingAmount), 150);
+
+      const payOwnSync = await req(baseUrl, 'POST', '/api/sync/push', {
+        token: repPurToken,
+        body: {
+          operations: [{
+            operationId: `SYNC-PAY-OWN-${modeName}`,
+            operationType: 'add_invoice_payment',
+            payload: { invoiceId: repPurInvId, amount: 25, paymentMethod: 'cash', date: '2026-11-20' },
+          }],
+        },
+      });
+      assert.equal(payOwnSync.status, 200);
+      assert.equal(payOwnSync.json.results[0].status, 'synced');
+
+      // Permitted rep gets 403 trying to pay admin's purchase invoice
+      const payOtherRes = await req(baseUrl, 'POST', `/api/invoices/${adminPurId}/payments`, {
+        token: repPurToken,
+        body: { amount: 50, paymentMethod: 'cash', date: '2026-11-20' },
+      });
+      assert.equal(payOtherRes.status, 403);
+
+      // Permitted rep is still strictly blocked from treasury cash ops & standalone supplier payout
+      const cashOpForbidden = await req(baseUrl, 'POST', '/api/admin/cash-operations', {
+        token: repPurToken,
+        body: { type: 'expense', cashboxId, amount: 100, category: 'اختبار' },
+      });
+      assert.equal(cashOpForbidden.status, 403);
+
+      const supPayForbidden = await req(baseUrl, 'POST', '/api/admin/suppliers/payment', {
+        token: repPurToken,
+        body: { supplierId: supAuditId, cashboxId, amount: 100 },
+      });
+      assert.equal(supPayForbidden.status, 403);
+
+      const syncCashOp = await req(baseUrl, 'POST', '/api/sync/push', {
+        token: repPurToken,
+        body: {
+          operations: [{
+            operationId: `SYNC-FORB-CASH-${modeName}`,
+            operationType: 'execute_cash_operation',
+            payload: { type: 'cash_deposit', cashboxId, amount: 100 },
+          }],
+        },
+      });
+      assert.equal(syncCashOp.status, 200);
+      assert.equal(syncCashOp.json.results[0].status, 'rejected');
+    });
+
+    await test(`[${modeName}] 13. Dedicated Rep Summary Report (/api/reports/rep-summary) scope & zero cost/profit/cashbox leaks`, async () => {
+      const r1Report = await req(baseUrl, 'GET', '/api/reports/rep-summary', { token: rep1Token });
+      assert.equal(r1Report.status, 200);
+      const r1 = r1Report.json.report;
+      assert.equal(r1.scope.isRepScoped, true);
+      assert.equal(r1.scope.representativeId, rep1Id);
+      assert.equal(r1.scope.canViewSuppliers, false);
+      assert.equal((r1.suppliersSummary || []).length, 0, 'Rep without purchase privilege must not see supplier summaries');
+      assert.equal(r1.summary.purchasesCount, 0);
+      assert.equal(r1.summary.purchasesTotal, 0);
+      assert.equal(r1Report.text.includes('purchasePriceAtTime'), false, 'rep-summary must not leak item cost fields');
+      assert.equal(r1Report.text.includes('reportProfit'), false, 'rep-summary must not expose profit fields');
+      assert.equal(r1Report.text.includes('حساب البنك السري'), false, 'rep-summary must not leak secret bank cashboxes');
+
+      const rpReport = await req(baseUrl, 'GET', '/api/reports/rep-summary', { token: repPurToken });
+      assert.equal(rpReport.status, 200);
+      const rp = rpReport.json.report;
+      assert.equal(rp.scope.isRepScoped, true);
+      assert.equal(rp.scope.representativeId, repPurId);
+      assert.equal(rp.scope.canViewSuppliers, true);
+      assert.equal(rp.summary.purchasesCount, 1, 'Rep with canCreatePurchase must see ONLY their own confirmed purchases (not admin purchase)');
+      assert.equal(rp.summary.purchasesTotal, 200);
+      assert.equal(rp.summary.purchasesPaid, 75);
+      assert.equal(rp.summary.purchasesRemaining, 125);
+      const auditSupRow = (rp.suppliersSummary || []).find((s) => s.id === supAuditId);
+      assert.ok(auditSupRow, 'Permitted rep report must include supplier summary');
+      assert.equal(Number(auditSupRow.companyBalance), 1525, 'Company balance must reflect opening + admin + rep purchases - rep payments (1000+400+200-75)');
+      assert.equal(Number(auditSupRow.repPurchasesTotal), 200, 'Supplier repPurchasesTotal must count only rep own purchases');
     });
   } finally {
     await new Promise((resolve) => server.close(resolve));

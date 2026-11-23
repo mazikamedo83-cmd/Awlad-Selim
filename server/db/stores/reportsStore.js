@@ -18,24 +18,24 @@ import { getRepresentativeByUserId, getSystemSettingsSafe } from './catalogStore
 
 export const REPORT_TYPES_LIST = [
   { key: 'all', label: 'الكل', group: 1 },
-  { key: 'sales_items', label: 'اصناف البيع', group: 1 },
+  { key: 'sales_items', label: 'أصناف البيع', group: 1 },
   { key: 'sales_invoices', label: 'فواتير بيع', group: 1 },
-  { key: 'sales_items_by_unit', label: 'اصناف بيع/ بالوحدة', group: 1 },
-  { key: 'sales_items_grouped', label: 'اصناف بيع/مَجمع', group: 1 },
-  { key: 'sales_items_grouped_by_customer', label: 'اصناف بيع/مَجمع حسب العميل', group: 1 },
-  { key: 'sales_items_grouped_by_category', label: 'اصناف بيع/مَجمع حسب المجموعة', group: 1 },
-  { key: 'sales_items_grouped_by_category_class1', label: 'اصناف بيع/مَجمع حسب المجموعة وتصنيف 1', group: 1 },
+  { key: 'sales_items_by_unit', label: 'أصناف بيع/ بالوحدة', group: 1 },
+  { key: 'sales_items_grouped', label: 'أصناف بيع/مَجمع', group: 1 },
+  { key: 'sales_items_grouped_by_customer', label: 'أصناف بيع/مَجمع حسب العميل', group: 1 },
+  { key: 'sales_items_grouped_by_category', label: 'أصناف بيع/مَجمع حسب المجموعة', group: 1 },
+  { key: 'sales_items_grouped_by_category_class1', label: 'أصناف بيع/مَجمع حسب المجموعة وتصنيف 1', group: 1 },
 
-  { key: 'sales_return_items', label: 'اصناف مرتجع بيع', group: 2 },
+  { key: 'sales_return_items', label: 'أصناف مرتجع بيع', group: 2 },
   { key: 'sales_return_invoices', label: 'فواتير مرتجع بيع', group: 2 },
 
-  { key: 'purchase_items', label: 'اصناف شراء', group: 3 },
+  { key: 'purchase_items', label: 'أصناف شراء', group: 3 },
   { key: 'purchase_invoices', label: 'فواتير شراء', group: 3 },
 
-  { key: 'purchase_return_items', label: 'اصناف مرتجع شراء', group: 4 },
+  { key: 'purchase_return_items', label: 'أصناف مرتجع شراء', group: 4 },
   { key: 'purchase_return_invoices', label: 'فواتير مرتجع شراء', group: 4 },
 
-  { key: 'damaged_items', label: 'اصناف تالف', group: 5 },
+  { key: 'damaged_items', label: 'أصناف تالف', group: 5 },
   { key: 'damaged_invoices', label: 'فواتير تالف', group: 5 },
 
   { key: 'cash_payment', label: 'سداد نقدى', group: 6 },
@@ -101,9 +101,10 @@ function calcMarginOnSales(profit, netSales) {
   return 0;
 }
 
-async function loadFullReportDataset(actor, filterHints = {}) {
+export async function loadFullReportDataset(actor, filterHints = {}) {
   const settings = await getSystemSettingsSafe();
   const isRep = actor?.role === 'representative';
+  const isRepCanPurchase = isRep && Boolean(actor?.permissions?.canCreatePurchase || actor?.permissions?.canManagePurchases);
   const repProfile = isRep ? await getRepresentativeByUserId(actor.id) : null;
 
   if (await isPgMode()) {
@@ -148,7 +149,11 @@ async function loadFullReportDataset(actor, filterHints = {}) {
     if (isRep) {
       ftParams.push(actor.fullName);
       ftClauses.push(`created_by = $${ftParams.length}`);
-      ftClauses.push(`type NOT IN ('transfer', 'deposit', 'withdrawal', 'supplier_payment', 'advance_payout', 'salary_payout', 'expense', 'income', 'rep_transfer')`);
+      if (isRepCanPurchase) {
+        ftClauses.push(`(type NOT IN ('transfer', 'deposit', 'withdrawal', 'advance_payout', 'salary_payout', 'expense', 'income', 'rep_transfer') AND (type <> 'supplier_payment' OR related_doc_type = 'purchase'))`);
+      } else {
+        ftClauses.push(`type NOT IN ('transfer', 'deposit', 'withdrawal', 'supplier_payment', 'advance_payout', 'salary_payout', 'expense', 'income', 'rep_transfer')`);
+      }
     } else if (hintCashboxId) {
       ftParams.push(hintCashboxId);
       ftClauses.push(`(cashbox_id = $${ftParams.length} OR type = 'transfer')`);
@@ -253,15 +258,26 @@ async function loadFullReportDataset(actor, filterHints = {}) {
       invClauses.push(`LOWER(invoice_number) LIKE LOWER($${invParams.length})`);
     }
     if (isRep) {
+      const ownPredParts = [];
       if (repProfile?.id) {
         invParams.push(repProfile.id);
-        const rIdx = `$${invParams.length}`;
+        ownPredParts.push(`representative_id = $${invParams.length}`);
+      }
+      if (actor?.id) {
+        invParams.push(actor.id);
+        ownPredParts.push(`sent_by_user_id = $${invParams.length}`);
+      }
+      if (actor?.fullName) {
         invParams.push(actor.fullName);
-        const aIdx = `$${invParams.length}`;
-        invClauses.push(`(representative_id = ${rIdx} OR created_by = ${aIdx})`);
+        ownPredParts.push(`created_by = $${invParams.length}`);
+      }
+      if (ownPredParts.length > 0) {
+        invClauses.push(`(${ownPredParts.join(' OR ')})`);
       } else {
-        invParams.push(actor.fullName);
-        invClauses.push(`created_by = $${invParams.length}`);
+        invClauses.push(`1 = 0`);
+      }
+      if (!isRepCanPurchase) {
+        invClauses.push(`type <> 'purchase'`);
       }
     }
     const invWhereSql = invClauses.length > 0 ? `WHERE ${invClauses.join(' AND ')}` : '';
@@ -372,7 +388,7 @@ async function loadFullReportDataset(actor, filterHints = {}) {
       pool.query('SELECT * FROM products ORDER BY created_at DESC'),
       pool.query('SELECT * FROM product_units'),
       pool.query('SELECT * FROM customers ORDER BY created_at DESC'),
-      isRep ? Promise.resolve({ rows: [] }) : pool.query('SELECT * FROM suppliers ORDER BY created_at DESC'),
+      isRep && !isRepCanPurchase ? Promise.resolve({ rows: [] }) : pool.query('SELECT * FROM suppliers ORDER BY created_at DESC'),
       isRep
         ? pool.query('SELECT id, code, name, warehouse_id, user_id FROM representatives WHERE user_id = $1 ORDER BY created_at ASC', [actor.id])
         : pool.query('SELECT * FROM representatives ORDER BY created_at ASC'),
@@ -438,15 +454,22 @@ async function loadFullReportDataset(actor, filterHints = {}) {
       arr.push(py);
       invPaysMap.set(py.invoice_id, arr);
     }
+    const isRepOwnInvoice = (inv) =>
+      Boolean(
+        (repProfile && inv.representativeId === repProfile.id) ||
+          (actor?.id && inv.sentByUserId === actor.id) ||
+          (actor?.fullName && inv.createdBy === actor.fullName) ||
+          (actor?.id && inv.createdBy === actor.id)
+      );
     const invoices = invRes.rows
       .map((r) => mapPgInvoiceRow(r, invItemsMap.get(r.id) || [], invPaysMap.get(r.id) || []))
       .filter((inv) => {
         if (!isRep) return true;
-        if (inv.type === 'purchase') return false;
-        if (repProfile && inv.representativeId === repProfile.id) return true;
-        return inv.createdBy === actor.fullName;
+        if (inv.type === 'purchase') return isRepCanPurchase && isRepOwnInvoice(inv);
+        return isRepOwnInvoice(inv);
       })
       .map((inv) => (isRep ? sanitizeInvoiceForRepresentative(inv) : inv));
+    const visibleInvIdSet = new Set(invoices.map((i) => i.id));
 
     const retItemsMap = new Map();
     for (const it of retItemRes.rows) {
@@ -483,7 +506,13 @@ async function loadFullReportDataset(actor, filterHints = {}) {
         createdBy: r.created_by,
         createdAt: isoTimestamp(r.created_at),
       }))
-      .filter((r) => !isRep || (r.type !== 'purchase_return' && r.createdBy === actor.fullName));
+      .filter((r) => {
+        if (!isRep) return true;
+        if (r.type === 'purchase_return') {
+          return isRepCanPurchase && (visibleInvIdSet.has(r.originalInvoiceId) || r.createdBy === actor.fullName);
+        }
+        return r.createdBy === actor.fullName || visibleInvIdSet.has(r.originalInvoiceId);
+      });
 
     const scItemsMap = new Map();
     for (const it of scItemRes.rows) {
@@ -604,14 +633,14 @@ async function loadFullReportDataset(actor, filterHints = {}) {
       categories: catRes.rows.map((c) => ({ id: c.id, name: c.name })),
       products,
       customers: custRes.rows.map((c) => ({ id: c.id, code: c.code, name: c.name, phone: c.phone || '', assignedRepId: c.assigned_rep_id || undefined, currentBalance: Number(c.current_balance || 0) })),
-      suppliers: isRep ? [] : suppRes.rows.map((s) => ({ id: s.id, code: s.code, name: s.name, phone: s.phone || '', currentBalance: Number(s.current_balance || 0) })),
+      suppliers: isRep && !isRepCanPurchase ? [] : suppRes.rows.map((s) => ({ id: s.id, code: s.code, name: s.name, phone: s.phone || '', currentBalance: Number(s.current_balance || 0) })),
       representatives: repRes.rows.map((r) => ({ id: r.id, userId: r.user_id || undefined, code: r.code || '', name: r.name, phone: isRep ? '' : (r.phone || ''), warehouseId: r.warehouse_id || undefined })),
       employees: isRep ? [] : empRes.rows.map((e) => ({ id: e.id, code: e.code, name: e.full_name, jobTitle: e.job_title || '', department: e.department || '' })),
       users: isRep ? [] : userRes.rows.map((u) => ({ id: u.id, fullName: u.full_name, username: u.username, role: u.role })),
       invoices,
       invoiceReturns,
       financialTransactions: ftRes.rows
-        .filter((f) => !isRep || f.created_by === actor.fullName)
+        .filter((f) => !isRep || (f.created_by === actor.fullName && (f.type !== 'supplier_payment' || (isRepCanPurchase && visibleInvIdSet.has(f.related_doc_id)))))
         .map((f) => ({
           id: f.id,
           transactionNumber: f.transaction_number,
@@ -769,26 +798,37 @@ async function loadFullReportDataset(actor, filterHints = {}) {
 
   // JSON Ledger Mode (100% untruncated)
   const db = readJsonDatabase();
+  const isRepOwnJsonInvoice = (inv) =>
+    Boolean(
+      (repProfile && inv.representativeId === repProfile.id) ||
+        (actor?.id && inv.sentByUserId === actor.id) ||
+        (actor?.fullName && inv.createdBy === actor.fullName) ||
+        (actor?.id && inv.createdBy === actor.id)
+    );
   const invoices = (db.invoices || [])
     .filter((inv) => {
       if (!isRep) return true;
-      if (inv.type === 'purchase') return false;
-      if (repProfile && inv.representativeId === repProfile.id) return true;
-      return inv.createdBy === actor.fullName;
+      if (inv.type === 'purchase') return isRepCanPurchase && isRepOwnJsonInvoice(inv);
+      return isRepOwnJsonInvoice(inv);
     })
     .map((inv) => (isRep ? sanitizeInvoiceForRepresentative(inv) : inv));
-  const invoiceReturns = (db.invoiceReturns || []).filter(
-    (r) => !isRep || (r.type !== 'purchase_return' && r.createdBy === actor.fullName)
-  );
+  const visibleJsonInvIdSet = new Set(invoices.map((i) => i.id));
+  const invoiceReturns = (db.invoiceReturns || []).filter((r) => {
+    if (!isRep) return true;
+    if (r.type === 'purchase_return') {
+      return isRepCanPurchase && (visibleJsonInvIdSet.has(r.originalInvoiceId) || r.createdBy === actor.fullName);
+    }
+    return r.createdBy === actor.fullName || visibleJsonInvIdSet.has(r.originalInvoiceId);
+  });
   const financialTransactions = (db.financialTransactions || [])
-    .filter(
-      (f) =>
-        !isRep ||
-        (f.createdBy === actor.fullName &&
-          !['transfer', 'deposit', 'withdrawal', 'supplier_payment', 'advance_payout', 'salary_payout', 'expense', 'income', 'rep_transfer'].includes(
-            f.type
-          ))
-    )
+    .filter((f) => {
+      if (!isRep) return true;
+      if (f.createdBy !== actor.fullName) return false;
+      if (f.type === 'supplier_payment') {
+        return isRepCanPurchase && f.relatedDocType === 'purchase' && visibleJsonInvIdSet.has(f.relatedDocId);
+      }
+      return !['transfer', 'deposit', 'withdrawal', 'advance_payout', 'salary_payout', 'expense', 'income', 'rep_transfer'].includes(f.type);
+    })
     .map((f) => {
       if (!isRep) return f;
       const { balanceAfter, ...rest } = f;
@@ -805,7 +845,7 @@ async function loadFullReportDataset(actor, filterHints = {}) {
     categories: db.categories || [],
     products: isRep ? (db.products || []).map(sanitizeProductForRepresentative) : (db.products || []),
     customers: db.customers || [],
-    suppliers: isRep ? [] : (db.suppliers || []),
+    suppliers: isRep && !isRepCanPurchase ? [] : (db.suppliers || []),
     representatives: isRep
       ? (db.representatives || [])
           .filter((r) => r.userId === actor.id || (repProfile && r.id === repProfile.id))
@@ -988,14 +1028,497 @@ function computeSignedCashDelta(tx, targetCashboxSet, cashboxNameToId) {
   return round2(delta);
 }
 
-export async function getComprehensiveReport(filters = {}, actor) {
-  const data = await loadFullReportDataset(actor, filters);
-  const resolvers = buildBranchResolvers(data);
-  const { branchById, branchByWh, branchByCb, cashboxMap, resolveBranchName, resolveCashboxName } = resolvers;
+const SQL_PAGINATABLE_TYPES = new Set([
+  'sales_invoices',
+  'purchase_invoices',
+  'sales_items',
+  'purchase_items',
+]);
 
+async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, pageSize) {
+  if (!SQL_PAGINATABLE_TYPES.has(reportType)) return null;
+  if (
+    filters.productSearch ||
+    filters.barcode ||
+    filters.employeeId ||
+    filters.userId ||
+    filters.userName ||
+    filters.recordId ||
+    filters.search
+  ) {
+    return null;
+  }
+  const pool = getPool();
+  const settings = await getSystemSettingsSafe();
+  const isRep = actor?.role === 'representative';
+  const isRepCanPurchase = isRep && Boolean(actor?.permissions?.canCreatePurchase || actor?.permissions?.canManagePurchases);
+  const repProfile = isRep ? await getRepresentativeByUserId(actor.id) : null;
+  const isSales = reportType === 'sales_invoices' || reportType === 'sales_items';
+  const isInvoiceLayout = reportType === 'sales_invoices' || reportType === 'purchase_invoices';
+  const invType = isSales ? 'sales' : 'purchase';
+
+  const [whRes, cbRes, custRes, suppRes, repRes, prodRes, unitRes] = await Promise.all([
+    pool.query('SELECT * FROM warehouses ORDER BY created_at ASC'),
+    isRep
+      ? pool.query('SELECT id, name, type, is_default FROM cashboxes ORDER BY created_at ASC')
+      : pool.query('SELECT * FROM cashboxes ORDER BY created_at ASC'),
+    pool.query('SELECT * FROM customers ORDER BY created_at DESC'),
+    isRep && !isRepCanPurchase ? Promise.resolve({ rows: [] }) : pool.query('SELECT * FROM suppliers ORDER BY created_at DESC'),
+    isRep
+      ? pool.query('SELECT id, code, name, warehouse_id, user_id FROM representatives WHERE user_id = $1 ORDER BY created_at ASC', [actor.id])
+      : pool.query('SELECT * FROM representatives ORDER BY created_at ASC'),
+    pool.query('SELECT * FROM products ORDER BY created_at DESC'),
+    pool.query('SELECT * FROM product_units'),
+  ]);
+
+  const unitsByProd = new Map();
+  for (const u of unitRes.rows) {
+    const list = unitsByProd.get(u.product_id) || [];
+    list.push(u);
+    unitsByProd.set(u.product_id, list);
+  }
+  const products = prodRes.rows.map((p) => {
+    const mapped = mapPgProductRow(p, unitsByProd.get(p.id) || []);
+    return isRep ? sanitizeProductForRepresentative(mapped) : mapped;
+  });
+  const productMap = new Map(products.map((p) => [p.id, p]));
+  const customers = custRes.rows.map((c) => ({ id: c.id, code: c.code, name: c.name, phone: c.phone || '', assignedRepId: c.assigned_rep_id || undefined, currentBalance: Number(c.current_balance || 0) }));
+  const customerMap = new Map(customers.map((c) => [c.id, c]));
+  const suppliers = (suppRes.rows || []).map((s) => ({ id: s.id, code: s.code, name: s.name, phone: s.phone || '', currentBalance: Number(s.current_balance || 0) }));
+  const supplierMap = new Map(suppliers.map((s) => [s.id, s]));
+  const warehouses = whRes.rows.map((w) => ({ id: w.id, name: w.name, code: w.code, isDefault: Boolean(w.is_default), status: w.status || 'active' }));
+  const cashboxes = cbRes.rows.map((c) =>
+    sanitizeCashboxForViewer(
+      {
+        id: c.id,
+        name: c.name,
+        type: c.type || 'cashbox',
+        openingBalance: c.opening_balance !== undefined ? Number(c.opening_balance || 0) : undefined,
+        currentBalance: c.current_balance !== undefined ? Number(c.current_balance || 0) : undefined,
+        isDefault: Boolean(c.is_default),
+      },
+      actor
+    )
+  );
+  const representatives = repRes.rows.map((r) => ({ id: r.id, userId: r.user_id || undefined, code: r.code || '', name: r.name, phone: isRep ? '' : (r.phone || ''), warehouseId: r.warehouse_id || undefined }));
+
+  const metaData = { settings, warehouses, cashboxes, products, customers, suppliers, representatives };
+  const resolvers = buildBranchResolvers(metaData);
+  const { branchById, resolveBranchName, resolveCashboxName } = resolvers;
+
+  const dateFrom = filters.dateFrom ? String(filters.dateFrom).split('T')[0] : null;
+  const dateTo = filters.dateTo ? String(filters.dateTo).split('T')[0] : null;
+  const branchId = filters.branchId && filters.branchId !== 'all' ? String(filters.branchId) : null;
+  const branchObj = branchId ? branchById.get(branchId) || null : null;
+  const warehouseId = filters.warehouseId && filters.warehouseId !== 'all' ? String(filters.warehouseId) : (branchObj?.warehouseId || null);
+  const cashboxId = filters.cashboxId && filters.cashboxId !== 'all' ? String(filters.cashboxId) : (branchObj?.cashboxId || null);
+  const productId = filters.productId && filters.productId !== 'all' ? String(filters.productId) : null;
+  const customerId = filters.customerId && filters.customerId !== 'all' ? String(filters.customerId) : null;
+  const supplierId = filters.supplierId && filters.supplierId !== 'all' ? String(filters.supplierId) : null;
+  const representativeId = filters.representativeId && filters.representativeId !== 'all' ? String(filters.representativeId) : null;
+  const invoiceNumber = filters.invoiceNumber ? String(filters.invoiceNumber).trim() : '';
+
+  const clauses = [`i.status = 'confirmed'`, `i.type = $1`];
+  const params = [invType];
+  if (isRep) {
+    if (!isSales && !isRepCanPurchase) {
+      clauses.push(`1 = 0`);
+    } else {
+      const ownParts = [];
+      if (repProfile?.id) {
+        params.push(repProfile.id);
+        ownParts.push(`i.representative_id = $${params.length}`);
+      }
+      if (actor?.id) {
+        params.push(actor.id);
+        ownParts.push(`i.sent_by_user_id = $${params.length}`);
+      }
+      if (actor?.fullName) {
+        params.push(actor.fullName);
+        ownParts.push(`i.created_by = $${params.length}`);
+      }
+      clauses.push(ownParts.length > 0 ? `(${ownParts.join(' OR ')})` : `1 = 0`);
+    }
+  }
+  if (dateFrom) {
+    params.push(dateFrom);
+    clauses.push(`i.date >= $${params.length}`);
+  }
+  if (dateTo) {
+    params.push(dateTo);
+    clauses.push(`i.date <= $${params.length}`);
+  }
+  if (warehouseId) {
+    params.push(warehouseId);
+    clauses.push(`i.warehouse_id = $${params.length}`);
+  }
+  if (cashboxId && !isRep) {
+    params.push(cashboxId);
+    clauses.push(`i.cashbox_id = $${params.length}`);
+  }
+  if (customerId) {
+    params.push(customerId);
+    clauses.push(`i.customer_id = $${params.length}`);
+  }
+  if (supplierId) {
+    params.push(supplierId);
+    clauses.push(`i.supplier_id = $${params.length}`);
+  }
+  if (representativeId) {
+    params.push(representativeId);
+    clauses.push(`i.representative_id = $${params.length}`);
+  }
+  if (invoiceNumber) {
+    params.push(`%${invoiceNumber}%`);
+    clauses.push(`LOWER(i.invoice_number) LIKE LOWER($${params.length})`);
+  }
+
+  let rows = [];
+  let totalUnpaginatedRows = 0;
+  let totalsObj = { count: 0, quantity: 0, priceOrTotal: null, valueOrPaid: 0, remaining: null, profit: 0, costValue: 0, discount: 0, profitPercent: 0 };
+
+  if (isInvoiceLayout) {
+    if (productId) {
+      params.push(productId);
+      clauses.push(`EXISTS (SELECT 1 FROM invoice_items ii WHERE ii.invoice_id = i.id AND ii.product_id = $${params.length})`);
+    }
+    const whereSql = `WHERE ${clauses.join(' AND ')}`;
+    const countRes = await pool.query(
+      `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(i.grand_total),0) AS sum_total, COALESCE(SUM(i.paid_amount),0) AS sum_paid, COALESCE(SUM(i.remaining_amount),0) AS sum_rem, COALESCE(SUM(i.discount_total),0) AS sum_disc FROM invoices i ${whereSql}`,
+      params
+    );
+    totalUnpaginatedRows = Number(countRes.rows[0]?.cnt || 0);
+    const totalPages = Math.max(1, Math.ceil(totalUnpaginatedRows / pageSize));
+    const safePage = Math.min(page, totalPages);
+    const offset = (safePage - 1) * pageSize;
+
+    const pageParams = [...params, pageSize, offset];
+    const pageInvRes = await pool.query(
+      `SELECT i.* FROM invoices i ${whereSql} ORDER BY i.date DESC, i.created_at DESC LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
+      pageParams
+    );
+    const pageInvIds = pageInvRes.rows.map((r) => r.id);
+    const itemsByInv = new Map();
+    if (pageInvIds.length > 0) {
+      const itRes = await pool.query(`SELECT * FROM invoice_items WHERE invoice_id = ANY($1::varchar[])`, [pageInvIds]);
+      for (const it of itRes.rows) {
+        const list = itemsByInv.get(it.invoice_id) || [];
+        list.push(it);
+        itemsByInv.set(it.invoice_id, list);
+      }
+    }
+
+    rows = pageInvRes.rows.map((r) => {
+      const inv = mapPgInvoiceRow(r, itemsByInv.get(r.id) || [], []);
+      const cust = isSales && inv.customerId ? customerMap.get(inv.customerId) : null;
+      const supp = !isSales && inv.supplierId ? supplierMap.get(inv.supplierId) : null;
+      const partyName = isSales ? (inv.customerName || cust?.name || 'عميل نقدي') : (inv.supplierName || supp?.name || 'مورد نقدي');
+      const partyPhone = cust?.phone || supp?.phone || '';
+      const invQtySum = round3((inv.items || []).reduce((s, it) => s + Number(it.quantity || 0), 0));
+      const invCostSum = isRep
+        ? 0
+        : round2((inv.items || []).reduce((s, it) => {
+            const p = productMap.get(it.productId);
+            const c = Number(it.purchasePriceAtTime || 0) > 0 ? Number(it.purchasePriceAtTime) : Number(p?.purchasePrice || 0);
+            return s + c * round3(Number(it.quantity || 0) * Number(it.unitFactor || 1));
+          }, 0));
+      const invProfit = isRep || !isSales ? 0 : round2(Number(inv.grandTotal || 0) - invCostSum);
+      return {
+        rowId: `${inv.id}-INV`,
+        docType: isSales ? 'sales_invoice' : 'purchase_invoice',
+        docId: inv.id,
+        operationLabel: partyPhone ? `${partyName} (${partyPhone})` : partyName,
+        quantity: invQtySum,
+        unit: `${(inv.items || []).length} صنف`,
+        priceOrTotal: round2(inv.grandTotal || 0),
+        valueOrPaid: round2(inv.paidAmount || 0),
+        movementOrRemaining: round2(inv.remainingAmount || 0),
+        paidAmount: round2(inv.paidAmount || 0),
+        remainingAmount: round2(inv.remainingAmount || 0),
+        paymentStatus: Number(inv.remainingAmount || 0) <= 0.01 ? 'paid' : Number(inv.paidAmount || 0) > 0 ? 'partial' : 'unpaid',
+        invoiceStatus: inv.status,
+        employeeId: inv.representativeId || undefined,
+        employeeName: inv.representativeName || inv.createdBy || '-',
+        userName: inv.createdBy,
+        businessDate: formatBusinessDateSlash(inv.date),
+        rawDate: inv.date,
+        actualDateTime: formatActualDateTimeAr(inv.createdAt, inv.date),
+        rawCreatedAt: inv.createdAt || inv.date,
+        profit: invProfit,
+        costValue: invCostSum,
+        barcode: '',
+        displayId: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        branchName: resolveBranchName(inv.warehouseId, inv.cashboxId),
+        warehouseId: inv.warehouseId,
+        warehouseName: inv.warehouseName,
+        cashboxId: isRep ? '' : inv.cashboxId,
+        cashboxName: isRep ? '-' : resolveCashboxName(inv.cashboxId),
+        notes: `${inv.paymentType === 'cash' ? 'نقدي' : inv.paymentType === 'partial' ? 'سداد جزئي' : 'آجل'}${inv.notes ? ` - ${inv.notes}` : ''}`,
+        discount: round2(inv.discountTotal || 0),
+        profitPercent: isRep || !isSales ? 0 : calcProfitPctOnCost(invProfit, invCostSum),
+        customerId: isSales ? inv.customerId : undefined,
+        supplierId: !isSales ? inv.supplierId : undefined,
+        partyName,
+        representativeId: inv.representativeId || undefined,
+        representativeName: inv.representativeName || undefined,
+        rowTone: 'invoice_blue',
+        scopeType: 'inventory',
+      };
+    });
+
+    totalsObj = {
+      count: totalUnpaginatedRows,
+      quantity: round3(rows.reduce((s, r) => s + Number(r.quantity || 0), 0)),
+      priceOrTotal: round2(countRes.rows[0]?.sum_total || 0),
+      valueOrPaid: round2(countRes.rows[0]?.sum_paid || 0),
+      remaining: round2(countRes.rows[0]?.sum_rem || 0),
+      profit: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.profit || 0), 0)),
+      costValue: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.costValue || 0), 0)),
+      discount: round2(countRes.rows[0]?.sum_disc || 0),
+      profitPercent: 0,
+    };
+  } else {
+    if (productId) {
+      params.push(productId);
+      clauses.push(`it.product_id = $${params.length}`);
+    }
+    const whereSql = `WHERE ${clauses.join(' AND ')}`;
+    const countRes = await pool.query(
+      `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(it.quantity),0) AS sum_qty, COALESCE(SUM(it.total),0) AS sum_val, COALESCE(SUM(it.discount),0) AS sum_disc
+       FROM invoice_items it
+       JOIN invoices i ON i.id = it.invoice_id
+       ${whereSql}`,
+      params
+    );
+    totalUnpaginatedRows = Number(countRes.rows[0]?.cnt || 0);
+    const totalPages = Math.max(1, Math.ceil(totalUnpaginatedRows / pageSize));
+    const safePage = Math.min(page, totalPages);
+    const offset = (safePage - 1) * pageSize;
+
+    const pageParams = [...params, pageSize, offset];
+    const pageItemRes = await pool.query(
+      `SELECT it.*, i.invoice_number, i.date, i.created_at, i.created_by, i.warehouse_id, i.warehouse_name, i.cashbox_id, i.customer_id, i.customer_name, i.supplier_id, i.supplier_name, i.representative_id, i.representative_name, i.notes, i.status AS inv_status, i.paid_amount AS inv_paid, i.remaining_amount AS inv_rem
+       FROM invoice_items it
+       JOIN invoices i ON i.id = it.invoice_id
+       ${whereSql}
+       ORDER BY i.date DESC, i.created_at DESC
+       LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
+      pageParams
+    );
+
+    rows = pageItemRes.rows.map((r, idx) => {
+      const prod = productMap.get(r.product_id);
+      const cust = isSales && r.customer_id ? customerMap.get(r.customer_id) : null;
+      const supp = !isSales && r.supplier_id ? supplierMap.get(r.supplier_id) : null;
+      const partyName = isSales ? (r.customer_name || cust?.name || 'عميل نقدي') : (r.supplier_name || supp?.name || 'مورد نقدي');
+      const partyPhone = cust?.phone || supp?.phone || '';
+      const partyWithPhone = partyPhone ? `${partyName} (${partyPhone})` : partyName;
+      const qty = Number(r.quantity || 0);
+      const unitFactor = Number(r.unit_factor || resolveUnitFactor(prod, r.unit) || 1);
+      const baseQty = round3(qty * unitFactor);
+      const netLineVal = round2(r.total ?? Number(r.unit_price || 0) * qty - Number(r.discount || 0));
+      const costPerBase = isRep ? 0 : (Number(r.purchase_price_at_time || 0) > 0 ? Number(r.purchase_price_at_time) : Number(prod?.purchasePrice || 0));
+      const lineCost = isRep ? 0 : round2(costPerBase * baseQty);
+      const lineProfit = isRep || !isSales ? 0 : round2(netLineVal - lineCost);
+      const invDate = isoDateOnly(r.date);
+      return {
+        rowId: `${r.invoice_id}-IT-SQL-${offset + idx}`,
+        docType: isSales ? 'sales_invoice' : 'purchase_invoice',
+        docId: r.invoice_id,
+        productId: r.product_id,
+        productCode: prod?.code || '',
+        productName: r.product_name || prod?.name || '',
+        categoryName: prod?.category || 'عام',
+        class1: normalizeClassification1(prod),
+        operationLabel: r.product_name || prod?.name || '',
+        quantity: qty,
+        baseQuantity: baseQty,
+        unit: r.unit || prod?.baseUnit || 'قطعة',
+        baseUnit: prod?.baseUnit || r.unit || 'قطعة',
+        unitFactor,
+        priceOrTotal: round2(r.unit_price || 0),
+        valueOrPaid: netLineVal,
+        movementOrRemaining: isSales ? `${partyWithPhone} - فاتورة بيع` : `${partyWithPhone} - فاتورة شراء`,
+        paidAmount: round2(r.inv_paid || 0),
+        remainingAmount: round2(r.inv_rem || 0),
+        paymentStatus: Number(r.inv_rem || 0) <= 0.01 ? 'paid' : Number(r.inv_paid || 0) > 0 ? 'partial' : 'unpaid',
+        invoiceStatus: r.inv_status || 'confirmed',
+        employeeId: r.representative_id || undefined,
+        employeeName: r.representative_name || r.created_by || '-',
+        userName: r.created_by,
+        businessDate: formatBusinessDateSlash(invDate),
+        rawDate: invDate,
+        actualDateTime: formatActualDateTimeAr(isoTimestamp(r.created_at), invDate),
+        rawCreatedAt: isoTimestamp(r.created_at),
+        profit: lineProfit,
+        costValue: lineCost,
+        barcode: r.barcode || prod?.barcode || prod?.code || '',
+        displayId: prod?.code || r.product_id,
+        invoiceNumber: r.invoice_number,
+        branchName: resolveBranchName(r.warehouse_id, r.cashbox_id),
+        warehouseId: r.warehouse_id,
+        warehouseName: r.warehouse_name,
+        cashboxId: isRep ? '' : r.cashbox_id,
+        cashboxName: isRep ? '-' : resolveCashboxName(r.cashbox_id),
+        notes: r.notes || '',
+        discount: round2(r.discount || 0),
+        profitPercent: isRep || !isSales ? 0 : calcProfitPctOnCost(lineProfit, lineCost),
+        customerId: isSales ? r.customer_id : undefined,
+        supplierId: !isSales ? r.supplier_id : undefined,
+        partyName,
+        representativeId: r.representative_id || undefined,
+        representativeName: r.representative_name || undefined,
+        rowTone: 'default',
+        scopeType: 'inventory',
+      };
+    });
+
+    totalsObj = {
+      count: totalUnpaginatedRows,
+      quantity: round3(countRes.rows[0]?.sum_qty || 0),
+      priceOrTotal: null,
+      valueOrPaid: round2(countRes.rows[0]?.sum_val || 0),
+      remaining: null,
+      profit: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.profit || 0), 0)),
+      costValue: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.costValue || 0), 0)),
+      discount: round2(countRes.rows[0]?.sum_disc || 0),
+      profitPercent: 0,
+    };
+  }
+
+  const totalPages = Math.max(1, Math.ceil(totalUnpaginatedRows / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const titleMap = {
+    sales_invoices: 'فواتير بيع',
+    purchase_invoices: 'فواتير شراء',
+    sales_items: 'أصناف بيع',
+    purchase_items: 'أصناف شراء',
+  };
+
+  let drawerBalance = 0;
+  let reportBalance = 0;
+  let carriedFromYesterday = 0;
+  if (!isRep) {
+    let targetCashboxes = cashboxes;
+    if (cashboxId) targetCashboxes = targetCashboxes.filter((c) => c.id === cashboxId);
+    const targetCbSet = new Set(targetCashboxes.map((c) => c.id));
+    const cbNameToId = new Map(cashboxes.map((c) => [String(c.name || '').trim(), c.id]));
+    const liveCashBalance = round2(targetCashboxes.reduce((s, c) => s + Number(c.currentBalance || 0), 0));
+    const ftRows = dateFrom
+      ? (await pool.query(`SELECT date, type, amount, cashbox_id, description, related_entity_name FROM financial_transactions WHERE date >= $1`, [dateFrom])).rows
+      : (await pool.query(`SELECT date, type, amount, cashbox_id, description, related_entity_name FROM financial_transactions`)).rows;
+    let deltaAfter = 0;
+    let periodNet = 0;
+    for (const f of ftRows) {
+      const txObj = { date: isoDateOnly(f.date), type: f.type, amount: Number(f.amount || 0), cashboxId: f.cashbox_id, description: f.description, relatedEntityName: f.related_entity_name };
+      const d = computeSignedCashDelta(txObj, targetCbSet, cbNameToId);
+      if (!d) continue;
+      if (dateTo && txObj.date > dateTo) deltaAfter = round2(deltaAfter + d);
+      else if ((!dateFrom || txObj.date >= dateFrom) && (!dateTo || txObj.date <= dateTo)) periodNet = round2(periodNet + d);
+    }
+    drawerBalance = round2(liveCashBalance - deltaAfter);
+    reportBalance = round2(periodNet);
+    carriedFromYesterday = round2(drawerBalance - reportBalance);
+  }
+
+  return {
+    reportType,
+    reportTypeLabel: REPORT_TYPES_LIST.find((t) => t.key === reportType)?.label || 'الكل',
+    reportTypes: REPORT_TYPES_LIST,
+    filters: {
+      dateFrom,
+      dateTo,
+      branchId: branchId || 'all',
+      warehouseId: warehouseId || 'all',
+      cashboxId: cashboxId || 'all',
+      productId: productId || 'all',
+      productSearch: '',
+      barcode: '',
+      customerId: customerId || 'all',
+      supplierId: supplierId || 'all',
+      employeeId: 'all',
+      userId: 'all',
+      representativeId: representativeId || 'all',
+      invoiceNumber: invoiceNumber.toLowerCase(),
+      recordId: '',
+      search: '',
+    },
+    filterOptions: {
+      branches: isRep ? [] : resolvers.branches,
+      warehouses: isRep ? warehouses.filter((w) => repProfile?.warehouseId && w.id === repProfile.warehouseId) : warehouses,
+      cashboxes: isRep ? [] : cashboxes,
+      products: products.map((p) => ({ id: p.id, code: p.code, barcode: p.barcode, name: p.name, category: p.category, baseUnit: p.baseUnit, size: p.size, color: p.color })),
+      customers: customers.map((c) => ({ id: c.id, name: c.name, phone: c.phone })),
+      suppliers: isRep && !isRepCanPurchase ? [] : suppliers.map((s) => ({ id: s.id, name: s.name, phone: s.phone })),
+      employees: [],
+      representatives: isRep ? representatives.filter((r) => r.userId === actor?.id || r.id === repProfile?.id) : representatives,
+      users: [],
+    },
+    sections: [
+      {
+        key: reportType,
+        title: titleMap[reportType] || reportType,
+        theme: 'sage',
+        isInvoiceLayout,
+        cashHighlightCol: false,
+        totalSectionRows: totalUnpaginatedRows,
+        rows,
+        totals: totalsObj,
+      },
+    ],
+    pagination: {
+      enabled: true,
+      sqlPaginated: true,
+      page: safePage,
+      pageSize,
+      totalRows: totalUnpaginatedRows,
+      totalPages,
+      hasNextPage: safePage < totalPages,
+      hasPrevPage: safePage > 1,
+    },
+    summary: {
+      drawerBalance,
+      reportBalance,
+      carriedFromYesterday,
+      reportProfit: 0,
+      reportProfitPercent: 0,
+      filteredSalesNet: isSales ? round2(totalsObj.valueOrPaid) : 0,
+      filteredPurchasesNet: !isSales ? round2(totalsObj.valueOrPaid) : 0,
+      filteredCashIn: 0,
+      filteredCashOut: 0,
+      totalRows: totalUnpaginatedRows,
+    },
+    itemLifecycle: null,
+    itemPnl: {
+      selectedItem: null,
+      items: [],
+      portfolioTotals: {
+        totalPurchaseValue: 0, totalSalesValue: 0, netSalesValue: 0, cogs: 0, totalDiscounts: 0,
+        salesReturnsValue: 0, purchaseReturnsValue: 0, allocatedExpenses: 0, grossProfit: 0, netProfit: 0, totalLoss: 0, stockValuation: 0,
+      },
+    },
+  };
+}
+
+export async function getComprehensiveReport(filters = {}, actor) {
   const reportType = REPORT_TYPES_LIST.some((t) => t.key === filters.reportType)
     ? String(filters.reportType)
     : 'all';
+  const rawPagePre = Number(filters.page);
+  const rawPageSizePre = Number(filters.pageSize);
+  const hasPagPre =
+    (Number.isFinite(rawPagePre) && rawPagePre >= 1) || (Number.isFinite(rawPageSizePre) && rawPageSizePre >= 1);
+  if (hasPagPre && (await isPgMode())) {
+    const p = Number.isFinite(rawPagePre) && rawPagePre >= 1 ? Math.floor(rawPagePre) : 1;
+    const ps = Math.min(500, Math.max(1, Number.isFinite(rawPageSizePre) && rawPageSizePre >= 1 ? Math.floor(rawPageSizePre) : 50));
+    const sqlFast = await tryGetSqlPaginatedReportPg(filters, actor, reportType, p, ps);
+    if (sqlFast) return sqlFast;
+  }
+
+  const data = await loadFullReportDataset(actor, filters);
+  const resolvers = buildBranchResolvers(data);
+  const { branchById, branchByWh, branchByCb, cashboxMap, resolveBranchName, resolveCashboxName } = resolvers;
 
   const dateFrom = filters.dateFrom ? String(filters.dateFrom).split('T')[0] : null;
   const dateTo = filters.dateTo ? String(filters.dateTo).split('T')[0] : null;
@@ -1186,6 +1709,7 @@ export async function getComprehensiveReport(filters = {}, actor) {
         docType: isSales ? 'sales_invoice' : 'purchase_invoice',
         docId: inv.id,
         productId: it.productId,
+        productCode: prod?.code || '',
         productName: it.productName || prod?.name || '',
         categoryName: prod?.category || 'عام',
         class1: normalizeClassification1(prod),
@@ -1198,6 +1722,10 @@ export async function getComprehensiveReport(filters = {}, actor) {
         priceOrTotal: unitPrice,
         valueOrPaid: netLineValue,
         movementOrRemaining: isSales ? `${partyWithPhone} - فاتورة بيع` : `${partyWithPhone} - فاتورة شراء`,
+        paidAmount: round2(inv.paidAmount || 0),
+        remainingAmount: round2(inv.remainingAmount || 0),
+        paymentStatus: Number(inv.remainingAmount || 0) <= 0.01 ? 'paid' : Number(inv.paidAmount || 0) > 0 ? 'partial' : 'unpaid',
+        invoiceStatus: inv.status,
         employeeId: inv.representativeId || undefined,
         employeeName: empName,
         userName: inv.createdBy,
@@ -1259,6 +1787,10 @@ export async function getComprehensiveReport(filters = {}, actor) {
         priceOrTotal: round2(inv.grandTotal || 0),
         valueOrPaid: round2(inv.paidAmount || 0),
         movementOrRemaining: round2(inv.remainingAmount || 0),
+        paidAmount: round2(inv.paidAmount || 0),
+        remainingAmount: round2(inv.remainingAmount || 0),
+        paymentStatus: Number(inv.remainingAmount || 0) <= 0.01 ? 'paid' : Number(inv.paidAmount || 0) > 0 ? 'partial' : 'unpaid',
+        invoiceStatus: inv.status,
         employeeId: inv.representativeId || undefined,
         employeeName: empName,
         userName: inv.createdBy,
@@ -1791,41 +2323,41 @@ export async function getComprehensiveReport(filters = {}, actor) {
   let sections = [];
   switch (reportType) {
     case 'sales_items':
-      sections = [makeSection('sales_items', 'اصناف بيع', 'sage', false, salesItemRows)];
+      sections = [makeSection('sales_items', 'أصناف بيع', 'sage', false, salesItemRows)];
       break;
     case 'sales_invoices':
       sections = [makeSection('sales_invoices', 'فواتير بيع', 'sage', true, salesInvoiceRows)];
       break;
     case 'sales_items_by_unit':
-      sections = buildAggregatedSection('sales_items_by_unit', 'اصناف بيع/ بالوحدة', salesItemRows, () => 'all', () => 'اصناف بيع/ بالوحدة', { byUnit: true });
+      sections = buildAggregatedSection('sales_items_by_unit', 'أصناف بيع/ بالوحدة', salesItemRows, () => 'all', () => 'أصناف بيع/ بالوحدة', { byUnit: true });
       break;
     case 'sales_items_grouped':
-      sections = buildAggregatedSection('sales_items_grouped', 'اصناف بيع/مَجمع', salesItemRows, () => 'all', () => 'اصناف بيع/مَجمع', { byUnit: false });
+      sections = buildAggregatedSection('sales_items_grouped', 'أصناف بيع/مَجمع', salesItemRows, () => 'all', () => 'أصناف بيع/مَجمع', { byUnit: false });
       break;
     case 'sales_items_grouped_by_customer':
       sections = buildAggregatedSection(
         'sales_cust',
-        'اصناف بيع/مَجمع حسب العميل',
+        'أصناف بيع/مَجمع حسب العميل',
         salesItemRows,
         (r) => r.customerId || r.partyName || 'cash_customer',
-        (r) => `اصناف بيع مَجمعة — العميل: ${r.partyName || 'عميل نقدي'}`,
+        (r) => `أصناف بيع مَجمعة — العميل: ${r.partyName || 'عميل نقدي'}`,
         { byUnit: false, multiSection: true }
       );
       break;
     case 'sales_items_grouped_by_category':
       sections = buildAggregatedSection(
         'sales_cat',
-        'اصناف بيع/مَجمع حسب المجموعة',
+        'أصناف بيع/مَجمع حسب المجموعة',
         salesItemRows,
         (r) => r.categoryName || 'عام',
-        (r) => `اصناف بيع مَجمعة — المجموعة: ${r.categoryName || 'عام'}`,
+        (r) => `أصناف بيع مَجمعة — المجموعة: ${r.categoryName || 'عام'}`,
         { byUnit: false, multiSection: true }
       );
       break;
     case 'sales_items_grouped_by_category_class1':
       sections = buildAggregatedSection(
         'sales_cat_c1',
-        'اصناف بيع/مَجمع حسب المجموعة وتصنيف 1',
+        'أصناف بيع/مَجمع حسب المجموعة وتصنيف 1',
         salesItemRows,
         (r) => `${r.categoryName || 'عام'} || ${r.class1 || 'بدون تصنيف 1'}`,
         (r) => `المجموعة: ${r.categoryName || 'عام'} — تصنيف 1: ${r.class1 || 'بدون تصنيف 1'}`,
@@ -1834,28 +2366,28 @@ export async function getComprehensiveReport(filters = {}, actor) {
       break;
 
     case 'sales_return_items':
-      sections = [makeSection('sales_return_items', 'اصناف مرتجع بيع', 'sage', false, salesReturnItemRows)];
+      sections = [makeSection('sales_return_items', 'أصناف مرتجع بيع', 'sage', false, salesReturnItemRows)];
       break;
     case 'sales_return_invoices':
       sections = [makeSection('sales_return_invoices', 'فواتير مرتجع بيع', 'sage', true, salesReturnInvoiceRows)];
       break;
 
     case 'purchase_items':
-      sections = [makeSection('purchase_items', 'اصناف شراء', 'sage', false, purchaseItemRows)];
+      sections = [makeSection('purchase_items', 'أصناف شراء', 'sage', false, purchaseItemRows)];
       break;
     case 'purchase_invoices':
       sections = [makeSection('purchase_invoices', 'فواتير شراء', 'sage', true, purchaseInvoiceRows)];
       break;
 
     case 'purchase_return_items':
-      sections = [makeSection('purchase_return_items', 'اصناف مرتجع شراء', 'sage', false, purchaseReturnItemRows)];
+      sections = [makeSection('purchase_return_items', 'أصناف مرتجع شراء', 'sage', false, purchaseReturnItemRows)];
       break;
     case 'purchase_return_invoices':
       sections = [makeSection('purchase_return_invoices', 'فواتير مرتجع شراء', 'sage', true, purchaseReturnInvoiceRows)];
       break;
 
     case 'damaged_items':
-      sections = [makeSection('damaged_items', 'اصناف تالف', 'sage', false, damagedItemRows)];
+      sections = [makeSection('damaged_items', 'أصناف تالف', 'sage', false, damagedItemRows)];
       break;
     case 'damaged_invoices':
       sections = [makeSection('damaged_invoices', 'فواتير تالف', 'sage', true, damagedInvoiceRows)];
@@ -1902,15 +2434,15 @@ export async function getComprehensiveReport(filters = {}, actor) {
     case 'all':
     default: {
       const candidateSections = [
-        makeSection('sales_items', 'اصناف بيع', 'sage', false, salesItemRows),
+        makeSection('sales_items', 'أصناف بيع', 'sage', false, salesItemRows),
         makeSection('sales_invoices', 'فواتير بيع', 'sage', true, salesInvoiceRows),
-        makeSection('sales_return_items', 'اصناف مرتجع بيع', 'sage', false, salesReturnItemRows),
+        makeSection('sales_return_items', 'أصناف مرتجع بيع', 'sage', false, salesReturnItemRows),
         makeSection('sales_return_invoices', 'فواتير مرتجع بيع', 'sage', true, salesReturnInvoiceRows),
-        makeSection('purchase_items', 'اصناف شراء', 'sage', false, purchaseItemRows),
+        makeSection('purchase_items', 'أصناف شراء', 'sage', false, purchaseItemRows),
         makeSection('purchase_invoices', 'فواتير شراء', 'sage', true, purchaseInvoiceRows),
-        makeSection('purchase_return_items', 'اصناف مرتجع شراء', 'sage', false, purchaseReturnItemRows),
+        makeSection('purchase_return_items', 'أصناف مرتجع شراء', 'sage', false, purchaseReturnItemRows),
         makeSection('purchase_return_invoices', 'فواتير مرتجع شراء', 'sage', true, purchaseReturnInvoiceRows),
-        makeSection('damaged_items', 'اصناف تالف', 'sage', false, damagedItemRows),
+        makeSection('damaged_items', 'أصناف تالف', 'sage', false, damagedItemRows),
         makeSection('damaged_invoices', 'فواتير تالف', 'sage', true, damagedInvoiceRows),
         makeSection('cash_payment_customer', 'سداد نقدى | عميل', 'slate', false, cashPaymentCustomerRows, { cashHighlightCol: true }),
         makeSection('cash_payment_supplier', 'سداد نقدى | مورد', 'slate', false, cashPaymentSupplierRows, { cashHighlightCol: true }),
@@ -2151,7 +2683,9 @@ export async function getComprehensiveReport(filters = {}, actor) {
         color: p.color,
       })),
       customers: (data.customers || []).map((c) => ({ id: c.id, name: c.name, phone: c.phone })),
-      suppliers: isRepActor ? [] : (data.suppliers || []).map((s) => ({ id: s.id, name: s.name, phone: s.phone })),
+      suppliers: (isRepActor && !(actor?.permissions?.canCreatePurchase || actor?.permissions?.canManagePurchases))
+        ? []
+        : (data.suppliers || []).map((s) => ({ id: s.id, name: s.name, phone: s.phone })),
       employees: canViewPayrollRows && !isRepActor ? (data.employees || []).map((e) => ({ id: e.id, name: e.name, jobTitle: e.jobTitle })) : [],
       representatives: isRepActor
         ? (data.representatives || [])
@@ -2991,7 +3525,8 @@ export async function getSourceDocumentForReport(docType, docId, actor) {
         inv = (data.invoices || []).find((i) => i.id === smMatch.referenceId) || null;
       }
     }
-    if (!inv || (isRep && inv.type === 'purchase')) return null;
+    const isRepCanPurchaseDoc = Boolean(actor?.permissions?.canCreatePurchase || actor?.permissions?.canManagePurchases);
+    if (!inv || (isRep && inv.type === 'purchase' && !isRepCanPurchaseDoc)) return null;
     const safeInv = isRep ? sanitizeInvoiceForRepresentative(inv) : inv;
     const relatedAudits = isRep ? [] : (data.auditLogs || []).filter((a) => a.recordId === safeInv.id);
     return {
@@ -3000,7 +3535,7 @@ export async function getSourceDocumentForReport(docType, docId, actor) {
       document: {
         ...safeInv,
         branchName: resolveBranchName(safeInv.warehouseId, safeInv.cashboxId),
-        cashboxName: resolveCashboxName(safeInv.cashboxId),
+        cashboxName: isRep ? '-' : resolveCashboxName(safeInv.cashboxId),
         actualDateTime: formatActualDateTimeAr(safeInv.createdAt, safeInv.date),
       },
       auditTrail: relatedAudits,
@@ -3009,14 +3544,15 @@ export async function getSourceDocumentForReport(docType, docId, actor) {
 
   if (cleanType === 'sales_return' || cleanType === 'purchase_return') {
     const ret = (data.invoiceReturns || []).find((r) => r.id === cleanId || r.returnNumber === cleanId);
-    if (!ret || (isRep && ret.type === 'purchase_return')) return null;
+    const isRepCanPurchaseDoc = Boolean(actor?.permissions?.canCreatePurchase || actor?.permissions?.canManagePurchases);
+    if (!ret || (isRep && ret.type === 'purchase_return' && !isRepCanPurchaseDoc)) return null;
     return {
       docType: ret.type,
       title: ret.type === 'sales_return' ? `إشعار مرتجع مبيعات ${ret.returnNumber}` : `إشعار مرتجع مشتريات ${ret.returnNumber}`,
       document: {
         ...ret,
         branchName: resolveBranchName(ret.warehouseId, ret.cashboxId),
-        cashboxName: resolveCashboxName(ret.cashboxId, 'رصيد الحساب'),
+        cashboxName: isRep ? '-' : resolveCashboxName(ret.cashboxId, 'رصيد الحساب'),
         actualDateTime: formatActualDateTimeAr(ret.createdAt, ret.date),
       },
       auditTrail: isRep ? [] : (data.auditLogs || []).filter((a) => a.recordId === ret.id),
@@ -3142,7 +3678,8 @@ export async function getSourceDocumentForReport(docType, docId, actor) {
   if (sm) {
     const linkedInv = sm.referenceId ? (data.invoices || []).find((i) => i.id === sm.referenceId) : null;
     if (linkedInv) {
-      if (isRep && linkedInv.type === 'purchase') return null;
+      const isRepCanPurchaseDoc = Boolean(actor?.permissions?.canCreatePurchase || actor?.permissions?.canManagePurchases);
+      if (isRep && linkedInv.type === 'purchase' && !isRepCanPurchaseDoc) return null;
       const safeLinkedInv = isRep ? sanitizeInvoiceForRepresentative(linkedInv) : linkedInv;
       return {
         docType: safeLinkedInv.type === 'sales' ? 'sales_invoice' : 'purchase_invoice',
@@ -3150,7 +3687,7 @@ export async function getSourceDocumentForReport(docType, docId, actor) {
         document: {
           ...safeLinkedInv,
           branchName: resolveBranchName(safeLinkedInv.warehouseId, safeLinkedInv.cashboxId),
-          cashboxName: resolveCashboxName(safeLinkedInv.cashboxId),
+          cashboxName: isRep ? '-' : resolveCashboxName(safeLinkedInv.cashboxId),
           actualDateTime: formatActualDateTimeAr(safeLinkedInv.createdAt, safeLinkedInv.date),
         },
         auditTrail: isRep ? [] : (data.auditLogs || []).filter((a) => a.recordId === safeLinkedInv.id),
@@ -3170,4 +3707,329 @@ export async function getSourceDocumentForReport(docType, docId, actor) {
   }
 
   return null;
+}
+
+export async function getRepDetailedReport(filters = {}, actor) {
+  const isRepActor = actor?.role === 'representative';
+  const ownProfile = isRepActor ? await getRepresentativeByUserId(actor.id) : null;
+  const targetRepActor = isRepActor
+    ? actor
+    : actor;
+  const canPurchase = isRepActor
+    ? Boolean(actor?.permissions?.canCreatePurchase || actor?.permissions?.canManagePurchases)
+    : true;
+
+  const data = await loadFullReportDataset(targetRepActor, filters);
+  const dateFrom = filters.dateFrom ? String(filters.dateFrom).split('T')[0] : null;
+  const dateTo = filters.dateTo ? String(filters.dateTo).split('T')[0] : null;
+  const customerId = filters.customerId && filters.customerId !== 'all' ? String(filters.customerId) : null;
+  const supplierId = filters.supplierId && filters.supplierId !== 'all' ? String(filters.supplierId) : null;
+  const productId = filters.productId && filters.productId !== 'all' ? String(filters.productId) : null;
+  const invoiceNumber = filters.invoiceNumber ? String(filters.invoiceNumber).trim().toLowerCase() : '';
+  const opType = filters.opType && filters.opType !== 'all' ? String(filters.opType) : 'all';
+  const paymentStatusFilter = filters.paymentStatus && filters.paymentStatus !== 'all' ? String(filters.paymentStatus) : 'all';
+  const invoiceStatusFilter = filters.invoiceStatus && filters.invoiceStatus !== 'all' ? String(filters.invoiceStatus) : 'all';
+  const search = filters.search ? String(filters.search).trim().toLowerCase() : '';
+
+  const productMap = new Map((data.products || []).map((p) => [p.id, p]));
+  const customerMap = new Map((data.customers || []).map((c) => [c.id, c]));
+  const supplierMap = new Map((data.suppliers || []).map((s) => [s.id, s]));
+
+  const inDateRange = (d) => {
+    const clean = d ? String(d).split('T')[0] : '';
+    if (dateFrom && clean && clean < dateFrom) return false;
+    if (dateTo && clean && clean > dateTo) return false;
+    return true;
+  };
+  const resolvePayStatus = (inv) => {
+    const rem = Number(inv.remainingAmount || 0);
+    const paid = Number(inv.paidAmount || 0);
+    if (rem <= 0.01) return 'paid';
+    if (paid > 0.01) return 'partial';
+    return 'unpaid';
+  };
+  const matchesInvFilters = (inv) => {
+    if (!inDateRange(inv.date)) return false;
+    if (invoiceStatusFilter !== 'all' && inv.status !== invoiceStatusFilter) return false;
+    const paySt = resolvePayStatus(inv);
+    if (paymentStatusFilter !== 'all' && paySt !== paymentStatusFilter) return false;
+    if (invoiceNumber && !String(inv.invoiceNumber || '').toLowerCase().includes(invoiceNumber)) return false;
+    if (customerId && inv.type === 'sales' && inv.customerId !== customerId) return false;
+    if (supplierId && inv.type === 'purchase' && inv.supplierId !== supplierId) return false;
+    if (customerId && inv.type !== 'sales') return false;
+    if (supplierId && inv.type !== 'purchase') return false;
+    if (productId && !(inv.items || []).some((it) => it.productId === productId)) return false;
+    if (search) {
+      const hay = [
+        inv.invoiceNumber,
+        inv.customerName,
+        inv.supplierName,
+        inv.notes,
+        ...(inv.items || []).map((it) => it.productName),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    return true;
+  };
+
+  const salesInvoices = [];
+  const salesItems = [];
+  const purchaseInvoices = [];
+  const purchaseItems = [];
+  const purchasePayments = [];
+
+  for (const inv of data.invoices || []) {
+    if (inv.type !== 'sales' && inv.type !== 'purchase') continue;
+    if (inv.type === 'purchase' && !canPurchase) continue;
+    if (!matchesInvFilters(inv)) continue;
+    const payStatus = resolvePayStatus(inv);
+    const invSummary = {
+      id: inv.id,
+      invoiceNumber: inv.invoiceNumber,
+      type: inv.type,
+      date: inv.date,
+      customerId: inv.customerId,
+      customerName: inv.customerName,
+      supplierId: inv.supplierId,
+      supplierName: inv.supplierName,
+      warehouseName: inv.warehouseName,
+      grandTotal: round2(inv.grandTotal || 0),
+      paidAmount: round2(inv.paidAmount || 0),
+      remainingAmount: round2(inv.remainingAmount || 0),
+      discountTotal: round2(inv.discountTotal || 0),
+      paymentType: inv.paymentType,
+      paymentStatus: payStatus,
+      status: inv.status,
+      dispatchStatus: inv.dispatchStatus,
+      itemsCount: (inv.items || []).length,
+      items: (inv.items || []).map((it) => ({
+        productId: it.productId,
+        productCode: productMap.get(it.productId)?.code || '',
+        productName: it.productName,
+        unit: it.unit,
+        unitFactor: Number(it.unitFactor || 1),
+        quantity: Number(it.quantity || 0),
+        unitPrice: round2(it.unitPrice || 0),
+        discount: round2(it.discount || 0),
+        total: round2(it.total || 0),
+      })),
+      notes: inv.notes || '',
+    };
+    if (inv.type === 'sales') {
+      salesInvoices.push(invSummary);
+    } else {
+      purchaseInvoices.push(invSummary);
+      for (const py of inv.payments || []) {
+        purchasePayments.push({
+          id: py.id,
+          invoiceId: inv.id,
+          invoiceNumber: inv.invoiceNumber,
+          supplierId: inv.supplierId,
+          supplierName: inv.supplierName || '',
+          date: py.date || inv.date,
+          amount: round2(py.amount || 0),
+          paymentMethod: py.paymentMethod || 'cash',
+          notes: py.notes || '',
+        });
+      }
+    }
+
+    for (const it of inv.items || []) {
+      if (productId && it.productId !== productId) continue;
+      const prod = productMap.get(it.productId);
+      const itemRow = {
+        id: `${inv.id}-${it.productId}-${it.unit}`,
+        invoiceId: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        type: inv.type,
+        date: inv.date,
+        partyId: inv.type === 'sales' ? inv.customerId : inv.supplierId,
+        partyName: inv.type === 'sales' ? (inv.customerName || 'عميل نقدي') : (inv.supplierName || 'مورد نقدي'),
+        productId: it.productId,
+        productCode: prod?.code || '',
+        productName: it.productName || prod?.name || '',
+        unit: it.unit,
+        unitFactor: Number(it.unitFactor || 1),
+        quantity: Number(it.quantity || 0),
+        unitPrice: round2(it.unitPrice || 0),
+        discount: round2(it.discount || 0),
+        total: round2(it.total || Number(it.unitPrice || 0) * Number(it.quantity || 0) - Number(it.discount || 0)),
+        invoiceStatus: inv.status,
+        paymentStatus: payStatus,
+      };
+      if (inv.type === 'sales') salesItems.push(itemRow);
+      else purchaseItems.push(itemRow);
+    }
+  }
+
+  const salesReturns = [];
+  const purchaseReturns = [];
+  for (const ret of data.invoiceReturns || []) {
+    const isSalesRet = ret.type === 'sales_return';
+    if (!isSalesRet && !canPurchase) continue;
+    if (!inDateRange(ret.date)) continue;
+    if (customerId && isSalesRet && ret.partyId !== customerId) continue;
+    if (supplierId && !isSalesRet && ret.partyId !== supplierId) continue;
+    if (customerId && !isSalesRet) continue;
+    if (supplierId && isSalesRet) continue;
+    if (productId && !(ret.items || []).some((it) => it.productId === productId)) continue;
+    if (invoiceNumber && !String(ret.returnNumber || '').toLowerCase().includes(invoiceNumber) && !String(ret.originalInvoiceNumber || '').toLowerCase().includes(invoiceNumber)) {
+      continue;
+    }
+    const retObj = {
+      id: ret.id,
+      returnNumber: ret.returnNumber,
+      type: ret.type,
+      originalInvoiceId: ret.originalInvoiceId,
+      originalInvoiceNumber: ret.originalInvoiceNumber,
+      date: ret.date,
+      partyId: ret.partyId,
+      partyName: ret.partyName,
+      grandTotal: round2(ret.grandTotal || 0),
+      refundType: ret.refundType,
+      reason: ret.reason || '',
+      items: ret.items || [],
+    };
+    if (isSalesRet) salesReturns.push(retObj);
+    else purchaseReturns.push(retObj);
+  }
+
+  const collections = [];
+  for (const tx of data.financialTransactions || []) {
+    if (tx.type !== 'customer_payment') continue;
+    if (!inDateRange(tx.date)) continue;
+    const cid = tx.relatedEntityId || tx.partyId;
+    if (customerId && cid !== customerId) continue;
+    if (supplierId || productId) continue;
+    if (invoiceNumber && !String(tx.relatedDocNumber || tx.transactionNumber || '').toLowerCase().includes(invoiceNumber)) continue;
+    if (search) {
+      const hay = [tx.transactionNumber, tx.relatedDocNumber, tx.relatedEntityName, tx.partyName, tx.description, tx.notes]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      if (!hay.includes(search)) continue;
+    }
+    collections.push({
+      id: tx.id,
+      transactionNumber: tx.transactionNumber,
+      date: tx.date,
+      customerId: cid,
+      customerName: tx.relatedEntityName || tx.partyName || customerMap.get(cid)?.name || '-',
+      invoiceId: tx.relatedDocId || undefined,
+      invoiceNumber: tx.relatedDocNumber || undefined,
+      amount: round2(tx.amount || 0),
+      description: tx.description || 'تحصيل من العميل',
+      notes: tx.notes || '',
+    });
+  }
+
+  // Customer balances (Company-wide current balance vs rep-executed operations)
+  const customerBalances = (data.customers || [])
+    .filter((c) => !customerId || c.id === customerId)
+    .filter((c) => !search || [c.name, c.phone, c.code].filter(Boolean).join(' ').toLowerCase().includes(search))
+    .map((c) => {
+      const cSales = salesInvoices.filter((i) => i.customerId === c.id);
+      const cCol = collections.filter((x) => x.customerId === c.id);
+      return {
+        id: c.id,
+        code: c.code,
+        name: c.name,
+        phone: c.phone || '',
+        companyCurrentBalance: round2(c.currentBalance || 0),
+        balanceScope: 'company_wide',
+        repSalesCount: cSales.length,
+        repSalesTotal: round2(cSales.reduce((s, i) => s + i.grandTotal, 0)),
+        repCollectionsTotal: round2(cCol.reduce((s, x) => s + x.amount, 0)),
+      };
+    });
+
+  // Supplier balances (Only when rep has purchase permission)
+  const supplierBalances = canPurchase
+    ? (data.suppliers || [])
+        .filter((s) => !supplierId || s.id === supplierId)
+        .filter((s) => !search || [s.name, s.phone, s.code].filter(Boolean).join(' ').toLowerCase().includes(search))
+        .map((s) => {
+          const sPurchases = purchaseInvoices.filter((i) => i.supplierId === s.id);
+          return {
+            id: s.id,
+            code: s.code,
+            name: s.name,
+            phone: s.phone || '',
+            companyCurrentBalance: round2(s.currentBalance || 0),
+            balanceScope: 'company_wide',
+            repPurchasesCount: sPurchases.length,
+            repPurchasesTotal: round2(sPurchases.reduce((acc, i) => acc + i.grandTotal, 0)),
+            repPaidTotal: round2(sPurchases.reduce((acc, i) => acc + i.paidAmount, 0)),
+            repRemainingTotal: round2(sPurchases.reduce((acc, i) => acc + i.remainingAmount, 0)),
+          };
+        })
+    : [];
+
+  const confirmedSales = salesInvoices.filter((i) => i.status === 'confirmed');
+  const confirmedPurchases = purchaseInvoices.filter((i) => i.status === 'confirmed');
+
+  return {
+    representative: ownProfile
+      ? { id: ownProfile.id, name: ownProfile.name, warehouseId: ownProfile.warehouseId }
+      : { id: actor.id, name: actor.fullName },
+    permissions: {
+      canManageSales: Boolean(actor?.permissions?.canManageSales || actor?.role === 'admin'),
+      canCreatePurchase: canPurchase,
+    },
+    balanceSemantics: {
+      customerBalance: 'رصيد العميل الحالي على مستوى الشركة بالكامل، بينما عمليات الفواتير والتحصيلات تخص هذا المندوب.',
+      supplierBalance: 'رصيد المورد الحالي على مستوى الشركة بالكامل، بينما فواتير المشتريات والمدفوعات تخص هذا المندوب فقط.',
+    },
+    filters: {
+      dateFrom,
+      dateTo,
+      customerId: customerId || 'all',
+      supplierId: supplierId || 'all',
+      productId: productId || 'all',
+      invoiceNumber,
+      opType,
+      paymentStatus: paymentStatusFilter,
+      invoiceStatus: invoiceStatusFilter,
+      search,
+    },
+    filterOptions: {
+      customers: (data.customers || []).map((c) => ({ id: c.id, name: c.name, phone: c.phone })),
+      suppliers: canPurchase ? (data.suppliers || []).map((s) => ({ id: s.id, name: s.name, phone: s.phone })) : [],
+      products: (data.products || []).map((p) => ({ id: p.id, code: p.code, name: p.name, baseUnit: p.baseUnit })),
+    },
+    summary: {
+      salesCount: confirmedSales.length,
+      salesTotal: round2(confirmedSales.reduce((s, i) => s + i.grandTotal, 0)),
+      salesPaid: round2(confirmedSales.reduce((s, i) => s + i.paidAmount, 0)),
+      salesRemaining: round2(confirmedSales.reduce((s, i) => s + i.remainingAmount, 0)),
+      salesReturnCount: salesReturns.length,
+      salesReturnTotal: round2(salesReturns.reduce((s, r) => s + r.grandTotal, 0)),
+      collectionsCount: collections.length,
+      collectionsTotal: round2(collections.reduce((s, c) => s + c.amount, 0)),
+      purchasesCount: canPurchase ? confirmedPurchases.length : 0,
+      purchasesTotal: canPurchase ? round2(confirmedPurchases.reduce((s, i) => s + i.grandTotal, 0)) : 0,
+      purchasesPaid: canPurchase ? round2(confirmedPurchases.reduce((s, i) => s + i.paidAmount, 0)) : 0,
+      purchasesRemaining: canPurchase ? round2(confirmedPurchases.reduce((s, i) => s + i.remainingAmount, 0)) : 0,
+      purchaseReturnCount: canPurchase ? purchaseReturns.length : 0,
+      purchaseReturnTotal: canPurchase ? round2(purchaseReturns.reduce((s, r) => s + r.grandTotal, 0)) : 0,
+      purchasePaymentsTotal: canPurchase ? round2(purchasePayments.reduce((s, p) => s + p.amount, 0)) : 0,
+      customersTotalBalance: round2(customerBalances.reduce((s, c) => s + c.companyCurrentBalance, 0)),
+      suppliersTotalBalance: canPurchase ? round2(supplierBalances.reduce((s, sup) => s + sup.companyCurrentBalance, 0)) : 0,
+    },
+    sections: {
+      salesInvoices: opType === 'all' || opType === 'sales' ? salesInvoices : [],
+      salesItems: opType === 'all' || opType === 'sales' ? salesItems : [],
+      salesReturns: opType === 'all' || opType === 'sales_return' ? salesReturns : [],
+      collections: opType === 'all' || opType === 'collection' ? collections : [],
+      purchaseInvoices: canPurchase && (opType === 'all' || opType === 'purchase') ? purchaseInvoices : [],
+      purchaseItems: canPurchase && (opType === 'all' || opType === 'purchase') ? purchaseItems : [],
+      purchaseReturns: canPurchase && (opType === 'all' || opType === 'purchase_return') ? purchaseReturns : [],
+      purchasePayments: canPurchase && (opType === 'all' || opType === 'purchase_payment') ? purchasePayments : [],
+      customerBalances,
+      supplierBalances,
+    },
+  };
 }

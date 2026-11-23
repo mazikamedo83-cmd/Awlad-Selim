@@ -399,24 +399,33 @@ export async function initializeSchema(customPool = null) {
       "ALTER TABLE customer_item_orders DROP CONSTRAINT IF EXISTS customer_item_orders_status_check",
       "ALTER TABLE customer_item_orders ADD CONSTRAINT customer_item_orders_status_check CHECK (status IN ('pending', 'under_review', 'approved', 'rejected', 'preparing', 'rep_assigned', 'out_for_delivery', 'delivered', 'needs_review', 'invoiced', 'collected', 'closed', 'cancelled'))",
     ];
+    function isIdempotentDdlError(err, stmt = '') {
+      const code = String(err?.code || '');
+      if (['42701', '42P07', '42710'].includes(code)) return true;
+      if (code === '42704' && /DROP\s+CONSTRAINT\s+IF\s+EXISTS/i.test(stmt)) return true;
+      const msg = String(err?.message || '');
+      if (!code && /already exists/i.test(msg) && /IF\s+NOT\s+EXISTS/i.test(stmt)) return true;
+      // pg-mem throws NotSupported AST coverage errors when re-running IF NOT EXISTS DDL on existing objects
+      if (!code && /pg-mem/i.test(msg) && /IF\s+NOT\s+EXISTS/i.test(stmt)) return true;
+      return false;
+    }
+
     for (const stmt of alterStatements) {
       try {
         await currentPool.query(stmt);
-      } catch {
-        // Ignore on engines where column already exists or constraint differs
+      } catch (err) {
+        if (!isIdempotentDdlError(err, stmt)) {
+          console.error('[postgres] Migration ALTER statement failed:', stmt, err);
+          throw err;
+        }
       }
     }
 
     // Ensure v4 tables exist even when upgrading an existing v3 PG DB
-    let hasV4Tables = false;
-    try {
-      const v4Check = await currentPool.query(
-        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'owner_accounts'"
-      );
-      hasV4Tables = Boolean(v4Check.rows && v4Check.rows.length > 0);
-    } catch {
-      hasV4Tables = false;
-    }
+    const v4Check = await currentPool.query(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'owner_accounts'"
+    );
+    const hasV4Tables = Boolean(v4Check.rows && v4Check.rows.length > 0);
     if (!hasV4Tables) {
       const v4Marker = '-- 34. الحسابات الشخصية';
       const idx = sql.indexOf(v4Marker);
@@ -426,15 +435,10 @@ export async function initializeSchema(customPool = null) {
     }
 
     // Ensure v5 pairing/device tables exist on pre-existing v4 PG DBs
-    let hasV5PairingTables = false;
-    try {
-      const v5Check = await currentPool.query(
-        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'pairing_tokens'"
-      );
-      hasV5PairingTables = Boolean(v5Check.rows && v5Check.rows.length > 0);
-    } catch {
-      hasV5PairingTables = false;
-    }
+    const v5Check = await currentPool.query(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'pairing_tokens'"
+    );
+    const hasV5PairingTables = Boolean(v5Check.rows && v5Check.rows.length > 0);
     if (!hasV5PairingTables) {
       const v5Marker = '-- 40. روابط الربط الذكي';
       const idx5 = sql.indexOf(v5Marker);
@@ -444,15 +448,10 @@ export async function initializeSchema(customPool = null) {
     }
 
     // Ensure v6 order advance & sync conflict tables exist on pre-existing v5 PG DBs
-    let hasV6SyncTables = false;
-    try {
-      const v6Check = await currentPool.query(
-        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'order_advance_payments'"
-      );
-      hasV6SyncTables = Boolean(v6Check.rows && v6Check.rows.length > 0);
-    } catch {
-      hasV6SyncTables = false;
-    }
+    const v6Check = await currentPool.query(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'order_advance_payments'"
+    );
+    const hasV6SyncTables = Boolean(v6Check.rows && v6Check.rows.length > 0);
     if (!hasV6SyncTables) {
       const v6Marker = '-- 41. الدفعات المقدمة لطلبات العملاء';
       const idx6 = sql.indexOf(v6Marker);
@@ -462,15 +461,10 @@ export async function initializeSchema(customPool = null) {
     }
 
     // Ensure v7 rep_custody_operations table exists on pre-existing PG DBs
-    let hasV7CustodyTable = false;
-    try {
-      const v7Check = await currentPool.query(
-        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'rep_custody_operations'"
-      );
-      hasV7CustodyTable = Boolean(v7Check.rows && v7Check.rows.length > 0);
-    } catch {
-      hasV7CustodyTable = false;
-    }
+    const v7Check = await currentPool.query(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'rep_custody_operations'"
+    );
+    const hasV7CustodyTable = Boolean(v7Check.rows && v7Check.rows.length > 0);
     if (!hasV7CustodyTable) {
       const v7Marker = '-- 44. سجل عمليات عهدة المندوب';
       const idx7 = sql.indexOf(v7Marker);
@@ -501,40 +495,60 @@ export async function initializeSchema(customPool = null) {
     for (const stmt of v8Statements) {
       try {
         await currentPool.query(stmt);
-      } catch {
-        // ignore if already present or engine-specific
+      } catch (err) {
+        if (!isIdempotentDdlError(err, stmt)) {
+          console.error('[postgres] v8 DDL statement failed:', stmt, err);
+          throw err;
+        }
       }
     }
 
     // Non-destructive normalized_phone backfill for pre-existing databases
     for (const tbl of ['users', 'customers', 'representatives']) {
-      try {
-        const pending = await currentPool.query(
-          `SELECT id, phone FROM ${tbl} WHERE (normalized_phone IS NULL OR normalized_phone = '') AND phone IS NOT NULL AND phone <> ''`
-        );
-        for (const row of pending.rows || []) {
-          const norm = normalizePhoneDigits(row.phone);
-          if (norm) {
-            await currentPool.query(`UPDATE ${tbl} SET normalized_phone = $1 WHERE id = $2`, [norm, row.id]);
-          }
+      const pending = await currentPool.query(
+        `SELECT id, phone FROM ${tbl} WHERE (normalized_phone IS NULL OR normalized_phone = '') AND phone IS NOT NULL AND phone <> ''`
+      );
+      for (const row of pending.rows || []) {
+        const norm = normalizePhoneDigits(row.phone);
+        if (norm) {
+          await currentPool.query(`UPDATE ${tbl} SET normalized_phone = $1 WHERE id = $2`, [norm, row.id]);
         }
-      } catch {
-        // ignore non-fatal backfill errors on minimal test schemas
       }
     }
 
-    // Conditional partial unique index enforcing no duplicate mobile account phones across multiple instances
-    try {
-      await currentPool.query(
-        `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_role_norm_phone_unique ON users(role, normalized_phone) WHERE role IN ('customer', 'representative') AND normalized_phone <> ''`
+    // Check legacy duplicate phone entries before creating strict partial unique index
+    const dupRes = await currentPool.query(
+      `SELECT role, normalized_phone, COUNT(*) AS cnt
+       FROM users
+       WHERE role IN ('customer', 'representative') AND normalized_phone IS NOT NULL AND normalized_phone <> ''
+       GROUP BY role, normalized_phone`
+    );
+    const dupRows = (dupRes.rows || []).filter((r) => Number(r.cnt || 0) > 1);
+    if (dupRows.length > 0) {
+      console.warn(
+        '[postgres] Skipped idx_users_role_norm_phone_unique due to pre-existing duplicate role+normalized_phone rows:',
+        dupRows
       );
-    } catch {
-      // Ignore if legacy duplicate phone rows already exist or engine lacks partial unique index support
+    } else {
+      try {
+        await currentPool.query(
+          `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_role_norm_phone_unique ON users(role, normalized_phone) WHERE role IN ('customer', 'representative') AND normalized_phone <> ''`
+        );
+      } catch (err) {
+        // pg-mem does not support WHERE clauses on CREATE UNIQUE INDEX in all versions; genuine PG errors must still throw
+        const msg = String(err?.message || '');
+        const isInMemoryPartialIndexLimit = !err?.code && /pg-mem|partial index|not supported|where/i.test(msg);
+        if (!isInMemoryPartialIndexLimit && !isIdempotentDdlError(err, 'CREATE UNIQUE INDEX IF NOT EXISTS')) {
+          console.error('[postgres] Failed to create idx_users_role_norm_phone_unique:', err);
+          throw err;
+        }
+      }
     }
 
     return { success: true, message: 'تم تطبيق هيكل الجداول والفهارس والتسلسلات في PostgreSQL بنجاح.' };
   } catch (err) {
-    return { success: false, error: err.message };
+    console.error('[postgres] initializeSchema error:', err);
+    return { success: false, error: err?.message || String(err) };
   }
 }
 
