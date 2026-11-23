@@ -133,7 +133,8 @@ router.get(
   asyncHandler(async (req, res) => {
     const customer = await getCustomerById(req.params.id);
     if (!customer) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
-    const priceHistory = await getCustomerProductPriceHistory(customer.id);
+    const productId = typeof req.query.productId === 'string' ? req.query.productId : null;
+    const priceHistory = await getCustomerProductPriceHistory(customer.id, productId);
     res.json({ ok: true, customerId: customer.id, priceHistory });
   })
 );

@@ -358,6 +358,7 @@ async function runFullModeAudit(modeName) {
             canAdd: true,
             canEdit: true,
             canManageSales: true,
+            canCreatePurchase: false,
             canManageAccounts: true,
             canViewReports: true,
             canManageInventory: true,

@@ -233,6 +233,61 @@ export const REP_PRESET_ALLOWED_KEYS = new Set([
   'canReceive',
 ]);
 
+export const ADMIN_ONLY_PERMISSION_KEYS = new Set([
+  'canManageUsers',
+  'canManageSettings',
+  'canManageEmployees',
+  'canManageSalaries',
+  'canManageCashboxes',
+  'canManageAccounts',
+  'canManageReps',
+  'canManageInventory',
+  'canManageWarehouses',
+  'canManagePurchases',
+  'canAllowNegativeInventory',
+  'canViewPersonalAccounts',
+  'canCreatePersonalTx',
+  'canEditPersonalTx',
+  'canApprovePersonalAdjustment',
+  'canCreateStockCount',
+  'canApproveStockCount',
+  'canApproveStockTransfer',
+  'canExecuteStockTransfer',
+  'canViewDeletedInvoices',
+  'canApprove',
+  'canReviewRepInvoices',
+  'canManageSyncConflicts',
+]);
+
+export function sanitizeEffectivePermissionsForRole(role, rawPerms = {}) {
+  const cleanRole = String(role || '').trim();
+  const permsObj = rawPerms && typeof rawPerms === 'object' ? rawPerms : {};
+  if (cleanRole === 'admin') {
+    return { ...FULL_ADMIN_PERMISSIONS };
+  }
+  if (cleanRole === 'customer') {
+    const out = Object.fromEntries(Object.keys(FULL_ADMIN_PERMISSIONS).map((k) => [k, false]));
+    for (const key of CUSTOMER_PRESET_ALLOWED_KEYS) {
+      out[key] = permsObj[key] !== undefined ? Boolean(permsObj[key]) : Boolean(CUSTOMER_DEFAULT_PERMISSIONS[key]);
+    }
+    out.canView = true;
+    return out;
+  }
+  if (cleanRole === 'representative') {
+    const out = Object.fromEntries(Object.keys(FULL_ADMIN_PERMISSIONS).map((k) => [k, false]));
+    for (const key of REP_PRESET_ALLOWED_KEYS) {
+      out[key] = permsObj[key] !== undefined ? Boolean(permsObj[key]) : Boolean(REP_DEFAULT_PERMISSIONS[key]);
+    }
+    for (const adminKey of ADMIN_ONLY_PERMISSION_KEYS) {
+      out[adminKey] = false;
+    }
+    out.canView = true;
+    return out;
+  }
+  const defaults = getDefaultPermissionsForRole(cleanRole);
+  return { ...defaults, ...permsObj };
+}
+
 export const DEFAULT_ROLE_PERMISSION_PRESETS = {
   representative: { ...REP_DEFAULT_PERMISSIONS },
   customer: { ...CUSTOMER_DEFAULT_PERMISSIONS },
@@ -422,7 +477,7 @@ export function mapPgUserRow(r) {
     isActive: Boolean(r.is_active),
     mustChangePassword: Boolean(r.must_change_password),
     lastLogin: r.last_login ? isoTimestamp(r.last_login) : undefined,
-    permissions: r.permissions || {},
+    permissions: sanitizeEffectivePermissionsForRole(r.role, r.permissions || {}),
     shortcuts: Array.isArray(r.shortcuts) ? r.shortcuts : [],
     createdAt: isoTimestamp(r.created_at),
   };
@@ -690,6 +745,7 @@ export function mapPgInvoiceRow(r, items = [], payments = []) {
       cashboxName: p.cashbox_name,
       notes: p.notes || '',
       createdBy: p.created_by,
+      createdByUserId: p.created_by_user_id || undefined,
       createdAt: isoTimestamp(p.created_at),
     })),
     linkedRepTransferId: r.linked_rep_transfer_id || undefined,
@@ -728,6 +784,49 @@ export function mapPgInvoiceRow(r, items = [], payments = []) {
     version: Number(r.version || 1),
     updatedAt: r.updated_at ? isoTimestamp(r.updated_at) : isoTimestamp(r.created_at),
     createdBy: r.created_by,
+    createdByUserId: r.created_by_user_id || undefined,
     createdAt: isoTimestamp(r.created_at),
+  };
+}
+
+export function mapPgPurchaseReturnRequestRow(r, items = []) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    requestNumber: r.request_number,
+    date: isoDateOnly(r.date),
+    originalInvoiceId: r.original_invoice_id,
+    originalInvoiceNumber: r.original_invoice_number,
+    supplierId: r.supplier_id,
+    supplierName: r.supplier_name || '',
+    warehouseId: r.warehouse_id,
+    warehouseName: r.warehouse_name || '',
+    representativeId: r.representative_id || undefined,
+    representativeName: r.representative_name || undefined,
+    requestedByUserId: r.requested_by_user_id,
+    requestedByName: r.requested_by_name,
+    items: items.map((it) => ({
+      productId: it.product_id,
+      productName: it.product_name,
+      unit: it.unit,
+      unitFactor: Number(it.unit_factor || 1),
+      quantity: Number(it.quantity || 0),
+      unitPrice: Number(it.unit_price || 0),
+      total: Number(it.total || 0),
+    })),
+    grandTotal: Number(r.grand_total || 0),
+    refundType: r.refund_type === 'cash' ? 'cash' : 'balance',
+    cashboxId: r.cashbox_id || undefined,
+    reason: r.reason || '',
+    notes: r.notes || '',
+    status: r.status || 'pending',
+    reviewedByUserId: r.reviewed_by_user_id || undefined,
+    reviewedByName: r.reviewed_by_name || undefined,
+    reviewedAt: r.reviewed_at ? isoTimestamp(r.reviewed_at) : undefined,
+    rejectionReason: r.rejection_reason || undefined,
+    approvedReturnId: r.approved_return_id || undefined,
+    approvedReturnNumber: r.approved_return_number || undefined,
+    createdAt: isoTimestamp(r.created_at),
+    updatedAt: r.updated_at ? isoTimestamp(r.updated_at) : isoTimestamp(r.created_at),
   };
 }

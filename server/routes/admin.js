@@ -346,14 +346,17 @@ function blockRepFromAdminTreasury(req, res) {
   return false;
 }
 
-router.post('/suppliers/payment', requirePermission('canManageAccounts'), asyncHandler(async (req, res) => {
+function forbidRepAndCustomerTreasury(req, res, next) {
   if (blockRepFromAdminTreasury(req, res)) return;
+  next();
+}
+
+router.post('/suppliers/payment', forbidRepAndCustomerTreasury, requirePermission('canManageAccounts'), asyncHandler(async (req, res) => {
   const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
   const result = await recordSupplierPayment(req.body || {}, req.auth.user, idempotencyKey);
   res.json({ ok: true, ...result });
 }));
-router.post('/suppliers/:id/settle-advance', requirePermission('canManageAccounts'), asyncHandler(async (req, res) => {
-  if (blockRepFromAdminTreasury(req, res)) return;
+router.post('/suppliers/:id/settle-advance', forbidRepAndCustomerTreasury, requirePermission('canManageAccounts'), asyncHandler(async (req, res) => {
   const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
   const result = await settleSupplierAdvance(
     { ...(req.body || {}), supplierId: req.params.id },
@@ -383,23 +386,19 @@ router.get('/suppliers/:id/statement', requireAnyPermission('canManageAccounts',
 }));
 
 // Cashboxes & Expenses
-router.post('/cashboxes', requirePermission('canManageCashboxes'), asyncHandler(async (req, res) => {
-  if (blockRepFromAdminTreasury(req, res)) return;
+router.post('/cashboxes', forbidRepAndCustomerTreasury, requirePermission('canManageCashboxes'), asyncHandler(async (req, res) => {
   const cashbox = await createCashbox(req.body || {}, req.auth.user);
   res.status(201).json({ ok: true, cashbox });
 }));
-router.put('/cashboxes/:id', requirePermission('canManageCashboxes'), asyncHandler(async (req, res) => {
-  if (blockRepFromAdminTreasury(req, res)) return;
+router.put('/cashboxes/:id', forbidRepAndCustomerTreasury, requirePermission('canManageCashboxes'), asyncHandler(async (req, res) => {
   await updateCashbox(req.params.id, req.body || {}, req.auth.user);
   res.json({ ok: true });
 }));
-router.post('/cashboxes/transfer', requirePermission('canManageCashboxes'), asyncHandler(async (req, res) => {
-  if (blockRepFromAdminTreasury(req, res)) return;
+router.post('/cashboxes/transfer', forbidRepAndCustomerTreasury, requirePermission('canManageCashboxes'), asyncHandler(async (req, res) => {
   await transferCashbox(req.body || {}, req.auth.user);
   res.json({ ok: true });
 }));
-router.post('/expenses', asyncHandler(async (req, res) => {
-  if (blockRepFromAdminTreasury(req, res)) return;
+router.post('/expenses', forbidRepAndCustomerTreasury, asyncHandler(async (req, res) => {
   const u = req.auth.user;
   if (u.role !== 'admin' && !u.permissions?.canManageCashboxes && !u.permissions?.canManageAccounts) {
     return res.status(403).json({ ok: false, code: 'FORBIDDEN_PERMISSION', error: 'ليس لديك صلاحية تسجيل المصروفات أو الإيرادات' });
@@ -407,8 +406,7 @@ router.post('/expenses', asyncHandler(async (req, res) => {
   const record = await addExpenseOrIncome(req.body || {}, u);
   res.status(201).json({ ok: true, record });
 }));
-router.post('/cash-operations', asyncHandler(async (req, res) => {
-  if (blockRepFromAdminTreasury(req, res)) return;
+router.post('/cash-operations', forbidRepAndCustomerTreasury, asyncHandler(async (req, res) => {
   const u = req.auth.user;
   const isTransfer = req.body?.type === 'cashbox_transfer';
   if (isTransfer) {
@@ -424,23 +422,19 @@ router.post('/cash-operations', asyncHandler(async (req, res) => {
 }));
 
 // Cheques & Installments
-router.post('/cheques', requirePermission('canManageAccounts'), asyncHandler(async (req, res) => {
-  if (blockRepFromAdminTreasury(req, res)) return;
+router.post('/cheques', forbidRepAndCustomerTreasury, requirePermission('canManageAccounts'), asyncHandler(async (req, res) => {
   const cheque = await addCheque(req.body || {}, req.auth.user);
   res.status(201).json({ ok: true, cheque });
 }));
-router.post('/cheques/:id/status', requirePermission('canManageAccounts'), asyncHandler(async (req, res) => {
-  if (blockRepFromAdminTreasury(req, res)) return;
+router.post('/cheques/:id/status', forbidRepAndCustomerTreasury, requirePermission('canManageAccounts'), asyncHandler(async (req, res) => {
   await updateChequeStatus(req.params.id, req.body || {}, req.auth.user);
   res.json({ ok: true });
 }));
-router.post('/installments', requirePermission('canManageAccounts'), asyncHandler(async (req, res) => {
-  if (blockRepFromAdminTreasury(req, res)) return;
+router.post('/installments', forbidRepAndCustomerTreasury, requirePermission('canManageAccounts'), asyncHandler(async (req, res) => {
   const schedule = await addInstallmentSchedule(req.body || {}, req.auth.user);
   res.status(201).json({ ok: true, schedule });
 }));
-router.post('/installments/:id/pay', requirePermission('canManageAccounts'), asyncHandler(async (req, res) => {
-  if (blockRepFromAdminTreasury(req, res)) return;
+router.post('/installments/:id/pay', forbidRepAndCustomerTreasury, requirePermission('canManageAccounts'), asyncHandler(async (req, res) => {
   await payInstallment({ ...(req.body || {}), scheduleId: req.params.id }, req.auth.user);
   res.json({ ok: true });
 }));

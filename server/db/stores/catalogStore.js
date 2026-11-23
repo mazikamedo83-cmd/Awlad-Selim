@@ -946,8 +946,8 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
       await client.query('UPDATE cashboxes SET current_balance = $1 WHERE id = $2', [nextCbBalance, cashboxId]);
 
       await client.query(
-        `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, description, notes, created_by, created_at)
-         VALUES ($1, $2, $3, 'customer_payment', $4, $5, $6, $7, $8, 'customer', $9, $10, 'manual', $11, $12, $13, $14)`,
+        `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, description, notes, created_by_user_id, created_by, created_at)
+         VALUES ($1, $2, $3, 'customer_payment', $4, $5, $6, $7, $8, 'customer', $9, $10, 'manual', $11, $12, $13, $14, $15)`,
         [
           txId,
           txNumber,
@@ -961,6 +961,7 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
           cust.name,
           desc,
           notes || '',
+          actor.id,
           actor.fullName,
           now,
         ]
@@ -1029,6 +1030,7 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
       partyName: cust.name,
       description: desc,
       notes: notes || '',
+      createdByUserId: actor.id,
       createdBy: actor.fullName,
       createdAt: now,
     });
@@ -1593,8 +1595,8 @@ export async function createProduct(payload, actor) {
           const whRes = await client.query('SELECT name FROM warehouses WHERE id = $1 LIMIT 1', [whId]);
           if (whRes.rows[0]) {
             await client.query(
-              `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_after, related_doc_type, notes, created_by, created_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, 'opening', $8, $9, 1, $10, $8, 'opening', 'رصيد افتتاحي', $11, $12)`,
+              `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_after, related_doc_type, notes, created_by_user_id, created_by, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, 'opening', $8, $9, 1, $10, $8, 'opening', 'رصيد افتتاحي', $11, $12, $13)`,
               [
                 generateServerId('STK'),
                 `OPEN-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 100)}`,
@@ -1606,6 +1608,7 @@ export async function createProduct(payload, actor) {
                 numQty,
                 payload.baseUnit || 'قطعة',
                 round2(payload.purchasePrice || 0),
+                actor.id,
                 actor.fullName,
                 now,
               ]
@@ -1673,6 +1676,7 @@ export async function createProduct(payload, actor) {
             quantity: n,
             unitCost: prod.purchasePrice,
             notes: 'رصيد افتتاحي',
+            createdByUserId: actor.id,
             createdBy: actor.fullName,
             createdAt: now,
           });
@@ -1992,25 +1996,37 @@ export async function deleteImportedProductsBatch({ batchId = null, deleteAllImp
   return result;
 }
 
-export async function getCustomerProductPriceHistory(customerId) {
+export async function getCustomerProductPriceHistory(customerId, productId = null) {
   const customer = await getCustomerById(customerId);
   if (!customer) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
 
   const historyMap = {};
+  const cleanProdId = productId ? String(productId).trim() : null;
 
   if (await isPgMode()) {
     const pool = getPool();
-    const res = await pool.query(
-      `SELECT i.id, i.invoice_number, i.date, i.created_at, it.product_id, it.unit, it.unit_factor, it.quantity, it.unit_price
-       FROM invoices i
-       JOIN invoice_items it ON it.invoice_id = i.id
-       WHERE i.customer_id = $1 AND i.type = 'sales' AND i.status = 'confirmed'
-       ORDER BY i.date ASC, i.created_at ASC`,
-      [customerId]
-    );
+    const res = cleanProdId
+      ? await pool.query(
+          `SELECT i.id, i.invoice_number, i.date, i.created_at, it.product_id, it.unit, it.unit_factor, it.quantity, it.unit_price
+           FROM invoices i
+           JOIN invoice_items it ON it.invoice_id = i.id
+           WHERE i.customer_id = $1 AND i.type = 'sales' AND i.status = 'confirmed' AND it.product_id = $2
+           ORDER BY i.date DESC, i.created_at DESC
+           LIMIT 3`,
+          [customerId, cleanProdId]
+        )
+      : await pool.query(
+          `SELECT i.id, i.invoice_number, i.date, i.created_at, it.product_id, it.unit, it.unit_factor, it.quantity, it.unit_price
+           FROM invoices i
+           JOIN invoice_items it ON it.invoice_id = i.id
+           WHERE i.customer_id = $1 AND i.type = 'sales' AND i.status = 'confirmed'
+           ORDER BY i.date DESC, i.created_at DESC`,
+          [customerId]
+        );
     for (const row of res.rows) {
       const list = historyMap[row.product_id] || [];
-      list.push({
+      if (list.length >= 3) continue;
+      list.unshift({
         price: Number(row.unit_price || 0),
         quantity: Number(row.quantity || 0),
         date: row.date instanceof Date ? row.date.toISOString().split('T')[0] : String(row.date || '').split('T')[0],
@@ -2018,18 +2034,19 @@ export async function getCustomerProductPriceHistory(customerId) {
         unit: row.unit || '',
         unitFactor: Number(row.unit_factor || 1),
       });
-      if (list.length > 3) list.shift();
       historyMap[row.product_id] = list;
     }
   } else {
     const db = readJsonDatabase();
     const custInvoices = (db.invoices || [])
       .filter((i) => i.customerId === customerId && i.type === 'sales' && i.status === 'confirmed')
-      .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
     for (const inv of custInvoices) {
       for (const it of inv.items || []) {
+        if (cleanProdId && it.productId !== cleanProdId) continue;
         const list = historyMap[it.productId] || [];
-        list.push({
+        if (list.length >= 3) continue;
+        list.unshift({
           price: Number(it.unitPrice || 0),
           quantity: Number(it.quantity || 0),
           date: inv.date || '',
@@ -2037,7 +2054,6 @@ export async function getCustomerProductPriceHistory(customerId) {
           unit: it.unit || '',
           unitFactor: Number(it.unitFactor || 1),
         });
-        if (list.length > 3) list.shift();
         historyMap[it.productId] = list;
       }
     }

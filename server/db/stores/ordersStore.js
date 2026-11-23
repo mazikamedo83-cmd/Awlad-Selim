@@ -1355,8 +1355,8 @@ export async function recordOrderAdvancePaymentPgTx(client, orderId, payload, ac
   );
 
   await client.query(
-    `INSERT INTO order_advance_payments (id, payment_number, order_id, customer_id, cashbox_id, cashbox_name, payment_method, amount, date, notes, status, idempotency_key, origin_device_id, created_by, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'active',$11,$12,$13,$14)`,
+    `INSERT INTO order_advance_payments (id, payment_number, order_id, customer_id, cashbox_id, cashbox_name, payment_method, amount, date, notes, status, idempotency_key, origin_device_id, created_by_user_id, created_by, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'active',$11,$12,$13,$14,$15)`,
     [
       advId,
       paymentNumber,
@@ -1370,6 +1370,7 @@ export async function recordOrderAdvancePaymentPgTx(client, orderId, payload, ac
       payload.notes || `دفعة مقدمة على الطلب رقم ${ord.request_number}`,
       cleanIdem,
       payload.originDeviceId || null,
+      actor.id,
       actor.fullName,
       now,
     ]
@@ -1378,8 +1379,8 @@ export async function recordOrderAdvancePaymentPgTx(client, orderId, payload, ac
   const ftId = generateServerId('FT');
   const ftNum = `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`;
   await client.query(
-    `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, notes, created_by, created_at)
-     VALUES ($1,$2,$3,'customer_payment',$4,$5,$6,$7,'دفعة مقدمة على طلب','customer',$8,$9,'order_advance',$10,$11,$12,$13,$14,$15)`,
+    `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, notes, created_by_user_id, created_by, created_at)
+     VALUES ($1,$2,$3,'customer_payment',$4,$5,$6,$7,'دفعة مقدمة على طلب','customer',$8,$9,'order_advance',$10,$11,$12,$13,$14,$15,$16)`,
     [
       ftId,
       ftNum,
@@ -1394,6 +1395,7 @@ export async function recordOrderAdvancePaymentPgTx(client, orderId, payload, ac
       ord.request_number,
       `دفعة مقدمة على الطلب رقم ${ord.request_number} (رصيد دائن قبل الفوترة)`,
       payload.notes || '',
+      actor.id,
       actor.fullName,
       now,
     ]
@@ -1418,6 +1420,7 @@ export async function recordOrderAdvancePaymentPgTx(client, orderId, payload, ac
       date: payDate,
       notes: payload.notes || '',
       status: 'active',
+      createdByUserId: actor.id,
       createdBy: actor.fullName,
       createdAt: now,
     },
@@ -1491,6 +1494,7 @@ export function recordOrderAdvancePaymentJsonTx(db, orderId, payload, actor, ide
     status: 'active',
     idempotencyKey: cleanIdem || undefined,
     originDeviceId: payload.originDeviceId || undefined,
+    createdByUserId: actor.id,
     createdBy: actor.fullName,
     createdAt: now,
   };
@@ -1514,6 +1518,7 @@ export function recordOrderAdvancePaymentJsonTx(db, orderId, payload, actor, ide
     partyName: cust.name,
     description: `دفعة مقدمة على الطلب رقم ${ord.requestNumber} (رصيد دائن قبل الفوترة)`,
     notes: payload.notes || '',
+    createdByUserId: actor.id,
     createdBy: actor.fullName,
     createdAt: now,
   });

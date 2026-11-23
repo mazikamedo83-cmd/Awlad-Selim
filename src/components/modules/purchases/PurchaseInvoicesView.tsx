@@ -108,7 +108,10 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     hasPermission('canManagePurchases') ||
     hasPermission('canApprove') ||
     hasPermission('canReviewRepInvoices');
-  const canReceivePurchase = canApprovePurchase || hasPermission('canReceive');
+  const canReceivePurchase =
+    currentUser?.role !== 'representative' &&
+    currentUser?.role !== 'customer' &&
+    (canApprovePurchase || hasPermission('canReceive'));
   const { registerHandler } = useShortcuts();
 
   const productSearchRef = useRef<HTMLInputElement | null>(null);

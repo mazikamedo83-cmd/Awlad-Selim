@@ -13,8 +13,10 @@ import {
   isoTimestamp,
   mapPgProductRow,
   mapPgInvoiceRow,
+  mapPgPurchaseReturnRequestRow,
 } from './mode.js';
 import { getRepresentativeByUserId, getSystemSettingsSafe } from './catalogStore.js';
+import { isRepOwnerOfInvoice } from './invoicesStore.js';
 
 export const REPORT_TYPES_LIST = [
   { key: 'all', label: 'الكل', group: 1 },
@@ -101,6 +103,28 @@ function calcMarginOnSales(profit, netSales) {
   return 0;
 }
 
+function buildPgRepOwnInvPred(alias, actor, repProfile, params) {
+  const pfx = alias ? `${alias}.` : '';
+  const parts = [];
+  if (repProfile?.id) {
+    params.push(repProfile.id);
+    parts.push(`${pfx}representative_id = $${params.length}`);
+  }
+  if (actor?.id) {
+    params.push(actor.id);
+    const idRef = `$${params.length}`;
+    parts.push(`${pfx}created_by_user_id = ${idRef}`);
+    parts.push(`${pfx}sent_by_user_id = ${idRef}`);
+  }
+  if (actor?.fullName) {
+    params.push(actor.fullName);
+    parts.push(
+      `(${pfx}created_by_user_id IS NULL AND ${pfx}representative_id IS NULL AND ${pfx}sent_by_user_id IS NULL AND ${pfx}created_by = $${params.length})`
+    );
+  }
+  return parts.length > 0 ? `(${parts.join(' OR ')})` : '1 = 0';
+}
+
 export async function loadFullReportDataset(actor, filterHints = {}) {
   const settings = await getSystemSettingsSafe();
   const isRep = actor?.role === 'representative';
@@ -115,10 +139,33 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
     const hintProd = filterHints.productId && filterHints.productId !== 'all' ? String(filterHints.productId) : null;
     const hintCustomerId = filterHints.customerId && filterHints.customerId !== 'all' ? String(filterHints.customerId) : null;
     const hintSupplierId = filterHints.supplierId && filterHints.supplierId !== 'all' ? String(filterHints.supplierId) : null;
-    const hintRepId = filterHints.representativeId && filterHints.representativeId !== 'all' ? String(filterHints.representativeId) : null;
+    const hintRepId = !isRep && filterHints.representativeId && filterHints.representativeId !== 'all' ? String(filterHints.representativeId) : null;
     const hintCashboxId = filterHints.cashboxId && filterHints.cashboxId !== 'all' ? String(filterHints.cashboxId) : null;
     const hintInvoiceNumber = filterHints.invoiceNumber ? String(filterHints.invoiceNumber).trim() : '';
-    const includeAuditLogs = Boolean(hintProd || filterHints.includeAuditLogs);
+    const includeAuditLogs = !isRep && Boolean(hintProd || filterHints.includeAuditLogs);
+
+    let repAllInvIdSet = null;
+    let repAllRetIdSet = null;
+    if (isRep) {
+      const ownParams = [];
+      const ownPred = buildPgRepOwnInvPred('', actor, repProfile, ownParams);
+      const ownInvWhere = isRepCanPurchase ? ownPred : `${ownPred} AND type <> 'purchase'`;
+      const ownInvRes = await pool.query(`SELECT id FROM invoices WHERE ${ownInvWhere}`, ownParams);
+      repAllInvIdSet = new Set(ownInvRes.rows.map((r) => r.id));
+      const ownRetParams = [];
+      const ownRetInvPred = buildPgRepOwnInvPred('', actor, repProfile, ownRetParams);
+      const ownRetInvWhere = isRepCanPurchase ? ownRetInvPred : `${ownRetInvPred} AND type <> 'purchase'`;
+      let ownRetSql = `SELECT id FROM invoice_returns WHERE original_invoice_id IN (SELECT id FROM invoices WHERE ${ownRetInvWhere})`;
+      if (actor?.id) {
+        ownRetParams.push(actor.id);
+        ownRetSql += ` OR (original_invoice_id IS NULL AND created_by_user_id = $${ownRetParams.length})`;
+      }
+      if (!isRepCanPurchase) {
+        ownRetSql = `SELECT id FROM (${ownRetSql}) r WHERE 1 = 1`;
+      }
+      const ownRetRes = await pool.query(ownRetSql, ownRetParams);
+      repAllRetIdSet = new Set(ownRetRes.rows.map((r) => r.id));
+    }
 
     // Preserve full cross-history ONLY when product lifecycle history is requested (productId set).
     // Even then, push product_id predicate to PostgreSQL!
@@ -147,8 +194,24 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
       ftClauses.push(`date >= $${ftParams.length}`);
     }
     if (isRep) {
-      ftParams.push(actor.fullName);
-      ftClauses.push(`created_by = $${ftParams.length}`);
+      const repOwnFtParts = [];
+      if (repAllInvIdSet && repAllInvIdSet.size > 0) {
+        ftParams.push(Array.from(repAllInvIdSet));
+        repOwnFtParts.push(`related_doc_id = ANY($${ftParams.length}::varchar[])`);
+      }
+      if (repAllRetIdSet && repAllRetIdSet.size > 0) {
+        ftParams.push(Array.from(repAllRetIdSet));
+        repOwnFtParts.push(`related_doc_id = ANY($${ftParams.length}::varchar[])`);
+      }
+      if (actor?.id) {
+        ftParams.push(actor.id);
+        repOwnFtParts.push(`created_by_user_id = $${ftParams.length}`);
+      }
+      if (actor?.fullName) {
+        ftParams.push(actor.fullName);
+        repOwnFtParts.push(`(created_by_user_id IS NULL AND related_doc_id IS NULL AND created_by = $${ftParams.length})`);
+      }
+      ftClauses.push(repOwnFtParts.length > 0 ? `(${repOwnFtParts.join(' OR ')})` : `1 = 0`);
       if (isRepCanPurchase) {
         ftClauses.push(`(type NOT IN ('transfer', 'deposit', 'withdrawal', 'advance_payout', 'salary_payout', 'expense', 'income', 'rep_transfer') AND (type <> 'supplier_payment' OR related_doc_type = 'purchase'))`);
       } else {
@@ -203,8 +266,23 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
       retClauses.push(`(LOWER(return_number) LIKE LOWER($${retParams.length}) OR LOWER(original_invoice_number) LIKE LOWER($${retParams.length}))`);
     }
     if (isRep) {
-      retParams.push(actor.fullName);
-      retClauses.push(`created_by = $${retParams.length}`);
+      if (!isRepCanPurchase) {
+        retClauses.push(`type <> 'purchase_return'`);
+      }
+      const ownRetParts = [];
+      if (repAllInvIdSet && repAllInvIdSet.size > 0) {
+        retParams.push(Array.from(repAllInvIdSet));
+        ownRetParts.push(`original_invoice_id = ANY($${retParams.length}::varchar[])`);
+      }
+      if (actor?.id) {
+        retParams.push(actor.id);
+        ownRetParts.push(`(original_invoice_id IS NULL AND created_by_user_id = $${retParams.length})`);
+      }
+      if (actor?.fullName) {
+        retParams.push(actor.fullName);
+        ownRetParts.push(`(original_invoice_id IS NULL AND created_by_user_id IS NULL AND created_by = $${retParams.length})`);
+      }
+      retClauses.push(ownRetParts.length > 0 ? `(${ownRetParts.join(' OR ')})` : `1 = 0`);
     }
     const retWhereSql = retClauses.length > 0 ? `WHERE ${retClauses.join(' AND ')}` : '';
 
@@ -258,24 +336,7 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
       invClauses.push(`LOWER(invoice_number) LIKE LOWER($${invParams.length})`);
     }
     if (isRep) {
-      const ownPredParts = [];
-      if (repProfile?.id) {
-        invParams.push(repProfile.id);
-        ownPredParts.push(`representative_id = $${invParams.length}`);
-      }
-      if (actor?.id) {
-        invParams.push(actor.id);
-        ownPredParts.push(`sent_by_user_id = $${invParams.length}`);
-      }
-      if (actor?.fullName) {
-        invParams.push(actor.fullName);
-        ownPredParts.push(`created_by = $${invParams.length}`);
-      }
-      if (ownPredParts.length > 0) {
-        invClauses.push(`(${ownPredParts.join(' OR ')})`);
-      } else {
-        invClauses.push(`1 = 0`);
-      }
+      invClauses.push(buildPgRepOwnInvPred('', actor, repProfile, invParams));
       if (!isRepCanPurchase) {
         invClauses.push(`type <> 'purchase'`);
       }
@@ -379,6 +440,8 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
       auditRes,
       linkedInvMetaRes,
       linkedRetMetaRes,
+      prrRes,
+      prrItemRes,
     ] = await Promise.all([
       pool.query('SELECT * FROM warehouses ORDER BY created_at ASC'),
       isRep
@@ -429,6 +492,17 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
             ftFilter.params
           )
         : Promise.resolve({ rows: [] }),
+      isRep && !isRepCanPurchase
+        ? Promise.resolve({ rows: [] })
+        : isRep
+        ? pool.query(
+            'SELECT * FROM purchase_return_requests WHERE requested_by_user_id = $1 OR ($2::varchar[] IS NOT NULL AND original_invoice_id = ANY($2::varchar[])) ORDER BY date DESC, created_at DESC',
+            [actor.id, repAllInvIdSet && repAllInvIdSet.size > 0 ? Array.from(repAllInvIdSet) : []]
+          )
+        : pool.query('SELECT * FROM purchase_return_requests ORDER BY date DESC, created_at DESC'),
+      isRep && !isRepCanPurchase
+        ? Promise.resolve({ rows: [] })
+        : pool.query('SELECT * FROM purchase_return_request_items'),
     ]);
 
     const unitsByProd = new Map();
@@ -454,13 +528,7 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
       arr.push(py);
       invPaysMap.set(py.invoice_id, arr);
     }
-    const isRepOwnInvoice = (inv) =>
-      Boolean(
-        (repProfile && inv.representativeId === repProfile.id) ||
-          (actor?.id && inv.sentByUserId === actor.id) ||
-          (actor?.fullName && inv.createdBy === actor.fullName) ||
-          (actor?.id && inv.createdBy === actor.id)
-      );
+    const isRepOwnInvoice = (inv) => isRepOwnerOfInvoice(inv, actor, repProfile);
     const invoices = invRes.rows
       .map((r) => mapPgInvoiceRow(r, invItemsMap.get(r.id) || [], invPaysMap.get(r.id) || []))
       .filter((inv) => {
@@ -470,6 +538,7 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
       })
       .map((inv) => (isRep ? sanitizeInvoiceForRepresentative(inv) : inv));
     const visibleInvIdSet = new Set(invoices.map((i) => i.id));
+    const effectiveRepInvSet = repAllInvIdSet || visibleInvIdSet;
 
     const retItemsMap = new Map();
     for (const it of retItemRes.rows) {
@@ -504,15 +573,28 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
         reason: r.reason || '',
         notes: r.notes || '',
         createdBy: r.created_by,
+        createdByUserId: r.created_by_user_id || undefined,
         createdAt: isoTimestamp(r.created_at),
       }))
       .filter((r) => {
         if (!isRep) return true;
-        if (r.type === 'purchase_return') {
-          return isRepCanPurchase && (visibleInvIdSet.has(r.originalInvoiceId) || r.createdBy === actor.fullName);
+        if (r.type === 'purchase_return' && !isRepCanPurchase) return false;
+        if (r.originalInvoiceId) {
+          return effectiveRepInvSet.has(r.originalInvoiceId) || visibleInvIdSet.has(r.originalInvoiceId);
         }
-        return r.createdBy === actor.fullName || visibleInvIdSet.has(r.originalInvoiceId);
+        return r.createdByUserId === actor.id || (!r.createdByUserId && r.createdBy === actor.fullName);
       });
+    const effectiveRepRetSet = repAllRetIdSet || new Set(invoiceReturns.map((r) => r.id));
+
+    const prrItemsById = new Map();
+    for (const it of (prrItemRes?.rows || [])) {
+      const arr = prrItemsById.get(it.request_id) || [];
+      arr.push(it);
+      prrItemsById.set(it.request_id, arr);
+    }
+    const purchaseReturnRequests = (prrRes?.rows || []).map((r) =>
+      mapPgPurchaseReturnRequestRow(r, prrItemsById.get(r.id) || [])
+    );
 
     const scItemsMap = new Map();
     for (const it of scItemRes.rows) {
@@ -639,8 +721,30 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
       users: isRep ? [] : userRes.rows.map((u) => ({ id: u.id, fullName: u.full_name, username: u.username, role: u.role })),
       invoices,
       invoiceReturns,
+      purchaseReturnRequests,
       financialTransactions: ftRes.rows
-        .filter((f) => !isRep || (f.created_by === actor.fullName && (f.type !== 'supplier_payment' || (isRepCanPurchase && visibleInvIdSet.has(f.related_doc_id)))))
+        .filter((f) => {
+          if (!isRep) return true;
+          if (['transfer', 'deposit', 'withdrawal', 'advance_payout', 'salary_payout', 'expense', 'income', 'rep_transfer'].includes(f.type)) {
+            return false;
+          }
+          if (f.type === 'supplier_payment') {
+            return (
+              isRepCanPurchase &&
+              f.related_doc_type === 'purchase' &&
+              Boolean(f.related_doc_id && (effectiveRepInvSet.has(f.related_doc_id) || visibleInvIdSet.has(f.related_doc_id)))
+            );
+          }
+          const linkedToOwnDoc = Boolean(
+            f.related_doc_id &&
+              (effectiveRepInvSet.has(f.related_doc_id) ||
+                visibleInvIdSet.has(f.related_doc_id) ||
+                effectiveRepRetSet.has(f.related_doc_id))
+          );
+          if (linkedToOwnDoc) return true;
+          if (f.created_by_user_id) return f.created_by_user_id === actor.id;
+          return !f.related_doc_id && f.created_by === actor.fullName;
+        })
         .map((f) => ({
           id: f.id,
           transactionNumber: f.transaction_number,
@@ -662,6 +766,7 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
           description: f.description || '',
           notes: f.notes || '',
           createdBy: f.created_by,
+          createdByUserId: f.created_by_user_id || undefined,
           createdAt: isoTimestamp(f.created_at),
         })),
       stockMovements: smRes.rows
@@ -798,13 +903,7 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
 
   // JSON Ledger Mode (100% untruncated)
   const db = readJsonDatabase();
-  const isRepOwnJsonInvoice = (inv) =>
-    Boolean(
-      (repProfile && inv.representativeId === repProfile.id) ||
-        (actor?.id && inv.sentByUserId === actor.id) ||
-        (actor?.fullName && inv.createdBy === actor.fullName) ||
-        (actor?.id && inv.createdBy === actor.id)
-    );
+  const isRepOwnJsonInvoice = (inv) => isRepOwnerOfInvoice(inv, actor, repProfile);
   const invoices = (db.invoices || [])
     .filter((inv) => {
       if (!isRep) return true;
@@ -815,19 +914,33 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
   const visibleJsonInvIdSet = new Set(invoices.map((i) => i.id));
   const invoiceReturns = (db.invoiceReturns || []).filter((r) => {
     if (!isRep) return true;
-    if (r.type === 'purchase_return') {
-      return isRepCanPurchase && (visibleJsonInvIdSet.has(r.originalInvoiceId) || r.createdBy === actor.fullName);
-    }
-    return r.createdBy === actor.fullName || visibleJsonInvIdSet.has(r.originalInvoiceId);
+    if (r.type === 'purchase_return' && !isRepCanPurchase) return false;
+    if (r.originalInvoiceId) return visibleJsonInvIdSet.has(r.originalInvoiceId);
+    if (r.createdByUserId) return r.createdByUserId === actor.id;
+    return r.createdBy === actor.fullName;
   });
+  const visibleJsonRetIdSet = new Set(invoiceReturns.map((r) => r.id));
+  const purchaseReturnRequests = isRep && !isRepCanPurchase
+    ? []
+    : (db.purchaseReturnRequests || []).filter((req) => {
+        if (!isRep) return true;
+        return visibleJsonInvIdSet.has(req.originalInvoiceId) || req.requestedByUserId === actor.id;
+      });
   const financialTransactions = (db.financialTransactions || [])
     .filter((f) => {
       if (!isRep) return true;
-      if (f.createdBy !== actor.fullName) return false;
-      if (f.type === 'supplier_payment') {
-        return isRepCanPurchase && f.relatedDocType === 'purchase' && visibleJsonInvIdSet.has(f.relatedDocId);
+      if (['transfer', 'deposit', 'withdrawal', 'advance_payout', 'salary_payout', 'expense', 'income', 'rep_transfer'].includes(f.type)) {
+        return false;
       }
-      return !['transfer', 'deposit', 'withdrawal', 'advance_payout', 'salary_payout', 'expense', 'income', 'rep_transfer'].includes(f.type);
+      if (f.type === 'supplier_payment') {
+        return isRepCanPurchase && f.relatedDocType === 'purchase' && Boolean(f.relatedDocId && visibleJsonInvIdSet.has(f.relatedDocId));
+      }
+      const linkedToOwnDoc = Boolean(
+        f.relatedDocId && (visibleJsonInvIdSet.has(f.relatedDocId) || visibleJsonRetIdSet.has(f.relatedDocId))
+      );
+      if (linkedToOwnDoc) return true;
+      if (f.createdByUserId) return f.createdByUserId === actor.id;
+      return !f.relatedDocId && f.createdBy === actor.fullName;
     })
     .map((f) => {
       if (!isRep) return f;
@@ -855,6 +968,7 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
     users: isRep ? [] : (db.users || []).map((u) => ({ id: u.id, fullName: u.fullName, username: u.username, role: u.role })),
     invoices,
     invoiceReturns,
+    purchaseReturnRequests,
     financialTransactions,
     stockMovements,
     stockCounts: [],
@@ -866,7 +980,7 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
     expenseIncomes: isRep ? [] : (db.expenseIncomes || []),
     advancesDeductions: isRep ? [] : (db.advancesDeductions || []),
     payrolls: [],
-    auditLogs: filterHints.productId || filterHints.includeAuditLogs ? (db.auditLogs || []).slice(0, 2000) : [],
+    auditLogs: !isRep && (filterHints.productId || filterHints.includeAuditLogs) ? (db.auditLogs || []).slice(0, 2000) : [],
   };
 }
 
@@ -1033,6 +1147,10 @@ const SQL_PAGINATABLE_TYPES = new Set([
   'purchase_invoices',
   'sales_items',
   'purchase_items',
+  'sales_return_invoices',
+  'purchase_return_invoices',
+  'sales_return_items',
+  'purchase_return_items',
 ]);
 
 async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, pageSize) {
@@ -1053,9 +1171,23 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
   const isRep = actor?.role === 'representative';
   const isRepCanPurchase = isRep && Boolean(actor?.permissions?.canCreatePurchase || actor?.permissions?.canManagePurchases);
   const repProfile = isRep ? await getRepresentativeByUserId(actor.id) : null;
-  const isSales = reportType === 'sales_invoices' || reportType === 'sales_items';
-  const isInvoiceLayout = reportType === 'sales_invoices' || reportType === 'purchase_invoices';
+  const isReturnReport =
+    reportType === 'sales_return_invoices' ||
+    reportType === 'purchase_return_invoices' ||
+    reportType === 'sales_return_items' ||
+    reportType === 'purchase_return_items';
+  const isSales =
+    reportType === 'sales_invoices' ||
+    reportType === 'sales_items' ||
+    reportType === 'sales_return_invoices' ||
+    reportType === 'sales_return_items';
+  const isInvoiceLayout =
+    reportType === 'sales_invoices' ||
+    reportType === 'purchase_invoices' ||
+    reportType === 'sales_return_invoices' ||
+    reportType === 'purchase_return_invoices';
   const invType = isSales ? 'sales' : 'purchase';
+  const retType = isSales ? 'sales_return' : 'purchase_return';
 
   const [whRes, cbRes, custRes, suppRes, repRes, prodRes, unitRes] = await Promise.all([
     pool.query('SELECT * FROM warehouses ORDER BY created_at ASC'),
@@ -1115,276 +1247,535 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
   const productId = filters.productId && filters.productId !== 'all' ? String(filters.productId) : null;
   const customerId = filters.customerId && filters.customerId !== 'all' ? String(filters.customerId) : null;
   const supplierId = filters.supplierId && filters.supplierId !== 'all' ? String(filters.supplierId) : null;
-  const representativeId = filters.representativeId && filters.representativeId !== 'all' ? String(filters.representativeId) : null;
+  const representativeId = !isRep && filters.representativeId && filters.representativeId !== 'all' ? String(filters.representativeId) : null;
   const invoiceNumber = filters.invoiceNumber ? String(filters.invoiceNumber).trim() : '';
-
-  const clauses = [`i.status = 'confirmed'`, `i.type = $1`];
-  const params = [invType];
-  if (isRep) {
-    if (!isSales && !isRepCanPurchase) {
-      clauses.push(`1 = 0`);
-    } else {
-      const ownParts = [];
-      if (repProfile?.id) {
-        params.push(repProfile.id);
-        ownParts.push(`i.representative_id = $${params.length}`);
-      }
-      if (actor?.id) {
-        params.push(actor.id);
-        ownParts.push(`i.sent_by_user_id = $${params.length}`);
-      }
-      if (actor?.fullName) {
-        params.push(actor.fullName);
-        ownParts.push(`i.created_by = $${params.length}`);
-      }
-      clauses.push(ownParts.length > 0 ? `(${ownParts.join(' OR ')})` : `1 = 0`);
-    }
-  }
-  if (dateFrom) {
-    params.push(dateFrom);
-    clauses.push(`i.date >= $${params.length}`);
-  }
-  if (dateTo) {
-    params.push(dateTo);
-    clauses.push(`i.date <= $${params.length}`);
-  }
-  if (warehouseId) {
-    params.push(warehouseId);
-    clauses.push(`i.warehouse_id = $${params.length}`);
-  }
-  if (cashboxId && !isRep) {
-    params.push(cashboxId);
-    clauses.push(`i.cashbox_id = $${params.length}`);
-  }
-  if (customerId) {
-    params.push(customerId);
-    clauses.push(`i.customer_id = $${params.length}`);
-  }
-  if (supplierId) {
-    params.push(supplierId);
-    clauses.push(`i.supplier_id = $${params.length}`);
-  }
-  if (representativeId) {
-    params.push(representativeId);
-    clauses.push(`i.representative_id = $${params.length}`);
-  }
-  if (invoiceNumber) {
-    params.push(`%${invoiceNumber}%`);
-    clauses.push(`LOWER(i.invoice_number) LIKE LOWER($${params.length})`);
-  }
 
   let rows = [];
   let totalUnpaginatedRows = 0;
   let totalsObj = { count: 0, quantity: 0, priceOrTotal: null, valueOrPaid: 0, remaining: null, profit: 0, costValue: 0, discount: 0, profitPercent: 0 };
 
-  if (isInvoiceLayout) {
-    if (productId) {
-      params.push(productId);
-      clauses.push(`EXISTS (SELECT 1 FROM invoice_items ii WHERE ii.invoice_id = i.id AND ii.product_id = $${params.length})`);
-    }
-    const whereSql = `WHERE ${clauses.join(' AND ')}`;
-    const countRes = await pool.query(
-      `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(i.grand_total),0) AS sum_total, COALESCE(SUM(i.paid_amount),0) AS sum_paid, COALESCE(SUM(i.remaining_amount),0) AS sum_rem, COALESCE(SUM(i.discount_total),0) AS sum_disc FROM invoices i ${whereSql}`,
-      params
-    );
-    totalUnpaginatedRows = Number(countRes.rows[0]?.cnt || 0);
-    const totalPages = Math.max(1, Math.ceil(totalUnpaginatedRows / pageSize));
-    const safePage = Math.min(page, totalPages);
-    const offset = (safePage - 1) * pageSize;
-
-    const pageParams = [...params, pageSize, offset];
-    const pageInvRes = await pool.query(
-      `SELECT i.* FROM invoices i ${whereSql} ORDER BY i.date DESC, i.created_at DESC LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
-      pageParams
-    );
-    const pageInvIds = pageInvRes.rows.map((r) => r.id);
-    const itemsByInv = new Map();
-    if (pageInvIds.length > 0) {
-      const itRes = await pool.query(`SELECT * FROM invoice_items WHERE invoice_id = ANY($1::varchar[])`, [pageInvIds]);
-      for (const it of itRes.rows) {
-        const list = itemsByInv.get(it.invoice_id) || [];
-        list.push(it);
-        itemsByInv.set(it.invoice_id, list);
+  if (isReturnReport) {
+    const retClauses = [`r.type = $1`];
+    const retParams = [retType];
+    if (isRep) {
+      if (!isSales && !isRepCanPurchase) {
+        retClauses.push(`1 = 0`);
+      } else {
+        const ownInvPred = buildPgRepOwnInvPred('oi', actor, repProfile, retParams);
+        const ownRetParts = [
+          `EXISTS (SELECT 1 FROM invoices oi WHERE oi.id = r.original_invoice_id AND ${ownInvPred}${isSales ? '' : " AND oi.type = 'purchase'"})`,
+        ];
+        if (actor?.id) {
+          retParams.push(actor.id);
+          ownRetParts.push(`(r.original_invoice_id IS NULL AND r.created_by_user_id = $${retParams.length})`);
+        }
+        if (actor?.fullName) {
+          retParams.push(actor.fullName);
+          ownRetParts.push(`(r.original_invoice_id IS NULL AND r.created_by_user_id IS NULL AND r.created_by = $${retParams.length})`);
+        }
+        retClauses.push(`(${ownRetParts.join(' OR ')})`);
       }
     }
-
-    rows = pageInvRes.rows.map((r) => {
-      const inv = mapPgInvoiceRow(r, itemsByInv.get(r.id) || [], []);
-      const cust = isSales && inv.customerId ? customerMap.get(inv.customerId) : null;
-      const supp = !isSales && inv.supplierId ? supplierMap.get(inv.supplierId) : null;
-      const partyName = isSales ? (inv.customerName || cust?.name || 'عميل نقدي') : (inv.supplierName || supp?.name || 'مورد نقدي');
-      const partyPhone = cust?.phone || supp?.phone || '';
-      const invQtySum = round3((inv.items || []).reduce((s, it) => s + Number(it.quantity || 0), 0));
-      const invCostSum = isRep
-        ? 0
-        : round2((inv.items || []).reduce((s, it) => {
-            const p = productMap.get(it.productId);
-            const c = Number(it.purchasePriceAtTime || 0) > 0 ? Number(it.purchasePriceAtTime) : Number(p?.purchasePrice || 0);
-            return s + c * round3(Number(it.quantity || 0) * Number(it.unitFactor || 1));
-          }, 0));
-      const invProfit = isRep || !isSales ? 0 : round2(Number(inv.grandTotal || 0) - invCostSum);
-      return {
-        rowId: `${inv.id}-INV`,
-        docType: isSales ? 'sales_invoice' : 'purchase_invoice',
-        docId: inv.id,
-        operationLabel: partyPhone ? `${partyName} (${partyPhone})` : partyName,
-        quantity: invQtySum,
-        unit: `${(inv.items || []).length} صنف`,
-        priceOrTotal: round2(inv.grandTotal || 0),
-        valueOrPaid: round2(inv.paidAmount || 0),
-        movementOrRemaining: round2(inv.remainingAmount || 0),
-        paidAmount: round2(inv.paidAmount || 0),
-        remainingAmount: round2(inv.remainingAmount || 0),
-        paymentStatus: Number(inv.remainingAmount || 0) <= 0.01 ? 'paid' : Number(inv.paidAmount || 0) > 0 ? 'partial' : 'unpaid',
-        invoiceStatus: inv.status,
-        employeeId: inv.representativeId || undefined,
-        employeeName: inv.representativeName || inv.createdBy || '-',
-        userName: inv.createdBy,
-        businessDate: formatBusinessDateSlash(inv.date),
-        rawDate: inv.date,
-        actualDateTime: formatActualDateTimeAr(inv.createdAt, inv.date),
-        rawCreatedAt: inv.createdAt || inv.date,
-        profit: invProfit,
-        costValue: invCostSum,
-        barcode: '',
-        displayId: inv.id,
-        invoiceNumber: inv.invoiceNumber,
-        branchName: resolveBranchName(inv.warehouseId, inv.cashboxId),
-        warehouseId: inv.warehouseId,
-        warehouseName: inv.warehouseName,
-        cashboxId: isRep ? '' : inv.cashboxId,
-        cashboxName: isRep ? '-' : resolveCashboxName(inv.cashboxId),
-        notes: `${inv.paymentType === 'cash' ? 'نقدي' : inv.paymentType === 'partial' ? 'سداد جزئي' : 'آجل'}${inv.notes ? ` - ${inv.notes}` : ''}`,
-        discount: round2(inv.discountTotal || 0),
-        profitPercent: isRep || !isSales ? 0 : calcProfitPctOnCost(invProfit, invCostSum),
-        customerId: isSales ? inv.customerId : undefined,
-        supplierId: !isSales ? inv.supplierId : undefined,
-        partyName,
-        representativeId: inv.representativeId || undefined,
-        representativeName: inv.representativeName || undefined,
-        rowTone: 'invoice_blue',
-        scopeType: 'inventory',
-      };
-    });
-
-    totalsObj = {
-      count: totalUnpaginatedRows,
-      quantity: round3(rows.reduce((s, r) => s + Number(r.quantity || 0), 0)),
-      priceOrTotal: round2(countRes.rows[0]?.sum_total || 0),
-      valueOrPaid: round2(countRes.rows[0]?.sum_paid || 0),
-      remaining: round2(countRes.rows[0]?.sum_rem || 0),
-      profit: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.profit || 0), 0)),
-      costValue: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.costValue || 0), 0)),
-      discount: round2(countRes.rows[0]?.sum_disc || 0),
-      profitPercent: 0,
-    };
-  } else {
-    if (productId) {
-      params.push(productId);
-      clauses.push(`it.product_id = $${params.length}`);
+    if (dateFrom) {
+      retParams.push(dateFrom);
+      retClauses.push(`r.date >= $${retParams.length}`);
     }
-    const whereSql = `WHERE ${clauses.join(' AND ')}`;
-    const countRes = await pool.query(
-      `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(it.quantity),0) AS sum_qty, COALESCE(SUM(it.total),0) AS sum_val, COALESCE(SUM(it.discount),0) AS sum_disc
-       FROM invoice_items it
-       JOIN invoices i ON i.id = it.invoice_id
-       ${whereSql}`,
-      params
-    );
-    totalUnpaginatedRows = Number(countRes.rows[0]?.cnt || 0);
-    const totalPages = Math.max(1, Math.ceil(totalUnpaginatedRows / pageSize));
-    const safePage = Math.min(page, totalPages);
-    const offset = (safePage - 1) * pageSize;
+    if (dateTo) {
+      retParams.push(dateTo);
+      retClauses.push(`r.date <= $${retParams.length}`);
+    }
+    if (warehouseId) {
+      retParams.push(warehouseId);
+      retClauses.push(`r.warehouse_id = $${retParams.length}`);
+    }
+    if (cashboxId && !isRep) {
+      retParams.push(cashboxId);
+      retClauses.push(`r.cashbox_id = $${retParams.length}`);
+    }
+    if (isSales && customerId) {
+      retParams.push(customerId);
+      retClauses.push(`r.party_id = $${retParams.length}`);
+    } else if (!isSales && customerId) {
+      retClauses.push(`1 = 0`);
+    }
+    if (!isSales && supplierId) {
+      retParams.push(supplierId);
+      retClauses.push(`r.party_id = $${retParams.length}`);
+    } else if (isSales && supplierId) {
+      retClauses.push(`1 = 0`);
+    }
+    if (representativeId) {
+      retParams.push(representativeId);
+      retClauses.push(`r.original_invoice_id IN (SELECT id FROM invoices WHERE representative_id = $${retParams.length})`);
+    }
+    if (invoiceNumber) {
+      retParams.push(`%${invoiceNumber}%`);
+      retClauses.push(`(LOWER(r.return_number) LIKE LOWER($${retParams.length}) OR LOWER(COALESCE(r.original_invoice_number, '')) LIKE LOWER($${retParams.length}))`);
+    }
 
-    const pageParams = [...params, pageSize, offset];
-    const pageItemRes = await pool.query(
-      `SELECT it.*, i.invoice_number, i.date, i.created_at, i.created_by, i.warehouse_id, i.warehouse_name, i.cashbox_id, i.customer_id, i.customer_name, i.supplier_id, i.supplier_name, i.representative_id, i.representative_name, i.notes, i.status AS inv_status, i.paid_amount AS inv_paid, i.remaining_amount AS inv_rem
-       FROM invoice_items it
-       JOIN invoices i ON i.id = it.invoice_id
-       ${whereSql}
-       ORDER BY i.date DESC, i.created_at DESC
-       LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
-      pageParams
-    );
+    if (isInvoiceLayout) {
+      if (productId) {
+        retParams.push(productId);
+        retClauses.push(`EXISTS (SELECT 1 FROM invoice_return_items iri WHERE iri.return_id = r.id AND iri.product_id = $${retParams.length})`);
+      }
+      const whereSql = `WHERE ${retClauses.join(' AND ')}`;
+      const countRes = await pool.query(
+        `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(r.grand_total),0) AS sum_total,
+                COALESCE(SUM(CASE WHEN r.refund_type = 'cash' THEN r.grand_total ELSE 0 END),0) AS sum_cash,
+                COALESCE(SUM(CASE WHEN COALESCE(r.refund_type,'balance') = 'balance' THEN r.grand_total ELSE 0 END),0) AS sum_bal
+         FROM invoice_returns r ${whereSql}`,
+        retParams
+      );
+      totalUnpaginatedRows = Number(countRes.rows[0]?.cnt || 0);
+      const totalPages = Math.max(1, Math.ceil(totalUnpaginatedRows / pageSize));
+      const safePage = Math.min(page, totalPages);
+      const offset = (safePage - 1) * pageSize;
 
-    rows = pageItemRes.rows.map((r, idx) => {
-      const prod = productMap.get(r.product_id);
-      const cust = isSales && r.customer_id ? customerMap.get(r.customer_id) : null;
-      const supp = !isSales && r.supplier_id ? supplierMap.get(r.supplier_id) : null;
-      const partyName = isSales ? (r.customer_name || cust?.name || 'عميل نقدي') : (r.supplier_name || supp?.name || 'مورد نقدي');
-      const partyPhone = cust?.phone || supp?.phone || '';
-      const partyWithPhone = partyPhone ? `${partyName} (${partyPhone})` : partyName;
-      const qty = Number(r.quantity || 0);
-      const unitFactor = Number(r.unit_factor || resolveUnitFactor(prod, r.unit) || 1);
-      const baseQty = round3(qty * unitFactor);
-      const netLineVal = round2(r.total ?? Number(r.unit_price || 0) * qty - Number(r.discount || 0));
-      const costPerBase = isRep ? 0 : (Number(r.purchase_price_at_time || 0) > 0 ? Number(r.purchase_price_at_time) : Number(prod?.purchasePrice || 0));
-      const lineCost = isRep ? 0 : round2(costPerBase * baseQty);
-      const lineProfit = isRep || !isSales ? 0 : round2(netLineVal - lineCost);
-      const invDate = isoDateOnly(r.date);
-      return {
-        rowId: `${r.invoice_id}-IT-SQL-${offset + idx}`,
-        docType: isSales ? 'sales_invoice' : 'purchase_invoice',
-        docId: r.invoice_id,
-        productId: r.product_id,
-        productCode: prod?.code || '',
-        productName: r.product_name || prod?.name || '',
-        categoryName: prod?.category || 'عام',
-        class1: normalizeClassification1(prod),
-        operationLabel: r.product_name || prod?.name || '',
-        quantity: qty,
-        baseQuantity: baseQty,
-        unit: r.unit || prod?.baseUnit || 'قطعة',
-        baseUnit: prod?.baseUnit || r.unit || 'قطعة',
-        unitFactor,
-        priceOrTotal: round2(r.unit_price || 0),
-        valueOrPaid: netLineVal,
-        movementOrRemaining: isSales ? `${partyWithPhone} - فاتورة بيع` : `${partyWithPhone} - فاتورة شراء`,
-        paidAmount: round2(r.inv_paid || 0),
-        remainingAmount: round2(r.inv_rem || 0),
-        paymentStatus: Number(r.inv_rem || 0) <= 0.01 ? 'paid' : Number(r.inv_paid || 0) > 0 ? 'partial' : 'unpaid',
-        invoiceStatus: r.inv_status || 'confirmed',
-        employeeId: r.representative_id || undefined,
-        employeeName: r.representative_name || r.created_by || '-',
-        userName: r.created_by,
-        businessDate: formatBusinessDateSlash(invDate),
-        rawDate: invDate,
-        actualDateTime: formatActualDateTimeAr(isoTimestamp(r.created_at), invDate),
-        rawCreatedAt: isoTimestamp(r.created_at),
-        profit: lineProfit,
-        costValue: lineCost,
-        barcode: r.barcode || prod?.barcode || prod?.code || '',
-        displayId: prod?.code || r.product_id,
-        invoiceNumber: r.invoice_number,
-        branchName: resolveBranchName(r.warehouse_id, r.cashbox_id),
-        warehouseId: r.warehouse_id,
-        warehouseName: r.warehouse_name,
-        cashboxId: isRep ? '' : r.cashbox_id,
-        cashboxName: isRep ? '-' : resolveCashboxName(r.cashbox_id),
-        notes: r.notes || '',
-        discount: round2(r.discount || 0),
-        profitPercent: isRep || !isSales ? 0 : calcProfitPctOnCost(lineProfit, lineCost),
-        customerId: isSales ? r.customer_id : undefined,
-        supplierId: !isSales ? r.supplier_id : undefined,
-        partyName,
-        representativeId: r.representative_id || undefined,
-        representativeName: r.representative_name || undefined,
-        rowTone: 'default',
-        scopeType: 'inventory',
+      const pageParams = [...retParams, pageSize, offset];
+      const pageRetRes = await pool.query(
+        `SELECT r.* FROM invoice_returns r ${whereSql} ORDER BY r.date DESC, r.created_at DESC LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
+        pageParams
+      );
+      const pageRetIds = pageRetRes.rows.map((x) => x.id);
+      const pageOrigInvIds = [...new Set(pageRetRes.rows.map((x) => x.original_invoice_id).filter(Boolean))];
+      const [retItemsRes, origInvItemsRes] = await Promise.all([
+        pageRetIds.length > 0
+          ? pool.query(`SELECT * FROM invoice_return_items WHERE return_id = ANY($1::varchar[])`, [pageRetIds])
+          : Promise.resolve({ rows: [] }),
+        pageOrigInvIds.length > 0 && !isRep && isSales
+          ? pool.query(`SELECT invoice_id, product_id, purchase_price_at_time FROM invoice_items WHERE invoice_id = ANY($1::varchar[])`, [pageOrigInvIds])
+          : Promise.resolve({ rows: [] }),
+      ]);
+      const retItemsById = new Map();
+      for (const it of retItemsRes.rows) {
+        const list = retItemsById.get(it.return_id) || [];
+        list.push(it);
+        retItemsById.set(it.return_id, list);
+      }
+      const origCostByInvProd = new Map();
+      for (const it of origInvItemsRes.rows) {
+        origCostByInvProd.set(`${it.invoice_id}::${it.product_id}`, Number(it.purchase_price_at_time || 0));
+      }
+
+      rows = pageRetRes.rows.map((r) => {
+        const itemsList = retItemsById.get(r.id) || [];
+        const retQtySum = round3(itemsList.reduce((s, it) => s + Number(it.quantity || 0), 0));
+        const retCostSum = isRep
+          ? 0
+          : round2(
+              itemsList.reduce((s, it) => {
+                const prod = productMap.get(it.product_id);
+                const uf = Number(it.unit_factor || resolveUnitFactor(prod, it.unit) || 1);
+                const bQty = round3(Number(it.quantity || 0) * uf);
+                const origCost = origCostByInvProd.get(`${r.original_invoice_id}::${it.product_id}`) || 0;
+                const costPerBase = origCost > 0 ? origCost : Number(prod?.purchasePrice || 0);
+                return s + costPerBase * bQty;
+              }, 0)
+            );
+        const retProfit = isRep || !isSales ? 0 : round2(-(Number(r.grand_total || 0) - retCostSum));
+        const retDate = isoDateOnly(r.date);
+        const cbId = r.cashbox_id || '';
+        return {
+          rowId: `${r.id}-RET`,
+          docType: r.type,
+          docId: r.id,
+          operationLabel: r.party_name || '-',
+          quantity: retQtySum,
+          unit: `${itemsList.length} صنف`,
+          priceOrTotal: round2(r.grand_total || 0),
+          valueOrPaid: r.refund_type === 'cash' ? round2(r.grand_total || 0) : 0,
+          movementOrRemaining: (r.refund_type || 'balance') === 'balance' ? round2(r.grand_total || 0) : 0,
+          employeeName: r.created_by || '-',
+          userName: r.created_by || '-',
+          businessDate: formatBusinessDateSlash(retDate),
+          rawDate: retDate,
+          actualDateTime: formatActualDateTimeAr(isoTimestamp(r.created_at), retDate),
+          rawCreatedAt: isoTimestamp(r.created_at) || retDate,
+          profit: retProfit,
+          costValue: retCostSum,
+          barcode: '',
+          displayId: r.id,
+          invoiceNumber: r.return_number,
+          branchName: resolveBranchName(r.warehouse_id, cbId),
+          warehouseId: r.warehouse_id,
+          warehouseName: r.warehouse_name,
+          cashboxId: isRep ? '' : cbId,
+          cashboxName: isRep ? '-' : resolveCashboxName(cbId, (r.refund_type || 'balance') === 'balance' ? 'رصيد الحساب' : '-'),
+          notes: `${r.reason || ''}${r.original_invoice_number ? ` (أصل: ${r.original_invoice_number})` : ''}`.trim(),
+          discount: 0,
+          profitPercent: isRep || !isSales ? 0 : calcProfitPctOnCost(retProfit, retCostSum),
+          customerId: isSales ? r.party_id : undefined,
+          supplierId: !isSales ? r.party_id : undefined,
+          partyName: r.party_name,
+          rowTone: 'warning_rose',
+          scopeType: 'inventory',
+        };
+      });
+      totalsObj = {
+        count: totalUnpaginatedRows,
+        quantity: round3(rows.reduce((s, r) => s + Number(r.quantity || 0), 0)),
+        priceOrTotal: round2(countRes.rows[0]?.sum_total || 0),
+        valueOrPaid: round2(countRes.rows[0]?.sum_cash || 0),
+        remaining: round2(countRes.rows[0]?.sum_bal || 0),
+        profit: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.profit || 0), 0)),
+        costValue: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.costValue || 0), 0)),
+        discount: 0,
+        profitPercent: 0,
       };
-    });
+    } else {
+      if (productId) {
+        retParams.push(productId);
+        retClauses.push(`iri.product_id = $${retParams.length}`);
+      }
+      const whereSql = `WHERE ${retClauses.join(' AND ')}`;
+      const countRes = await pool.query(
+        `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(iri.quantity),0) AS sum_qty, COALESCE(SUM(iri.total),0) AS sum_val
+         FROM invoice_return_items iri
+         JOIN invoice_returns r ON r.id = iri.return_id
+         ${whereSql}`,
+        retParams
+      );
+      totalUnpaginatedRows = Number(countRes.rows[0]?.cnt || 0);
+      const totalPages = Math.max(1, Math.ceil(totalUnpaginatedRows / pageSize));
+      const safePage = Math.min(page, totalPages);
+      const offset = (safePage - 1) * pageSize;
 
-    totalsObj = {
-      count: totalUnpaginatedRows,
-      quantity: round3(countRes.rows[0]?.sum_qty || 0),
-      priceOrTotal: null,
-      valueOrPaid: round2(countRes.rows[0]?.sum_val || 0),
-      remaining: null,
-      profit: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.profit || 0), 0)),
-      costValue: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.costValue || 0), 0)),
-      discount: round2(countRes.rows[0]?.sum_disc || 0),
-      profitPercent: 0,
-    };
+      const pageParams = [...retParams, pageSize, offset];
+      const pageRetItemRes = await pool.query(
+        `SELECT iri.*, r.return_number, r.type AS ret_type, r.original_invoice_id, r.original_invoice_number,
+                r.date, r.created_at, r.created_by, r.party_id, r.party_name, r.warehouse_id, r.warehouse_name, r.cashbox_id, r.refund_type, r.reason, r.notes AS ret_notes
+         FROM invoice_return_items iri
+         JOIN invoice_returns r ON r.id = iri.return_id
+         ${whereSql}
+         ORDER BY r.date DESC, r.created_at DESC
+         LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
+        pageParams
+      );
+      const pageOrigInvIds = [...new Set(pageRetItemRes.rows.map((x) => x.original_invoice_id).filter(Boolean))];
+      const origInvItemsRes = pageOrigInvIds.length > 0 && !isRep && isSales
+        ? await pool.query(`SELECT invoice_id, product_id, purchase_price_at_time FROM invoice_items WHERE invoice_id = ANY($1::varchar[])`, [pageOrigInvIds])
+        : { rows: [] };
+      const origCostByInvProd = new Map();
+      for (const it of origInvItemsRes.rows) {
+        origCostByInvProd.set(`${it.invoice_id}::${it.product_id}`, Number(it.purchase_price_at_time || 0));
+      }
+
+      rows = pageRetItemRes.rows.map((r, idx) => {
+        const prod = productMap.get(r.product_id);
+        const qty = Number(r.quantity || 0);
+        const uf = Number(r.unit_factor || resolveUnitFactor(prod, r.unit) || 1);
+        const baseQty = round3(qty * uf);
+        const unitPrice = round2(r.unit_price || 0);
+        const lineTotal = round2(r.total ?? unitPrice * qty);
+        const origCost = origCostByInvProd.get(`${r.original_invoice_id}::${r.product_id}`) || 0;
+        const costPerBase = isRep ? 0 : (origCost > 0 ? origCost : Number(prod?.purchasePrice || 0));
+        const lineCost = isRep ? 0 : round2(costPerBase * baseQty);
+        const lineProfitImpact = isRep || !isSales ? 0 : round2(-(lineTotal - lineCost));
+        const retDate = isoDateOnly(r.date);
+        const cbId = r.cashbox_id || '';
+        return {
+          rowId: `${r.return_id}-RIT-SQL-${offset + idx}`,
+          docType: r.ret_type,
+          docId: r.return_id,
+          productId: r.product_id,
+          productName: r.product_name || prod?.name || '',
+          operationLabel: r.product_name || prod?.name || '',
+          quantity: qty,
+          baseQuantity: baseQty,
+          unit: r.unit || prod?.baseUnit || 'قطعة',
+          priceOrTotal: unitPrice,
+          valueOrPaid: lineTotal,
+          movementOrRemaining: `${r.party_name || ''} (${isSales ? 'مرتجع بيع' : 'مرتجع شراء'})`,
+          employeeName: r.created_by || '-',
+          userName: r.created_by || '-',
+          businessDate: formatBusinessDateSlash(retDate),
+          rawDate: retDate,
+          actualDateTime: formatActualDateTimeAr(isoTimestamp(r.created_at), retDate),
+          rawCreatedAt: isoTimestamp(r.created_at) || retDate,
+          profit: lineProfitImpact,
+          costValue: lineCost,
+          barcode: prod?.barcode || prod?.code || '',
+          displayId: prod?.code || r.product_id,
+          invoiceNumber: r.return_number,
+          branchName: resolveBranchName(r.warehouse_id, cbId),
+          warehouseId: r.warehouse_id,
+          warehouseName: r.warehouse_name,
+          cashboxId: isRep ? '' : cbId,
+          cashboxName: isRep ? '-' : resolveCashboxName(cbId, (r.refund_type || 'balance') === 'balance' ? 'رصيد الحساب' : '-'),
+          notes: `${r.reason || ''}${r.ret_notes ? ` — ${r.ret_notes}` : ''}`.trim(),
+          discount: 0,
+          profitPercent: isRep || !isSales ? 0 : calcProfitPctOnCost(lineProfitImpact, lineCost),
+          customerId: isSales ? r.party_id : undefined,
+          supplierId: !isSales ? r.party_id : undefined,
+          partyName: r.party_name,
+          rowTone: 'warning_rose',
+          scopeType: 'inventory',
+        };
+      });
+      totalsObj = {
+        count: totalUnpaginatedRows,
+        quantity: round3(countRes.rows[0]?.sum_qty || 0),
+        priceOrTotal: null,
+        valueOrPaid: round2(countRes.rows[0]?.sum_val || 0),
+        remaining: null,
+        profit: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.profit || 0), 0)),
+        costValue: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.costValue || 0), 0)),
+        discount: 0,
+        profitPercent: 0,
+      };
+    }
+  } else {
+    const clauses = [`i.status = 'confirmed'`, `i.type = $1`];
+    const params = [invType];
+    if (isRep) {
+      if (!isSales && !isRepCanPurchase) {
+        clauses.push(`1 = 0`);
+      } else {
+        clauses.push(buildPgRepOwnInvPred('i', actor, repProfile, params));
+      }
+    }
+    if (dateFrom) {
+      params.push(dateFrom);
+      clauses.push(`i.date >= $${params.length}`);
+    }
+    if (dateTo) {
+      params.push(dateTo);
+      clauses.push(`i.date <= $${params.length}`);
+    }
+    if (warehouseId) {
+      params.push(warehouseId);
+      clauses.push(`i.warehouse_id = $${params.length}`);
+    }
+    if (cashboxId && !isRep) {
+      params.push(cashboxId);
+      clauses.push(`i.cashbox_id = $${params.length}`);
+    }
+    if (customerId) {
+      params.push(customerId);
+      clauses.push(`i.customer_id = $${params.length}`);
+    }
+    if (supplierId) {
+      params.push(supplierId);
+      clauses.push(`i.supplier_id = $${params.length}`);
+    }
+    if (representativeId) {
+      params.push(representativeId);
+      clauses.push(`i.representative_id = $${params.length}`);
+    }
+    if (invoiceNumber) {
+      params.push(`%${invoiceNumber}%`);
+      clauses.push(`LOWER(i.invoice_number) LIKE LOWER($${params.length})`);
+    }
+
+    if (isInvoiceLayout) {
+      if (productId) {
+        params.push(productId);
+        clauses.push(`EXISTS (SELECT 1 FROM invoice_items ii WHERE ii.invoice_id = i.id AND ii.product_id = $${params.length})`);
+      }
+      const whereSql = `WHERE ${clauses.join(' AND ')}`;
+      const countRes = await pool.query(
+        `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(i.grand_total),0) AS sum_total, COALESCE(SUM(i.paid_amount),0) AS sum_paid, COALESCE(SUM(i.remaining_amount),0) AS sum_rem, COALESCE(SUM(i.discount_total),0) AS sum_disc FROM invoices i ${whereSql}`,
+        params
+      );
+      totalUnpaginatedRows = Number(countRes.rows[0]?.cnt || 0);
+      const totalPages = Math.max(1, Math.ceil(totalUnpaginatedRows / pageSize));
+      const safePage = Math.min(page, totalPages);
+      const offset = (safePage - 1) * pageSize;
+
+      const pageParams = [...params, pageSize, offset];
+      const pageInvRes = await pool.query(
+        `SELECT i.* FROM invoices i ${whereSql} ORDER BY i.date DESC, i.created_at DESC LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
+        pageParams
+      );
+      const pageInvIds = pageInvRes.rows.map((r) => r.id);
+      const itemsByInv = new Map();
+      if (pageInvIds.length > 0) {
+        const itRes = await pool.query(`SELECT * FROM invoice_items WHERE invoice_id = ANY($1::varchar[])`, [pageInvIds]);
+        for (const it of itRes.rows) {
+          const list = itemsByInv.get(it.invoice_id) || [];
+          list.push(it);
+          itemsByInv.set(it.invoice_id, list);
+        }
+      }
+
+      rows = pageInvRes.rows.map((r) => {
+        const inv = mapPgInvoiceRow(r, itemsByInv.get(r.id) || [], []);
+        const cust = isSales && inv.customerId ? customerMap.get(inv.customerId) : null;
+        const supp = !isSales && inv.supplierId ? supplierMap.get(inv.supplierId) : null;
+        const partyName = isSales ? (inv.customerName || cust?.name || 'عميل نقدي') : (inv.supplierName || supp?.name || 'مورد نقدي');
+        const partyPhone = cust?.phone || supp?.phone || '';
+        const invQtySum = round3((inv.items || []).reduce((s, it) => s + Number(it.quantity || 0), 0));
+        const invCostSum = isRep
+          ? 0
+          : round2((inv.items || []).reduce((s, it) => {
+              const p = productMap.get(it.productId);
+              const c = Number(it.purchasePriceAtTime || 0) > 0 ? Number(it.purchasePriceAtTime) : Number(p?.purchasePrice || 0);
+              return s + c * round3(Number(it.quantity || 0) * Number(it.unitFactor || 1));
+            }, 0));
+        const invProfit = isRep || !isSales ? 0 : round2(Number(inv.grandTotal || 0) - invCostSum);
+        return {
+          rowId: `${inv.id}-INV`,
+          docType: isSales ? 'sales_invoice' : 'purchase_invoice',
+          docId: inv.id,
+          operationLabel: partyPhone ? `${partyName} (${partyPhone})` : partyName,
+          quantity: invQtySum,
+          unit: `${(inv.items || []).length} صنف`,
+          priceOrTotal: round2(inv.grandTotal || 0),
+          valueOrPaid: round2(inv.paidAmount || 0),
+          movementOrRemaining: round2(inv.remainingAmount || 0),
+          paidAmount: round2(inv.paidAmount || 0),
+          remainingAmount: round2(inv.remainingAmount || 0),
+          paymentStatus: Number(inv.remainingAmount || 0) <= 0.01 ? 'paid' : Number(inv.paidAmount || 0) > 0 ? 'partial' : 'unpaid',
+          invoiceStatus: inv.status,
+          employeeId: inv.representativeId || undefined,
+          employeeName: inv.representativeName || inv.createdBy || '-',
+          userName: inv.createdBy,
+          businessDate: formatBusinessDateSlash(inv.date),
+          rawDate: inv.date,
+          actualDateTime: formatActualDateTimeAr(inv.createdAt, inv.date),
+          rawCreatedAt: inv.createdAt || inv.date,
+          profit: invProfit,
+          costValue: invCostSum,
+          barcode: '',
+          displayId: inv.id,
+          invoiceNumber: inv.invoiceNumber,
+          branchName: resolveBranchName(inv.warehouseId, inv.cashboxId),
+          warehouseId: inv.warehouseId,
+          warehouseName: inv.warehouseName,
+          cashboxId: isRep ? '' : inv.cashboxId,
+          cashboxName: isRep ? '-' : resolveCashboxName(inv.cashboxId),
+          notes: `${inv.paymentType === 'cash' ? 'نقدي' : inv.paymentType === 'partial' ? 'سداد جزئي' : 'آجل'}${inv.notes ? ` - ${inv.notes}` : ''}`,
+          discount: round2(inv.discountTotal || 0),
+          profitPercent: isRep || !isSales ? 0 : calcProfitPctOnCost(invProfit, invCostSum),
+          customerId: isSales ? inv.customerId : undefined,
+          supplierId: !isSales ? inv.supplierId : undefined,
+          partyName,
+          representativeId: inv.representativeId || undefined,
+          representativeName: inv.representativeName || undefined,
+          rowTone: 'invoice_blue',
+          scopeType: 'inventory',
+        };
+      });
+
+      totalsObj = {
+        count: totalUnpaginatedRows,
+        quantity: round3(rows.reduce((s, r) => s + Number(r.quantity || 0), 0)),
+        priceOrTotal: round2(countRes.rows[0]?.sum_total || 0),
+        valueOrPaid: round2(countRes.rows[0]?.sum_paid || 0),
+        remaining: round2(countRes.rows[0]?.sum_rem || 0),
+        profit: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.profit || 0), 0)),
+        costValue: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.costValue || 0), 0)),
+        discount: round2(countRes.rows[0]?.sum_disc || 0),
+        profitPercent: 0,
+      };
+    } else {
+      if (productId) {
+        params.push(productId);
+        clauses.push(`it.product_id = $${params.length}`);
+      }
+      const whereSql = `WHERE ${clauses.join(' AND ')}`;
+      const countRes = await pool.query(
+        `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(it.quantity),0) AS sum_qty, COALESCE(SUM(it.total),0) AS sum_val, COALESCE(SUM(it.discount),0) AS sum_disc
+         FROM invoice_items it
+         JOIN invoices i ON i.id = it.invoice_id
+         ${whereSql}`,
+        params
+      );
+      totalUnpaginatedRows = Number(countRes.rows[0]?.cnt || 0);
+      const totalPages = Math.max(1, Math.ceil(totalUnpaginatedRows / pageSize));
+      const safePage = Math.min(page, totalPages);
+      const offset = (safePage - 1) * pageSize;
+
+      const pageParams = [...params, pageSize, offset];
+      const pageItemRes = await pool.query(
+        `SELECT it.*, i.invoice_number, i.date, i.created_at, i.created_by, i.warehouse_id, i.warehouse_name, i.cashbox_id, i.customer_id, i.customer_name, i.supplier_id, i.supplier_name, i.representative_id, i.representative_name, i.notes, i.status AS inv_status, i.paid_amount AS inv_paid, i.remaining_amount AS inv_rem
+         FROM invoice_items it
+         JOIN invoices i ON i.id = it.invoice_id
+         ${whereSql}
+         ORDER BY i.date DESC, i.created_at DESC
+         LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
+        pageParams
+      );
+
+      rows = pageItemRes.rows.map((r, idx) => {
+        const prod = productMap.get(r.product_id);
+        const cust = isSales && r.customer_id ? customerMap.get(r.customer_id) : null;
+        const supp = !isSales && r.supplier_id ? supplierMap.get(r.supplier_id) : null;
+        const partyName = isSales ? (r.customer_name || cust?.name || 'عميل نقدي') : (r.supplier_name || supp?.name || 'مورد نقدي');
+        const partyPhone = cust?.phone || supp?.phone || '';
+        const partyWithPhone = partyPhone ? `${partyName} (${partyPhone})` : partyName;
+        const qty = Number(r.quantity || 0);
+        const unitFactor = Number(r.unit_factor || resolveUnitFactor(prod, r.unit) || 1);
+        const baseQty = round3(qty * unitFactor);
+        const netLineVal = round2(r.total ?? Number(r.unit_price || 0) * qty - Number(r.discount || 0));
+        const costPerBase = isRep ? 0 : (Number(r.purchase_price_at_time || 0) > 0 ? Number(r.purchase_price_at_time) : Number(prod?.purchasePrice || 0));
+        const lineCost = isRep ? 0 : round2(costPerBase * baseQty);
+        const lineProfit = isRep || !isSales ? 0 : round2(netLineVal - lineCost);
+        const invDate = isoDateOnly(r.date);
+        return {
+          rowId: `${r.invoice_id}-IT-SQL-${offset + idx}`,
+          docType: isSales ? 'sales_invoice' : 'purchase_invoice',
+          docId: r.invoice_id,
+          productId: r.product_id,
+          productCode: prod?.code || '',
+          productName: r.product_name || prod?.name || '',
+          categoryName: prod?.category || 'عام',
+          class1: normalizeClassification1(prod),
+          operationLabel: r.product_name || prod?.name || '',
+          quantity: qty,
+          baseQuantity: baseQty,
+          unit: r.unit || prod?.baseUnit || 'قطعة',
+          baseUnit: prod?.baseUnit || r.unit || 'قطعة',
+          unitFactor,
+          priceOrTotal: round2(r.unit_price || 0),
+          valueOrPaid: netLineVal,
+          movementOrRemaining: isSales ? `${partyWithPhone} - فاتورة بيع` : `${partyWithPhone} - فاتورة شراء`,
+          paidAmount: round2(r.inv_paid || 0),
+          remainingAmount: round2(r.inv_rem || 0),
+          paymentStatus: Number(r.inv_rem || 0) <= 0.01 ? 'paid' : Number(r.inv_paid || 0) > 0 ? 'partial' : 'unpaid',
+          invoiceStatus: r.inv_status || 'confirmed',
+          employeeId: r.representative_id || undefined,
+          employeeName: r.representative_name || r.created_by || '-',
+          userName: r.created_by,
+          businessDate: formatBusinessDateSlash(invDate),
+          rawDate: invDate,
+          actualDateTime: formatActualDateTimeAr(isoTimestamp(r.created_at), invDate),
+          rawCreatedAt: isoTimestamp(r.created_at),
+          profit: lineProfit,
+          costValue: lineCost,
+          barcode: r.barcode || prod?.barcode || prod?.code || '',
+          displayId: prod?.code || r.product_id,
+          invoiceNumber: r.invoice_number,
+          branchName: resolveBranchName(r.warehouse_id, r.cashbox_id),
+          warehouseId: r.warehouse_id,
+          warehouseName: r.warehouse_name,
+          cashboxId: isRep ? '' : r.cashbox_id,
+          cashboxName: isRep ? '-' : resolveCashboxName(r.cashbox_id),
+          notes: r.notes || '',
+          discount: round2(r.discount || 0),
+          profitPercent: isRep || !isSales ? 0 : calcProfitPctOnCost(lineProfit, lineCost),
+          customerId: isSales ? r.customer_id : undefined,
+          supplierId: !isSales ? r.supplier_id : undefined,
+          partyName,
+          representativeId: r.representative_id || undefined,
+          representativeName: r.representative_name || undefined,
+          rowTone: 'default',
+          scopeType: 'inventory',
+        };
+      });
+
+      totalsObj = {
+        count: totalUnpaginatedRows,
+        quantity: round3(countRes.rows[0]?.sum_qty || 0),
+        priceOrTotal: null,
+        valueOrPaid: round2(countRes.rows[0]?.sum_val || 0),
+        remaining: null,
+        profit: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.profit || 0), 0)),
+        costValue: isRep ? 0 : round2(rows.reduce((s, r) => s + Number(r.costValue || 0), 0)),
+        discount: round2(countRes.rows[0]?.sum_disc || 0),
+        profitPercent: 0,
+      };
+    }
   }
 
   const totalPages = Math.max(1, Math.ceil(totalUnpaginatedRows / pageSize));
@@ -1394,6 +1785,10 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
     purchase_invoices: 'فواتير شراء',
     sales_items: 'أصناف بيع',
     purchase_items: 'أصناف شراء',
+    sales_return_invoices: 'فواتير مرتجع بيع',
+    purchase_return_invoices: 'فواتير مرتجع شراء',
+    sales_return_items: 'أصناف مرتجع بيع',
+    purchase_return_items: 'أصناف مرتجع شراء',
   };
 
   let drawerBalance = 0;
@@ -1422,54 +1817,73 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
     carriedFromYesterday = round2(drawerBalance - reportBalance);
   }
 
-    let returnsDeduction = 0;
-    if (!invoiceNumber) {
-      const retClauses = [`type = $1`];
-      const retParams = [isSales ? 'sales_return' : 'purchase_return'];
-      if (isRep) {
+  let returnsDeduction = 0;
+  let exactFilteredSalesNet = 0;
+  let exactFilteredPurchasesNet = 0;
+  if (!isReturnReport && !invoiceNumber) {
+    const retClauses = [`r.type = $1`];
+    const retParams = [retType];
+    if (isRep) {
+      const ownInvPred = buildPgRepOwnInvPred('oi', actor, repProfile, retParams);
+      const ownRetParts = [
+        `EXISTS (SELECT 1 FROM invoices oi WHERE oi.id = r.original_invoice_id AND ${ownInvPred})`,
+      ];
+      if (actor?.id) {
+        retParams.push(actor.id);
+        ownRetParts.push(`(r.original_invoice_id IS NULL AND r.created_by_user_id = $${retParams.length})`);
+      }
+      if (actor?.fullName) {
         retParams.push(actor.fullName);
-        retClauses.push(`created_by = $${retParams.length}`);
+        ownRetParts.push(`(r.original_invoice_id IS NULL AND r.created_by_user_id IS NULL AND r.created_by = $${retParams.length})`);
       }
-      if (dateFrom) {
-        retParams.push(dateFrom);
-        retClauses.push(`date >= $${retParams.length}`);
-      }
-      if (dateTo) {
-        retParams.push(dateTo);
-        retClauses.push(`date <= $${retParams.length}`);
-      }
-      if (warehouseId) {
-        retParams.push(warehouseId);
-        retClauses.push(`warehouse_id = $${retParams.length}`);
-      }
-      if (isSales && customerId) {
-        retParams.push(customerId);
-        retClauses.push(`party_id = $${retParams.length}`);
-      }
-      if (!isSales && supplierId) {
-        retParams.push(supplierId);
-        retClauses.push(`party_id = $${retParams.length}`);
-      }
-      if (productId) {
-        retParams.push(productId);
-        const rRetRes = await pool.query(
-          `SELECT COALESCE(SUM(iri.total), 0) AS sum_ret
-           FROM invoice_return_items iri
-           JOIN invoice_returns r ON r.id = iri.return_id
-           WHERE ${retClauses.map((c) => c.replace(/\b(type|created_by|date|warehouse_id|party_id)\b/g, 'r.$1')).join(' AND ')} AND iri.product_id = $${retParams.length}`,
-          retParams
-        );
-        returnsDeduction = round2(rRetRes.rows[0]?.sum_ret || 0);
-      } else {
-        const rRetRes = await pool.query(
-          `SELECT COALESCE(SUM(grand_total), 0) AS sum_ret FROM invoice_returns WHERE ${retClauses.join(' AND ')}`,
-          retParams
-        );
-        returnsDeduction = round2(rRetRes.rows[0]?.sum_ret || 0);
-      }
+      retClauses.push(`(${ownRetParts.join(' OR ')})`);
+    }
+    if (dateFrom) {
+      retParams.push(dateFrom);
+      retClauses.push(`r.date >= $${retParams.length}`);
+    }
+    if (dateTo) {
+      retParams.push(dateTo);
+      retClauses.push(`r.date <= $${retParams.length}`);
+    }
+    if (warehouseId) {
+      retParams.push(warehouseId);
+      retClauses.push(`r.warehouse_id = $${retParams.length}`);
+    }
+    if (isSales && customerId) {
+      retParams.push(customerId);
+      retClauses.push(`r.party_id = $${retParams.length}`);
+    }
+    if (!isSales && supplierId) {
+      retParams.push(supplierId);
+      retClauses.push(`r.party_id = $${retParams.length}`);
+    }
+    if (productId) {
+      retParams.push(productId);
+      const rRetRes = await pool.query(
+        `SELECT COALESCE(SUM(iri.total), 0) AS sum_ret
+         FROM invoice_return_items iri
+         JOIN invoice_returns r ON r.id = iri.return_id
+         WHERE ${retClauses.join(' AND ')} AND iri.product_id = $${retParams.length}`,
+        retParams
+      );
+      returnsDeduction = round2(rRetRes.rows[0]?.sum_ret || 0);
+    } else {
+      const rRetRes = await pool.query(
+        `SELECT COALESCE(SUM(r.grand_total), 0) AS sum_ret FROM invoice_returns r WHERE ${retClauses.join(' AND ')}`,
+        retParams
+      );
+      returnsDeduction = round2(rRetRes.rows[0]?.sum_ret || 0);
     }
     const baseNetSalesOrPurch = isInvoiceLayout ? Number(totalsObj.priceOrTotal || 0) : Number(totalsObj.valueOrPaid || 0);
     const exactFilteredNet = round2(baseNetSalesOrPurch - returnsDeduction);
+    if (isSales) exactFilteredSalesNet = exactFilteredNet;
+    else exactFilteredPurchasesNet = exactFilteredNet;
+  } else if (isReturnReport) {
+    const retValSum = isInvoiceLayout ? Number(totalsObj.priceOrTotal || 0) : Number(totalsObj.valueOrPaid || 0);
+    if (isSales) exactFilteredSalesNet = round2(-retValSum);
+    else exactFilteredPurchasesNet = round2(-retValSum);
+  }
 
   return {
     reportType,
@@ -1532,8 +1946,8 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
       carriedFromYesterday,
       reportProfit: 0,
       reportProfitPercent: 0,
-      filteredSalesNet: isSales ? exactFilteredNet : 0,
-      filteredPurchasesNet: !isSales ? exactFilteredNet : 0,
+      filteredSalesNet: exactFilteredSalesNet,
+      filteredPurchasesNet: exactFilteredPurchasesNet,
       filteredCashIn: 0,
       filteredCashOut: 0,
       totalRows: totalUnpaginatedRows,
@@ -2886,7 +3300,7 @@ function buildProductLifecycleHistory(productId, data, resolvers, filterOpts = {
               qtyIn: 0,
               qtyOut: 0,
               unitPrice: round2(edIt?.unitPrice || 0),
-              unitCost: round2(edIt?.purchasePriceAtTime || prod.purchasePrice || 0),
+              unitCost: filterOpts.isRep ? 0 : round2(edIt?.purchasePriceAtTime || prod.purchasePrice || 0),
               totalValue: round2(edIt?.total || 0),
               userName: ed.editedBy || inv.editedBy || inv.createdBy,
               notes: ed.reason ? `تعديل الفاتورة - ${ed.reason}` : 'تعديل أسعار/بيانات الفاتورة',
@@ -3014,7 +3428,7 @@ function buildProductLifecycleHistory(productId, data, resolvers, filterOpts = {
         qtyIn: isSalesRet ? baseQty : 0,
         qtyOut: isSalesRet ? 0 : baseQty,
         unitPrice: round2(it.unitPrice || 0),
-        unitCost: round2(prod.purchasePrice || 0),
+        unitCost: filterOpts.isRep ? 0 : round2(prod.purchasePrice || 0),
         totalValue: round2(it.total || 0),
         userName: ret.createdBy,
         notes: ret.reason || ret.notes || '',
@@ -3056,9 +3470,9 @@ function buildProductLifecycleHistory(productId, data, resolvers, filterOpts = {
       qty: Number(op.quantity || 0),
       qtyIn: isReturn ? (filterWh && op.warehouseId === filterWh ? bQty : 0) : 0,
       qtyOut: isReturn ? 0 : bQty,
-      unitPrice: Number(prod.purchasePrice || 0),
-      unitCost: Number(prod.purchasePrice || 0),
-      totalValue: round2(bQty * Number(prod.purchasePrice || 0)),
+      unitPrice: filterOpts.isRep ? 0 : Number(prod.purchasePrice || 0),
+      unitCost: filterOpts.isRep ? 0 : Number(prod.purchasePrice || 0),
+      totalValue: filterOpts.isRep ? 0 : round2(bQty * Number(prod.purchasePrice || 0)),
       userName: op.createdBy,
       notes: op.notes || '',
     });
@@ -3135,9 +3549,9 @@ function buildProductLifecycleHistory(productId, data, resolvers, filterOpts = {
       qty: bQty,
       qtyIn,
       qtyOut,
-      unitPrice: round2(sm.unitCost || prod.purchasePrice || 0),
-      unitCost: round2(sm.unitCost || prod.purchasePrice || 0),
-      totalValue: round2(bQty * Number(sm.unitCost || prod.purchasePrice || 0)),
+      unitPrice: filterOpts.isRep ? 0 : round2(sm.unitCost || prod.purchasePrice || 0),
+      unitCost: filterOpts.isRep ? 0 : round2(sm.unitCost || prod.purchasePrice || 0),
+      totalValue: filterOpts.isRep ? 0 : round2(bQty * Number(sm.unitCost || prod.purchasePrice || 0)),
       userName: sm.createdBy,
       notes: sm.notes || '',
     });
@@ -3163,7 +3577,7 @@ function buildProductLifecycleHistory(productId, data, resolvers, filterOpts = {
       qtyIn: 0,
       qtyOut: 0,
       unitPrice: Number(prod.sellingPrice || 0),
-      unitCost: Number(prod.purchasePrice || 0),
+      unitCost: filterOpts.isRep ? 0 : Number(prod.purchasePrice || 0),
       totalValue: 0,
       userName: log.userName,
       notes: log.notes || log.action,
@@ -3174,14 +3588,14 @@ function buildProductLifecycleHistory(productId, data, resolvers, filterOpts = {
   events.sort((a, b) => String(a.sortTime).localeCompare(String(b.sortTime)));
 
   let running = 0;
-  let lastPurchasePrice = Number(prod.purchasePrice || 0);
+  let lastPurchasePrice = filterOpts.isRep ? 0 : Number(prod.purchasePrice || 0);
   let lastPurchaseDate = null;
   let lastSalePrice = Number(prod.sellingPrice || 0);
   let lastSaleDate = null;
 
   const timeline = events.map((ev) => {
     running = round3(running + Number(ev.qtyIn || 0) - Number(ev.qtyOut || 0));
-    if (ev.eventType === 'purchase') {
+    if (ev.eventType === 'purchase' && !filterOpts.isRep) {
       lastPurchasePrice = ev.unitPrice;
       lastPurchaseDate = ev.date;
     } else if (ev.eventType === 'sale') {
@@ -3202,7 +3616,7 @@ function buildProductLifecycleHistory(productId, data, resolvers, filterOpts = {
       warehouseName: wh.name,
       branchName: resolvers.resolveBranchName(wh.id, null),
       quantity: qty,
-      costValue: round2(Math.max(0, qty) * Number(prod.purchasePrice || 0)),
+      costValue: filterOpts.isRep ? 0 : round2(Math.max(0, qty) * Number(prod.purchasePrice || 0)),
       sellingValue: round2(Math.max(0, qty) * Number(prod.sellingPrice || 0)),
     };
   });
@@ -3231,7 +3645,7 @@ function buildProductLifecycleHistory(productId, data, resolvers, filterOpts = {
     lastSalePrice,
     lastSaleDate,
     currentStockTotal,
-    currentStockValueAtCost: round2(Math.max(0, currentStockTotal) * Number(prod.purchasePrice || 0)),
+    currentStockValueAtCost: filterOpts.isRep ? 0 : round2(Math.max(0, currentStockTotal) * Number(prod.purchasePrice || 0)),
     warehouseBalances,
     timeline: filteredTimeline,
     fullCount: timeline.length,
@@ -3765,7 +4179,35 @@ export async function getRepDetailedReport(filters = {}, actor) {
     ? Boolean(actor?.permissions?.canCreatePurchase || actor?.permissions?.canManagePurchases)
     : true;
 
-  const data = await loadFullReportDataset(actor, filters);
+  // For rep actor, ignore filters.representativeId (enforce self-only from session).
+  // For admin / report viewer, pass filters without forcing representativeId into loadFullReportDataset
+  // so customersSummary / suppliersSummary retain full company balances, then filter operations below.
+  const requestedRepId = !isRepActor && filters.representativeId && filters.representativeId !== 'all'
+    ? String(filters.representativeId)
+    : null;
+  const datasetFilters = { ...filters };
+  delete datasetFilters.representativeId;
+  const data = await loadFullReportDataset(actor, datasetFilters);
+
+  const selectedRepProfile = isRepActor
+    ? ownProfile
+    : requestedRepId
+    ? ((data.representatives || []).find((r) => r.id === requestedRepId || r.userId === requestedRepId) || null)
+    : null;
+
+  const belongsToSelectedRep = (inv) => {
+    if (isRepActor) return isRepOwnerOfInvoice(inv, actor, ownProfile);
+    if (!requestedRepId) return true;
+    if (inv.representativeId === requestedRepId) return true;
+    if (selectedRepProfile?.id && inv.representativeId === selectedRepProfile.id) return true;
+    if (selectedRepProfile?.userId && (inv.createdByUserId === selectedRepProfile.userId || inv.sentByUserId === selectedRepProfile.userId)) return true;
+    return false;
+  };
+
+  const selectedRepInvIdSet = requestedRepId
+    ? new Set((data.invoices || []).filter(belongsToSelectedRep).map((i) => i.id))
+    : null;
+
   const dateFrom = filters.dateFrom ? String(filters.dateFrom).split('T')[0] : null;
   const dateTo = filters.dateTo ? String(filters.dateTo).split('T')[0] : null;
   const customerId = filters.customerId && filters.customerId !== 'all' ? String(filters.customerId) : null;
@@ -3780,6 +4222,7 @@ export async function getRepDetailedReport(filters = {}, actor) {
 
   const productMap = new Map((data.products || []).map((p) => [p.id, p]));
   const customerMap = new Map((data.customers || []).map((c) => [c.id, c]));
+  const invoiceMapAll = new Map((data.invoices || []).map((i) => [i.id, i]));
 
   const inDateRange = (d) => {
     const clean = d ? String(d).split('T')[0] : '';
@@ -3795,9 +4238,10 @@ export async function getRepDetailedReport(filters = {}, actor) {
     return 'credit';
   };
   const matchesInvFilters = (inv) => {
+    if (!belongsToSelectedRep(inv)) return false;
     if (opType === 'sales' && inv.type !== 'sales') return false;
     if (opType === 'purchase' && inv.type !== 'purchase') return false;
-    if (opType === 'sales_return' || opType === 'purchase_return' || opType === 'collection' || opType === 'purchase_payment') {
+    if (opType === 'sales_return' || opType === 'purchase_return' || opType === 'collection' || opType === 'purchase_payment' || opType === 'purchase_return_request') {
       return false;
     }
     if (!inDateRange(inv.date)) return false;
@@ -3824,6 +4268,20 @@ export async function getRepDetailedReport(filters = {}, actor) {
     return true;
   };
 
+  // Precompute returned quantities & values per (invoiceId, productId)
+  const returnedByInvProd = new Map();
+  for (const ret of data.invoiceReturns || []) {
+    if (!ret.originalInvoiceId) continue;
+    for (const rit of ret.items || []) {
+      const k = `${ret.originalInvoiceId}::${rit.productId}`;
+      const prev = returnedByInvProd.get(k) || { qty: 0, value: 0 };
+      returnedByInvProd.set(k, {
+        qty: round3(prev.qty + Number(rit.quantity || 0)),
+        value: round2(prev.value + Number(rit.total || Number(rit.unitPrice || 0) * Number(rit.quantity || 0))),
+      });
+    }
+  }
+
   const invoices = [];
   const itemRows = [];
   const purchasePayments = [];
@@ -3848,6 +4306,8 @@ export async function getRepDetailedReport(filters = {}, actor) {
           productName: it.productName || prod?.name || '',
           productCode: prod?.code || '',
           barcode: it.barcode || prod?.barcode || '',
+          categoryName: prod?.category || 'عام',
+          class1: normalizeClassification1(prod),
           unit: it.unit,
           unitFactor: Number(it.unitFactor || 1),
           quantity: Number(it.quantity || 0),
@@ -3870,16 +4330,30 @@ export async function getRepDetailedReport(filters = {}, actor) {
       warehouseName: inv.warehouseName || '',
       ...(inv.representativeId ? { representativeId: inv.representativeId } : {}),
       ...(inv.representativeName ? { representativeName: inv.representativeName } : {}),
+      createdBy: inv.createdBy || '',
       grandTotal: round2(inv.grandTotal || 0),
       paidAmount: round2(inv.paidAmount || 0),
       remainingAmount: Math.max(0, round2(inv.remainingAmount || 0)),
       paymentStatus: payStatus,
       itemsCount: (inv.items || []).length,
       items: safeItems,
+      payments: (inv.payments || []).map((py) => ({
+        id: py.id,
+        date: py.date || inv.date,
+        amount: round2(py.amount || 0),
+        paymentMethod: py.paymentMethod || 'cash',
+        notes: py.notes || '',
+        createdBy: py.createdBy || inv.createdBy || '',
+      })),
       notes: inv.notes || '',
     });
 
     safeItems.forEach((it, idx) => {
+      const retStats = returnedByInvProd.get(`${inv.id}::${it.productId}`) || { qty: 0, value: 0 };
+      const returnedQty = round3(Math.min(it.quantity, retStats.qty));
+      const returnedValue = round2(Math.min(it.total, retStats.value));
+      const netQty = round3(Math.max(0, it.quantity - returnedQty));
+      const netValue = round2(Math.max(0, it.total - returnedValue));
       itemRows.push({
         rowId: `${inv.id}-${idx}`,
         invoiceId: inv.id,
@@ -3887,18 +4361,31 @@ export async function getRepDetailedReport(filters = {}, actor) {
         date: inv.date,
         opType: inv.type === 'purchase' ? 'purchase' : 'sales',
         status: inv.status,
+        invoiceStatus: inv.status,
+        paymentStatus: payStatus,
         partyId,
         partyName,
+        representativeName: inv.representativeName || inv.createdBy || '',
+        createdByName: inv.createdBy || inv.representativeName || '',
         productId: it.productId,
         productName: it.productName,
         productCode: it.productCode,
         barcode: it.barcode,
+        categoryName: it.categoryName,
+        class1: it.class1,
         unit: it.unit,
         quantity: it.quantity,
         unitFactor: it.unitFactor,
         unitPrice: it.unitPrice,
+        grossTotal: round2(it.quantity * it.unitPrice),
         discount: it.discount,
         total: it.total,
+        returnedQty,
+        returnedValue,
+        netQty,
+        netValue,
+        paidAmount: round2(inv.paidAmount || 0),
+        remainingAmount: Math.max(0, round2(inv.remainingAmount || 0)),
       });
     });
 
@@ -3914,6 +4401,9 @@ export async function getRepDetailedReport(filters = {}, actor) {
           amount: round2(py.amount || 0),
           paymentMethod: py.paymentMethod || 'cash',
           notes: py.notes || '',
+          createdBy: py.createdBy || inv.createdBy || '',
+          remainingAfter: Math.max(0, round2(inv.remainingAmount || 0)),
+          isInvoiceLinked: true,
         });
       }
     }
@@ -3921,9 +4411,15 @@ export async function getRepDetailedReport(filters = {}, actor) {
 
   const scopedReturns = [];
   for (const ret of data.invoiceReturns || []) {
+    if (selectedRepInvIdSet && ret.originalInvoiceId && !selectedRepInvIdSet.has(ret.originalInvoiceId)) {
+      continue;
+    }
+    if (selectedRepInvIdSet && !ret.originalInvoiceId) {
+      if (!selectedRepProfile?.userId || ret.createdByUserId !== selectedRepProfile.userId) continue;
+    }
     const isSalesRet = ret.type === 'sales_return';
     if (!isSalesRet && !canPurchase) continue;
-    if (opType === 'sales' || opType === 'purchase' || opType === 'collection' || opType === 'purchase_payment') continue;
+    if (opType === 'sales' || opType === 'purchase' || opType === 'collection' || opType === 'purchase_payment' || opType === 'purchase_return_request') continue;
     if (opType === 'sales_return' && !isSalesRet) continue;
     if (opType === 'purchase_return' && isSalesRet) continue;
     if (!inDateRange(ret.date)) continue;
@@ -3937,6 +4433,7 @@ export async function getRepDetailedReport(filters = {}, actor) {
     ) {
       continue;
     }
+    const origInv = ret.originalInvoiceId ? invoiceMapAll.get(ret.originalInvoiceId) : null;
     const safeRetItems = (ret.items || [])
       .filter((it) => !productId || it.productId === productId)
       .map((it) => {
@@ -3944,6 +4441,10 @@ export async function getRepDetailedReport(filters = {}, actor) {
         return {
           productId: it.productId,
           productName: it.productName || prod?.name || '',
+          productCode: prod?.code || '',
+          barcode: prod?.barcode || '',
+          categoryName: prod?.category || 'عام',
+          class1: normalizeClassification1(prod),
           unit: it.unit,
           unitFactor: Number(it.unitFactor || 1),
           quantity: Number(it.quantity || 0),
@@ -3967,11 +4468,11 @@ export async function getRepDetailedReport(filters = {}, actor) {
       refundType: ret.refundType || 'balance',
       reason: ret.reason || '',
       notes: ret.notes || '',
+      createdBy: ret.createdBy || '',
       items: safeRetItems,
     });
 
     safeRetItems.forEach((it, idx) => {
-      const prod = productMap.get(it.productId);
       itemRows.push({
         rowId: `${ret.id}-${idx}`,
         invoiceId: ret.id,
@@ -3979,26 +4480,76 @@ export async function getRepDetailedReport(filters = {}, actor) {
         date: ret.date,
         opType: isSalesRet ? 'sales_return' : 'purchase_return',
         status: 'confirmed',
+        invoiceStatus: 'confirmed',
+        paymentStatus: ret.refundType === 'cash' ? 'paid' : 'credit',
         partyId: ret.partyId,
         partyName: ret.partyName,
+        representativeName: origInv?.representativeName || ret.createdBy || '',
+        createdByName: ret.createdBy || '',
         productId: it.productId,
         productName: it.productName,
-        productCode: prod?.code || '',
-        barcode: prod?.barcode || '',
+        productCode: it.productCode,
+        barcode: it.barcode,
+        categoryName: it.categoryName,
+        class1: it.class1,
         unit: it.unit,
         quantity: it.quantity,
         unitFactor: it.unitFactor,
         unitPrice: it.unitPrice,
+        grossTotal: it.total,
         discount: 0,
         total: it.total,
+        returnedQty: it.quantity,
+        returnedValue: it.total,
+        netQty: 0,
+        netValue: round2(-it.total),
+        paidAmount: ret.refundType === 'cash' ? round2(ret.grandTotal || 0) : 0,
+        remainingAmount: 0,
       });
     });
   }
+
+  const scopedPurchaseReturnRequests = canPurchase
+    ? (data.purchaseReturnRequests || [])
+        .filter((req) => {
+          if (selectedRepInvIdSet) {
+            const matchInv = req.originalInvoiceId && selectedRepInvIdSet.has(req.originalInvoiceId);
+            const matchUser = selectedRepProfile?.userId && req.requestedByUserId === selectedRepProfile.userId;
+            if (!matchInv && !matchUser) return false;
+          }
+          if (opType !== 'all' && opType !== 'purchase_return_request' && opType !== 'purchase_return' && opType !== 'purchase') {
+            return false;
+          }
+          if (!inDateRange(req.date)) return false;
+          if (supplierId && req.supplierId !== supplierId) return false;
+          if (productId && !(req.items || []).some((it) => it.productId === productId)) return false;
+          if (
+            invoiceNumber &&
+            !String(req.requestNumber || '').toLowerCase().includes(invoiceNumber) &&
+            !String(req.originalInvoiceNumber || '').toLowerCase().includes(invoiceNumber)
+          ) {
+            return false;
+          }
+          if (search) {
+            const hay = [req.requestNumber, req.originalInvoiceNumber, req.supplierName, req.reason, req.notes]
+              .filter(Boolean)
+              .join(' ')
+              .toLowerCase();
+            if (!hay.includes(search)) return false;
+          }
+          return true;
+        })
+    : [];
 
   const collections = [];
   if (opType === 'all' || opType === 'collection' || opType === 'sales') {
     for (const tx of data.financialTransactions || []) {
       if (tx.type !== 'customer_payment') continue;
+      if (selectedRepInvIdSet) {
+        const linkedOwn = tx.relatedDocId && selectedRepInvIdSet.has(tx.relatedDocId);
+        const createdOwn = selectedRepProfile?.userId && tx.createdByUserId === selectedRepProfile.userId;
+        if (!linkedOwn && !createdOwn) continue;
+      }
       if (!inDateRange(tx.date)) continue;
       const cid = tx.relatedEntityId || tx.partyId;
       if (customerId && cid !== customerId) continue;
@@ -4016,6 +4567,7 @@ export async function getRepDetailedReport(filters = {}, actor) {
           .toLowerCase();
         if (!hay.includes(search)) continue;
       }
+      const linkedInv = tx.relatedDocId ? invoiceMapAll.get(tx.relatedDocId) : null;
       collections.push({
         id: tx.id,
         transactionNumber: tx.transactionNumber || undefined,
@@ -4025,6 +4577,10 @@ export async function getRepDetailedReport(filters = {}, actor) {
         partyName: tx.relatedEntityName || tx.partyName || customerMap.get(cid)?.name || 'عميل',
         paymentMethod: tx.paymentMethod || 'cash',
         relatedDocId: tx.relatedDocId || undefined,
+        relatedDocNumber: tx.relatedDocNumber || linkedInv?.invoiceNumber || undefined,
+        remainingAfter: linkedInv ? Math.max(0, round2(linkedInv.remainingAmount || 0)) : undefined,
+        isInvoiceLinked: Boolean(tx.relatedDocId && linkedInv),
+        createdBy: tx.createdBy || '',
         notes: tx.notes || '',
       });
     }
@@ -4078,50 +4634,93 @@ export async function getRepDetailedReport(filters = {}, actor) {
         })
     : [];
 
+  // Pagination (apply when page or pageSize specified; keep full totals in summary)
+  const rawPage = Number(filters.page);
+  const rawPageSize = Number(filters.pageSize);
+  const hasPagination =
+    (Number.isFinite(rawPage) && rawPage >= 1) || (Number.isFinite(rawPageSize) && rawPageSize >= 1);
+  const pageSize = hasPagination
+    ? Math.min(500, Math.max(1, Number.isFinite(rawPageSize) && rawPageSize >= 1 ? Math.floor(rawPageSize) : 50))
+    : Math.max(1, itemRows.length, invoices.length);
+  const page = hasPagination && Number.isFinite(rawPage) && rawPage >= 1 ? Math.floor(rawPage) : 1;
+  const maxListLen = Math.max(itemRows.length, invoices.length, scopedReturns.length, collections.length, scopedPurchaseReturnRequests.length);
+  const totalPages = hasPagination ? Math.max(1, Math.ceil(maxListLen / pageSize)) : 1;
+  const safePage = hasPagination ? Math.min(page, totalPages) : 1;
+  const sliceIfPaged = (arr) => (hasPagination ? arr.slice((safePage - 1) * pageSize, safePage * pageSize) : arr);
+
+  const summaryOut = {
+    salesCount: confirmedSales.length,
+    salesTotal,
+    salesPaid: round2(confirmedSales.reduce((s, i) => s + Number(i.paidAmount || 0), 0)),
+    salesRemaining: round2(confirmedSales.reduce((s, i) => s + Math.max(0, Number(i.remainingAmount || 0)), 0)),
+    salesReturnsCount: salesReturns.length,
+    salesReturnsTotal,
+    netSalesTotal: round2(Math.max(0, salesTotal - salesReturnsTotal)),
+    purchasesCount: canPurchase ? confirmedPurchases.length : 0,
+    purchasesTotal: canPurchase ? purchasesTotal : 0,
+    purchasesPaid: canPurchase ? round2(confirmedPurchases.reduce((s, i) => s + Number(i.paidAmount || 0), 0)) : 0,
+    purchasesRemaining: canPurchase
+      ? round2(confirmedPurchases.reduce((s, i) => s + Math.max(0, Number(i.remainingAmount || 0)), 0))
+      : 0,
+    purchaseReturnsCount: canPurchase ? purchaseReturns.length : 0,
+    purchaseReturnsTotal: canPurchase ? purchaseReturnsTotal : 0,
+    purchaseReturnRequestsCount: canPurchase ? scopedPurchaseReturnRequests.length : 0,
+    pendingPurchaseReturnRequestsCount: canPurchase ? scopedPurchaseReturnRequests.filter((r) => r.status === 'pending').length : 0,
+    collectionsCount: collections.length,
+    collectionsTotal: round2(collections.reduce((s, c) => s + Number(c.amount || 0), 0)),
+    purchasePaymentsTotal: canPurchase
+      ? round2(
+          purchasePayments.length > 0
+            ? purchasePayments.reduce((s, p) => s + Number(p.amount || 0), 0)
+            : confirmedPurchases.reduce((s, i) => s + Number(i.paidAmount || 0), 0)
+        )
+      : 0,
+  };
+  if (!isRepActor) {
+    summaryOut.totalCustomerReceivables = round2((data.customers || []).reduce((s, c) => s + Number(c.currentBalance || 0), 0));
+    summaryOut.totalSupplierPayables = canPurchase
+      ? round2((data.suppliers || []).reduce((s, sup) => s + Number(sup.currentBalance || 0), 0))
+      : 0;
+  }
+
   return {
     scope: {
-      isRepScoped: isRepActor,
-      representativeId: ownProfile?.id || actor?.id,
-      representativeName: ownProfile?.name || actor?.fullName || '',
+      isRepScoped: isRepActor || Boolean(requestedRepId),
+      representativeId: isRepActor
+        ? (ownProfile?.id || actor?.id)
+        : (selectedRepProfile?.id || requestedRepId || 'all'),
+      representativeName: isRepActor
+        ? (ownProfile?.name || actor?.fullName || '')
+        : (selectedRepProfile?.name || 'جميع المناديب'),
       canViewSuppliers: canPurchase,
+      availableRepresentatives: isRepActor
+        ? []
+        : (data.representatives || []).map((r) => ({ id: r.id, name: r.name, code: r.code || '', warehouseId: r.warehouseId })),
       accountBalanceNote:
         'الأرصدة الظاهرة للعملاء والموردين تمثل الرصيد المالي العام على مستوى الشركة بالكامل، بينما إحصائيات وفواتير وتحصيلات التقرير تمثل عمليات هذا المندوب فقط.',
     },
-    summary: {
-      salesCount: confirmedSales.length,
-      salesTotal,
-      salesPaid: round2(confirmedSales.reduce((s, i) => s + Number(i.paidAmount || 0), 0)),
-      salesRemaining: round2(confirmedSales.reduce((s, i) => s + Math.max(0, Number(i.remainingAmount || 0)), 0)),
-      salesReturnsCount: salesReturns.length,
-      salesReturnsTotal,
-      netSalesTotal: round2(Math.max(0, salesTotal - salesReturnsTotal)),
-      purchasesCount: canPurchase ? confirmedPurchases.length : 0,
-      purchasesTotal: canPurchase ? purchasesTotal : 0,
-      purchasesPaid: canPurchase ? round2(confirmedPurchases.reduce((s, i) => s + Number(i.paidAmount || 0), 0)) : 0,
-      purchasesRemaining: canPurchase
-        ? round2(confirmedPurchases.reduce((s, i) => s + Math.max(0, Number(i.remainingAmount || 0)), 0))
-        : 0,
-      purchaseReturnsCount: canPurchase ? purchaseReturns.length : 0,
-      purchaseReturnsTotal: canPurchase ? purchaseReturnsTotal : 0,
-      collectionsCount: collections.length,
-      collectionsTotal: round2(collections.reduce((s, c) => s + Number(c.amount || 0), 0)),
-      purchasePaymentsTotal: canPurchase
-        ? round2(
-            purchasePayments.length > 0
-              ? purchasePayments.reduce((s, p) => s + Number(p.amount || 0), 0)
-              : confirmedPurchases.reduce((s, i) => s + Number(i.paidAmount || 0), 0)
-          )
-        : 0,
-      totalCustomerReceivables: round2((data.customers || []).reduce((s, c) => s + Number(c.currentBalance || 0), 0)),
-      totalSupplierPayables: canPurchase
-        ? round2((data.suppliers || []).reduce((s, sup) => s + Number(sup.currentBalance || 0), 0))
-        : 0,
+    summary: summaryOut,
+    pagination: {
+      enabled: hasPagination,
+      page: safePage,
+      pageSize,
+      totalRows: maxListLen,
+      totalInvoices: invoices.length,
+      totalItemRows: itemRows.length,
+      totalReturns: scopedReturns.length,
+      totalCollections: collections.length,
+      totalPurchaseReturnRequests: scopedPurchaseReturnRequests.length,
+      totalPages,
+      hasNextPage: hasPagination && safePage < totalPages,
+      hasPrevPage: hasPagination && safePage > 1,
     },
     customersSummary,
     suppliersSummary,
-    invoices,
-    itemRows,
-    returns: scopedReturns,
-    collections,
+    invoices: sliceIfPaged(invoices),
+    itemRows: sliceIfPaged(itemRows),
+    returns: sliceIfPaged(scopedReturns),
+    purchaseReturnRequests: sliceIfPaged(scopedPurchaseReturnRequests),
+    collections: sliceIfPaged(collections),
+    purchasePayments: sliceIfPaged(purchasePayments),
   };
 }

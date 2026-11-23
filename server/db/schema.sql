@@ -18,6 +18,7 @@ CREATE SEQUENCE IF NOT EXISTS seq_cash_op_no;
 CREATE SEQUENCE IF NOT EXISTS seq_order_advance_no;
 CREATE SEQUENCE IF NOT EXISTS seq_quote_no;
 CREATE SEQUENCE IF NOT EXISTS seq_rep_custody_op_no;
+CREATE SEQUENCE IF NOT EXISTS seq_purchase_return_req_no;
 
 -- 1. المستخدمون والصلاحيات (Users & Roles)
 CREATE TABLE IF NOT EXISTS users (
@@ -248,6 +249,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   dispatch_history JSONB NOT NULL DEFAULT '[]'::jsonb,
   version INT NOT NULL DEFAULT 1,
   created_by VARCHAR(64) NOT NULL,
+  created_by_user_id VARCHAR(64),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -280,6 +282,7 @@ CREATE TABLE IF NOT EXISTS invoice_payments (
   cashbox_name TEXT NOT NULL,
   notes TEXT,
   created_by VARCHAR(64) NOT NULL,
+  created_by_user_id VARCHAR(64),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -301,6 +304,7 @@ CREATE TABLE IF NOT EXISTS invoice_returns (
   reason TEXT NOT NULL,
   notes TEXT,
   created_by VARCHAR(64) NOT NULL,
+  created_by_user_id VARCHAR(64),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -432,6 +436,7 @@ CREATE TABLE IF NOT EXISTS stock_movements (
   related_doc_number VARCHAR(64),
   notes TEXT,
   created_by VARCHAR(64) NOT NULL,
+  created_by_user_id VARCHAR(64),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -455,6 +460,7 @@ CREATE TABLE IF NOT EXISTS financial_transactions (
   description TEXT,
   notes TEXT,
   created_by VARCHAR(64) NOT NULL,
+  created_by_user_id VARCHAR(64),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -580,6 +586,7 @@ CREATE TABLE IF NOT EXISTS expenses_incomes (
   attachment_name TEXT,
   notes TEXT,
   created_by VARCHAR(64) NOT NULL,
+  created_by_user_id VARCHAR(64),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -926,6 +933,7 @@ CREATE TABLE IF NOT EXISTS order_advance_payments (
   idempotency_key VARCHAR(128) UNIQUE,
   origin_device_id VARCHAR(64),
   created_by VARCHAR(64) NOT NULL,
+  created_by_user_id VARCHAR(64),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -992,6 +1000,7 @@ CREATE TABLE IF NOT EXISTS rep_custody_operations (
   notes TEXT DEFAULT '',
   status VARCHAR(24) NOT NULL DEFAULT 'approved',
   created_by VARCHAR(64) NOT NULL,
+  created_by_user_id VARCHAR(64),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -1012,12 +1021,20 @@ CREATE INDEX IF NOT EXISTS idx_invoices_cashbox_date ON invoices(cashbox_id, dat
 CREATE INDEX IF NOT EXISTS idx_invoices_number ON invoices(invoice_number);
 CREATE INDEX IF NOT EXISTS idx_invoices_date_type ON invoices(date DESC, type);
 CREATE INDEX IF NOT EXISTS idx_invoices_rep_date ON invoices(representative_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_invoices_created_by_uid ON invoices(created_by_user_id);
+CREATE INDEX IF NOT EXISTS idx_invoice_payments_created_by_uid ON invoice_payments(created_by_user_id);
 CREATE INDEX IF NOT EXISTS idx_invoice_returns_date_wh ON invoice_returns(date DESC, warehouse_id);
 CREATE INDEX IF NOT EXISTS idx_invoice_returns_party_date ON invoice_returns(party_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_invoice_returns_created_by_uid ON invoice_returns(created_by_user_id);
 CREATE INDEX IF NOT EXISTS idx_fin_tx_date_type ON financial_transactions(date DESC, type);
 CREATE INDEX IF NOT EXISTS idx_fin_tx_cashbox_date ON financial_transactions(cashbox_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_fin_tx_created_by_uid ON financial_transactions(created_by_user_id);
 CREATE INDEX IF NOT EXISTS idx_expenses_incomes_date_type ON expenses_incomes(date DESC, type);
+CREATE INDEX IF NOT EXISTS idx_expenses_incomes_created_by_uid ON expenses_incomes(created_by_user_id);
 CREATE INDEX IF NOT EXISTS idx_stock_movements_prod_date ON stock_movements(product_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_created_by_uid ON stock_movements(created_by_user_id);
+CREATE INDEX IF NOT EXISTS idx_rep_custody_created_by_uid ON rep_custody_operations(created_by_user_id);
+CREATE INDEX IF NOT EXISTS idx_order_adv_created_by_uid ON order_advance_payments(created_by_user_id);
 
 -- 45. قفل التهيئة الذرية للمدير الأول (Atomic First-Admin Bootstrap Singleton Lock)
 CREATE TABLE IF NOT EXISTS system_bootstrap_lock (
@@ -1025,5 +1042,56 @@ CREATE TABLE IF NOT EXISTS system_bootstrap_lock (
   admin_user_id VARCHAR(64) NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- 46. طلبات مرتجع المشتريات من المناديب (Purchase Return Requests - Pending Admin Approval)
+CREATE TABLE IF NOT EXISTS purchase_return_requests (
+  id VARCHAR(64) PRIMARY KEY,
+  request_number VARCHAR(64) UNIQUE NOT NULL,
+  date DATE NOT NULL,
+  original_invoice_id VARCHAR(64) NOT NULL REFERENCES invoices(id) ON DELETE RESTRICT,
+  original_invoice_number VARCHAR(64) NOT NULL,
+  supplier_id VARCHAR(64) NOT NULL,
+  supplier_name TEXT NOT NULL DEFAULT '',
+  warehouse_id VARCHAR(64) NOT NULL REFERENCES warehouses(id) ON DELETE RESTRICT,
+  warehouse_name TEXT NOT NULL DEFAULT '',
+  representative_id VARCHAR(64),
+  representative_name TEXT DEFAULT '',
+  requested_by_user_id VARCHAR(64) NOT NULL,
+  requested_by_name TEXT NOT NULL,
+  grand_total NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+  refund_type VARCHAR(16) NOT NULL DEFAULT 'credit',
+  cashbox_id VARCHAR(64),
+  reason TEXT NOT NULL,
+  notes TEXT DEFAULT '',
+  status VARCHAR(24) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'cancelled')),
+  reviewed_by_user_id VARCHAR(64),
+  reviewed_by_name TEXT DEFAULT '',
+  reviewed_at TIMESTAMPTZ,
+  rejection_reason TEXT DEFAULT '',
+  approved_return_id VARCHAR(64),
+  approved_return_number VARCHAR(64),
+  idempotency_key VARCHAR(128) UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS purchase_return_request_items (
+  id VARCHAR(64) PRIMARY KEY,
+  request_id VARCHAR(64) NOT NULL REFERENCES purchase_return_requests(id) ON DELETE CASCADE,
+  product_id VARCHAR(64) NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+  product_name TEXT NOT NULL,
+  unit VARCHAR(32) NOT NULL,
+  unit_factor NUMERIC(12, 3) NOT NULL DEFAULT 1.000,
+  quantity NUMERIC(12, 3) NOT NULL CHECK (quantity > 0),
+  unit_price NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+  total NUMERIC(14, 2) NOT NULL DEFAULT 0.00
+);
+
+CREATE INDEX IF NOT EXISTS idx_pr_req_status ON purchase_return_requests(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_pr_req_rep ON purchase_return_requests(representative_id);
+CREATE INDEX IF NOT EXISTS idx_pr_req_user ON purchase_return_requests(requested_by_user_id);
+CREATE INDEX IF NOT EXISTS idx_pr_req_inv ON purchase_return_requests(original_invoice_id);
+CREATE INDEX IF NOT EXISTS idx_pr_req_items_req ON purchase_return_request_items(request_id);
+
 
 

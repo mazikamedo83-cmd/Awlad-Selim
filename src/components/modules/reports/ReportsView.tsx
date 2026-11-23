@@ -614,10 +614,12 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
       date: `${dateFrom || 'البداية'} → ${useDateTo ? dateTo : 'الآن'}`,
       partyName: `تقرير: ${activeReportOption.label}`,
       items,
-      grandTotal: reportData?.summary.reportBalance ?? 0,
-      paidAmount: reportData?.summary.drawerBalance ?? 0,
-      remainingAmount: reportData?.summary.reportProfit ?? 0,
-      notes: `مرحل من الأمس: ${fmtMoney(reportData?.summary.carriedFromYesterday)} ${currency} | ربح التقرير: ${fmtMoney(reportData?.summary.reportProfit)} ${currency}`,
+      grandTotal: isRepRole ? (reportData?.summary.filteredSalesNet ?? 0) : (reportData?.summary.reportBalance ?? 0),
+      paidAmount: isRepRole ? undefined : (reportData?.summary.drawerBalance ?? 0),
+      remainingAmount: isRepRole ? undefined : (reportData?.summary.reportProfit ?? 0),
+      notes: isRepRole
+        ? `صافي المبيعات: ${fmtMoney(reportData?.summary.filteredSalesNet)} ${currency} | عدد الحركات: ${reportData?.summary.totalRows ?? 0}`
+        : `مرحل من الأمس: ${fmtMoney(reportData?.summary.carriedFromYesterday)} ${currency} | ربح التقرير: ${fmtMoney(reportData?.summary.reportProfit)} ${currency}`,
       tableHeaders: ['م', 'القسم / العملية', 'الوحدة', 'الكمية', 'السعر', 'الخصم', 'القيمة'],
     });
   };

@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   RotateCcw, Plus, Search, Filter, Printer, Download, Eye, 
-  AlertCircle, Check, FileText 
+  AlertCircle, Check, FileText, XCircle, CheckCircle2, Clock
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
-import { InvoiceReturn, Invoice } from '../../../types';
+import { useAuth } from '../../../context/AuthContext';
+import { InvoiceReturn, Invoice, PurchaseReturnRequest } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
@@ -15,7 +16,22 @@ export interface ReturnsViewProps {
 }
 
 export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'all' }) => {
-  const { invoiceReturns, invoices, cashboxes, settings, createReturn } = useData();
+  const {
+    invoiceReturns,
+    invoices,
+    cashboxes,
+    settings,
+    createReturn,
+    purchaseReturnRequests = [],
+    approvePurchaseReturnRequest,
+    rejectPurchaseReturnRequest,
+  } = useData();
+  const { currentUser, hasPermission } = useAuth();
+  const isRepRole = currentUser?.role === 'representative';
+  const canManagePurchaseReturnRequests =
+    !isRepRole &&
+    currentUser?.role !== 'customer' &&
+    (currentUser?.role === 'admin' || hasPermission('canManagePurchases') || hasPermission('canApprove'));
 
   const [returnTypeFilter, setReturnTypeFilter] = useState<'all' | 'sales_return' | 'purchase_return'>(initialTypeFilter);
   const [searchTerm, setSearchTerm] = useState('');
@@ -42,6 +58,101 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
   const [returnQuantities, setReturnQuantities] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Rep Purchase Return Request approval/rejection workflow state
+  const [requestBanner, setRequestBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [requestStatusFilter, setRequestStatusFilter] = useState<'pending' | 'all' | 'approved' | 'rejected'>('pending');
+  const [approvingReq, setApprovingReq] = useState<PurchaseReturnRequest | null>(null);
+  const [approveRefundType, setApproveRefundType] = useState<'balance' | 'cash'>('balance');
+  const [approveCashboxId, setApproveCashboxId] = useState(cashboxes[0]?.id || '');
+  const [approveNotes, setApproveNotes] = useState('');
+  const [approveError, setApproveError] = useState<string | null>(null);
+  const [isProcessingReq, setIsProcessingReq] = useState(false);
+  const [rejectingReq, setRejectingReq] = useState<PurchaseReturnRequest | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectError, setRejectError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!approveCashboxId && cashboxes[0]?.id) {
+      setApproveCashboxId(cashboxes[0].id);
+    }
+  }, [cashboxes, approveCashboxId]);
+
+  const pendingPrReqCount = useMemo(
+    () => purchaseReturnRequests.filter((r) => r.status === 'pending').length,
+    [purchaseReturnRequests]
+  );
+
+  const filteredPrRequests = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    return purchaseReturnRequests.filter((r) => {
+      if (requestStatusFilter !== 'all' && r.status !== requestStatusFilter) return false;
+      if (!q) return true;
+      return (
+        r.requestNumber.toLowerCase().includes(q) ||
+        r.originalInvoiceNumber.toLowerCase().includes(q) ||
+        r.supplierName.toLowerCase().includes(q) ||
+        r.requestedByName.toLowerCase().includes(q)
+      );
+    });
+  }, [purchaseReturnRequests, requestStatusFilter, searchTerm]);
+
+  const handleOpenApproveReq = (req: PurchaseReturnRequest) => {
+    setApprovingReq(req);
+    setApproveRefundType(req.refundType === 'cash' ? 'cash' : 'balance');
+    setApproveCashboxId(req.cashboxId || cashboxes[0]?.id || '');
+    setApproveNotes(req.notes || '');
+    setApproveError(null);
+  };
+
+  const handleConfirmApproveReq = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!approvingReq || isProcessingReq) return;
+    if (approveRefundType === 'cash' && !approveCashboxId) {
+      setApproveError('يرجى اختيار الخزينة التي سيتم استرداد قيمتها إليها.');
+      return;
+    }
+    setApproveError(null);
+    setIsProcessingReq(true);
+    const res = await approvePurchaseReturnRequest(approvingReq.id, {
+      refundType: approveRefundType,
+      cashboxId: approveRefundType === 'cash' ? approveCashboxId : undefined,
+      notes: approveNotes.trim() || undefined,
+    });
+    setIsProcessingReq(false);
+    if (res.success) {
+      setRequestBanner({
+        type: 'success',
+        text: `تم اعتماد طلب مرتجع المشتريات (${approvingReq.requestNumber}) وإنشاء المرتجع (${res.invoiceReturn?.returnNumber || ''}) وتحديث المخزون وحساب المورد.`,
+      });
+      setApprovingReq(null);
+    } else {
+      setApproveError(res.error || 'تعذر اعتماد طلب مرتجع المشتريات');
+    }
+  };
+
+  const handleConfirmRejectReq = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rejectingReq || isProcessingReq) return;
+    if (!rejectReason.trim()) {
+      setRejectError('يرجى كتابة سبب رفض طلب مرتجع المشتريات.');
+      return;
+    }
+    setRejectError(null);
+    setIsProcessingReq(true);
+    const res = await rejectPurchaseReturnRequest(rejectingReq.id, rejectReason.trim());
+    setIsProcessingReq(false);
+    if (res.success) {
+      setRequestBanner({
+        type: 'success',
+        text: `تم رفض طلب مرتجع المشتريات (${rejectingReq.requestNumber}) وإبلاغ المندوب بالسبب.`,
+      });
+      setRejectingReq(null);
+      setRejectReason('');
+    } else {
+      setRejectError(res.error || 'تعذر رفض الطلب');
+    }
+  };
 
   // Filter available invoices according to type
   const availableInvoices = useMemo(() => {
@@ -292,6 +403,184 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
         </table>
       </div>
 
+      {/* Purchase Return Requests Approval Queue (for Admin / Purchase Managers) */}
+      {canManagePurchaseReturnRequests && returnTypeFilter !== 'sales_return' && (
+        <div className="bg-white rounded-2xl border border-indigo-200 shadow-xs p-5 space-y-4 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-800 shrink-0">
+                <Clock className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-black text-slate-900">طلبات مرتجع المشتريات من المناديب</h3>
+                  {pendingPrReqCount > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-mono font-black text-[11px]">
+                      {pendingPrReqCount} بانتظار المراجعة
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  لا يتأثر المخزون أو رصيد المورد أو الخزينة إلا بعد اعتماد الطلب رسمياً من الإدارة أو مسؤول المشتريات.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { id: 'pending' as const, label: `معلق (${pendingPrReqCount})` },
+                { id: 'approved' as const, label: 'معتمد' },
+                { id: 'rejected' as const, label: 'مرفوض' },
+                { id: 'all' as const, label: 'الكل' },
+              ].map((st) => (
+                <button
+                  key={st.id}
+                  type="button"
+                  onClick={() => setRequestStatusFilter(st.id)}
+                  className={`px-3 py-1.5 rounded-xl font-bold border cursor-pointer ${
+                    requestStatusFilter === st.id
+                      ? 'bg-indigo-900 text-white border-indigo-900'
+                      : 'bg-slate-50 text-slate-700 border-slate-200'
+                  }`}
+                >
+                  {st.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {requestBanner && (
+            <div
+              className={`p-3 rounded-xl border font-bold flex items-center justify-between gap-2 ${
+                requestBanner.type === 'success'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : 'bg-red-50 border-red-200 text-red-900'
+              }`}
+            >
+              <span>{requestBanner.text}</span>
+              <button type="button" onClick={() => setRequestBanner(null)} className="underline text-[11px] cursor-pointer">
+                إغلاق
+              </button>
+            </div>
+          )}
+
+          {filteredPrRequests.length === 0 ? (
+            <div className="p-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-slate-200">
+              لا توجد طلبات مرتجع مشتريات في هذا التصنيف.
+            </div>
+          ) : (
+            <div className="awlad-table-scroll border border-slate-200 rounded-xl overflow-hidden">
+              <table className="w-full text-right text-xs">
+                <thead>
+                  <tr className="bg-slate-50 font-bold border-b text-slate-700">
+                    <th className="p-3">رقم الطلب</th>
+                    <th className="p-3">الفاتورة الأصلية</th>
+                    <th className="p-3">المندوب / مقدم الطلب</th>
+                    <th className="p-3">المورد والمستودع</th>
+                    <th className="p-3">الأصناف</th>
+                    <th className="p-3 text-center">الإجمالي</th>
+                    <th className="p-3">الحالة</th>
+                    <th className="p-3 text-center">الإجراء</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredPrRequests.map((req) => (
+                    <tr key={req.id} className="hover:bg-slate-50 align-top">
+                      <td className="p-3 font-mono font-black text-indigo-900">
+                        {req.requestNumber}
+                        <span className="block text-[10px] text-slate-500 font-normal">{req.date}</span>
+                      </td>
+                      <td className="p-3 font-mono font-bold text-slate-800">{req.originalInvoiceNumber}</td>
+                      <td className="p-3 font-bold text-slate-800">
+                        {req.representativeName || req.requestedByName}
+                        <span className="block text-[10px] text-slate-500 font-normal">بواسطة: {req.requestedByName}</span>
+                      </td>
+                      <td className="p-3">
+                        <span className="font-bold text-slate-800 block">{req.supplierName}</span>
+                        <span className="text-[10px] text-slate-500">{req.warehouseName}</span>
+                      </td>
+                      <td className="p-3">
+                        <div className="space-y-0.5">
+                          {(req.items || []).map((it, i) => (
+                            <div key={i} className="text-[11px] text-slate-700">
+                              <span className="font-bold">{it.productName}</span> ({it.quantity} {it.unit} × {it.unitPrice})
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-1">السبب: {req.reason}</p>
+                      </td>
+                      <td className="p-3 text-center font-mono font-black text-slate-900 whitespace-nowrap">
+                        {Number(req.grandTotal || 0).toLocaleString()} {settings.currency}
+                        <span className="block text-[10px] text-slate-500 font-normal">
+                          {req.refundType === 'cash' ? 'مقترح: نقدي' : 'مقترح: خصم رصيد'}
+                        </span>
+                      </td>
+                      <td className="p-3 whitespace-nowrap">
+                        {req.status === 'pending' && (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold text-[10px]">
+                            قيد الانتظار
+                          </span>
+                        )}
+                        {req.status === 'approved' && (
+                          <div className="space-y-0.5">
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-bold text-[10px] inline-block">
+                              معتمد
+                            </span>
+                            {req.approvedReturnNumber && (
+                              <span className="block font-mono text-[10px] text-emerald-800">{req.approvedReturnNumber}</span>
+                            )}
+                          </div>
+                        )}
+                        {req.status === 'rejected' && (
+                          <div className="space-y-0.5">
+                            <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-900 font-bold text-[10px] inline-block">
+                              مرفوض
+                            </span>
+                            {req.rejectionReason && (
+                              <span className="block text-[10px] text-red-700 max-w-[160px]">{req.rejectionReason}</span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-3 text-center whitespace-nowrap">
+                        {req.status === 'pending' ? (
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenApproveReq(req)}
+                              className="px-2.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>اعتماد</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRejectingReq(req);
+                                setRejectReason('');
+                                setRejectError(null);
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 font-bold inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <XCircle className="w-3.5 h-3.5" />
+                              <span>رفض</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate-500 font-semibold">
+                            {req.reviewedByName || 'تمت المراجعة'}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Create Return Modal */}
       <Modal
         isOpen={isNewModalOpen}
@@ -320,18 +609,20 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 >
                   مرتجع مبيعات من عميل
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setReturnType('purchase_return');
-                    setSelectedInvoiceId('');
-                  }}
-                  className={`p-2 rounded-xl font-bold border transition-all ${
-                    returnType === 'purchase_return' ? 'bg-blue-900 text-white' : 'bg-slate-50'
-                  }`}
-                >
-                  مرتجع مشتريات لمورد
-                </button>
+                {!isRepRole && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReturnType('purchase_return');
+                      setSelectedInvoiceId('');
+                    }}
+                    className={`p-2 rounded-xl font-bold border transition-all ${
+                      returnType === 'purchase_return' ? 'bg-blue-900 text-white' : 'bg-slate-50'
+                    }`}
+                  >
+                    مرتجع مشتريات لمورد
+                  </button>
+                )}
               </div>
             </div>
 
@@ -467,6 +758,138 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Approve Purchase Return Request Modal */}
+      <Modal
+        isOpen={Boolean(approvingReq)}
+        onClose={() => !isProcessingReq && setApprovingReq(null)}
+        title={approvingReq ? `اعتماد طلب مرتجع مشتريات: ${approvingReq.requestNumber}` : ''}
+        subtitle="سيتم إنشاء سند مرتجع مشتريات رسمي وخصم الكميات من المخزن وتحديث حساب المورد/الخزينة."
+        maxWidth="md"
+      >
+        {approvingReq && (
+          <form onSubmit={handleConfirmApproveReq} className="space-y-4 text-xs">
+            {approveError && (
+              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">{approveError}</div>
+            )}
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+              <div className="flex justify-between">
+                <span className="text-slate-500">المورد:</span>
+                <strong className="text-slate-900">{approvingReq.supplierName}</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">الفاتورة الأصلية:</span>
+                <strong className="font-mono text-blue-900">{approvingReq.originalInvoiceNumber}</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">الإجمالي:</span>
+                <strong className="font-mono text-emerald-800">
+                  {Number(approvingReq.grandTotal || 0).toLocaleString()} {settings.currency}
+                </strong>
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-bold mb-1">طريقة التسوية المالية:</label>
+              <select
+                value={approveRefundType}
+                onChange={(e) => setApproveRefundType(e.target.value as 'balance' | 'cash')}
+                className="w-full border rounded-xl p-2.5 font-bold bg-white"
+              >
+                <option value="balance">تعديل وخصم من رصيد حساب المورد</option>
+                <option value="cash">استرداد نقدي إلى الخزينة</option>
+              </select>
+            </div>
+
+            {approveRefundType === 'cash' && (
+              <div>
+                <label className="block font-bold mb-1">الخزينة المستلمة للاسترداد النقدي:</label>
+                <select
+                  value={approveCashboxId}
+                  onChange={(e) => setApproveCashboxId(e.target.value)}
+                  className="w-full border rounded-xl p-2.5 font-bold bg-white"
+                >
+                  {cashboxes.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label className="block font-bold mb-1">ملاحظات الاعتماد (اختياري):</label>
+              <input
+                type="text"
+                value={approveNotes}
+                onChange={(e) => setApproveNotes(e.target.value)}
+                className="w-full border rounded-xl p-2.5"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <button
+                type="button"
+                disabled={isProcessingReq}
+                onClick={() => setApprovingReq(null)}
+                className="px-4 py-2 border rounded-xl font-bold cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="submit"
+                disabled={isProcessingReq}
+                className="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-black cursor-pointer disabled:opacity-50"
+              >
+                {isProcessingReq ? 'جاري الاعتماد...' : 'تأكيد الاعتماد والترحيل'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* Reject Purchase Return Request Modal */}
+      <Modal
+        isOpen={Boolean(rejectingReq)}
+        onClose={() => !isProcessingReq && setRejectingReq(null)}
+        title={rejectingReq ? `رفض طلب مرتجع مشتريات: ${rejectingReq.requestNumber}` : ''}
+        maxWidth="md"
+      >
+        {rejectingReq && (
+          <form onSubmit={handleConfirmRejectReq} className="space-y-4 text-xs">
+            {rejectError && (
+              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">{rejectError}</div>
+            )}
+            <div>
+              <label className="block font-bold mb-1">سبب الرفض (إلزامي):</label>
+              <textarea
+                rows={3}
+                required
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="اكتب سبب رفض طلب مرتجع المشتريات ليظهر للمندوب..."
+                className="w-full border rounded-xl p-2.5"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <button
+                type="button"
+                disabled={isProcessingReq}
+                onClick={() => setRejectingReq(null)}
+                className="px-4 py-2 border rounded-xl font-bold cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="submit"
+                disabled={isProcessingReq}
+                className="px-5 py-2 bg-red-700 hover:bg-red-800 text-white rounded-xl font-black cursor-pointer disabled:opacity-50"
+              >
+                {isProcessingReq ? 'جاري الرفض...' : 'تأكيد رفض الطلب'}
+              </button>
+            </div>
+          </form>
+        )}
       </Modal>
 
       {/* Print Document Modal */}

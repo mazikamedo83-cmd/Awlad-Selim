@@ -30,6 +30,14 @@ function checkReportsAccess(req, res) {
 router.get(
   '/rep-summary',
   asyncHandler(async (req, res) => {
+    const u = req.auth.user;
+    if (u.role !== 'representative' && u.role !== 'admin' && u.permissions?.canViewReports !== true) {
+      return res.status(403).json({
+        ok: false,
+        code: 'FORBIDDEN',
+        error: 'ليس لديك صلاحية عرض تقارير المناديب',
+      });
+    }
     const q = req.query || {};
     const report = await getRepDetailedReport(
       {
@@ -38,13 +46,21 @@ router.get(
         customerId: typeof q.customerId === 'string' ? q.customerId : undefined,
         supplierId: typeof q.supplierId === 'string' ? q.supplierId : undefined,
         productId: typeof q.productId === 'string' ? q.productId : undefined,
+        representativeId:
+          u.role === 'representative'
+            ? undefined
+            : typeof q.representativeId === 'string'
+            ? q.representativeId
+            : undefined,
         invoiceNumber: typeof q.invoiceNumber === 'string' ? q.invoiceNumber : undefined,
         opType: typeof q.opType === 'string' ? q.opType : undefined,
         paymentStatus: typeof q.paymentStatus === 'string' ? q.paymentStatus : undefined,
         invoiceStatus: typeof q.invoiceStatus === 'string' ? q.invoiceStatus : undefined,
         search: typeof q.search === 'string' ? q.search : undefined,
+        page: q.page !== undefined ? Number(q.page) : undefined,
+        pageSize: q.pageSize !== undefined ? Number(q.pageSize) : undefined,
       },
-      req.auth.user
+      u
     );
     res.json({ ok: true, report });
   })

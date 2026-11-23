@@ -17,6 +17,10 @@ import {
   cancelInvoice,
   addInvoicePayment,
   createInvoiceReturn,
+  listPurchaseReturnRequests,
+  createPurchaseReturnRequest,
+  approvePurchaseReturnRequest,
+  rejectPurchaseReturnRequest,
 } from '../db/stores/invoicesStore.js';
 import { getCustomerStatementData, getSystemSettingsSafe } from '../db/stores/catalogStore.js';
 import { listPurchaseReceivers } from '../db/stores/inventoryAdminStore.js';
@@ -74,9 +78,66 @@ router.get(
 router.get(
   '/purchase-receivers',
   requireStaff,
+  requireAnyPermission('canCreatePurchase', 'canManagePurchases', 'canSend', 'canApprove'),
   asyncHandler(async (_req, res) => {
     const receivers = await listPurchaseReceivers();
     res.json({ ok: true, receivers });
+  })
+);
+
+router.get(
+  '/purchase-return-requests',
+  requireStaff,
+  requireAnyPermission('canCreatePurchase', 'canManagePurchases', 'canApprove'),
+  asyncHandler(async (req, res) => {
+    const requests = await listPurchaseReturnRequests(req.auth.user);
+    res.json({ ok: true, requests });
+  })
+);
+
+router.post(
+  '/purchase-return-requests',
+  requireStaff,
+  requireAnyPermission('canCreatePurchase', 'canManagePurchases'),
+  asyncHandler(async (req, res) => {
+    const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
+    const request = await createPurchaseReturnRequest(req.body || {}, req.auth.user, idempotencyKey);
+    res.status(201).json({ ok: true, request });
+  })
+);
+
+router.post(
+  '/purchase-return-requests/:id/approve',
+  requireStaff,
+  requireAnyPermission('canManagePurchases', 'canApprove'),
+  asyncHandler(async (req, res) => {
+    if (req.auth.user.role === 'representative') {
+      return res.status(403).json({
+        ok: false,
+        code: 'FORBIDDEN_APPROVE_RETURN_REQUEST',
+        error: 'اعتماد طلبات مرتجع المشتريات مخصص للإدارة ومسؤولي المشتريات فقط',
+      });
+    }
+    const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
+    const result = await approvePurchaseReturnRequest(req.params.id, req.body || {}, req.auth.user, idempotencyKey);
+    res.json({ ok: true, ...result });
+  })
+);
+
+router.post(
+  '/purchase-return-requests/:id/reject',
+  requireStaff,
+  requireAnyPermission('canManagePurchases', 'canApprove'),
+  asyncHandler(async (req, res) => {
+    if (req.auth.user.role === 'representative') {
+      return res.status(403).json({
+        ok: false,
+        code: 'FORBIDDEN_REJECT_RETURN_REQUEST',
+        error: 'رفض طلبات مرتجع المشتريات مخصص للإدارة ومسؤولي المشتريات فقط',
+      });
+    }
+    const result = await rejectPurchaseReturnRequest(req.params.id, req.body || {}, req.auth.user);
+    res.json({ ok: true, ...result });
   })
 );
 
@@ -236,6 +297,13 @@ router.post(
   asyncHandler(async (req, res) => {
     const u = req.auth.user;
     const isPurchaseReturn = req.body?.type === 'purchase_return';
+    if (u.role === 'representative' && isPurchaseReturn) {
+      return res.status(403).json({
+        ok: false,
+        code: 'FORBIDDEN_REP_DIRECT_PURCHASE_RETURN',
+        error: 'لا يمكن للمندوب تنفيذ مرتجع مشتريات مباشر؛ يرجى رفع طلب مرتجع مشتريات لاعتماد الإدارة',
+      });
+    }
     const allowed =
       u.role === 'admin' ||
       (isPurchaseReturn ? Boolean(u.permissions?.canManagePurchases) : Boolean(u.permissions?.canManageSales));

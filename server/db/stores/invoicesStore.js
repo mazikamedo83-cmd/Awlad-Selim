@@ -2,7 +2,7 @@ import { getPool, withTransaction } from '../postgres.js';
 import { withJsonTransaction, nextJsonSequence, readJsonDatabase } from '../jsonLedger.js';
 import { generateServerId } from '../../utils/crypto.js';
 import { AppError, nowIso, todayIso, round2, round3, sanitizeInvoiceForRepresentative } from '../../utils/errors.js';
-import { isPgMode, mapPgInvoiceRow, mapPgCustomerRow, mapPgProductRow } from './mode.js';
+import { isPgMode, mapPgInvoiceRow, mapPgCustomerRow, mapPgProductRow, mapPgPurchaseReturnRequestRow } from './mode.js';
 import { recordAuditLog } from './authStore.js';
 import {
   buildScopedIdemKey,
@@ -17,6 +17,17 @@ import {
   getSystemSettingsSafe,
   findProductDuplicateMatchInList,
 } from './catalogStore.js';
+
+export function isRepOwnerOfInvoice(inv, actor, repProfile = null) {
+  if (!inv || !actor) return false;
+  if (repProfile?.id && inv.representativeId === repProfile.id) return true;
+  if (actor.id && inv.createdByUserId === actor.id) return true;
+  if (actor.id && inv.sentByUserId === actor.id) return true;
+  if (!inv.createdByUserId && !inv.representativeId && !inv.sentByUserId) {
+    return inv.createdBy === actor.id || (Boolean(actor.fullName) && inv.createdBy === actor.fullName);
+  }
+  return false;
+}
 
 function recomputeInvoiceTotals(payload, existingItems = []) {
   const items = Array.isArray(payload.items) ? payload.items : existingItems;
@@ -126,8 +137,8 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
 
       const mvId = generateServerId('SM');
       await client.query(
-        `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'sale', $8, $9, $10, $11, $12, $13, 'sales', $14, $15, $16, $17, $18)`,
+        `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'sale', $8, $9, $10, $11, $12, $13, 'sales', $14, $15, $16, $17, $18, $19)`,
         [
           mvId,
           mvId,
@@ -146,6 +157,7 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
           invoice.invoiceNumber,
           `فاتورة مبيعات رقم ${invoice.invoiceNumber}`,
           actor.fullName,
+          actor.id || null,
           now,
         ]
       );
@@ -192,8 +204,8 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
       const txId = generateServerId('FT');
       const txNo = `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`;
       await client.query(
-        `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, created_by, created_at)
-         VALUES ($1, $2, $3, 'customer_payment', $4, $5, $6, $7, 'مبيعات نقدية', $8, $9, 'sales', $10, $11, $12, $13, $14)`,
+        `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, created_by, created_by_user_id, created_at)
+         VALUES ($1, $2, $3, 'customer_payment', $4, $5, $6, $7, 'مبيعات نقدية', $8, $9, 'sales', $10, $11, $12, $13, $14, $15)`,
         [
           txId,
           txNo,
@@ -208,6 +220,7 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
           invoice.invoiceNumber,
           `تحصيل دفعة مبيعات فاتورة رقم ${invoice.invoiceNumber}`,
           actor.fullName,
+          actor.id || null,
           now,
         ]
       );
@@ -247,8 +260,8 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
 
       const mvId = generateServerId('SM');
       await client.query(
-        `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'purchase', $8, $9, $10, $11, $12, $13, 'purchase', $14, $15, $16, $17, $18)`,
+        `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'purchase', $8, $9, $10, $11, $12, $13, 'purchase', $14, $15, $16, $17, $18, $19)`,
         [
           mvId,
           mvId,
@@ -267,6 +280,7 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
           invoice.invoiceNumber,
           `فاتورة مشتريات رقم ${invoice.invoiceNumber}`,
           actor.fullName,
+          actor.id || null,
           now,
         ]
       );
@@ -289,8 +303,8 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
       const txId = generateServerId('FT');
       const txNo = `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`;
       await client.query(
-        `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, created_by, created_at)
-         VALUES ($1, $2, $3, 'supplier_payment', $4, $5, $6, $7, 'مشتريات نقدية', $8, $9, 'purchase', $10, $11, $12, $13, $14)`,
+        `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, created_by, created_by_user_id, created_at)
+         VALUES ($1, $2, $3, 'supplier_payment', $4, $5, $6, $7, 'مشتريات نقدية', $8, $9, 'purchase', $10, $11, $12, $13, $14, $15)`,
         [
           txId,
           txNo,
@@ -305,6 +319,7 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
           invoice.invoiceNumber,
           `سداد دفعة مشتريات فاتورة رقم ${invoice.invoiceNumber}`,
           actor.fullName,
+          actor.id || null,
           now,
         ]
       );
@@ -367,6 +382,7 @@ export function applyConfirmedEffectsJsonTx(db, invoice, actor) {
         referenceNumber: invoice.invoiceNumber,
         notes: `فاتورة مبيعات رقم ${invoice.invoiceNumber}`,
         createdBy: actor.fullName,
+        createdByUserId: actor.id,
         createdAt: now,
       });
     }
@@ -418,6 +434,7 @@ export function applyConfirmedEffectsJsonTx(db, invoice, actor) {
         partyName: invoice.customerName,
         description: `تحصيل دفعة مبيعات فاتورة رقم ${invoice.invoiceNumber}`,
         createdBy: actor.fullName,
+        createdByUserId: actor.id,
         createdAt: now,
       });
     }
@@ -466,6 +483,7 @@ export function applyConfirmedEffectsJsonTx(db, invoice, actor) {
         referenceNumber: invoice.invoiceNumber,
         notes: `فاتورة مشتريات رقم ${invoice.invoiceNumber}`,
         createdBy: actor.fullName,
+        createdByUserId: actor.id,
         createdAt: now,
       });
     }
@@ -495,6 +513,7 @@ export function applyConfirmedEffectsJsonTx(db, invoice, actor) {
         partyName: invoice.supplierName,
         description: `سداد دفعة مشتريات فاتورة رقم ${invoice.invoiceNumber}`,
         createdBy: actor.fullName,
+        createdByUserId: actor.id,
         createdAt: now,
       });
     }
@@ -786,8 +805,8 @@ export async function createInvoiceInsidePgTx(client, type, payload, actor) {
   }
 
   await client.query(
-    `INSERT INTO invoices (id, invoice_number, type, date, customer_id, customer_name, supplier_id, supplier_name, representative_id, representative_name, warehouse_id, warehouse_name, subtotal, discount_total, tax_total, grand_total, paid_amount, applied_advance_amount, remaining_amount, payment_type, payment_method, cashbox_id, status, notes, linked_rep_transfer_id, linked_rep_transfer_number, linked_customer_order_id, returned_quantity_by_item, idempotency_key, origin_device_id, sync_status, review_status, dispatch_status, sent_by, sent_by_user_id, sent_at, recipient_user_id, recipient_name, dispatch_history, version, created_by, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,'{}'::jsonb,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,1,$39,$40)`,
+    `INSERT INTO invoices (id, invoice_number, type, date, customer_id, customer_name, supplier_id, supplier_name, representative_id, representative_name, warehouse_id, warehouse_name, subtotal, discount_total, tax_total, grand_total, paid_amount, applied_advance_amount, remaining_amount, payment_type, payment_method, cashbox_id, status, notes, linked_rep_transfer_id, linked_rep_transfer_number, linked_customer_order_id, returned_quantity_by_item, idempotency_key, origin_device_id, sync_status, review_status, dispatch_status, sent_by, sent_by_user_id, sent_at, recipient_user_id, recipient_name, dispatch_history, version, created_by, created_by_user_id, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,'{}'::jsonb,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,1,$39,$40,$41)`,
     [
       invoiceId,
       invoiceNumber,
@@ -828,6 +847,7 @@ export async function createInvoiceInsidePgTx(client, type, payload, actor) {
       recipientName,
       JSON.stringify(dispatchHistory),
       actor.fullName,
+      actor.id || null,
       now,
     ]
   );
@@ -908,6 +928,7 @@ export async function createInvoiceInsidePgTx(client, type, payload, actor) {
     editHistory: [],
     version: 1,
     createdBy: actor.fullName,
+    createdByUserId: actor.id,
     createdAt: now,
   };
 
@@ -1064,6 +1085,7 @@ export function createInvoiceInsideJsonTx(db, type, payload, actor) {
     editHistory: [],
     version: 1,
     createdBy: actor.fullName,
+    createdByUserId: actor.id,
     createdAt: now,
   };
 
@@ -1230,7 +1252,7 @@ export async function sendPurchaseInvoice(invoiceId, payload = {}, actor, idempo
         const inv = await fetchFullInvoicePg(client, invoiceId);
         if (!inv) throw new AppError(404, 'فاتورة الشراء غير موجودة', 'INVOICE_NOT_FOUND');
         if (inv.type !== 'purchase') throw new AppError(400, 'المستند المحدد ليس فاتورة شراء', 'NOT_PURCHASE_INVOICE');
-        if (isRep && inv.representativeId !== repActor.id && inv.sentByUserId !== actor.id) {
+        if (isRep && !isRepOwnerOfInvoice(inv, actor, repActor)) {
           throw new AppError(403, 'غير مصرح لك بإرسال فاتورة شراء تخص مندوبًا آخر', 'FORBIDDEN_INVOICE_ACCESS');
         }
         if (inv.status !== 'draft') {
@@ -1288,7 +1310,7 @@ export async function sendPurchaseInvoice(invoiceId, payload = {}, actor, idempo
         const inv = db.invoices.find((i) => i.id === invoiceId);
         if (!inv) throw new AppError(404, 'فاتورة الشراء غير موجودة', 'INVOICE_NOT_FOUND');
         if (inv.type !== 'purchase') throw new AppError(400, 'المستند المحدد ليس فاتورة شراء', 'NOT_PURCHASE_INVOICE');
-        if (isRep && inv.representativeId !== repActor.id && inv.sentByUserId !== actor.id) {
+        if (isRep && !isRepOwnerOfInvoice(inv, actor, repActor)) {
           throw new AppError(403, 'غير مصرح لك بإرسال فاتورة شراء تخص مندوبًا آخر', 'FORBIDDEN_INVOICE_ACCESS');
         }
         if (inv.status !== 'draft') {
@@ -2024,10 +2046,8 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
         );
       }
 
-      if (repActor) {
-        if (inv.representativeId !== repActor.id) {
-          throw new AppError(403, 'غير مصرح لك بتعديل فاتورة لمندوب آخر', 'FORBIDDEN_INVOICE_ACCESS');
-        }
+      if (repActor && !isRepOwnerOfInvoice(inv, actor, repActor)) {
+        throw new AppError(403, 'غير مصرح لك بتعديل فاتورة لمندوب آخر', 'FORBIDDEN_INVOICE_ACCESS');
       }
 
       const stRes = await client.query(`SELECT allow_negative_stock FROM system_settings LIMIT 1`);
@@ -2126,8 +2146,8 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
           const mvId = generateServerId('SM');
           const refItem = metaByProd.get(pid);
           await client.query(
-            `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,'sale_edit',$8,$9,1,$10,$11,$12,'sales',$13,$14,$15,$16,$17)`,
+            `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, created_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,'sale_edit',$8,$9,1,$10,$11,$12,'sales',$13,$14,$15,$16,$17,$18)`,
             [
               mvId,
               mvId,
@@ -2145,6 +2165,7 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
               inv.invoiceNumber,
               `تعديل فاتورة مبيعات رقم ${inv.invoiceNumber} (${deltaOut > 0 ? 'خصم فرق ' : 'رد فرق '}${Math.abs(deltaOut)})${cleanReason ? ` - السبب: ${cleanReason}` : ''}`,
               actor.fullName,
+              actor.id || null,
               now,
             ]
           );
@@ -2260,10 +2281,8 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
       );
     }
 
-    if (repActor) {
-      if (inv.representativeId !== repActor.id) {
-        throw new AppError(403, 'غير مصرح لك بتعديل فاتورة لمندوب آخر', 'FORBIDDEN_INVOICE_ACCESS');
-      }
+    if (repActor && !isRepOwnerOfInvoice(inv, actor, repActor)) {
+      throw new AppError(403, 'غير مصرح لك بتعديل فاتورة لمندوب آخر', 'FORBIDDEN_INVOICE_ACCESS');
     }
 
     const allowNeg = Boolean(db.settings?.allowNegativeStock) && Boolean(actor?.permissions?.canAllowNegativeInventory);
@@ -2385,6 +2404,7 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
           referenceNumber: inv.invoiceNumber,
           notes: `تعديل فاتورة مبيعات رقم ${inv.invoiceNumber} (${deltaOut > 0 ? 'خصم فرق ' : 'رد فرق '}${Math.abs(deltaOut)})${cleanReason ? ` - السبب: ${cleanReason}` : ''}`,
           createdBy: actor.fullName,
+          createdByUserId: actor.id,
           createdAt: now,
         });
       }
@@ -2470,7 +2490,7 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
         throw new AppError(400, 'هذه الفاتورة ليست فاتورة مشتريات', 'NOT_PURCHASE_INVOICE');
       }
       if (!canFullPurchaseEdit) {
-        if (repActor && inv.representativeId !== repActor.id && inv.sentByUserId !== actor.id) {
+        if (repActor && !isRepOwnerOfInvoice(inv, actor, repActor)) {
           throw new AppError(403, 'غير مصرح لك بتعديل فاتورة شراء لا تخصك', 'FORBIDDEN_INVOICE_ACCESS');
         }
         if (inv.status !== 'draft' || !['draft', 'rejected'].includes(inv.dispatchStatus)) {
@@ -2656,8 +2676,8 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
 
               const mvId = generateServerId('SM');
               await client.query(
-                `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_at)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,'purchase_edit',$8,$9,1,$10,$11,$12,'purchase',$13,$14,$15,$16,$17)`,
+                `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, created_at)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,'purchase_edit',$8,$9,1,$10,$11,$12,'purchase',$13,$14,$15,$16,$17,$18)`,
                 [
                   mvId,
                   mvId,
@@ -2675,6 +2695,7 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
                   inv.invoiceNumber,
                   `تعديل فاتورة مشتريات رقم ${inv.invoiceNumber} (${deltaIn > 0 ? 'إضافة فرق ' : 'خصم فرق '}${Math.abs(deltaIn)})${cleanReason ? ` - السبب: ${cleanReason}` : ''}`,
                   actor.fullName,
+                  actor.id || null,
                   now,
                 ]
               );
@@ -2695,8 +2716,8 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
               stockMap[inv.warehouseId] = nextOldQty;
               const mvOutId = generateServerId('SM');
               await client.query(
-                `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_at)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,'purchase_edit',$8,$9,1,$10,$11,$12,'purchase',$13,$14,$15,$16,$17)`,
+                `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, created_at)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,'purchase_edit',$8,$9,1,$10,$11,$12,'purchase',$13,$14,$15,$16,$17,$18)`,
                 [
                   mvOutId,
                   mvOutId,
@@ -2714,6 +2735,7 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
                   inv.invoiceNumber,
                   `نقل مخزون فاتورة مشتريات رقم ${inv.invoiceNumber} من (${oldWarehouseName}) إلى (${nextWarehouseName})${cleanReason ? ` - السبب: ${cleanReason}` : ''}`,
                   actor.fullName,
+                  actor.id || null,
                   now,
                 ]
               );
@@ -2724,8 +2746,8 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
               stockMap[nextWarehouseId] = nextNewQty;
               const mvInId = generateServerId('SM');
               await client.query(
-                `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_at)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,'purchase_edit',$8,$9,1,$10,$11,$12,'purchase',$13,$14,$15,$16,$17)`,
+                `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, created_at)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,'purchase_edit',$8,$9,1,$10,$11,$12,'purchase',$13,$14,$15,$16,$17,$18)`,
                 [
                   mvInId,
                   mvInId,
@@ -2743,6 +2765,7 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
                   inv.invoiceNumber,
                   `إضافة مخزون فاتورة مشتريات معدلة رقم ${inv.invoiceNumber} إلى (${nextWarehouseName})${cleanReason ? ` - السبب: ${cleanReason}` : ''}`,
                   actor.fullName,
+                  actor.id || null,
                   now,
                 ]
               );
@@ -2878,7 +2901,7 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
       throw new AppError(400, 'هذه الفاتورة ليست فاتورة مشتريات', 'NOT_PURCHASE_INVOICE');
     }
     if (!canFullPurchaseEdit) {
-      if (repActor && inv.representativeId !== repActor.id && inv.sentByUserId !== actor.id) {
+      if (repActor && !isRepOwnerOfInvoice(inv, actor, repActor)) {
         throw new AppError(403, 'غير مصرح لك بتعديل فاتورة شراء لا تخصك', 'FORBIDDEN_INVOICE_ACCESS');
       }
       if (inv.status !== 'draft' || !['draft', 'rejected'].includes(inv.dispatchStatus)) {
@@ -3072,6 +3095,7 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
               referenceNumber: inv.invoiceNumber,
               notes: `تعديل فاتورة مشتريات رقم ${inv.invoiceNumber} (${deltaIn > 0 ? 'إضافة فرق ' : 'خصم فرق '}${Math.abs(deltaIn)})${cleanReason ? ` - السبب: ${cleanReason}` : ''}`,
               createdBy: actor.fullName,
+              createdByUserId: actor.id,
               createdAt: now,
             });
           } else {
@@ -3110,6 +3134,7 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
               referenceNumber: inv.invoiceNumber,
               notes: `نقل مخزون فاتورة مشتريات رقم ${inv.invoiceNumber} من (${oldWarehouseName}) إلى (${nextWarehouseName})${cleanReason ? ` - السبب: ${cleanReason}` : ''}`,
               createdBy: actor.fullName,
+              createdByUserId: actor.id,
               createdAt: now,
             });
           }
@@ -3138,6 +3163,7 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
               referenceNumber: inv.invoiceNumber,
               notes: `إضافة مخزون فاتورة مشتريات معدلة رقم ${inv.invoiceNumber} إلى (${nextWarehouseName})${cleanReason ? ` - السبب: ${cleanReason}` : ''}`,
               createdBy: actor.fullName,
+              createdByUserId: actor.id,
               createdAt: now,
             });
           }
@@ -3277,12 +3303,7 @@ export async function deleteDraftPurchaseInvoice(invoiceId, actor) {
         );
       }
       if (!canFullPurchaseManage) {
-        const isOwner =
-          inv.sentByUserId === actor.id ||
-          (repActor && inv.representativeId === repActor.id) ||
-          inv.createdBy === actor.fullName ||
-          inv.createdBy === actor.id;
-        if (!isOwner) {
+        if (!isRepOwnerOfInvoice(inv, actor, repActor)) {
           throw new AppError(403, 'غير مصرح لك بحذف مسودة فاتورة شراء لا تخصك', 'FORBIDDEN_INVOICE_ACCESS');
         }
       }
@@ -3319,12 +3340,7 @@ export async function deleteDraftPurchaseInvoice(invoiceId, actor) {
       );
     }
     if (!canFullPurchaseManage) {
-      const isOwner =
-        inv.sentByUserId === actor.id ||
-        (repActor && inv.representativeId === repActor.id) ||
-        inv.createdBy === actor.fullName ||
-        inv.createdBy === actor.id;
-      if (!isOwner) {
+      if (!isRepOwnerOfInvoice(inv, actor, repActor)) {
         throw new AppError(403, 'غير مصرح لك بحذف مسودة فاتورة شراء لا تخصك', 'FORBIDDEN_INVOICE_ACCESS');
       }
     }
@@ -3344,13 +3360,28 @@ export async function deleteDraftPurchaseInvoice(invoiceId, actor) {
 }
 
 export async function cancelInvoice(invoiceId, reason = '', actor) {
+  if (!actor || actor.role === 'customer') {
+    throw new AppError(403, 'غير مصرح للعملاء بإلغاء الفواتير', 'FORBIDDEN');
+  }
   const now = nowIso();
   const cleanReason = String(reason || 'إلغاء الفاتورة').trim();
+  const repActor = actor?.role === 'representative' ? await getRepresentativeByUserId(actor.id) : null;
+  if (actor?.role === 'representative' && !repActor) {
+    throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
+  }
 
   if (await isPgMode()) {
     const out = await withTransaction(async (client) => {
       const cur = await fetchFullInvoicePg(client, invoiceId);
       if (!cur) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
+      if (repActor) {
+        if (!isRepOwnerOfInvoice(cur, actor, repActor)) {
+          throw new AppError(403, 'غير مصرح للمندوب بإلغاء فاتورة لا تخصه', 'FORBIDDEN_INVOICE_ACCESS');
+        }
+        if (cur.type === 'purchase' && cur.status === 'confirmed') {
+          throw new AppError(403, 'لا يمكن للمندوب إلغاء فاتورة شراء معتمدة؛ يرجى مراجعة الإدارة', 'FORBIDDEN_REP_CANCEL_PURCHASE');
+        }
+      }
       if (cur.status === 'cancelled') throw new AppError(409, 'الفاتورة ملغاة بالفعل', 'ALREADY_CANCELLED');
 
       const retRes = await client.query(
@@ -3399,8 +3430,8 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
 
             const mvId = generateServerId('SM');
             await client.query(
-              `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+              `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, created_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
               [
                 mvId,
                 mvId,
@@ -3421,6 +3452,7 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
                 cur.invoiceNumber,
                 `عكس مخزون إلغاء فاتورة رقم ${cur.invoiceNumber} - ${cleanReason}`,
                 actor.fullName,
+                actor.id || null,
                 now,
               ]
             );
@@ -3461,8 +3493,8 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
             const txId = generateServerId('FT');
             const txNo = `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`;
             await client.query(
-              `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, notes, created_by, created_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+              `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, notes, created_by, created_by_user_id, created_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
               [
                 txId,
                 txNo,
@@ -3482,6 +3514,7 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
                 `تسوية خزينة لإلغاء فاتورة رقم ${cur.invoiceNumber}`,
                 cleanReason,
                 actor.fullName,
+                actor.id || null,
                 now,
               ]
             );
@@ -3542,6 +3575,14 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
   const out = await withJsonTransaction(async (db) => {
     const cur = db.invoices.find((i) => i.id === invoiceId);
     if (!cur) throw new AppError(404, 'الفاتورة غير موجودة', 'INVOICE_NOT_FOUND');
+    if (repActor) {
+      if (!isRepOwnerOfInvoice(cur, actor, repActor)) {
+        throw new AppError(403, 'غير مصرح للمندوب بإلغاء فاتورة لا تخصه', 'FORBIDDEN_INVOICE_ACCESS');
+      }
+      if (cur.type === 'purchase' && cur.status === 'confirmed') {
+        throw new AppError(403, 'لا يمكن للمندوب إلغاء فاتورة شراء معتمدة؛ يرجى مراجعة الإدارة', 'FORBIDDEN_REP_CANCEL_PURCHASE');
+      }
+    }
     if (cur.status === 'cancelled') throw new AppError(409, 'الفاتورة ملغاة بالفعل', 'ALREADY_CANCELLED');
 
     const priorReturns = (db.invoiceReturns || []).filter((r) => r.originalInvoiceId === invoiceId);
@@ -3602,6 +3643,7 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
             referenceNumber: cur.invoiceNumber,
             notes: `عكس مخزون إلغاء فاتورة رقم ${cur.invoiceNumber} - ${cleanReason}`,
             createdBy: actor.fullName,
+            createdByUserId: actor.id,
             createdAt: now,
           });
         }
@@ -3647,6 +3689,7 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
             description: `تسوية خزينة لإلغاء فاتورة رقم ${cur.invoiceNumber}`,
             notes: cleanReason,
             createdBy: actor.fullName,
+            createdByUserId: actor.id,
             createdAt: now,
           });
         }
@@ -3744,15 +3787,28 @@ export async function markInvoiceReviewed(invoiceId, { notes = '' } = {}, actor)
   return updated;
 }
 
-function assertInvoicePaymentAuthorized({ invType, invRepId, invSentByUserId, invCreatedBy }, actor, repProfile) {
+function assertInvoicePaymentAuthorized({ invType, invRepId, invSentByUserId, invCreatedBy, invCreatedByUserId }, actor, repProfile) {
   if (!actor || actor.role === 'customer') {
     throw new AppError(403, 'غير مصرح للعملاء بتسجيل دفعات على الفواتير', 'FORBIDDEN');
   }
   const perms = actor.permissions || {};
   if (actor.role === 'representative') {
+    const isOwn = isRepOwnerOfInvoice(
+      {
+        representativeId: invRepId,
+        sentByUserId: invSentByUserId,
+        createdBy: invCreatedBy,
+        createdByUserId: invCreatedByUserId,
+      },
+      actor,
+      repProfile
+    );
     if (invType === 'sales') {
-      if (!perms.canManageSales && !perms.canManageAccounts) {
+      if (!perms.canManageSales) {
         throw new AppError(403, 'ليس لديك صلاحية تحصيل دفعات فواتير المبيعات', 'FORBIDDEN_PERMISSION');
+      }
+      if (!isOwn) {
+        throw new AppError(403, 'غير مصرح للمندوب بتسجيل دفعة على فاتورة مبيعات لمندوب آخر', 'FORBIDDEN_REP_INVOICE_ACCESS');
       }
       return;
     }
@@ -3760,12 +3816,7 @@ function assertInvoicePaymentAuthorized({ invType, invRepId, invSentByUserId, in
       if (!perms.canCreatePurchase && !perms.canManagePurchases) {
         throw new AppError(403, 'ليس لديك صلاحية إدارة أو سداد فواتير المشتريات', 'FORBIDDEN_PERMISSION');
       }
-      const isOwnPurchase =
-        (repProfile?.id && invRepId === repProfile.id) ||
-        (actor.id && invSentByUserId === actor.id) ||
-        (actor.fullName && invCreatedBy === actor.fullName) ||
-        (actor.id && invCreatedBy === actor.id);
-      if (!isOwnPurchase) {
+      if (!isOwn) {
         throw new AppError(403, 'غير مصرح للمندوب بسداد فاتورة مشتريات لا تخصه', 'FORBIDDEN_REP_INVOICE_ACCESS');
       }
       return;
@@ -3812,6 +3863,7 @@ export async function addInvoicePaymentPgTx(client, invoiceId, paymentData, acto
       invRepId: inv.representative_id,
       invSentByUserId: inv.sent_by_user_id,
       invCreatedBy: inv.created_by,
+      invCreatedByUserId: inv.created_by_user_id,
     },
     actor,
     repProfile
@@ -3840,8 +3892,8 @@ export async function addInvoicePaymentPgTx(client, invoiceId, paymentData, acto
     [newPaid, newRem, newPayType, now, invoiceId]
   );
   await client.query(
-    `INSERT INTO invoice_payments (id, invoice_id, invoice_number, amount, date, payment_method, cashbox_id, cashbox_name, notes, created_by, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+    `INSERT INTO invoice_payments (id, invoice_id, invoice_number, amount, date, payment_method, cashbox_id, cashbox_name, notes, created_by, created_by_user_id, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
     [
       payId,
       invoiceId,
@@ -3853,6 +3905,7 @@ export async function addInvoicePaymentPgTx(client, invoiceId, paymentData, acto
       cbRes.rows[0].name,
       paymentData.notes || 'سداد دفعة على الفاتورة',
       actor.fullName,
+      actor.id || null,
       now,
     ]
   );
@@ -3883,8 +3936,8 @@ export async function addInvoicePaymentPgTx(client, invoiceId, paymentData, acto
 
   const txId = generateServerId('FT');
   await client.query(
-    `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, notes, created_by, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+    `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, notes, created_by, created_by_user_id, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
     [
       txId,
       `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`,
@@ -3903,6 +3956,7 @@ export async function addInvoicePaymentPgTx(client, invoiceId, paymentData, acto
       `دفعة مسجلة على الفاتورة رقم ${inv.invoice_number} (${cbRes.rows[0].name})`,
       paymentData.notes || '',
       actor.fullName,
+      actor.id || null,
       now,
     ]
   );
@@ -3955,6 +4009,7 @@ export function addInvoicePaymentJsonTx(db, invoiceId, paymentData, actor, idemp
       invRepId: inv.representativeId,
       invSentByUserId: inv.sentByUserId,
       invCreatedBy: inv.createdBy,
+      invCreatedByUserId: inv.createdByUserId,
     },
     actor,
     repProfile
@@ -3980,6 +4035,7 @@ export function addInvoicePaymentJsonTx(db, invoiceId, paymentData, actor, idemp
     cashboxName: cb.name,
     notes: paymentData.notes || 'سداد دفعة على الفاتورة',
     createdBy: actor.fullName,
+    createdByUserId: actor.id,
     createdAt: now,
   };
 
@@ -4016,6 +4072,7 @@ export function addInvoicePaymentJsonTx(db, invoiceId, paymentData, actor, idemp
     description: `دفعة مسجلة على الفاتورة رقم ${inv.invoiceNumber} (${cb.name})`,
     notes: paymentData.notes || '',
     createdBy: actor.fullName,
+    createdByUserId: actor.id,
     createdAt: now,
   });
   if (scopedIdem) {
@@ -4052,12 +4109,27 @@ export async function addInvoicePayment(invoiceId, paymentData, actor, idempoten
 }
 
 export async function createInvoiceReturn(returnData, actor, idempotencyKey = '') {
+  if (!actor || actor.role === 'customer') {
+    throw new AppError(403, 'غير مصرح للعملاء بتنفيذ المرتجعات', 'FORBIDDEN');
+  }
   if (!Array.isArray(returnData.items) || returnData.items.length === 0) {
     throw new AppError(400, 'يجب تحديد صنف واحد على الأقل للمرتجع', 'EMPTY_RETURN');
   }
   const now = nowIso();
   const retDate = returnData.date || todayIso();
   const isSalesReturn = returnData.type === 'sales_return';
+  if (actor.role === 'representative' && !isSalesReturn) {
+    throw new AppError(
+      403,
+      'لا يمكن للمندوب تنفيذ مرتجع مشتريات مباشر؛ يرجى رفع طلب مرتجع مشتريات لاعتماد الإدارة',
+      'FORBIDDEN_REP_DIRECT_PURCHASE_RETURN'
+    );
+  }
+  const repActor = actor.role === 'representative' ? await getRepresentativeByUserId(actor.id) : null;
+  if (actor.role === 'representative' && !repActor) {
+    throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
+  }
+
   const retId = generateServerId('RET');
   const endpoint = 'POST /api/invoices/returns';
   const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
@@ -4069,6 +4141,15 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
 
       const orig = await fetchFullInvoicePg(client, returnData.originalInvoiceId);
       if (!orig) throw new AppError(404, 'الفاتورة الأصلية غير موجودة', 'INVOICE_NOT_FOUND');
+      if (isSalesReturn && orig.type !== 'sales') {
+        throw new AppError(400, 'المستند الأصلي ليس فاتورة مبيعات', 'INVALID_ORIGINAL_INVOICE_TYPE');
+      }
+      if (!isSalesReturn && orig.type !== 'purchase') {
+        throw new AppError(400, 'المستند الأصلي ليس فاتورة مشتريات', 'INVALID_ORIGINAL_INVOICE_TYPE');
+      }
+      if (repActor && !isRepOwnerOfInvoice(orig, actor, repActor)) {
+        throw new AppError(403, 'غير مصرح للمندوب بإنشاء مرتجع لفاتورة لا تخصه', 'FORBIDDEN_REP_INVOICE_ACCESS');
+      }
       if (orig.status !== 'confirmed') throw new AppError(409, 'لا يمكن عمل مرتجع لفاتورة مسودة أو ملغاة', 'INVALID_INVOICE_STATUS');
 
       const returnedMap = { ...(orig.returnedQuantityByItem || {}) };
@@ -4107,8 +4188,8 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
       const whName = whRow?.name || orig.warehouseName;
 
       await client.query(
-        `INSERT INTO invoice_returns (id, return_number, type, original_invoice_id, original_invoice_number, date, party_id, party_name, warehouse_id, warehouse_name, grand_total, refund_type, cashbox_id, reason, notes, created_by, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+        `INSERT INTO invoice_returns (id, return_number, type, original_invoice_id, original_invoice_number, date, party_id, party_name, warehouse_id, warehouse_name, grand_total, refund_type, cashbox_id, reason, notes, created_by, created_by_user_id, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
         [
           retId,
           returnNumber,
@@ -4126,6 +4207,7 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
           returnData.reason || 'مرتجع فاتورة',
           returnData.notes || '',
           actor.fullName,
+          actor.id || null,
           now,
         ]
       );
@@ -4149,8 +4231,8 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
 
           const mvId = generateServerId('SM');
           await client.query(
-            `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+            `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, created_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
             [
               mvId,
               mvId,
@@ -4164,19 +4246,21 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
               it.unit,
               it.unitFactor,
               it.unitPrice,
+              curQty,
               nextQty,
               returnData.type,
               retId,
               returnNumber,
               `سند مرتجع رقم ${returnNumber} - السبب: ${returnData.reason || ''}`,
               actor.fullName,
+              actor.id || null,
               now,
             ]
           );
         }
       }
 
-      if (returnData.refundType === 'balance') {
+      if ((returnData.refundType || 'balance') === 'balance') {
         if (isSalesReturn && orig.customerId) {
           const cRes = await client.query(`SELECT current_balance FROM customers WHERE id = $1 FOR UPDATE`, [orig.customerId]);
           if (cRes.rows[0]) {
@@ -4203,11 +4287,11 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
           await client.query(`UPDATE cashboxes SET current_balance = $1 WHERE id = $2`, [nextCb, returnData.cashboxId]);
           const txId = generateServerId('FT');
           await client.query(
-            `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, created_by, created_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+            `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, created_by, created_by_user_id, created_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
             [
               txId,
-              `TRX-${Date.now().toString().slice(-6)}`,
+              `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`,
               retDate,
               isSalesReturn ? 'expense' : 'income',
               grandTotal,
@@ -4222,6 +4306,7 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
               returnNumber,
               `تسوية نقدية لمرتجع رقم ${returnNumber}`,
               actor.fullName,
+              actor.id || null,
               now,
             ]
           );
@@ -4252,6 +4337,7 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
         reason: returnData.reason || '',
         notes: returnData.notes || '',
         createdBy: actor.fullName,
+        createdByUserId: actor.id,
         createdAt: now,
       };
       await savePgIdempotency(client, scopedIdem, actor, endpoint, { invoiceReturn: createdReturn });
@@ -4270,6 +4356,15 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
 
     const orig = db.invoices.find((i) => i.id === returnData.originalInvoiceId);
     if (!orig) throw new AppError(404, 'الفاتورة الأصلية غير موجودة', 'INVOICE_NOT_FOUND');
+    if (isSalesReturn && orig.type !== 'sales') {
+      throw new AppError(400, 'المستند الأصلي ليس فاتورة مبيعات', 'INVALID_ORIGINAL_INVOICE_TYPE');
+    }
+    if (!isSalesReturn && orig.type !== 'purchase') {
+      throw new AppError(400, 'المستند الأصلي ليس فاتورة مشتريات', 'INVALID_ORIGINAL_INVOICE_TYPE');
+    }
+    if (repActor && !isRepOwnerOfInvoice(orig, actor, repActor)) {
+      throw new AppError(403, 'غير مصرح للمندوب بإنشاء مرتجع لفاتورة لا تخصه', 'FORBIDDEN_REP_INVOICE_ACCESS');
+    }
     if (orig.status !== 'confirmed') throw new AppError(409, 'لا يمكن عمل مرتجع لفاتورة مسودة أو ملغاة', 'INVALID_INVOICE_STATUS');
 
     const returnedMap = { ...(orig.returnedQuantityByItem || {}) };
@@ -4311,7 +4406,8 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
       if (prod) {
         const curQty = Number(prod.stockPerWarehouse?.[whId] || 0);
         const baseQty = round3(it.quantity * it.unitFactor);
-        prod.stockPerWarehouse[whId] = isSalesReturn ? round3(curQty + baseQty) : round3(curQty - baseQty);
+        const nextQty = isSalesReturn ? round3(curQty + baseQty) : round3(curQty - baseQty);
+        prod.stockPerWarehouse[whId] = nextQty;
         const mvId = generateServerId('SM');
         db.stockMovements.unshift({
           id: mvId,
@@ -4326,17 +4422,20 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
           unit: it.unit || prod.baseUnit,
           unitFactor: Number(it.unitFactor || 1),
           unitCost: it.unitPrice,
+          balanceBefore: curQty,
+          balanceAfter: nextQty,
           relatedDocType: isSalesReturn ? 'sales_return' : 'purchase_return',
           referenceId: retId,
           referenceNumber: returnNumber,
           notes: `سند مرتجع رقم ${returnNumber} - السبب: ${returnData.reason || ''}`,
           createdBy: actor.fullName,
+          createdByUserId: actor.id,
           createdAt: now,
         });
       }
     }
 
-    if (returnData.refundType === 'balance') {
+    if ((returnData.refundType || 'balance') === 'balance') {
       if (isSalesReturn && orig.customerId) {
         const cust = db.customers.find((c) => c.id === orig.customerId);
         if (cust) cust.currentBalance = round2(Number(cust.currentBalance || 0) - grandTotal);
@@ -4352,7 +4451,7 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
           : round2(Number(cb.currentBalance || 0) + grandTotal);
         db.financialTransactions.unshift({
           id: generateServerId('FT'),
-          transactionNumber: `TRX-${Date.now().toString().slice(-6)}`,
+          transactionNumber: `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`,
           date: retDate,
           type: isSalesReturn ? 'expense' : 'income',
           cashboxId: cb.id,
@@ -4366,6 +4465,7 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
           partyName: orig.customerName || orig.supplierName,
           description: `تسوية نقدية لمرتجع رقم ${returnNumber}`,
           createdBy: actor.fullName,
+          createdByUserId: actor.id,
           createdAt: now,
         });
       }
@@ -4390,6 +4490,7 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
       reason: returnData.reason || '',
       notes: returnData.notes || '',
       createdBy: actor.fullName,
+      createdByUserId: actor.id,
       createdAt: now,
     };
     db.invoiceReturns.unshift(newRet);
@@ -4401,6 +4502,809 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
     await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إنشاء سند مرتجع (${out.invoiceReturn.returnNumber})`, module: 'المرتجعات', recordId: out.invoiceReturn.id });
   }
   return out.invoiceReturn;
+}
+
+export async function listPurchaseReturnRequests(actor = null) {
+  if (!actor || actor.role === 'customer') {
+    throw new AppError(403, 'غير مصرح للعملاء بعرض طلبات مرتجع المشتريات', 'FORBIDDEN');
+  }
+  const isRep = actor.role === 'representative';
+  const canPurchasePerm = Boolean(actor.permissions?.canCreatePurchase || actor.permissions?.canManagePurchases || actor.permissions?.canApprove);
+  if (actor.role !== 'admin' && !canPurchasePerm) {
+    return [];
+  }
+  const repActor = isRep ? await getRepresentativeByUserId(actor.id) : null;
+
+  if (await isPgMode()) {
+    const pool = getPool();
+    let reqRes;
+    if (isRep) {
+      const clauses = ['requested_by_user_id = $1'];
+      const params = [actor.id];
+      if (repActor?.id) {
+        params.push(repActor.id);
+        clauses.push(`representative_id = $${params.length}`);
+      }
+      reqRes = await pool.query(
+        `SELECT * FROM purchase_return_requests WHERE (${clauses.join(' OR ')}) ORDER BY created_at DESC`,
+        params
+      );
+    } else {
+      reqRes = await pool.query(`SELECT * FROM purchase_return_requests ORDER BY created_at DESC`);
+    }
+    if (reqRes.rows.length === 0) return [];
+    const reqIds = reqRes.rows.map((r) => r.id);
+    const itemsRes = await pool.query(
+      `SELECT * FROM purchase_return_request_items WHERE request_id = ANY($1::varchar[])`,
+      [reqIds]
+    );
+    const itemsMap = new Map();
+    for (const it of itemsRes.rows) {
+      const list = itemsMap.get(it.request_id) || [];
+      list.push(it);
+      itemsMap.set(it.request_id, list);
+    }
+    return reqRes.rows.map((r) => mapPgPurchaseReturnRequestRow(r, itemsMap.get(r.id) || []));
+  }
+
+  const db = readJsonDatabase();
+  const all = Array.isArray(db.purchaseReturnRequests) ? db.purchaseReturnRequests : [];
+  if (isRep) {
+    return all.filter(
+      (r) =>
+        r.requestedByUserId === actor.id ||
+        (repActor?.id && r.representativeId === repActor.id)
+    );
+  }
+  return all;
+}
+
+export async function createPurchaseReturnRequest(payload, actor, idempotencyKey = '') {
+  if (!actor || actor.role === 'customer') {
+    throw new AppError(403, 'غير مصرح للعملاء بإنشاء طلبات مرتجع مشتريات', 'FORBIDDEN');
+  }
+  const isRep = actor.role === 'representative';
+  if (actor.role !== 'admin' && !actor.permissions?.canCreatePurchase && !actor.permissions?.canManagePurchases) {
+    throw new AppError(403, 'ليس لديك صلاحية إنشاء طلب مرتجع مشتريات', 'FORBIDDEN_PERMISSION');
+  }
+  const repActor = isRep ? await getRepresentativeByUserId(actor.id) : null;
+  if (isRep && !repActor) {
+    throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
+  }
+
+  const originalInvoiceId = String(payload?.originalInvoiceId || '').trim();
+  if (!originalInvoiceId) {
+    throw new AppError(400, 'يجب تحديد فاتورة الشراء الأصلية', 'ORIGINAL_INVOICE_REQUIRED');
+  }
+  if (!Array.isArray(payload?.items) || payload.items.length === 0) {
+    throw new AppError(400, 'يجب تحديد صنف واحد على الأقل في طلب المرتجع', 'EMPTY_RETURN_REQUEST');
+  }
+  const cleanReason = String(payload?.reason || '').trim();
+  if (!cleanReason) {
+    throw new AppError(400, 'يرجى كتابة سبب طلب مرتجع المشتريات', 'REASON_REQUIRED');
+  }
+  const refundType = payload?.refundType === 'cash' ? 'cash' : 'balance';
+  const reqDate = payload?.date || todayIso();
+  const cleanNotes = String(payload?.notes || '').trim();
+  const now = nowIso();
+  const reqId = generateServerId('PRR');
+  const endpoint = 'POST /api/invoices/purchase-return-requests';
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
+
+  const out = (await isPgMode())
+    ? await withTransaction(async (client) => {
+        const dup = await findPgIdempotency(client, scopedIdem);
+        if (dup?.request) return { deduplicated: true, request: dup.request };
+
+        const orig = await fetchFullInvoicePg(client, originalInvoiceId);
+        if (!orig) throw new AppError(404, 'فاتورة الشراء الأصلية غير موجودة', 'INVOICE_NOT_FOUND');
+        if (orig.type !== 'purchase') {
+          throw new AppError(400, 'المستند المحدد ليس فاتورة مشتريات', 'INVALID_ORIGINAL_INVOICE_TYPE');
+        }
+        if (orig.status !== 'confirmed') {
+          throw new AppError(409, 'لا يمكن تقديم طلب مرتجع إلا لفاتورة شراء معتمدة', 'INVALID_INVOICE_STATUS');
+        }
+        if (isRep && !isRepOwnerOfInvoice(orig, actor, repActor)) {
+          throw new AppError(403, 'غير مصرح للمندوب بتقديم طلب مرتجع لفاتورة شراء لا تخصه', 'FORBIDDEN_INVOICE_ACCESS');
+        }
+
+        const pendingItemsRes = await client.query(
+          `SELECT pri.product_id, pri.quantity
+           FROM purchase_return_request_items pri
+           JOIN purchase_return_requests pr ON pr.id = pri.request_id
+           WHERE pr.original_invoice_id = $1 AND pr.status = 'pending'`,
+          [orig.id]
+        );
+        const pendingByProd = new Map();
+        for (const row of pendingItemsRes.rows) {
+          pendingByProd.set(row.product_id, round3((pendingByProd.get(row.product_id) || 0) + Number(row.quantity || 0)));
+        }
+
+        const returnedMap = orig.returnedQuantityByItem || {};
+        const requestedByProd = new Map();
+        const normalizedItems = [];
+        let grandTotal = 0;
+
+        for (const item of payload.items) {
+          const origItem = orig.items.find((it) => it.productId === item.productId);
+          if (!origItem) {
+            throw new AppError(400, `الصنف ${item.productName || item.productId} غير موجود بفاتورة الشراء الأصلية`, 'ITEM_NOT_IN_INVOICE');
+          }
+          const qty = round3(item.quantity);
+          if (qty <= 0) throw new AppError(400, 'كمية المرتجع المطلوبة يجب أن تكون أكبر من صفر', 'INVALID_QUANTITY');
+
+          const alreadyCommitted = round3(Number(returnedMap[item.productId] || 0));
+          const pendingQty = round3(Number(pendingByProd.get(item.productId) || 0));
+          const batchQty = round3((requestedByProd.get(item.productId) || 0) + qty);
+          if (alreadyCommitted + pendingQty + batchQty > origItem.quantity + 0.0001) {
+            const avail = round3(Math.max(0, origItem.quantity - alreadyCommitted - pendingQty));
+            throw new AppError(
+              400,
+              `الكمية المطلوبة للصنف (${origItem.productName}) تتجاوز المتاح للإرجاع (${avail}) بعد احتساب المرتجعات والطلبات المعلقة`,
+              'EXCEEDS_RETURNABLE'
+            );
+          }
+          requestedByProd.set(item.productId, batchQty);
+          const unitPrice = round2(item.unitPrice ?? origItem.unitPrice);
+          const lineTotal = round2(qty * unitPrice);
+          grandTotal = round2(grandTotal + lineTotal);
+          normalizedItems.push({
+            productId: item.productId,
+            productName: item.productName || origItem.productName,
+            unit: item.unit || origItem.unit,
+            unitFactor: Number(item.unitFactor || origItem.unitFactor || 1),
+            quantity: qty,
+            unitPrice,
+            total: lineTotal,
+          });
+        }
+
+        const seqNum = Number((await client.query(`SELECT nextval('seq_purchase_return_req_no') AS n`)).rows[0]?.n || 1);
+        const requestNumber = `PRR-${new Date().getFullYear()}-${String(seqNum).padStart(4, '0')}`;
+
+        await client.query(
+          `INSERT INTO purchase_return_requests (id, request_number, date, original_invoice_id, original_invoice_number, supplier_id, supplier_name, warehouse_id, warehouse_name, representative_id, representative_name, requested_by_user_id, requested_by_name, grand_total, refund_type, cashbox_id, reason, notes, status, idempotency_key, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'pending',$19,$20,$20)`,
+          [
+            reqId,
+            requestNumber,
+            reqDate,
+            orig.id,
+            orig.invoiceNumber,
+            orig.supplierId || 'general',
+            orig.supplierName || 'مورد نقدي',
+            orig.warehouseId,
+            orig.warehouseName,
+            repActor?.id || orig.representativeId || null,
+            repActor?.name || orig.representativeName || '',
+            actor.id,
+            actor.fullName,
+            grandTotal,
+            refundType,
+            refundType === 'cash' ? (payload?.cashboxId || null) : null,
+            cleanReason,
+            cleanNotes,
+            scopedIdem || null,
+            now,
+          ]
+        );
+
+        for (let i = 0; i < normalizedItems.length; i++) {
+          const it = normalizedItems[i];
+          await client.query(
+            `INSERT INTO purchase_return_request_items (id, request_id, product_id, product_name, unit, unit_factor, quantity, unit_price, total)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+            [`${reqId}-ITM-${i + 1}`, reqId, it.productId, it.productName, it.unit, it.unitFactor, it.quantity, it.unitPrice, it.total]
+          );
+        }
+
+        const created = {
+          id: reqId,
+          requestNumber,
+          date: reqDate,
+          originalInvoiceId: orig.id,
+          originalInvoiceNumber: orig.invoiceNumber,
+          supplierId: orig.supplierId || 'general',
+          supplierName: orig.supplierName || 'مورد نقدي',
+          warehouseId: orig.warehouseId,
+          warehouseName: orig.warehouseName,
+          representativeId: repActor?.id || orig.representativeId || undefined,
+          representativeName: repActor?.name || orig.representativeName || undefined,
+          requestedByUserId: actor.id,
+          requestedByName: actor.fullName,
+          items: normalizedItems,
+          grandTotal,
+          refundType,
+          cashboxId: refundType === 'cash' ? (payload?.cashboxId || undefined) : undefined,
+          reason: cleanReason,
+          notes: cleanNotes,
+          status: 'pending',
+          createdAt: now,
+          updatedAt: now,
+        };
+        await savePgIdempotency(client, scopedIdem, actor, endpoint, { request: created });
+        return { deduplicated: false, request: created };
+      })
+    : await withJsonTransaction((db) => {
+        const dup = findJsonIdempotency(scopedIdem);
+        if (dup?.request) return { deduplicated: true, request: dup.request };
+
+        const orig = db.invoices.find((i) => i.id === originalInvoiceId);
+        if (!orig) throw new AppError(404, 'فاتورة الشراء الأصلية غير موجودة', 'INVOICE_NOT_FOUND');
+        if (orig.type !== 'purchase') {
+          throw new AppError(400, 'المستند المحدد ليس فاتورة مشتريات', 'INVALID_ORIGINAL_INVOICE_TYPE');
+        }
+        if (orig.status !== 'confirmed') {
+          throw new AppError(409, 'لا يمكن تقديم طلب مرتجع إلا لفاتورة شراء معتمدة', 'INVALID_INVOICE_STATUS');
+        }
+        if (isRep && !isRepOwnerOfInvoice(orig, actor, repActor)) {
+          throw new AppError(403, 'غير مصرح للمندوب بتقديم طلب مرتجع لفاتورة شراء لا تخصه', 'FORBIDDEN_INVOICE_ACCESS');
+        }
+
+        if (!Array.isArray(db.purchaseReturnRequests)) db.purchaseReturnRequests = [];
+        const pendingByProd = new Map();
+        for (const r of db.purchaseReturnRequests) {
+          if (r.originalInvoiceId === orig.id && r.status === 'pending') {
+            for (const it of r.items || []) {
+              pendingByProd.set(it.productId, round3((pendingByProd.get(it.productId) || 0) + Number(it.quantity || 0)));
+            }
+          }
+        }
+
+        const returnedMap = orig.returnedQuantityByItem || {};
+        const requestedByProd = new Map();
+        const normalizedItems = [];
+        let grandTotal = 0;
+
+        for (const item of payload.items) {
+          const origItem = orig.items.find((it) => it.productId === item.productId);
+          if (!origItem) {
+            throw new AppError(400, `الصنف ${item.productName || item.productId} غير موجود بفاتورة الشراء الأصلية`, 'ITEM_NOT_IN_INVOICE');
+          }
+          const qty = round3(item.quantity);
+          if (qty <= 0) throw new AppError(400, 'كمية المرتجع المطلوبة يجب أن تكون أكبر من صفر', 'INVALID_QUANTITY');
+
+          const alreadyCommitted = round3(Number(returnedMap[item.productId] || 0));
+          const pendingQty = round3(Number(pendingByProd.get(item.productId) || 0));
+          const batchQty = round3((requestedByProd.get(item.productId) || 0) + qty);
+          if (alreadyCommitted + pendingQty + batchQty > origItem.quantity + 0.0001) {
+            const avail = round3(Math.max(0, origItem.quantity - alreadyCommitted - pendingQty));
+            throw new AppError(
+              400,
+              `الكمية المطلوبة للصنف (${origItem.productName}) تتجاوز المتاح للإرجاع (${avail}) بعد احتساب المرتجعات والطلبات المعلقة`,
+              'EXCEEDS_RETURNABLE'
+            );
+          }
+          requestedByProd.set(item.productId, batchQty);
+          const unitPrice = round2(item.unitPrice ?? origItem.unitPrice);
+          const lineTotal = round2(qty * unitPrice);
+          grandTotal = round2(grandTotal + lineTotal);
+          normalizedItems.push({
+            productId: item.productId,
+            productName: item.productName || origItem.productName,
+            unit: item.unit || origItem.unit,
+            unitFactor: Number(item.unitFactor || origItem.unitFactor || 1),
+            quantity: qty,
+            unitPrice,
+            total: lineTotal,
+          });
+        }
+
+        const seqNum = nextJsonSequence(db, 'purchaseReturnReqNo', db.purchaseReturnRequests, 'requestNumber', /(\d+)$/);
+        const requestNumber = `PRR-${new Date().getFullYear()}-${String(seqNum).padStart(4, '0')}`;
+        const created = {
+          id: reqId,
+          requestNumber,
+          date: reqDate,
+          originalInvoiceId: orig.id,
+          originalInvoiceNumber: orig.invoiceNumber,
+          supplierId: orig.supplierId || 'general',
+          supplierName: orig.supplierName || 'مورد نقدي',
+          warehouseId: orig.warehouseId,
+          warehouseName: orig.warehouseName,
+          representativeId: repActor?.id || orig.representativeId || undefined,
+          representativeName: repActor?.name || orig.representativeName || undefined,
+          requestedByUserId: actor.id,
+          requestedByName: actor.fullName,
+          items: normalizedItems,
+          grandTotal,
+          refundType,
+          cashboxId: refundType === 'cash' ? (payload?.cashboxId || undefined) : undefined,
+          reason: cleanReason,
+          notes: cleanNotes,
+          status: 'pending',
+          createdAt: now,
+          updatedAt: now,
+        };
+        db.purchaseReturnRequests.unshift(created);
+        saveJsonIdempotency(scopedIdem, { request: created });
+        return { deduplicated: false, request: created };
+      });
+
+  if (!out.deduplicated) {
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `تقديم طلب مرتجع مشتريات (${out.request.requestNumber}) للفاتورة ${out.request.originalInvoiceNumber}`,
+      module: 'المشتريات',
+      recordId: out.request.id,
+      notes: cleanReason,
+    });
+  }
+  return out.request;
+}
+
+export async function approvePurchaseReturnRequest(requestId, payload = {}, actor, idempotencyKey = '') {
+  if (!actor || actor.role === 'representative' || actor.role === 'customer') {
+    throw new AppError(403, 'اعتماد طلبات مرتجع المشتريات مخصص للإدارة ومسؤولي المشتريات فقط', 'FORBIDDEN_APPROVE_RETURN_REQUEST');
+  }
+  if (actor.role !== 'admin' && !actor.permissions?.canManagePurchases && !actor.permissions?.canApprove) {
+    throw new AppError(403, 'ليس لديك صلاحية اعتماد طلبات مرتجع المشتريات', 'FORBIDDEN_PERMISSION');
+  }
+  const now = nowIso();
+  const retDate = payload?.date || todayIso();
+  const approveNotes = String(payload?.notes || '').trim();
+  const endpoint = `POST /api/invoices/purchase-return-requests/${requestId}/approve`;
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
+
+  const out = (await isPgMode())
+    ? await withTransaction(async (client) => {
+        const dup = await findPgIdempotency(client, scopedIdem);
+        if (dup?.request) return { deduplicated: true, ...dup };
+
+        const reqRow = (await client.query(`SELECT * FROM purchase_return_requests WHERE id = $1 FOR UPDATE`, [requestId])).rows[0];
+        if (!reqRow) throw new AppError(404, 'طلب مرتجع المشتريات غير موجود', 'RETURN_REQUEST_NOT_FOUND');
+        if (reqRow.status !== 'pending') {
+          throw new AppError(409, `تمت معالجة هذا الطلب مسبقًا (${reqRow.status})`, 'REQUEST_ALREADY_PROCESSED');
+        }
+        const reqItemRows = (
+          await client.query(`SELECT * FROM purchase_return_request_items WHERE request_id = $1`, [requestId])
+        ).rows;
+        const reqObj = mapPgPurchaseReturnRequestRow(reqRow, reqItemRows);
+
+        const orig = await fetchFullInvoicePg(client, reqObj.originalInvoiceId);
+        if (!orig) throw new AppError(404, 'فاتورة الشراء الأصلية غير موجودة', 'INVOICE_NOT_FOUND');
+        if (orig.type !== 'purchase' || orig.status !== 'confirmed') {
+          throw new AppError(409, 'فاتورة الشراء الأصلية غير صالحة لترحيل المرتجع', 'INVALID_INVOICE_STATUS');
+        }
+
+        const returnedMap = { ...(orig.returnedQuantityByItem || {}) };
+        let grandTotal = 0;
+        const normalizedItems = [];
+        for (const it of reqObj.items) {
+          const origItem = orig.items.find((o) => o.productId === it.productId);
+          if (!origItem) throw new AppError(400, `الصنف ${it.productName} غير موجود بالفاتورة الأصلية`, 'ITEM_NOT_IN_INVOICE');
+          const prevRet = Number(returnedMap[it.productId] || 0);
+          if (prevRet + it.quantity > origItem.quantity + 0.0001) {
+            throw new AppError(
+              409,
+              `الكمية المطلوبة للصنف (${origItem.productName}) تتجاوز المتاح للإرجاع (${round3(origItem.quantity - prevRet)})`,
+              'EXCEEDS_RETURNABLE'
+            );
+          }
+          returnedMap[it.productId] = round3(prevRet + it.quantity);
+          const lineTotal = round2(it.quantity * it.unitPrice);
+          grandTotal = round2(grandTotal + lineTotal);
+          normalizedItems.push({ ...it, total: lineTotal });
+        }
+
+        const stRes = await client.query(`SELECT allow_negative_stock FROM system_settings LIMIT 1`);
+        const allowNeg = Boolean(stRes.rows[0]?.allow_negative_stock) && Boolean(actor?.permissions?.canAllowNegativeInventory);
+        const refundType = (payload?.refundType || reqObj.refundType) === 'cash' ? 'cash' : 'balance';
+        let cashboxId = refundType === 'cash' ? (payload?.cashboxId || reqObj.cashboxId || orig.cashboxId || null) : null;
+        if (refundType === 'cash' && !cashboxId) {
+          const defCb = (await client.query(`SELECT id FROM cashboxes ORDER BY is_default DESC LIMIT 1`)).rows[0];
+          cashboxId = defCb?.id || null;
+        }
+
+        const retId = generateServerId('RET');
+        const seqNum = Number((await client.query(`SELECT nextval('seq_purchase_return_no') AS n`)).rows[0]?.n || 1);
+        const returnNumber = `RET-PUR-${new Date().getFullYear()}-${String(seqNum).padStart(4, '0')}`;
+        const whId = reqObj.warehouseId || orig.warehouseId;
+        const whRow = (await client.query(`SELECT id, name FROM warehouses WHERE id = $1 LIMIT 1`, [whId])).rows[0];
+        const whName = whRow?.name || orig.warehouseName;
+
+        await client.query(
+          `INSERT INTO invoice_returns (id, return_number, type, original_invoice_id, original_invoice_number, date, party_id, party_name, warehouse_id, warehouse_name, grand_total, refund_type, cashbox_id, reason, notes, created_by, created_by_user_id, created_at)
+           VALUES ($1,$2,'purchase_return',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+          [
+            retId,
+            returnNumber,
+            orig.id,
+            orig.invoiceNumber,
+            retDate,
+            orig.supplierId || reqObj.supplierId || 'general',
+            orig.supplierName || reqObj.supplierName || '',
+            whId,
+            whName,
+            grandTotal,
+            refundType,
+            cashboxId,
+            reqObj.reason,
+            approveNotes ? `${reqObj.notes ? reqObj.notes + ' | ' : ''}اعتماد: ${approveNotes}` : (reqObj.notes || `معتمد من طلب ${reqObj.requestNumber}`),
+            actor.fullName,
+            actor.id || null,
+            now,
+          ]
+        );
+
+        for (let i = 0; i < normalizedItems.length; i++) {
+          const it = normalizedItems[i];
+          await client.query(
+            `INSERT INTO invoice_return_items (id, return_id, product_id, product_name, unit, unit_factor, quantity, unit_price, total)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+            [`${retId}-RITM-${i + 1}`, retId, it.productId, it.productName, it.unit, it.unitFactor, it.quantity, it.unitPrice, it.total]
+          );
+
+          const pRes = await client.query(`SELECT * FROM products WHERE id = $1 FOR UPDATE`, [it.productId]);
+          if (pRes.rows[0]) {
+            const stockMap = { ...(pRes.rows[0].stock_per_warehouse || {}) };
+            const curQty = Number(stockMap[whId] || 0);
+            const baseQty = round3(it.quantity * it.unitFactor);
+            const nextQty = round3(curQty - baseQty);
+            if (nextQty < 0 && !allowNeg) {
+              throw new AppError(
+                409,
+                `لا يمكن خصم مرتجع المشتريات من (${pRes.rows[0].name}): الرصيد المتاح (${curQty}) أقل من المطلوب (${baseQty})`,
+                'INSUFFICIENT_STOCK'
+              );
+            }
+            stockMap[whId] = nextQty;
+            await client.query(`UPDATE products SET stock_per_warehouse = $1, updated_at = $2 WHERE id = $3`, [JSON.stringify(stockMap), now, it.productId]);
+
+            const mvId = generateServerId('SM');
+            await client.query(
+              `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, created_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,'purchase_return',$8,$9,$10,$11,$12,$13,'purchase_return',$14,$15,$16,$17,$18,$19)`,
+              [
+                mvId,
+                mvId,
+                retDate,
+                it.productId,
+                it.productName,
+                whId,
+                whName,
+                baseQty,
+                it.unit,
+                it.unitFactor,
+                it.unitPrice,
+                curQty,
+                nextQty,
+                retId,
+                returnNumber,
+                `اعتماد طلب مرتجع مشتريات ${reqObj.requestNumber} (${returnNumber}) - السبب: ${reqObj.reason}`,
+                actor.fullName,
+                actor.id || null,
+                now,
+              ]
+            );
+          }
+        }
+
+        if (refundType === 'balance') {
+          if (orig.supplierId) {
+            const sRes = await client.query(`SELECT current_balance FROM suppliers WHERE id = $1 FOR UPDATE`, [orig.supplierId]);
+            if (sRes.rows[0]) {
+              await client.query(`UPDATE suppliers SET current_balance = $1 WHERE id = $2`, [
+                round2(Number(sRes.rows[0].current_balance || 0) - grandTotal),
+                orig.supplierId,
+              ]);
+            }
+          }
+        } else if (refundType === 'cash' && cashboxId) {
+          const cbRes = await client.query(`SELECT * FROM cashboxes WHERE id = $1 FOR UPDATE`, [cashboxId]);
+          if (!cbRes.rows[0]) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
+          const nextCb = round2(Number(cbRes.rows[0].current_balance || 0) + grandTotal);
+          await client.query(`UPDATE cashboxes SET current_balance = $1 WHERE id = $2`, [nextCb, cashboxId]);
+          const txId = generateServerId('FT');
+          await client.query(
+            `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, created_by, created_by_user_id, created_at)
+             VALUES ($1,$2,$3,'income',$4,$5,$6,$7,'استرداد قيمة مرتجع مشتريات نقدي',$8,$9,'purchase_return',$10,$11,$12,$13,$14,$15)`,
+            [
+              txId,
+              `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`,
+              retDate,
+              grandTotal,
+              cbRes.rows[0].id,
+              cbRes.rows[0].name,
+              nextCb,
+              orig.supplierId || null,
+              orig.supplierName || '',
+              retId,
+              returnNumber,
+              `تسوية نقدية لاعتماد طلب مرتجع مشتريات ${reqObj.requestNumber} (${returnNumber})`,
+              actor.fullName,
+              actor.id || null,
+              now,
+            ]
+          );
+        }
+
+        await client.query(`UPDATE invoices SET returned_quantity_by_item = $1, updated_at = $2 WHERE id = $3`, [
+          JSON.stringify(returnedMap),
+          now,
+          orig.id,
+        ]);
+
+        await client.query(
+          `UPDATE purchase_return_requests SET
+            status = 'approved',
+            refund_type = $1,
+            cashbox_id = $2,
+            reviewed_by_user_id = $3,
+            reviewed_by_name = $4,
+            reviewed_at = $5,
+            approved_return_id = $6,
+            approved_return_number = $7,
+            notes = CASE WHEN $8 <> '' THEN $8 ELSE notes END,
+            updated_at = $5
+           WHERE id = $9`,
+          [refundType, cashboxId, actor.id, actor.fullName, now, retId, returnNumber, approveNotes, requestId]
+        );
+
+        const updatedReqRow = (await client.query(`SELECT * FROM purchase_return_requests WHERE id = $1`, [requestId])).rows[0];
+        const updatedReq = mapPgPurchaseReturnRequestRow(updatedReqRow, reqItemRows);
+        const createdReturn = {
+          id: retId,
+          returnNumber,
+          type: 'purchase_return',
+          originalInvoiceId: orig.id,
+          originalInvoiceNumber: orig.invoiceNumber,
+          date: retDate,
+          partyId: orig.supplierId || reqObj.supplierId || 'general',
+          partyName: orig.supplierName || reqObj.supplierName || '',
+          warehouseId: whId,
+          warehouseName: whName,
+          items: normalizedItems,
+          grandTotal,
+          refundType,
+          cashboxId: cashboxId || undefined,
+          reason: reqObj.reason,
+          notes: approveNotes || reqObj.notes || '',
+          createdBy: actor.fullName,
+          createdByUserId: actor.id,
+          createdAt: now,
+        };
+        const resultPayload = { request: updatedReq, invoiceReturn: createdReturn };
+        await savePgIdempotency(client, scopedIdem, actor, endpoint, resultPayload);
+        return { deduplicated: false, ...resultPayload };
+      })
+    : await withJsonTransaction((db) => {
+        const dup = findJsonIdempotency(scopedIdem);
+        if (dup?.request) return { deduplicated: true, ...dup };
+
+        if (!Array.isArray(db.purchaseReturnRequests)) db.purchaseReturnRequests = [];
+        const reqObj = db.purchaseReturnRequests.find((r) => r.id === requestId);
+        if (!reqObj) throw new AppError(404, 'طلب مرتجع المشتريات غير موجود', 'RETURN_REQUEST_NOT_FOUND');
+        if (reqObj.status !== 'pending') {
+          throw new AppError(409, `تمت معالجة هذا الطلب مسبقًا (${reqObj.status})`, 'REQUEST_ALREADY_PROCESSED');
+        }
+
+        const orig = db.invoices.find((i) => i.id === reqObj.originalInvoiceId);
+        if (!orig) throw new AppError(404, 'فاتورة الشراء الأصلية غير موجودة', 'INVOICE_NOT_FOUND');
+        if (orig.type !== 'purchase' || orig.status !== 'confirmed') {
+          throw new AppError(409, 'فاتورة الشراء الأصلية غير صالحة لترحيل المرتجع', 'INVALID_INVOICE_STATUS');
+        }
+
+        const returnedMap = { ...(orig.returnedQuantityByItem || {}) };
+        let grandTotal = 0;
+        const normalizedItems = [];
+        for (const it of reqObj.items) {
+          const origItem = orig.items.find((o) => o.productId === it.productId);
+          if (!origItem) throw new AppError(400, `الصنف ${it.productName} غير موجود بالفاتورة الأصلية`, 'ITEM_NOT_IN_INVOICE');
+          const prevRet = Number(returnedMap[it.productId] || 0);
+          if (prevRet + it.quantity > origItem.quantity + 0.0001) {
+            throw new AppError(
+              409,
+              `الكمية المطلوبة للصنف (${origItem.productName}) تتجاوز المتاح للإرجاع (${round3(origItem.quantity - prevRet)})`,
+              'EXCEEDS_RETURNABLE'
+            );
+          }
+          returnedMap[it.productId] = round3(prevRet + it.quantity);
+          const lineTotal = round2(it.quantity * it.unitPrice);
+          grandTotal = round2(grandTotal + lineTotal);
+          normalizedItems.push({ ...it, total: lineTotal });
+        }
+
+        const allowNeg = Boolean(db.settings?.allowNegativeStock) && Boolean(actor?.permissions?.canAllowNegativeInventory);
+        const refundType = (payload?.refundType || reqObj.refundType) === 'cash' ? 'cash' : 'balance';
+        const cb =
+          refundType === 'cash'
+            ? (payload?.cashboxId || reqObj.cashboxId || orig.cashboxId
+                ? db.cashboxes.find((c) => c.id === (payload?.cashboxId || reqObj.cashboxId || orig.cashboxId))
+                : null) || db.cashboxes.find((c) => c.isDefault) || db.cashboxes[0]
+            : null;
+        if (refundType === 'cash' && !cb) {
+          throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
+        }
+
+        const whId = reqObj.warehouseId || orig.warehouseId;
+        const whName = db.warehouses.find((w) => w.id === whId)?.name || orig.warehouseName;
+        const retId = generateServerId('RET');
+        const seqNum = nextJsonSequence(db, 'purchaseReturnNo', db.invoiceReturns.filter((r) => r.type === 'purchase_return'), 'returnNumber', /(\d+)$/);
+        const returnNumber = `RET-PUR-${new Date().getFullYear()}-${String(seqNum).padStart(4, '0')}`;
+
+        for (const it of normalizedItems) {
+          const prod = db.products.find((p) => p.id === it.productId);
+          if (prod) {
+            const curQty = Number(prod.stockPerWarehouse?.[whId] || 0);
+            const baseQty = round3(it.quantity * it.unitFactor);
+            const nextQty = round3(curQty - baseQty);
+            if (nextQty < 0 && !allowNeg) {
+              throw new AppError(
+                409,
+                `لا يمكن خصم مرتجع المشتريات من (${prod.name}): الرصيد المتاح (${curQty}) أقل من المطلوب (${baseQty})`,
+                'INSUFFICIENT_STOCK'
+              );
+            }
+            prod.stockPerWarehouse = { ...(prod.stockPerWarehouse || {}), [whId]: nextQty };
+            const mvId = generateServerId('SM');
+            db.stockMovements.unshift({
+              id: mvId,
+              movementNumber: mvId,
+              date: retDate,
+              type: 'purchase_return',
+              productId: prod.id,
+              productName: prod.name,
+              warehouseId: whId,
+              warehouseName: whName,
+              quantity: baseQty,
+              unit: it.unit || prod.baseUnit,
+              unitFactor: Number(it.unitFactor || 1),
+              unitCost: it.unitPrice,
+              balanceBefore: curQty,
+              balanceAfter: nextQty,
+              relatedDocType: 'purchase_return',
+              referenceId: retId,
+              referenceNumber: returnNumber,
+              notes: `اعتماد طلب مرتجع مشتريات ${reqObj.requestNumber} (${returnNumber}) - السبب: ${reqObj.reason}`,
+              createdBy: actor.fullName,
+              createdByUserId: actor.id,
+              createdAt: now,
+            });
+          }
+        }
+
+        if (refundType === 'balance') {
+          if (orig.supplierId) {
+            const supp = db.suppliers.find((s) => s.id === orig.supplierId);
+            if (supp) supp.currentBalance = round2(Number(supp.currentBalance || 0) - grandTotal);
+          }
+        } else if (refundType === 'cash' && cb) {
+          cb.currentBalance = round2(Number(cb.currentBalance || 0) + grandTotal);
+          db.financialTransactions.unshift({
+            id: generateServerId('FT'),
+            transactionNumber: `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`,
+            date: retDate,
+            type: 'income',
+            cashboxId: cb.id,
+            cashboxName: cb.name,
+            amount: grandTotal,
+            category: 'استرداد قيمة مرتجع مشتريات نقدي',
+            relatedDocType: 'purchase_return',
+            relatedDocId: retId,
+            relatedDocNumber: returnNumber,
+            partyId: orig.supplierId,
+            partyName: orig.supplierName,
+            description: `تسوية نقدية لاعتماد طلب مرتجع مشتريات ${reqObj.requestNumber} (${returnNumber})`,
+            createdBy: actor.fullName,
+            createdByUserId: actor.id,
+            createdAt: now,
+          });
+        }
+
+        orig.returnedQuantityByItem = returnedMap;
+        const createdReturn = {
+          id: retId,
+          returnNumber,
+          type: 'purchase_return',
+          originalInvoiceId: orig.id,
+          originalInvoiceNumber: orig.invoiceNumber,
+          date: retDate,
+          partyId: orig.supplierId || reqObj.supplierId || 'general',
+          partyName: orig.supplierName || reqObj.supplierName || '',
+          warehouseId: whId,
+          warehouseName: whName,
+          items: normalizedItems,
+          grandTotal,
+          refundType,
+          cashboxId: cb?.id || undefined,
+          reason: reqObj.reason,
+          notes: approveNotes || reqObj.notes || '',
+          createdBy: actor.fullName,
+          createdByUserId: actor.id,
+          createdAt: now,
+        };
+        db.invoiceReturns.unshift(createdReturn);
+
+        reqObj.status = 'approved';
+        reqObj.refundType = refundType;
+        reqObj.cashboxId = cb?.id || undefined;
+        reqObj.reviewedByUserId = actor.id;
+        reqObj.reviewedByName = actor.fullName;
+        reqObj.reviewedAt = now;
+        reqObj.approvedReturnId = retId;
+        reqObj.approvedReturnNumber = returnNumber;
+        if (approveNotes) reqObj.notes = approveNotes;
+        reqObj.updatedAt = now;
+
+        const resultPayload = { request: reqObj, invoiceReturn: createdReturn };
+        saveJsonIdempotency(scopedIdem, resultPayload);
+        return { deduplicated: false, ...resultPayload };
+      });
+
+  if (!out.deduplicated) {
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `اعتماد طلب مرتجع مشتريات (${out.request.requestNumber}) وإنشاء المرتجع (${out.invoiceReturn.returnNumber})`,
+      module: 'المشتريات',
+      recordId: out.request.id,
+      notes: approveNotes || out.request.reason,
+    });
+  }
+  return out;
+}
+
+export async function rejectPurchaseReturnRequest(requestId, payload = {}, actor) {
+  if (!actor || actor.role === 'representative' || actor.role === 'customer') {
+    throw new AppError(403, 'رفض طلبات مرتجع المشتريات مخصص للإدارة ومسؤولي المشتريات فقط', 'FORBIDDEN_REJECT_RETURN_REQUEST');
+  }
+  if (actor.role !== 'admin' && !actor.permissions?.canManagePurchases && !actor.permissions?.canApprove) {
+    throw new AppError(403, 'ليس لديك صلاحية رفض طلبات مرتجع المشتريات', 'FORBIDDEN_PERMISSION');
+  }
+  const cleanReason = String(payload?.reason || payload?.rejectionReason || '').trim();
+  if (!cleanReason) {
+    throw new AppError(400, 'يرجى كتابة سبب رفض طلب مرتجع المشتريات', 'REJECTION_REASON_REQUIRED');
+  }
+  const now = nowIso();
+
+  const updated = (await isPgMode())
+    ? await withTransaction(async (client) => {
+        const reqRow = (await client.query(`SELECT * FROM purchase_return_requests WHERE id = $1 FOR UPDATE`, [requestId])).rows[0];
+        if (!reqRow) throw new AppError(404, 'طلب مرتجع المشتريات غير موجود', 'RETURN_REQUEST_NOT_FOUND');
+        if (reqRow.status !== 'pending') {
+          throw new AppError(409, `تمت معالجة هذا الطلب مسبقًا (${reqRow.status})`, 'REQUEST_ALREADY_PROCESSED');
+        }
+        await client.query(
+          `UPDATE purchase_return_requests SET
+            status = 'rejected',
+            rejection_reason = $1,
+            reviewed_by_user_id = $2,
+            reviewed_by_name = $3,
+            reviewed_at = $4,
+            updated_at = $4
+           WHERE id = $5`,
+          [cleanReason, actor.id, actor.fullName, now, requestId]
+        );
+        const updatedRow = (await client.query(`SELECT * FROM purchase_return_requests WHERE id = $1`, [requestId])).rows[0];
+        const itemsRows = (await client.query(`SELECT * FROM purchase_return_request_items WHERE request_id = $1`, [requestId])).rows;
+        return mapPgPurchaseReturnRequestRow(updatedRow, itemsRows);
+      })
+    : await withJsonTransaction((db) => {
+        const reqObj = (db.purchaseReturnRequests || []).find((r) => r.id === requestId);
+        if (!reqObj) throw new AppError(404, 'طلب مرتجع المشتريات غير موجود', 'RETURN_REQUEST_NOT_FOUND');
+        if (reqObj.status !== 'pending') {
+          throw new AppError(409, `تمت معالجة هذا الطلب مسبقًا (${reqObj.status})`, 'REQUEST_ALREADY_PROCESSED');
+        }
+        reqObj.status = 'rejected';
+        reqObj.rejectionReason = cleanReason;
+        reqObj.reviewedByUserId = actor.id;
+        reqObj.reviewedByName = actor.fullName;
+        reqObj.reviewedAt = now;
+        reqObj.updatedAt = now;
+        return reqObj;
+      });
+
+  await recordAuditLog({
+    userId: actor.id,
+    userName: actor.fullName,
+    action: `رفض طلب مرتجع مشتريات (${updated.requestNumber}) — السبب: ${cleanReason}`,
+    module: 'المشتريات',
+    recordId: updated.id,
+    notes: cleanReason,
+  });
+  return { request: updated };
 }
 
 export async function listInvoices(actor = null, filters = {}) {
@@ -4438,15 +5342,12 @@ export async function listInvoices(actor = null, filters = {}) {
     const rep = await getRepresentativeByUserId(actor.id);
     const canPurchase = Boolean(actor.permissions?.canCreatePurchase || actor.permissions?.canManagePurchases);
     const visible = allInvoices.filter((inv) => {
-      if (inv.type === 'sales' || inv.type === 'quote') return true;
+      if (inv.type === 'sales' || inv.type === 'quote') {
+        return isRepOwnerOfInvoice(inv, actor, rep);
+      }
       if (inv.type === 'purchase') {
         if (!canPurchase) return false;
-        return (
-          (rep && inv.representativeId === rep.id) ||
-          inv.sentByUserId === actor.id ||
-          inv.createdBy === actor.fullName ||
-          inv.createdBy === actor.id
-        );
+        return isRepOwnerOfInvoice(inv, actor, rep);
       }
       return false;
     });

@@ -70,6 +70,8 @@ import {
   SyncQueueItem,
   SyncConflictRecord,
   RoleDefaultPermissionPresets,
+  PurchaseReturnRequest,
+  PurchaseReturnRequestItem,
 } from '../types';
 import { useAuth } from './AuthContext';
 
@@ -100,7 +102,7 @@ export interface DataContextType extends DatabaseState {
   refreshCustomerStatement: () => Promise<void>;
   getCustomerStatement: (customerId: string) => Promise<CustomerStatementResponse | null>;
   getSupplierStatement: (supplierId: string) => Promise<SupplierStatementResponse | null>;
-  getCustomerPriceHistory: (customerId: string) => Promise<Record<string, CustomerPriceHistoryEntry[]>>;
+  getCustomerPriceHistory: (customerId: string, productId?: string) => Promise<Record<string, CustomerPriceHistoryEntry[]>>;
   triggerSync: (forceAll?: boolean) => Promise<void>;
   triggerManualSync: () => Promise<void>;
   lastSendSummary: SyncRefreshSummary | null;
@@ -171,8 +173,26 @@ export interface DataContextType extends DatabaseState {
   editSalesInvoice: (invoiceId: string, updates: { date?: string; items?: Invoice['items']; discountTotal?: number; notes?: string; reason?: string }) => Promise<{ success: boolean; queuedOffline?: boolean; error?: string }>;
   editPurchaseInvoice: (invoiceId: string, updates: { date?: string; supplierId?: string; supplierName?: string; warehouseId?: string; warehouseName?: string; items?: Invoice['items']; discountTotal?: number; paidAmount?: number; paymentType?: Invoice['paymentType']; notes?: string; reason?: string }) => Promise<{ success: boolean; queuedOffline?: boolean; error?: string; invoice?: Invoice }>;
 
-  // Returns
+  // Returns & Rep Purchase Return Requests
   createReturn: (returnData: Omit<InvoiceReturn, 'id' | 'returnNumber' | 'createdAt' | 'createdBy'>) => Promise<{ success: boolean; queuedOffline?: boolean; error?: string }>;
+  purchaseReturnRequests: PurchaseReturnRequest[];
+  createPurchaseReturnRequest: (payload: {
+    originalInvoiceId: string;
+    items: Array<Pick<PurchaseReturnRequestItem, 'productId' | 'productName' | 'unit' | 'unitFactor' | 'quantity' | 'unitPrice'>>;
+    refundType?: 'balance' | 'cash';
+    cashboxId?: string;
+    reason: string;
+    notes?: string;
+    date?: string;
+  }) => Promise<{ success: boolean; request?: PurchaseReturnRequest; queuedOffline?: boolean; error?: string }>;
+  approvePurchaseReturnRequest: (
+    requestId: string,
+    payload?: { refundType?: 'balance' | 'cash'; cashboxId?: string; date?: string; notes?: string }
+  ) => Promise<{ success: boolean; request?: PurchaseReturnRequest; invoiceReturn?: InvoiceReturn; error?: string }>;
+  rejectPurchaseReturnRequest: (
+    requestId: string,
+    reason: string
+  ) => Promise<{ success: boolean; request?: PurchaseReturnRequest; error?: string }>;
 
   // Financial & Cashboxes
   addCashbox: (cashbox: Omit<Cashbox, 'id' | 'currentBalance'>) => Promise<void>;
@@ -360,6 +380,7 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
   const orders = (base.customerItemOrders || []).map((o) => ({ ...o }));
   const advancePayments = (base.orderAdvancePayments || []).map((a) => ({ ...a }));
   const returns = (base.invoiceReturns || []).map((r) => ({ ...r }));
+  const purchaseReturnRequests = (base.purchaseReturnRequests || []).map((r) => ({ ...r }));
   const financialTransactions = [...(base.financialTransactions || [])];
   const expenseIncomes = [...(base.expenseIncomes || [])];
   const repItemTransfers = (base.repItemTransfers || []).map((t) => ({ ...t }));
@@ -888,6 +909,43 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
           }
         }
       }
+    } else if (op.operationType === 'create_purchase_return_request') {
+      const targetId = op.localId || op.entityId || op.operationId;
+      if (!purchaseReturnRequests.some((r) => r.id === targetId)) {
+        const origInv = invoices.find((i) => i.id === p.originalInvoiceId);
+        const items = (Array.isArray(p.items) ? p.items : []).map((it: any) => ({
+          productId: it.productId,
+          productName: it.productName || '',
+          unit: it.unit || '',
+          unitFactor: Number(it.unitFactor || 1),
+          quantity: Number(it.quantity || 0),
+          unitPrice: Number(it.unitPrice || 0),
+          total: Number(it.total ?? Number(it.quantity || 0) * Number(it.unitPrice || 0)),
+        }));
+        const grandTotal = items.reduce((s: number, it: any) => s + Number(it.total || 0), 0);
+        purchaseReturnRequests.unshift({
+          id: targetId,
+          requestNumber: `LOC-PRR-${op.operationId.slice(-5)}`,
+          date: p.date || op.createdAt.slice(0, 10),
+          originalInvoiceId: p.originalInvoiceId || '',
+          originalInvoiceNumber: origInv?.invoiceNumber || p.originalInvoiceNumber || '',
+          supplierId: origInv?.supplierId || p.supplierId || '',
+          supplierName: origInv?.supplierName || p.supplierName || 'مورد',
+          warehouseId: origInv?.warehouseId || p.warehouseId || '',
+          warehouseName: origInv?.warehouseName || p.warehouseName || '',
+          requestedByUserId: op.userId,
+          requestedByName: p.requestedByName || 'مندوب',
+          items,
+          grandTotal,
+          refundType: p.refundType === 'cash' ? 'cash' : 'balance',
+          cashboxId: p.refundType === 'cash' ? p.cashboxId : undefined,
+          reason: p.reason || '',
+          notes: p.notes || '',
+          status: 'pending',
+          syncStatus: op.status,
+          createdAt: op.createdAt,
+        });
+      }
     } else if (op.operationType === 'execute_cash_operation') {
       const targetId = op.localId || op.operationId;
       if (!financialTransactions.some((t) => t.id === targetId)) {
@@ -1142,6 +1200,7 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
     customerItemOrders: orders,
     orderAdvancePayments: advancePayments,
     invoiceReturns: returns,
+    purchaseReturnRequests,
     financialTransactions,
     expenseIncomes,
     repItemTransfers,
@@ -1311,6 +1370,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ...pullData,
           repCustodyOperations: pullData.repCustodyOperations || [],
           purchaseReceivers: pullData.purchaseReceivers || [],
+          purchaseReturnRequests: pullData.purchaseReturnRequests || [],
           serverSettings: hydratedServerSettings,
         };
       }
@@ -2111,11 +2171,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   const getCustomerPriceHistory = useCallback(
-    async (customerId: string): Promise<Record<string, CustomerPriceHistoryEntry[]>> => {
+    async (customerId: string, productId?: string): Promise<Record<string, CustomerPriceHistoryEntry[]>> => {
       if (!customerId) return {};
       try {
+        const qs = productId ? `?productId=${encodeURIComponent(productId)}` : '';
         const res = await apiRequest<{ ok: boolean; priceHistory: Record<string, CustomerPriceHistoryEntry[]> }>(
-          `/api/customers/${customerId}/price-history`
+          `/api/customers/${customerId}/price-history${qs}`
         );
         return res.priceHistory || {};
       } catch {
@@ -2123,6 +2184,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!cust?.priceHistory) return {};
         const fallback: Record<string, CustomerPriceHistoryEntry[]> = {};
         for (const [pid, arr] of Object.entries(cust.priceHistory)) {
+          if (productId && pid !== productId) continue;
           fallback[pid] = (Array.isArray(arr) ? arr : []).map((entry) =>
             typeof entry === 'number' ? { price: entry, date: '' } : entry
           );
@@ -3087,6 +3149,77 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: true, queuedOffline: true };
       }
       return { success: false, error: err?.message || 'تعذر إنشاء المرتجع' };
+    }
+  };
+
+  const createPurchaseReturnRequest: DataContextType['createPurchaseReturnRequest'] = async (payload) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; request: PurchaseReturnRequest }>(
+        '/api/invoices/purchase-return-requests',
+        {
+          method: 'POST',
+          body: payload,
+          idempotencyKey: generateId('IDEMP'),
+        }
+      );
+      await loadRoleScopedData();
+      return { success: true, request: res.request };
+    } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const localId = generateId('PRR-LOC');
+        const origInv = (data.invoices || []).find((i) => i.id === payload.originalInvoiceId);
+        await queueOfflineOp({
+          operationType: 'create_purchase_return_request',
+          entityType: 'purchase_return_request',
+          localId,
+          summaryAr: `طلب مرتجع مشتريات (${origInv?.invoiceNumber || payload.originalInvoiceId})`,
+          payload: {
+            ...payload,
+            localId,
+            originalInvoiceNumber: origInv?.invoiceNumber || '',
+            supplierId: origInv?.supplierId || '',
+            supplierName: origInv?.supplierName || '',
+            warehouseId: origInv?.warehouseId || '',
+            warehouseName: origInv?.warehouseName || '',
+            requestedByName: currentUser.fullName || '',
+          },
+        });
+        return { success: true, queuedOffline: true };
+      }
+      return { success: false, error: err?.message || 'تعذر تقديم طلب مرتجع المشتريات' };
+    }
+  };
+
+  const approvePurchaseReturnRequest: DataContextType['approvePurchaseReturnRequest'] = async (requestId, payload = {}) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; request: PurchaseReturnRequest; invoiceReturn: InvoiceReturn }>(
+        `/api/invoices/purchase-return-requests/${requestId}/approve`,
+        {
+          method: 'POST',
+          body: payload,
+          idempotencyKey: generateId('IDEMP'),
+        }
+      );
+      await loadRoleScopedData();
+      return { success: true, request: res.request, invoiceReturn: res.invoiceReturn };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر اعتماد طلب مرتجع المشتريات' };
+    }
+  };
+
+  const rejectPurchaseReturnRequest: DataContextType['rejectPurchaseReturnRequest'] = async (requestId, reason) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; request: PurchaseReturnRequest }>(
+        `/api/invoices/purchase-return-requests/${requestId}/reject`,
+        {
+          method: 'POST',
+          body: { reason },
+        }
+      );
+      await loadRoleScopedData();
+      return { success: true, request: res.request };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر رفض طلب مرتجع المشتريات' };
     }
   };
 
@@ -4358,6 +4491,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         editSalesInvoice,
         editPurchaseInvoice,
         createReturn,
+        purchaseReturnRequests: data.purchaseReturnRequests || [],
+        createPurchaseReturnRequest,
+        approvePurchaseReturnRequest,
+        rejectPurchaseReturnRequest,
         addCashbox,
         updateCashbox,
         transferBetweenCashboxes,

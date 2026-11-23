@@ -386,8 +386,8 @@ export async function approveStockCount(id, { reconcileMode = null, notes = '' }
             prod.id,
           ]);
           await client.query(
-            `INSERT INTO stock_movements (id, date, movement_type, product_id, product_name, warehouse_id, warehouse_name, quantity, unit_cost, related_doc_id, related_doc_number, notes, created_by, created_at)
-             VALUES ($1,$2,'adjustment',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+            `INSERT INTO stock_movements (id, date, movement_type, product_id, product_name, warehouse_id, warehouse_name, quantity, unit_cost, related_doc_id, related_doc_number, notes, created_by_user_id, created_by, created_at)
+             VALUES ($1,$2,'adjustment',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
             [
               generateServerId('SM'),
               dateStr,
@@ -400,6 +400,7 @@ export async function approveStockCount(id, { reconcileMode = null, notes = '' }
               cur.id,
               cur.count_number,
               `تسوية جرد مخزن (${cur.count_number}): الرصيد ${liveQty} ← ${targetQty} ${it.reason ? `| ${it.reason}` : ''}`,
+              actor.id,
               actor.fullName,
               now,
             ]
@@ -493,6 +494,7 @@ export async function approveStockCount(id, { reconcileMode = null, notes = '' }
           referenceId: cur.id,
           referenceNumber: cur.countNumber,
           notes: `تسوية جرد مخزن (${cur.countNumber}): الرصيد ${liveQty} ← ${targetQty} ${it.reason ? `| ${it.reason}` : ''}`,
+          createdByUserId: actor.id,
           createdBy: actor.fullName,
           createdAt: now,
         });

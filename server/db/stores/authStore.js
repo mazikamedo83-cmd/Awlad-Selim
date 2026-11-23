@@ -33,11 +33,21 @@ import {
   CUSTOMER_DEFAULT_PERMISSIONS,
   REP_DEFAULT_PERMISSIONS,
   resolveDefaultPermissionsForRole,
+  sanitizeEffectivePermissionsForRole,
   normalizeCustomerPhonesList,
   mapPgUserRow,
   mapPgCustomerRow,
   isoTimestamp,
 } from './mode.js';
+
+function sanitizeUserForRole(user) {
+  const safe = sanitizeUser(user);
+  if (!safe) return null;
+  return {
+    ...safe,
+    permissions: sanitizeEffectivePermissionsForRole(safe.role, safe.permissions || {}),
+  };
+}
 import {
   buildScopedIdemKey,
   findPgIdempotency,
@@ -395,7 +405,7 @@ export async function bootstrapAdmin(
         deviceInfo: meta.deviceInfo,
       });
 
-      return sanitizeUser(created);
+      return sanitizeUserForRole(created);
     }
 
     const created = await withJsonTransaction(async (db) => {
@@ -436,7 +446,7 @@ export async function bootstrapAdmin(
       deviceInfo: meta.deviceInfo,
     });
 
-    return sanitizeUser(created);
+    return sanitizeUserForRole(created);
   });
 }
 
@@ -704,7 +714,7 @@ export async function loginUser({
       accessToken,
       refreshToken,
       expiresIn: ACCESS_TOKEN_TTL_SEC,
-      user: sanitizeUser(result.user),
+      user: sanitizeUserForRole(result.user),
       customerProfile: result.customerProfile,
       representativeProfile: result.representativeProfile,
       linkWarning: result.linkWarning,
@@ -812,7 +822,7 @@ export async function loginUser({
     accessToken,
     refreshToken,
     expiresIn: ACCESS_TOKEN_TTL_SEC,
-    user: sanitizeUser(found.user),
+    user: sanitizeUserForRole(found.user),
     customerProfile: found.customerProfile,
     representativeProfile: found.representativeProfile,
     linkWarning: found.linkWarning,
@@ -1247,7 +1257,7 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
           accessToken,
           refreshToken,
           expiresIn: ACCESS_TOKEN_TTL_SEC,
-          user: sanitizeUser(mappedUser),
+          user: sanitizeUserForRole(mappedUser),
           customerProfile,
           representativeProfile,
           linkWarning: null,
@@ -1547,7 +1557,7 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
       accessToken,
       refreshToken,
       expiresIn: ACCESS_TOKEN_TTL_SEC,
-      user: sanitizeUser(newUser),
+      user: sanitizeUserForRole(newUser),
       customerProfile,
       representativeProfile,
       linkWarning: null,
@@ -1657,7 +1667,7 @@ export async function refreshUserSession({ refreshToken, deviceId = '', deviceIn
       accessToken,
       refreshToken: newRefresh,
       expiresIn: ACCESS_TOKEN_TTL_SEC,
-      user: sanitizeUser(result.user),
+      user: sanitizeUserForRole(result.user),
       customerProfile: result.customerProfile,
       representativeProfile: result.representativeProfile,
       linkWarning: result.linkWarning,
@@ -1713,7 +1723,7 @@ export async function refreshUserSession({ refreshToken, deviceId = '', deviceIn
     accessToken,
     refreshToken: newRefresh,
     expiresIn: ACCESS_TOKEN_TTL_SEC,
-    user: sanitizeUser(sesFound.user),
+    user: sanitizeUserForRole(sesFound.user),
     customerProfile: sesFound.customerProfile,
     representativeProfile: sesFound.representativeProfile,
     linkWarning: sesFound.linkWarning,
@@ -1770,7 +1780,7 @@ export async function validateActiveSession(sessionId, userId, tokenInstallation
     const profiles = await resolveLinkedProfilesPg(pool, user);
     return {
       installationId,
-      user: sanitizeUser(user),
+      user: sanitizeUserForRole(user),
       rawUser: user,
       deviceId: row.session_device_id || '',
       customerProfile: profiles.customerProfile,
@@ -1795,7 +1805,7 @@ export async function validateActiveSession(sessionId, userId, tokenInstallation
   const profiles = resolveLinkedProfilesJson(db, user);
   return {
     installationId,
-    user: sanitizeUser(user),
+    user: sanitizeUserForRole(user),
     rawUser: user,
     deviceId: ses.deviceId || '',
     customerProfile: profiles.customerProfile,
@@ -1938,7 +1948,7 @@ export async function updateOwnShortcuts(userId, rawShortcuts, meta = {}) {
         userId,
       ]);
       const next = await client.query('SELECT * FROM users WHERE id = $1 LIMIT 1', [userId]);
-      return sanitizeUser(mapPgUserRow(next.rows[0]));
+      return sanitizeUserForRole(mapPgUserRow(next.rows[0]));
     });
     await recordAuditLog({
       userId: user.id,
@@ -1956,7 +1966,7 @@ export async function updateOwnShortcuts(userId, rawShortcuts, meta = {}) {
     const u = db.users.find((x) => x.id === userId);
     if (!u) throw new AppError(404, 'المستخدم غير موجود', 'USER_NOT_FOUND');
     u.shortcuts = shortcuts;
-    return sanitizeUser(u);
+    return sanitizeUserForRole(u);
   });
   await recordAuditLog({
     userId: user.id,

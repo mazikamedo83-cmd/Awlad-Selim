@@ -390,8 +390,8 @@ export async function executeStockTransferRequest(id, actor) {
         const mvOutId = generateServerId('SM');
         const mvInId = generateServerId('SM');
         await client.query(
-          `INSERT INTO stock_movements (id, movement_number, date, movement_type, product_id, product_name, warehouse_id, warehouse_name, target_warehouse_id, target_warehouse_name, quantity, unit, unit_factor, unit_cost, balance_after, related_doc_id, related_doc_number, notes, created_by, created_at)
-           VALUES ($1,$2,$3,'transfer_out',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+          `INSERT INTO stock_movements (id, movement_number, date, movement_type, product_id, product_name, warehouse_id, warehouse_name, target_warehouse_id, target_warehouse_name, quantity, unit, unit_factor, unit_cost, balance_after, related_doc_id, related_doc_number, notes, created_by_user_id, created_by, created_at)
+           VALUES ($1,$2,$3,'transfer_out',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
           [
             mvOutId, mvOutId, dateStr, prod.id, prod.name,
             row.source_warehouse_id, row.source_warehouse_name,
@@ -399,12 +399,12 @@ export async function executeStockTransferRequest(id, actor) {
             baseQty, it.unit || prod.base_unit || 'قطعة', Number(it.unit_factor || 1),
             Number(prod.purchase_price || 0), nextSourceQty, row.id, row.transfer_number,
             `صرف تحويل مخزني (${row.transfer_number}) إلى ${row.target_warehouse_name}`,
-            actor.fullName, now,
+            actor.id, actor.fullName, now,
           ]
         );
         await client.query(
-          `INSERT INTO stock_movements (id, movement_number, date, movement_type, product_id, product_name, warehouse_id, warehouse_name, target_warehouse_id, target_warehouse_name, quantity, unit, unit_factor, unit_cost, balance_after, related_doc_id, related_doc_number, notes, created_by, created_at)
-           VALUES ($1,$2,$3,'transfer_in',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+          `INSERT INTO stock_movements (id, movement_number, date, movement_type, product_id, product_name, warehouse_id, warehouse_name, target_warehouse_id, target_warehouse_name, quantity, unit, unit_factor, unit_cost, balance_after, related_doc_id, related_doc_number, notes, created_by_user_id, created_by, created_at)
+           VALUES ($1,$2,$3,'transfer_in',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
           [
             mvInId, mvInId, dateStr, prod.id, prod.name,
             row.target_warehouse_id, row.target_warehouse_name,
@@ -412,7 +412,7 @@ export async function executeStockTransferRequest(id, actor) {
             baseQty, it.unit || prod.base_unit || 'قطعة', Number(it.unit_factor || 1),
             Number(prod.purchase_price || 0), nextTargetQty, row.id, row.transfer_number,
             `استلام تحويل مخزني (${row.transfer_number}) من ${row.source_warehouse_name}`,
-            actor.fullName, now,
+            actor.id, actor.fullName, now,
           ]
         );
       }
@@ -493,6 +493,7 @@ export async function executeStockTransferRequest(id, actor) {
           referenceId: cur.id,
           referenceNumber: cur.transferNumber,
           notes: `صرف تحويل مخزني (${cur.transferNumber}) إلى ${cur.targetWarehouseName}`,
+          createdByUserId: actor.id,
           createdBy: actor.fullName,
           createdAt: now,
         },
@@ -514,6 +515,7 @@ export async function executeStockTransferRequest(id, actor) {
           referenceId: cur.id,
           referenceNumber: cur.transferNumber,
           notes: `استلام تحويل مخزني (${cur.transferNumber}) من ${cur.sourceWarehouseName}`,
+          createdByUserId: actor.id,
           createdBy: actor.fullName,
           createdAt: now,
         }

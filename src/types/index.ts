@@ -159,6 +159,7 @@ export interface Product {
   units: ProductUnit[]; // وحدات القياس الإضافية
   size?: string;        // المقاس عند الحاجة
   color?: string;       // اللون عند الحاجة
+  class1?: string;      // التصنيف 1 عند الحاجة
   purchasePrice: number;
   sellingPrice: number;
   minStockLevel: number;
@@ -390,6 +391,7 @@ export interface Invoice {
   version?: number;
   updatedAt?: string;
   createdBy: string;
+  createdByUserId?: string;
   createdByName?: string;
   createdAt: string;
   returnedQuantityByItem?: Record<string, number>;
@@ -425,7 +427,50 @@ export interface InvoiceReturn {
   syncStatus?: SyncQueueStatus | 'synced';
   originDeviceId?: string;
   createdBy: string;
+  createdByUserId?: string;
   createdAt: string;
+}
+
+export interface PurchaseReturnRequestItem {
+  productId: string;
+  productName: string;
+  unit: string;
+  unitFactor?: number;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+}
+
+export interface PurchaseReturnRequest {
+  id: string;
+  requestNumber: string;
+  date: string;
+  originalInvoiceId: string;
+  originalInvoiceNumber: string;
+  supplierId: string;
+  supplierName: string;
+  warehouseId: string;
+  warehouseName: string;
+  representativeId?: string;
+  representativeName?: string;
+  requestedByUserId: string;
+  requestedByName: string;
+  items: PurchaseReturnRequestItem[];
+  grandTotal: number;
+  refundType: 'balance' | 'cash';
+  cashboxId?: string;
+  reason: string;
+  notes?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewedByUserId?: string;
+  reviewedByName?: string;
+  reviewedAt?: string;
+  rejectionReason?: string;
+  approvedReturnId?: string;
+  approvedReturnNumber?: string;
+  syncStatus?: SyncQueueStatus | 'synced';
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Cashbox {
@@ -1509,6 +1554,7 @@ export type SyncOperationType =
   | 'delete_purchase_draft'
   | 'create_invoice_return'
   | 'create_purchase_return'
+  | 'create_purchase_return_request'
   | 'add_invoice_payment'
   | 'record_customer_payment'
   | 'record_order_advance'
@@ -1980,18 +2026,31 @@ export interface RepDetailedReportItemRow {
   date: string;
   opType: 'sales' | 'purchase' | 'sales_return' | 'purchase_return';
   status: string;
+  invoiceStatus?: string;
+  paymentStatus?: 'paid' | 'partial' | 'credit';
   partyId: string;
   partyName: string;
+  representativeName?: string;
+  createdByName?: string;
   productId: string;
   productName: string;
   productCode?: string;
   barcode?: string;
+  categoryName?: string;
+  class1?: string;
   unit: string;
   quantity: number;
   unitFactor: number;
   unitPrice: number;
+  grossTotal?: number;
   discount: number;
   total: number;
+  returnedQty?: number;
+  returnedValue?: number;
+  netQty?: number;
+  netValue?: number;
+  paidAmount?: number;
+  remainingAmount?: number;
 }
 
 export interface RepDetailedReportResponse {
@@ -2000,6 +2059,12 @@ export interface RepDetailedReportResponse {
     representativeId?: string;
     representativeName?: string;
     canViewSuppliers: boolean;
+    availableRepresentatives?: Array<{
+      id: string;
+      name: string;
+      code?: string;
+      warehouseId?: string;
+    }>;
     accountBalanceNote: string;
   };
   summary: {
@@ -2016,11 +2081,27 @@ export interface RepDetailedReportResponse {
     purchasesRemaining: number;
     purchaseReturnsCount: number;
     purchaseReturnsTotal: number;
+    purchaseReturnRequestsCount?: number;
+    pendingPurchaseReturnRequestsCount?: number;
     collectionsCount: number;
     collectionsTotal: number;
     purchasePaymentsTotal: number;
-    totalCustomerReceivables: number;
-    totalSupplierPayables: number;
+    totalCustomerReceivables?: number;
+    totalSupplierPayables?: number;
+  };
+  pagination?: {
+    enabled: boolean;
+    page: number;
+    pageSize: number;
+    totalRows: number;
+    totalInvoices: number;
+    totalItemRows: number;
+    totalReturns: number;
+    totalCollections: number;
+    totalPurchaseReturnRequests: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
   };
   customersSummary: Array<{
     id: string;
@@ -2046,6 +2127,7 @@ export interface RepDetailedReportResponse {
   invoices: RepDetailedReportInvoiceRow[];
   itemRows: RepDetailedReportItemRow[];
   returns: InvoiceReturn[];
+  purchaseReturnRequests?: PurchaseReturnRequest[];
   collections: Array<{
     id: string;
     transactionNumber?: string;
@@ -2055,6 +2137,24 @@ export interface RepDetailedReportResponse {
     partyName: string;
     paymentMethod?: string;
     relatedDocId?: string;
+    relatedDocNumber?: string;
+    remainingAfter?: number;
+    isInvoiceLinked?: boolean;
+    createdBy?: string;
+    notes?: string;
+  }>;
+  purchasePayments?: Array<{
+    id: string;
+    transactionNumber?: string;
+    date: string;
+    amount: number;
+    partyId?: string;
+    partyName: string;
+    paymentMethod?: string;
+    relatedDocId?: string;
+    relatedDocNumber?: string;
+    remainingAfter?: number;
+    createdBy?: string;
     notes?: string;
   }>;
 }

@@ -39,6 +39,7 @@ import {
   deleteDraftPurchaseInvoice,
   addInvoicePayment,
   createInvoiceReturn,
+  createPurchaseReturnRequest,
   listInvoices,
 } from '../db/stores/invoicesStore.js';
 import {
@@ -221,7 +222,12 @@ function assertStaffPermission(user, permKey) {
 
 async function applySingleOperation(op, authContext, { ignoreVersionCheck = false } = {}) {
   const user = authContext.user;
-  const payload = op.payload || {};
+  const rawPayload = op.payload && typeof op.payload === 'object' ? { ...op.payload } : {};
+  delete rawPayload.createdBy;
+  delete rawPayload.createdByUserId;
+  delete rawPayload.sentBy;
+  delete rawPayload.sentByUserId;
+  const payload = rawPayload;
   const opId = op.operationId;
   const opType = op.operationType;
 
@@ -360,8 +366,30 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
   }
 
   if (opType === 'create_invoice_return') {
-    assertStaffPermission(user, 'canManageSales');
+    const isPurchaseReturn = payload?.type === 'purchase_return';
+    if (isPurchaseReturn) {
+      if (user.role === 'representative') {
+        throw new AppError(
+          403,
+          'لا يمكن للمندوب تنفيذ مرتجع مشتريات مباشر؛ يرجى رفع طلب مرتجع مشتريات لاعتماد الإدارة',
+          'FORBIDDEN_REP_DIRECT_PURCHASE_RETURN'
+        );
+      }
+      assertStaffPermission(user, 'canManagePurchases');
+    } else {
+      assertStaffPermission(user, 'canManageSales');
+    }
     return createInvoiceReturn(payload, user, opId);
+  }
+
+  if (opType === 'create_purchase_return_request') {
+    if (user.role === 'customer') {
+      throw new AppError(403, 'غير مصرح للعملاء بإنشاء طلبات مرتجع مشتريات', 'FORBIDDEN');
+    }
+    if (user.role !== 'admin' && !user.permissions?.canCreatePurchase && !user.permissions?.canManagePurchases) {
+      throw new AppError(403, 'ليس لديك صلاحية إنشاء طلب مرتجع مشتريات', 'FORBIDDEN_PERMISSION');
+    }
+    return createPurchaseReturnRequest(payload, user, opId);
   }
 
   if (opType === 'add_invoice_payment') {
@@ -456,6 +484,13 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
   }
 
   if (opType === 'create_purchase_return') {
+    if (user.role === 'representative') {
+      throw new AppError(
+        403,
+        'لا يمكن للمندوب تنفيذ مرتجع مشتريات مباشر؛ يرجى رفع طلب مرتجع مشتريات لاعتماد الإدارة',
+        'FORBIDDEN_REP_DIRECT_PURCHASE_RETURN'
+      );
+    }
     assertStaffPermission(user, 'canManagePurchases');
     return createInvoiceReturn({ ...payload, type: 'purchase_return' }, user, opId);
   }

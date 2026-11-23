@@ -9,6 +9,8 @@ import {
   DATABASE_UNAVAILABLE_CODE,
   DATABASE_UNAVAILABLE_MESSAGE,
   markPgUnavailable,
+  ADMIN_ONLY_PERMISSION_KEYS,
+  sanitizeEffectivePermissionsForRole,
 } from '../db/stores/mode.js';
 
 const RATE_WINDOW_MS = 15 * 60 * 1000;
@@ -313,11 +315,16 @@ export async function requireAuth(req, res, next) {
       await checkDeviceAuthGuard(effectiveDeviceId);
     }
 
+    const sanitizedSessionUser = {
+      ...sessionCtx.user,
+      permissions: sanitizeEffectivePermissionsForRole(sessionCtx.user?.role, sessionCtx.user?.permissions || {}),
+    };
+
     req.auth = {
       sessionId: payload.sid,
       deviceId: effectiveDeviceId,
       installationId: sessionCtx.installationId,
-      user: sessionCtx.user,
+      user: sanitizedSessionUser,
       customerProfile: sessionCtx.customerProfile,
       representativeProfile: sessionCtx.representativeProfile,
       linkWarning: sessionCtx.linkWarning,
@@ -357,6 +364,15 @@ export function requireAdmin(req, res, next) {
   next();
 }
 
+function isPermissionAllowedForUser(user, permKey) {
+  if (!user || user.role === 'customer') return false;
+  if (user.role === 'admin') return true;
+  if (user.role === 'representative' && ADMIN_ONLY_PERMISSION_KEYS.has(permKey)) {
+    return false;
+  }
+  return user.permissions?.[permKey] === true;
+}
+
 export function requirePermission(permKey) {
   return (req, res, next) => {
     const user = req.auth?.user;
@@ -366,7 +382,14 @@ export function requirePermission(permKey) {
     if (user.role === 'customer') {
       return res.status(403).json({ ok: false, code: 'FORBIDDEN', error: 'غير مصرح للعملاء بهذه العملية' });
     }
-    if (user.role === 'admin' || user.permissions?.[permKey] === true) {
+    if (user.role === 'representative' && ADMIN_ONLY_PERMISSION_KEYS.has(permKey)) {
+      return res.status(403).json({
+        ok: false,
+        code: 'FORBIDDEN_ROLE_PERMISSION',
+        error: `هذه الصلاحية (${permKey}) مقصورة على الإدارة ولا يمكن تفعيلها لحسابات المناديب`,
+      });
+    }
+    if (isPermissionAllowedForUser(user, permKey)) {
       return next();
     }
     return res.status(403).json({
@@ -386,7 +409,7 @@ export function requireAnyPermission(...permKeys) {
     if (user.role === 'customer') {
       return res.status(403).json({ ok: false, code: 'FORBIDDEN', error: 'غير مصرح للعملاء بهذه العملية' });
     }
-    if (user.role === 'admin' || permKeys.some((k) => user.permissions?.[k] === true)) {
+    if (user.role === 'admin' || permKeys.some((k) => isPermissionAllowedForUser(user, k))) {
       return next();
     }
     return res.status(403).json({

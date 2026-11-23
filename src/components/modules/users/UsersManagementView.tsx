@@ -24,7 +24,7 @@ const REP_SAFE_PRESET_KEYS: Array<{ key: keyof UserPermissions; label: string; l
   { key: 'canManageTransfers', label: 'نظام التحويل بالنصف والعهدة المالية للمندوب' },
   { key: 'canCreateStockTransfer', label: 'إنشاء أوامر وطلبات تحويل أصناف' },
   { key: 'canSend', label: 'إرسال البيانات والمزامنة للسيرفر (Send)' },
-  { key: 'canReceive', label: 'استلام التحديثات والموافقة عليها (Receive)' },
+  { key: 'canReceive', label: 'استلام المزامنة والبيانات فقط (Sync Receive — لا يمنح استلام مشتريات المخزن)' },
   { key: 'canViewReports', label: 'عرض ملخصات مبيعات المندوب المسموحة (دون أرباح الشركة)' },
 ];
 
@@ -34,6 +34,38 @@ const CUSTOMER_SAFE_PRESET_KEYS: Array<{ key: keyof UserPermissions; label: stri
   { key: 'canExport', label: 'تصدير كشف الحساب الشخصي Excel / CSV' },
   { key: 'canViewReports', label: 'عرض ملخص الرصيد وإجمالي المديونية والائتمان الشخصي' },
 ];
+
+const ADMIN_ONLY_PERMISSION_KEYS = new Set<keyof UserPermissions>([
+  'canManageUsers',
+  'canManageSettings',
+  'canManageEmployees',
+  'canManageSalaries',
+  'canManageCashboxes',
+  'canManageAccounts',
+  'canManageReps',
+  'canManageInventory',
+  'canManageWarehouses',
+  'canManagePurchases',
+  'canAllowNegativeInventory',
+  'canViewPersonalAccounts',
+  'canCreatePersonalTx',
+  'canEditPersonalTx',
+  'canApprovePersonalAdjustment',
+  'canCreateStockCount',
+  'canApproveStockCount',
+  'canApproveStockTransfer',
+  'canExecuteStockTransfer',
+  'canViewDeletedInvoices',
+  'canApprove',
+  'canReviewRepInvoices',
+]);
+
+const CUSTOMER_ALLOWED_PERMISSION_KEYS = new Set<keyof UserPermissions>([
+  'canView',
+  'canPrint',
+  'canExport',
+  'canViewReports',
+]);
 
 export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initialTab }) => {
   const {
@@ -403,7 +435,20 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
     }
   };
 
+  const isPermissionLockedForRole = (key: keyof UserPermissions, targetRole: UserRole): boolean => {
+    if (targetRole === 'representative') {
+      return ADMIN_ONLY_PERMISSION_KEYS.has(key);
+    }
+    if (targetRole === 'customer') {
+      return ADMIN_ONLY_PERMISSION_KEYS.has(key) || !CUSTOMER_ALLOWED_PERMISSION_KEYS.has(key);
+    }
+    return false;
+  };
+
   const togglePermission = (key: keyof UserPermissions) => {
+    if (isPermissionLockedForRole(key, role)) {
+      return;
+    }
     setHasManualPermEdits(true);
     setPermissions((prev) => ({
       ...prev,
@@ -947,6 +992,16 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 <span>تطبيق القالب الافتراضي للدور</span>
               </button>
             </div>
+            {(role === 'representative' || role === 'customer') && (
+              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] font-bold flex items-center gap-2">
+                <Shield className="w-4 h-4 text-amber-700 shrink-0" />
+                <span>
+                  {role === 'representative'
+                    ? 'حماية الدور: الصلاحيات الإدارية والمالية والحساسة مقفلة تلقائياً على دور المندوب ويتم تجريدها من الخادم أيضاً.'
+                    : 'حماية الدور: دور العميل يقتصر على صلاحيات العرض والطباعة والتصدير والتقارير الشخصية فقط، وجميع الصلاحيات الإدارية مقفلة.'}
+                </span>
+              </div>
+            )}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 p-3 bg-slate-50 rounded-xl border">
               {[
                 { key: 'canView', label: 'صلاحية العرض والقراءة' },
@@ -966,7 +1021,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 { key: 'canApprove', label: 'اعتماد العمليات والمستندات' },
                 { key: 'canReviewRepInvoices', label: 'مراجعة واعتماد فواتير المناديب' },
                 { key: 'canSend', label: 'صلاحية إرسال المزامنة Send' },
-                { key: 'canReceive', label: 'صلاحية استلام المزامنة Receive' },
+                { key: 'canReceive', label: 'صلاحية استلام المزامنة فقط (Sync Receive)' },
                 { key: 'canManageEmployees', label: 'إدارة الموظفين والغياب' },
                 { key: 'canManageSalaries', label: 'إدارة وصرف الرواتب' },
                 { key: 'canManageUsers', label: 'إدارة حسابات المستخدمين' },
@@ -982,17 +1037,30 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 { key: 'canApproveStockTransfer', label: 'اعتماد أوامر تحويل الأصناف' },
                 { key: 'canExecuteStockTransfer', label: 'تنفيذ وترحيل تحويلات الأصناف' },
                 { key: 'canViewDeletedInvoices', label: 'الاطلاع على الفواتير المحذوفة والملغاة' },
-              ].map((perm) => (
-                <label key={perm.key} className="flex items-center gap-2 p-1.5 rounded bg-white border border-slate-200 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(permissions[perm.key as keyof UserPermissions])}
-                    onChange={() => togglePermission(perm.key as keyof UserPermissions)}
-                    className="w-4 h-4 rounded text-blue-900 focus:ring-blue-500"
-                  />
-                  <span className="font-semibold text-slate-800">{perm.label}</span>
-                </label>
-              ))}
+              ].map((perm) => {
+                const permKey = perm.key as keyof UserPermissions;
+                const lockedForRole = isPermissionLockedForRole(permKey, role);
+                return (
+                  <label
+                    key={perm.key}
+                    title={lockedForRole ? 'صلاحية مقيدة لهذا الدور بموجب سياسة الأمان' : undefined}
+                    className={`flex items-center gap-2 p-1.5 rounded border ${
+                      lockedForRole
+                        ? 'bg-slate-100 border-slate-200 opacity-55 cursor-not-allowed'
+                        : 'bg-white border-slate-200 cursor-pointer'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      disabled={lockedForRole}
+                      checked={lockedForRole ? false : Boolean(permissions[permKey])}
+                      onChange={() => togglePermission(permKey)}
+                      className="w-4 h-4 rounded text-blue-900 focus:ring-blue-500 disabled:opacity-50"
+                    />
+                    <span className="font-semibold text-slate-800">{perm.label}</span>
+                  </label>
+                );
+              })}
             </div>
           </div>
 
