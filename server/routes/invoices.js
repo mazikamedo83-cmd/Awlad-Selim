@@ -21,6 +21,10 @@ import {
   createPurchaseReturnRequest,
   approvePurchaseReturnRequest,
   rejectPurchaseReturnRequest,
+  listSalesReturnRequests,
+  createSalesReturnRequest,
+  approveSalesReturnRequest,
+  rejectSalesReturnRequest,
 } from '../db/stores/invoicesStore.js';
 import { getCustomerStatementData, getSystemSettingsSafe } from '../db/stores/catalogStore.js';
 import { listPurchaseReceivers } from '../db/stores/inventoryAdminStore.js';
@@ -137,6 +141,62 @@ router.post(
       });
     }
     const result = await rejectPurchaseReturnRequest(req.params.id, req.body || {}, req.auth.user);
+    res.json({ ok: true, ...result });
+  })
+);
+
+router.get(
+  '/sales-return-requests',
+  requireStaff,
+  requireAnyPermission('canManageSales', 'canApprove', 'canManageCashboxes', 'canManageAccounts'),
+  asyncHandler(async (req, res) => {
+    const requests = await listSalesReturnRequests(req.auth.user);
+    res.json({ ok: true, requests });
+  })
+);
+
+router.post(
+  '/sales-return-requests',
+  requireStaff,
+  requireAnyPermission('canManageSales'),
+  asyncHandler(async (req, res) => {
+    const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
+    const request = await createSalesReturnRequest(req.body || {}, req.auth.user, idempotencyKey);
+    res.status(201).json({ ok: true, request });
+  })
+);
+
+router.post(
+  '/sales-return-requests/:id/approve',
+  requireStaff,
+  requireAnyPermission('canManageSales', 'canApprove', 'canManageCashboxes', 'canManageAccounts'),
+  asyncHandler(async (req, res) => {
+    if (req.auth.user.role === 'representative') {
+      return res.status(403).json({
+        ok: false,
+        code: 'FORBIDDEN_APPROVE_RETURN_REQUEST',
+        error: 'اعتماد طلبات مرتجع المبيعات مخصص للإدارة ومسؤولي المبيعات والخزينة فقط',
+      });
+    }
+    const idempotencyKey = req.get('idempotency-key') || req.body?.idempotencyKey || '';
+    const result = await approveSalesReturnRequest(req.params.id, req.body || {}, req.auth.user, idempotencyKey);
+    res.json({ ok: true, ...result });
+  })
+);
+
+router.post(
+  '/sales-return-requests/:id/reject',
+  requireStaff,
+  requireAnyPermission('canManageSales', 'canApprove', 'canManageCashboxes', 'canManageAccounts'),
+  asyncHandler(async (req, res) => {
+    if (req.auth.user.role === 'representative') {
+      return res.status(403).json({
+        ok: false,
+        code: 'FORBIDDEN_REJECT_RETURN_REQUEST',
+        error: 'رفض طلبات مرتجع المبيعات مخصص للإدارة ومسؤولي المبيعات والخزينة فقط',
+      });
+    }
+    const result = await rejectSalesReturnRequest(req.params.id, req.body || {}, req.auth.user);
     res.json({ ok: true, ...result });
   })
 );
@@ -297,11 +357,19 @@ router.post(
   asyncHandler(async (req, res) => {
     const u = req.auth.user;
     const isPurchaseReturn = req.body?.type === 'purchase_return';
+    const isCashRefund = req.body?.refundType === 'cash';
     if (u.role === 'representative' && isPurchaseReturn) {
       return res.status(403).json({
         ok: false,
         code: 'FORBIDDEN_REP_DIRECT_PURCHASE_RETURN',
         error: 'لا يمكن للمندوب تنفيذ مرتجع مشتريات مباشر؛ يرجى رفع طلب مرتجع مشتريات لاعتماد الإدارة',
+      });
+    }
+    if (u.role === 'representative' && !isPurchaseReturn && isCashRefund) {
+      return res.status(403).json({
+        ok: false,
+        code: 'FORBIDDEN_REP_CASH_RETURN',
+        error: 'لا يمكن للمندوب تنفيذ مرتجع مبيعات نقدي مباشرة من الخزينة؛ يرجى رفع طلب مرتجع مبيعات نقدي لاعتماد الخزينة/الإدارة',
       });
     }
     const allowed =

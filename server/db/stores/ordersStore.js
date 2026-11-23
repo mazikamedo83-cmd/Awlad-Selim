@@ -1329,7 +1329,7 @@ export async function recordOrderAdvancePaymentPgTx(client, orderId, payload, ac
   if (!custRes.rows[0]) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
   const cust = custRes.rows[0];
 
-  let cashboxId = payload.cashboxId;
+  let cashboxId = actor?.role === 'representative' ? undefined : payload.cashboxId;
   if (!cashboxId) {
     const defCb = await client.query(`SELECT id FROM cashboxes WHERE is_default = TRUE LIMIT 1`);
     const anyCb = defCb.rows[0] || (await client.query(`SELECT id FROM cashboxes LIMIT 1`)).rows[0];
@@ -1463,10 +1463,10 @@ export function recordOrderAdvancePaymentJsonTx(db, orderId, payload, actor, ide
   }
   const cust = db.customers.find((c) => c.id === ord.customerId);
   if (!cust) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
-  const cb =
-    (payload.cashboxId ? db.cashboxes.find((c) => c.id === payload.cashboxId) : null) ||
-    db.cashboxes.find((c) => c.isDefault) ||
-    db.cashboxes[0];
+  const requestedCashboxId = actor?.role === 'representative' ? undefined : payload.cashboxId;
+  const cb = requestedCashboxId
+    ? db.cashboxes.find((c) => c.id === requestedCashboxId)
+    : db.cashboxes.find((c) => c.isDefault) || db.cashboxes[0];
   if (!cb) throw new AppError(404, 'الخزينة المحددة غير موجودة', 'CASHBOX_NOT_FOUND');
 
   const ordTotal = round2(ord.totalAmount || 0);

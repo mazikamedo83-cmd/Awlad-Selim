@@ -932,7 +932,16 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
       if (!custRes.rows[0]) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
       const cust = mapPgCustomerRow(custRes.rows[0]);
 
-      const cbRes = await client.query('SELECT * FROM cashboxes WHERE id = $1 FOR UPDATE', [cashboxId]);
+      const requestedCashboxId = actor?.role === 'representative' ? undefined : cashboxId;
+      let cbRes;
+      if (requestedCashboxId) {
+        cbRes = await client.query('SELECT * FROM cashboxes WHERE id = $1 FOR UPDATE', [requestedCashboxId]);
+      } else {
+        const defRes = await client.query('SELECT id FROM cashboxes ORDER BY is_default DESC LIMIT 1');
+        const defId = defRes.rows[0]?.id;
+        if (!defId) throw new AppError(400, 'لا توجد خزينة متاحة', 'CASHBOX_REQUIRED');
+        cbRes = await client.query('SELECT * FROM cashboxes WHERE id = $1 FOR UPDATE', [defId]);
+      }
       if (!cbRes.rows[0]) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
       const cb = cbRes.rows[0];
 
@@ -946,7 +955,7 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
         now,
         customerId,
       ]);
-      await client.query('UPDATE cashboxes SET current_balance = $1 WHERE id = $2', [nextCbBalance, cashboxId]);
+      await client.query('UPDATE cashboxes SET current_balance = $1 WHERE id = $2', [nextCbBalance, cb.id]);
 
       await client.query(
         `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, description, notes, created_by_user_id, created_by, created_at)
@@ -1008,7 +1017,10 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
 
     const cust = db.customers.find((c) => c.id === customerId);
     if (!cust) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
-    const cb = db.cashboxes.find((c) => c.id === cashboxId);
+    const requestedCashboxId = actor?.role === 'representative' ? undefined : cashboxId;
+    const cb = requestedCashboxId
+      ? db.cashboxes.find((c) => c.id === requestedCashboxId)
+      : db.cashboxes.find((c) => c.isDefault) || db.cashboxes[0];
     if (!cb) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
 
     const isAdvanceCredit = Number(cust.currentBalance || 0) <= 0 || payAmount > Number(cust.currentBalance || 0);

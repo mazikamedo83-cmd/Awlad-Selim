@@ -19,6 +19,7 @@ CREATE SEQUENCE IF NOT EXISTS seq_order_advance_no;
 CREATE SEQUENCE IF NOT EXISTS seq_quote_no;
 CREATE SEQUENCE IF NOT EXISTS seq_rep_custody_op_no;
 CREATE SEQUENCE IF NOT EXISTS seq_purchase_return_req_no;
+CREATE SEQUENCE IF NOT EXISTS seq_sales_return_req_no;
 
 -- 1. المستخدمون والصلاحيات (Users & Roles)
 CREATE TABLE IF NOT EXISTS users (
@@ -1093,6 +1094,57 @@ CREATE INDEX IF NOT EXISTS idx_pr_req_rep ON purchase_return_requests(representa
 CREATE INDEX IF NOT EXISTS idx_pr_req_user ON purchase_return_requests(requested_by_user_id);
 CREATE INDEX IF NOT EXISTS idx_pr_req_inv ON purchase_return_requests(original_invoice_id);
 CREATE INDEX IF NOT EXISTS idx_pr_req_items_req ON purchase_return_request_items(request_id);
+
+-- 47. طلبات مرتجع المبيعات من المناديب (Sales Return Requests - Pending Treasury/Admin Approval)
+CREATE TABLE IF NOT EXISTS sales_return_requests (
+  id VARCHAR(64) PRIMARY KEY,
+  request_number VARCHAR(64) UNIQUE NOT NULL,
+  date DATE NOT NULL,
+  original_invoice_id VARCHAR(64) NOT NULL REFERENCES invoices(id) ON DELETE RESTRICT,
+  original_invoice_number VARCHAR(64) NOT NULL,
+  customer_id VARCHAR(64) NOT NULL,
+  customer_name TEXT NOT NULL DEFAULT '',
+  warehouse_id VARCHAR(64) NOT NULL REFERENCES warehouses(id) ON DELETE RESTRICT,
+  warehouse_name TEXT NOT NULL DEFAULT '',
+  representative_id VARCHAR(64),
+  representative_name TEXT DEFAULT '',
+  requested_by_user_id VARCHAR(64) NOT NULL,
+  requested_by_name TEXT NOT NULL,
+  grand_total NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+  refund_type VARCHAR(16) NOT NULL DEFAULT 'cash',
+  cashbox_id VARCHAR(64),
+  reason TEXT NOT NULL,
+  notes TEXT DEFAULT '',
+  status VARCHAR(24) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'cancelled')),
+  reviewed_by_user_id VARCHAR(64),
+  reviewed_by_name TEXT DEFAULT '',
+  reviewed_at TIMESTAMPTZ,
+  rejection_reason TEXT DEFAULT '',
+  approved_return_id VARCHAR(64),
+  approved_return_number VARCHAR(64),
+  idempotency_key VARCHAR(128) UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sales_return_request_items (
+  id VARCHAR(64) PRIMARY KEY,
+  request_id VARCHAR(64) NOT NULL REFERENCES sales_return_requests(id) ON DELETE CASCADE,
+  product_id VARCHAR(64) NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+  product_name TEXT NOT NULL,
+  unit VARCHAR(32) NOT NULL,
+  unit_factor NUMERIC(12, 3) NOT NULL DEFAULT 1.000,
+  quantity NUMERIC(12, 3) NOT NULL CHECK (quantity > 0),
+  unit_price NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+  total NUMERIC(14, 2) NOT NULL DEFAULT 0.00
+);
+
+CREATE INDEX IF NOT EXISTS idx_sr_req_status ON sales_return_requests(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sr_req_rep ON sales_return_requests(representative_id);
+CREATE INDEX IF NOT EXISTS idx_sr_req_user ON sales_return_requests(requested_by_user_id);
+CREATE INDEX IF NOT EXISTS idx_sr_req_inv ON sales_return_requests(original_invoice_id);
+CREATE INDEX IF NOT EXISTS idx_sr_req_items_req ON sales_return_request_items(request_id);
+
 
 
 

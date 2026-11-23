@@ -52,6 +52,7 @@ import {
   mapPgOrderRow,
   mapPgInvoiceRow,
   mapPgPurchaseReturnRequestRow,
+  mapPgSalesReturnRequestRow,
   isoDateOnly,
   isoTimestamp,
 } from './mode.js';
@@ -126,10 +127,14 @@ export async function getStaffBootstrapData(actor) {
   const canViewPurchaseReturnReqs = isRep
     ? canViewSuppliers
     : (isAdmin || Boolean(perms.canManagePurchases || perms.canCreatePurchase || perms.canApprove || perms.canViewReports));
+  const canViewSalesReturnReqs = isRep
+    ? Boolean(perms.canManageSales)
+    : (isAdmin || Boolean(perms.canManageSales || perms.canApprove || perms.canManageCashboxes || perms.canManageAccounts || perms.canViewReports));
   const canViewTreasuryLedger = !isRep && (isAdmin || Boolean(perms.canManageCashboxes || perms.canManageAccounts || perms.canViewReports));
   const canViewChequesInstallments = !isRep && (isAdmin || Boolean(perms.canManageAccounts || perms.canViewReports));
   const canViewHrData = !isRep && (isAdmin || Boolean(perms.canManageEmployees || perms.canManageSalaries || perms.canViewReports));
   const canViewAuditLogs = !isRep && isAdminOrUserMgr;
+  const canSeeCashboxes = canViewCashboxBalances(actor);
   const repProfile = isRep ? await getRepresentativeByUserId(actor.id) : null;
 
   if (await isPgMode()) {
@@ -167,6 +172,8 @@ export async function getStaffBootstrapData(actor) {
       purchaseReceiversList,
       prReqRes,
       prReqItemRes,
+      srReqRes,
+      srReqItemRes,
     ] = await Promise.all([
       isAdminOrUserMgr ? pool.query('SELECT * FROM users ORDER BY created_at DESC') : Promise.resolve({ rows: [] }),
       pool.query('SELECT * FROM warehouses ORDER BY created_at ASC'),
@@ -222,6 +229,15 @@ export async function getStaffBootstrapData(actor) {
           : pool.query('SELECT * FROM purchase_return_requests ORDER BY created_at DESC')
         : Promise.resolve({ rows: [] }),
       canViewPurchaseReturnReqs ? pool.query('SELECT * FROM purchase_return_request_items') : Promise.resolve({ rows: [] }),
+      canViewSalesReturnReqs
+        ? isRep
+          ? pool.query(
+              'SELECT * FROM sales_return_requests WHERE requested_by_user_id = $1 OR ($2::varchar IS NOT NULL AND representative_id = $2) ORDER BY created_at DESC',
+              [actor.id, repProfile?.id || null]
+            )
+          : pool.query('SELECT * FROM sales_return_requests ORDER BY created_at DESC')
+        : Promise.resolve({ rows: [] }),
+      canViewSalesReturnReqs ? pool.query('SELECT * FROM sales_return_request_items') : Promise.resolve({ rows: [] }),
     ]);
 
     const retItemsMap = new Map();
@@ -244,6 +260,13 @@ export async function getStaffBootstrapData(actor) {
       const list = prReqItemsMap.get(it.request_id) || [];
       list.push(it);
       prReqItemsMap.set(it.request_id, list);
+    }
+
+    const srReqItemsMap = new Map();
+    for (const it of srReqItemRes?.rows || []) {
+      const list = srReqItemsMap.get(it.request_id) || [];
+      list.push(it);
+      srReqItemsMap.set(it.request_id, list);
     }
 
     const ritItemsMap = new Map();
@@ -351,14 +374,23 @@ export async function getStaffBootstrapData(actor) {
           items: retItemsMap.get(r.id) || [],
           grandTotal: Number(r.grand_total || 0),
           refundType: r.refund_type,
-          cashboxId: r.cashbox_id || undefined,
+          cashboxId: canSeeCashboxes ? (r.cashbox_id || undefined) : undefined,
           reason: r.reason,
           notes: r.notes || '',
           createdByUserId: r.created_by_user_id || undefined,
           createdBy: r.created_by,
           createdAt: isoTimestamp(r.created_at),
         })),
-      purchaseReturnRequests: (prReqRes?.rows || []).map((r) => mapPgPurchaseReturnRequestRow(r, prReqItemsMap.get(r.id) || [])),
+      purchaseReturnRequests: (prReqRes?.rows || []).map((r) => {
+        const mapped = mapPgPurchaseReturnRequestRow(r, prReqItemsMap.get(r.id) || []);
+        if (!canSeeCashboxes) delete mapped.cashboxId;
+        return mapped;
+      }),
+      salesReturnRequests: (srReqRes?.rows || []).map((r) => {
+        const mapped = mapPgSalesReturnRequestRow(r, srReqItemsMap.get(r.id) || []);
+        if (!canSeeCashboxes) delete mapped.cashboxId;
+        return mapped;
+      }),
       cashboxes: cbRes.rows.map((c) =>
         sanitizeCashboxForViewer(
           {
@@ -646,8 +678,7 @@ export async function getStaffBootstrapData(actor) {
           paymentNumber: r.payment_number,
           orderId: r.order_id,
           customerId: r.customer_id,
-          cashboxId: r.cashbox_id,
-          cashboxName: r.cashbox_name || '',
+          ...(canSeeCashboxes ? { cashboxId: r.cashbox_id, cashboxName: r.cashbox_name || '' } : {}),
           paymentMethod: r.payment_method || 'cash',
           amount: Number(r.amount || 0),
           date: isoDateOnly(r.date),
@@ -698,15 +729,44 @@ export async function getStaffBootstrapData(actor) {
     : db.invoices;
   const scopedInvIdSet = new Set(scopedInvoices.map((i) => i.id));
   const scopedPrReqs = canViewPurchaseReturnReqs
-    ? isRep
-      ? (db.purchaseReturnRequests || []).filter(
-          (r) =>
-            r.requestedByUserId === actor.id ||
-            r.createdByUserId === actor.id ||
-            (repProfile && r.representativeId === repProfile.id)
-        )
-      : (db.purchaseReturnRequests || [])
+    ? (isRep
+        ? (db.purchaseReturnRequests || []).filter(
+            (r) =>
+              r.requestedByUserId === actor.id ||
+              r.createdByUserId === actor.id ||
+              (repProfile && r.representativeId === repProfile.id)
+          )
+        : (db.purchaseReturnRequests || [])
+      ).map((r) => {
+        if (canSeeCashboxes) return r;
+        const copy = { ...r };
+        delete copy.cashboxId;
+        return copy;
+      })
     : [];
+  const scopedSrReqs = canViewSalesReturnReqs
+    ? (isRep
+        ? (db.salesReturnRequests || []).filter(
+            (r) =>
+              r.requestedByUserId === actor.id ||
+              r.createdByUserId === actor.id ||
+              (repProfile && r.representativeId === repProfile.id)
+          )
+        : (db.salesReturnRequests || [])
+      ).map((r) => {
+        if (canSeeCashboxes) return r;
+        const copy = { ...r };
+        delete copy.cashboxId;
+        return copy;
+      })
+    : [];
+
+  const redactRetCashbox = (ret) => {
+    if (canSeeCashboxes) return ret;
+    const copy = { ...ret };
+    delete copy.cashboxId;
+    return copy;
+  };
 
   return {
     mode: 'local-json-ledger',
@@ -720,14 +780,16 @@ export async function getStaffBootstrapData(actor) {
     customers: scopedCustomers,
     suppliers: canViewSuppliers ? db.suppliers : [],
     invoices: scopedInvoices,
-    invoiceReturns: isRep
+    invoiceReturns: (isRep
       ? (db.invoiceReturns || []).filter(
           (r) =>
             (r.type === 'sales_return' && (scopedInvIdSet.has(r.originalInvoiceId) || r.createdByUserId === actor.id)) ||
             (r.type === 'purchase_return' && canViewSuppliers && (scopedInvIdSet.has(r.originalInvoiceId) || r.createdByUserId === actor.id))
         )
-      : db.invoiceReturns,
+      : db.invoiceReturns
+    ).map(redactRetCashbox),
     purchaseReturnRequests: scopedPrReqs,
+    salesReturnRequests: scopedSrReqs,
     cashboxes: (db.cashboxes || []).map((c) => sanitizeCashboxForViewer(c, actor)),
     financialTransactions: canViewTreasuryLedger ? db.financialTransactions : [],
     cheques: canViewChequesInstallments ? db.cheques : [],
@@ -756,9 +818,16 @@ export async function getStaffBootstrapData(actor) {
       ? (repProfile ? (db.repCustodyOperations || []).filter((op) => op.representativeId === repProfile.id) : [])
       : (db.repCustodyOperations || []),
     customerItemOrders: await listOrders({ user: actor, representativeProfile: repProfile }),
-    orderAdvancePayments: isRep
+    orderAdvancePayments: (isRep
       ? (db.orderAdvancePayments || []).filter((a) => scopedCustomerIdSet.has(a.customerId))
-      : db.orderAdvancePayments || [],
+      : db.orderAdvancePayments || []
+    ).map((a) => {
+      if (canSeeCashboxes) return a;
+      const copy = { ...a };
+      delete copy.cashboxId;
+      delete copy.cashboxName;
+      return copy;
+    }),
     syncConflicts: (canManageSyncConflictsGlobally(actor)
       ? db.syncConflicts || []
       : (db.syncConflicts || []).filter((c) => c.userId === actor.id)
@@ -2198,6 +2267,32 @@ export async function getMobileNotifications(authContext) {
         });
       }
     }
+
+    for (const srr of boot.salesReturnRequests || []) {
+      if (srr.status === 'approved') {
+        notifications.push({
+          id: `notif-rep-srr-app-${srr.id}-${srr.reviewedAt || srr.updatedAt}`,
+          type: 'sales_return_request',
+          severity: 'success',
+          title: `تم اعتماد طلب مرتجع المبيعات (${srr.requestNumber})`,
+          body: `فاتورة ${srr.originalInvoiceNumber} — العميل: ${srr.customerName || '-'} · رقم المرتجع: ${srr.approvedReturnNumber || '-'}`,
+          relatedId: srr.id,
+          targetTab: 'sales-returns-list',
+          createdAt: srr.reviewedAt || srr.updatedAt || srr.createdAt,
+        });
+      } else if (srr.status === 'rejected') {
+        notifications.push({
+          id: `notif-rep-srr-rej-${srr.id}-${srr.reviewedAt || srr.updatedAt}`,
+          type: 'sales_return_request',
+          severity: 'warning',
+          title: `تم رفض طلب مرتجع المبيعات (${srr.requestNumber})`,
+          body: srr.rejectionReason ? `السبب: ${srr.rejectionReason}` : 'يرجى مراجعة الإدارة للتفاصيل.',
+          relatedId: srr.id,
+          targetTab: 'sales-returns-list',
+          createdAt: srr.reviewedAt || srr.updatedAt || srr.createdAt,
+        });
+      }
+    }
   } else {
     // Admin & staff mobile/desktop notifications scoped to actual permissions
     const boot = await getStaffBootstrapData(actor);
@@ -2233,6 +2328,23 @@ export async function getMobileNotifications(authContext) {
             relatedId: prr.id,
             targetTab: 'purchase-invoices',
             createdAt: prr.createdAt,
+          });
+        }
+      }
+    }
+
+    if (isAdmin || perms.canManageSales || perms.canManageCashboxes || perms.canManageAccounts || perms.canApprove) {
+      for (const srr of boot.salesReturnRequests || []) {
+        if (srr.status === 'pending') {
+          notifications.push({
+            id: `notif-staff-srr-pend-${srr.id}`,
+            type: 'sales_return_request',
+            severity: 'warning',
+            title: `طلب مرتجع مبيعات بانتظار الاعتماد (${srr.requestNumber})`,
+            body: `المندوب: ${srr.representativeName || srr.requestedByName} · العميل: ${srr.customerName || '-'} · ${round2(srr.grandTotal).toLocaleString()} ${settings.currency || 'ج.م'}`,
+            relatedId: srr.id,
+            targetTab: 'returns',
+            createdAt: srr.createdAt,
           });
         }
       }

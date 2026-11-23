@@ -301,6 +301,7 @@ export async function initializeSchema(customPool = null) {
       "CREATE SEQUENCE IF NOT EXISTS seq_quote_no",
       "CREATE SEQUENCE IF NOT EXISTS seq_rep_custody_op_no",
       "CREATE SEQUENCE IF NOT EXISTS seq_purchase_return_req_no",
+      "CREATE SEQUENCE IF NOT EXISTS seq_sales_return_req_no",
       "ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS extra_settings JSONB NOT NULL DEFAULT '{}'::jsonb",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_algo VARCHAR(24) NOT NULL DEFAULT 'bcrypt'",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT DEFAULT ''",
@@ -709,6 +710,75 @@ export async function initializeSchema(customPool = null) {
     );
     if (!tblCheck.rows || tblCheck.rows.length === 0) {
       throw new Error('Verification failed: purchase_return_requests table missing after schema init');
+    }
+
+    // Ensure v10 sales_return_requests tables and indexes exist on pre-existing PG DBs
+    const v10Statements = [
+      `CREATE SEQUENCE IF NOT EXISTS seq_sales_return_req_no`,
+      `CREATE TABLE IF NOT EXISTS sales_return_requests (
+        id VARCHAR(64) PRIMARY KEY,
+        request_number VARCHAR(64) UNIQUE NOT NULL,
+        date DATE NOT NULL,
+        original_invoice_id VARCHAR(64) NOT NULL REFERENCES invoices(id) ON DELETE RESTRICT,
+        original_invoice_number VARCHAR(64) NOT NULL,
+        customer_id VARCHAR(64) NOT NULL,
+        customer_name TEXT NOT NULL DEFAULT '',
+        warehouse_id VARCHAR(64) NOT NULL REFERENCES warehouses(id) ON DELETE RESTRICT,
+        warehouse_name TEXT NOT NULL DEFAULT '',
+        representative_id VARCHAR(64),
+        representative_name TEXT DEFAULT '',
+        requested_by_user_id VARCHAR(64) NOT NULL,
+        requested_by_name TEXT NOT NULL,
+        grand_total NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+        refund_type VARCHAR(16) NOT NULL DEFAULT 'cash',
+        cashbox_id VARCHAR(64),
+        reason TEXT NOT NULL,
+        notes TEXT DEFAULT '',
+        status VARCHAR(24) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'cancelled')),
+        reviewed_by_user_id VARCHAR(64),
+        reviewed_by_name TEXT DEFAULT '',
+        reviewed_at TIMESTAMPTZ,
+        rejection_reason TEXT DEFAULT '',
+        approved_return_id VARCHAR(64),
+        approved_return_number VARCHAR(64),
+        idempotency_key VARCHAR(128) UNIQUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`,
+      `CREATE TABLE IF NOT EXISTS sales_return_request_items (
+        id VARCHAR(64) PRIMARY KEY,
+        request_id VARCHAR(64) NOT NULL REFERENCES sales_return_requests(id) ON DELETE CASCADE,
+        product_id VARCHAR(64) NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+        product_name TEXT NOT NULL,
+        unit VARCHAR(32) NOT NULL,
+        unit_factor NUMERIC(12, 3) NOT NULL DEFAULT 1.000,
+        quantity NUMERIC(12, 3) NOT NULL CHECK (quantity > 0),
+        unit_price NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+        total NUMERIC(14, 2) NOT NULL DEFAULT 0.00
+      )`,
+      'CREATE INDEX IF NOT EXISTS idx_sr_req_status ON sales_return_requests(status, created_at DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_sr_req_rep ON sales_return_requests(representative_id)',
+      'CREATE INDEX IF NOT EXISTS idx_sr_req_user ON sales_return_requests(requested_by_user_id)',
+      'CREATE INDEX IF NOT EXISTS idx_sr_req_inv ON sales_return_requests(original_invoice_id)',
+      'CREATE INDEX IF NOT EXISTS idx_sr_req_items_req ON sales_return_request_items(request_id)',
+    ];
+    for (const stmt of v10Statements) {
+      try {
+        await currentPool.query(stmt);
+      } catch (err) {
+        if (!isIdempotentDdlError(err, stmt)) {
+          console.error('[postgres] v10 DDL statement failed:', stmt, err);
+          throw err;
+        }
+      }
+    }
+
+    const srTblCheck = await currentPool.query(
+      `SELECT table_name FROM information_schema.tables
+       WHERE table_schema = 'public' AND table_name = 'sales_return_requests'`
+    );
+    if (!srTblCheck.rows || srTblCheck.rows.length === 0) {
+      throw new Error('Verification failed: sales_return_requests table missing after schema init');
     }
 
     return { success: true, message: 'تم تطبيق هيكل الجداول والفهارس والتسلسلات في PostgreSQL بنجاح.' };

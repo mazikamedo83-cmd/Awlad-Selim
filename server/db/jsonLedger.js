@@ -64,6 +64,7 @@ export function createEmptyDatabaseState() {
     invoices: [],
     invoiceReturns: [],
     purchaseReturnRequests: [],
+    salesReturnRequests: [],
     cashboxes: [
       {
         id: 'cb-main',
@@ -130,6 +131,7 @@ export function createEmptyDatabaseState() {
       quoteNo: 0,
       repCustodyOpNo: 0,
       purchaseReturnReqNo: 0,
+      salesReturnReqNo: 0,
     },
     lastSavedAt: new Date().toISOString(),
     version: '3.0.0',
@@ -167,6 +169,7 @@ export function normalizeDbState(raw) {
     'invoices',
     'invoiceReturns',
     'purchaseReturnRequests',
+    'salesReturnRequests',
     'cashboxes',
     'financialTransactions',
     'cheques',

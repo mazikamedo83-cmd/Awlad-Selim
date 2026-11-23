@@ -3,6 +3,7 @@ import { readJsonDatabase } from '../jsonLedger.js';
 import {
   round2,
   round3,
+  canViewCashboxBalances,
   sanitizeCashboxForViewer,
   sanitizeProductForRepresentative,
   sanitizeInvoiceForRepresentative,
@@ -15,6 +16,7 @@ import {
   mapPgProductRow,
   mapPgInvoiceRow,
   mapPgPurchaseReturnRequestRow,
+  mapPgSalesReturnRequestRow,
 } from './mode.js';
 import { getRepresentativeByUserId, getSystemSettingsSafe } from './catalogStore.js';
 import { isRepOwnerOfInvoice } from './invoicesStore.js';
@@ -433,6 +435,8 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
       linkedRetMetaRes,
       prrRes,
       prrItemRes,
+      srrRes,
+      srrItemRes,
     ] = await Promise.all([
       pool.query('SELECT * FROM warehouses ORDER BY created_at ASC'),
       isRep
@@ -499,6 +503,18 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
       isRep && !isRepCanPurchase
         ? Promise.resolve({ rows: [] })
         : pool.query('SELECT * FROM purchase_return_request_items'),
+      isRep
+        ? (() => {
+            const srrParams = [actor.id];
+            const invIds = repAllInvIdSet && repAllInvIdSet.size > 0 ? Array.from(repAllInvIdSet) : [];
+            const extraClause = invIds.length > 0 ? ` OR ${buildPgInPredicate('original_invoice_id', invIds, srrParams)}` : '';
+            return pool.query(
+              `SELECT * FROM sales_return_requests WHERE requested_by_user_id = $1${extraClause} ORDER BY date DESC, created_at DESC`,
+              srrParams
+            );
+          })()
+        : pool.query('SELECT * FROM sales_return_requests ORDER BY date DESC, created_at DESC'),
+      pool.query('SELECT * FROM sales_return_request_items'),
     ]);
 
     const unitsByProd = new Map();
@@ -550,6 +566,7 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
       });
       retItemsMap.set(it.return_id, arr);
     }
+    const canSeeCashboxes = canViewCashboxBalances(actor);
     const invoiceReturns = retRes.rows
       .map((r) => ({
         id: r.id,
@@ -565,7 +582,7 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
         items: retItemsMap.get(r.id) || [],
         grandTotal: Number(r.grand_total || 0),
         refundType: r.refund_type || 'balance',
-        cashboxId: r.cashbox_id || undefined,
+        cashboxId: canSeeCashboxes ? (r.cashbox_id || undefined) : undefined,
         reason: r.reason || '',
         notes: r.notes || '',
         createdBy: r.created_by,
@@ -588,9 +605,23 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
       arr.push(it);
       prrItemsById.set(it.request_id, arr);
     }
-    const purchaseReturnRequests = (prrRes?.rows || []).map((r) =>
-      mapPgPurchaseReturnRequestRow(r, prrItemsById.get(r.id) || [])
-    );
+    const purchaseReturnRequests = (prrRes?.rows || []).map((r) => {
+      const mapped = mapPgPurchaseReturnRequestRow(r, prrItemsById.get(r.id) || []);
+      if (!canSeeCashboxes) delete mapped.cashboxId;
+      return mapped;
+    });
+
+    const srrItemsById = new Map();
+    for (const it of (srrItemRes?.rows || [])) {
+      const arr = srrItemsById.get(it.request_id) || [];
+      arr.push(it);
+      srrItemsById.set(it.request_id, arr);
+    }
+    const salesReturnRequests = (srrRes?.rows || []).map((r) => {
+      const mapped = mapPgSalesReturnRequestRow(r, srrItemsById.get(r.id) || []);
+      if (!canSeeCashboxes) delete mapped.cashboxId;
+      return mapped;
+    });
 
     const scItemsMap = new Map();
     for (const it of scItemRes.rows) {
@@ -718,6 +749,7 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
       invoices,
       invoiceReturns,
       purchaseReturnRequests,
+      salesReturnRequests,
       financialTransactions: ftRes.rows
         .filter((f) => {
           if (!isRep) return true;
@@ -907,21 +939,37 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
       return isRepOwnJsonInvoice(inv);
     })
     .map((inv) => (isRep ? sanitizeInvoiceForRepresentative(inv) : inv));
+  const canSeeCashboxesJson = canViewCashboxBalances(actor);
+  const redactRetCbJson = (obj) => {
+    if (canSeeCashboxesJson) return obj;
+    const copy = { ...obj };
+    delete copy.cashboxId;
+    return copy;
+  };
   const visibleJsonInvIdSet = new Set(invoices.map((i) => i.id));
-  const invoiceReturns = (db.invoiceReturns || []).filter((r) => {
-    if (!isRep) return true;
-    if (r.type === 'purchase_return' && !isRepCanPurchase) return false;
-    if (r.originalInvoiceId) return visibleJsonInvIdSet.has(r.originalInvoiceId);
-    if (r.createdByUserId) return r.createdByUserId === actor.id;
-    return r.createdBy === actor.id;
-  });
+  const invoiceReturns = (db.invoiceReturns || [])
+    .filter((r) => {
+      if (!isRep) return true;
+      if (r.type === 'purchase_return' && !isRepCanPurchase) return false;
+      if (r.originalInvoiceId) return visibleJsonInvIdSet.has(r.originalInvoiceId);
+      if (r.createdByUserId) return r.createdByUserId === actor.id;
+      return r.createdBy === actor.id;
+    })
+    .map(redactRetCbJson);
   const visibleJsonRetIdSet = new Set(invoiceReturns.map((r) => r.id));
-  const purchaseReturnRequests = isRep && !isRepCanPurchase
+  const purchaseReturnRequests = (isRep && !isRepCanPurchase
     ? []
     : (db.purchaseReturnRequests || []).filter((req) => {
         if (!isRep) return true;
         return visibleJsonInvIdSet.has(req.originalInvoiceId) || req.requestedByUserId === actor.id;
-      });
+      })
+  ).map(redactRetCbJson);
+  const salesReturnRequests = (db.salesReturnRequests || [])
+    .filter((req) => {
+      if (!isRep) return true;
+      return visibleJsonInvIdSet.has(req.originalInvoiceId) || req.requestedByUserId === actor.id;
+    })
+    .map(redactRetCbJson);
   const financialTransactions = (db.financialTransactions || [])
     .filter((f) => {
       if (!isRep) return true;
@@ -965,6 +1013,7 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
     invoices,
     invoiceReturns,
     purchaseReturnRequests,
+    salesReturnRequests,
     financialTransactions,
     stockMovements,
     stockCounts: [],
@@ -4646,6 +4695,35 @@ export async function getRepDetailedReport(filters = {}, actor) {
         })
     : [];
 
+  const scopedSalesReturnRequests = (data.salesReturnRequests || []).filter((req) => {
+    if (selectedRepInvIdSet) {
+      const matchInv = req.originalInvoiceId && selectedRepInvIdSet.has(req.originalInvoiceId);
+      const matchUser = selectedRepProfile?.userId && req.requestedByUserId === selectedRepProfile.userId;
+      if (!matchInv && !matchUser) return false;
+    }
+    if (opType !== 'all' && opType !== 'sales_return_request' && opType !== 'sales_return' && opType !== 'sales') {
+      return false;
+    }
+    if (!inDateRange(req.date)) return false;
+    if (customerId && req.customerId !== customerId) return false;
+    if (productId && !(req.items || []).some((it) => it.productId === productId)) return false;
+    if (
+      invoiceNumber &&
+      !String(req.requestNumber || '').toLowerCase().includes(invoiceNumber) &&
+      !String(req.originalInvoiceNumber || '').toLowerCase().includes(invoiceNumber)
+    ) {
+      return false;
+    }
+    if (search) {
+      const hay = [req.requestNumber, req.originalInvoiceNumber, req.customerName, req.reason, req.notes]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    return true;
+  });
+
   const collections = [];
   if (opType === 'all' || opType === 'collection' || opType === 'sales') {
     for (const tx of data.financialTransactions || []) {
@@ -4771,6 +4849,8 @@ export async function getRepDetailedReport(filters = {}, actor) {
     purchaseReturnsTotal: canPurchase ? purchaseReturnsTotal : 0,
     purchaseReturnRequestsCount: canPurchase ? scopedPurchaseReturnRequests.length : 0,
     pendingPurchaseReturnRequestsCount: canPurchase ? scopedPurchaseReturnRequests.filter((r) => r.status === 'pending').length : 0,
+    salesReturnRequestsCount: scopedSalesReturnRequests.length,
+    pendingSalesReturnRequestsCount: scopedSalesReturnRequests.filter((r) => r.status === 'pending').length,
     collectionsCount: collections.length,
     collectionsTotal: round2(collections.reduce((s, c) => s + Number(c.amount || 0), 0)),
     purchasePaymentsTotal: canPurchase
@@ -4815,6 +4895,7 @@ export async function getRepDetailedReport(filters = {}, actor) {
       totalReturns: scopedReturns.length,
       totalCollections: collections.length,
       totalPurchaseReturnRequests: scopedPurchaseReturnRequests.length,
+      totalSalesReturnRequests: scopedSalesReturnRequests.length,
       totalPurchasePayments: purchasePayments.length,
       totalPages,
       hasNextPage: hasPagination && safePage < totalPages,
@@ -4826,6 +4907,7 @@ export async function getRepDetailedReport(filters = {}, actor) {
     itemRows: sliceIfPaged(itemRows),
     returns: sliceIfPaged(scopedReturns),
     purchaseReturnRequests: sliceIfPaged(scopedPurchaseReturnRequests),
+    salesReturnRequests: sliceIfPaged(scopedSalesReturnRequests),
     collections: sliceIfPaged(collections),
     purchasePayments: sliceIfPaged(purchasePayments),
   };

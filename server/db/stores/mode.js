@@ -830,3 +830,46 @@ export function mapPgPurchaseReturnRequestRow(r, items = []) {
     updatedAt: r.updated_at ? isoTimestamp(r.updated_at) : isoTimestamp(r.created_at),
   };
 }
+
+export function mapPgSalesReturnRequestRow(r, items = []) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    requestNumber: r.request_number,
+    date: isoDateOnly(r.date),
+    originalInvoiceId: r.original_invoice_id,
+    originalInvoiceNumber: r.original_invoice_number,
+    customerId: r.customer_id,
+    customerName: r.customer_name || '',
+    warehouseId: r.warehouse_id,
+    warehouseName: r.warehouse_name || '',
+    representativeId: r.representative_id || undefined,
+    representativeName: r.representative_name || undefined,
+    requestedByUserId: r.requested_by_user_id,
+    requestedByName: r.requested_by_name,
+    items: items.map((it) => ({
+      productId: it.product_id,
+      productName: it.product_name,
+      unit: it.unit,
+      unitFactor: Number(it.unit_factor || 1),
+      quantity: Number(it.quantity || 0),
+      unitPrice: Number(it.unit_price || 0),
+      total: Number(it.total || 0),
+    })),
+    grandTotal: Number(r.grand_total || 0),
+    refundType: r.refund_type === 'cash' ? 'cash' : 'balance',
+    cashboxId: r.cashbox_id || undefined,
+    reason: r.reason || '',
+    notes: r.notes || '',
+    status: r.status || 'pending',
+    reviewedByUserId: r.reviewed_by_user_id || undefined,
+    reviewedByName: r.reviewed_by_name || undefined,
+    reviewedAt: r.reviewed_at ? isoTimestamp(r.reviewed_at) : undefined,
+    rejectionReason: r.rejection_reason || undefined,
+    approvedReturnId: r.approved_return_id || undefined,
+    approvedReturnNumber: r.approved_return_number || undefined,
+    createdAt: isoTimestamp(r.created_at),
+    updatedAt: r.updated_at ? isoTimestamp(r.updated_at) : isoTimestamp(r.created_at),
+  };
+}
+

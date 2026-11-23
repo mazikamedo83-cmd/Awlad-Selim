@@ -40,6 +40,7 @@ import {
   addInvoicePayment,
   createInvoiceReturn,
   createPurchaseReturnRequest,
+  createSalesReturnRequest,
   listInvoices,
 } from '../db/stores/invoicesStore.js';
 import {
@@ -390,6 +391,14 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
       throw new AppError(403, 'ليس لديك صلاحية إنشاء طلب مرتجع مشتريات', 'FORBIDDEN_PERMISSION');
     }
     return createPurchaseReturnRequest(payload, user, opId);
+  }
+
+  if (opType === 'create_sales_return_request') {
+    if (user.role === 'customer') {
+      throw new AppError(403, 'غير مصرح للعملاء بإنشاء طلبات مرتجع مبيعات', 'FORBIDDEN');
+    }
+    assertStaffPermission(user, 'canManageSales');
+    return createSalesReturnRequest(payload, user, opId);
   }
 
   if (opType === 'add_invoice_payment') {
