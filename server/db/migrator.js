@@ -1015,8 +1015,8 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
         for (const ft of financialTransactions) {
           const cbId = cashboxIds.has(ft.cashboxId) ? ft.cashboxId : fallbackCashboxId;
           await client.query(`
-            INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, notes, created_by, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, notes, created_by_user_id, created_by, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
             ON CONFLICT (id) DO NOTHING;
           `, [
             ft.id,
@@ -1026,6 +1026,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             Number(ft.amount || 0),
             cbId,
             ft.cashboxName || '',
+            Number(ft.balanceAfter ?? 0),
             ft.category || '',
             ft.partyId || null,
             ft.partyName || null,
@@ -1034,6 +1035,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             ft.relatedDocNumber || null,
             ft.description || '',
             ft.notes || '',
+            ft.createdByUserId || null,
             ft.createdBy || 'النظام',
             ft.createdAt || new Date().toISOString(),
           ]);

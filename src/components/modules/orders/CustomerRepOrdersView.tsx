@@ -50,8 +50,14 @@ export const CustomerRepOrdersView: React.FC = () => {
     recordOrderAdvancePayment,
     convertOrderToInvoice,
   } = useData();
-  const { hasPermission } = useAuth();
+  const { currentUser, hasPermission } = useAuth();
   const canManageSales = hasPermission('canManageSales');
+  const hasTreasuryAccess =
+    currentUser?.role === 'admin' ||
+    hasPermission('canManageCashboxes') ||
+    hasPermission('canManageAccounts');
+
+  const defaultCashboxId = (cashboxes.find((cb) => cb.isDefault) || cashboxes[0])?.id || 'cb-main';
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -70,22 +76,24 @@ export const CustomerRepOrdersView: React.FC = () => {
 
   const [advanceModalOrder, setAdvanceModalOrder] = useState<CustomerItemOrderRequest | null>(null);
   const [advanceAmount, setAdvanceAmount] = useState<number>(0);
-  const [advanceCashboxId, setAdvanceCashboxId] = useState<string>(() => cashboxes[0]?.id || 'cb-main');
+  const [advanceCashboxId, setAdvanceCashboxId] = useState<string>(() => defaultCashboxId);
   const [advanceMethod, setAdvanceMethod] = useState<'cash' | 'bank' | 'cheque'>('cash');
   const [advanceNotes, setAdvanceNotes] = useState('');
 
   const [collectStageOrder, setCollectStageOrder] = useState<CustomerItemOrderRequest | null>(null);
   const [collectAmount, setCollectAmount] = useState<number>(0);
-  const [collectCashboxId, setCollectCashboxId] = useState<string>(() => cashboxes[0]?.id || 'cb-main');
+  const [collectCashboxId, setCollectCashboxId] = useState<string>(() => defaultCashboxId);
   const [collectMethod, setCollectMethod] = useState<'cash' | 'bank' | 'cheque'>('cash');
   const [collectNotes, setCollectNotes] = useState('');
 
   const [convertModalOrder, setConvertModalOrder] = useState<CustomerItemOrderRequest | null>(null);
   const [convertWarehouseId, setConvertWarehouseId] = useState<string>(() => warehouses[0]?.id || 'wh-main');
-  const [convertCashboxId, setConvertCashboxId] = useState<string>(() => cashboxes[0]?.id || 'cb-main');
+  const [convertCashboxId, setConvertCashboxId] = useState<string>(() => defaultCashboxId);
   const [convertPaid, setConvertPaid] = useState<number>(0);
   const [convertDiscount, setConvertDiscount] = useState<number>(0);
-  const [convertPaymentType, setConvertPaymentType] = useState<'cash' | 'credit' | 'partial'>('cash');
+  const [convertPaymentType, setConvertPaymentType] = useState<'cash' | 'credit' | 'partial'>(() =>
+    hasTreasuryAccess ? 'cash' : 'credit'
+  );
   const [convertNotes, setConvertNotes] = useState('');
 
   const filteredOrders = useMemo(() => {
@@ -721,7 +729,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                 advanceOrderStage(collectStageOrder.id, {
                   status: 'collected',
                   collectedAmount: collectAmount,
-                  cashboxId: collectCashboxId,
+                  ...(hasTreasuryAccess ? { cashboxId: collectCashboxId } : {}),
                   paymentMethod: collectMethod,
                   notes: collectNotes,
                 }),
@@ -743,19 +751,21 @@ export const CustomerRepOrdersView: React.FC = () => {
               className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
             />
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">الخزينة:</label>
-              <select
-                value={collectCashboxId}
-                onChange={(e) => setCollectCashboxId(e.target.value)}
-                className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
-              >
-                {cashboxes.map((cb) => (
-                  <option key={cb.id} value={cb.id}>{cb.name}</option>
-                ))}
-              </select>
-            </div>
+          <div className={hasTreasuryAccess ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-1 gap-2'}>
+            {hasTreasuryAccess && (
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">الخزينة:</label>
+                <select
+                  value={collectCashboxId}
+                  onChange={(e) => setCollectCashboxId(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                >
+                  {cashboxes.map((cb) => (
+                    <option key={cb.id} value={cb.id}>{cb.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div>
               <label className="block font-bold text-slate-700 mb-1">طريقة الدفع:</label>
               <select
@@ -914,7 +924,7 @@ export const CustomerRepOrdersView: React.FC = () => {
               () =>
                 recordOrderAdvancePayment(advanceModalOrder.id, {
                   amount: advanceAmount,
-                  cashboxId: advanceCashboxId,
+                  cashboxId: hasTreasuryAccess ? advanceCashboxId : defaultCashboxId,
                   paymentMethod: advanceMethod,
                   notes: advanceNotes,
                 }),
@@ -936,21 +946,23 @@ export const CustomerRepOrdersView: React.FC = () => {
               className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
             />
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">الخزينة:</label>
-              <select
-                value={advanceCashboxId}
-                onChange={(e) => setAdvanceCashboxId(e.target.value)}
-                className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
-              >
-                {cashboxes.map((cb) => (
-                  <option key={cb.id} value={cb.id}>
-                    {cb.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div className={hasTreasuryAccess ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-1 gap-2'}>
+            {hasTreasuryAccess && (
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">الخزينة:</label>
+                <select
+                  value={advanceCashboxId}
+                  onChange={(e) => setAdvanceCashboxId(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                >
+                  {cashboxes.map((cb) => (
+                    <option key={cb.id} value={cb.id}>
+                      {cb.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div>
               <label className="block font-bold text-slate-700 mb-1">الطريقة:</label>
               <select
@@ -1007,9 +1019,16 @@ export const CustomerRepOrdersView: React.FC = () => {
               () =>
                 convertOrderToInvoice(convertModalOrder.id, {
                   warehouseId: convertWarehouseId,
-                  cashboxId: convertCashboxId,
-                  paymentType: convertPaymentType,
-                  paidAtInvoice: convertPaid,
+                  ...(hasTreasuryAccess
+                    ? {
+                        cashboxId: convertCashboxId,
+                        paymentType: convertPaymentType,
+                        paidAtInvoice: convertPaid,
+                      }
+                    : {
+                        paymentType: 'credit',
+                        paidAtInvoice: 0,
+                      }),
                   discountTotal: convertDiscount,
                   notes: convertNotes,
                 }),
@@ -1019,7 +1038,7 @@ export const CustomerRepOrdersView: React.FC = () => {
           }}
           className="space-y-3 text-xs"
         >
-          <div className="grid grid-cols-2 gap-2">
+          <div className={hasTreasuryAccess ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-1 gap-2'}>
             <div>
               <label className="block font-bold text-slate-700 mb-1">مستودع الصرف:</label>
               <select
@@ -1034,45 +1053,51 @@ export const CustomerRepOrdersView: React.FC = () => {
                 ))}
               </select>
             </div>
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">الخزينة:</label>
-              <select
-                value={convertCashboxId}
-                onChange={(e) => setConvertCashboxId(e.target.value)}
-                className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
-              >
-                {cashboxes.map((cb) => (
-                  <option key={cb.id} value={cb.id}>
-                    {cb.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {hasTreasuryAccess && (
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">الخزينة:</label>
+                <select
+                  value={convertCashboxId}
+                  onChange={(e) => setConvertCashboxId(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                >
+                  {cashboxes.map((cb) => (
+                    <option key={cb.id} value={cb.id}>
+                      {cb.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">نوع الدفع:</label>
-              <select
-                value={convertPaymentType}
-                onChange={(e) => setConvertPaymentType(e.target.value as any)}
-                className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
-              >
-                <option value="cash">نقدي</option>
-                <option value="partial">جزئي</option>
-                <option value="credit">آجل</option>
-              </select>
-            </div>
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">المدفوع عند الفاتورة:</label>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                value={convertPaid}
-                onChange={(e) => setConvertPaid(Number(e.target.value))}
-                className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
-              />
-            </div>
+          <div className={hasTreasuryAccess ? 'grid grid-cols-3 gap-2' : 'grid grid-cols-1 gap-2'}>
+            {hasTreasuryAccess && (
+              <>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">نوع الدفع:</label>
+                  <select
+                    value={convertPaymentType}
+                    onChange={(e) => setConvertPaymentType(e.target.value as any)}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                  >
+                    <option value="cash">نقدي</option>
+                    <option value="partial">جزئي</option>
+                    <option value="credit">آجل</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">المدفوع عند الفاتورة:</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={convertPaid}
+                    onChange={(e) => setConvertPaid(Number(e.target.value))}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
+                  />
+                </div>
+              </>
+            )}
             <div>
               <label className="block font-bold text-slate-700 mb-1">الخصم:</label>
               <input

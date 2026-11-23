@@ -440,6 +440,7 @@ export function applyConfirmedEffectsJsonTx(db, invoice, actor) {
         type: 'customer_payment',
         cashboxId: cb.id,
         cashboxName: cb.name,
+        balanceAfter: cb.currentBalance,
         amount: cashAtInvoice,
         category: 'مبيعات نقدية',
         relatedDocType: 'sales',
@@ -520,6 +521,7 @@ export function applyConfirmedEffectsJsonTx(db, invoice, actor) {
         type: 'supplier_payment',
         cashboxId: cb.id,
         cashboxName: cb.name,
+        balanceAfter: cb.currentBalance,
         amount: invoice.paidAmount,
         category: 'مشتريات نقدية',
         relatedDocType: 'purchase',
@@ -1443,7 +1445,14 @@ export async function receivePurchaseInvoice(invoiceId, payload = {}, actor, ide
         }
 
         let targetCashboxId = inv.cashboxId;
-        if (overrideCashboxId) {
+        if (overrideCashboxId && overrideCashboxId !== String(inv.cashboxId || '').trim()) {
+          if (!hasTreasuryAuthority(actor)) {
+            throw new AppError(
+              403,
+              'تغيير الخزينة المرتبطة بفاتورة الشراء مقتصر على الإدارة أو مسؤول الخزائن والحسابات',
+              'FORBIDDEN_CASHBOX_OVERRIDE'
+            );
+          }
           const cbRow = (await client.query(`SELECT id FROM cashboxes WHERE id = $1 LIMIT 1`, [overrideCashboxId])).rows[0];
           if (!cbRow) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
           targetCashboxId = cbRow.id;
@@ -1555,7 +1564,14 @@ export async function receivePurchaseInvoice(invoiceId, payload = {}, actor, ide
           inv.warehouseId = wh.id;
           inv.warehouseName = wh.name;
         }
-        if (overrideCashboxId) {
+        if (overrideCashboxId && overrideCashboxId !== String(inv.cashboxId || '').trim()) {
+          if (!hasTreasuryAuthority(actor)) {
+            throw new AppError(
+              403,
+              'تغيير الخزينة المرتبطة بفاتورة الشراء مقتصر على الإدارة أو مسؤول الخزائن والحسابات',
+              'FORBIDDEN_CASHBOX_OVERRIDE'
+            );
+          }
           const cb = (db.cashboxes || []).find((c) => c.id === overrideCashboxId);
           if (!cb) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
           inv.cashboxId = cb.id;
@@ -1793,6 +1809,13 @@ export async function convertQuoteToInvoice(quoteId, overrides = {}, actor, idem
   if (overrideCashboxId && !repActor && !hasTreasuryAuthority(actor)) {
     throw new AppError(403, 'ليس لديك صلاحية اختيار الخزينة عند تحويل عرض السعر', 'FORBIDDEN_TREASURY_PERMISSION');
   }
+  if (!repActor && !hasTreasuryAuthority(actor) && (Number(safeOverrides.paidAmount || 0) > 0 || safeOverrides.paymentType === 'cash')) {
+    throw new AppError(
+      403,
+      'تحصيل النقدية أو تحويل عرض السعر كفاتورة نقدية مخصص للإدارة ومسؤولي الخزائن والحسابات فقط',
+      'FORBIDDEN_TREASURY_PERMISSION'
+    );
+  }
 
   const out = (await isPgMode())
     ? await withTransaction(async (client) => {
@@ -1840,11 +1863,51 @@ export async function convertQuoteToInvoice(quoteId, overrides = {}, actor, idem
           customerChangeAudit = ` — تغيير العميل من (${quote.customerName || quote.customerId || 'غير محدد'}) إلى (${targetCustomerName || targetCustomerId})`;
         }
 
+        let targetRepId = repActor ? repActor.id : quote.representativeId;
+        let targetRepName = repActor ? repActor.name : quote.representativeName;
+        let repChangeAudit = '';
+        if (!repActor) {
+          const reqRepId =
+            safeOverrides.representativeId !== undefined && safeOverrides.representativeId !== null
+              ? String(safeOverrides.representativeId).trim()
+              : '';
+          const reqRepName =
+            safeOverrides.representativeName !== undefined && safeOverrides.representativeName !== null
+              ? String(safeOverrides.representativeName).trim()
+              : '';
+          const baseRepId = String(quote.representativeId || '').trim();
+          const baseRepName = String(quote.representativeName || '').trim();
+          const isRepOverride =
+            (reqRepId !== '' && reqRepId !== baseRepId) ||
+            (reqRepId === '' && reqRepName !== '' && reqRepName !== baseRepName);
+          if (isRepOverride && actor.role !== 'admin' && !actor.permissions?.canManageReps) {
+            throw new AppError(
+              403,
+              'لا يمكن تغيير أو تعيين المندوب المرتبط بعرض السعر عند التحويل؛ الصلاحية للإدارة أو مسؤول المناديب فقط',
+              'FORBIDDEN_QUOTE_REP_OVERRIDE'
+            );
+          }
+          if (reqRepId !== '') {
+            const repRow = (await client.query(`SELECT id, name FROM representatives WHERE id = $1 LIMIT 1`, [reqRepId])).rows[0];
+            if (!repRow) throw new AppError(404, 'المندوب المستهدف غير موجود', 'REPRESENTATIVE_NOT_FOUND');
+            targetRepId = repRow.id;
+            targetRepName = repRow.name;
+          } else if (isRepOverride && reqRepName !== '') {
+            const repRow = (await client.query(`SELECT id, name FROM representatives WHERE name = $1 LIMIT 1`, [reqRepName])).rows[0];
+            if (!repRow) throw new AppError(404, 'المندوب المستهدف غير موجود', 'REPRESENTATIVE_NOT_FOUND');
+            targetRepId = repRow.id;
+            targetRepName = repRow.name;
+          }
+          if (targetRepId !== baseRepId || (targetRepName || '') !== baseRepName) {
+            repChangeAudit = ` — تغيير المندوب من (${baseRepName || baseRepId || 'غير محدد'}) إلى (${targetRepName || targetRepId})`;
+          }
+        }
+
         const invoicePayload = {
           customerId: targetCustomerId,
           customerName: targetCustomerName,
-          representativeId: repActor ? repActor.id : (safeOverrides.representativeId || quote.representativeId),
-          representativeName: repActor ? repActor.name : (safeOverrides.representativeName || quote.representativeName),
+          representativeId: targetRepId,
+          representativeName: targetRepName,
           warehouseId: repActor ? quote.warehouseId : (safeOverrides.warehouseId || quote.warehouseId),
           cashboxId: repActor ? undefined : (hasTreasuryAuthority(actor) ? (overrideCashboxId || quote.cashboxId) : quote.cashboxId),
           paymentType: safeOverrides.paymentType || 'credit',
@@ -1867,7 +1930,7 @@ export async function convertQuoteToInvoice(quoteId, overrides = {}, actor, idem
           `UPDATE invoices SET notes = $1, updated_at = $2 WHERE id = $3`,
           [`${quote.notes ? quote.notes + ' ' : ''}[تم التحويل للفاتورة ${invoice.invoiceNumber}]`.trim(), now, quoteId]
         );
-        const resultPayload = { invoice, quoteId, customerChangeAudit };
+        const resultPayload = { invoice, quoteId, customerChangeAudit: `${customerChangeAudit}${repChangeAudit}` };
         await savePgIdempotency(client, scopedIdem, actor, endpoint, resultPayload);
         return { deduplicated: false, ...resultPayload };
       })
@@ -1916,11 +1979,51 @@ export async function convertQuoteToInvoice(quoteId, overrides = {}, actor, idem
           customerChangeAudit = ` — تغيير العميل من (${quote.customerName || quote.customerId || 'غير محدد'}) إلى (${targetCustomerName || targetCustomerId})`;
         }
 
+        let targetRepId = repActor ? repActor.id : quote.representativeId;
+        let targetRepName = repActor ? repActor.name : quote.representativeName;
+        let repChangeAudit = '';
+        if (!repActor) {
+          const reqRepId =
+            safeOverrides.representativeId !== undefined && safeOverrides.representativeId !== null
+              ? String(safeOverrides.representativeId).trim()
+              : '';
+          const reqRepName =
+            safeOverrides.representativeName !== undefined && safeOverrides.representativeName !== null
+              ? String(safeOverrides.representativeName).trim()
+              : '';
+          const baseRepId = String(quote.representativeId || '').trim();
+          const baseRepName = String(quote.representativeName || '').trim();
+          const isRepOverride =
+            (reqRepId !== '' && reqRepId !== baseRepId) ||
+            (reqRepId === '' && reqRepName !== '' && reqRepName !== baseRepName);
+          if (isRepOverride && actor.role !== 'admin' && !actor.permissions?.canManageReps) {
+            throw new AppError(
+              403,
+              'لا يمكن تغيير أو تعيين المندوب المرتبط بعرض السعر عند التحويل؛ الصلاحية للإدارة أو مسؤول المناديب فقط',
+              'FORBIDDEN_QUOTE_REP_OVERRIDE'
+            );
+          }
+          if (reqRepId !== '') {
+            const repRow = (db.representatives || []).find((r) => r.id === reqRepId);
+            if (!repRow) throw new AppError(404, 'المندوب المستهدف غير موجود', 'REPRESENTATIVE_NOT_FOUND');
+            targetRepId = repRow.id;
+            targetRepName = repRow.name;
+          } else if (isRepOverride && reqRepName !== '') {
+            const repRow = (db.representatives || []).find((r) => r.name === reqRepName);
+            if (!repRow) throw new AppError(404, 'المندوب المستهدف غير موجود', 'REPRESENTATIVE_NOT_FOUND');
+            targetRepId = repRow.id;
+            targetRepName = repRow.name;
+          }
+          if (targetRepId !== baseRepId || (targetRepName || '') !== baseRepName) {
+            repChangeAudit = ` — تغيير المندوب من (${baseRepName || baseRepId || 'غير محدد'}) إلى (${targetRepName || targetRepId})`;
+          }
+        }
+
         const invoicePayload = {
           customerId: targetCustomerId,
           customerName: targetCustomerName,
-          representativeId: repActor ? repActor.id : (safeOverrides.representativeId || quote.representativeId),
-          representativeName: repActor ? repActor.name : (safeOverrides.representativeName || quote.representativeName),
+          representativeId: targetRepId,
+          representativeName: targetRepName,
           warehouseId: repActor ? quote.warehouseId : (safeOverrides.warehouseId || quote.warehouseId),
           cashboxId: repActor ? undefined : (hasTreasuryAuthority(actor) ? (overrideCashboxId || quote.cashboxId) : quote.cashboxId),
           paymentType: safeOverrides.paymentType || 'credit',
@@ -1938,7 +2041,7 @@ export async function convertQuoteToInvoice(quoteId, overrides = {}, actor, idem
         createdInv.convertedFromQuoteNumber = quote.invoiceNumber;
         quote.notes = `${quote.notes ? quote.notes + ' ' : ''}[تم التحويل للفاتورة ${createdInv.invoiceNumber}]`.trim();
         quote.updatedAt = now;
-        const resultPayload = { invoice: createdInv, quoteId, customerChangeAudit };
+        const resultPayload = { invoice: createdInv, quoteId, customerChangeAudit: `${customerChangeAudit}${repChangeAudit}` };
         saveJsonIdempotency(scopedIdem, resultPayload);
         return { deduplicated: false, ...resultPayload };
       });
@@ -4228,6 +4331,7 @@ export function addInvoicePaymentJsonTx(db, invoiceId, paymentData, actor, idemp
     type: isSales ? 'customer_payment' : 'supplier_payment',
     cashboxId: cb.id,
     cashboxName: cb.name,
+    balanceAfter: cb.currentBalance,
     amount,
     category: isSales ? 'تحصيل دفعة مبيعات' : 'سداد دفعة مشتريات',
     relatedDocType: inv.type,
@@ -4852,6 +4956,7 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
         type: isSalesReturn ? 'expense' : 'income',
         cashboxId: cb.id,
         cashboxName: cb.name,
+        balanceAfter: cb.currentBalance,
         amount: grandTotal,
         category: isSalesReturn ? 'رد قيمة مرتجع مبيعات نقدي' : 'استرداد قيمة مرتجع مشتريات نقدي',
         relatedDocType: returnData.type,
@@ -5714,6 +5819,7 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
             type: 'income',
             cashboxId: cb.id,
             cashboxName: cb.name,
+            balanceAfter: cb.currentBalance,
             amount: grandTotal,
             category: 'استرداد قيمة مرتجع مشتريات نقدي',
             relatedDocType: 'purchase_return',
@@ -6653,6 +6759,7 @@ export async function approveSalesReturnRequest(requestId, payload = {}, actor, 
             type: 'expense',
             cashboxId: cb.id,
             cashboxName: cb.name,
+            balanceAfter: cb.currentBalance,
             amount: grandTotal,
             category: 'رد قيمة مرتجع مبيعات نقدي',
             relatedDocType: 'sales_return',

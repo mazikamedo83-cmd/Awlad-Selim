@@ -33,7 +33,15 @@ function normalizeStatusFilter(rawStatus) {
   return s;
 }
 
-function enrichOrderCollection(orders, productImageMap, invoiceMap = new Map(), advPaymentsMap = new Map()) {
+function sanitizeAdvancePaymentForViewer(adv, viewer = null) {
+  if (!adv) return adv;
+  if (canViewCashboxBalances(viewer)) return adv;
+  const { cashboxId: _cid, cashbox_id: _cidSnake, cashboxName: _cn, cashbox_name: _cnSnake, ...safe } = adv;
+  return safe;
+}
+
+function enrichOrderCollection(orders, productImageMap, invoiceMap = new Map(), advPaymentsMap = new Map(), viewer = null) {
+  const hideCashboxMeta = Boolean(viewer && !canViewCashboxBalances(viewer));
   return (orders || []).map((ord) => {
     const items = (ord.items || []).map((it) => ({
       ...it,
@@ -71,7 +79,7 @@ function enrichOrderCollection(orders, productImageMap, invoiceMap = new Map(), 
         amount: round2(a.amount || 0),
         date: String(a.date || '').split('T')[0],
         paymentMethod: a.paymentMethod || a.payment_method || 'cash',
-        cashboxName: a.cashboxName || a.cashbox_name || '',
+        cashboxName: hideCashboxMeta ? '' : (a.cashboxName || a.cashbox_name || ''),
         notes: a.notes || 'دفعة مقدمة على الطلب',
         createdBy: a.createdBy || a.created_by || '',
         createdAt: a.createdAt || a.created_at || '',
@@ -83,7 +91,7 @@ function enrichOrderCollection(orders, productImageMap, invoiceMap = new Map(), 
         amount: round2(p.amount || 0),
         date: String(p.date || '').split('T')[0],
         paymentMethod: p.paymentMethod || 'cash',
-        cashboxName: p.cashboxName || '',
+        cashboxName: hideCashboxMeta ? '' : (p.cashboxName || ''),
         notes: p.notes || 'دفعة مسجلة على الفاتورة',
         createdBy: p.createdBy || '',
         createdAt: p.createdAt || '',
@@ -287,7 +295,8 @@ export async function listOrders(authContext, filters = {}) {
       ordRes.rows.map((r) => mapPgOrderRow(r, itemsMap.get(r.id) || [], histMap.get(r.id) || [])),
       productImageMap,
       invoiceMap,
-      advPaymentsMap
+      advPaymentsMap,
+      actor
     );
     return list.filter((o) => matchesOrderFilters(o, filters));
   }
@@ -318,7 +327,7 @@ export async function listOrders(authContext, filters = {}) {
     })
     .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
 
-  return enrichOrderCollection(scoped, productImageMap, invoiceMap, advPaymentsMap).filter((o) =>
+  return enrichOrderCollection(scoped, productImageMap, invoiceMap, advPaymentsMap, actor).filter((o) =>
     matchesOrderFilters(o, filters)
   );
 }
@@ -396,7 +405,8 @@ export async function getOrderById(orderId, authContext) {
       [mapPgOrderRow(row, itemsRes.rows, histRes.rows)],
       productImageMap,
       invoiceMap,
-      advPaymentsMap
+      advPaymentsMap,
+      actor
     )[0];
   }
 
@@ -422,7 +432,7 @@ export async function getOrderById(orderId, authContext) {
   const advPaymentsMap = new Map([
     [orderId, (db.orderAdvancePayments || []).filter((a) => a.orderId === orderId)],
   ]);
-  return enrichOrderCollection([order], productImageMap, invoiceMap, advPaymentsMap)[0];
+  return enrichOrderCollection([order], productImageMap, invoiceMap, advPaymentsMap, actor)[0];
 }
 
 export async function createCustomerOrder(payload, authContext) {
@@ -1311,10 +1321,30 @@ export async function recordOrderAdvancePaymentPgTx(client, orderId, payload, ac
   if (cleanIdem) {
     const dupAdv = await client.query(`SELECT * FROM order_advance_payments WHERE idempotency_key = $1 LIMIT 1`, [cleanIdem]);
     if (dupAdv.rows[0]) {
-      const ordRes = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1`, [dupAdv.rows[0].order_id]);
-      const itemsRes = await client.query(`SELECT * FROM customer_item_order_items WHERE order_id = $1`, [dupAdv.rows[0].order_id]);
-      const histRes = await client.query(`SELECT * FROM order_status_history WHERE order_id = $1 ORDER BY changed_at ASC`, [dupAdv.rows[0].order_id]);
-      return { deduplicated: true, advancePayment: dupAdv.rows[0], order: mapPgOrderRow(ordRes.rows[0], itemsRes.rows, histRes.rows) };
+      const a = dupAdv.rows[0];
+      const ordRes = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1`, [a.order_id]);
+      const itemsRes = await client.query(`SELECT * FROM customer_item_order_items WHERE order_id = $1`, [a.order_id]);
+      const histRes = await client.query(`SELECT * FROM order_status_history WHERE order_id = $1 ORDER BY changed_at ASC`, [a.order_id]);
+      return {
+        deduplicated: true,
+        advancePayment: {
+          id: a.id,
+          paymentNumber: a.payment_number,
+          orderId: a.order_id,
+          customerId: a.customer_id,
+          cashboxId: a.cashbox_id,
+          cashboxName: a.cashbox_name,
+          paymentMethod: a.payment_method,
+          amount: Number(a.amount || 0),
+          date: isoDateOnly(a.date),
+          notes: a.notes || '',
+          status: a.status,
+          createdByUserId: a.created_by_user_id || undefined,
+          createdBy: a.created_by || '',
+          createdAt: isoTimestamp(a.created_at),
+        },
+        order: mapPgOrderRow(ordRes.rows[0], itemsRes.rows, histRes.rows),
+      };
     }
   }
 
@@ -1343,13 +1373,27 @@ export async function recordOrderAdvancePaymentPgTx(client, orderId, payload, ac
   if (!custRes.rows[0]) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
   const cust = custRes.rows[0];
 
-  let cashboxId = actor?.role === 'representative' ? undefined : payload.cashboxId;
-  if (!cashboxId) {
-    const defCb = await client.query(`SELECT id FROM cashboxes WHERE is_default = TRUE LIMIT 1`);
-    const anyCb = defCb.rows[0] || (await client.query(`SELECT id FROM cashboxes LIMIT 1`)).rows[0];
-    if (!anyCb) throw new AppError(400, 'لا توجد خزينة متاحة', 'CASHBOX_REQUIRED');
-    cashboxId = anyCb.id;
+  const hasTreasuryPriv =
+    actor?.role === 'admin' ||
+    Boolean(actor?.permissions?.canManageCashboxes || actor?.permissions?.canManageAccounts);
+  const defCbRes = await client.query(`SELECT id FROM cashboxes ORDER BY is_default DESC LIMIT 1`);
+  const defaultCbId = defCbRes.rows[0]?.id;
+  const reqCashboxId = payload.cashboxId ? String(payload.cashboxId).trim() : '';
+  if (
+    reqCashboxId &&
+    actor?.role !== 'representative' &&
+    !hasTreasuryPriv &&
+    defaultCbId &&
+    reqCashboxId !== defaultCbId
+  ) {
+    throw new AppError(
+      403,
+      'اختيار خزينة مخصصة للدفعة المقدمة مخصص للإدارة ومسؤولي الخزائن والحسابات فقط',
+      'FORBIDDEN_TREASURY_PERMISSION'
+    );
   }
+  const cashboxId = actor?.role === 'representative' || !reqCashboxId ? defaultCbId : reqCashboxId;
+  if (!cashboxId) throw new AppError(400, 'لا توجد خزينة متاحة', 'CASHBOX_REQUIRED');
   const cbRes = await client.query(`SELECT * FROM cashboxes WHERE id = $1 FOR UPDATE`, [cashboxId]);
   if (!cbRes.rows[0]) throw new AppError(404, 'الخزينة المحددة غير موجودة', 'CASHBOX_NOT_FOUND');
   const cb = cbRes.rows[0];
@@ -1490,11 +1534,29 @@ export function recordOrderAdvancePaymentJsonTx(db, orderId, payload, actor, ide
   }
   const cust = db.customers.find((c) => c.id === ord.customerId);
   if (!cust) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
-  const requestedCashboxId = actor?.role === 'representative' ? undefined : payload.cashboxId;
-  const cb = requestedCashboxId
-    ? db.cashboxes.find((c) => c.id === requestedCashboxId)
-    : db.cashboxes.find((c) => c.isDefault) || db.cashboxes[0];
-  if (!cb) throw new AppError(404, 'الخزينة المحددة غير موجودة', 'CASHBOX_NOT_FOUND');
+  const hasTreasuryPriv =
+    actor?.role === 'admin' ||
+    Boolean(actor?.permissions?.canManageCashboxes || actor?.permissions?.canManageAccounts);
+  const defaultCb = (db.cashboxes || []).find((c) => c.isDefault) || (db.cashboxes || [])[0];
+  const reqCashboxId = payload.cashboxId ? String(payload.cashboxId).trim() : '';
+  if (
+    reqCashboxId &&
+    actor?.role !== 'representative' &&
+    !hasTreasuryPriv &&
+    defaultCb &&
+    reqCashboxId !== defaultCb.id
+  ) {
+    throw new AppError(
+      403,
+      'اختيار خزينة مخصصة للدفعة المقدمة مخصص للإدارة ومسؤولي الخزائن والحسابات فقط',
+      'FORBIDDEN_TREASURY_PERMISSION'
+    );
+  }
+  const cb =
+    actor?.role !== 'representative' && reqCashboxId
+      ? (db.cashboxes || []).find((c) => c.id === reqCashboxId)
+      : defaultCb;
+  if (!cb) throw new AppError(reqCashboxId ? 404 : 400, reqCashboxId ? 'الخزينة المحددة غير موجودة' : 'لا توجد خزينة متاحة', reqCashboxId ? 'CASHBOX_NOT_FOUND' : 'CASHBOX_REQUIRED');
 
   const ordTotal = round2(ord.totalAmount || 0);
   const prevAdvance = round2(ord.advancePaidAmount || 0);
@@ -1602,6 +1664,9 @@ export async function recordOrderAdvancePayment(orderId, payload, actor, idempot
   if (!canViewCashboxBalances(actor)) {
     const sanitized = { ...out };
     delete sanitized.cashboxBalance;
+    if (sanitized.advancePayment) {
+      sanitized.advancePayment = sanitizeAdvancePaymentForViewer(sanitized.advancePayment, actor);
+    }
     return sanitized;
   }
   return out;
@@ -1948,6 +2013,21 @@ export async function convertOrderToInvoice(orderId, invoicePayload = {}, actor,
     actor.role === 'admin' ||
     Boolean(actor.permissions?.canManageCashboxes || actor.permissions?.canManageAccounts);
 
+  if (
+    !repActor &&
+    !hasTreasuryPriv &&
+    (Boolean(safePayload.cashboxId && String(safePayload.cashboxId).trim()) ||
+      Number(safePayload.paidAtInvoice || 0) > 0 ||
+      Number(safePayload.paidAmount || 0) > 0 ||
+      safePayload.paymentType === 'cash')
+  ) {
+    throw new AppError(
+      403,
+      'اختيار الخزينة أو تحصيل النقدية عند تحويل الطلب إلى فاتورة مخصص للإدارة ومسؤولي الخزائن والحسابات فقط',
+      'FORBIDDEN_TREASURY_PERMISSION'
+    );
+  }
+
   const now = nowIso();
   const endpoint = `POST /api/orders/${orderId}/convert-to-invoice`;
   const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
@@ -2023,6 +2103,46 @@ export async function convertOrderToInvoice(orderId, invoicePayload = {}, actor,
           ? round2(Math.max(0, Number(safePayload.paidAtInvoice ?? safePayload.paidAmount ?? 0)))
           : undefined;
 
+      let targetRepId = repActor ? repActor.id : (ord.delivery_rep_id || ord.representative_id || undefined);
+      let targetRepName = repActor ? repActor.name : (ord.delivery_rep_name || ord.representative_name || undefined);
+      let repChangeAudit = '';
+      if (!repActor) {
+        const reqRepId =
+          safePayload.representativeId !== undefined && safePayload.representativeId !== null
+            ? String(safePayload.representativeId).trim()
+            : '';
+        const reqRepName =
+          safePayload.representativeName !== undefined && safePayload.representativeName !== null
+            ? String(safePayload.representativeName).trim()
+            : '';
+        const baseRepId = String(ord.delivery_rep_id || ord.representative_id || '').trim();
+        const baseRepName = String(ord.delivery_rep_name || ord.representative_name || '').trim();
+        const isRepOverride =
+          (reqRepId !== '' && reqRepId !== baseRepId) ||
+          (reqRepId === '' && reqRepName !== '' && reqRepName !== baseRepName);
+        if (isRepOverride && actor.role !== 'admin' && !actor.permissions?.canManageReps) {
+          throw new AppError(
+            403,
+            'لا يمكن تغيير أو تعيين المندوب المرتبط بالطلب عند تحويله إلى فاتورة؛ الصلاحية للإدارة أو مسؤول المناديب فقط',
+            'FORBIDDEN_ORDER_REP_OVERRIDE'
+          );
+        }
+        if (reqRepId !== '') {
+          const repRow = (await client.query(`SELECT id, name FROM representatives WHERE id = $1 LIMIT 1`, [reqRepId])).rows[0];
+          if (!repRow) throw new AppError(404, 'المندوب المستهدف غير موجود', 'REPRESENTATIVE_NOT_FOUND');
+          targetRepId = repRow.id;
+          targetRepName = repRow.name;
+        } else if (isRepOverride && reqRepName !== '') {
+          const repRow = (await client.query(`SELECT id, name FROM representatives WHERE name = $1 LIMIT 1`, [reqRepName])).rows[0];
+          if (!repRow) throw new AppError(404, 'المندوب المستهدف غير موجود', 'REPRESENTATIVE_NOT_FOUND');
+          targetRepId = repRow.id;
+          targetRepName = repRow.name;
+        }
+        if (isRepOverride) {
+          repChangeAudit = ` — تعديل المندوب من (${baseRepName || baseRepId || 'بدون مندوب'}) إلى (${targetRepName || targetRepId})`;
+        }
+      }
+
       const invoice = await createInvoiceInsidePgTx(
         client,
         'sales',
@@ -2030,8 +2150,8 @@ export async function convertOrderToInvoice(orderId, invoicePayload = {}, actor,
           ...safePayload,
           customerId: ord.customer_id,
           customerName: ord.customer_name,
-          representativeId: repActor ? repActor.id : (safePayload.representativeId || ord.delivery_rep_id || ord.representative_id || undefined),
-          representativeName: repActor ? repActor.name : (safePayload.representativeName || ord.delivery_rep_name || ord.representative_name || undefined),
+          representativeId: targetRepId,
+          representativeName: targetRepName,
           cashboxId: repActor || !hasTreasuryPriv ? undefined : safePayload.cashboxId,
           discountTotal: repActor ? 0 : safePayload.discountTotal,
           taxTotal: repActor ? 0 : safePayload.taxTotal,
@@ -2059,28 +2179,29 @@ export async function convertOrderToInvoice(orderId, invoicePayload = {}, actor,
       await client.query(
         `INSERT INTO order_status_history (id, order_id, from_status, to_status, changed_by_user_id, changed_by_name, reason, changed_at)
          VALUES ($1,$2,$3,'invoiced',$4,$5,$6,$7)`,
-        [generateServerId('OSH'), orderId, prevStatus, actor.id, actor.fullName, `تحويل الطلب إلى فاتورة مبيعات رقم ${invoice.invoiceNumber} (${invoice.status === 'draft' ? 'مسودة' : 'معتمدة'})`, now]
+        [generateServerId('OSH'), orderId, prevStatus, actor.id, actor.fullName, `تحويل الطلب إلى فاتورة مبيعات رقم ${invoice.invoiceNumber} (${invoice.status === 'draft' ? 'مسودة' : 'معتمدة'})${repChangeAudit}`, now]
       );
 
       const updated = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1`, [orderId]);
       const histRes = await client.query(`SELECT * FROM order_status_history WHERE order_id = $1 ORDER BY changed_at ASC`, [orderId]);
       const payloadOut = { order: mapPgOrderRow(updated.rows[0], orderItems, histRes.rows), invoice };
       await savePgIdempotency(client, scopedIdem, actor, endpoint, payloadOut);
-      return { deduplicated: false, ...payloadOut };
+      return { deduplicated: false, ...payloadOut, _repChangeAudit: repChangeAudit };
     });
 
     if (!result.deduplicated) {
       await recordAuditLog({
         userId: actor.id,
         userName: actor.fullName,
-        action: `تحويل الطلب (${result.order.requestNumber}) إلى فاتورة (${result.invoice.invoiceNumber})`,
+        action: `تحويل الطلب (${result.order.requestNumber}) إلى فاتورة (${result.invoice.invoiceNumber})${result._repChangeAudit || ''}`,
         module: 'طلبات العملاء والمندوبين',
         recordId: orderId,
       });
     }
+    const cleanResult = { deduplicated: result.deduplicated, order: result.order, invoice: result.invoice };
     return actor?.role === 'representative'
-      ? { ...result, invoice: sanitizeInvoiceForRepresentative(result.invoice) }
-      : result;
+      ? { ...cleanResult, invoice: sanitizeInvoiceForRepresentative(cleanResult.invoice) }
+      : cleanResult;
   }
 
   // JSON Ledger fallback
@@ -2147,6 +2268,46 @@ export async function convertOrderToInvoice(orderId, invoicePayload = {}, actor,
         ? round2(Math.max(0, Number(safePayload.paidAtInvoice ?? safePayload.paidAmount ?? 0)))
         : undefined;
 
+    let targetRepId = repActor ? repActor.id : (ord.deliveryRepId || ord.representativeId || undefined);
+    let targetRepName = repActor ? repActor.name : (ord.deliveryRepName || ord.representativeName || undefined);
+    let repChangeAudit = '';
+    if (!repActor) {
+      const reqRepId =
+        safePayload.representativeId !== undefined && safePayload.representativeId !== null
+          ? String(safePayload.representativeId).trim()
+          : '';
+      const reqRepName =
+        safePayload.representativeName !== undefined && safePayload.representativeName !== null
+          ? String(safePayload.representativeName).trim()
+          : '';
+      const baseRepId = String(ord.deliveryRepId || ord.representativeId || '').trim();
+      const baseRepName = String(ord.deliveryRepName || ord.representativeName || '').trim();
+      const isRepOverride =
+        (reqRepId !== '' && reqRepId !== baseRepId) ||
+        (reqRepId === '' && reqRepName !== '' && reqRepName !== baseRepName);
+      if (isRepOverride && actor.role !== 'admin' && !actor.permissions?.canManageReps) {
+        throw new AppError(
+          403,
+          'لا يمكن تغيير أو تعيين المندوب المرتبط بالطلب عند تحويله إلى فاتورة؛ الصلاحية للإدارة أو مسؤول المناديب فقط',
+          'FORBIDDEN_ORDER_REP_OVERRIDE'
+        );
+      }
+      if (reqRepId !== '') {
+        const repRow = (db.representatives || []).find((r) => r.id === reqRepId);
+        if (!repRow) throw new AppError(404, 'المندوب المستهدف غير موجود', 'REPRESENTATIVE_NOT_FOUND');
+        targetRepId = repRow.id;
+        targetRepName = repRow.name;
+      } else if (isRepOverride && reqRepName !== '') {
+        const repRow = (db.representatives || []).find((r) => r.name === reqRepName);
+        if (!repRow) throw new AppError(404, 'المندوب المستهدف غير موجود', 'REPRESENTATIVE_NOT_FOUND');
+        targetRepId = repRow.id;
+        targetRepName = repRow.name;
+      }
+      if (isRepOverride) {
+        repChangeAudit = ` — تعديل المندوب من (${baseRepName || baseRepId || 'بدون مندوب'}) إلى (${targetRepName || targetRepId})`;
+      }
+    }
+
     const invoice = createInvoiceInsideJsonTx(
       db,
       'sales',
@@ -2154,8 +2315,8 @@ export async function convertOrderToInvoice(orderId, invoicePayload = {}, actor,
         ...safePayload,
         customerId: ord.customerId,
         customerName: ord.customerName,
-        representativeId: repActor ? repActor.id : (safePayload.representativeId || ord.deliveryRepId || ord.representativeId || undefined),
-        representativeName: repActor ? repActor.name : (safePayload.representativeName || ord.deliveryRepName || ord.representativeName || undefined),
+        representativeId: targetRepId,
+        representativeName: targetRepName,
         cashboxId: repActor || !hasTreasuryPriv ? undefined : safePayload.cashboxId,
         discountTotal: repActor ? 0 : safePayload.discountTotal,
         taxTotal: repActor ? 0 : safePayload.taxTotal,
@@ -2187,26 +2348,27 @@ export async function convertOrderToInvoice(orderId, invoicePayload = {}, actor,
       fromStatus: prevStatus,
       toStatus: 'invoiced',
       changedByName: actor.fullName,
-      reason: `تحويل الطلب إلى فاتورة مبيعات رقم ${invoice.invoiceNumber} (${invoice.status === 'draft' ? 'مسودة' : 'معتمدة'})`,
+      reason: `تحويل الطلب إلى فاتورة مبيعات رقم ${invoice.invoiceNumber} (${invoice.status === 'draft' ? 'مسودة' : 'معتمدة'})${repChangeAudit}`,
       changedAt: now,
     });
     const payloadOut = { order: ord, invoice };
     saveJsonIdempotency(scopedIdem, payloadOut);
-    return { deduplicated: false, ...payloadOut };
+    return { deduplicated: false, ...payloadOut, _repChangeAudit: repChangeAudit };
   });
 
   if (!result.deduplicated) {
     await recordAuditLog({
       userId: actor.id,
       userName: actor.fullName,
-      action: `تحويل الطلب (${result.order.requestNumber}) إلى فاتورة (${result.invoice.invoiceNumber})`,
+      action: `تحويل الطلب (${result.order.requestNumber}) إلى فاتورة (${result.invoice.invoiceNumber})${result._repChangeAudit || ''}`,
       module: 'طلبات العملاء والمندوبين',
       recordId: orderId,
     });
   }
+  const cleanResult = { deduplicated: result.deduplicated, order: result.order, invoice: result.invoice };
   return actor?.role === 'representative'
-    ? { ...result, invoice: sanitizeInvoiceForRepresentative(result.invoice) }
-    : result;
+    ? { ...cleanResult, invoice: sanitizeInvoiceForRepresentative(cleanResult.invoice) }
+    : cleanResult;
 }
 
 const VALID_LIFECYCLE_STAGES = new Set([
@@ -2299,6 +2461,24 @@ export async function advanceOrderStage(orderId, payload, authContext) {
         }
       }
 
+      let resolvedDeliveryRepId = rep?.id || null;
+      let resolvedDeliveryRepName = rep?.name || '';
+      if (!isRep && payload.deliveryRepId !== undefined && payload.deliveryRepId !== null && String(payload.deliveryRepId).trim() !== '') {
+        const reqDeliveryRepId = String(payload.deliveryRepId).trim();
+        const currentOrderRepId = String(row.delivery_rep_id || row.representative_id || '').trim();
+        if (reqDeliveryRepId !== currentOrderRepId && actor.role !== 'admin' && !actor.permissions?.canManageReps) {
+          throw new AppError(
+            403,
+            'لا يمكن تغيير أو تعيين مندوب التوصيل من خلال تحديث المرحلة بدون صلاحية الإدارة أو مسؤول المناديب',
+            'FORBIDDEN_ORDER_REP_OVERRIDE'
+          );
+        }
+        const repRow = (await client.query(`SELECT id, name FROM representatives WHERE id = $1 LIMIT 1`, [reqDeliveryRepId])).rows[0];
+        if (!repRow) throw new AppError(404, 'المندوب المحدد للتوصيل غير موجود', 'REPRESENTATIVE_NOT_FOUND');
+        resolvedDeliveryRepId = repRow.id;
+        resolvedDeliveryRepName = repRow.name;
+      }
+
       let updatedInvoice = null;
       let advancePayment = null;
 
@@ -2361,8 +2541,8 @@ export async function advanceOrderStage(orderId, payload, authContext) {
         [
           targetStage,
           now,
-          rep?.id || payload.deliveryRepId || null,
-          rep?.name || payload.deliveryRepName || '',
+          resolvedDeliveryRepId,
+          resolvedDeliveryRepName,
           notes,
           nextCollected,
           nextRemaining,
@@ -2431,7 +2611,8 @@ export async function advanceOrderStage(orderId, payload, authContext) {
         [mapPgOrderRow(updatedOrd.rows[0], itemsRes.rows, histRes.rows)],
         productImageMap,
         invoiceMap,
-        advPaymentsMap
+        advPaymentsMap,
+        actor
       )[0];
 
       const payloadOut = { order: enrichedOrder, invoice: updatedInvoice, advancePayment };
@@ -2444,8 +2625,8 @@ export async function advanceOrderStage(orderId, payload, authContext) {
     return {
       deduplicated: Boolean(out.deduplicated),
       order: out.order,
-      invoice: out.invoice,
-      advancePayment: out.advancePayment,
+      invoice: actor?.role === 'representative' && out.invoice ? sanitizeInvoiceForRepresentative(out.invoice) : out.invoice,
+      advancePayment: sanitizeAdvancePaymentForViewer(out.advancePayment, actor),
     };
   }
 
@@ -2479,6 +2660,24 @@ export async function advanceOrderStage(orderId, payload, authContext) {
       if (!allowed) {
         throw new AppError(403, 'غير مصرح لك بتحديث حالة أو تحصيل طلب غير مخصص لك', 'FORBIDDEN_ORDER_ACCESS');
       }
+    }
+
+    let resolvedDeliveryRepId = rep?.id || null;
+    let resolvedDeliveryRepName = rep?.name || '';
+    if (!isRep && payload.deliveryRepId !== undefined && payload.deliveryRepId !== null && String(payload.deliveryRepId).trim() !== '') {
+      const reqDeliveryRepId = String(payload.deliveryRepId).trim();
+      const currentOrderRepId = String(ord.deliveryRepId || ord.representativeId || '').trim();
+      if (reqDeliveryRepId !== currentOrderRepId && actor.role !== 'admin' && !actor.permissions?.canManageReps) {
+        throw new AppError(
+          403,
+          'لا يمكن تغيير أو تعيين مندوب التوصيل من خلال تحديث المرحلة بدون صلاحية الإدارة أو مسؤول المناديب',
+          'FORBIDDEN_ORDER_REP_OVERRIDE'
+        );
+      }
+      const repRow = (db.representatives || []).find((r) => r.id === reqDeliveryRepId);
+      if (!repRow) throw new AppError(404, 'المندوب المحدد للتوصيل غير موجود', 'REPRESENTATIVE_NOT_FOUND');
+      resolvedDeliveryRepId = repRow.id;
+      resolvedDeliveryRepName = repRow.name;
     }
 
     let updatedInvoice = null;
@@ -2522,9 +2721,9 @@ export async function advanceOrderStage(orderId, payload, authContext) {
     const prevStatus = ord.status;
     ord.status = targetStage;
     if (targetStage === 'delivered' && !ord.deliveredAt) ord.deliveredAt = now;
-    if (!ord.deliveryRepId && (rep || payload.deliveryRepId)) {
-      ord.deliveryRepId = rep?.id || payload.deliveryRepId;
-      ord.deliveryRepName = rep?.name || payload.deliveryRepName || '';
+    if (!ord.deliveryRepId && resolvedDeliveryRepId) {
+      ord.deliveryRepId = resolvedDeliveryRepId;
+      ord.deliveryRepName = resolvedDeliveryRepName;
     }
     if (notes) ord.deliveryNotes = notes;
     if (updatedInvoice) {
@@ -2553,7 +2752,7 @@ export async function advanceOrderStage(orderId, payload, authContext) {
       orderId,
       (db.orderAdvancePayments || []).filter((a) => a.orderId === orderId)
     );
-    const enrichedOrder = enrichOrderCollection([ord], productImageMap, invoiceMap, advPaymentsMap)[0];
+    const enrichedOrder = enrichOrderCollection([ord], productImageMap, invoiceMap, advPaymentsMap, actor)[0];
 
     const payloadOut = { order: enrichedOrder, invoice: updatedInvoice, advancePayment };
     if (scopedIdem) {
@@ -2576,8 +2775,8 @@ export async function advanceOrderStage(orderId, payload, authContext) {
   return {
     deduplicated: Boolean(out.deduplicated),
     order: out.order,
-    invoice: out.invoice,
-    advancePayment: out.advancePayment,
+    invoice: actor?.role === 'representative' && out.invoice ? sanitizeInvoiceForRepresentative(out.invoice) : out.invoice,
+    advancePayment: sanitizeAdvancePaymentForViewer(out.advancePayment, actor),
   };
   });
 }

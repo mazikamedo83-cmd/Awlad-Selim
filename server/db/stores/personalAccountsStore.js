@@ -388,6 +388,7 @@ export async function createPersonalTransaction(accountId, payload, actor, idemp
         type: delta >= 0 ? 'deposit' : 'withdrawal',
         cashboxId: cb.id,
         cashboxName: cb.name,
+        balanceAfter: cb.currentBalance,
         amount: absAmt,
         category: type === 'personal_deposit' ? 'إيداع شخصي للمالك' : type === 'personal_expense' ? 'مصروف شخصي للمالك' : 'مسحوبات شخصية للمالك',
         relatedDocType: 'manual',

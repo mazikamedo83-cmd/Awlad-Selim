@@ -1,7 +1,7 @@
 # Security Summary
 
-**Reviewed Files**: 36  
-**Issues Resolved**: 15
+**Reviewed Files**: 42  
+**Issues Resolved**: 20
 
 ### Issues Resolved
 | Area | File | Line | What Was Happening | Impact | Status | How It Was Fixed |
@@ -20,6 +20,11 @@
 | Parameterized `IN (...)` Parity Across PostgreSQL & `pg-mem` | `server/utils/errors.js`, `server/db/stores/catalogStore.js`, `server/db/stores/inventoryAdminStore.js`, `server/db/stores/ordersStore.js`, `server/db/stores/invoicesStore.js`, `server/db/stores/reportsStore.js` | 137 | Indexed FK `= ANY($1::varchar[])` array queries dropped child rows (`invoice_items`, `invoice_payments`, `invoice_return_items`, order sub-tables) under `pg-mem`. | Medium | Fixed | Replaced all `= ANY($n::varchar[])` array predicates across stores with parameterized `buildPgInPredicate(columnSql, values, params)` generating standard `IN ($1, $2, ...)` clauses, achieving identical results on PostgreSQL 16 and `pg-mem`. |
 | Offline Summary Return & Collection Accuracy | `src/components/modules/mobile/RepPortal.tsx` | 766 | Offline rep summary keyed returns only by `productId` (ignoring unit variants) and counted non-collection cash inflows as customer collections. | Medium | Fixed | Keyed return quantities by `` `${productId}::${unit}` `` first and restricted offline collections strictly to `تحصيل من عميل` / `customer_payment`. |
 | Development Dependency Advisory | `package.json`, `bun.lock` | 75 | `bun audit` reported 1 moderate transitive ReDoS advisory in `minimatch >=7.0.0 <11.0.1` inside dev tooling (`app-builder-lib` / `@electron/universal`). | Low | Fixed | Added scoped `overrides` (`app-builder-lib>minimatch` and `@electron/universal>minimatch` pinned to `^11.0.9`) and updated `bun.lock` with Bun `1.4.4`; verified `bun audit` reports 0 vulnerabilities and `bun install --frozen-lockfile` succeeds. |
+| Purchase Receipt & Quote/Order Conversion Authority | `server/db/stores/invoicesStore.js`, `server/db/stores/ordersStore.js` | 1447 | Non-treasury purchase receivers could override `cashboxId` during `receivePurchaseInvoice`, and sales staff without `canManageReps` or treasury permissions could reassign representatives or force cash settlement during `convertQuoteToInvoice`, `convertOrderToInvoice`, or `advanceOrderStage`. | High | Fixed | Required treasury authority to override `cashboxId` on purchase receipts (`FORBIDDEN_CASHBOX_OVERRIDE`), restricted cash payments/cashbox selection and representative reassignment on quote/order conversions and stage updates to authorized roles (`admin` / `canManageReps` / treasury), validated target representatives against database records (`404 REPRESENTATIVE_NOT_FOUND`), and recorded representative overrides in `audit_logs`. |
+| Rep Financial Transfer Controls & Default Cashbox Resolution | `server/db/stores/inventoryAdminStore.js` | 1163 | Representatives could submit `owner_to_rep` transfers, supply spoofed `senderId`/`cashboxId` values (or fail when cashboxes were hidden), self-confirm their own `rep_to_owner` transfers, or confirm/reject another representative's `owner_to_rep` transfers. | High | Fixed | Restricted representatives in `createRepTransfer` strictly to `rep_to_owner` from their linked profile into the resolved default cashbox, blocked representative self-confirmation on `rep_to_owner` (`FORBIDDEN_SELF_CONFIRM_TRANSFER`), enforced target-rep ownership on `owner_to_rep` confirmations/rejections (`FORBIDDEN_REP_TRANSFER_ACCESS`), and added audit logging. |
+| JSON/PostgreSQL Cashbox `balanceAfter` Parity | `server/db/stores/invoicesStore.js`, `server/db/stores/personalAccountsStore.js`, `server/db/stores/inventoryAdminStore.js`, `server/db/migrator.js` | 409 | Several JSON `financialTransactions` writes omitted `balanceAfter`, PG `getStaffBootstrapData` omitted `ft.balance_after`, and `migrator.js` hardcoded `0` for `balance_after` on migration/restore. | Medium | Fixed | Recorded authoritative resulting `cashbox.currentBalance` as `balanceAfter` on every JSON `financialTransactions` entry (sales, purchases, payments, returns, requests, expenses, cheques, installments, cash ops, rep transfers, personal transactions), mapped `balanceAfter` in PG bootstrap queries, and preserved `ft.balanceAfter` in `migrator.js`. |
+| JSON Ledger Backup Restore Overwrite Bug | `server/db/stores/inventoryAdminStore.js` | 5715 | `restoreFullBackup` called `writeJsonDatabase(backupData)` inside `withJsonTransaction(() => ...)` without mutating or committing the transaction's working object, causing post-callback flush to overwrite restored data with the stale pre-restore state. | High | Fixed | Normalized `backupData` directly into the `withJsonTransaction` working state and invoked `commit()`, restoring cashbox balances and records accurately in JSON mode. |
+| Order Advance & Stage Cashbox/Cost Isolation | `server/db/stores/ordersStore.js`, `src/components/modules/orders/CustomerRepOrdersView.tsx` | 43 | `recordOrderAdvancePayment` and `enrichOrderCollection` exposed `cashboxId`/`cashboxName` to representatives, `advanceOrderStage` returned unsanitized invoice cost fields after collection, and non-treasury sales staff could pass custom `cashboxId` on order advance payments. | High | Fixed | Blocked non-treasury employees from diverting order advance payments to non-default cashboxes (`FORBIDDEN_TREASURY_PERMISSION`), stripped `cashboxId`/`cashboxName`/`cashboxBalance` for representatives across order payment & stage responses, sanitized invoice cost fields returned by `advanceOrderStage`, and aligned `CustomerRepOrdersView.tsx` defaults with treasury permissions. |
 
 ### Safeguards Verified
 | Area | File | How It's Protected |
@@ -125,8 +130,28 @@ Enforced strict `actor.role === 'customer'` ownership scoping on customer record
 
 ---
 
-### 5. Local Automated Verification Summary
-All 14 suites in `.github/workflows/ci.yml` passed locally after final edits (PostgreSQL suites executed via `pg-mem`, while live PostgreSQL 16 verification is defined in `.github/workflows/ci.yml`):
+### 5. Purchase Receipt, Quote/Order Conversion & Rep Financial Transfer Guards
+
+#### Summary
+| Field | Value |
+|---|---|
+| Issue Type | Missing Field-Level Permission, Ownership & Workflow State Controls |
+| Impact | High |
+| Affected File | `server/db/stores/invoicesStore.js`, `server/db/stores/ordersStore.js`, `server/db/stores/inventoryAdminStore.js`, `server/db/migrator.js` |
+| Test Scenario | Non-treasury receiver passes a different `cashboxId` to `receivePurchaseInvoice`; limited sales user forces cash payment or changes representative on quote/order conversion or order stage update; representative submits `owner_to_rep`, self-confirms `rep_to_owner`, or confirms another rep's `owner_to_rep`; admin exports and restores a full backup. |
+
+#### How It Was Fixed
+- Required treasury authority (`admin`, `canManageCashboxes`, or `canManageAccounts`) to change a purchase invoice's `cashboxId` during receipt, and blocked unauthorized treasury or representative overrides during quote/order conversion and `advanceOrderStage`.
+- Enforced server-side representative profile attribution, direction limits, default cashbox resolution, self-confirmation blocking, and target-rep ownership verification on `rep-transfers`.
+- Restored JSON/PG `balanceAfter` parity across all financial transaction paths and repaired JSON backup restore transaction commits.
+
+#### Conclusion
+**Fix Verified** - Verified in `productionReadinessAuditTests.mjs` across both JSON Ledger and PostgreSQL (`pg-mem`) modes (16 test groups including order advance payment & stage isolation).
+
+---
+
+### 6. Local Automated Verification Summary
+All 15 suites in `.github/workflows/ci.yml` passed locally after final edits (PostgreSQL suites executed via `pg-mem`, while live PostgreSQL 16 verification is defined in `.github/workflows/ci.yml`):
 - `node server/tests/runAllTests.mjs` — PASS
 - `node server/tests/repPurchaseCustomerRbacTests.mjs` — PASS
 - `node server/tests/masterRepairVerificationTests.mjs` — PASS
@@ -139,6 +164,9 @@ All 14 suites in `.github/workflows/ci.yml` passed locally after final edits (Po
 - `node server/tests/securityCompletionTests.mjs` — PASS
 - `npx tsx server/tests/clientSecurityCompletionTests.mts` — PASS
 - `node server/tests/fullCompletionSuite.mjs` — PASS
-- `node server/tests/finalSecurityAuditTests.mjs` — PASS (33 assertion groups across JSON & `pg-mem`, including Group 17)
+- `node server/tests/finalSecurityAuditTests.mjs` — PASS (37 assertion groups across JSON & `pg-mem`, including Group 17)
+- `node server/tests/productionReadinessAuditTests.mjs` — PASS (16 assertion groups across report titles, catalog hygiene, JSON & `pg-mem` workflows, `balanceAfter`, backup/restore, and order advance/stage isolation)
 - `npx tsx server/tests/diagnosticsTests.mts` — PASS (3 / 3)
-- `bun install --frozen-lockfile` & `bun audit` — PASS (0 vulnerabilities across 570 audited packages)
+- `bun install --frozen-lockfile` & `bun audit` — PASS (0 vulnerabilities)
+
+
