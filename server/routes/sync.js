@@ -7,6 +7,7 @@ import {
   markPgUnavailable,
   createDatabaseUnavailableError,
   isoTimestamp,
+  ADMIN_ONLY_PERMISSION_KEYS,
 } from '../db/stores/mode.js';
 import { generateServerId } from '../utils/crypto.js';
 import {
@@ -216,6 +217,13 @@ function assertStaffPermission(user, permKey) {
   if (user.role === 'customer') {
     throw new AppError(403, 'هذه العملية مخصصة لموظفي وإدارة الشركة فقط', 'FORBIDDEN_STAFF_ONLY');
   }
+  if (user.role === 'representative' && permKey && ADMIN_ONLY_PERMISSION_KEYS.has(permKey)) {
+    throw new AppError(
+      403,
+      `هذه الصلاحية (${permKey}) غير متاحة لحسابات المناديب`,
+      'FORBIDDEN_ROLE_PERMISSION'
+    );
+  }
   if (user.role !== 'admin' && permKey && user.permissions?.[permKey] !== true) {
     throw new AppError(403, `ليس لديك الصلاحية المطلوبة (${permKey})`, 'FORBIDDEN_PERMISSION');
   }
@@ -368,6 +376,14 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
 
   if (opType === 'create_invoice_return') {
     const isPurchaseReturn = payload?.type === 'purchase_return';
+    const isCashRefund = payload?.refundType === 'cash';
+    if (user.role === 'representative' && String(payload?.cashboxId || '').trim()) {
+      throw new AppError(
+        403,
+        'غير مصرح للمندوب باختيار خزينة الشركة أو تنفيذ عمليات نقدية مباشرة عليها',
+        'FORBIDDEN_REP_CASHBOX_SELECTION'
+      );
+    }
     if (isPurchaseReturn) {
       if (user.role === 'representative') {
         throw new AppError(
@@ -378,6 +394,13 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
       }
       assertStaffPermission(user, 'canManagePurchases');
     } else {
+      if (user.role === 'representative' && isCashRefund) {
+        throw new AppError(
+          403,
+          'لا يمكن للمندوب تنفيذ مرتجع مبيعات نقدي مباشرة من الخزينة؛ يرجى رفع طلب مرتجع مبيعات نقدي لاعتماد الخزينة/الإدارة',
+          'FORBIDDEN_REP_CASH_RETURN'
+        );
+      }
       assertStaffPermission(user, 'canManageSales');
     }
     return createInvoiceReturn(payload, user, opId);

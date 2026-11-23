@@ -2091,6 +2091,610 @@ async function runFullModeAudit(modeName) {
         'Cancelled invoice price (999) must be excluded from last 3 prices'
       );
     });
+
+    await test(`[${modeName}] 18. Return cashbox/party hardening, sales return request approval workflow, sync hard-deny, quote override block & rep aggregate totals scoping`, async () => {
+      // Create a self-contained representative, customer, supplier, non-treasury staff, and treasury staff
+      const rep18Reg = await req(baseUrl, 'POST', '/api/auth/register', {
+        body: {
+          role: 'representative',
+          fullName: 'مندوب اختبار المرتجعات',
+          username: `rep18_${modeName}`,
+          phone: '01077778801',
+          password: 'RepPassword!2026',
+        },
+      });
+      assert.equal(rep18Reg.status, 201);
+      const rep18User = rep18Reg.json.user;
+      const rep18Id = rep18Reg.json.representativeProfile?.id;
+      assert.ok(rep18Id);
+
+      const rep18Perms = await req(baseUrl, 'PUT', `/api/admin/users/${rep18User.id}`, {
+        token: adminToken,
+        body: {
+          permissions: {
+            canView: true,
+            canAdd: true,
+            canEdit: true,
+            canManageSales: true,
+            canCreatePurchase: true,
+            canViewReports: true,
+          },
+        },
+      });
+      assert.equal(rep18Perms.status, 200);
+
+      const rep18Login = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: `rep18_${modeName}`, password: 'RepPassword!2026' },
+      });
+      assert.equal(rep18Login.status, 200);
+      const rep18Token = rep18Login.json.accessToken;
+
+      const cust18Res = await req(baseUrl, 'POST', '/api/customers', {
+        token: adminToken,
+        body: { name: 'عميل اختبار 18', phone: '01077778802', openingBalance: 200 },
+      });
+      assert.equal(cust18Res.status, 201);
+      const cust18Id = cust18Res.json.customer.id;
+
+      const sup18Res = await req(baseUrl, 'POST', '/api/admin/suppliers', {
+        token: adminToken,
+        body: { name: 'مورد اختبار 18', phone: '01077778803', openingBalance: 300 },
+      });
+      assert.equal(sup18Res.status, 201);
+      const sup18Id = sup18Res.json.supplier.id;
+
+      const pur18Res = await req(baseUrl, 'POST', '/api/invoices/purchase', {
+        token: rep18Token,
+        body: {
+          supplierId: sup18Id,
+          warehouseId: mainWhId,
+          date: '2026-11-21',
+          paidAmount: 0,
+          paymentType: 'credit',
+          items: [{ productId, quantity: 3, unit: 'زجاجة', unitPrice: 50 }],
+        },
+      });
+      assert.equal(pur18Res.status, 201);
+      const pur18Id = pur18Res.json.invoice.id;
+      await req(baseUrl, 'POST', `/api/invoices/purchase/${pur18Id}/send`, { token: rep18Token, body: {} });
+      await req(baseUrl, 'POST', `/api/invoices/purchase/${pur18Id}/receive`, {
+        token: adminToken,
+        body: { confirmNow: true, warehouseId: mainWhId, cashboxId },
+      });
+
+      const nonTreasuryStaff = await createAdminUser(
+        {
+          fullName: 'موظف مبيعات بدون خزينة',
+          username: `sales_only_${modeName}`,
+          password: 'StaffPassword!2026',
+          role: 'sales',
+          permissions: {
+            canView: true,
+            canAdd: true,
+            canEdit: true,
+            canManageSales: true,
+            canManageCashboxes: false,
+            canManageAccounts: false,
+            canApprove: false,
+          },
+        },
+        adminUser
+      );
+      assert.ok(nonTreasuryStaff?.id);
+
+      const treasuryStaff = await createAdminUser(
+        {
+          fullName: 'مسؤول خزينة ومبيعات',
+          username: `treasury_staff_${modeName}`,
+          password: 'StaffPassword!2026',
+          role: 'accountant',
+          permissions: {
+            canView: true,
+            canAdd: true,
+            canEdit: true,
+            canManageSales: true,
+            canManageCashboxes: true,
+            canManageAccounts: true,
+            canApprove: true,
+          },
+        },
+        adminUser
+      );
+      assert.ok(treasuryStaff?.id);
+
+      const nonTreasuryLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: `sales_only_${modeName}`, password: 'StaffPassword!2026' },
+      });
+      const treasuryLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: `treasury_staff_${modeName}`, password: 'StaffPassword!2026' },
+      });
+      assert.equal(nonTreasuryLogin.status, 200);
+      assert.equal(treasuryLogin.status, 200);
+      const nonTreasuryToken = nonTreasuryLogin.json.accessToken;
+      const treasuryToken = treasuryLogin.json.accessToken;
+
+      const getCashboxes = async () => {
+        const bootRes = await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken });
+        assert.equal(bootRes.status, 200);
+        return bootRes.json.data.cashboxes || [];
+      };
+      const getCbBal = (cbList, id) => Number((cbList || []).find((c) => c.id === id)?.currentBalance || 0);
+      const cbBefore = await getCashboxes();
+      const cb1Start = getCbBal(cbBefore, cashboxId);
+      const cb2Start = getCbBal(cbBefore, cashbox2Id);
+
+      // Rep18 creates a fresh confirmed sales invoice (5 * 60 = 300)
+      const rep18Sale = await req(baseUrl, 'POST', '/api/invoices/sales', {
+        token: rep18Token,
+        body: {
+          customerId: cust18Id,
+          warehouseId: mainWhId,
+          date: '2026-11-21',
+          paidAmount: 0,
+          paymentType: 'credit',
+          items: [{ productId, quantity: 5, unit: 'زجاجة', unitPrice: 60 }],
+        },
+      });
+      assert.equal(rep18Sale.status, 201);
+      const rep18SaleId = rep18Sale.json.invoice.id;
+
+      // 18a. Direct returns & sync push reject rep cashboxId and rep direct cash return, and non-treasury staff cashboxId
+      const repDirCb = await req(baseUrl, 'POST', '/api/invoices/returns', {
+        token: rep18Token,
+        body: {
+          type: 'sales_return',
+          originalInvoiceId: rep18SaleId,
+          warehouseId: mainWhId,
+          cashboxId: cashbox2Id,
+          date: '2026-11-21',
+          refundType: 'balance',
+          reason: 'محاولة تمرير خزينة من المندوب',
+          items: [{ productId, quantity: 1, unit: 'زجاجة', unitFactor: 1, unitPrice: 60 }],
+        },
+      });
+      assert.equal(repDirCb.status, 403);
+      assert.equal(repDirCb.json.code, 'FORBIDDEN_REP_CASHBOX_SELECTION');
+
+      const repDirCash = await req(baseUrl, 'POST', '/api/invoices/returns', {
+        token: rep18Token,
+        body: {
+          type: 'sales_return',
+          originalInvoiceId: rep18SaleId,
+          warehouseId: mainWhId,
+          date: '2026-11-21',
+          refundType: 'cash',
+          reason: 'محاولة مرتجع نقدي مباشر من المندوب',
+          items: [{ productId, quantity: 1, unit: 'زجاجة', unitFactor: 1, unitPrice: 60 }],
+        },
+      });
+      assert.equal(repDirCash.status, 403);
+      assert.equal(repDirCash.json.code, 'FORBIDDEN_REP_CASH_RETURN');
+
+      const syncRepRetCb = await req(baseUrl, 'POST', '/api/sync/push', {
+        token: rep18Token,
+        body: {
+          operations: [
+            {
+              operationId: `SYNC-RET-CB-${modeName}`,
+              operationType: 'create_invoice_return',
+              payload: {
+                type: 'sales_return',
+                originalInvoiceId: rep18SaleId,
+                warehouseId: mainWhId,
+                cashboxId: cashbox2Id,
+                date: '2026-11-21',
+                refundType: 'balance',
+                reason: 'مزامنة بخزينة مرفوضة',
+                items: [{ productId, quantity: 1, unit: 'زجاجة', unitFactor: 1, unitPrice: 60 }],
+              },
+            },
+            {
+              operationId: `SYNC-RET-CASH-${modeName}`,
+              operationType: 'create_invoice_return',
+              payload: {
+                type: 'sales_return',
+                originalInvoiceId: rep18SaleId,
+                warehouseId: mainWhId,
+                date: '2026-11-21',
+                refundType: 'cash',
+                reason: 'مزامنة مرتجع نقدي مرفوض',
+                items: [{ productId, quantity: 1, unit: 'زجاجة', unitFactor: 1, unitPrice: 60 }],
+              },
+            },
+          ],
+        },
+      });
+      assert.equal(syncRepRetCb.status, 200);
+      assert.equal(syncRepRetCb.json.results[0].status, 'failed');
+      assert.equal(syncRepRetCb.json.results[0].code, 'FORBIDDEN_REP_CASHBOX_SELECTION');
+      assert.equal(syncRepRetCb.json.results[1].status, 'failed');
+      assert.equal(syncRepRetCb.json.results[1].code, 'FORBIDDEN_REP_CASH_RETURN');
+
+      const staffNoTreasuryCb = await req(baseUrl, 'POST', '/api/invoices/returns', {
+        token: nonTreasuryToken,
+        body: {
+          type: 'sales_return',
+          originalInvoiceId: rep18SaleId,
+          warehouseId: mainWhId,
+          cashboxId: cashbox2Id,
+          date: '2026-11-21',
+          refundType: 'cash',
+          reason: 'موظف بدون صلاحية خزينة',
+          items: [{ productId, quantity: 1, unit: 'زجاجة', unitFactor: 1, unitPrice: 60 }],
+        },
+      });
+      assert.equal(staffNoTreasuryCb.status, 403);
+      assert.equal(staffNoTreasuryCb.json.code, 'FORBIDDEN_TREASURY_PERMISSION');
+
+      // 18b. Sales Return Requests & Purchase Return Requests cashbox blocking + full approval workflow
+      const repSrrWithCb = await req(baseUrl, 'POST', '/api/invoices/sales-return-requests', {
+        token: rep18Token,
+        body: {
+          originalInvoiceId: rep18SaleId,
+          cashboxId: cashbox2Id,
+          refundType: 'cash',
+          reason: 'طلب مع خزينة مرفوض',
+          items: [{ productId, quantity: 2, unit: 'زجاجة', unitFactor: 1, unitPrice: 60 }],
+        },
+      });
+      assert.equal(repSrrWithCb.status, 403);
+      assert.equal(repSrrWithCb.json.code, 'FORBIDDEN_REP_CASHBOX_SELECTION');
+
+      const repPrrWithCb = await req(baseUrl, 'POST', '/api/invoices/purchase-return-requests', {
+        token: rep18Token,
+        body: {
+          originalInvoiceId: pur18Id,
+          cashboxId: cashbox2Id,
+          refundType: 'cash',
+          reason: 'طلب مشتريات مع خزينة مرفوض',
+          items: [{ productId, quantity: 1, unit: 'زجاجة', unitFactor: 1, unitPrice: 50 }],
+        },
+      });
+      assert.equal(repPrrWithCb.status, 403);
+      assert.equal(repPrrWithCb.json.code, 'FORBIDDEN_REP_CASHBOX_SELECTION');
+
+      // Rep creates valid cash sales return request with spoofed party fields -> party resolved from orig invoice, pending leaves cashbox untouched
+      const repSrrValid = await req(baseUrl, 'POST', '/api/invoices/sales-return-requests', {
+        token: rep18Token,
+        body: {
+          originalInvoiceId: rep18SaleId,
+          partyId: 'CUST-SPOOF-777',
+          partyName: 'عميل مزور',
+          refundType: 'cash',
+          date: '2026-11-21',
+          reason: 'طلب مرتجع مبيعات نقدي للمراجعة',
+          items: [{ productId, quantity: 2, unit: 'زجاجة', unitFactor: 1, unitPrice: 60 }], // 120
+        },
+      });
+      assert.equal(repSrrValid.status, 201);
+      const srr1 = repSrrValid.json.request;
+      assert.equal(srr1.status, 'pending');
+      assert.equal(srr1.customerId, cust18Id, 'Sales return request must use authoritative original customerId');
+      assert.equal(srr1.customerName, 'عميل اختبار 18');
+      assert.equal(srr1.representativeId, rep18Id);
+
+      // Sync push create_sales_return_request deduplication (idempotency)
+      const srrSyncOp = {
+        operationId: `SYNC-SRR-IDEM-${modeName}`,
+        operationType: 'create_sales_return_request',
+        payload: {
+          originalInvoiceId: rep18SaleId,
+          refundType: 'cash',
+          date: '2026-11-21',
+          reason: 'طلب عبر المزامنة لاختبار منع التكرار',
+          items: [{ productId, quantity: 1, unit: 'زجاجة', unitFactor: 1, unitPrice: 60 }],
+        },
+      };
+      const syncSrr1 = await req(baseUrl, 'POST', '/api/sync/push', { token: rep18Token, body: { operations: [srrSyncOp] } });
+      const syncSrr2 = await req(baseUrl, 'POST', '/api/sync/push', { token: rep18Token, body: { operations: [srrSyncOp] } });
+      assert.equal(syncSrr1.status, 200);
+      assert.equal(syncSrr2.status, 200);
+      assert.equal(syncSrr1.json.results[0].status, 'synced');
+      assert.equal(syncSrr2.json.results[0].status, 'synced');
+      assert.equal(syncSrr2.json.results[0].deduplicated, true);
+      const srr2Id = syncSrr1.json.results[0].result.id;
+
+      // Verify cashbox untouched while requests are pending
+      const cbPending = await getCashboxes();
+      assert.equal(getCbBal(cbPending, cashboxId), cb1Start);
+      assert.equal(getCbBal(cbPending, cashbox2Id), cb2Start);
+
+      // Rep cannot approve or reject own/other sales return request
+      const repApproveSrr = await req(baseUrl, 'POST', `/api/invoices/sales-return-requests/${srr1.id}/approve`, {
+        token: rep18Token,
+        body: { cashboxId },
+      });
+      assert.equal(repApproveSrr.status, 403);
+      assert.equal(repApproveSrr.json.code, 'FORBIDDEN_APPROVE_RETURN_REQUEST');
+
+      const repRejectSrr = await req(baseUrl, 'POST', `/api/invoices/sales-return-requests/${srr1.id}/reject`, {
+        token: rep18Token,
+        body: { reason: 'محاولة رفض' },
+      });
+      assert.equal(repRejectSrr.status, 403);
+      assert.equal(repRejectSrr.json.code, 'FORBIDDEN_REJECT_RETURN_REQUEST');
+
+      // Non-treasury staff cannot approve a cash sales return request
+      const nonTreasApproveSrr = await req(baseUrl, 'POST', `/api/invoices/sales-return-requests/${srr1.id}/approve`, {
+        token: nonTreasuryToken,
+        body: { cashboxId: cashbox2Id },
+      });
+      assert.equal(nonTreasApproveSrr.status, 403);
+      assert.equal(nonTreasApproveSrr.json.code, 'FORBIDDEN_TREASURY_PERMISSION');
+
+      // Treasury staff approves srr1 selecting cashbox2Id -> cashbox2Id deducted once by 120
+      const treasApprove1 = await req(baseUrl, 'POST', `/api/invoices/sales-return-requests/${srr1.id}/approve`, {
+        token: treasuryToken,
+        headers: { 'idempotency-key': `APR-SRR1-${modeName}` },
+        body: { cashboxId: cashbox2Id, approvalNotes: 'اعتماد صرف نقدي من البنك' },
+      });
+      assert.equal(treasApprove1.status, 200);
+      assert.equal(treasApprove1.json.request.status, 'approved');
+      assert.equal(treasApprove1.json.request.requestedByUserId, rep18User.id);
+      assert.equal(treasApprove1.json.request.reviewedByUserId, treasuryStaff.id);
+      assert.equal(treasApprove1.json.invoiceReturn.requestedByUserId, rep18User.id);
+      assert.equal(treasApprove1.json.invoiceReturn.approvedByUserId, treasuryStaff.id);
+      assert.equal(treasApprove1.json.invoiceReturn.cashboxId, cashbox2Id);
+      assert.equal(treasApprove1.json.invoiceReturn.partyId, cust18Id);
+
+      // Same idempotency key deduplicates safely; new key returns 409 REQUEST_ALREADY_PROCESSED
+      const treasApproveIdem = await req(baseUrl, 'POST', `/api/invoices/sales-return-requests/${srr1.id}/approve`, {
+        token: treasuryToken,
+        headers: { 'idempotency-key': `APR-SRR1-${modeName}` },
+        body: { cashboxId: cashbox2Id },
+      });
+      assert.equal(treasApproveIdem.status, 200);
+
+      const treasApproveDup = await req(baseUrl, 'POST', `/api/invoices/sales-return-requests/${srr1.id}/approve`, {
+        token: treasuryToken,
+        headers: { 'idempotency-key': `APR-SRR1-DUP-${modeName}` },
+        body: { cashboxId: cashbox2Id },
+      });
+      assert.equal(treasApproveDup.status, 409);
+      assert.equal(treasApproveDup.json.code, 'REQUEST_ALREADY_PROCESSED');
+
+      // Reject second request srr2Id -> cashbox unchanged
+      const treasReject2 = await req(baseUrl, 'POST', `/api/invoices/sales-return-requests/${srr2Id}/reject`, {
+        token: treasuryToken,
+        body: { reason: 'مرفوض لعدم مطابقة الصنف' },
+      });
+      assert.equal(treasReject2.status, 200);
+      assert.equal(treasReject2.json.request.status, 'rejected');
+
+      const cbAfter = await getCashboxes();
+      assert.equal(getCbBal(cbAfter, cashboxId), cb1Start);
+      assert.equal(getCbBal(cbAfter, cashbox2Id), cb2Start - 120, 'Approved cash sales return must deduct cashbox2Id exactly once by 120');
+
+      // Rep listing sales return requests redacts cashbox metadata
+      const repListSrr = await req(baseUrl, 'GET', '/api/invoices/sales-return-requests', { token: rep18Token });
+      assert.equal(repListSrr.status, 200);
+      const repSeenSrr1 = (repListSrr.json.requests || []).find((r) => r.id === srr1.id);
+      assert.ok(repSeenSrr1);
+      assert.equal(repSeenSrr1.cashboxId, undefined, 'Representative must not see approved cashboxId on sales return requests');
+
+      // 18c. Direct return party override blocking & incomplete original invoice check
+      const staffPartyOverride = await req(baseUrl, 'POST', '/api/invoices/returns', {
+        token: treasuryToken,
+        body: {
+          type: 'sales_return',
+          originalInvoiceId: rep18SaleId,
+          partyId: 'OTHER-PARTY-SPOOF',
+          warehouseId: mainWhId,
+          date: '2026-11-21',
+          refundType: 'balance',
+          reason: 'محاولة تغيير طرف من غير الأدمن',
+          items: [{ productId, quantity: 1, unit: 'زجاجة', unitFactor: 1, unitPrice: 60 }],
+        },
+      });
+      assert.equal(staffPartyOverride.status, 403);
+      assert.equal(staffPartyOverride.json.code, 'FORBIDDEN_PARTY_OVERRIDE');
+
+      const adminSpoofParty = await req(baseUrl, 'POST', '/api/invoices/returns', {
+        token: adminToken,
+        body: {
+          type: 'sales_return',
+          originalInvoiceId: rep18SaleId,
+          partyId: 'ADMIN-SPOOF-PARTY',
+          partyName: 'طرف مزور',
+          warehouseId: mainWhId,
+          date: '2026-11-21',
+          refundType: 'balance',
+          reason: 'مرتجع على الرصيد مع اختبار فرض الطرف الأصلي',
+          items: [{ productId, quantity: 1, unit: 'زجاجة', unitFactor: 1, unitPrice: 60 }],
+        },
+      });
+      assert.equal(adminSpoofParty.status, 201);
+      assert.equal(adminSpoofParty.json.invoiceReturn.partyId, cust18Id);
+      assert.equal(adminSpoofParty.json.invoiceReturn.partyName, 'عميل اختبار 18');
+
+      // Incomplete original invoice must fail with 400 INVALID_ORIGINAL_INVOICE_DATA
+      const incompleteInvId = `INV-INCOMPLETE-${modeName}`;
+      if (modeName === 'pg') {
+        await pgPool.query(
+          `INSERT INTO invoices (id, invoice_number, type, status, date, customer_id, customer_name, warehouse_id, warehouse_name, cashbox_id, subtotal, discount_total, grand_total, paid_amount, remaining_amount, payment_type, created_by)
+           VALUES ($1, 'INV-INC-1', 'sales', 'confirmed', '2026-11-21', $2, 'عميل اختبار 18', $3, 'مخزن التدقيق', $4, 50, 0, 50, 0, 50, 'credit', 'مدير التدقيق الشامل')`,
+          [incompleteInvId, cust18Id, mainWhId, cashboxId]
+        );
+      } else {
+        await withJsonTransaction((db) => {
+          db.invoices.push({
+            id: incompleteInvId,
+            invoiceNumber: 'INV-INC-1',
+            type: 'sales',
+            status: 'confirmed',
+            date: '2026-11-21',
+            customerId: cust18Id,
+            customerName: 'عميل اختبار 18',
+            warehouseId: '',
+            warehouseName: '',
+            items: [],
+            subtotal: 50,
+            discountTotal: 0,
+            grandTotal: 50,
+            paidAmount: 0,
+            remainingAmount: 50,
+            paymentType: 'credit',
+            createdAt: '2026-11-21T08:00:00.000Z',
+          });
+        });
+      }
+      const incRet = await req(baseUrl, 'POST', '/api/invoices/returns', {
+        token: adminToken,
+        body: {
+          type: 'sales_return',
+          originalInvoiceId: incompleteInvId,
+          warehouseId: mainWhId,
+          date: '2026-11-21',
+          refundType: 'balance',
+          reason: 'اختبار فاتورة غير مكتملة',
+          items: [{ productId, quantity: 1, unit: 'زجاجة', unitFactor: 1, unitPrice: 50 }],
+        },
+      });
+      assert.equal(incRet.status, 400);
+      assert.equal(incRet.json.code, 'INVALID_ORIGINAL_INVOICE_DATA');
+
+      // 18d. Role-level Hard Deny in /api/sync/push even if representative has elevated permission flags
+      await updateAdminUser(
+        rep18User.id,
+        {
+          permissions: {
+            ...rep18User.permissions,
+            canView: true,
+            canAdd: true,
+            canEdit: true,
+            canManageSales: true,
+            canCreatePurchase: true,
+            canManagePurchases: true,
+            canManageCashboxes: true,
+            canManageAccounts: true,
+            canViewReports: true,
+          },
+        },
+        adminUser
+      );
+      const rep18ReLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: `rep18_${modeName}`, password: 'RepPassword!2026' },
+      });
+      assert.equal(rep18ReLogin.status, 200);
+      const rep18ElevatedToken = rep18ReLogin.json.accessToken;
+
+      const syncHardDenyRes = await req(baseUrl, 'POST', '/api/sync/push', {
+        token: rep18ElevatedToken,
+        body: {
+          operations: [
+            {
+              operationId: `SYNC-HARDDENY-CASH-${modeName}`,
+              operationType: 'execute_cash_operation',
+              payload: { type: 'expense', amount: 10, cashboxId, date: '2026-11-21', category: 'تجربة' },
+            },
+            {
+              operationId: `SYNC-HARDDENY-PRET-${modeName}`,
+              operationType: 'create_purchase_return',
+              payload: {
+                originalInvoiceId: pur18Id,
+                warehouseId: mainWhId,
+                date: '2026-11-21',
+                refundType: 'balance',
+                items: [{ productId, quantity: 1, unit: 'زجاجة', unitFactor: 1, unitPrice: 50 }],
+              },
+            },
+          ],
+        },
+      });
+      assert.equal(syncHardDenyRes.status, 200);
+      assert.equal(syncHardDenyRes.json.results[0].status, 'failed');
+      assert.equal(syncHardDenyRes.json.results[0].code, 'FORBIDDEN_REP_CASHBOX_OP');
+      assert.equal(syncHardDenyRes.json.results[1].status, 'failed');
+      assert.equal(syncHardDenyRes.json.results[1].code, 'FORBIDDEN_REP_DIRECT_PURCHASE_RETURN');
+
+      // 18e. convertQuoteToInvoice empty customerName bypass block + duplicate conversion + rep-summary aggregate totals scoping
+      const emptyCustQuoteId = `QUO-EMPTY-CUST-${modeName}`;
+      if (modeName === 'pg') {
+        await pgPool.query(
+          `INSERT INTO invoices (id, invoice_number, type, status, date, customer_id, customer_name, representative_id, representative_name, warehouse_id, warehouse_name, cashbox_id, subtotal, discount_total, grand_total, paid_amount, remaining_amount, payment_type, created_by, created_by_user_id)
+           VALUES ($1, 'QUO-EMP-1', 'quote', 'draft', '2026-11-21', NULL, '', $2, 'مندوب اختبار المرتجعات', $3, 'مخزن التدقيق', $4, 60, 0, 60, 0, 60, 'credit', 'مندوب اختبار المرتجعات', $5)`,
+          [emptyCustQuoteId, rep18Id, mainWhId, cashboxId, rep18User.id]
+        );
+        await pgPool.query(
+          `INSERT INTO invoice_items (id, invoice_id, product_id, product_name, unit, unit_factor, quantity, unit_price, purchase_price_at_time, total)
+           VALUES ($1, $2, $3, 'زيت ذرة ممتاز', 'زجاجة', 1, 1, 60, 40, 60)`,
+          [`QI-${modeName}`, emptyCustQuoteId, productId]
+        );
+      } else {
+        await withJsonTransaction((db) => {
+          db.invoices.push({
+            id: emptyCustQuoteId,
+            invoiceNumber: 'QUO-EMP-1',
+            type: 'quote',
+            status: 'draft',
+            date: '2026-11-21',
+            customerId: undefined,
+            customerName: '',
+            representativeId: rep18Id,
+            representativeName: 'مندوب اختبار المرتجعات',
+            warehouseId: mainWhId,
+            warehouseName: 'مخزن التدقيق',
+            items: [{ productId, productName: 'زيت ذرة ممتاز', unit: 'زجاجة', unitFactor: 1, quantity: 1, unitPrice: 60, purchasePriceAtTime: 40, total: 60 }],
+            subtotal: 60,
+            discountTotal: 0,
+            grandTotal: 60,
+            paidAmount: 0,
+            remainingAmount: 60,
+            paymentType: 'credit',
+            createdBy: 'مندوب اختبار المرتجعات',
+            createdByUserId: rep18User.id,
+            createdAt: '2026-11-21T08:10:00.000Z',
+          });
+        });
+      }
+
+      const emptyQuoteOverride = await req(baseUrl, 'POST', `/api/invoices/quotes/${emptyCustQuoteId}/convert`, {
+        token: rep18ElevatedToken,
+        body: { customerName: 'عميل بديل غير مصرح', paymentType: 'credit', paidAmount: 0 },
+      });
+      assert.equal(emptyQuoteOverride.status, 403);
+      assert.equal(emptyQuoteOverride.json.code, 'FORBIDDEN_QUOTE_CUSTOMER_OVERRIDE');
+
+      // Quote create -> convert once -> 409 QUOTE_ALREADY_CONVERTED on duplicate convert
+      const normalQuote = await req(baseUrl, 'POST', '/api/invoices/quotes', {
+        token: rep18ElevatedToken,
+        body: {
+          customerId: cust18Id,
+          warehouseId: mainWhId,
+          date: '2026-11-21',
+          paidAmount: 0,
+          paymentType: 'credit',
+          items: [{ productId, quantity: 1, unit: 'زجاجة', unitPrice: 60 }],
+        },
+      });
+      assert.equal(normalQuote.status, 201);
+      const quote18Id = normalQuote.json.invoice.id;
+
+      const conv1 = await req(baseUrl, 'POST', `/api/invoices/quotes/${quote18Id}/convert`, {
+        token: rep18ElevatedToken,
+        body: {},
+      });
+      assert.equal(conv1.status, 201);
+
+      const dupQuoteConv = await req(baseUrl, 'POST', `/api/invoices/quotes/${quote18Id}/convert`, {
+        token: rep18ElevatedToken,
+        body: {},
+      });
+      assert.equal(dupQuoteConv.status, 409);
+      assert.equal(dupQuoteConv.json.code, 'QUOTE_ALREADY_CONVERTED');
+
+      // rep-summary omits aggregate receivables/payables for representatives while keeping admin totals intact
+      const repSummaryRes = await req(baseUrl, 'GET', '/api/reports/rep-summary', { token: rep18ElevatedToken });
+      assert.equal(repSummaryRes.status, 200);
+      assert.equal(repSummaryRes.json.report.summary.totalCustomerReceivables, undefined, 'Rep summary must NOT expose company-wide totalCustomerReceivables');
+      assert.equal(repSummaryRes.json.report.summary.totalSupplierPayables, undefined, 'Rep summary must NOT expose company-wide totalSupplierPayables');
+      assert.ok(Number(repSummaryRes.json.report.summary.salesReturnRequestsCount) >= 2);
+
+      const adminSummaryRes = await req(baseUrl, 'GET', '/api/reports/rep-summary', { token: adminToken });
+      assert.equal(adminSummaryRes.status, 200);
+      assert.equal(typeof adminSummaryRes.json.report.summary.totalCustomerReceivables, 'number');
+      assert.equal(typeof adminSummaryRes.json.report.summary.totalSupplierPayables, 'number');
+    });
   } finally {
     await new Promise((resolve) => server.close(resolve));
     setInjectedPool(null);

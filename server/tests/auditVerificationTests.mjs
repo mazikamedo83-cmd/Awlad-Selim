@@ -606,10 +606,10 @@ async function runAuditLifecycleSuite(label) {
       assert.equal(syncTransferForbidden.status, 200);
       assert.equal(syncTransferForbidden.json.results[0].status, 'failed');
 
-      // Verify net cashbox balance: 5000 + 250 - 50 + 100 = 5300
+      // Verify net cashbox balance: 5000 + 50 (Scenario 3 default-cashbox rep sale) + 250 - 50 + 100 = 5350
       const bootAfter = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
       const cb = bootAfter.cashboxes.find((c) => c.id === cashboxMainId);
-      assert.equal(Number(cb.currentBalance), 5300);
+      assert.equal(Number(cb.currentBalance), 5350);
     });
   } finally {
     await new Promise((resolve) => server.close(resolve));

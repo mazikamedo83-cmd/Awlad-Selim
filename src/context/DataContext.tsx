@@ -72,6 +72,8 @@ import {
   RoleDefaultPermissionPresets,
   PurchaseReturnRequest,
   PurchaseReturnRequestItem,
+  SalesReturnRequest,
+  SalesReturnRequestItem,
 } from '../types';
 import { useAuth } from './AuthContext';
 
@@ -193,6 +195,24 @@ export interface DataContextType extends DatabaseState {
     requestId: string,
     reason: string
   ) => Promise<{ success: boolean; request?: PurchaseReturnRequest; error?: string }>;
+  salesReturnRequests: SalesReturnRequest[];
+  createSalesReturnRequest: (payload: {
+    originalInvoiceId: string;
+    items: Array<Pick<SalesReturnRequestItem, 'productId' | 'productName' | 'unit' | 'unitFactor' | 'quantity' | 'unitPrice'>>;
+    refundType?: 'cash' | 'balance';
+    cashboxId?: string;
+    reason: string;
+    notes?: string;
+    date?: string;
+  }) => Promise<{ success: boolean; request?: SalesReturnRequest; queuedOffline?: boolean; error?: string }>;
+  approveSalesReturnRequest: (
+    requestId: string,
+    payload?: { refundType?: 'cash' | 'balance'; cashboxId?: string; date?: string; notes?: string }
+  ) => Promise<{ success: boolean; request?: SalesReturnRequest; invoiceReturn?: InvoiceReturn; error?: string }>;
+  rejectSalesReturnRequest: (
+    requestId: string,
+    reason: string
+  ) => Promise<{ success: boolean; request?: SalesReturnRequest; error?: string }>;
 
   // Financial & Cashboxes
   addCashbox: (cashbox: Omit<Cashbox, 'id' | 'currentBalance'>) => Promise<void>;
@@ -381,6 +401,7 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
   const advancePayments = (base.orderAdvancePayments || []).map((a) => ({ ...a }));
   const returns = (base.invoiceReturns || []).map((r) => ({ ...r }));
   const purchaseReturnRequests = (base.purchaseReturnRequests || []).map((r) => ({ ...r }));
+  const salesReturnRequests = (base.salesReturnRequests || []).map((r) => ({ ...r }));
   const financialTransactions = [...(base.financialTransactions || [])];
   const expenseIncomes = [...(base.expenseIncomes || [])];
   const repItemTransfers = (base.repItemTransfers || []).map((t) => ({ ...t }));
@@ -946,6 +967,43 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
           createdAt: op.createdAt,
         });
       }
+    } else if (op.operationType === 'create_sales_return_request') {
+      const targetId = op.localId || op.entityId || op.operationId;
+      if (!salesReturnRequests.some((r) => r.id === targetId)) {
+        const origInv = invoices.find((i) => i.id === p.originalInvoiceId);
+        const items = (Array.isArray(p.items) ? p.items : []).map((it: any) => ({
+          productId: it.productId,
+          productName: it.productName || '',
+          unit: it.unit || '',
+          unitFactor: Number(it.unitFactor || 1),
+          quantity: Number(it.quantity || 0),
+          unitPrice: Number(it.unitPrice || 0),
+          total: Number(it.total ?? Number(it.quantity || 0) * Number(it.unitPrice || 0)),
+        }));
+        const grandTotal = items.reduce((s: number, it: any) => s + Number(it.total || 0), 0);
+        salesReturnRequests.unshift({
+          id: targetId,
+          requestNumber: `LOC-SRR-${op.operationId.slice(-5)}`,
+          date: p.date || op.createdAt.slice(0, 10),
+          originalInvoiceId: p.originalInvoiceId || '',
+          originalInvoiceNumber: origInv?.invoiceNumber || p.originalInvoiceNumber || '',
+          customerId: origInv?.customerId || p.customerId || '',
+          customerName: origInv?.customerName || p.customerName || 'عميل',
+          warehouseId: origInv?.warehouseId || p.warehouseId || '',
+          warehouseName: origInv?.warehouseName || p.warehouseName || '',
+          requestedByUserId: op.userId,
+          requestedByName: p.requestedByName || 'مندوب',
+          items,
+          grandTotal,
+          refundType: p.refundType === 'balance' ? 'balance' : 'cash',
+          cashboxId: undefined,
+          reason: p.reason || '',
+          notes: p.notes || '',
+          status: 'pending',
+          syncStatus: op.status,
+          createdAt: op.createdAt,
+        });
+      }
     } else if (op.operationType === 'execute_cash_operation') {
       const targetId = op.localId || op.operationId;
       if (!financialTransactions.some((t) => t.id === targetId)) {
@@ -1201,6 +1259,7 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
     orderAdvancePayments: advancePayments,
     invoiceReturns: returns,
     purchaseReturnRequests,
+    salesReturnRequests,
     financialTransactions,
     expenseIncomes,
     repItemTransfers,
@@ -1371,6 +1430,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           repCustodyOperations: pullData.repCustodyOperations || [],
           purchaseReceivers: pullData.purchaseReceivers || [],
           purchaseReturnRequests: pullData.purchaseReturnRequests || [],
+          salesReturnRequests: pullData.salesReturnRequests || [],
           serverSettings: hydratedServerSettings,
         };
       }
@@ -3223,6 +3283,78 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const createSalesReturnRequest: DataContextType['createSalesReturnRequest'] = async (payload) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; request: SalesReturnRequest }>(
+        '/api/invoices/sales-return-requests',
+        {
+          method: 'POST',
+          body: payload,
+          idempotencyKey: generateId('IDEMP'),
+        }
+      );
+      await loadRoleScopedData();
+      return { success: true, request: res.request };
+    } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const localId = generateId('SRR-LOC');
+        const origInv = (data.invoices || []).find((i) => i.id === payload.originalInvoiceId);
+        await queueOfflineOp({
+          operationType: 'create_sales_return_request',
+          entityType: 'sales_return_request',
+          localId,
+          summaryAr: `طلب مرتجع مبيعات نقدي (${origInv?.invoiceNumber || payload.originalInvoiceId})`,
+          payload: {
+            ...payload,
+            cashboxId: undefined,
+            localId,
+            originalInvoiceNumber: origInv?.invoiceNumber || '',
+            customerId: origInv?.customerId || '',
+            customerName: origInv?.customerName || '',
+            warehouseId: origInv?.warehouseId || '',
+            warehouseName: origInv?.warehouseName || '',
+            requestedByName: currentUser.fullName || '',
+          },
+        });
+        return { success: true, queuedOffline: true };
+      }
+      return { success: false, error: err?.message || 'تعذر تقديم طلب مرتجع المبيعات النقدي' };
+    }
+  };
+
+  const approveSalesReturnRequest: DataContextType['approveSalesReturnRequest'] = async (requestId, payload = {}) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; request: SalesReturnRequest; invoiceReturn: InvoiceReturn }>(
+        `/api/invoices/sales-return-requests/${requestId}/approve`,
+        {
+          method: 'POST',
+          body: payload,
+          idempotencyKey: generateId('IDEMP'),
+        }
+      );
+      await loadRoleScopedData();
+      return { success: true, request: res.request, invoiceReturn: res.invoiceReturn };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر اعتماد طلب مرتجع المبيعات' };
+    }
+  };
+
+  const rejectSalesReturnRequest: DataContextType['rejectSalesReturnRequest'] = async (requestId, reason) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; request: SalesReturnRequest }>(
+        `/api/invoices/sales-return-requests/${requestId}/reject`,
+        {
+          method: 'POST',
+          body: { reason },
+        }
+      );
+      await loadRoleScopedData();
+      return { success: true, request: res.request };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر رفض طلب مرتجع المبيعات' };
+    }
+  };
+
   // Cashboxes & Expenses
   const addCashbox = async (cb: Omit<Cashbox, 'id' | 'currentBalance'>) => {
     await apiRequest('/api/admin/cashboxes', { method: 'POST', body: cb });
@@ -4495,6 +4627,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createPurchaseReturnRequest,
         approvePurchaseReturnRequest,
         rejectPurchaseReturnRequest,
+        salesReturnRequests: data.salesReturnRequests || [],
+        createSalesReturnRequest,
+        approveSalesReturnRequest,
+        rejectSalesReturnRequest,
         addCashbox,
         updateCashbox,
         transferBetweenCashboxes,

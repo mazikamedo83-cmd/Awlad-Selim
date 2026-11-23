@@ -31,8 +31,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
     linkCustomerUser, repairUnlinkedCustomerUsers, toggleCustomerUserStatus,
     addCustomer, updateCustomer, deleteCustomer, recordCustomerPayment,
   } = useData();
-  const { hasPermission } = useAuth();
+  const { currentUser, hasPermission } = useAuth();
   const { registerHandler, consumePendingAction } = useShortcuts();
+  const isRepRole = currentUser?.role === 'representative';
+  const canViewAggregateCustomerTotals =
+    !isRepRole &&
+    currentUser?.role !== 'customer' &&
+    (currentUser?.role === 'admin' || hasPermission('canManageAccounts') || hasPermission('canViewReports'));
 
   // Navigation: main list vs dedicated customer page
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
@@ -235,14 +240,16 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
     });
   }, [customers, searchTerm, statusFilter, classificationFilter, customerClassificationMap]);
 
-  // Overall metrics
+  // Overall metrics (restricted to authorized finance/admin roles — never computed for representatives)
   const totalDebts = useMemo(() => {
+    if (!canViewAggregateCustomerTotals) return 0;
     return customers.reduce((sum, c) => sum + (c.currentBalance > 0 ? c.currentBalance : 0), 0);
-  }, [customers]);
+  }, [customers, canViewAggregateCustomerTotals]);
 
   const totalCredits = useMemo(() => {
+    if (!canViewAggregateCustomerTotals) return 0;
     return customers.reduce((sum, c) => sum + (c.currentBalance < 0 ? Math.abs(c.currentBalance) : 0), 0);
-  }, [customers]);
+  }, [customers, canViewAggregateCustomerTotals]);
 
   // Customer transactions for dedicated profile
   const selectedCustomerInvoices = useMemo(() => {
@@ -754,7 +761,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
       setPaymentError('يرجى إدخال مبلغ تحصيل صحيح أكبر من صفر');
       return;
     }
-    if (!paymentCashboxId) {
+    if (!isRepRole && !paymentCashboxId) {
       setPaymentError('يرجى اختيار الخزينة المودع بها المبلغ');
       return;
     }
@@ -766,7 +773,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
       const res = await recordCustomerPayment(
         paymentCustomer.id,
         paymentAmount,
-        paymentCashboxId,
+        isRepRole ? '' : paymentCashboxId,
         paymentNotes.trim() || defaultNote,
         paymentMethod
       );
@@ -2046,7 +2053,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
       </div>
 
       {/* Financial Overview Metrics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className={`grid grid-cols-1 ${canViewAggregateCustomerTotals ? 'sm:grid-cols-3' : ''} gap-4`}>
         {/* Total Customers */}
         <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
@@ -2057,43 +2064,52 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
             <span className="text-[11px] text-emerald-700 font-bold">
               {customers.filter(c => c.status === 'active').length} محل نشط
             </span>
+            {!canViewAggregateCustomerTotals && (
+              <span className="block text-[11px] text-slate-500 mt-1">
+                يمكنك متابعة رصيد كل عميل وكشف حسابه الفردي من بطاقة العميل مباشرة.
+              </span>
+            )}
           </div>
           <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-900 flex items-center justify-center">
             <Store className="w-6 h-6" />
           </div>
         </div>
 
-        {/* Total Outstanding Customer Debts */}
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-xs font-bold text-slate-500">إجمالي مديونيات العملاء (لنا)</span>
-            <div className="text-2xl font-black text-red-700 mt-1 font-mono">
-              {totalDebts.toLocaleString()} <span className="text-xs text-slate-500 font-normal">{settings.currency}</span>
+        {canViewAggregateCustomerTotals && (
+          <>
+            {/* Total Outstanding Customer Debts */}
+            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-slate-500">إجمالي مديونيات العملاء (لنا)</span>
+                <div className="text-2xl font-black text-red-700 mt-1 font-mono">
+                  {totalDebts.toLocaleString()} <span className="text-xs text-slate-500 font-normal">{settings.currency}</span>
+                </div>
+                <span className="text-[11px] text-slate-500">
+                  مستحقات آجلة قيد التحصيل
+                </span>
+              </div>
+              <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-700 flex items-center justify-center">
+                <DollarSign className="w-6 h-6" />
+              </div>
             </div>
-            <span className="text-[11px] text-slate-500">
-              مستحقات آجلة قيد التحصيل
-            </span>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-700 flex items-center justify-center">
-            <DollarSign className="w-6 h-6" />
-          </div>
-        </div>
 
-        {/* Total Advance Credits */}
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-xs font-bold text-slate-500">أرصدة العملاء الدائنة (دفعات مقدمة)</span>
-            <div className="text-2xl font-black text-emerald-700 mt-1 font-mono">
-              {totalCredits.toLocaleString()} <span className="text-xs text-slate-500 font-normal">{settings.currency}</span>
+            {/* Total Advance Credits */}
+            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-slate-500">أرصدة العملاء الدائنة (دفعات مقدمة)</span>
+                <div className="text-2xl font-black text-emerald-700 mt-1 font-mono">
+                  {totalCredits.toLocaleString()} <span className="text-xs text-slate-500 font-normal">{settings.currency}</span>
+                </div>
+                <span className="text-[11px] text-emerald-700 font-bold">
+                  مبالغ مسددة مقدماً من العملاء
+                </span>
+              </div>
+              <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                <ArrowDownLeft className="w-6 h-6" />
+              </div>
             </div>
-            <span className="text-[11px] text-emerald-700 font-bold">
-              مبالغ مسددة مقدماً من العملاء
-            </span>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
-            <ArrowDownLeft className="w-6 h-6" />
-          </div>
-        </div>
+          </>
+        )}
       </div>
 
       {/* Search and Filters Bar */}
@@ -3156,20 +3172,26 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
               </div>
             </div>
 
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">الخزينة المودع بها المبلغ:</label>
-              <select
-                value={paymentCashboxId}
-                onChange={(e) => setPaymentCashboxId(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold outline-hidden focus:border-blue-600"
-              >
-                {cashboxes.map(cb => (
-                  <option key={cb.id} value={cb.id}>
-                    {cb.balanceHidden ? `${cb.name} (رصيد محجوب)` : `${cb.name} (رصيدها: ${(cb.currentBalance ?? 0).toLocaleString()} ${settings.currency})`}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {!isRepRole ? (
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">الخزينة المودع بها المبلغ:</label>
+                <select
+                  value={paymentCashboxId}
+                  onChange={(e) => setPaymentCashboxId(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold outline-hidden focus:border-blue-600"
+                >
+                  {cashboxes.map(cb => (
+                    <option key={cb.id} value={cb.id}>
+                      {cb.balanceHidden ? `${cb.name} (رصيد محجوب)` : `${cb.name} (رصيدها: ${(cb.currentBalance ?? 0).toLocaleString()} ${settings.currency})`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
+                يُسجَّل التحصيل على حساب العميل وعهدة/تسوية الإدارة دون اختيار خزائن الشركة.
+              </div>
+            )}
 
             <div>
               <label className="block font-bold text-slate-700 mb-1">البيان والملاحظات:</label>

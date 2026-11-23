@@ -10,6 +10,7 @@ import {
   sanitizeInvoiceForRepresentative,
   isRepOwnerOfInvoice,
   buildPgInPredicate,
+  canViewCashboxBalances,
 } from '../../utils/errors.js';
 import {
   isPgMode,
@@ -1764,6 +1765,20 @@ export async function createSalesQuote(payload, actor, idempotencyKey = '') {
 }
 
 export async function convertQuoteToInvoice(quoteId, overrides = {}, actor, idempotencyKey = '') {
+  if (!actor || actor.role === 'customer') {
+    throw new AppError(403, 'غير مصرح للعملاء بتحويل عروض الأسعار إلى فواتير', 'FORBIDDEN');
+  }
+  if (actor.role !== 'admin' && !actor.permissions?.canManageSales) {
+    throw new AppError(403, 'ليس لديك صلاحية تحويل عروض الأسعار إلى فواتير مبيعات', 'FORBIDDEN_PERMISSION');
+  }
+  const safeOverrides = overrides && typeof overrides === 'object' ? { ...overrides } : {};
+  delete safeOverrides.createdBy;
+  delete safeOverrides.createdByUserId;
+  delete safeOverrides.sentBy;
+  delete safeOverrides.sentByUserId;
+  delete safeOverrides.approvedBy;
+  delete safeOverrides.approvedByUserId;
+
   const endpoint = `POST /api/invoices/quotes/${quoteId}/convert`;
   const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
   const now = nowIso();
@@ -1787,15 +1802,17 @@ export async function convertQuoteToInvoice(quoteId, overrides = {}, actor, idem
           throw new AppError(403, 'غير مصرح للمندوب بتحويل عرض سعر لا يخصه', 'FORBIDDEN_INVOICE_ACCESS');
         }
 
-        const overrideCustomerId = overrides.customerId !== undefined && overrides.customerId !== null && String(overrides.customerId).trim() !== ''
-          ? String(overrides.customerId).trim()
-          : null;
-        const overrideCustomerName = overrides.customerName !== undefined && overrides.customerName !== null && String(overrides.customerName).trim() !== ''
-          ? String(overrides.customerName).trim()
-          : null;
+        const overrideCustomerId =
+          safeOverrides.customerId !== undefined && safeOverrides.customerId !== null && String(safeOverrides.customerId).trim() !== ''
+            ? String(safeOverrides.customerId).trim()
+            : null;
+        const overrideCustomerName =
+          safeOverrides.customerName !== undefined && safeOverrides.customerName !== null && String(safeOverrides.customerName).trim() !== ''
+            ? String(safeOverrides.customerName).trim()
+            : null;
         const isCustomerOverride =
           (overrideCustomerId && overrideCustomerId !== String(quote.customerId || '').trim()) ||
-          (!overrideCustomerId && overrideCustomerName && quote.customerName && overrideCustomerName !== String(quote.customerName).trim());
+          (!overrideCustomerId && overrideCustomerName && overrideCustomerName !== String(quote.customerName || '').trim());
 
         if (isCustomerOverride && actor?.role !== 'admin') {
           throw new AppError(403, 'لا يمكن تغيير العميل المرتبط بعرض السعر عند التحويل؛ الصلاحية للإدارة فقط', 'FORBIDDEN_QUOTE_CUSTOMER_OVERRIDE');
@@ -1819,19 +1836,19 @@ export async function convertQuoteToInvoice(quoteId, overrides = {}, actor, idem
         const invoicePayload = {
           customerId: targetCustomerId,
           customerName: targetCustomerName,
-          representativeId: repActor ? repActor.id : (overrides.representativeId || quote.representativeId),
-          representativeName: repActor ? repActor.name : (overrides.representativeName || quote.representativeName),
-          warehouseId: repActor ? quote.warehouseId : (overrides.warehouseId || quote.warehouseId),
-          cashboxId: repActor ? undefined : (overrides.cashboxId || quote.cashboxId),
-          paymentType: overrides.paymentType || 'credit',
-          paymentMethod: overrides.paymentMethod || 'cash',
-          paidAmount: overrides.paidAmount ?? 0,
-          discountTotal: repActor ? quote.discountTotal : (overrides.discountTotal ?? quote.discountTotal),
-          taxTotal: repActor ? quote.taxTotal : (overrides.taxTotal ?? quote.taxTotal),
-          date: overrides.date || todayIso(),
-          status: overrides.status === 'draft' ? 'draft' : 'confirmed',
-          items: repActor ? quote.items : (overrides.items || quote.items),
-          notes: overrides.notes || `فاتورة محولة من عرض السعر رقم ${quote.invoiceNumber}`,
+          representativeId: repActor ? repActor.id : (safeOverrides.representativeId || quote.representativeId),
+          representativeName: repActor ? repActor.name : (safeOverrides.representativeName || quote.representativeName),
+          warehouseId: repActor ? quote.warehouseId : (safeOverrides.warehouseId || quote.warehouseId),
+          cashboxId: repActor ? undefined : (safeOverrides.cashboxId || quote.cashboxId),
+          paymentType: safeOverrides.paymentType || 'credit',
+          paymentMethod: safeOverrides.paymentMethod || 'cash',
+          paidAmount: safeOverrides.paidAmount ?? 0,
+          discountTotal: repActor ? quote.discountTotal : (safeOverrides.discountTotal ?? quote.discountTotal),
+          taxTotal: repActor ? quote.taxTotal : (safeOverrides.taxTotal ?? quote.taxTotal),
+          date: safeOverrides.date || todayIso(),
+          status: safeOverrides.status === 'draft' ? 'draft' : 'confirmed',
+          items: repActor ? quote.items : (safeOverrides.items || quote.items),
+          notes: safeOverrides.notes || `فاتورة محولة من عرض السعر رقم ${quote.invoiceNumber}`,
         };
         const createdInv = await createInvoiceInsidePgTx(client, 'sales', invoicePayload, actor);
         const invoice = {
@@ -1861,15 +1878,17 @@ export async function convertQuoteToInvoice(quoteId, overrides = {}, actor, idem
           throw new AppError(403, 'غير مصرح للمندوب بتحويل عرض سعر لا يخصه', 'FORBIDDEN_INVOICE_ACCESS');
         }
 
-        const overrideCustomerId = overrides.customerId !== undefined && overrides.customerId !== null && String(overrides.customerId).trim() !== ''
-          ? String(overrides.customerId).trim()
-          : null;
-        const overrideCustomerName = overrides.customerName !== undefined && overrides.customerName !== null && String(overrides.customerName).trim() !== ''
-          ? String(overrides.customerName).trim()
-          : null;
+        const overrideCustomerId =
+          safeOverrides.customerId !== undefined && safeOverrides.customerId !== null && String(safeOverrides.customerId).trim() !== ''
+            ? String(safeOverrides.customerId).trim()
+            : null;
+        const overrideCustomerName =
+          safeOverrides.customerName !== undefined && safeOverrides.customerName !== null && String(safeOverrides.customerName).trim() !== ''
+            ? String(safeOverrides.customerName).trim()
+            : null;
         const isCustomerOverride =
           (overrideCustomerId && overrideCustomerId !== String(quote.customerId || '').trim()) ||
-          (!overrideCustomerId && overrideCustomerName && quote.customerName && overrideCustomerName !== String(quote.customerName).trim());
+          (!overrideCustomerId && overrideCustomerName && overrideCustomerName !== String(quote.customerName || '').trim());
 
         if (isCustomerOverride && actor?.role !== 'admin') {
           throw new AppError(403, 'لا يمكن تغيير العميل المرتبط بعرض السعر عند التحويل؛ الصلاحية للإدارة فقط', 'FORBIDDEN_QUOTE_CUSTOMER_OVERRIDE');
@@ -1893,19 +1912,19 @@ export async function convertQuoteToInvoice(quoteId, overrides = {}, actor, idem
         const invoicePayload = {
           customerId: targetCustomerId,
           customerName: targetCustomerName,
-          representativeId: repActor ? repActor.id : (overrides.representativeId || quote.representativeId),
-          representativeName: repActor ? repActor.name : (overrides.representativeName || quote.representativeName),
-          warehouseId: repActor ? quote.warehouseId : (overrides.warehouseId || quote.warehouseId),
-          cashboxId: repActor ? undefined : (overrides.cashboxId || quote.cashboxId),
-          paymentType: overrides.paymentType || 'credit',
-          paymentMethod: overrides.paymentMethod || 'cash',
-          paidAmount: overrides.paidAmount ?? 0,
-          discountTotal: repActor ? quote.discountTotal : (overrides.discountTotal ?? quote.discountTotal),
-          taxTotal: repActor ? quote.taxTotal : (overrides.taxTotal ?? quote.taxTotal),
-          date: overrides.date || todayIso(),
-          status: overrides.status === 'draft' ? 'draft' : 'confirmed',
-          items: repActor ? quote.items : (overrides.items || quote.items),
-          notes: overrides.notes || `فاتورة محولة من عرض السعر رقم ${quote.invoiceNumber}`,
+          representativeId: repActor ? repActor.id : (safeOverrides.representativeId || quote.representativeId),
+          representativeName: repActor ? repActor.name : (safeOverrides.representativeName || quote.representativeName),
+          warehouseId: repActor ? quote.warehouseId : (safeOverrides.warehouseId || quote.warehouseId),
+          cashboxId: repActor ? undefined : (safeOverrides.cashboxId || quote.cashboxId),
+          paymentType: safeOverrides.paymentType || 'credit',
+          paymentMethod: safeOverrides.paymentMethod || 'cash',
+          paidAmount: safeOverrides.paidAmount ?? 0,
+          discountTotal: repActor ? quote.discountTotal : (safeOverrides.discountTotal ?? quote.discountTotal),
+          taxTotal: repActor ? quote.taxTotal : (safeOverrides.taxTotal ?? quote.taxTotal),
+          date: safeOverrides.date || todayIso(),
+          status: safeOverrides.status === 'draft' ? 'draft' : 'confirmed',
+          items: repActor ? quote.items : (safeOverrides.items || quote.items),
+          notes: safeOverrides.notes || `فاتورة محولة من عرض السعر رقم ${quote.invoiceNumber}`,
         };
         const createdInv = createInvoiceInsideJsonTx(db, 'sales', invoicePayload, actor);
         createdInv.convertedFromQuoteId = quote.id;
@@ -1937,12 +1956,14 @@ async function fetchFullInvoicePg(client, invoiceId) {
   return mapPgInvoiceRow(invRes.rows[0], itemsRes.rows, paysRes.rows);
 }
 
-export async function confirmDraftInvoice(invoiceId, actor) {
+export async function confirmDraftInvoice(invoiceId, actor, payload = {}) {
   const now = nowIso();
   const repActor = actor?.role === 'representative' ? await getRepresentativeByUserId(actor.id) : null;
   if (actor?.role === 'representative' && !repActor) {
     throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
   }
+  const overrideCashboxId =
+    actor?.role !== 'representative' && payload?.cashboxId ? String(payload.cashboxId).trim() : '';
 
   let confirmedInvoice;
   if (await isPgMode()) {
@@ -1988,6 +2009,21 @@ export async function confirmDraftInvoice(invoiceId, actor) {
         }
       }
 
+      if (overrideCashboxId) {
+        if (
+          actor?.role !== 'admin' &&
+          !actor?.permissions?.canManageCashboxes &&
+          !actor?.permissions?.canManageAccounts &&
+          !actor?.permissions?.canManagePurchases &&
+          !actor?.permissions?.canApprove
+        ) {
+          throw new AppError(403, 'ليس لديك صلاحية تحديد الخزينة عند الاعتماد', 'FORBIDDEN_PERMISSION');
+        }
+        const cbRow = (await client.query('SELECT id FROM cashboxes WHERE id = $1 LIMIT 1', [overrideCashboxId])).rows[0];
+        if (!cbRow) throw new AppError(404, 'الخزينة المحددة غير موجودة', 'CASHBOX_NOT_FOUND');
+        inv.cashboxId = cbRow.id;
+      }
+
       await applyConfirmedEffectsPgTx(client, inv, actor);
       const nextReviewStatus =
         inv.type === 'sales' && actor?.role === 'representative'
@@ -2009,6 +2045,7 @@ export async function confirmDraftInvoice(invoiceId, actor) {
           `UPDATE invoices SET
             status = 'confirmed',
             dispatch_status = 'confirmed',
+            cashbox_id = COALESCE($7, cashbox_id),
             received_by = COALESCE(received_by, $1),
             received_by_user_id = COALESCE(received_by_user_id, $2),
             received_at = COALESCE(received_at, $3),
@@ -2017,10 +2054,13 @@ export async function confirmDraftInvoice(invoiceId, actor) {
             version = COALESCE(version, 1) + 1,
             updated_at = $3
            WHERE id = $6`,
-          [actor.fullName, actor.id, now, JSON.stringify(nextHistory), nextReviewStatus, invoiceId]
+          [actor.fullName, actor.id, now, JSON.stringify(nextHistory), nextReviewStatus, invoiceId, overrideCashboxId || null]
         );
       } else {
-        await client.query(`UPDATE invoices SET status = 'confirmed', review_status = $1, updated_at = $2 WHERE id = $3`, [nextReviewStatus, now, invoiceId]);
+        await client.query(
+          `UPDATE invoices SET status = 'confirmed', cashbox_id = COALESCE($4, cashbox_id), review_status = $1, updated_at = $2 WHERE id = $3`,
+          [nextReviewStatus, now, invoiceId, overrideCashboxId || null]
+        );
       }
       if (inv.linkedCustomerOrderId && Number(inv.appliedAdvanceAmount || 0) > 0) {
         await client.query(
@@ -2070,6 +2110,21 @@ export async function confirmDraftInvoice(invoiceId, actor) {
             'LINKED_TRANSFER_NOT_EXECUTED'
           );
         }
+      }
+
+      if (overrideCashboxId) {
+        if (
+          actor?.role !== 'admin' &&
+          !actor?.permissions?.canManageCashboxes &&
+          !actor?.permissions?.canManageAccounts &&
+          !actor?.permissions?.canManagePurchases &&
+          !actor?.permissions?.canApprove
+        ) {
+          throw new AppError(403, 'ليس لديك صلاحية تحديد الخزينة عند الاعتماد', 'FORBIDDEN_PERMISSION');
+        }
+        const cb = (db.cashboxes || []).find((c) => c.id === overrideCashboxId);
+        if (!cb) throw new AppError(404, 'الخزينة المحددة غير موجودة', 'CASHBOX_NOT_FOUND');
+        inv.cashboxId = cb.id;
       }
 
       applyConfirmedEffectsJsonTx(db, inv, actor);
@@ -4244,10 +4299,28 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
       'FORBIDDEN_REP_CASH_RETURN'
     );
   }
+  const requestedCashboxIdRaw =
+    returnData?.cashboxId !== undefined && returnData?.cashboxId !== null
+      ? String(returnData.cashboxId).trim()
+      : '';
+  if (actor.role === 'representative' && requestedCashboxIdRaw !== '') {
+    throw new AppError(
+      403,
+      'غير مصرح للمندوب باختيار خزينة أو تمرير معرف خزينة في المرتجعات',
+      'FORBIDDEN_REP_CASHBOX_SELECTION'
+    );
+  }
   if (refundType === 'cash' && !hasTreasuryAuthority(actor)) {
     throw new AppError(
       403,
       'صرف أو تحصيل النقدية في المرتجعات مخصص للإدارة ومسؤولي الخزائن والحسابات فقط',
+      'FORBIDDEN_TREASURY_PERMISSION'
+    );
+  }
+  if (refundType !== 'cash' && requestedCashboxIdRaw !== '' && !hasTreasuryAuthority(actor)) {
+    throw new AppError(
+      403,
+      'غير مصرح بتحديد خزينة لغير مسؤولي الخزينة والإدارة',
       'FORBIDDEN_TREASURY_PERMISSION'
     );
   }
@@ -4278,12 +4351,30 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
         throw new AppError(403, 'غير مصرح للمندوب بإنشاء مرتجع لفاتورة لا تخصه', 'FORBIDDEN_REP_INVOICE_ACCESS');
       }
       if (orig.status !== 'confirmed') throw new AppError(409, 'لا يمكن عمل مرتجع لفاتورة مسودة أو ملغاة', 'INVALID_INVOICE_STATUS');
+      if (!orig.warehouseId || !Array.isArray(orig.items) || orig.items.length === 0) {
+        throw new AppError(400, 'بيانات الفاتورة الأصلية غير مكتملة (المستودع أو الأصناف غير محددة)', 'INVALID_ORIGINAL_INVOICE_DATA');
+      }
 
-      const authoritativePartyId = isSalesReturn ? orig.customerId : orig.supplierId;
-      const authoritativePartyName = isSalesReturn ? orig.customerName : orig.supplierName;
-      if (refundType === 'balance' && !authoritativePartyId) {
+      const rawAuthPartyId = isSalesReturn ? String(orig.customerId || '').trim() : String(orig.supplierId || '').trim();
+      const rawAuthPartyName = isSalesReturn ? String(orig.customerName || '').trim() : String(orig.supplierName || '').trim();
+      if (!rawAuthPartyId && !rawAuthPartyName) {
+        throw new AppError(400, 'بيانات الطرف في الفاتورة الأصلية غير مكتملة ولا يمكن استبدالها ببيانات مرسلة', 'ORIGINAL_PARTY_REQUIRED');
+      }
+      const reqPartyIdRaw = String(returnData?.partyId || '').trim();
+      if (
+        actor.role !== 'admin' &&
+        reqPartyIdRaw !== '' &&
+        reqPartyIdRaw !== 'general' &&
+        rawAuthPartyId &&
+        reqPartyIdRaw !== rawAuthPartyId
+      ) {
+        throw new AppError(403, 'غير مصرح بتعديل الطرف المرتبط بالمرتجع عن الطرف المسجل بالفاتورة الأصلية', 'FORBIDDEN_PARTY_OVERRIDE');
+      }
+      if (refundType === 'balance' && (!rawAuthPartyId || rawAuthPartyId === 'general')) {
         throw new AppError(400, 'الفاتورة الأصلية غير مربوطة بطرف مسجل لعمل مرتجع على الرصيد', 'ORIGINAL_PARTY_REQUIRED');
       }
+      const authoritativePartyId = rawAuthPartyId || (isSalesReturn ? 'general' : '');
+      const authoritativePartyName = rawAuthPartyName || (isSalesReturn ? 'عميل نقدي' : '');
 
       const pendingItemsRes = isSalesReturn
         ? await client.query(
@@ -4413,6 +4504,9 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
         ]
       );
 
+      const stRes = await client.query(`SELECT allow_negative_stock FROM system_settings LIMIT 1`);
+      const allowNeg = Boolean(stRes.rows[0]?.allow_negative_stock) && Boolean(actor?.permissions?.canAllowNegativeInventory);
+
       for (let i = 0; i < normalizedItems.length; i++) {
         const it = normalizedItems[i];
         await client.query(
@@ -4427,6 +4521,13 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
           const curQty = Number(stockMap[whId] || 0);
           const baseQty = round3(it.quantity * it.unitFactor);
           const nextQty = isSalesReturn ? round3(curQty + baseQty) : round3(curQty - baseQty);
+          if (!isSalesReturn && nextQty < 0 && !allowNeg) {
+            throw new AppError(
+              409,
+              `لا يمكن خصم مرتجع المشتريات من (${pRes.rows[0].name}): الرصيد المتاح (${curQty}) أقل من المطلوب (${baseQty})`,
+              'INSUFFICIENT_STOCK'
+            );
+          }
           stockMap[whId] = nextQty;
           await client.query(`UPDATE products SET stock_per_warehouse = $1, updated_at = $2 WHERE id = $3`, [JSON.stringify(stockMap), now, it.productId]);
 
@@ -4528,6 +4629,8 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
         partyName: authoritativePartyName || '',
         warehouseId: whId,
         warehouseName: whName,
+        ...(orig.representativeId || repActor?.id ? { representativeId: orig.representativeId || repActor?.id } : {}),
+        ...(orig.representativeName || repActor?.name ? { representativeName: orig.representativeName || repActor?.name } : {}),
         items: normalizedItems,
         grandTotal,
         refundType,
@@ -4544,6 +4647,11 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
 
     if (!out.deduplicated) {
       await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إنشاء سند مرتجع (${out.invoiceReturn.returnNumber})`, module: 'المرتجعات', recordId: out.invoiceReturn.id });
+    }
+    if (!canViewCashboxBalances(actor) && out.invoiceReturn?.cashboxId !== undefined) {
+      const sanitized = { ...out.invoiceReturn };
+      delete sanitized.cashboxId;
+      return sanitized;
     }
     return out.invoiceReturn;
   }
@@ -4564,12 +4672,30 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
       throw new AppError(403, 'غير مصرح للمندوب بإنشاء مرتجع لفاتورة لا تخصه', 'FORBIDDEN_REP_INVOICE_ACCESS');
     }
     if (orig.status !== 'confirmed') throw new AppError(409, 'لا يمكن عمل مرتجع لفاتورة مسودة أو ملغاة', 'INVALID_INVOICE_STATUS');
+    if (!orig.warehouseId || !Array.isArray(orig.items) || orig.items.length === 0) {
+      throw new AppError(400, 'بيانات الفاتورة الأصلية غير مكتملة (المستودع أو الأصناف غير محددة)', 'INVALID_ORIGINAL_INVOICE_DATA');
+    }
 
-    const authoritativePartyId = isSalesReturn ? orig.customerId : orig.supplierId;
-    const authoritativePartyName = isSalesReturn ? orig.customerName : orig.supplierName;
-    if (refundType === 'balance' && !authoritativePartyId) {
+    const rawAuthPartyId = isSalesReturn ? String(orig.customerId || '').trim() : String(orig.supplierId || '').trim();
+    const rawAuthPartyName = isSalesReturn ? String(orig.customerName || '').trim() : String(orig.supplierName || '').trim();
+    if (!rawAuthPartyId && !rawAuthPartyName) {
+      throw new AppError(400, 'بيانات الطرف في الفاتورة الأصلية غير مكتملة ولا يمكن استبدالها ببيانات مرسلة', 'ORIGINAL_PARTY_REQUIRED');
+    }
+    const reqPartyIdRaw = String(returnData?.partyId || '').trim();
+    if (
+      actor.role !== 'admin' &&
+      reqPartyIdRaw !== '' &&
+      reqPartyIdRaw !== 'general' &&
+      rawAuthPartyId &&
+      reqPartyIdRaw !== rawAuthPartyId
+    ) {
+      throw new AppError(403, 'غير مصرح بتعديل الطرف المرتبط بالمرتجع عن الطرف المسجل بالفاتورة الأصلية', 'FORBIDDEN_PARTY_OVERRIDE');
+    }
+    if (refundType === 'balance' && (!rawAuthPartyId || rawAuthPartyId === 'general')) {
       throw new AppError(400, 'الفاتورة الأصلية غير مربوطة بطرف مسجل لعمل مرتجع على الرصيد', 'ORIGINAL_PARTY_REQUIRED');
     }
+    const authoritativePartyId = rawAuthPartyId || (isSalesReturn ? 'general' : '');
+    const authoritativePartyName = rawAuthPartyName || (isSalesReturn ? 'عميل نقدي' : '');
 
     const pendingList = isSalesReturn ? (db.salesReturnRequests || []) : (db.purchaseReturnRequests || []);
     const pendingByProd = new Map();
@@ -4658,12 +4784,20 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
     const seqNum = nextJsonSequence(db, seqKey, db.invoiceReturns.filter((r) => r.type === returnData.type), 'returnNumber', /(\d+)$/);
     const returnNumber = `${isSalesReturn ? 'RET-SAL' : 'RET-PUR'}-${new Date().getFullYear()}-${String(seqNum).padStart(4, '0')}`;
 
+    const allowNeg = Boolean(db.settings?.allowNegativeStock) && Boolean(actor?.permissions?.canAllowNegativeInventory);
     for (const it of normalizedItems) {
       const prod = db.products.find((p) => p.id === it.productId);
       if (prod) {
         const curQty = Number(prod.stockPerWarehouse?.[whId] || 0);
         const baseQty = round3(it.quantity * it.unitFactor);
         const nextQty = isSalesReturn ? round3(curQty + baseQty) : round3(curQty - baseQty);
+        if (!isSalesReturn && nextQty < 0 && !allowNeg) {
+          throw new AppError(
+            409,
+            `لا يمكن خصم مرتجع المشتريات من (${prod.name}): الرصيد المتاح (${curQty}) أقل من المطلوب (${baseQty})`,
+            'INSUFFICIENT_STOCK'
+          );
+        }
         prod.stockPerWarehouse[whId] = nextQty;
         const mvId = generateServerId('SM');
         db.stockMovements.unshift({
@@ -4737,6 +4871,8 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
       partyName: authoritativePartyName || '',
       warehouseId: whId,
       warehouseName: whName,
+      ...(orig.representativeId || repActor?.id ? { representativeId: orig.representativeId || repActor?.id } : {}),
+      ...(orig.representativeName || repActor?.name ? { representativeName: orig.representativeName || repActor?.name } : {}),
       items: normalizedItems,
       grandTotal,
       refundType,
@@ -4755,6 +4891,11 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
   if (!out.deduplicated) {
     await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إنشاء سند مرتجع (${out.invoiceReturn.returnNumber})`, module: 'المرتجعات', recordId: out.invoiceReturn.id });
   }
+  if (!canViewCashboxBalances(actor) && out.invoiceReturn?.cashboxId !== undefined) {
+    const sanitized = { ...out.invoiceReturn };
+    delete sanitized.cashboxId;
+    return sanitized;
+  }
   return out.invoiceReturn;
 }
 
@@ -4769,6 +4910,8 @@ export async function listPurchaseReturnRequests(actor = null) {
   }
   const repActor = isRep ? await getRepresentativeByUserId(actor.id) : null;
 
+  const redactCashbox = !canViewCashboxBalances(actor);
+  let list = [];
   if (await isPgMode()) {
     const pool = getPool();
     let reqRes;
@@ -4796,23 +4939,31 @@ export async function listPurchaseReturnRequests(actor = null) {
     );
     const itemsMap = new Map();
     for (const it of itemsRes.rows) {
-      const list = itemsMap.get(it.request_id) || [];
-      list.push(it);
-      itemsMap.set(it.request_id, list);
+      const listArr = itemsMap.get(it.request_id) || [];
+      listArr.push(it);
+      itemsMap.set(it.request_id, listArr);
     }
-    return reqRes.rows.map((r) => mapPgPurchaseReturnRequestRow(r, itemsMap.get(r.id) || []));
+    list = reqRes.rows.map((r) => mapPgPurchaseReturnRequestRow(r, itemsMap.get(r.id) || []));
+  } else {
+    const db = readJsonDatabase();
+    const all = Array.isArray(db.purchaseReturnRequests) ? db.purchaseReturnRequests : [];
+    list = isRep
+      ? all.filter(
+          (r) =>
+            r.requestedByUserId === actor.id ||
+            (repActor?.id && r.representativeId === repActor.id)
+        )
+      : all;
   }
 
-  const db = readJsonDatabase();
-  const all = Array.isArray(db.purchaseReturnRequests) ? db.purchaseReturnRequests : [];
-  if (isRep) {
-    return all.filter(
-      (r) =>
-        r.requestedByUserId === actor.id ||
-        (repActor?.id && r.representativeId === repActor.id)
-    );
+  if (redactCashbox) {
+    return list.map((r) => {
+      const copy = { ...r };
+      delete copy.cashboxId;
+      return copy;
+    });
   }
-  return all;
+  return list;
 }
 
 export async function createPurchaseReturnRequest(payload, actor, idempotencyKey = '') {
@@ -4822,6 +4973,14 @@ export async function createPurchaseReturnRequest(payload, actor, idempotencyKey
   const isRep = actor.role === 'representative';
   if (actor.role !== 'admin' && !actor.permissions?.canCreatePurchase && !actor.permissions?.canManagePurchases) {
     throw new AppError(403, 'ليس لديك صلاحية إنشاء طلب مرتجع مشتريات', 'FORBIDDEN_PERMISSION');
+  }
+  const reqCashboxRaw =
+    payload?.cashboxId !== undefined && payload?.cashboxId !== null ? String(payload.cashboxId).trim() : '';
+  if (isRep && reqCashboxRaw !== '') {
+    throw new AppError(403, 'غير مصرح للمندوب باختيار خزينة في طلب مرتجع المشتريات؛ تحدد الخزينة عند اعتماد الإدارة', 'FORBIDDEN_REP_CASHBOX_SELECTION');
+  }
+  if (!hasTreasuryAuthority(actor) && reqCashboxRaw !== '') {
+    throw new AppError(403, 'غير مصرح بتحديد خزينة في طلب مرتجع المشتريات لغير مسؤولي الخزينة والإدارة', 'FORBIDDEN_TREASURY_PERMISSION');
   }
   const repActor = isRep ? await getRepresentativeByUserId(actor.id) : null;
   if (isRep && !repActor) {
@@ -4859,6 +5018,15 @@ export async function createPurchaseReturnRequest(payload, actor, idempotencyKey
         }
         if (orig.status !== 'confirmed') {
           throw new AppError(409, 'لا يمكن تقديم طلب مرتجع إلا لفاتورة شراء معتمدة', 'INVALID_INVOICE_STATUS');
+        }
+        if (!orig.warehouseId || !Array.isArray(orig.items) || orig.items.length === 0) {
+          throw new AppError(400, 'بيانات فاتورة الشراء الأصلية غير مكتملة', 'INVALID_ORIGINAL_INVOICE_DATA');
+        }
+        if (!String(orig.supplierId || '').trim() && !String(orig.supplierName || '').trim()) {
+          throw new AppError(400, 'بيانات المورد في فاتورة الشراء الأصلية غير مكتملة', 'ORIGINAL_PARTY_REQUIRED');
+        }
+        if (refundType === 'balance' && (!orig.supplierId || orig.supplierId === 'general')) {
+          throw new AppError(400, 'فاتورة الشراء الأصلية غير مربوطة بمورد مسجل لعمل مرتجع على الرصيد', 'ORIGINAL_PARTY_REQUIRED');
         }
         if (isRep && !isRepOwnerOfInvoice(orig, actor, repActor)) {
           throw new AppError(403, 'غير مصرح للمندوب بتقديم طلب مرتجع لفاتورة شراء لا تخصه', 'FORBIDDEN_INVOICE_ACCESS');
@@ -4936,7 +5104,7 @@ export async function createPurchaseReturnRequest(payload, actor, idempotencyKey
 
         const seqNum = Number((await client.query(`SELECT nextval('seq_purchase_return_req_no') AS n`)).rows[0]?.n || 1);
         const requestNumber = `PRR-${new Date().getFullYear()}-${String(seqNum).padStart(4, '0')}`;
-        const storedCashboxId = !isRep && refundType === 'cash' ? (payload?.cashboxId || null) : null;
+        const storedCashboxId = hasTreasuryAuthority(actor) && refundType === 'cash' ? (reqCashboxRaw || null) : null;
 
         await client.query(
           `INSERT INTO purchase_return_requests (id, request_number, date, original_invoice_id, original_invoice_number, supplier_id, supplier_name, warehouse_id, warehouse_name, representative_id, representative_name, requested_by_user_id, requested_by_name, grand_total, refund_type, cashbox_id, reason, notes, status, idempotency_key, created_at, updated_at)
@@ -4951,8 +5119,8 @@ export async function createPurchaseReturnRequest(payload, actor, idempotencyKey
             orig.supplierName || 'مورد نقدي',
             orig.warehouseId,
             orig.warehouseName,
-            repActor?.id || orig.representativeId || null,
-            repActor?.name || orig.representativeName || '',
+            orig.representativeId || repActor?.id || null,
+            orig.representativeName || repActor?.name || '',
             actor.id,
             actor.fullName,
             grandTotal,
@@ -4984,14 +5152,14 @@ export async function createPurchaseReturnRequest(payload, actor, idempotencyKey
           supplierName: orig.supplierName || 'مورد نقدي',
           warehouseId: orig.warehouseId,
           warehouseName: orig.warehouseName,
-          representativeId: repActor?.id || orig.representativeId || undefined,
-          representativeName: repActor?.name || orig.representativeName || undefined,
+          representativeId: orig.representativeId || repActor?.id || undefined,
+          representativeName: orig.representativeName || repActor?.name || undefined,
           requestedByUserId: actor.id,
           requestedByName: actor.fullName,
           items: normalizedItems,
           grandTotal,
           refundType,
-          cashboxId: !isRep && refundType === 'cash' ? (payload?.cashboxId || undefined) : undefined,
+          cashboxId: storedCashboxId || undefined,
           reason: cleanReason,
           notes: cleanNotes,
           status: 'pending',
@@ -5012,6 +5180,15 @@ export async function createPurchaseReturnRequest(payload, actor, idempotencyKey
         }
         if (orig.status !== 'confirmed') {
           throw new AppError(409, 'لا يمكن تقديم طلب مرتجع إلا لفاتورة شراء معتمدة', 'INVALID_INVOICE_STATUS');
+        }
+        if (!orig.warehouseId || !Array.isArray(orig.items) || orig.items.length === 0) {
+          throw new AppError(400, 'بيانات فاتورة الشراء الأصلية غير مكتملة', 'INVALID_ORIGINAL_INVOICE_DATA');
+        }
+        if (!String(orig.supplierId || '').trim() && !String(orig.supplierName || '').trim()) {
+          throw new AppError(400, 'بيانات المورد في فاتورة الشراء الأصلية غير مكتملة', 'ORIGINAL_PARTY_REQUIRED');
+        }
+        if (refundType === 'balance' && (!orig.supplierId || orig.supplierId === 'general')) {
+          throw new AppError(400, 'فاتورة الشراء الأصلية غير مربوطة بمورد مسجل لعمل مرتجع على الرصيد', 'ORIGINAL_PARTY_REQUIRED');
         }
         if (isRep && !isRepOwnerOfInvoice(orig, actor, repActor)) {
           throw new AppError(403, 'غير مصرح للمندوب بتقديم طلب مرتجع لفاتورة شراء لا تخصه', 'FORBIDDEN_INVOICE_ACCESS');
@@ -5095,14 +5272,14 @@ export async function createPurchaseReturnRequest(payload, actor, idempotencyKey
           supplierName: orig.supplierName || 'مورد نقدي',
           warehouseId: orig.warehouseId,
           warehouseName: orig.warehouseName,
-          representativeId: repActor?.id || orig.representativeId || undefined,
-          representativeName: repActor?.name || orig.representativeName || undefined,
+          representativeId: orig.representativeId || repActor?.id || undefined,
+          representativeName: orig.representativeName || repActor?.name || undefined,
           requestedByUserId: actor.id,
           requestedByName: actor.fullName,
           items: normalizedItems,
           grandTotal,
           refundType,
-          cashboxId: !isRep && refundType === 'cash' ? (payload?.cashboxId || undefined) : undefined,
+          cashboxId: hasTreasuryAuthority(actor) && refundType === 'cash' ? (reqCashboxRaw || undefined) : undefined,
           reason: cleanReason,
           notes: cleanNotes,
           status: 'pending',
@@ -5123,6 +5300,11 @@ export async function createPurchaseReturnRequest(payload, actor, idempotencyKey
       recordId: out.request.id,
       notes: cleanReason,
     });
+  }
+  if (!canViewCashboxBalances(actor) && out.request?.cashboxId !== undefined) {
+    const sanitized = { ...out.request };
+    delete sanitized.cashboxId;
+    return sanitized;
   }
   return out.request;
 }
@@ -5160,6 +5342,12 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
         if (orig.type !== 'purchase' || orig.status !== 'confirmed') {
           throw new AppError(409, 'فاتورة الشراء الأصلية غير صالحة لترحيل المرتجع', 'INVALID_INVOICE_STATUS');
         }
+        if (!orig.warehouseId || !Array.isArray(orig.items) || orig.items.length === 0) {
+          throw new AppError(400, 'بيانات فاتورة الشراء الأصلية غير مكتملة', 'INVALID_ORIGINAL_INVOICE_DATA');
+        }
+        if (!String(orig.supplierId || '').trim() && !String(orig.supplierName || '').trim()) {
+          throw new AppError(400, 'بيانات المورد في فاتورة الشراء الأصلية غير مكتملة', 'ORIGINAL_PARTY_REQUIRED');
+        }
 
         const returnedMap = { ...(orig.returnedQuantityByItem || {}) };
         let grandTotal = 0;
@@ -5187,6 +5375,9 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
         if (refundType === 'cash' && !hasTreasuryAuthority(actor)) {
           throw new AppError(403, 'اعتماد المرتجعات النقدية مخصص للإدارة ومسؤولي الخزائن والحسابات فقط', 'FORBIDDEN_TREASURY_PERMISSION');
         }
+        if (refundType === 'balance' && (!orig.supplierId || orig.supplierId === 'general')) {
+          throw new AppError(400, 'فاتورة الشراء الأصلية غير مربوطة بمورد مسجل لعمل مرتجع على الرصيد', 'ORIGINAL_PARTY_REQUIRED');
+        }
         const prevRetValRes = await client.query(
           `SELECT COALESCE(SUM(grand_total), 0) AS prev_total FROM invoice_returns WHERE original_invoice_id = $1`,
           [orig.id]
@@ -5196,18 +5387,26 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
           throw new AppError(409, 'إجمالي قيمة المرتجع يتجاوز إجمالي الفاتورة الأصلية', 'RETURN_VALUE_EXCEEDS_INVOICE');
         }
         let cashboxId = refundType === 'cash' ? (payload?.cashboxId || reqObj.cashboxId || orig.cashboxId || null) : null;
-        if (refundType === 'cash' && !cashboxId) {
-          const defCb = (await client.query(`SELECT id FROM cashboxes ORDER BY is_default DESC LIMIT 1`)).rows[0];
-          cashboxId = defCb?.id || null;
-        }
-        if (refundType === 'cash' && !cashboxId) {
-          throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
+        let lockedCbRow = null;
+        if (refundType === 'cash') {
+          if (cashboxId) {
+            lockedCbRow = (await client.query(`SELECT * FROM cashboxes WHERE id = $1 FOR UPDATE`, [cashboxId])).rows[0];
+          } else {
+            const defCb = (await client.query(`SELECT id FROM cashboxes ORDER BY is_default DESC LIMIT 1`)).rows[0];
+            if (defCb?.id) {
+              lockedCbRow = (await client.query(`SELECT * FROM cashboxes WHERE id = $1 FOR UPDATE`, [defCb.id])).rows[0];
+            }
+          }
+          if (!lockedCbRow) {
+            throw new AppError(404, 'الخزينة المحددة غير موجودة', 'CASHBOX_NOT_FOUND');
+          }
+          cashboxId = lockedCbRow.id;
         }
 
         const retId = generateServerId('RET');
         const seqNum = Number((await client.query(`SELECT nextval('seq_purchase_return_no') AS n`)).rows[0]?.n || 1);
         const returnNumber = `RET-PUR-${new Date().getFullYear()}-${String(seqNum).padStart(4, '0')}`;
-        const whId = reqObj.warehouseId || orig.warehouseId;
+        const whId = orig.warehouseId || reqObj.warehouseId;
         const whRow = (await client.query(`SELECT id, name FROM warehouses WHERE id = $1 LIMIT 1`, [whId])).rows[0];
         const whName = whRow?.name || orig.warehouseName;
 
@@ -5298,11 +5497,9 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
               ]);
             }
           }
-        } else if (refundType === 'cash' && cashboxId) {
-          const cbRes = await client.query(`SELECT * FROM cashboxes WHERE id = $1 FOR UPDATE`, [cashboxId]);
-          if (!cbRes.rows[0]) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
-          const nextCb = round2(Number(cbRes.rows[0].current_balance || 0) + grandTotal);
-          await client.query(`UPDATE cashboxes SET current_balance = $1 WHERE id = $2`, [nextCb, cashboxId]);
+        } else if (refundType === 'cash' && lockedCbRow) {
+          const nextCb = round2(Number(lockedCbRow.current_balance || 0) + grandTotal);
+          await client.query(`UPDATE cashboxes SET current_balance = $1 WHERE id = $2`, [nextCb, lockedCbRow.id]);
           const txId = generateServerId('FT');
           await client.query(
             `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, created_by, created_by_user_id, created_at)
@@ -5312,8 +5509,8 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
               `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`,
               retDate,
               grandTotal,
-              cbRes.rows[0].id,
-              cbRes.rows[0].name,
+              lockedCbRow.id,
+              lockedCbRow.name,
               nextCb,
               orig.supplierId || null,
               orig.supplierName || '',
@@ -5358,10 +5555,15 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
           originalInvoiceId: orig.id,
           originalInvoiceNumber: orig.invoiceNumber,
           date: retDate,
-          partyId: orig.supplierId || reqObj.supplierId || 'general',
-          partyName: orig.supplierName || reqObj.supplierName || '',
+          partyId: orig.supplierId || 'general',
+          partyName: orig.supplierName || '',
           warehouseId: whId,
           warehouseName: whName,
+          ...(orig.representativeId || reqObj.representativeId ? { representativeId: orig.representativeId || reqObj.representativeId } : {}),
+          ...(orig.representativeName || reqObj.representativeName ? { representativeName: orig.representativeName || reqObj.representativeName } : {}),
+          ...(reqObj.requestedByUserId ? { requestedByUserId: reqObj.requestedByUserId, requestedByName: reqObj.requestedByName } : {}),
+          approvedByUserId: actor.id,
+          approvedByName: actor.fullName,
           items: normalizedItems,
           grandTotal,
           refundType,
@@ -5392,6 +5594,12 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
         if (orig.type !== 'purchase' || orig.status !== 'confirmed') {
           throw new AppError(409, 'فاتورة الشراء الأصلية غير صالحة لترحيل المرتجع', 'INVALID_INVOICE_STATUS');
         }
+        if (!orig.warehouseId || !Array.isArray(orig.items) || orig.items.length === 0) {
+          throw new AppError(400, 'بيانات فاتورة الشراء الأصلية غير مكتملة', 'INVALID_ORIGINAL_INVOICE_DATA');
+        }
+        if (!String(orig.supplierId || '').trim() && !String(orig.supplierName || '').trim()) {
+          throw new AppError(400, 'بيانات المورد في فاتورة الشراء الأصلية غير مكتملة', 'ORIGINAL_PARTY_REQUIRED');
+        }
 
         const returnedMap = { ...(orig.returnedQuantityByItem || {}) };
         let grandTotal = 0;
@@ -5418,6 +5626,9 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
         if (refundType === 'cash' && !hasTreasuryAuthority(actor)) {
           throw new AppError(403, 'اعتماد المرتجعات النقدية مخصص للإدارة ومسؤولي الخزائن والحسابات فقط', 'FORBIDDEN_TREASURY_PERMISSION');
         }
+        if (refundType === 'balance' && (!orig.supplierId || orig.supplierId === 'general')) {
+          throw new AppError(400, 'فاتورة الشراء الأصلية غير مربوطة بمورد مسجل لعمل مرتجع على الرصيد', 'ORIGINAL_PARTY_REQUIRED');
+        }
         const prevReturnedVal = (db.invoiceReturns || [])
           .filter((r) => r.originalInvoiceId === orig.id)
           .reduce((s, r) => round2(s + Number(r.grandTotal || 0)), 0);
@@ -5431,11 +5642,11 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
             ? db.cashboxes.find((c) => c.id === explicitCbId)
             : db.cashboxes.find((c) => c.isDefault) || db.cashboxes[0];
           if (!cb) {
-            throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
+            throw new AppError(404, 'الخزينة المحددة غير موجودة', 'CASHBOX_NOT_FOUND');
           }
         }
 
-        const whId = reqObj.warehouseId || orig.warehouseId;
+        const whId = orig.warehouseId || reqObj.warehouseId;
         const whName = db.warehouses.find((w) => w.id === whId)?.name || orig.warehouseName;
         const retId = generateServerId('RET');
         const seqNum = nextJsonSequence(db, 'purchaseReturnNo', db.invoiceReturns.filter((r) => r.type === 'purchase_return'), 'returnNumber', /(\d+)$/);
@@ -5518,10 +5729,15 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
           originalInvoiceId: orig.id,
           originalInvoiceNumber: orig.invoiceNumber,
           date: retDate,
-          partyId: orig.supplierId || reqObj.supplierId || 'general',
-          partyName: orig.supplierName || reqObj.supplierName || '',
+          partyId: orig.supplierId || 'general',
+          partyName: orig.supplierName || '',
           warehouseId: whId,
           warehouseName: whName,
+          ...(orig.representativeId || reqObj.representativeId ? { representativeId: orig.representativeId || reqObj.representativeId } : {}),
+          ...(orig.representativeName || reqObj.representativeName ? { representativeName: orig.representativeName || reqObj.representativeName } : {}),
+          ...(reqObj.requestedByUserId ? { requestedByUserId: reqObj.requestedByUserId, requestedByName: reqObj.requestedByName } : {}),
+          approvedByUserId: actor.id,
+          approvedByName: actor.fullName,
           items: normalizedItems,
           grandTotal,
           refundType,
@@ -5640,7 +5856,7 @@ export async function listSalesReturnRequests(actor = null) {
     return [];
   }
   const repActor = isRep ? await getRepresentativeByUserId(actor.id) : null;
-  const redactCashbox = actor.role === 'representative';
+  const redactCashbox = !canViewCashboxBalances(actor);
 
   let list = [];
   if (await isPgMode()) {
@@ -5701,6 +5917,14 @@ export async function createSalesReturnRequest(payload, actor, idempotencyKey = 
   if (actor.role !== 'admin' && !actor.permissions?.canManageSales) {
     throw new AppError(403, 'ليس لديك صلاحية إنشاء طلب مرتجع مبيعات', 'FORBIDDEN_PERMISSION');
   }
+  const reqCashboxRaw =
+    payload?.cashboxId !== undefined && payload?.cashboxId !== null ? String(payload.cashboxId).trim() : '';
+  if (isRep && reqCashboxRaw !== '') {
+    throw new AppError(403, 'غير مصرح للمندوب باختيار خزينة في طلب مرتجع المبيعات؛ تحدد الخزينة عند اعتماد الخزينة/الإدارة', 'FORBIDDEN_REP_CASHBOX_SELECTION');
+  }
+  if (!hasTreasuryAuthority(actor) && reqCashboxRaw !== '') {
+    throw new AppError(403, 'غير مصرح بتحديد خزينة في طلب مرتجع المبيعات لغير مسؤولي الخزينة والإدارة', 'FORBIDDEN_TREASURY_PERMISSION');
+  }
   const repActor = isRep ? await getRepresentativeByUserId(actor.id) : null;
   if (isRep && !repActor) {
     throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
@@ -5738,10 +5962,16 @@ export async function createSalesReturnRequest(payload, actor, idempotencyKey = 
         if (orig.status !== 'confirmed') {
           throw new AppError(409, 'لا يمكن تقديم طلب مرتجع إلا لفاتورة مبيعات معتمدة', 'INVALID_INVOICE_STATUS');
         }
+        if (!orig.warehouseId || !Array.isArray(orig.items) || orig.items.length === 0) {
+          throw new AppError(400, 'بيانات فاتورة المبيعات الأصلية غير مكتملة', 'INVALID_ORIGINAL_INVOICE_DATA');
+        }
+        if (!String(orig.customerId || '').trim() && !String(orig.customerName || '').trim()) {
+          throw new AppError(400, 'بيانات العميل في فاتورة المبيعات الأصلية غير مكتملة', 'ORIGINAL_PARTY_REQUIRED');
+        }
         if (isRep && !isRepOwnerOfInvoice(orig, actor, repActor)) {
           throw new AppError(403, 'غير مصرح للمندوب بتقديم طلب مرتجع لفاتورة مبيعات لا تخصه', 'FORBIDDEN_INVOICE_ACCESS');
         }
-        if (refundType === 'balance' && !orig.customerId) {
+        if (refundType === 'balance' && (!orig.customerId || orig.customerId === 'general')) {
           throw new AppError(400, 'الفاتورة الأصلية غير مربوطة بعميل مسجل لعمل مرتجع على الرصيد', 'ORIGINAL_PARTY_REQUIRED');
         }
 
@@ -5820,7 +6050,7 @@ export async function createSalesReturnRequest(payload, actor, idempotencyKey = 
 
         const seqNum = Number((await client.query(`SELECT nextval('seq_sales_return_req_no') AS n`)).rows[0]?.n || 1);
         const requestNumber = `SRR-${new Date().getFullYear()}-${String(seqNum).padStart(4, '0')}`;
-        const storedCashboxId = !isRep && refundType === 'cash' ? (payload?.cashboxId || null) : null;
+        const storedCashboxId = hasTreasuryAuthority(actor) && refundType === 'cash' ? (reqCashboxRaw || null) : null;
 
         await client.query(
           `INSERT INTO sales_return_requests (id, request_number, date, original_invoice_id, original_invoice_number, customer_id, customer_name, warehouse_id, warehouse_name, representative_id, representative_name, requested_by_user_id, requested_by_name, grand_total, refund_type, cashbox_id, reason, notes, status, idempotency_key, created_at, updated_at)
@@ -5835,8 +6065,8 @@ export async function createSalesReturnRequest(payload, actor, idempotencyKey = 
             orig.customerName || 'عميل نقدي',
             orig.warehouseId,
             orig.warehouseName,
-            repActor?.id || orig.representativeId || null,
-            repActor?.name || orig.representativeName || '',
+            orig.representativeId || repActor?.id || null,
+            orig.representativeName || repActor?.name || '',
             actor.id,
             actor.fullName,
             grandTotal,
@@ -5868,8 +6098,8 @@ export async function createSalesReturnRequest(payload, actor, idempotencyKey = 
           customerName: orig.customerName || 'عميل نقدي',
           warehouseId: orig.warehouseId,
           warehouseName: orig.warehouseName,
-          representativeId: repActor?.id || orig.representativeId || undefined,
-          representativeName: repActor?.name || orig.representativeName || undefined,
+          representativeId: orig.representativeId || repActor?.id || undefined,
+          representativeName: orig.representativeName || repActor?.name || undefined,
           requestedByUserId: actor.id,
           requestedByName: actor.fullName,
           items: normalizedItems,
@@ -5897,10 +6127,16 @@ export async function createSalesReturnRequest(payload, actor, idempotencyKey = 
         if (orig.status !== 'confirmed') {
           throw new AppError(409, 'لا يمكن تقديم طلب مرتجع إلا لفاتورة مبيعات معتمدة', 'INVALID_INVOICE_STATUS');
         }
+        if (!orig.warehouseId || !Array.isArray(orig.items) || orig.items.length === 0) {
+          throw new AppError(400, 'بيانات فاتورة المبيعات الأصلية غير مكتملة', 'INVALID_ORIGINAL_INVOICE_DATA');
+        }
+        if (!String(orig.customerId || '').trim() && !String(orig.customerName || '').trim()) {
+          throw new AppError(400, 'بيانات العميل في فاتورة المبيعات الأصلية غير مكتملة', 'ORIGINAL_PARTY_REQUIRED');
+        }
         if (isRep && !isRepOwnerOfInvoice(orig, actor, repActor)) {
           throw new AppError(403, 'غير مصرح للمندوب بتقديم طلب مرتجع لفاتورة مبيعات لا تخصه', 'FORBIDDEN_INVOICE_ACCESS');
         }
-        if (refundType === 'balance' && !orig.customerId) {
+        if (refundType === 'balance' && (!orig.customerId || orig.customerId === 'general')) {
           throw new AppError(400, 'الفاتورة الأصلية غير مربوطة بعميل مسجل لعمل مرتجع على الرصيد', 'ORIGINAL_PARTY_REQUIRED');
         }
 
@@ -5975,7 +6211,7 @@ export async function createSalesReturnRequest(payload, actor, idempotencyKey = 
 
         const seqNum = nextJsonSequence(db, 'salesReturnReqNo', db.salesReturnRequests, 'requestNumber', /(\d+)$/);
         const requestNumber = `SRR-${new Date().getFullYear()}-${String(seqNum).padStart(4, '0')}`;
-        const storedCashboxId = !isRep && refundType === 'cash' ? (payload?.cashboxId || undefined) : undefined;
+        const storedCashboxId = hasTreasuryAuthority(actor) && refundType === 'cash' ? (reqCashboxRaw || undefined) : undefined;
         const created = {
           id: reqId,
           requestNumber,
@@ -5986,8 +6222,8 @@ export async function createSalesReturnRequest(payload, actor, idempotencyKey = 
           customerName: orig.customerName || 'عميل نقدي',
           warehouseId: orig.warehouseId,
           warehouseName: orig.warehouseName,
-          representativeId: repActor?.id || orig.representativeId || undefined,
-          representativeName: repActor?.name || orig.representativeName || undefined,
+          representativeId: orig.representativeId || repActor?.id || undefined,
+          representativeName: orig.representativeName || repActor?.name || undefined,
           requestedByUserId: actor.id,
           requestedByName: actor.fullName,
           items: normalizedItems,
@@ -6015,7 +6251,7 @@ export async function createSalesReturnRequest(payload, actor, idempotencyKey = 
       notes: cleanReason,
     });
   }
-  if (isRep && out.request?.cashboxId !== undefined) {
+  if (!canViewCashboxBalances(actor) && out.request?.cashboxId !== undefined) {
     const sanitized = { ...out.request };
     delete sanitized.cashboxId;
     return sanitized;
@@ -6062,12 +6298,18 @@ export async function approveSalesReturnRequest(requestId, payload = {}, actor, 
         if (orig.type !== 'sales' || orig.status !== 'confirmed') {
           throw new AppError(409, 'فاتورة المبيعات الأصلية غير صالحة لترحيل المرتجع', 'INVALID_INVOICE_STATUS');
         }
+        if (!orig.warehouseId || !Array.isArray(orig.items) || orig.items.length === 0) {
+          throw new AppError(400, 'بيانات فاتورة المبيعات الأصلية غير مكتملة', 'INVALID_ORIGINAL_INVOICE_DATA');
+        }
+        if (!String(orig.customerId || '').trim() && !String(orig.customerName || '').trim()) {
+          throw new AppError(400, 'بيانات العميل في فاتورة المبيعات الأصلية غير مكتملة', 'ORIGINAL_PARTY_REQUIRED');
+        }
 
         const refundType = (payload?.refundType || reqObj.refundType) === 'cash' ? 'cash' : 'balance';
         if (refundType === 'cash' && !hasTreasuryAuthority(actor)) {
           throw new AppError(403, 'اعتماد المرتجعات النقدية مخصص للإدارة ومسؤولي الخزائن والحسابات فقط', 'FORBIDDEN_TREASURY_PERMISSION');
         }
-        if (refundType === 'balance' && !orig.customerId) {
+        if (refundType === 'balance' && (!orig.customerId || orig.customerId === 'general')) {
           throw new AppError(400, 'الفاتورة الأصلية غير مربوطة بعميل مسجل لعمل مرتجع على الرصيد', 'ORIGINAL_PARTY_REQUIRED');
         }
 
@@ -6260,10 +6502,15 @@ export async function approveSalesReturnRequest(requestId, payload = {}, actor, 
           originalInvoiceId: orig.id,
           originalInvoiceNumber: orig.invoiceNumber,
           date: retDate,
-          partyId: orig.customerId || reqObj.customerId || 'general',
-          partyName: orig.customerName || reqObj.customerName || '',
+          partyId: orig.customerId || 'general',
+          partyName: orig.customerName || 'عميل نقدي',
           warehouseId: whId,
           warehouseName: whName,
+          ...(orig.representativeId || reqObj.representativeId ? { representativeId: orig.representativeId || reqObj.representativeId } : {}),
+          ...(orig.representativeName || reqObj.representativeName ? { representativeName: orig.representativeName || reqObj.representativeName } : {}),
+          ...(reqObj.requestedByUserId ? { requestedByUserId: reqObj.requestedByUserId, requestedByName: reqObj.requestedByName } : {}),
+          approvedByUserId: actor.id,
+          approvedByName: actor.fullName,
           items: normalizedItems,
           grandTotal,
           refundType,
@@ -6294,12 +6541,18 @@ export async function approveSalesReturnRequest(requestId, payload = {}, actor, 
         if (orig.type !== 'sales' || orig.status !== 'confirmed') {
           throw new AppError(409, 'فاتورة المبيعات الأصلية غير صالحة لترحيل المرتجع', 'INVALID_INVOICE_STATUS');
         }
+        if (!orig.warehouseId || !Array.isArray(orig.items) || orig.items.length === 0) {
+          throw new AppError(400, 'بيانات فاتورة المبيعات الأصلية غير مكتملة', 'INVALID_ORIGINAL_INVOICE_DATA');
+        }
+        if (!String(orig.customerId || '').trim() && !String(orig.customerName || '').trim()) {
+          throw new AppError(400, 'بيانات العميل في فاتورة المبيعات الأصلية غير مكتملة', 'ORIGINAL_PARTY_REQUIRED');
+        }
 
         const refundType = (payload?.refundType || reqObj.refundType) === 'cash' ? 'cash' : 'balance';
         if (refundType === 'cash' && !hasTreasuryAuthority(actor)) {
           throw new AppError(403, 'اعتماد المرتجعات النقدية مخصص للإدارة ومسؤولي الخزائن والحسابات فقط', 'FORBIDDEN_TREASURY_PERMISSION');
         }
-        if (refundType === 'balance' && !orig.customerId) {
+        if (refundType === 'balance' && (!orig.customerId || orig.customerId === 'general')) {
           throw new AppError(400, 'الفاتورة الأصلية غير مربوطة بعميل مسجل لعمل مرتجع على الرصيد', 'ORIGINAL_PARTY_REQUIRED');
         }
 
@@ -6415,10 +6668,15 @@ export async function approveSalesReturnRequest(requestId, payload = {}, actor, 
           originalInvoiceId: orig.id,
           originalInvoiceNumber: orig.invoiceNumber,
           date: retDate,
-          partyId: orig.customerId || reqObj.customerId || 'general',
-          partyName: orig.customerName || reqObj.customerName || '',
+          partyId: orig.customerId || 'general',
+          partyName: orig.customerName || 'عميل نقدي',
           warehouseId: whId,
           warehouseName: whName,
+          ...(orig.representativeId || reqObj.representativeId ? { representativeId: orig.representativeId || reqObj.representativeId } : {}),
+          ...(orig.representativeName || reqObj.representativeName ? { representativeName: orig.representativeName || reqObj.representativeName } : {}),
+          ...(reqObj.requestedByUserId ? { requestedByUserId: reqObj.requestedByUserId, requestedByName: reqObj.requestedByName } : {}),
+          approvedByUserId: actor.id,
+          approvedByName: actor.fullName,
           items: normalizedItems,
           grandTotal,
           refundType,

@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
-import { InvoiceReturn, Invoice, PurchaseReturnRequest } from '../../../types';
+import { InvoiceReturn, Invoice, PurchaseReturnRequest, SalesReturnRequest } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
@@ -25,6 +25,10 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
     purchaseReturnRequests = [],
     approvePurchaseReturnRequest,
     rejectPurchaseReturnRequest,
+    salesReturnRequests = [],
+    createSalesReturnRequest,
+    approveSalesReturnRequest,
+    rejectSalesReturnRequest,
   } = useData();
   const { currentUser, hasPermission } = useAuth();
   const isRepRole = currentUser?.role === 'representative';
@@ -32,6 +36,20 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
     !isRepRole &&
     currentUser?.role !== 'customer' &&
     (currentUser?.role === 'admin' || hasPermission('canManagePurchases') || hasPermission('canApprove'));
+  const canManageSalesReturnRequests =
+    !isRepRole &&
+    currentUser?.role !== 'customer' &&
+    (currentUser?.role === 'admin' ||
+      hasPermission('canManageSales') ||
+      hasPermission('canApprove') ||
+      hasPermission('canManageCashboxes') ||
+      hasPermission('canManageAccounts'));
+  const canUseTreasuryCashRefund =
+    !isRepRole &&
+    currentUser?.role !== 'customer' &&
+    (currentUser?.role === 'admin' ||
+      hasPermission('canManageCashboxes') ||
+      hasPermission('canManageAccounts'));
 
   const [returnTypeFilter, setReturnTypeFilter] = useState<'all' | 'sales_return' | 'purchase_return'>(initialTypeFilter);
   const [searchTerm, setSearchTerm] = useState('');
@@ -72,15 +90,35 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
   const [rejectReason, setRejectReason] = useState('');
   const [rejectError, setRejectError] = useState<string | null>(null);
 
+  // Sales Return Request approval/rejection workflow state
+  const [salesReqStatusFilter, setSalesReqStatusFilter] = useState<'pending' | 'all' | 'approved' | 'rejected'>('pending');
+  const [approvingSalesReq, setApprovingSalesReq] = useState<SalesReturnRequest | null>(null);
+  const [approveSalesRefundType, setApproveSalesRefundType] = useState<'cash' | 'balance'>('cash');
+  const [approveSalesCashboxId, setApproveSalesCashboxId] = useState(cashboxes[0]?.id || '');
+  const [approveSalesNotes, setApproveSalesNotes] = useState('');
+  const [approveSalesError, setApproveSalesError] = useState<string | null>(null);
+  const [isProcessingSalesReq, setIsProcessingSalesReq] = useState(false);
+  const [rejectingSalesReq, setRejectingSalesReq] = useState<SalesReturnRequest | null>(null);
+  const [rejectSalesReason, setRejectSalesReason] = useState('');
+  const [rejectSalesError, setRejectSalesError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!approveCashboxId && cashboxes[0]?.id) {
       setApproveCashboxId(cashboxes[0].id);
     }
-  }, [cashboxes, approveCashboxId]);
+    if (!approveSalesCashboxId && cashboxes[0]?.id) {
+      setApproveSalesCashboxId(cashboxes[0].id);
+    }
+  }, [cashboxes, approveCashboxId, approveSalesCashboxId]);
 
   const pendingPrReqCount = useMemo(
     () => purchaseReturnRequests.filter((r) => r.status === 'pending').length,
     [purchaseReturnRequests]
+  );
+
+  const pendingSrReqCount = useMemo(
+    () => salesReturnRequests.filter((r) => r.status === 'pending').length,
+    [salesReturnRequests]
   );
 
   const filteredPrRequests = useMemo(() => {
@@ -97,9 +135,23 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
     });
   }, [purchaseReturnRequests, requestStatusFilter, searchTerm]);
 
+  const filteredSrRequests = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    return salesReturnRequests.filter((r) => {
+      if (salesReqStatusFilter !== 'all' && r.status !== salesReqStatusFilter) return false;
+      if (!q) return true;
+      return (
+        r.requestNumber.toLowerCase().includes(q) ||
+        r.originalInvoiceNumber.toLowerCase().includes(q) ||
+        r.customerName.toLowerCase().includes(q) ||
+        r.requestedByName.toLowerCase().includes(q)
+      );
+    });
+  }, [salesReturnRequests, salesReqStatusFilter, searchTerm]);
+
   const handleOpenApproveReq = (req: PurchaseReturnRequest) => {
     setApprovingReq(req);
-    setApproveRefundType(req.refundType === 'cash' ? 'cash' : 'balance');
+    setApproveRefundType(canUseTreasuryCashRefund && req.refundType === 'cash' ? 'cash' : 'balance');
     setApproveCashboxId(req.cashboxId || cashboxes[0]?.id || '');
     setApproveNotes(req.notes || '');
     setApproveError(null);
@@ -108,15 +160,15 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
   const handleConfirmApproveReq = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!approvingReq || isProcessingReq) return;
-    if (approveRefundType === 'cash' && !approveCashboxId) {
-      setApproveError('يرجى اختيار الخزينة التي سيتم استرداد قيمتها إليها.');
+    if (approveRefundType === 'cash' && (!canUseTreasuryCashRefund || !approveCashboxId)) {
+      setApproveError('يرجى اختيار الخزينة التي سيتم استرداد قيمتها إليها (تتطلب صلاحية الخزائن).');
       return;
     }
     setApproveError(null);
     setIsProcessingReq(true);
     const res = await approvePurchaseReturnRequest(approvingReq.id, {
-      refundType: approveRefundType,
-      cashboxId: approveRefundType === 'cash' ? approveCashboxId : undefined,
+      refundType: canUseTreasuryCashRefund ? approveRefundType : 'balance',
+      cashboxId: canUseTreasuryCashRefund && approveRefundType === 'cash' ? approveCashboxId : undefined,
       notes: approveNotes.trim() || undefined,
     });
     setIsProcessingReq(false);
@@ -151,6 +203,63 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
       setRejectReason('');
     } else {
       setRejectError(res.error || 'تعذر رفض الطلب');
+    }
+  };
+
+  const handleOpenApproveSalesReq = (req: SalesReturnRequest) => {
+    setApprovingSalesReq(req);
+    setApproveSalesRefundType(canUseTreasuryCashRefund && req.refundType === 'cash' ? 'cash' : 'balance');
+    setApproveSalesCashboxId(req.cashboxId || cashboxes[0]?.id || '');
+    setApproveSalesNotes(req.notes || '');
+    setApproveSalesError(null);
+  };
+
+  const handleConfirmApproveSalesReq = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!approvingSalesReq || isProcessingSalesReq) return;
+    if (approveSalesRefundType === 'cash' && (!canUseTreasuryCashRefund || !approveSalesCashboxId)) {
+      setApproveSalesError('يرجى اختيار الخزينة المصروف منها المبلغ (تتطلب صلاحية الخزائن أو الحسابات).');
+      return;
+    }
+    setApproveSalesError(null);
+    setIsProcessingSalesReq(true);
+    const res = await approveSalesReturnRequest(approvingSalesReq.id, {
+      refundType: canUseTreasuryCashRefund ? approveSalesRefundType : 'balance',
+      cashboxId: canUseTreasuryCashRefund && approveSalesRefundType === 'cash' ? approveSalesCashboxId : undefined,
+      notes: approveSalesNotes.trim() || undefined,
+    });
+    setIsProcessingSalesReq(false);
+    if (res.success) {
+      setRequestBanner({
+        type: 'success',
+        text: `تم اعتماد طلب مرتجع المبيعات (${approvingSalesReq.requestNumber}) وإنشاء المرتجع (${res.invoiceReturn?.returnNumber || ''}) وتحديث المخزون والحساب.`,
+      });
+      setApprovingSalesReq(null);
+    } else {
+      setApproveSalesError(res.error || 'تعذر اعتماد طلب مرتجع المبيعات');
+    }
+  };
+
+  const handleConfirmRejectSalesReq = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rejectingSalesReq || isProcessingSalesReq) return;
+    if (!rejectSalesReason.trim()) {
+      setRejectSalesError('يرجى كتابة سبب رفض طلب مرتجع المبيعات.');
+      return;
+    }
+    setRejectSalesError(null);
+    setIsProcessingSalesReq(true);
+    const res = await rejectSalesReturnRequest(rejectingSalesReq.id, rejectSalesReason.trim());
+    setIsProcessingSalesReq(false);
+    if (res.success) {
+      setRequestBanner({
+        type: 'success',
+        text: `تم رفض طلب مرتجع المبيعات (${rejectingSalesReq.requestNumber}) وإبلاغ المندوب بالسبب.`,
+      });
+      setRejectingSalesReq(null);
+      setRejectSalesReason('');
+    } else {
+      setRejectSalesError(res.error || 'تعذر رفض الطلب');
     }
   };
 
@@ -225,8 +334,49 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
       return;
     }
 
+    if (!reason.trim()) {
+      setError('يرجى كتابة سبب المرتجع');
+      return;
+    }
+
     setError(null);
     setIsSubmitting(true);
+
+    if (isRepRole && returnType === 'sales_return' && refundType === 'cash') {
+      const reqRes = await createSalesReturnRequest({
+        originalInvoiceId: selectedInvoice.id,
+        items: returnItems.map((it) => ({
+          productId: it.productId,
+          productName: it.productName,
+          unit: it.unit,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+        })),
+        refundType: 'cash',
+        reason: reason.trim(),
+        date: returnDate,
+        notes: `طلب مرتجع مبيعات نقدي مرتبط بالفاتورة ${selectedInvoice.invoiceNumber}`,
+      });
+      setIsSubmitting(false);
+      if (reqRes.success) {
+        setIsNewModalOpen(false);
+        setSelectedInvoiceId('');
+        setReturnQuantities({});
+        setRequestBanner({
+          type: 'success',
+          text: reqRes.queuedOffline
+            ? 'تم حفظ طلب مرتجع المبيعات النقدي في طابور المزامنة لمراجعة الإدارة والخزينة فور عودة الاتصال.'
+            : `تم رفع طلب مرتجع المبيعات النقدي (${reqRes.request?.requestNumber || ''}) للمراجعة دون تعديل رصيد الخزينة حتى الاعتماد.`,
+        });
+      } else {
+        setError(reqRes.error || 'تعذر رفع طلب مرتجع المبيعات النقدي');
+      }
+      return;
+    }
+
+    const effectiveRefundType = canUseTreasuryCashRefund ? refundType : 'balance';
+    const effectiveCashboxId =
+      canUseTreasuryCashRefund && effectiveRefundType === 'cash' ? refundCashboxId : undefined;
 
     const res = await createReturn({
       type: returnType,
@@ -239,9 +389,9 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
       warehouseName: selectedInvoice.warehouseName,
       items: returnItems,
       grandTotal: calculatedGrandTotal,
-      refundType,
-      cashboxId: refundType === 'cash' ? refundCashboxId : undefined,
-      reason,
+      refundType: effectiveRefundType,
+      cashboxId: effectiveCashboxId,
+      reason: reason.trim(),
       notes: `مرتجع مرتبط بالفاتورة ${selectedInvoice.invoiceNumber}`,
     });
 
@@ -402,6 +552,169 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
           </tbody>
         </table>
       </div>
+
+      {/* Sales Return Requests Approval Queue (for Admin / Sales / Treasury Managers) */}
+      {canManageSalesReturnRequests && returnTypeFilter !== 'purchase_return' && (
+        <div className="bg-white rounded-2xl border border-amber-200 shadow-xs p-5 space-y-4 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-800 shrink-0">
+                <Clock className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-black text-slate-900">طلبات مرتجع المبيعات من المناديب</h3>
+                  {pendingSrReqCount > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-mono font-black text-[11px]">
+                      {pendingSrReqCount} بانتظار الاعتماد
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  تُسجَّل طلبات المرتجع النقدي المرفوعة من المندوب للمراجعة فقط دون مساس بالخزينة أو المخزون حتى اعتمادها وتحديد الخزينة من المخولين.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { id: 'pending' as const, label: `معلق (${pendingSrReqCount})` },
+                { id: 'approved' as const, label: 'معتمد' },
+                { id: 'rejected' as const, label: 'مرفوض' },
+                { id: 'all' as const, label: 'الكل' },
+              ].map((st) => (
+                <button
+                  key={st.id}
+                  type="button"
+                  onClick={() => setSalesReqStatusFilter(st.id)}
+                  className={`px-3 py-1.5 rounded-xl font-bold border cursor-pointer ${
+                    salesReqStatusFilter === st.id
+                      ? 'bg-amber-900 text-white border-amber-900'
+                      : 'bg-slate-50 text-slate-700 border-slate-200'
+                  }`}
+                >
+                  {st.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {filteredSrRequests.length === 0 ? (
+            <div className="p-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-slate-200">
+              لا توجد طلبات مرتجع مبيعات في هذا التصنيف.
+            </div>
+          ) : (
+            <div className="awlad-table-scroll border border-slate-200 rounded-xl overflow-hidden">
+              <table className="w-full text-right text-xs">
+                <thead>
+                  <tr className="bg-slate-50 font-bold border-b text-slate-700">
+                    <th className="p-3">رقم الطلب</th>
+                    <th className="p-3">الفاتورة الأصلية</th>
+                    <th className="p-3">المندوب / مقدم الطلب</th>
+                    <th className="p-3">العميل والمستودع</th>
+                    <th className="p-3">الأصناف</th>
+                    <th className="p-3 text-center">الإجمالي</th>
+                    <th className="p-3">الحالة</th>
+                    <th className="p-3 text-center">الإجراء</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredSrRequests.map((req) => (
+                    <tr key={req.id} className="hover:bg-slate-50 align-top">
+                      <td className="p-3 font-mono font-black text-amber-900">
+                        {req.requestNumber}
+                        <span className="block text-[10px] text-slate-500 font-normal">{req.date}</span>
+                      </td>
+                      <td className="p-3 font-mono font-bold text-slate-800">{req.originalInvoiceNumber}</td>
+                      <td className="p-3 font-bold text-slate-800">
+                        {req.representativeName || req.requestedByName}
+                        <span className="block text-[10px] text-slate-500 font-normal">بواسطة: {req.requestedByName}</span>
+                      </td>
+                      <td className="p-3">
+                        <span className="font-bold text-slate-800 block">{req.customerName}</span>
+                        <span className="text-[10px] text-slate-500">{req.warehouseName}</span>
+                      </td>
+                      <td className="p-3">
+                        <div className="space-y-0.5">
+                          {(req.items || []).map((it, i) => (
+                            <div key={i} className="text-[11px] text-slate-700">
+                              <span className="font-bold">{it.productName}</span> ({it.quantity} {it.unit} × {it.unitPrice})
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-1">السبب: {req.reason}</p>
+                      </td>
+                      <td className="p-3 text-center font-mono font-black text-slate-900 whitespace-nowrap">
+                        {Number(req.grandTotal || 0).toLocaleString()} {settings.currency}
+                        <span className="block text-[10px] text-slate-500 font-normal">
+                          {req.refundType === 'cash' ? 'طلب رد نقدي' : 'طلب خصم من الرصيد'}
+                        </span>
+                      </td>
+                      <td className="p-3 whitespace-nowrap">
+                        {req.status === 'pending' && (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold text-[10px]">
+                            قيد الانتظار
+                          </span>
+                        )}
+                        {req.status === 'approved' && (
+                          <div className="space-y-0.5">
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-bold text-[10px] inline-block">
+                              معتمد
+                            </span>
+                            {req.approvedReturnNumber && (
+                              <span className="block font-mono text-[10px] text-emerald-800">{req.approvedReturnNumber}</span>
+                            )}
+                          </div>
+                        )}
+                        {req.status === 'rejected' && (
+                          <div className="space-y-0.5">
+                            <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-900 font-bold text-[10px] inline-block">
+                              مرفوض
+                            </span>
+                            {req.rejectionReason && (
+                              <span className="block text-[10px] text-red-700 max-w-[160px]">{req.rejectionReason}</span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-3 text-center whitespace-nowrap">
+                        {req.status === 'pending' ? (
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenApproveSalesReq(req)}
+                              className="px-2.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>اعتماد</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRejectingSalesReq(req);
+                                setRejectSalesReason('');
+                                setRejectSalesError(null);
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 font-bold inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <XCircle className="w-3.5 h-3.5" />
+                              <span>رفض</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate-500 font-semibold">
+                            {req.reviewedByName || 'تمت المراجعة'}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Purchase Return Requests Approval Queue (for Admin / Purchase Managers) */}
       {canManagePurchaseReturnRequests && returnTypeFilter !== 'sales_return' && (
@@ -712,19 +1025,23 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
           )}
 
           {/* Refund method */}
-          <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl">
             <div>
               <label className="block font-bold mb-1">طريقة التسوية المالية:</label>
               <select
-                value={refundType}
-                onChange={(e) => setRefundType(e.target.value as any)}
+                value={canUseTreasuryCashRefund || (isRepRole && returnType === 'sales_return') ? refundType : 'balance'}
+                onChange={(e) => setRefundType(e.target.value as 'balance' | 'cash')}
                 className="w-full bg-white border rounded-xl p-2 font-bold"
               >
                 <option value="balance">تعديل وخصم من رصيد الحساب الآجل</option>
-                <option value="cash">رد نقدي فوري من الخزينة</option>
+                {(canUseTreasuryCashRefund || (isRepRole && returnType === 'sales_return')) && (
+                  <option value="cash">
+                    {isRepRole ? 'طلب رد نقدي (يرفع لموافقة الخزينة/الإدارة)' : 'رد نقدي فوري من الخزينة'}
+                  </option>
+                )}
               </select>
             </div>
-            {refundType === 'cash' && (
+            {canUseTreasuryCashRefund && refundType === 'cash' ? (
               <div>
                 <label className="block font-bold mb-1">الخزينة المسدد منها:</label>
                 <select
@@ -737,7 +1054,15 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                   ))}
                 </select>
               </div>
-            )}
+            ) : isRepRole && refundType === 'cash' ? (
+              <div className="flex items-center p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
+                يُرسل هذا المرتجع كطلب مراجعة للخزينة والإدارة، ولا يتم صرف أو خصم أي مبلغ من أي خزينة إلا بعد الاعتماد.
+              </div>
+            ) : !canUseTreasuryCashRefund ? (
+              <div className="flex items-center p-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 font-bold text-[11px]">
+                الرد النقدي من الخزينة متاح لصلاحية إدارة الخزائن والحسابات فقط.
+              </div>
+            ) : null}
           </div>
 
           <div>
@@ -793,16 +1118,18 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
             <div>
               <label className="block font-bold mb-1">طريقة التسوية المالية:</label>
               <select
-                value={approveRefundType}
+                value={canUseTreasuryCashRefund ? approveRefundType : 'balance'}
                 onChange={(e) => setApproveRefundType(e.target.value as 'balance' | 'cash')}
                 className="w-full border rounded-xl p-2.5 font-bold bg-white"
               >
                 <option value="balance">تعديل وخصم من رصيد حساب المورد</option>
-                <option value="cash">استرداد نقدي إلى الخزينة</option>
+                {canUseTreasuryCashRefund && (
+                  <option value="cash">استرداد نقدي إلى الخزينة</option>
+                )}
               </select>
             </div>
 
-            {approveRefundType === 'cash' && (
+            {canUseTreasuryCashRefund && approveRefundType === 'cash' && (
               <div>
                 <label className="block font-bold mb-1">الخزينة المستلمة للاسترداد النقدي:</label>
                 <select
@@ -886,6 +1213,140 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 className="px-5 py-2 bg-red-700 hover:bg-red-800 text-white rounded-xl font-black cursor-pointer disabled:opacity-50"
               >
                 {isProcessingReq ? 'جاري الرفض...' : 'تأكيد رفض الطلب'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* Approve Sales Return Request Modal */}
+      <Modal
+        isOpen={Boolean(approvingSalesReq)}
+        onClose={() => !isProcessingSalesReq && setApprovingSalesReq(null)}
+        title={approvingSalesReq ? `اعتماد طلب مرتجع مبيعات: ${approvingSalesReq.requestNumber}` : ''}
+        subtitle="سيتم إنشاء سند مرتجع مبيعات رسمي وإرجاع الكميات للمخزن وتحديث الخزينة أو حساب العميل."
+        maxWidth="md"
+      >
+        {approvingSalesReq && (
+          <form onSubmit={handleConfirmApproveSalesReq} className="space-y-4 text-xs">
+            {approveSalesError && (
+              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">{approveSalesError}</div>
+            )}
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+              <div className="flex justify-between">
+                <span className="text-slate-500">العميل:</span>
+                <strong className="text-slate-900">{approvingSalesReq.customerName}</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">الفاتورة الأصلية:</span>
+                <strong className="font-mono text-blue-900">{approvingSalesReq.originalInvoiceNumber}</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">الإجمالي:</span>
+                <strong className="font-mono text-emerald-800">
+                  {Number(approvingSalesReq.grandTotal || 0).toLocaleString()} {settings.currency}
+                </strong>
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-bold mb-1">طريقة التسوية المالية المعتمدة:</label>
+              <select
+                value={canUseTreasuryCashRefund ? approveSalesRefundType : 'balance'}
+                onChange={(e) => setApproveSalesRefundType(e.target.value as 'cash' | 'balance')}
+                className="w-full border rounded-xl p-2.5 font-bold bg-white"
+              >
+                <option value="balance">تعديل وخصم من رصيد حساب العميل</option>
+                {canUseTreasuryCashRefund && (
+                  <option value="cash">صرف نقدي من الخزينة</option>
+                )}
+              </select>
+            </div>
+
+            {canUseTreasuryCashRefund && approveSalesRefundType === 'cash' && (
+              <div>
+                <label className="block font-bold mb-1">الخزينة المصروف منها:</label>
+                <select
+                  value={approveSalesCashboxId}
+                  onChange={(e) => setApproveSalesCashboxId(e.target.value)}
+                  className="w-full border rounded-xl p-2.5 font-bold bg-white"
+                >
+                  {cashboxes.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label className="block font-bold mb-1">ملاحظات الاعتماد (اختياري):</label>
+              <input
+                type="text"
+                value={approveSalesNotes}
+                onChange={(e) => setApproveSalesNotes(e.target.value)}
+                className="w-full border rounded-xl p-2.5"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <button
+                type="button"
+                disabled={isProcessingSalesReq}
+                onClick={() => setApprovingSalesReq(null)}
+                className="px-4 py-2 border rounded-xl font-bold cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="submit"
+                disabled={isProcessingSalesReq}
+                className="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-black cursor-pointer disabled:opacity-50"
+              >
+                {isProcessingSalesReq ? 'جاري الاعتماد...' : 'تأكيد الاعتماد والترحيل'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* Reject Sales Return Request Modal */}
+      <Modal
+        isOpen={Boolean(rejectingSalesReq)}
+        onClose={() => !isProcessingSalesReq && setRejectingSalesReq(null)}
+        title={rejectingSalesReq ? `رفض طلب مرتجع مبيعات: ${rejectingSalesReq.requestNumber}` : ''}
+        maxWidth="md"
+      >
+        {rejectingSalesReq && (
+          <form onSubmit={handleConfirmRejectSalesReq} className="space-y-4 text-xs">
+            {rejectSalesError && (
+              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">{rejectSalesError}</div>
+            )}
+            <div>
+              <label className="block font-bold mb-1">سبب الرفض (إلزامي):</label>
+              <textarea
+                rows={3}
+                required
+                value={rejectSalesReason}
+                onChange={(e) => setRejectSalesReason(e.target.value)}
+                placeholder="اكتب سبب رفض طلب مرتجع المبيعات ليظهر للمندوب..."
+                className="w-full border rounded-xl p-2.5"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <button
+                type="button"
+                disabled={isProcessingSalesReq}
+                onClick={() => setRejectingSalesReq(null)}
+                className="px-4 py-2 border rounded-xl font-bold cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="submit"
+                disabled={isProcessingSalesReq}
+                className="px-5 py-2 bg-red-700 hover:bg-red-800 text-white rounded-xl font-black cursor-pointer disabled:opacity-50"
+              >
+                {isProcessingSalesReq ? 'جاري الرفض...' : 'تأكيد رفض الطلب'}
               </button>
             </div>
           </form>

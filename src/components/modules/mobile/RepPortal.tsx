@@ -23,6 +23,7 @@ import {
   PurchaseReturnRequest,
   RepCustodyStatementResponse,
   RepDetailedReportResponse,
+  SalesReturnRequest,
   Supplier,
   SupplierStatementResponse,
 } from '../../../types';
@@ -186,6 +187,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const canAddCustomer = isAdmin || canSales || hasPermission('canAdd');
   const canEditCustomer = isAdmin || hasPermission('canEdit');
   const canDeleteCustomer = isAdmin || hasPermission('canDelete');
+  const canViewCustomerAggregateTotals =
+    !isRepRoleAccount && (isAdmin || hasPermission('canManageAccounts') || hasPermission('canViewReports'));
 
   const rep =
     representativeProfile ||
@@ -705,6 +708,23 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         })
       : [];
 
+    const scopedSalesReturnRequests = (data.salesReturnRequests || []).filter((req) => {
+      if (rptOpType !== 'all' && rptOpType !== 'sales_return' && rptOpType !== 'sales') {
+        return false;
+      }
+      if (!matchDates(req.date)) return false;
+      if (rptCustomerId && req.customerId !== rptCustomerId) return false;
+      if (rptProductId && !(req.items || []).some((it) => it.productId === rptProductId)) return false;
+      if (
+        qInvNum &&
+        !String(req.requestNumber || '').toLowerCase().includes(qInvNum) &&
+        !String(req.originalInvoiceNumber || '').toLowerCase().includes(qInvNum)
+      ) {
+        return false;
+      }
+      return true;
+    });
+
     const invoiceRows = scopedInvoices.map((inv) => {
       const paymentStatus: 'paid' | 'partial' | 'credit' =
         Number(inv.remainingAmount || 0) <= 0.009
@@ -909,6 +929,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       pendingPurchaseReturnRequestsCount: canCreatePurchase
         ? scopedPurchaseReturnRequests.filter((r) => r.status === 'pending').length
         : 0,
+      salesReturnRequestsCount: scopedSalesReturnRequests.length,
+      pendingSalesReturnRequestsCount: scopedSalesReturnRequests.filter((r) => r.status === 'pending').length,
       collectionsCount: collections.length,
       collectionsTotal,
       purchasePaymentsTotal: confirmedPurchases.reduce((s, i) => s + Number(i.paidAmount || 0), 0),
@@ -940,6 +962,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         totalReturns: scopedReturns.length,
         totalCollections: collections.length,
         totalPurchaseReturnRequests: scopedPurchaseReturnRequests.length,
+        totalSalesReturnRequests: scopedSalesReturnRequests.length,
         totalPages,
         hasNextPage: safePage < totalPages,
         hasPrevPage: safePage > 1,
@@ -982,12 +1005,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       itemRows: sliceArr(itemRows),
       returns: sliceArr(scopedReturns),
       purchaseReturnRequests: sliceArr(scopedPurchaseReturnRequests),
+      salesReturnRequests: sliceArr(scopedSalesReturnRequests),
       collections: sliceArr(collections),
     };
   }, [
     data.invoices,
     data.invoiceReturns,
     data.purchaseReturnRequests,
+    data.salesReturnRequests,
     data.financialTransactions,
     data.customers,
     data.suppliers,
@@ -1309,7 +1334,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       remainingAmount: Math.max(0, invGrandTotal - paid),
       paymentType: invPaymentType,
       paymentMethod: 'cash',
-      cashboxId: invCashboxId,
+      cashboxId: isRepRoleAccount || !canCashOps ? '' : invCashboxId,
       status: forceDraft ? 'draft' : 'confirmed',
       notes: invNotes.trim() || undefined,
     });
@@ -1738,7 +1763,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       remainingAmount: Math.max(0, purTotal - paid),
       paymentType: purPaymentType,
       paymentMethod: 'cash',
-      cashboxId: purCashboxId,
+      cashboxId: isRepRoleAccount || !canCashOps ? '' : purCashboxId,
       status: 'draft',
       dispatchStatus: sendNow ? 'sent' : 'draft',
       sendNow,
@@ -1781,6 +1806,50 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     const whId = sRetWarehouseId || effectiveVanId;
     const wh = data.warehouses.find((w) => w.id === whId);
     const inv = data.invoices.find((i) => i.id === sRetInvoiceId);
+
+    const requiresSalesRequest = sRetSettlement === 'cash' && (isRepRoleAccount || !canCashOps);
+    if (requiresSalesRequest) {
+      if (!inv || inv.status !== 'confirmed') {
+        setFeedback({ type: 'error', text: 'لرفع طلب مرتجع مبيعات نقدي، يجب اختيار فاتورة مبيعات أصلية معتمدة أولاً.' });
+        return;
+      }
+      if (!sRetReason.trim()) {
+        setFeedback({ type: 'error', text: 'يرجى كتابة سبب طلب مرتجع المبيعات النقدي.' });
+        return;
+      }
+      setIsSubmittingSRet(true);
+      setFeedback(null);
+      const reqRes = await data.createSalesReturnRequest({
+        originalInvoiceId: inv.id,
+        date: new Date().toISOString().split('T')[0],
+        items: sRetItems.map((it) => ({
+          productId: it.productId,
+          productName: it.productName,
+          unit: it.unit,
+          unitFactor: it.unitFactor,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+        })),
+        refundType: 'cash',
+        reason: sRetReason.trim(),
+      });
+      setIsSubmittingSRet(false);
+      if (reqRes.success) {
+        setSRetItems([]);
+        setSRetReason('');
+        setFeedback({
+          type: reqRes.queuedOffline ? 'warning' : 'success',
+          text: reqRes.queuedOffline
+            ? 'تم حفظ طلب مرتجع المبيعات النقدي محلياً في طابور المزامنة لمراجعة الخزينة والإدارة — لن يتغير رصيد الخزينة قبل الاعتماد.'
+            : `تم رفع طلب مرتجع المبيعات النقدي (${reqRes.request?.requestNumber || ''}) لمراجعة الإدارة والخزينة دون التأثير على الخزينة حتى الاعتماد.`,
+        });
+        onTabChange('sales-returns-list');
+      } else {
+        setFeedback({ type: 'error', text: reqRes.error || 'تعذر رفع طلب مرتجع البيع النقدي' });
+      }
+      return;
+    }
+
     setIsSubmittingSRet(true);
     setFeedback(null);
     const res = await data.createReturn({
@@ -1794,8 +1863,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       warehouseName: wh?.name || 'سيارة المندوب',
       items: sRetItems,
       grandTotal: sRetTotal,
-      refundType: sRetSettlement === 'cash' ? 'cash' : 'balance',
-      cashboxId: sRetSettlement === 'cash' ? sRetCashboxId : undefined,
+      refundType: sRetSettlement === 'cash' && canCashOps && !isRepRoleAccount ? 'cash' : 'balance',
+      cashboxId: sRetSettlement === 'cash' && canCashOps && !isRepRoleAccount ? sRetCashboxId : undefined,
       reason: sRetReason.trim() || 'مرتجع مبيعات من المندوب',
     });
     setIsSubmittingSRet(false);
@@ -1903,7 +1972,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           unitPrice: it.unitPrice,
         })),
         refundType: pRetSettlement === 'cash' ? 'cash' : 'balance',
-        cashboxId: pRetSettlement === 'cash' ? pRetCashboxId : undefined,
+        cashboxId: !isRepRoleAccount && canCashOps && pRetSettlement === 'cash' ? pRetCashboxId : undefined,
         reason: pRetReason.trim(),
       });
       setIsSubmittingPRet(false);
@@ -1947,8 +2016,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       warehouseName: wh?.name || 'المخزن الرئيسي',
       items: pRetItems,
       grandTotal: pRetTotal,
-      refundType: pRetSettlement === 'cash' ? 'cash' : 'balance',
-      cashboxId: pRetSettlement === 'cash' ? pRetCashboxId : undefined,
+      refundType: pRetSettlement === 'cash' && !isRepRoleAccount && canCashOps ? 'cash' : 'balance',
+      cashboxId: pRetSettlement === 'cash' && !isRepRoleAccount && canCashOps ? pRetCashboxId : undefined,
       reason: pRetReason.trim() || 'مرتجع مشتريات للمورد',
     });
     setIsSubmittingPRet(false);
@@ -1992,7 +2061,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         const res = await data.recordCustomerPayment(
           depCustomerId,
           depAmount,
-          depCashboxId,
+          isRepRoleAccount || !canCashOps ? '' : depCashboxId,
           depNotes.trim() || 'تحصيل نقدي عبر تطبيق المندوب',
           depMethod
         );
@@ -2505,7 +2574,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       remainingAmount: quoteTotal,
       paymentType: 'credit',
       paymentMethod: 'cash',
-      cashboxId: data.cashboxes[0]?.id || '',
+      cashboxId: isRepRoleAccount || !canCashOps ? '' : (data.cashboxes[0]?.id || ''),
       status: 'confirmed',
       notes: quoteNotes.trim() || 'عرض سعر بدون تأثير مخزني أو مالي',
     });
@@ -2729,7 +2798,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       const res = await data.updateOrderDeliveryStatus(deliveringOrder.id, {
         status: 'delivered',
         collectedAmount: deliveryCollectedAmount > 0 ? deliveryCollectedAmount : 0,
-        cashboxId: deliveryCollectedAmount > 0 ? deliveryCashboxId : undefined,
+        cashboxId: !isRepRoleAccount && canCashOps && deliveryCollectedAmount > 0 ? deliveryCashboxId : undefined,
         paymentMethod: deliveryMethod,
         deliveryNotes: deliveryNotes.trim() || undefined,
         deliveryProof: deliveryProof || undefined,
@@ -2792,6 +2861,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       .sort((a: InvoiceReturn, b: InvoiceReturn) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   }, [data.invoiceReturns]);
 
+  const mySalesReturnRequests = useMemo(() => {
+    return [...(data.salesReturnRequests || [])].sort((a, b) =>
+      (b.createdAt || '').localeCompare(a.createdAt || '')
+    );
+  }, [data.salesReturnRequests]);
+
   const myPurchaseReturns = useMemo(() => {
     return (data.invoiceReturns || [])
       .filter((r: InvoiceReturn) => r.type === 'purchase_return')
@@ -2840,6 +2915,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
   const repCustomersStats = useMemo(() => {
     const total = data.customers.length;
+    if (!canViewCustomerAggregateTotals) {
+      return {
+        total,
+        debtorsCount: 0,
+        creditsCount: 0,
+        totalDue: 0,
+        totalCredit: 0,
+        debtorPct: 0,
+      };
+    }
     const debtors = data.customers.filter((c) => Number(c.currentBalance || 0) > 0.009);
     const credits = data.customers.filter((c) => Number(c.currentBalance || 0) < -0.009);
     const totalDue = debtors.reduce((sum, c) => sum + Number(c.currentBalance || 0), 0);
@@ -2853,7 +2938,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       totalCredit,
       debtorPct,
     };
-  }, [data.customers]);
+  }, [data.customers, canViewCustomerAggregateTotals]);
 
   const handleConfirmDeleteCustomer = async () => {
     if (!deleteCustomerTarget) return;
@@ -3870,43 +3955,49 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               )}
             </div>
 
-            {/* 6 Live Scoped Customer Statistics Cards (NEVER merging لنا and علينا) */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs tabular-nums">
-              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                <span className="text-[10px] text-slate-500 block">إجمالي العملاء</span>
-                <strong className="text-base font-black text-slate-900">{repCustomersStats.total}</strong>
-                <span className="block text-[10px] text-slate-500">المطابق الآن: {filteredCustomers.length}</span>
+            {canViewCustomerAggregateTotals ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs tabular-nums">
+                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                  <span className="text-[10px] text-slate-500 block">إجمالي العملاء</span>
+                  <strong className="text-base font-black text-slate-900">{repCustomersStats.total}</strong>
+                  <span className="block text-[10px] text-slate-500">المطابق الآن: {filteredCustomers.length}</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200">
+                  <span className="text-[10px] text-amber-800 block">عدد العملاء المدينين</span>
+                  <strong className="text-base font-black text-amber-900">{repCustomersStats.debtorsCount}</strong>
+                  <span className="block text-[10px] text-amber-700">ذوي أرصدة مستحقة</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-teal-50 border border-teal-200">
+                  <span className="text-[10px] text-teal-800 block">ذوو الأرصدة الدائنة</span>
+                  <strong className="text-base font-black text-teal-900">{repCustomersStats.creditsCount}</strong>
+                  <span className="block text-[10px] text-teal-700">دافعي مقدمات</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200">
+                  <span className="text-[10px] text-rose-700 block">المستحق على العملاء (لنا)</span>
+                  <strong className="text-sm font-black font-mono text-rose-800">
+                    {repCustomersStats.totalDue.toLocaleString()} {data.settings.currency}
+                  </strong>
+                  <span className="block text-[10px] text-rose-700 font-bold">مديونيات غير محصلة</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
+                  <span className="text-[10px] text-emerald-700 block">الأرصدة الدائنة (علينا)</span>
+                  <strong className="text-sm font-black font-mono text-emerald-800">
+                    {repCustomersStats.totalCredit.toLocaleString()} {data.settings.currency}
+                  </strong>
+                  <span className="block text-[10px] text-emerald-700 font-bold">مقدمات مالية للعملاء</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200">
+                  <span className="text-[10px] text-blue-800 block">نسبة العملاء المدينين</span>
+                  <strong className="text-base font-black font-mono text-blue-950">{repCustomersStats.debtorPct}%</strong>
+                  <span className="block text-[10px] text-blue-700">من إجمالي العملاء</span>
+                </div>
               </div>
-              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200">
-                <span className="text-[10px] text-amber-800 block">عدد العملاء المدينين</span>
-                <strong className="text-base font-black text-amber-900">{repCustomersStats.debtorsCount}</strong>
-                <span className="block text-[10px] text-amber-700">ذوي أرصدة مستحقة</span>
+            ) : (
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2 text-[11px] font-bold text-slate-700">
+                <span>عدد العملاء المتاحين للعمل: <strong className="font-mono text-slate-900">{repCustomersStats.total}</strong> (المطابق: {filteredCustomers.length})</span>
+                <span className="text-slate-500">تظهر مديونية كل عميل وكشف حسابه الفردي داخل بطاقته فقط.</span>
               </div>
-              <div className="p-2.5 rounded-xl bg-teal-50 border border-teal-200">
-                <span className="text-[10px] text-teal-800 block">ذوو الأرصدة الدائنة</span>
-                <strong className="text-base font-black text-teal-900">{repCustomersStats.creditsCount}</strong>
-                <span className="block text-[10px] text-teal-700">دافعي مقدمات</span>
-              </div>
-              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200">
-                <span className="text-[10px] text-rose-700 block">المستحق على العملاء (لنا)</span>
-                <strong className="text-sm font-black font-mono text-rose-800">
-                  {repCustomersStats.totalDue.toLocaleString()} {data.settings.currency}
-                </strong>
-                <span className="block text-[10px] text-rose-700 font-bold">مديونيات غير محصلة</span>
-              </div>
-              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
-                <span className="text-[10px] text-emerald-700 block">الأرصدة الدائنة (علينا)</span>
-                <strong className="text-sm font-black font-mono text-emerald-800">
-                  {repCustomersStats.totalCredit.toLocaleString()} {data.settings.currency}
-                </strong>
-                <span className="block text-[10px] text-emerald-700 font-bold">مقدمات مالية للعملاء</span>
-              </div>
-              <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200">
-                <span className="text-[10px] text-blue-800 block">نسبة العملاء المدينين</span>
-                <strong className="text-base font-black font-mono text-blue-950">{repCustomersStats.debtorPct}%</strong>
-                <span className="block text-[10px] text-blue-700">من إجمالي العملاء</span>
-              </div>
-            </div>
+            )}
 
             {/* Search, Filter Buttons & Sort */}
             <div className="flex flex-col sm:flex-row gap-2">
@@ -3935,8 +4026,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               {[
                 { id: 'all', label: `الكل (${repCustomersStats.total})` },
                 { id: 'current', label: 'العملاء الحاليين' },
-                { id: 'debtors', label: `المبالغ المتبقية (${repCustomersStats.debtorsCount})` },
-                { id: 'credits', label: `أرصدة دائنة (${repCustomersStats.creditsCount})` },
+                {
+                  id: 'debtors',
+                  label: canViewCustomerAggregateTotals
+                    ? `المبالغ المتبقية (${repCustomersStats.debtorsCount})`
+                    : 'عملاء عليهم رصيد',
+                },
+                {
+                  id: 'credits',
+                  label: canViewCustomerAggregateTotals
+                    ? `أرصدة دائنة (${repCustomersStats.creditsCount})`
+                    : 'أرصدة دائنة',
+                },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -4452,7 +4553,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   </div>
                 )}
 
-                {invPaymentType !== 'credit' && (
+                {!isRepRoleAccount && canCashOps && invPaymentType !== 'credit' && (
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">الخزينة</label>
                     <select
@@ -4928,7 +5029,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             />
           )}
 
-          {purPaymentType !== 'credit' && (
+          {!isRepRoleAccount && canCashOps && purPaymentType !== 'credit' && (
             <select
               value={purCashboxId}
               onChange={(e) => setPurCashboxId(e.target.value)}
@@ -5097,7 +5198,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               className="min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
             >
               <option value="account">خصم من رصيد العميل</option>
-              <option value="cash">صرف نقدي من الخزينة</option>
+              <option value="cash">
+                {isRepRoleAccount || !canCashOps
+                  ? 'طلب رد نقدي (باعتماد الخزينة/الإدارة)'
+                  : 'صرف نقدي من الخزينة'}
+              </option>
             </select>
             <select
               value={sRetWarehouseId}
@@ -5110,7 +5215,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </select>
           </div>
 
-          {sRetSettlement === 'cash' && (
+          {sRetSettlement === 'cash' && (!isRepRoleAccount && canCashOps ? (
             <select
               value={sRetCashboxId}
               onChange={(e) => setSRetCashboxId(e.target.value)}
@@ -5120,13 +5225,22 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 <option key={cb.id} value={cb.id}>{cb.name}</option>
               ))}
             </select>
-          )}
+          ) : (
+            <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
+              يُرسل هذا المرتجع النقدي كطلب مراجعة للخزينة والإدارة دون اختيار خزينة، ولا يتأثر رصيد أي خزينة حتى الاعتماد الرسمي.
+            </div>
+          ))}
 
           <input
             type="text"
             value={sRetReason}
             onChange={(e) => setSRetReason(e.target.value)}
-            placeholder="سبب المرتجع..."
+            required={sRetSettlement === 'cash' && (isRepRoleAccount || !canCashOps)}
+            placeholder={
+              sRetSettlement === 'cash' && (isRepRoleAccount || !canCashOps)
+                ? 'سبب طلب مرتجع المبيعات النقدي (إلزامي)...'
+                : 'سبب المرتجع...'
+            }
             className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
           />
 
@@ -5135,7 +5249,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             disabled={isSubmittingSRet || sRetItems.length === 0}
             className="w-full min-h-[48px] rounded-2xl bg-rose-700 hover:bg-rose-800 text-white font-black disabled:opacity-50 cursor-pointer"
           >
-            {isSubmittingSRet ? 'جاري التسجيل...' : `اعتماد مرتجع البيع (${sRetTotal.toLocaleString()} ${data.settings.currency})`}
+            {isSubmittingSRet
+              ? 'جاري التسجيل...'
+              : sRetSettlement === 'cash' && (isRepRoleAccount || !canCashOps)
+              ? `إرسال طلب مرتجع بيع نقدي للمراجعة (${sRetTotal.toLocaleString()} ${data.settings.currency})`
+              : `اعتماد مرتجع البيع (${sRetTotal.toLocaleString()} ${data.settings.currency})`}
           </button>
         </form>
       )}
@@ -5415,7 +5533,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   <option key={w.id} value={w.id}>{w.name}</option>
                 ))}
               </select>
-            ) : pRetSettlement === 'cash' ? (
+            ) : !isRepRoleAccount && canCashOps && pRetSettlement === 'cash' ? (
               <select
                 value={pRetCashboxId}
                 onChange={(e) => setPRetCashboxId(e.target.value)}
@@ -5427,7 +5545,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               </select>
             ) : (
               <div className="min-h-[42px] rounded-xl border border-slate-200 px-3 flex items-center text-[11px] font-bold text-slate-600 bg-slate-50">
-                المخزن: {selectedPRetOrigInvoice?.warehouseName || 'حسب الفاتورة الأصلية'}
+                {pRetSettlement === 'cash'
+                  ? `تُحدد الخزينة من الإدارة عند الاعتماد · المخزن: ${selectedPRetOrigInvoice?.warehouseName || 'حسب الفاتورة'}`
+                  : `المخزن: ${selectedPRetOrigInvoice?.warehouseName || 'حسب الفاتورة الأصلية'}`}
               </div>
             )}
           </div>
@@ -6620,32 +6740,97 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       })()}
 
       {activeTab === 'sales-returns-list' && (
-        <div className="space-y-3 text-xs">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-black text-rose-950">مرتجعات البيع ({mySalesReturns.length})</h3>
+        <div className="space-y-4 text-xs">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-black text-rose-950">
+                طلبات ومرتجعات البيع ({mySalesReturnRequests.length} طلب · {mySalesReturns.length} معتمد)
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                طلبات المرتجع النقدي تخضع لمراجعة الإدارة والخزينة قبل صرف أي مبالغ أو تعديل الأرصدة.
+              </p>
+            </div>
             <button
               type="button"
               onClick={() => onTabChange('sales-return')}
-              className="min-h-[40px] px-3 rounded-xl bg-rose-700 text-white font-bold cursor-pointer"
+              className="min-h-[40px] px-3 rounded-xl bg-rose-700 text-white font-bold cursor-pointer shrink-0"
             >
               + مرتجع بيع
             </button>
           </div>
-          {mySalesReturns.length === 0 ? (
-            <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center text-slate-400">
-              لا توجد مرتجعات مبيعات.
-            </div>
-          ) : (
-            mySalesReturns.map((r: InvoiceReturn) => (
-              <div key={r.id} className="bg-white rounded-2xl border border-slate-200 p-4 flex items-center justify-between">
-                <div>
-                  <span className="font-mono font-black text-rose-900">{r.returnNumber}</span>
-                  <p className="text-[11px] text-slate-500">{r.partyName} · {r.date}</p>
+
+          {mySalesReturnRequests.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="font-black text-slate-800">طلبات مرتجع المبيعات النقدي ({mySalesReturnRequests.length})</h4>
+              {mySalesReturnRequests.map((req: SalesReturnRequest) => (
+                <div key={req.id} className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-mono font-black text-rose-900">{req.requestNumber}</span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            req.status === 'approved'
+                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                              : req.status === 'rejected'
+                              ? 'bg-rose-50 text-rose-800 border border-rose-200'
+                              : 'bg-amber-50 text-amber-800 border border-amber-200'
+                          }`}
+                        >
+                          {req.status === 'approved'
+                            ? 'تم الاعتماد والتنفيذ'
+                            : req.status === 'rejected'
+                            ? 'مرفوض'
+                            : 'قيد مراجعة الخزينة/الإدارة'}
+                        </span>
+                        {req.syncStatus === 'pending' && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
+                            بانتظار المزامنة
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-600 mt-0.5">
+                        {req.customerName} · فاتورة {req.originalInvoiceNumber} · {req.date}
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">السبب: {req.reason}</p>
+                    </div>
+                    <strong className="font-mono text-rose-800 shrink-0">
+                      {Number(req.grandTotal || 0).toLocaleString()} {data.settings.currency}
+                    </strong>
+                  </div>
+                  {req.status === 'approved' && req.approvedReturnNumber && (
+                    <p className="text-[11px] font-bold text-emerald-800 bg-emerald-50 rounded-xl px-2.5 py-1.5">
+                      تم تحويله إلى مرتجع معتمد برقم: <span className="font-mono">{req.approvedReturnNumber}</span>
+                    </p>
+                  )}
+                  {req.status === 'rejected' && req.rejectionReason && (
+                    <p className="text-[11px] font-bold text-rose-800 bg-rose-50 rounded-xl px-2.5 py-1.5">
+                      سبب رفض الإدارة: {req.rejectionReason}
+                    </p>
+                  )}
                 </div>
-                <strong className="font-mono text-rose-800">{r.grandTotal.toLocaleString()} {data.settings.currency}</strong>
-              </div>
-            ))
+              ))}
+            </div>
           )}
+
+          <div className="space-y-2">
+            <h4 className="font-black text-slate-800">مرتجعات المبيعات المعتمدة ({mySalesReturns.length})</h4>
+            {mySalesReturns.length === 0 ? (
+              <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center text-slate-400">
+                لا توجد مرتجعات مبيعات معتمدة.
+              </div>
+            ) : (
+              mySalesReturns.map((r: InvoiceReturn) => (
+                <div key={r.id} className="bg-white rounded-2xl border border-slate-200 p-4 flex items-center justify-between">
+                  <div>
+                    <span className="font-mono font-black text-rose-900">{r.returnNumber}</span>
+                    <p className="text-[11px] text-slate-500">{r.partyName} · {r.date}</p>
+                  </div>
+                  <strong className="font-mono text-rose-800">{r.grandTotal.toLocaleString()} {data.settings.currency}</strong>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       )}
 
@@ -8131,6 +8316,31 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 </div>
               )}
 
+              {(repReportData.salesReturnRequests?.length ?? 0) > 0 && (
+                <div className="bg-white rounded-2xl border border-rose-200 p-3.5 space-y-2">
+                  <h4 className="font-black text-rose-950">
+                    طلبات مرتجع المبيعات ({repReportData.salesReturnRequests?.length ?? 0})
+                  </h4>
+                  <div className="divide-y divide-slate-100">
+                    {(repReportData.salesReturnRequests || []).map((req) => (
+                      <div key={req.id} className="py-2 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-mono font-black text-rose-900">
+                            {req.requestNumber} · <span className="font-sans text-slate-700">{req.customerName}</span>
+                          </p>
+                          <p className="text-[10px] text-slate-500">
+                            فاتورة {req.originalInvoiceNumber} · {req.date} · {req.status === 'approved' ? 'معتمد' : req.status === 'rejected' ? 'مرفوض' : 'قيد الانتظار'}
+                          </p>
+                        </div>
+                        <strong className="font-mono text-rose-800 shrink-0 tabular-nums">
+                          {Number(req.grandTotal || 0).toLocaleString()} {data.settings.currency}
+                        </strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {canCreatePurchase && (repReportData.purchaseReturnRequests?.length ?? 0) > 0 && (
                 <div className="bg-white rounded-2xl border border-orange-200 p-3.5 space-y-2">
                   <h4 className="font-black text-orange-950">
@@ -8241,16 +8451,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </div>
 
             {deliveryCollectedAmount > 0 && (
-              <div className="grid grid-cols-2 gap-2">
-                <select
-                  value={deliveryCashboxId}
-                  onChange={(e) => setDeliveryCashboxId(e.target.value)}
-                  className="min-h-[42px] rounded-xl border border-slate-300 px-2 bg-white font-bold"
-                >
-                  {data.cashboxes.map((cb) => (
-                    <option key={cb.id} value={cb.id}>{cb.name}</option>
-                  ))}
-                </select>
+              <div className={`grid gap-2 ${!isRepRoleAccount && canCashOps ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                {!isRepRoleAccount && canCashOps && (
+                  <select
+                    value={deliveryCashboxId}
+                    onChange={(e) => setDeliveryCashboxId(e.target.value)}
+                    className="min-h-[42px] rounded-xl border border-slate-300 px-2 bg-white font-bold"
+                  >
+                    {data.cashboxes.map((cb) => (
+                      <option key={cb.id} value={cb.id}>{cb.name}</option>
+                    ))}
+                  </select>
+                )}
                 <select
                   value={deliveryMethod}
                   onChange={(e) => setDeliveryMethod(e.target.value as any)}

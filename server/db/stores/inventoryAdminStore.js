@@ -4026,18 +4026,23 @@ export async function createCashbox(payload, actor) {
   }
   const id = generateServerId(payload.type === 'bank' ? 'BANK' : 'CASH');
   const opening = round2(payload.openingBalance || 0);
+  const isDefault = Boolean(payload.isDefault);
   if (await isPgMode()) {
-    await getPool().query(
-      `INSERT INTO cashboxes (id, name, type, opening_balance, current_balance, is_default) VALUES ($1,$2,$3,$4,$4,$5)`,
-      [id, payload.name, payload.type || 'cashbox', opening, Boolean(payload.isDefault)]
-    );
+    await withTransaction(async (client) => {
+      if (isDefault) await client.query('UPDATE cashboxes SET is_default = FALSE');
+      await client.query(
+        `INSERT INTO cashboxes (id, name, type, opening_balance, current_balance, is_default) VALUES ($1,$2,$3,$4,$4,$5)`,
+        [id, payload.name, payload.type || 'cashbox', opening, isDefault]
+      );
+    });
   } else {
     await withJsonTransaction((db) => {
-      db.cashboxes.push({ ...payload, id, openingBalance: opening, currentBalance: opening });
+      if (isDefault) db.cashboxes.forEach((c) => { c.isDefault = false; });
+      db.cashboxes.push({ ...payload, id, openingBalance: opening, currentBalance: opening, isDefault });
     });
   }
   await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إضافة خزينة/حساب (${payload.name})`, module: 'المالية', recordId: id });
-  return { ...payload, id, openingBalance: opening, currentBalance: opening };
+  return { ...payload, id, openingBalance: opening, currentBalance: opening, isDefault };
 }
 
 export async function updateCashbox(id, updates, actor) {
@@ -4045,12 +4050,16 @@ export async function updateCashbox(id, updates, actor) {
     throw new AppError(403, 'العمليات الإدارية للخزائن غير متاحة للمندوبين', 'FORBIDDEN_REP_CASHBOX_OP');
   }
   if (await isPgMode()) {
-    await getPool().query(
-      `UPDATE cashboxes SET name = COALESCE($1, name), type = COALESCE($2, type), is_default = COALESCE($3, is_default) WHERE id = $4`,
-      [updates.name ?? null, updates.type ?? null, updates.isDefault ?? null, id]
-    );
+    await withTransaction(async (client) => {
+      if (updates.isDefault) await client.query('UPDATE cashboxes SET is_default = FALSE WHERE id <> $1', [id]);
+      await client.query(
+        `UPDATE cashboxes SET name = COALESCE($1, name), type = COALESCE($2, type), is_default = COALESCE($3, is_default) WHERE id = $4`,
+        [updates.name ?? null, updates.type ?? null, updates.isDefault ?? null, id]
+      );
+    });
   } else {
     await withJsonTransaction((db) => {
+      if (updates.isDefault) db.cashboxes.forEach((c) => { c.isDefault = false; });
       db.cashboxes = db.cashboxes.map((c) => (c.id === id ? { ...c, ...updates, id, currentBalance: c.currentBalance } : c));
     });
   }

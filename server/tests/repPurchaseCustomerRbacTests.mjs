@@ -553,6 +553,7 @@ async function runSuite(label, isPg = false, pgPool = null) {
     await test(`${label} | 6. Admin confirms purchase draft -> updates stock, weighted avg cost, supplier & cashbox; blocks double confirm`, async () => {
       const confirmRes = await req(baseUrl, 'POST', `/api/invoices/${repDraftInvId}/confirm`, {
         token: adminToken,
+        body: { cashboxId: cbMainId },
       });
       assert.equal(confirmRes.status, 200);
       assert.equal(confirmRes.json.invoice.status, 'confirmed');

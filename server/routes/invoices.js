@@ -281,7 +281,7 @@ router.post(
   '/:id/confirm',
   requireStaff,
   asyncHandler(async (req, res) => {
-    const invoice = await confirmDraftInvoice(req.params.id, req.auth.user);
+    const invoice = await confirmDraftInvoice(req.params.id, req.auth.user, req.body || {});
     res.json({ ok: true, invoice });
   })
 );
@@ -358,6 +358,14 @@ router.post(
     const u = req.auth.user;
     const isPurchaseReturn = req.body?.type === 'purchase_return';
     const isCashRefund = req.body?.refundType === 'cash';
+    const reqCashboxId = String(req.body?.cashboxId || '').trim();
+    if (u.role === 'representative' && reqCashboxId) {
+      return res.status(403).json({
+        ok: false,
+        code: 'FORBIDDEN_REP_CASHBOX_SELECTION',
+        error: 'غير مصرح للمندوب باختيار خزينة الشركة أو تنفيذ عمليات نقدية مباشرة عليها',
+      });
+    }
     if (u.role === 'representative' && isPurchaseReturn) {
       return res.status(403).json({
         ok: false,
@@ -370,6 +378,18 @@ router.post(
         ok: false,
         code: 'FORBIDDEN_REP_CASH_RETURN',
         error: 'لا يمكن للمندوب تنفيذ مرتجع مبيعات نقدي مباشرة من الخزينة؛ يرجى رفع طلب مرتجع مبيعات نقدي لاعتماد الخزينة/الإدارة',
+      });
+    }
+    if (
+      reqCashboxId &&
+      u.role !== 'admin' &&
+      !u.permissions?.canManageCashboxes &&
+      !u.permissions?.canManageAccounts
+    ) {
+      return res.status(403).json({
+        ok: false,
+        code: 'FORBIDDEN_TREASURY_PERMISSION',
+        error: 'ليس لديك صلاحية تحديد الخزينة أو تنفيذ صرف/إيداع نقدي على المرتجعات',
       });
     }
     const allowed =

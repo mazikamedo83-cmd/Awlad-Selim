@@ -473,6 +473,48 @@ export interface PurchaseReturnRequest {
   updatedAt?: string;
 }
 
+export interface SalesReturnRequestItem {
+  productId: string;
+  productName: string;
+  unit: string;
+  unitFactor?: number;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+}
+
+export interface SalesReturnRequest {
+  id: string;
+  requestNumber: string;
+  date: string;
+  originalInvoiceId: string;
+  originalInvoiceNumber: string;
+  customerId: string;
+  customerName: string;
+  warehouseId: string;
+  warehouseName: string;
+  representativeId?: string;
+  representativeName?: string;
+  requestedByUserId: string;
+  requestedByName: string;
+  items: SalesReturnRequestItem[];
+  grandTotal: number;
+  refundType: 'cash' | 'balance';
+  cashboxId?: string;
+  reason: string;
+  notes?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewedByUserId?: string;
+  reviewedByName?: string;
+  reviewedAt?: string;
+  rejectionReason?: string;
+  approvedReturnId?: string;
+  approvedReturnNumber?: string;
+  syncStatus?: SyncQueueStatus | 'synced';
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface Cashbox {
   id: string;
   name: string;
@@ -1565,6 +1607,7 @@ export type SyncOperationType =
   | 'create_invoice_return'
   | 'create_purchase_return'
   | 'create_purchase_return_request'
+  | 'create_sales_return_request'
   | 'add_invoice_payment'
   | 'record_customer_payment'
   | 'record_order_advance'
@@ -2093,6 +2136,8 @@ export interface RepDetailedReportResponse {
     purchaseReturnsTotal: number;
     purchaseReturnRequestsCount?: number;
     pendingPurchaseReturnRequestsCount?: number;
+    salesReturnRequestsCount?: number;
+    pendingSalesReturnRequestsCount?: number;
     collectionsCount: number;
     collectionsTotal: number;
     purchasePaymentsTotal: number;
@@ -2109,6 +2154,7 @@ export interface RepDetailedReportResponse {
     totalReturns: number;
     totalCollections: number;
     totalPurchaseReturnRequests: number;
+    totalSalesReturnRequests?: number;
     totalPages: number;
     hasNextPage: boolean;
     hasPrevPage: boolean;
@@ -2138,6 +2184,7 @@ export interface RepDetailedReportResponse {
   itemRows: RepDetailedReportItemRow[];
   returns: InvoiceReturn[];
   purchaseReturnRequests?: PurchaseReturnRequest[];
+  salesReturnRequests?: SalesReturnRequest[];
   collections: Array<{
     id: string;
     transactionNumber?: string;

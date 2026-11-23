@@ -34,6 +34,7 @@ import {
   RepCustodyOperation,
   PurchaseReceiverOption,
   PurchaseReturnRequest,
+  SalesReturnRequest,
 } from '../types';
 
 const OFFLINE_ORDERS_QUEUE_KEY = 'awlad_selim_offline_orders_queue_v3';
@@ -70,6 +71,7 @@ export interface DatabaseState {
   stockTransferRequests?: StockTransferRequest[];
   purchaseReceivers?: PurchaseReceiverOption[];
   purchaseReturnRequests?: PurchaseReturnRequest[];
+  salesReturnRequests?: SalesReturnRequest[];
   auditLogs?: AuditLogItem[];
   settings: SystemSettings;
   serverSettings?: ServerConnectionSettings;
@@ -113,6 +115,7 @@ export function getEmptyClientDatabaseState(): DatabaseState {
     stockTransferRequests: [],
     purchaseReceivers: [],
     purchaseReturnRequests: [],
+    salesReturnRequests: [],
     auditLogs: [],
     settings: {
       companyName: 'أولاد سليم لتجارة المواد الغذائية بالجملة',
