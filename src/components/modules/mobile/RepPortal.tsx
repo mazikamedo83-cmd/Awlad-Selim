@@ -1807,6 +1807,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     const wh = data.warehouses.find((w) => w.id === whId);
     const inv = data.invoices.find((i) => i.id === sRetInvoiceId);
 
+    if ((isRepRoleAccount || !canCashOps) && (!inv || inv.status !== 'confirmed')) {
+      setFeedback({
+        type: 'error',
+        text: 'يرجى اختيار فاتورة مبيعات أصلية معتمدة أولاً لإتمام المرتجع.',
+      });
+      return;
+    }
+
     const requiresSalesRequest = sRetSettlement === 'cash' && (isRepRoleAccount || !canCashOps);
     if (requiresSalesRequest) {
       if (!inv || inv.status !== 'confirmed') {
@@ -5098,13 +5106,26 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </select>
             <select
               value={sRetInvoiceId}
-              onChange={(e) => setSRetInvoiceId(e.target.value)}
+              onChange={(e) => {
+                const nextInvId = e.target.value;
+                setSRetInvoiceId(nextInvId);
+                const matchedInv = myInvoices.find((i) => i.id === nextInvId);
+                if (matchedInv?.customerId && !sRetCustomerId) {
+                  setSRetCustomerId(matchedInv.customerId);
+                }
+              }}
               className="min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
             >
-              <option value="">-- ربط بفاتورة بيع (اختياري) --</option>
-              {myInvoices.filter((i) => !sRetCustomerId || i.customerId === sRetCustomerId).map((i) => (
-                <option key={i.id} value={i.id}>{i.invoiceNumber} ({i.grandTotal})</option>
-              ))}
+              <option value="">
+                {isRepRoleAccount || !canCashOps
+                  ? '-- اختر فاتورة البيع المعتمدة (إلزامي) --'
+                  : '-- ربط بفاتورة بيع معتمدة (اختياري) --'}
+              </option>
+              {myInvoices
+                .filter((i) => i.status === 'confirmed' && (!sRetCustomerId || i.customerId === sRetCustomerId))
+                .map((i) => (
+                  <option key={i.id} value={i.id}>{i.invoiceNumber} ({i.grandTotal})</option>
+                ))}
             </select>
           </div>
 

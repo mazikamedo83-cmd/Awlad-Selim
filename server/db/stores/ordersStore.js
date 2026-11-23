@@ -5,7 +5,7 @@ import {
   readJsonDatabase,
 } from '../jsonLedger.js';
 import { generateServerId } from '../../utils/crypto.js';
-import { AppError, nowIso, todayIso, round2, round3, getUnitSellingPrice, getUnitFactor, canViewCashboxBalances, buildPgInPredicate } from '../../utils/errors.js';
+import { AppError, nowIso, todayIso, round2, round3, getUnitSellingPrice, getUnitFactor, canViewCashboxBalances, sanitizeInvoiceForRepresentative, buildPgInPredicate } from '../../utils/errors.js';
 import {
   buildScopedIdemKey,
   findPgIdempotency,
@@ -1324,6 +1324,20 @@ export async function recordOrderAdvancePaymentPgTx(client, orderId, payload, ac
   if (['rejected', 'cancelled', 'invoiced'].includes(ord.status)) {
     throw new AppError(409, `لا يمكن تسجيل دفعة مقدمة على طلب بحالة (${ord.status})`, 'INVALID_ORDER_STATUS_FOR_ADVANCE');
   }
+  if (actor?.role === 'representative') {
+    const repRes = await client.query(`SELECT id, name FROM representatives WHERE user_id = $1 LIMIT 1`, [actor.id]);
+    const repProfile = repRes.rows[0];
+    if (!repProfile) {
+      throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
+    }
+    const isOwner =
+      ord.delivery_rep_id === repProfile.id ||
+      ord.representative_id === repProfile.id ||
+      ord.user_id === actor.id;
+    if (!isOwner) {
+      throw new AppError(403, 'غير مصرح لك بتسجيل دفعة مقدمة على طلب لا يخصك', 'FORBIDDEN_ORDER_ACCESS');
+    }
+  }
 
   const custRes = await client.query(`SELECT * FROM customers WHERE id = $1 FOR UPDATE`, [ord.customer_id]);
   if (!custRes.rows[0]) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
@@ -1460,6 +1474,19 @@ export function recordOrderAdvancePaymentJsonTx(db, orderId, payload, actor, ide
   if (!ord) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
   if (['rejected', 'cancelled', 'invoiced'].includes(ord.status)) {
     throw new AppError(409, `لا يمكن تسجيل دفعة مقدمة على طلب بحالة (${ord.status})`, 'INVALID_ORDER_STATUS_FOR_ADVANCE');
+  }
+  if (actor?.role === 'representative') {
+    const repProfile = (db.representatives || []).find((r) => r.userId === actor.id);
+    if (!repProfile) {
+      throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
+    }
+    const isOwner =
+      ord.deliveryRepId === repProfile.id ||
+      ord.representativeId === repProfile.id ||
+      ord.userId === actor.id;
+    if (!isOwner) {
+      throw new AppError(403, 'غير مصرح لك بتسجيل دفعة مقدمة على طلب لا يخصك', 'FORBIDDEN_ORDER_ACCESS');
+    }
   }
   const cust = db.customers.find((c) => c.id === ord.customerId);
   if (!cust) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
@@ -1895,7 +1922,32 @@ const DELIVERY_ALLOWED_SOURCE_STATUSES = new Set([
 
 const CONVERTIBLE_ORDER_STATUSES = new Set(['approved', 'rep_assigned', 'out_for_delivery', 'delivered']);
 
-export async function convertOrderToInvoice(orderId, invoicePayload, actor, idempotencyKey = '') {
+export async function convertOrderToInvoice(orderId, invoicePayload = {}, actor, idempotencyKey = '') {
+  if (!actor || actor.role === 'customer') {
+    throw new AppError(403, 'غير مصرح للعملاء بتحويل الطلبات إلى فواتير', 'FORBIDDEN');
+  }
+  if (actor.role !== 'admin' && !actor.permissions?.canManageSales) {
+    throw new AppError(403, 'ليس لديك صلاحية تحويل الطلبات إلى فواتير مبيعات', 'FORBIDDEN_PERMISSION');
+  }
+  const safePayload = invoicePayload && typeof invoicePayload === 'object' ? { ...invoicePayload } : {};
+  delete safePayload.createdBy;
+  delete safePayload.createdByUserId;
+  delete safePayload.sentBy;
+  delete safePayload.sentByUserId;
+  delete safePayload.approvedBy;
+  delete safePayload.approvedByUserId;
+  delete safePayload.reviewStatus;
+  delete safePayload.dispatchStatus;
+  delete safePayload.linkedCustomerOrderId;
+
+  const repActor = actor?.role === 'representative' ? await getRepresentativeByUserId(actor.id) : null;
+  if (actor?.role === 'representative' && !repActor) {
+    throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
+  }
+  const hasTreasuryPriv =
+    actor.role === 'admin' ||
+    Boolean(actor.permissions?.canManageCashboxes || actor.permissions?.canManageAccounts);
+
   const now = nowIso();
   const endpoint = `POST /api/orders/${orderId}/convert-to-invoice`;
   const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
@@ -1908,11 +1960,39 @@ export async function convertOrderToInvoice(orderId, invoicePayload, actor, idem
       const ordRes = await client.query(`SELECT * FROM customer_item_orders WHERE id = $1 FOR UPDATE`, [orderId]);
       const ord = ordRes.rows[0];
       if (!ord) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
+      if (repActor) {
+        const isOwner =
+          ord.delivery_rep_id === repActor.id ||
+          ord.representative_id === repActor.id ||
+          ord.user_id === actor.id;
+        if (!isOwner) {
+          throw new AppError(403, 'غير مصرح للمندوب بتحويل طلب لا يخصه إلى فاتورة', 'FORBIDDEN_ORDER_ACCESS');
+        }
+      }
       if (ord.status === 'invoiced' || ord.invoice_id) {
         throw new AppError(409, `تم تحويل هذا الطلب إلى فاتورة مسبقًا (${ord.invoice_number || ord.invoice_id})`, 'ORDER_ALREADY_INVOICED');
       }
       if (!CONVERTIBLE_ORDER_STATUSES.has(ord.status)) {
         throw new AppError(409, 'يجب الموافقة على الطلب أولاً قبل تحويله إلى فاتورة مبيعات', 'ORDER_NOT_APPROVED');
+      }
+
+      const reqCustId =
+        safePayload.customerId !== undefined && safePayload.customerId !== null && String(safePayload.customerId).trim() !== ''
+          ? String(safePayload.customerId).trim()
+          : null;
+      const reqCustName =
+        safePayload.customerName !== undefined && safePayload.customerName !== null && String(safePayload.customerName).trim() !== ''
+          ? String(safePayload.customerName).trim()
+          : null;
+      const isCustomerOverride =
+        (reqCustId && reqCustId !== String(ord.customer_id || '').trim()) ||
+        (!reqCustId && reqCustName && reqCustName !== String(ord.customer_name || '').trim());
+      if (isCustomerOverride && actor?.role !== 'admin') {
+        throw new AppError(
+          403,
+          'لا يمكن تغيير العميل المرتبط بالطلب عند تحويله إلى فاتورة؛ الصلاحية للإدارة فقط',
+          'FORBIDDEN_ORDER_CUSTOMER_OVERRIDE'
+        );
       }
 
       const advRes = await client.query(
@@ -1924,36 +2004,42 @@ export async function convertOrderToInvoice(orderId, invoicePayload, actor, idem
       const itemsRes = await client.query(`SELECT * FROM customer_item_order_items WHERE order_id = $1`, [orderId]);
       const orderItems = itemsRes.rows;
 
+      const mappedOrderItems = orderItems.map((it) => ({
+        productId: it.product_id,
+        productName: it.product_name,
+        unit: it.unit,
+        unitFactor: Number(it.unit_factor || 1),
+        quantity: Number(it.quantity),
+        unitPrice: Number(it.reference_unit_price || 0),
+        discount: 0,
+      }));
       const itemsForInvoice =
-        Array.isArray(invoicePayload.items) && invoicePayload.items.length > 0
-          ? invoicePayload.items
-          : orderItems.map((it) => ({
-              productId: it.product_id,
-              productName: it.product_name,
-              unit: it.unit,
-              unitFactor: Number(it.unit_factor || 1),
-              quantity: Number(it.quantity),
-              unitPrice: Number(it.reference_unit_price || 0),
-              discount: 0,
-            }));
+        !repActor && Array.isArray(safePayload.items) && safePayload.items.length > 0
+          ? safePayload.items
+          : mappedOrderItems;
 
       const paidAtInvoice =
         activeAdvanceSum > 0
-          ? round2(Math.max(0, Number(invoicePayload.paidAtInvoice ?? invoicePayload.paidAmount ?? 0)))
+          ? round2(Math.max(0, Number(safePayload.paidAtInvoice ?? safePayload.paidAmount ?? 0)))
           : undefined;
 
       const invoice = await createInvoiceInsidePgTx(
         client,
         'sales',
         {
-          ...invoicePayload,
+          ...safePayload,
           customerId: ord.customer_id,
-          representativeId: invoicePayload.representativeId || ord.delivery_rep_id || ord.representative_id || undefined,
+          customerName: ord.customer_name,
+          representativeId: repActor ? repActor.id : (safePayload.representativeId || ord.delivery_rep_id || ord.representative_id || undefined),
+          representativeName: repActor ? repActor.name : (safePayload.representativeName || ord.delivery_rep_name || ord.representative_name || undefined),
+          cashboxId: repActor || !hasTreasuryPriv ? undefined : safePayload.cashboxId,
+          discountTotal: repActor ? 0 : safePayload.discountTotal,
+          taxTotal: repActor ? 0 : safePayload.taxTotal,
           items: itemsForInvoice,
           appliedAdvanceAmount: activeAdvanceSum,
           paidAtInvoice,
           linkedCustomerOrderId: ord.id,
-          notes: invoicePayload.notes || `فاتورة محولة من الطلب رقم ${ord.request_number}`,
+          notes: safePayload.notes || `فاتورة محولة من الطلب رقم ${ord.request_number}`,
         },
         actor
       );
@@ -1992,7 +2078,9 @@ export async function convertOrderToInvoice(orderId, invoicePayload, actor, idem
         recordId: orderId,
       });
     }
-    return result;
+    return actor?.role === 'representative'
+      ? { ...result, invoice: sanitizeInvoiceForRepresentative(result.invoice) }
+      : result;
   }
 
   // JSON Ledger fallback
@@ -2002,6 +2090,15 @@ export async function convertOrderToInvoice(orderId, invoicePayload, actor, idem
 
     const ord = db.customerItemOrders.find((o) => o.id === orderId);
     if (!ord) throw new AppError(404, 'الطلب غير موجود', 'ORDER_NOT_FOUND');
+    if (repActor) {
+      const isOwner =
+        ord.deliveryRepId === repActor.id ||
+        ord.representativeId === repActor.id ||
+        ord.userId === actor.id;
+      if (!isOwner) {
+        throw new AppError(403, 'غير مصرح للمندوب بتحويل طلب لا يخصه إلى فاتورة', 'FORBIDDEN_ORDER_ACCESS');
+      }
+    }
     if (ord.status === 'invoiced' || ord.invoiceId) {
       throw new AppError(409, `تم تحويل هذا الطلب إلى فاتورة مسبقًا (${ord.invoiceNumber || ord.invoiceId})`, 'ORDER_ALREADY_INVOICED');
     }
@@ -2009,39 +2106,64 @@ export async function convertOrderToInvoice(orderId, invoicePayload, actor, idem
       throw new AppError(409, 'يجب الموافقة على الطلب أولاً قبل تحويله إلى فاتورة مبيعات', 'ORDER_NOT_APPROVED');
     }
 
+    const reqCustId =
+      safePayload.customerId !== undefined && safePayload.customerId !== null && String(safePayload.customerId).trim() !== ''
+        ? String(safePayload.customerId).trim()
+        : null;
+    const reqCustName =
+      safePayload.customerName !== undefined && safePayload.customerName !== null && String(safePayload.customerName).trim() !== ''
+        ? String(safePayload.customerName).trim()
+        : null;
+    const isCustomerOverride =
+      (reqCustId && reqCustId !== String(ord.customerId || '').trim()) ||
+      (!reqCustId && reqCustName && reqCustName !== String(ord.customerName || '').trim());
+    if (isCustomerOverride && actor?.role !== 'admin') {
+      throw new AppError(
+        403,
+        'لا يمكن تغيير العميل المرتبط بالطلب عند تحويله إلى فاتورة؛ الصلاحية للإدارة فقط',
+        'FORBIDDEN_ORDER_CUSTOMER_OVERRIDE'
+      );
+    }
+
     const activeAdvances = (db.orderAdvancePayments || []).filter((a) => a.orderId === orderId && a.status === 'active');
     const activeAdvanceSum = round2(activeAdvances.reduce((s, a) => s + Number(a.amount || 0), 0));
 
+    const mappedOrderItems = (ord.items || []).map((it) => ({
+      productId: it.productId,
+      productName: it.productName,
+      unit: it.unit,
+      unitFactor: Number(it.unitFactor || 1),
+      quantity: Number(it.quantity),
+      unitPrice: Number(it.unitPrice || 0),
+      discount: 0,
+    }));
     const itemsForInvoice =
-      Array.isArray(invoicePayload.items) && invoicePayload.items.length > 0
-        ? invoicePayload.items
-        : ord.items.map((it) => ({
-            productId: it.productId,
-            productName: it.productName,
-            unit: it.unit,
-            unitFactor: Number(it.unitFactor || 1),
-            quantity: Number(it.quantity),
-            unitPrice: Number(it.unitPrice || 0),
-            discount: 0,
-          }));
+      !repActor && Array.isArray(safePayload.items) && safePayload.items.length > 0
+        ? safePayload.items
+        : mappedOrderItems;
 
     const paidAtInvoice =
       activeAdvanceSum > 0
-        ? round2(Math.max(0, Number(invoicePayload.paidAtInvoice ?? invoicePayload.paidAmount ?? 0)))
+        ? round2(Math.max(0, Number(safePayload.paidAtInvoice ?? safePayload.paidAmount ?? 0)))
         : undefined;
 
     const invoice = createInvoiceInsideJsonTx(
       db,
       'sales',
       {
-        ...invoicePayload,
+        ...safePayload,
         customerId: ord.customerId,
-        representativeId: invoicePayload.representativeId || ord.deliveryRepId || ord.representativeId || undefined,
+        customerName: ord.customerName,
+        representativeId: repActor ? repActor.id : (safePayload.representativeId || ord.deliveryRepId || ord.representativeId || undefined),
+        representativeName: repActor ? repActor.name : (safePayload.representativeName || ord.deliveryRepName || ord.representativeName || undefined),
+        cashboxId: repActor || !hasTreasuryPriv ? undefined : safePayload.cashboxId,
+        discountTotal: repActor ? 0 : safePayload.discountTotal,
+        taxTotal: repActor ? 0 : safePayload.taxTotal,
         items: itemsForInvoice,
         appliedAdvanceAmount: activeAdvanceSum,
         paidAtInvoice,
         linkedCustomerOrderId: ord.id,
-        notes: invoicePayload.notes || `فاتورة محولة من الطلب رقم ${ord.requestNumber}`,
+        notes: safePayload.notes || `فاتورة محولة من الطلب رقم ${ord.requestNumber}`,
       },
       actor
     );
@@ -2082,7 +2204,9 @@ export async function convertOrderToInvoice(orderId, invoicePayload, actor, idem
       recordId: orderId,
     });
   }
-  return result;
+  return actor?.role === 'representative'
+    ? { ...result, invoice: sanitizeInvoiceForRepresentative(result.invoice) }
+    : result;
 }
 
 const VALID_LIFECYCLE_STAGES = new Set([

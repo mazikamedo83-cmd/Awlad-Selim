@@ -2092,6 +2092,7 @@ async function runFullModeAudit(modeName) {
       );
     });
 
+    let s18Ctx = {};
     await test(`[${modeName}] 18. Return cashbox/party hardening, sales return request approval workflow, sync hard-deny, quote override block & rep aggregate totals scoping`, async () => {
       // Create a self-contained representative, customer, supplier, non-treasury staff, and treasury staff
       const rep18Reg = await req(baseUrl, 'POST', '/api/auth/register', {
@@ -2694,6 +2695,243 @@ async function runFullModeAudit(modeName) {
       assert.equal(adminSummaryRes.status, 200);
       assert.equal(typeof adminSummaryRes.json.report.summary.totalCustomerReceivables, 'number');
       assert.equal(typeof adminSummaryRes.json.report.summary.totalSupplierPayables, 'number');
+
+      s18Ctx = {
+        rep18User,
+        rep18Id,
+        rep18Token,
+        rep18ElevatedToken,
+        nonTreasuryToken,
+        treasuryToken,
+        cust18Id,
+        sup18Id,
+        pur18Id,
+      };
+    });
+
+    await test(`[${modeName}] 19. Purchase return request approval, multi-customer aggregate debt isolation & order conversion/advance hardening`, async () => {
+      const {
+        rep18User,
+        rep18Id,
+        rep18ElevatedToken,
+        nonTreasuryToken,
+        treasuryToken,
+        cust18Id,
+        sup18Id,
+        pur18Id,
+      } = s18Ctx;
+
+      const getStateSnap = async () => {
+        const boot = await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken });
+        assert.equal(boot.status, 200);
+        return {
+          cb1: Number((boot.json.data.cashboxes || []).find((c) => c.id === cashboxId)?.currentBalance || 0),
+          cb2: Number((boot.json.data.cashboxes || []).find((c) => c.id === cashbox2Id)?.currentBalance || 0),
+          supBal: Number((boot.json.data.suppliers || []).find((s) => s.id === sup18Id)?.currentBalance || 0),
+          stock: Number((boot.json.data.products || []).find((p) => p.id === productId)?.stockPerWarehouse?.[mainWhId] || 0),
+        };
+      };
+
+      // 19a. Purchase Return Request full lifecycle (pending -> no mutation -> treasury approve -> exact cash/stock effect -> idempotency & 409)
+      const snapBeforePrr = await getStateSnap();
+      const prrCreate = await req(baseUrl, 'POST', '/api/invoices/purchase-return-requests', {
+        token: rep18ElevatedToken,
+        headers: { 'Idempotency-Key': `PRR-CREATE-${modeName}` },
+        body: {
+          originalInvoiceId: pur18Id,
+          partyId: 'SUP-SPOOF-999',
+          partyName: 'مورد مزور',
+          refundType: 'cash',
+          date: '2026-11-22',
+          reason: 'طلب مرتجع شراء نقدي للاعتماد',
+          items: [{ productId, quantity: 1, unit: 'زجاجة', unitFactor: 1, unitPrice: 50 }],
+        },
+      });
+      assert.equal(prrCreate.status, 201);
+      const prr = prrCreate.json.request;
+      assert.equal(prr.status, 'pending');
+      assert.equal(prr.supplierId, sup18Id, 'PRR must resolve supplier from authoritative original invoice');
+
+      const snapPendingPrr = await getStateSnap();
+      assert.equal(snapPendingPrr.cb1, snapBeforePrr.cb1);
+      assert.equal(snapPendingPrr.cb2, snapBeforePrr.cb2);
+      assert.equal(snapPendingPrr.supBal, snapBeforePrr.supBal);
+      assert.equal(snapPendingPrr.stock, snapBeforePrr.stock, 'Pending PRR must not mutate inventory before approval');
+
+      // Rep blocked from approving/rejecting own/other PRR even with elevated flags
+      const repApprovePrr = await req(baseUrl, 'POST', `/api/invoices/purchase-return-requests/${prr.id}/approve`, {
+        token: rep18ElevatedToken,
+        body: { cashboxId: cashbox2Id },
+      });
+      assert.equal(repApprovePrr.status, 403);
+      assert.ok(
+        ['FORBIDDEN_APPROVE_RETURN_REQUEST', 'FORBIDDEN_PERMISSION'].includes(repApprovePrr.json.code),
+        `Expected forbidden approval code, got ${repApprovePrr.json.code}`
+      );
+
+      const nonTreasApprovePrr = await req(baseUrl, 'POST', `/api/invoices/purchase-return-requests/${prr.id}/approve`, {
+        token: nonTreasuryToken,
+        body: { cashboxId: cashbox2Id },
+      });
+      assert.equal(nonTreasApprovePrr.status, 403);
+      assert.ok(
+        ['FORBIDDEN_TREASURY_PERMISSION', 'FORBIDDEN_PERMISSION'].includes(nonTreasApprovePrr.json.code),
+        `Expected forbidden treasury/approval code, got ${nonTreasApprovePrr.json.code}`
+      );
+
+      const treasApprovePrr1 = await req(baseUrl, 'POST', `/api/invoices/purchase-return-requests/${prr.id}/approve`, {
+        token: treasuryToken,
+        headers: { 'Idempotency-Key': `APR-PRR-${modeName}` },
+        body: { cashboxId: cashbox2Id, approvalNotes: 'اعتماد استرداد نقدي من المورد للبنك' },
+      });
+      assert.equal(treasApprovePrr1.status, 200);
+      assert.equal(treasApprovePrr1.json.request.status, 'approved');
+      assert.equal(treasApprovePrr1.json.invoiceReturn.cashboxId, cashbox2Id);
+      assert.equal(treasApprovePrr1.json.invoiceReturn.partyId, sup18Id);
+
+      // Replay same key -> 200 idempotent; new key -> 409 REQUEST_ALREADY_PROCESSED
+      const treasApprovePrrReplay = await req(baseUrl, 'POST', `/api/invoices/purchase-return-requests/${prr.id}/approve`, {
+        token: treasuryToken,
+        headers: { 'Idempotency-Key': `APR-PRR-${modeName}` },
+        body: { cashboxId: cashbox2Id },
+      });
+      assert.equal(treasApprovePrrReplay.status, 200);
+
+      const treasApprovePrrDup = await req(baseUrl, 'POST', `/api/invoices/purchase-return-requests/${prr.id}/approve`, {
+        token: treasuryToken,
+        headers: { 'Idempotency-Key': `APR-PRR-DUP-${modeName}` },
+        body: { cashboxId: cashbox2Id },
+      });
+      assert.equal(treasApprovePrrDup.status, 409);
+      assert.equal(treasApprovePrrDup.json.code, 'REQUEST_ALREADY_PROCESSED');
+
+      const snapApprovedPrr = await getStateSnap();
+      assert.equal(snapApprovedPrr.cb2, snapBeforePrr.cb2 + 50, 'Approved cash PRR must add refund to cashbox2Id exactly once');
+      assert.equal(snapApprovedPrr.stock, snapBeforePrr.stock - 1, 'Approved PRR must deduct inventory once');
+      assert.equal(snapApprovedPrr.supBal, snapBeforePrr.supBal, 'Cash refund PRR must not change supplier balance');
+
+      const repListPrr = await req(baseUrl, 'GET', '/api/invoices/purchase-return-requests', { token: rep18ElevatedToken });
+      assert.equal(repListPrr.status, 200);
+      const repSeenPrr = (repListPrr.json.requests || []).find((r) => r.id === prr.id);
+      assert.ok(repSeenPrr);
+      assert.equal(repSeenPrr.cashboxId, undefined, 'Representative must not see approved cashboxId on PRR');
+
+      // 19b. Multi-customer + other-rep transactions: verify NO aggregate debt totals leak on bootstrap / sync-pull / rep-summary while individual customer balance & statement remain accessible
+      const cust18BRes = await req(baseUrl, 'POST', '/api/customers', {
+        token: adminToken,
+        body: { name: 'عميل اختبار 18ب', phone: '01077778809', openingBalance: 750 },
+      });
+      assert.equal(cust18BRes.status, 201);
+      const cust18BId = cust18BRes.json.customer.id;
+
+      const admSaleB = await req(baseUrl, 'POST', '/api/invoices/sales', {
+        token: adminToken,
+        body: {
+          customerId: cust18BId,
+          warehouseId: mainWhId,
+          cashboxId,
+          date: '2026-11-22',
+          paidAmount: 0,
+          paymentType: 'credit',
+          items: [{ productId, quantity: 2, unit: 'زجاجة', unitPrice: 60 }],
+        },
+      });
+      assert.equal(admSaleB.status, 201);
+
+      const bootRep18 = await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: rep18ElevatedToken });
+      assert.equal(bootRep18.status, 200);
+      assert.equal(bootRep18.json.data.summary, undefined, 'Bootstrap must not include company-wide summary');
+      assert.equal(bootRep18.json.data.totalCustomerReceivables, undefined);
+      const bootCustB = (bootRep18.json.data.customers || []).find((c) => c.id === cust18BId);
+      assert.ok(bootCustB, 'Rep sees company customers individually');
+      assert.equal(Number(bootCustB.currentBalance), 870);
+
+      const syncPullRep18 = await req(baseUrl, 'GET', '/api/sync/pull', { token: rep18ElevatedToken });
+      assert.equal(syncPullRep18.status, 200);
+      assert.equal(syncPullRep18.json.totalCustomerReceivables, undefined);
+      assert.equal(syncPullRep18.json.totalSupplierPayables, undefined);
+      assert.ok((syncPullRep18.json.customers || []).some((c) => c.id === cust18BId && Number(c.currentBalance) === 870));
+
+      const stmtBRes = await req(baseUrl, 'GET', `/api/customers/${cust18BId}/statement`, { token: rep18ElevatedToken });
+      assert.equal(stmtBRes.status, 200);
+      assert.equal(Number(stmtBRes.json.statement.summary.currentBalance), 870);
+
+      const repSummaryMulti = await req(baseUrl, 'GET', '/api/reports/rep-summary', { token: rep18ElevatedToken });
+      assert.equal(repSummaryMulti.status, 200);
+      assert.equal(repSummaryMulti.json.report.summary.totalCustomerReceivables, undefined);
+      assert.equal(repSummaryMulti.json.report.summary.totalSupplierPayables, undefined);
+
+      // 19c. Customer Order advance payment & convert-to-invoice cross-rep block + spoofing lock
+      const ord18Create = await req(baseUrl, 'POST', '/api/orders', {
+        token: rep18ElevatedToken,
+        body: {
+          customerId: cust18Id,
+          items: [{ productId, quantity: 2, unitPrice: 60 }],
+          notes: 'طلب لاختبار تحويل الطلب لفاتورة بأمان',
+        },
+      });
+      assert.equal(ord18Create.status, 201);
+      const ord18Id = ord18Create.json.order.id;
+
+      const ord18Approve = await req(baseUrl, 'POST', `/api/orders/${ord18Id}/approve`, {
+        token: adminToken,
+        body: {},
+      });
+      assert.equal(ord18Approve.status, 200);
+
+      // Cross-rep cannot record advance payment or convert another rep's order
+      const otherRepAdv = await req(baseUrl, 'POST', `/api/orders/${ord18Id}/advance-payment`, {
+        token: rep1Token,
+        body: { amount: 20, cashboxId: cashbox2Id },
+      });
+      assert.equal(otherRepAdv.status, 403);
+      assert.equal(otherRepAdv.json.code, 'FORBIDDEN_ORDER_ACCESS');
+
+      const otherRepConvertOrd = await req(baseUrl, 'POST', `/api/orders/${ord18Id}/convert-to-invoice`, {
+        token: rep1Token,
+        body: { warehouseId: mainWhId },
+      });
+      assert.equal(otherRepConvertOrd.status, 403);
+      assert.equal(otherRepConvertOrd.json.code, 'FORBIDDEN_ORDER_ACCESS');
+
+      // Non-admin customer override on order conversion blocked
+      const ordCustOverride = await req(baseUrl, 'POST', `/api/orders/${ord18Id}/convert-to-invoice`, {
+        token: rep18ElevatedToken,
+        body: { customerId: cust18BId, warehouseId: mainWhId },
+      });
+      assert.equal(ordCustOverride.status, 403);
+      assert.equal(ordCustOverride.json.code, 'FORBIDDEN_ORDER_CUSTOMER_OVERRIDE');
+
+      // Owning rep converting order locks rep identity, order customer, order items/prices, and strips cost/cashbox
+      const repOrdConvert = await req(baseUrl, 'POST', `/api/orders/${ord18Id}/convert-to-invoice`, {
+        token: rep18ElevatedToken,
+        headers: { 'Idempotency-Key': `ORD18-CONV-${modeName}` },
+        body: {
+          warehouseId: mainWhId,
+          cashboxId: cashbox2Id,
+          representativeId: rep1Id,
+          representativeName: 'مندوب مزور',
+          createdByUserId: 'ADMIN-SPOOF',
+          createdBy: 'أدمن مزور',
+          items: [{ productId, quantity: 2, unit: 'زجاجة', unitPrice: 1 }],
+        },
+      });
+      assert.equal(repOrdConvert.status, 201);
+      const convOrdInv = repOrdConvert.json.invoice;
+      assert.equal(convOrdInv.customerId, cust18Id);
+      assert.equal(convOrdInv.representativeId, rep18Id, 'Order conversion must force owning representativeId');
+      assert.equal(convOrdInv.createdByUserId, rep18User.id, 'Order conversion must ignore spoofed createdByUserId');
+      assert.notEqual(convOrdInv.cashboxId, cashbox2Id, 'Order conversion for rep must ignore spoofed cashboxId');
+      assert.equal(Number(convOrdInv.items[0].purchasePriceAtTime || 0), 0, 'Order conversion for rep must zero purchasePriceAtTime');
+      assert.equal(Number(convOrdInv.grandTotal), 120, 'Order conversion for rep must lock authoritative order item pricing');
+
+      const dupOrdConvert = await req(baseUrl, 'POST', `/api/orders/${ord18Id}/convert-to-invoice`, {
+        token: rep18ElevatedToken,
+        headers: { 'Idempotency-Key': `ORD18-CONV-DUP-${modeName}` },
+        body: { warehouseId: mainWhId },
+      });
+      assert.equal(dupOrdConvert.status, 409);
+      assert.equal(dupOrdConvert.json.code, 'ORDER_ALREADY_INVOICED');
     });
   } finally {
     await new Promise((resolve) => server.close(resolve));

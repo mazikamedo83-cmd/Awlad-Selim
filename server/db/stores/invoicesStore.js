@@ -1786,6 +1786,13 @@ export async function convertQuoteToInvoice(quoteId, overrides = {}, actor, idem
   if (actor?.role === 'representative' && !repActor) {
     throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
   }
+  const overrideCashboxId =
+    safeOverrides.cashboxId !== undefined && safeOverrides.cashboxId !== null && String(safeOverrides.cashboxId).trim() !== ''
+      ? String(safeOverrides.cashboxId).trim()
+      : null;
+  if (overrideCashboxId && !repActor && !hasTreasuryAuthority(actor)) {
+    throw new AppError(403, 'ليس لديك صلاحية اختيار الخزينة عند تحويل عرض السعر', 'FORBIDDEN_TREASURY_PERMISSION');
+  }
 
   const out = (await isPgMode())
     ? await withTransaction(async (client) => {
@@ -1839,7 +1846,7 @@ export async function convertQuoteToInvoice(quoteId, overrides = {}, actor, idem
           representativeId: repActor ? repActor.id : (safeOverrides.representativeId || quote.representativeId),
           representativeName: repActor ? repActor.name : (safeOverrides.representativeName || quote.representativeName),
           warehouseId: repActor ? quote.warehouseId : (safeOverrides.warehouseId || quote.warehouseId),
-          cashboxId: repActor ? undefined : (safeOverrides.cashboxId || quote.cashboxId),
+          cashboxId: repActor ? undefined : (hasTreasuryAuthority(actor) ? (overrideCashboxId || quote.cashboxId) : quote.cashboxId),
           paymentType: safeOverrides.paymentType || 'credit',
           paymentMethod: safeOverrides.paymentMethod || 'cash',
           paidAmount: safeOverrides.paidAmount ?? 0,
@@ -1915,7 +1922,7 @@ export async function convertQuoteToInvoice(quoteId, overrides = {}, actor, idem
           representativeId: repActor ? repActor.id : (safeOverrides.representativeId || quote.representativeId),
           representativeName: repActor ? repActor.name : (safeOverrides.representativeName || quote.representativeName),
           warehouseId: repActor ? quote.warehouseId : (safeOverrides.warehouseId || quote.warehouseId),
-          cashboxId: repActor ? undefined : (safeOverrides.cashboxId || quote.cashboxId),
+          cashboxId: repActor ? undefined : (hasTreasuryAuthority(actor) ? (overrideCashboxId || quote.cashboxId) : quote.cashboxId),
           paymentType: safeOverrides.paymentType || 'credit',
           paymentMethod: safeOverrides.paymentMethod || 'cash',
           paidAmount: safeOverrides.paidAmount ?? 0,
