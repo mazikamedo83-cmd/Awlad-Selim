@@ -781,6 +781,132 @@ export async function initializeSchema(customPool = null) {
       throw new Error('Verification failed: sales_return_requests table missing after schema init');
     }
 
+    // Ensure v11 Unified Identity tables, linking columns, actor tracking columns & indexes exist on pre-existing PG DBs
+    const v11Statements = [
+      `CREATE TABLE IF NOT EXISTS identities (
+        id VARCHAR(64) PRIMARY KEY,
+        identity_type VARCHAR(24) NOT NULL DEFAULT 'person' CHECK (identity_type IN ('person', 'organization')),
+        full_name TEXT NOT NULL,
+        primary_phone VARCHAR(32) DEFAULT '',
+        normalized_phone VARCHAR(32) DEFAULT '',
+        secondary_phone VARCHAR(32) DEFAULT '',
+        national_id VARCHAR(64) DEFAULT '',
+        commercial_reg VARCHAR(64) DEFAULT '',
+        address TEXT DEFAULT '',
+        status VARCHAR(24) NOT NULL DEFAULT 'active',
+        notes TEXT DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`,
+      `CREATE TABLE IF NOT EXISTS identity_roles (
+        id VARCHAR(64) PRIMARY KEY,
+        identity_id VARCHAR(64) NOT NULL REFERENCES identities(id) ON DELETE CASCADE,
+        role_key VARCHAR(32) NOT NULL,
+        linked_record_type VARCHAR(32) NOT NULL CHECK (linked_record_type IN ('user', 'employee', 'representative', 'customer', 'supplier')),
+        linked_record_id VARCHAR(64) NOT NULL,
+        is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+        status VARCHAR(24) NOT NULL DEFAULT 'active',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(linked_record_type, linked_record_id),
+        UNIQUE(identity_id, role_key)
+      )`,
+      `CREATE TABLE IF NOT EXISTS identity_conflicts (
+        id VARCHAR(64) PRIMARY KEY,
+        conflict_type VARCHAR(64) NOT NULL,
+        severity VARCHAR(24) NOT NULL DEFAULT 'warning',
+        identifier_key VARCHAR(128) DEFAULT '',
+        candidate_records JSONB NOT NULL DEFAULT '[]'::jsonb,
+        status VARCHAR(24) NOT NULL DEFAULT 'pending_review',
+        resolution_notes TEXT DEFAULT '',
+        resolved_by VARCHAR(64),
+        resolved_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`,
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS identity_id VARCHAR(64)",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS employee_id VARCHAR(64)",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS active_role VARCHAR(32)",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS additional_roles JSONB NOT NULL DEFAULT '[]'::jsonb",
+      "ALTER TABLE employees ADD COLUMN IF NOT EXISTS identity_id VARCHAR(64)",
+      "ALTER TABLE employees ADD COLUMN IF NOT EXISTS user_id VARCHAR(64)",
+      "ALTER TABLE employees ADD COLUMN IF NOT EXISTS normalized_phone VARCHAR(32) DEFAULT ''",
+      "ALTER TABLE customers ADD COLUMN IF NOT EXISTS identity_id VARCHAR(64)",
+      "ALTER TABLE representatives ADD COLUMN IF NOT EXISTS identity_id VARCHAR(64)",
+      "ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS identity_id VARCHAR(64)",
+      "ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS user_id VARCHAR(64)",
+      "ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS normalized_phone VARCHAR(32) DEFAULT ''",
+      "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS actor_identity_id VARCHAR(64)",
+      "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS actor_employee_id VARCHAR(64)",
+      "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS acting_role VARCHAR(32)",
+      "ALTER TABLE invoice_payments ADD COLUMN IF NOT EXISTS actor_identity_id VARCHAR(64)",
+      "ALTER TABLE invoice_payments ADD COLUMN IF NOT EXISTS actor_employee_id VARCHAR(64)",
+      "ALTER TABLE invoice_payments ADD COLUMN IF NOT EXISTS acting_role VARCHAR(32)",
+      "ALTER TABLE invoice_returns ADD COLUMN IF NOT EXISTS actor_identity_id VARCHAR(64)",
+      "ALTER TABLE invoice_returns ADD COLUMN IF NOT EXISTS actor_employee_id VARCHAR(64)",
+      "ALTER TABLE invoice_returns ADD COLUMN IF NOT EXISTS acting_role VARCHAR(32)",
+      "ALTER TABLE financial_transactions ADD COLUMN IF NOT EXISTS actor_identity_id VARCHAR(64)",
+      "ALTER TABLE financial_transactions ADD COLUMN IF NOT EXISTS actor_employee_id VARCHAR(64)",
+      "ALTER TABLE financial_transactions ADD COLUMN IF NOT EXISTS acting_role VARCHAR(32)",
+      "ALTER TABLE expenses_incomes ADD COLUMN IF NOT EXISTS actor_identity_id VARCHAR(64)",
+      "ALTER TABLE expenses_incomes ADD COLUMN IF NOT EXISTS actor_employee_id VARCHAR(64)",
+      "ALTER TABLE expenses_incomes ADD COLUMN IF NOT EXISTS acting_role VARCHAR(32)",
+      "ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS actor_identity_id VARCHAR(64)",
+      "ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS actor_employee_id VARCHAR(64)",
+      "ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS acting_role VARCHAR(32)",
+      "ALTER TABLE rep_custody_operations ADD COLUMN IF NOT EXISTS actor_identity_id VARCHAR(64)",
+      "ALTER TABLE rep_custody_operations ADD COLUMN IF NOT EXISTS actor_employee_id VARCHAR(64)",
+      "ALTER TABLE rep_custody_operations ADD COLUMN IF NOT EXISTS acting_role VARCHAR(32)",
+      "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS actor_identity_id VARCHAR(64)",
+      "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS actor_employee_id VARCHAR(64)",
+      "ALTER TABLE customer_item_orders ADD COLUMN IF NOT EXISTS acting_role VARCHAR(32)",
+      "ALTER TABLE order_advance_payments ADD COLUMN IF NOT EXISTS actor_identity_id VARCHAR(64)",
+      "ALTER TABLE order_advance_payments ADD COLUMN IF NOT EXISTS actor_employee_id VARCHAR(64)",
+      "ALTER TABLE order_advance_payments ADD COLUMN IF NOT EXISTS acting_role VARCHAR(32)",
+      "ALTER TABLE rep_transfers ADD COLUMN IF NOT EXISTS actor_identity_id VARCHAR(64)",
+      "ALTER TABLE rep_transfers ADD COLUMN IF NOT EXISTS actor_employee_id VARCHAR(64)",
+      "ALTER TABLE rep_transfers ADD COLUMN IF NOT EXISTS acting_role VARCHAR(32)",
+      "ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS actor_identity_id VARCHAR(64)",
+      "ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS actor_employee_id VARCHAR(64)",
+      "ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS acting_role VARCHAR(32)",
+      "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS actor_identity_id VARCHAR(64)",
+      "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS actor_employee_id VARCHAR(64)",
+      "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS acting_role VARCHAR(32)",
+      'CREATE INDEX IF NOT EXISTS idx_identities_norm_phone ON identities(normalized_phone)',
+      'CREATE INDEX IF NOT EXISTS idx_identities_national_id ON identities(national_id)',
+      'CREATE INDEX IF NOT EXISTS idx_identity_roles_identity ON identity_roles(identity_id)',
+      'CREATE INDEX IF NOT EXISTS idx_identity_conflicts_status ON identity_conflicts(status, created_at DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_users_identity ON users(identity_id)',
+      'CREATE INDEX IF NOT EXISTS idx_users_employee ON users(employee_id)',
+      'CREATE INDEX IF NOT EXISTS idx_employees_identity ON employees(identity_id)',
+      'CREATE INDEX IF NOT EXISTS idx_employees_norm_phone ON employees(normalized_phone)',
+      'CREATE INDEX IF NOT EXISTS idx_customers_identity ON customers(identity_id)',
+      'CREATE INDEX IF NOT EXISTS idx_reps_identity ON representatives(identity_id)',
+      'CREATE INDEX IF NOT EXISTS idx_suppliers_identity ON suppliers(identity_id)',
+      'CREATE INDEX IF NOT EXISTS idx_suppliers_norm_phone ON suppliers(normalized_phone)',
+    ];
+    for (const stmt of v11Statements) {
+      try {
+        await currentPool.query(stmt);
+      } catch (err) {
+        if (!isIdempotentDdlError(err, stmt)) {
+          console.error('[postgres] v11 DDL statement failed:', stmt, err);
+          throw err;
+        }
+      }
+    }
+
+    for (const tbl of ['employees', 'suppliers']) {
+      const pending = await currentPool.query(
+        `SELECT id, phone FROM ${tbl} WHERE (normalized_phone IS NULL OR normalized_phone = '') AND phone IS NOT NULL AND phone <> ''`
+      );
+      for (const row of pending.rows || []) {
+        const norm = normalizePhoneDigits(row.phone);
+        if (norm) {
+          await currentPool.query(`UPDATE ${tbl} SET normalized_phone = $1 WHERE id = $2`, [norm, row.id]);
+        }
+      }
+    }
+
     return { success: true, message: 'تم تطبيق هيكل الجداول والفهارس والتسلسلات في PostgreSQL بنجاح.' };
   } catch (err) {
     console.error('[postgres] initializeSchema error:', err);

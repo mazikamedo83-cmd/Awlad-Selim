@@ -112,6 +112,62 @@ export interface UserShortcutItem {
   enabled: boolean;
 }
 
+export type IdentityEntityType =
+  | 'user'
+  | 'employee'
+  | 'customer'
+  | 'representative'
+  | 'supplier';
+
+export interface IdentityRoleLink {
+  id: string;
+  identityId: string;
+  roleKey: string;
+  linkedRecordType: IdentityEntityType | string;
+  linkedRecordId: string;
+  isPrimary?: boolean;
+  status?: 'active' | 'inactive' | string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UnifiedIdentity {
+  id: string;
+  fullName: string;
+  phone?: string;
+  normalizedPhone?: string;
+  nationalId?: string;
+  commercialReg?: string;
+  address?: string;
+  status?: 'active' | 'inactive' | string;
+  notes?: string;
+  roles?: IdentityRoleLink[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface IdentityConflictCandidate {
+  recordType: IdentityEntityType | string;
+  recordId: string;
+  name?: string;
+  phone?: string;
+  identityId?: string;
+  username?: string;
+}
+
+export interface IdentityConflict {
+  id: string;
+  conflictType: string;
+  severity?: 'info' | 'warning' | 'critical' | string;
+  identifierKey?: string;
+  candidateRecords: IdentityConflictCandidate[];
+  status: 'pending_review' | 'resolved' | 'dismissed' | string;
+  resolutionNotes?: string;
+  resolvedBy?: string | null;
+  resolvedAt?: string | null;
+  createdAt?: string;
+}
+
 export interface User {
   id: string;
   fullName: string;
@@ -123,6 +179,10 @@ export interface User {
   department: string;
   address?: string;
   notes?: string;
+  identityId?: string;
+  employeeId?: string;
+  activeRole?: UserRole | string;
+  additionalRoles?: string[];
   isActive: boolean;
   mustChangePassword?: boolean;
   lastLogin?: string;
@@ -202,6 +262,7 @@ export interface Customer {
   name: string;
   phone: string;
   phones?: CustomerPhoneEntry[];
+  identityId?: string;
   userId?: string; // حساب الدخول المرتبط بالعميل
   assignedRepId?: string;
   assignedRep?: {
@@ -239,6 +300,8 @@ export interface Supplier {
   companyName?: string;
   phone: string;
   address: string;
+  identityId?: string;
+  userId?: string;
   notes?: string;
   openingBalance: number; // موجب = له مستحقات علينا، سالب = دفع زيادة
   currentBalance: number;
@@ -393,6 +456,9 @@ export interface Invoice {
   createdBy: string;
   createdByUserId?: string;
   createdByName?: string;
+  actorIdentityId?: string;
+  actorEmployeeId?: string;
+  actingRole?: string;
   createdAt: string;
   returnedQuantityByItem?: Record<string, number>;
 }
@@ -613,7 +679,9 @@ export interface Representative {
   name: string;
   phone: string;
   vehicleNumber?: string;
+  identityId?: string;
   userId?: string; // حساب الدخول المرتبط
+  employeeId?: string;
   warehouseId?: string;
   openingBalance?: number;
   currentBalance?: number;
@@ -666,6 +734,8 @@ export interface Employee {
   jobTitle: string;
   department: string;
   nationalId?: string;
+  identityId?: string;
+  userId?: string;
   basicSalary: number;
   hireDate: string;
   status: 'active' | 'suspended';
@@ -1822,8 +1892,21 @@ export interface ComprehensiveReportRow {
   remainingAmount?: number;
   paymentStatus?: string;
   invoiceStatus?: string;
+  actorIdentityId?: string;
+  actorEmployeeId?: string;
+  actingRole?: string;
   rowTone?: 'default' | 'invoice_blue' | 'cash_green' | 'warning_rose';
 }
+
+export type ReportMovementTypeKey =
+  | 'all'
+  | 'sales'
+  | 'sales_return'
+  | 'purchase'
+  | 'purchase_return'
+  | 'damaged'
+  | 'cash_in'
+  | 'cash_out';
 
 export interface ComprehensiveReportSection {
   key: string;
@@ -1975,9 +2058,9 @@ export interface ComprehensiveReportResponse {
     }>;
     customers: Array<{ id: string; name: string; phone?: string }>;
     suppliers: Array<{ id: string; name: string; phone?: string }>;
-    employees: Array<{ id: string; name: string; jobTitle?: string }>;
-    representatives: Array<{ id: string; name: string; warehouseId?: string }>;
-    users: Array<{ id: string; fullName: string; username: string; role: string }>;
+    employees: Array<{ id: string; name: string; jobTitle?: string; identityId?: string; userId?: string }>;
+    representatives: Array<{ id: string; name: string; warehouseId?: string; identityId?: string; userId?: string }>;
+    users: Array<{ id: string; fullName: string; username: string; role: string; identityId?: string; employeeId?: string }>;
   };
   sections: ComprehensiveReportSection[];
   pagination?: {

@@ -25,6 +25,10 @@ import {
   getRepresentativeByUserId,
   getSystemSettingsSafe,
 } from './catalogStore.js';
+import {
+  resolveActorIdentityPgTx,
+  resolveActorIdentityJsonTx,
+} from '../identityManager.js';
 
 function normalizeStatusFilter(rawStatus) {
   const s = String(rawStatus || '').trim().toLowerCase();
@@ -548,9 +552,10 @@ export async function createCustomerOrder(payload, authContext) {
       const sourcePlatform = String(payload.sourcePlatform || 'web').slice(0, 24);
       const originDeviceId = payload.originDeviceId ? String(payload.originDeviceId).slice(0, 64) : null;
 
+      const ordActorCtx = await resolveActorIdentityPgTx(client, actor);
       await client.query(
-        `INSERT INTO customer_item_orders (id, request_number, customer_id, user_id, requester_type, submitted_by_name, representative_id, representative_name, customer_name, customer_phone, shop_name, delivery_address, geo_coordinates, total_amount, advance_paid_amount, remaining_amount, status, source_platform, origin_device_id, sync_status, notes, idempotency_key, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,0,$14,'pending',$15,$16,'synced',$17,$18,$19,$19)`,
+        `INSERT INTO customer_item_orders (id, request_number, customer_id, user_id, requester_type, submitted_by_name, representative_id, representative_name, customer_name, customer_phone, shop_name, delivery_address, geo_coordinates, total_amount, advance_paid_amount, remaining_amount, status, source_platform, origin_device_id, sync_status, notes, idempotency_key, actor_identity_id, actor_employee_id, acting_role, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,0,$14,'pending',$15,$16,'synced',$17,$18,$19,$20,$21,$22,$22)`,
         [
           orderId,
           requestNumber,
@@ -570,6 +575,9 @@ export async function createCustomerOrder(payload, authContext) {
           originDeviceId,
           String(payload.notes || '').trim(),
           idempotencyKey,
+          ordActorCtx.actorIdentityId || null,
+          ordActorCtx.actorEmployeeId || null,
+          ordActorCtx.actingRole || actor.role || null,
           now,
         ]
       );
@@ -676,6 +684,7 @@ export async function createCustomerOrder(payload, authContext) {
     const seqNum = nextJsonSequence(db, 'customerOrderNo', db.customerItemOrders, 'requestNumber', /(\d+)$/);
     const requestNumber = `COR-${String(seqNum).padStart(5, '0')}`;
 
+    const ordActorCtxJson = resolveActorIdentityJsonTx(db, actor);
     const newOrder = {
       id: orderId,
       requestNumber,
@@ -702,6 +711,9 @@ export async function createCustomerOrder(payload, authContext) {
       version: 1,
       notes: String(payload.notes || '').trim(),
       idempotencyKey: idempotencyKey || undefined,
+      actorIdentityId: ordActorCtxJson.actorIdentityId,
+      actorEmployeeId: ordActorCtxJson.actorEmployeeId,
+      actingRole: ordActorCtxJson.actingRole,
       statusHistory: [
         {
           id: generateServerId('OSH'),
@@ -1423,9 +1435,10 @@ export async function recordOrderAdvancePaymentPgTx(client, orderId, payload, ac
     [nextAdvance, nextOrdRemaining, now, orderId]
   );
 
+  const advActorCtx = await resolveActorIdentityPgTx(client, actor);
   await client.query(
-    `INSERT INTO order_advance_payments (id, payment_number, order_id, customer_id, cashbox_id, cashbox_name, payment_method, amount, date, notes, status, idempotency_key, origin_device_id, created_by_user_id, created_by, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'active',$11,$12,$13,$14,$15)`,
+    `INSERT INTO order_advance_payments (id, payment_number, order_id, customer_id, cashbox_id, cashbox_name, payment_method, amount, date, notes, status, idempotency_key, origin_device_id, created_by_user_id, created_by, actor_identity_id, actor_employee_id, acting_role, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'active',$11,$12,$13,$14,$15,$16,$17,$18)`,
     [
       advId,
       paymentNumber,
@@ -1441,6 +1454,9 @@ export async function recordOrderAdvancePaymentPgTx(client, orderId, payload, ac
       payload.originDeviceId || null,
       actor.id,
       actor.fullName,
+      advActorCtx.actorIdentityId || null,
+      advActorCtx.actorEmployeeId || null,
+      advActorCtx.actingRole || actor.role || null,
       now,
     ]
   );
@@ -1448,8 +1464,8 @@ export async function recordOrderAdvancePaymentPgTx(client, orderId, payload, ac
   const ftId = generateServerId('FT');
   const ftNum = `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`;
   await client.query(
-    `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, notes, created_by_user_id, created_by, created_at)
-     VALUES ($1,$2,$3,'customer_payment',$4,$5,$6,$7,'دفعة مقدمة على طلب','customer',$8,$9,'order_advance',$10,$11,$12,$13,$14,$15,$16)`,
+    `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, notes, created_by_user_id, created_by, actor_identity_id, actor_employee_id, acting_role, created_at)
+     VALUES ($1,$2,$3,'customer_payment',$4,$5,$6,$7,'دفعة مقدمة على طلب','customer',$8,$9,'order_advance',$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
     [
       ftId,
       ftNum,
@@ -1466,6 +1482,9 @@ export async function recordOrderAdvancePaymentPgTx(client, orderId, payload, ac
       payload.notes || '',
       actor.id,
       actor.fullName,
+      advActorCtx.actorIdentityId || null,
+      advActorCtx.actorEmployeeId || null,
+      advActorCtx.actingRole || actor.role || null,
       now,
     ]
   );
@@ -1580,6 +1599,7 @@ export function recordOrderAdvancePaymentJsonTx(db, orderId, payload, actor, ide
   ord.version = Number(ord.version || 1) + 1;
   ord.updatedAt = now;
 
+  const actorCtx = resolveActorIdentityJsonTx(db, actor);
   const advObj = {
     id: advId,
     paymentNumber,
@@ -1596,6 +1616,9 @@ export function recordOrderAdvancePaymentJsonTx(db, orderId, payload, actor, ide
     originDeviceId: payload.originDeviceId || undefined,
     createdByUserId: actor.id,
     createdBy: actor.fullName,
+    actorIdentityId: actorCtx.actorIdentityId || undefined,
+    actorEmployeeId: actorCtx.actorEmployeeId || undefined,
+    actingRole: actorCtx.actingRole || actor.role || undefined,
     createdAt: now,
   };
   db.orderAdvancePayments.unshift(advObj);
@@ -1620,6 +1643,9 @@ export function recordOrderAdvancePaymentJsonTx(db, orderId, payload, actor, ide
     notes: payload.notes || '',
     createdByUserId: actor.id,
     createdBy: actor.fullName,
+    actorIdentityId: actorCtx.actorIdentityId || undefined,
+    actorEmployeeId: actorCtx.actorEmployeeId || undefined,
+    actingRole: actorCtx.actingRole || actor.role || undefined,
     createdAt: now,
   });
 

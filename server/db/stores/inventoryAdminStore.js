@@ -75,6 +75,15 @@ import { listOrders } from './ordersStore.js';
 import { listPersonalAccountsData } from './personalAccountsStore.js';
 import { listStockCounts } from './stockCountsStore.js';
 import { listStockTransferRequests } from './stockTransfersStore.js';
+import {
+  attachRecordToIdentityPgTx,
+  attachRecordToIdentityJsonTx,
+  assertNoSameRoleDuplicatesPgTx,
+  assertNoSameRoleDuplicatesJsonTx,
+  resolveActorIdentityPgTx,
+  resolveActorIdentityJsonTx,
+  listIdentitiesOverview,
+} from '../identityManager.js';
 
 function resolvePurchaseReceiversFromUsers(usersList = []) {
   return (usersList || [])
@@ -313,10 +322,13 @@ export async function getStaffBootstrapData(actor) {
           extraSettings: enrichedExtra,
         };
 
-    const [personalData, stockCountsList, stockTransferRequestsList] = await Promise.all([
+    const [personalData, stockCountsList, stockTransferRequestsList, identityOverview] = await Promise.all([
       canViewPersonal ? listPersonalAccountsData() : Promise.resolve({ accounts: [], transactions: [] }),
       isRep ? Promise.resolve([]) : listStockCounts(),
       isRep ? Promise.resolve([]) : listStockTransferRequests(),
+      isAdminOrUserMgr
+        ? listIdentitiesOverview()
+        : Promise.resolve({ identities: [], identityRoles: [], conflicts: [] }),
     ]);
 
     const allowedCustIdSet = isRep ? new Set(custs.map((c) => c.id)) : null;
@@ -350,6 +362,8 @@ export async function getStaffBootstrapData(actor) {
             currentBalance: Number(s.current_balance || 0),
             notes: s.notes || '',
             status: s.status || 'active',
+            identityId: s.identity_id || undefined,
+            userId: s.user_id || undefined,
             createdAt: isoTimestamp(s.created_at),
           }))
         : [],
@@ -466,6 +480,7 @@ export async function getStaffBootstrapData(actor) {
           ? {
               id: r.id,
               userId: r.user_id || undefined,
+              identityId: r.identity_id || undefined,
               name: r.name,
               phone: r.phone || '',
               vehicleNumber: r.vehicle_number || '',
@@ -479,6 +494,7 @@ export async function getStaffBootstrapData(actor) {
           : {
               id: r.id,
               userId: r.user_id || undefined,
+              identityId: r.identity_id || undefined,
               name: r.name,
               phone: r.phone || '',
               vehicleNumber: r.vehicle_number || '',
@@ -579,6 +595,8 @@ export async function getStaffBootstrapData(actor) {
             hireDate: isoDateOnly(e.hire_date),
             status: e.status || 'active',
             notes: e.notes || '',
+            identityId: e.identity_id || undefined,
+            userId: e.user_id || undefined,
           })),
       advancesDeductions: !canViewHrData
         ? []
@@ -708,6 +726,9 @@ export async function getStaffBootstrapData(actor) {
         resolvedAt: r.resolved_at ? isoTimestamp(r.resolved_at) : undefined,
         createdAt: isoTimestamp(r.created_at),
       })),
+      identities: identityOverview.identities || [],
+      identityRoles: identityOverview.identityRoles || [],
+      identityConflicts: identityOverview.conflicts || [],
       settings,
       auditLogs: audits,
     };
@@ -715,7 +736,12 @@ export async function getStaffBootstrapData(actor) {
 
   // JSON Ledger fallback
   const db = readJsonDatabase();
-  const audits = canViewAuditLogs ? await listAuditLogs(300) : [];
+  const [audits, identityOverviewJson] = await Promise.all([
+    canViewAuditLogs ? listAuditLogs(300) : Promise.resolve([]),
+    isAdminOrUserMgr
+      ? listIdentitiesOverview()
+      : Promise.resolve({ identities: [], identityRoles: [], conflicts: [] }),
+  ]);
   const scopedCustomers = (db.customers || []).map(normalizeCustomerRecordShape);
   const scopedCustomerIdSet = new Set(scopedCustomers.map((c) => c.id));
   const scopedInvoices = isRep
@@ -852,6 +878,9 @@ export async function getStaffBootstrapData(actor) {
     ownerTransactions: canViewPersonal ? (db.ownerTransactions || []) : [],
     stockCounts: isRep ? [] : (db.stockCounts || []),
     stockTransferRequests: isRep ? [] : (db.stockTransferRequests || []),
+    identities: identityOverviewJson.identities || [],
+    identityRoles: identityOverviewJson.identityRoles || [],
+    identityConflicts: identityOverviewJson.conflicts || [],
     settings: {
       ...(db.settings || {}),
       extraSettings: {
@@ -2679,9 +2708,26 @@ export async function createAdminUser(payload, actor) {
     const user = await withTransaction(async (client) => {
       const dup = await client.query('SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1', [username]);
       if (dup.rows[0]) throw new AppError(409, 'اسم المستخدم مسجل مسبقًا', 'DUPLICATE_USERNAME');
+
+      const linkedEmployeeId = payload.linkedEmployeeId || payload.employeeId || null;
+      let linkedEmpRow = null;
+      if (linkedEmployeeId) {
+        const empRes = await client.query('SELECT * FROM employees WHERE id = $1 FOR UPDATE', [linkedEmployeeId]);
+        linkedEmpRow = empRes.rows[0];
+        if (!linkedEmpRow) {
+          throw new AppError(404, 'سجل الموظف المحدد للربط غير موجود', 'EMPLOYEE_NOT_FOUND');
+        }
+        if (linkedEmpRow.user_id && linkedEmpRow.user_id !== id) {
+          throw new AppError(409, 'ملف الموظف المختار مربوط مسبقًا بحساب مستخدم آخر', 'EMPLOYEE_ALREADY_LINKED');
+        }
+      }
+
+      const activeRole = String(payload.activeRole || targetRole).trim() || targetRole;
+      const additionalRoles = Array.isArray(payload.additionalRoles) ? payload.additionalRoles : [];
+
       await client.query(
-        `INSERT INTO users (id, full_name, username, password_hash, password_algo, phone, normalized_phone, address, notes, role, job_title, department, is_active, must_change_password, permissions, created_at)
-         VALUES ($1,$2,$3,$4,'bcrypt',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+        `INSERT INTO users (id, full_name, username, password_hash, password_algo, phone, normalized_phone, address, notes, role, job_title, department, employee_id, active_role, additional_roles, is_active, must_change_password, permissions, created_at)
+         VALUES ($1,$2,$3,$4,'bcrypt',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
         [
           id,
           fullName,
@@ -2694,6 +2740,9 @@ export async function createAdminUser(payload, actor) {
           targetRole,
           payload.jobTitle || (targetRole === 'representative' ? 'مندوب مبيعات' : targetRole === 'customer' ? 'عميل' : ''),
           payload.department || (targetRole === 'representative' ? 'المندوبون' : targetRole === 'customer' ? 'العملاء' : ''),
+          linkedEmployeeId,
+          activeRole,
+          JSON.stringify(additionalRoles),
           payload.isActive ?? true,
           Boolean(payload.mustChangePassword),
           JSON.stringify(resolvedPermissions),
@@ -2790,6 +2839,15 @@ export async function createAdminUser(payload, actor) {
             resolvedLinkedCustomerId = autoCustId;
           }
         }
+      } else if (targetRole === 'representative' && payload.linkedRepId) {
+        const repRes = await client.query('SELECT * FROM representatives WHERE id = $1 FOR UPDATE', [payload.linkedRepId]);
+        const targetRep = repRes.rows[0];
+        if (!targetRep) throw new AppError(404, 'سجل المندوب المحدد للربط غير موجود', 'REP_NOT_FOUND');
+        if (targetRep.user_id && targetRep.user_id !== id) {
+          throw new AppError(409, 'سجل المندوب المختار مربوط مسبقًا بحساب مستخدم آخر', 'REP_ALREADY_LINKED');
+        }
+        await client.query('UPDATE representatives SET user_id = $1 WHERE id = $2', [id, targetRep.id]);
+        resolvedLinkedRepId = targetRep.id;
       } else if (targetRole === 'representative' && payload.autoCreateRepProfile !== false) {
         const vanId = generateServerId('WH');
         const vanCode = `VAN-${String(Date.now()).slice(-4)}-${Math.floor(10 + Math.random() * 89)}`;
@@ -2821,10 +2879,70 @@ export async function createAdminUser(payload, actor) {
         resolvedLinkedRepId = autoRepId;
       }
 
+      const sharedIdentityId = await attachRecordToIdentityPgTx(client, {
+        entityType: 'user',
+        entityId: id,
+        roleKey: 'user',
+        fullName,
+        phone: payload.phone || linkedEmpRow?.phone || '',
+        nationalId: linkedEmpRow?.national_id || '',
+        address: payload.address || '',
+        explicitIdentityId: payload.identityId || payload.explicitIdentityId || linkedEmpRow?.identity_id || null,
+        linkedEmployeeId: linkedEmployeeId || null,
+        isPrimary: true,
+        now,
+      });
+
+      if (linkedEmployeeId) {
+        await client.query('UPDATE employees SET user_id = $1, identity_id = $2 WHERE id = $3', [
+          id,
+          sharedIdentityId,
+          linkedEmployeeId,
+        ]);
+        await attachRecordToIdentityPgTx(client, {
+          entityType: 'employee',
+          entityId: linkedEmployeeId,
+          roleKey: 'employee',
+          fullName: linkedEmpRow?.full_name || fullName,
+          phone: linkedEmpRow?.phone || payload.phone || '',
+          nationalId: linkedEmpRow?.national_id || '',
+          explicitIdentityId: sharedIdentityId,
+          now,
+        });
+      }
+      if (resolvedLinkedCustomerId) {
+        await attachRecordToIdentityPgTx(client, {
+          entityType: 'customer',
+          entityId: resolvedLinkedCustomerId,
+          roleKey: 'customer',
+          fullName,
+          phone: payload.phone || '',
+          address: payload.address || '',
+          explicitIdentityId: sharedIdentityId,
+          matchByUniquePhone: false,
+          now,
+        });
+      }
+      if (resolvedLinkedRepId) {
+        await attachRecordToIdentityPgTx(client, {
+          entityType: 'representative',
+          entityId: resolvedLinkedRepId,
+          roleKey: 'representative',
+          fullName,
+          phone: payload.phone || '',
+          address: payload.address || '',
+          explicitIdentityId: sharedIdentityId,
+          now,
+        });
+      }
+
       const r = await client.query('SELECT * FROM users WHERE id = $1', [id]);
       const sanitized = sanitizeUser(mapPgUserRow(r.rows[0]));
       return {
         ...sanitized,
+        identityId: sanitized.identityId || sharedIdentityId,
+        employeeId: sanitized.employeeId || linkedEmployeeId || undefined,
+        ...(linkedEmployeeId ? { linkedEmployeeId } : {}),
         ...(resolvedLinkedCustomerId ? { linkedCustomerId: resolvedLinkedCustomerId } : {}),
         ...(resolvedLinkedRepId ? { linkedRepresentativeId: resolvedLinkedRepId } : {}),
       };
@@ -2837,6 +2955,19 @@ export async function createAdminUser(payload, actor) {
     if (db.users.some((u) => String(u.username || '').toLowerCase() === username.toLowerCase())) {
       throw new AppError(409, 'اسم المستخدم مسجل مسبقًا', 'DUPLICATE_USERNAME');
     }
+
+    const linkedEmployeeId = payload.linkedEmployeeId || payload.employeeId || undefined;
+    let linkedEmpObj = null;
+    if (linkedEmployeeId) {
+      linkedEmpObj = (db.employees || []).find((e) => e.id === linkedEmployeeId);
+      if (!linkedEmpObj) {
+        throw new AppError(404, 'سجل الموظف المحدد للربط غير موجود', 'EMPLOYEE_NOT_FOUND');
+      }
+      if (linkedEmpObj.userId && linkedEmpObj.userId !== id) {
+        throw new AppError(409, 'ملف الموظف المختار مربوط مسبقًا بحساب مستخدم آخر', 'EMPLOYEE_ALREADY_LINKED');
+      }
+    }
+
     const newUser = {
       id,
       fullName,
@@ -2849,6 +2980,9 @@ export async function createAdminUser(payload, actor) {
       role: targetRole,
       jobTitle: payload.jobTitle || (targetRole === 'representative' ? 'مندوب مبيعات' : targetRole === 'customer' ? 'عميل' : ''),
       department: payload.department || (targetRole === 'representative' ? 'المندوبون' : targetRole === 'customer' ? 'العملاء' : ''),
+      employeeId: linkedEmployeeId,
+      activeRole: String(payload.activeRole || targetRole).trim() || targetRole,
+      additionalRoles: Array.isArray(payload.additionalRoles) ? payload.additionalRoles : [],
       isActive: payload.isActive ?? true,
       mustChangePassword: Boolean(payload.mustChangePassword),
       permissions: resolvedPermissions,
@@ -2910,6 +3044,14 @@ export async function createAdminUser(payload, actor) {
           resolvedLinkedCustomerId = autoCustId;
         }
       }
+    } else if (targetRole === 'representative' && payload.linkedRepId) {
+      const targetRep = (db.representatives || []).find((r) => r.id === payload.linkedRepId);
+      if (!targetRep) throw new AppError(404, 'سجل المندوب المحدد للربط غير موجود', 'REP_NOT_FOUND');
+      if (targetRep.userId && targetRep.userId !== id) {
+        throw new AppError(409, 'سجل المندوب المختار مربوط مسبقًا بحساب مستخدم آخر', 'REP_ALREADY_LINKED');
+      }
+      targetRep.userId = id;
+      resolvedLinkedRepId = targetRep.id;
     } else if (targetRole === 'representative' && payload.autoCreateRepProfile !== false) {
       const vanId = generateServerId('WH');
       const vanCode = `VAN-${String(Date.now()).slice(-4)}-${Math.floor(10 + Math.random() * 89)}`;
@@ -2940,9 +3082,66 @@ export async function createAdminUser(payload, actor) {
       resolvedLinkedRepId = autoRepId;
     }
 
+    const sharedIdentityIdJson = attachRecordToIdentityJsonTx(db, {
+      entityType: 'user',
+      entityId: id,
+      roleKey: 'user',
+      fullName,
+      phone: payload.phone || linkedEmpObj?.phone || '',
+      nationalId: linkedEmpObj?.nationalId || '',
+      address: payload.address || '',
+      explicitIdentityId: payload.identityId || payload.explicitIdentityId || linkedEmpObj?.identityId || null,
+      linkedEmployeeId: linkedEmployeeId || null,
+      isPrimary: true,
+      now,
+    });
+    newUser.identityId = sharedIdentityIdJson;
+
+    if (linkedEmployeeId && linkedEmpObj) {
+      linkedEmpObj.userId = id;
+      linkedEmpObj.identityId = sharedIdentityIdJson;
+      attachRecordToIdentityJsonTx(db, {
+        entityType: 'employee',
+        entityId: linkedEmployeeId,
+        roleKey: 'employee',
+        fullName: linkedEmpObj.name || fullName,
+        phone: linkedEmpObj.phone || payload.phone || '',
+        nationalId: linkedEmpObj.nationalId || '',
+        explicitIdentityId: sharedIdentityIdJson,
+        now,
+      });
+    }
+    if (resolvedLinkedCustomerId) {
+      attachRecordToIdentityJsonTx(db, {
+        entityType: 'customer',
+        entityId: resolvedLinkedCustomerId,
+        roleKey: 'customer',
+        fullName,
+        phone: payload.phone || '',
+        address: payload.address || '',
+        explicitIdentityId: sharedIdentityIdJson,
+        matchByUniquePhone: false,
+        now,
+      });
+    }
+    if (resolvedLinkedRepId) {
+      attachRecordToIdentityJsonTx(db, {
+        entityType: 'representative',
+        entityId: resolvedLinkedRepId,
+        roleKey: 'representative',
+        fullName,
+        phone: payload.phone || '',
+        address: payload.address || '',
+        explicitIdentityId: sharedIdentityIdJson,
+        now,
+      });
+    }
+
     const sanitized = sanitizeUser(newUser);
     return {
       ...sanitized,
+      identityId: sharedIdentityIdJson,
+      ...(linkedEmployeeId ? { linkedEmployeeId, employeeId: linkedEmployeeId } : {}),
       ...(resolvedLinkedCustomerId ? { linkedCustomerId: resolvedLinkedCustomerId } : {}),
       ...(resolvedLinkedRepId ? { linkedRepresentativeId: resolvedLinkedRepId } : {}),
     };
@@ -2987,8 +3186,27 @@ export async function updateAdminUser(userId, updates, actor) {
           : (cur.permissions || resolveDefaultPermissionsForRole(effectiveRole, liveExtraSettings));
       const resolvedPerms = sanitizeEffectivePermissionsForRole(effectiveRole, rawPerms);
       const nextPhoneVal = updates.phone ?? cur.phone ?? '';
+      const hasEmpUpdate = updates.linkedEmployeeId !== undefined || updates.employeeId !== undefined;
+      const nextEmployeeId = hasEmpUpdate
+        ? ((updates.linkedEmployeeId ?? updates.employeeId) || null)
+        : (cur.employee_id || null);
+      let nextEmpRow = null;
+      if (hasEmpUpdate && nextEmployeeId) {
+        const empRes = await client.query('SELECT * FROM employees WHERE id = $1 FOR UPDATE', [nextEmployeeId]);
+        nextEmpRow = empRes.rows[0];
+        if (!nextEmpRow) throw new AppError(404, 'سجل الموظف المحدد للربط غير موجود', 'EMPLOYEE_NOT_FOUND');
+        if (nextEmpRow.user_id && nextEmpRow.user_id !== userId) {
+          throw new AppError(409, 'ملف الموظف المختار مربوط مسبقًا بحساب مستخدم آخر', 'EMPLOYEE_ALREADY_LINKED');
+        }
+      }
+      const nextActiveRole = updates.activeRole !== undefined ? updates.activeRole : (cur.active_role || effectiveRole);
+      const nextAdditionalRoles =
+        updates.additionalRoles !== undefined
+          ? (Array.isArray(updates.additionalRoles) ? updates.additionalRoles : [])
+          : (Array.isArray(cur.additional_roles) ? cur.additional_roles : []);
+
       await client.query(
-        `UPDATE users SET full_name = $1, phone = $2, normalized_phone = $3, address = $4, notes = $5, role = $6, job_title = $7, department = $8, is_active = $9, must_change_password = $10, permissions = $11, updated_at = $12 WHERE id = $13`,
+        `UPDATE users SET full_name = $1, phone = $2, normalized_phone = $3, address = $4, notes = $5, role = $6, job_title = $7, department = $8, employee_id = $9, active_role = $10, additional_roles = $11, is_active = $12, must_change_password = $13, permissions = $14, updated_at = $15 WHERE id = $16`,
         [
           updates.fullName ?? cur.full_name,
           nextPhoneVal,
@@ -2998,6 +3216,9 @@ export async function updateAdminUser(userId, updates, actor) {
           effectiveRole,
           updates.jobTitle ?? cur.job_title,
           updates.department ?? cur.department,
+          nextEmployeeId,
+          nextActiveRole,
+          JSON.stringify(nextAdditionalRoles),
           updates.isActive ?? cur.is_active,
           updates.mustChangePassword ?? cur.must_change_password,
           JSON.stringify(resolvedPerms),
@@ -3005,6 +3226,15 @@ export async function updateAdminUser(userId, updates, actor) {
           userId,
         ]
       );
+      if (hasEmpUpdate) {
+        await client.query('UPDATE employees SET user_id = NULL WHERE user_id = $1 AND ($2::varchar IS NULL OR id <> $2)', [
+          userId,
+          nextEmployeeId,
+        ]);
+        if (nextEmployeeId) {
+          await client.query('UPDATE employees SET user_id = $1 WHERE id = $2', [userId, nextEmployeeId]);
+        }
+      }
       if (nextPasswordHash) {
         await client.query(`UPDATE users SET password_hash = $1, password_algo = 'bcrypt' WHERE id = $2`, [nextPasswordHash, userId]);
       }
@@ -3209,10 +3439,61 @@ export async function updateAdminUser(userId, updates, actor) {
         const curLinkedRep = await client.query('SELECT id FROM representatives WHERE user_id = $1 LIMIT 1', [userId]);
         if (curLinkedRep.rows[0]) resolvedLinkedRepId = curLinkedRep.rows[0].id;
       }
+      const sharedUpdIdentityId = await attachRecordToIdentityPgTx(client, {
+        entityType: 'user',
+        entityId: userId,
+        roleKey: 'user',
+        fullName: updates.fullName ?? cur.full_name,
+        phone: nextPhoneVal,
+        nationalId: nextEmpRow?.national_id || '',
+        address: updates.address ?? cur.address ?? '',
+        explicitIdentityId: updates.identityId || updates.explicitIdentityId || cur.identity_id || nextEmpRow?.identity_id || null,
+        linkedEmployeeId: nextEmployeeId || null,
+        isPrimary: true,
+        now,
+      });
+      if (nextEmployeeId) {
+        await client.query('UPDATE employees SET identity_id = $1 WHERE id = $2', [sharedUpdIdentityId, nextEmployeeId]);
+        await attachRecordToIdentityPgTx(client, {
+          entityType: 'employee',
+          entityId: nextEmployeeId,
+          roleKey: 'employee',
+          fullName: nextEmpRow?.full_name || updates.fullName || cur.full_name,
+          phone: nextEmpRow?.phone || nextPhoneVal,
+          nationalId: nextEmpRow?.national_id || '',
+          explicitIdentityId: sharedUpdIdentityId,
+          now,
+        });
+      }
+      if (resolvedLinkedCustomerId) {
+        await attachRecordToIdentityPgTx(client, {
+          entityType: 'customer',
+          entityId: resolvedLinkedCustomerId,
+          roleKey: 'customer',
+          fullName: updates.fullName ?? cur.full_name,
+          phone: nextPhoneVal,
+          explicitIdentityId: sharedUpdIdentityId,
+          matchByUniquePhone: false,
+          now,
+        });
+      }
+      if (resolvedLinkedRepId) {
+        await attachRecordToIdentityPgTx(client, {
+          entityType: 'representative',
+          entityId: resolvedLinkedRepId,
+          roleKey: 'representative',
+          fullName: updates.fullName ?? cur.full_name,
+          phone: nextPhoneVal,
+          explicitIdentityId: sharedUpdIdentityId,
+          now,
+        });
+      }
+
       const next = await client.query('SELECT * FROM users WHERE id = $1', [userId]);
       const sanitized = sanitizeUser(mapPgUserRow(next.rows[0]));
       return {
         ...sanitized,
+        identityId: sanitized.identityId || sharedUpdIdentityId,
         ...(resolvedLinkedCustomerId ? { linkedCustomerId: resolvedLinkedCustomerId } : {}),
         ...(resolvedLinkedRepId ? { linkedRepresentativeId: resolvedLinkedRepId } : {}),
       };
@@ -3232,6 +3513,11 @@ export async function updateAdminUser(userId, updates, actor) {
       newPassword,
       passwordHash: _ignoredHash,
       linkedCustomerId,
+      linkedEmployeeId: rawLinkedEmployeeId,
+      employeeId: rawEmployeeId,
+      linkedRepId,
+      identityId: rawIdentityId,
+      explicitIdentityId: rawExplicitIdentityId,
       autoCreateCustomerProfile,
       autoCreateRepProfile,
       autoMatchExisting,
@@ -3239,6 +3525,16 @@ export async function updateAdminUser(userId, updates, actor) {
       applyRolePreset,
       ...rest
     } = updates;
+    const hasEmpUpdate = rawLinkedEmployeeId !== undefined || rawEmployeeId !== undefined;
+    const nextEmployeeId = hasEmpUpdate ? ((rawLinkedEmployeeId ?? rawEmployeeId) || undefined) : cur.employeeId;
+    let nextEmpObj = null;
+    if (hasEmpUpdate && nextEmployeeId) {
+      nextEmpObj = (db.employees || []).find((e) => e.id === nextEmployeeId);
+      if (!nextEmpObj) throw new AppError(404, 'سجل الموظف المحدد للربط غير موجود', 'EMPLOYEE_NOT_FOUND');
+      if (nextEmpObj.userId && nextEmpObj.userId !== userId) {
+        throw new AppError(409, 'ملف الموظف المختار مربوط مسبقًا بحساب مستخدم آخر', 'EMPLOYEE_ALREADY_LINKED');
+      }
+    }
     const effectiveRole = rest.role ?? cur.role;
     const rawPerms =
       applyRolePreset === true
@@ -3253,10 +3549,21 @@ export async function updateAdminUser(userId, updates, actor) {
       ...cur,
       ...rest,
       id: cur.id,
+      employeeId: nextEmployeeId,
+      activeRole: rest.activeRole ?? cur.activeRole ?? effectiveRole,
+      additionalRoles: Array.isArray(rest.additionalRoles) ? rest.additionalRoles : cur.additionalRoles,
       permissions: resolvedPerms,
       passwordHash: nextPasswordHash || cur.passwordHash,
       passwordAlgo: nextPasswordHash ? 'bcrypt' : cur.passwordAlgo,
     };
+    if (hasEmpUpdate) {
+      for (const emp of db.employees || []) {
+        if (emp.userId === userId && emp.id !== nextEmployeeId) emp.userId = undefined;
+      }
+      if (nextEmployeeId && nextEmpObj) {
+        nextEmpObj.userId = userId;
+      }
+    }
     let resolvedLinkedCustomerId;
     if (effectiveRole === 'customer' && linkedCustomerId) {
       const target = db.customers.find((c) => c.id === linkedCustomerId);
@@ -3400,9 +3707,61 @@ export async function updateAdminUser(userId, updates, actor) {
       const existingRep = (db.representatives || []).find((rp) => rp.userId === userId);
       if (existingRep) resolvedLinkedRepId = existingRep.id;
     }
+    const sharedUpdJsonIdentityId = attachRecordToIdentityJsonTx(db, {
+      entityType: 'user',
+      entityId: userId,
+      roleKey: 'user',
+      fullName: db.users[idx].fullName,
+      phone: db.users[idx].phone || '',
+      nationalId: nextEmpObj?.nationalId || '',
+      address: db.users[idx].address || '',
+      explicitIdentityId: rawIdentityId || rawExplicitIdentityId || cur.identityId || nextEmpObj?.identityId || null,
+      linkedEmployeeId: nextEmployeeId || null,
+      isPrimary: true,
+      now,
+    });
+    db.users[idx].identityId = sharedUpdJsonIdentityId;
+    if (nextEmployeeId && nextEmpObj) {
+      nextEmpObj.identityId = sharedUpdJsonIdentityId;
+      attachRecordToIdentityJsonTx(db, {
+        entityType: 'employee',
+        entityId: nextEmployeeId,
+        roleKey: 'employee',
+        fullName: nextEmpObj.name || db.users[idx].fullName,
+        phone: nextEmpObj.phone || db.users[idx].phone || '',
+        nationalId: nextEmpObj.nationalId || '',
+        explicitIdentityId: sharedUpdJsonIdentityId,
+        now,
+      });
+    }
+    if (resolvedLinkedCustomerId) {
+      attachRecordToIdentityJsonTx(db, {
+        entityType: 'customer',
+        entityId: resolvedLinkedCustomerId,
+        roleKey: 'customer',
+        fullName: db.users[idx].fullName,
+        phone: db.users[idx].phone || '',
+        explicitIdentityId: sharedUpdJsonIdentityId,
+        matchByUniquePhone: false,
+        now,
+      });
+    }
+    if (resolvedLinkedRepId) {
+      attachRecordToIdentityJsonTx(db, {
+        entityType: 'representative',
+        entityId: resolvedLinkedRepId,
+        roleKey: 'representative',
+        fullName: db.users[idx].fullName,
+        phone: db.users[idx].phone || '',
+        explicitIdentityId: sharedUpdJsonIdentityId,
+        now,
+      });
+    }
+
     const sanitized = sanitizeUser(db.users[idx]);
     return {
       ...sanitized,
+      identityId: sharedUpdJsonIdentityId,
       ...(resolvedLinkedCustomerId ? { linkedCustomerId: resolvedLinkedCustomerId } : {}),
       ...(resolvedLinkedRepId ? { linkedRepresentativeId: resolvedLinkedRepId } : {}),
     };
@@ -3460,29 +3819,126 @@ export async function createSupplier(payload, actor) {
   const code = String(payload.code || `S-${Date.now().toString().slice(-5)}`).trim();
   const opening = round2(payload.openingBalance || 0);
   const now = nowIso();
+  const phone = String(payload.phone || '').trim();
+  const normPhone = normalizePhoneDigits(phone);
+  let resolvedIdentityId;
+
   if (await isPgMode()) {
-    await getPool().query(
-      `INSERT INTO suppliers (id, code, name, phone, address, opening_balance, current_balance, notes, status, created_at) VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9)`,
-      [id, code, payload.name, payload.phone || '', payload.address || '', opening, payload.notes || '', payload.status || 'active', now]
-    );
+    resolvedIdentityId = await withTransaction(async (client) => {
+      await assertNoSameRoleDuplicatesPgTx(client, {
+        entityType: 'supplier',
+        phone,
+        allowPhoneOverlap: Boolean(payload.allowPhoneOverlap),
+      });
+      await client.query(
+        `INSERT INTO suppliers (id, code, name, phone, normalized_phone, address, opening_balance, current_balance, notes, status, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$7,$8,$9,$10)`,
+        [id, code, payload.name, phone, normPhone, payload.address || '', opening, payload.notes || '', payload.status || 'active', now]
+      );
+      return attachRecordToIdentityPgTx(client, {
+        entityType: 'supplier',
+        entityId: id,
+        roleKey: 'supplier',
+        fullName: payload.name,
+        phone,
+        address: payload.address || '',
+        notes: payload.notes || '',
+        identityType: payload.companyName ? 'organization' : 'person',
+        explicitIdentityId: payload.identityId || null,
+        linkedUserId: payload.userId || null,
+        now,
+      });
+    });
   } else {
-    await withJsonTransaction((db) => {
-      db.suppliers.unshift({ ...payload, id, code, openingBalance: opening, currentBalance: opening, createdAt: now });
+    resolvedIdentityId = await withJsonTransaction((db) => {
+      assertNoSameRoleDuplicatesJsonTx(db, {
+        entityType: 'supplier',
+        phone,
+        allowPhoneOverlap: Boolean(payload.allowPhoneOverlap),
+      });
+      const item = { ...payload, id, code, phone, openingBalance: opening, currentBalance: opening, createdAt: now };
+      db.suppliers.unshift(item);
+      const idnId = attachRecordToIdentityJsonTx(db, {
+        entityType: 'supplier',
+        entityId: id,
+        roleKey: 'supplier',
+        fullName: payload.name,
+        phone,
+        address: payload.address || '',
+        notes: payload.notes || '',
+        identityType: payload.companyName ? 'organization' : 'person',
+        explicitIdentityId: payload.identityId || null,
+        linkedUserId: payload.userId || null,
+        now,
+      });
+      item.identityId = idnId;
+      return idnId;
     });
   }
   await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إضافة مورد (${payload.name})`, module: 'الموردون', recordId: id });
-  return { ...payload, id, code, openingBalance: opening, currentBalance: opening, createdAt: now };
+  return { ...payload, id, code, identityId: resolvedIdentityId, openingBalance: opening, currentBalance: opening, createdAt: now };
 }
 
 export async function updateSupplier(id, updates, actor) {
+  const now = nowIso();
   if (await isPgMode()) {
-    await getPool().query(
-      `UPDATE suppliers SET name = COALESCE($1, name), phone = COALESCE($2, phone), address = COALESCE($3, address), notes = COALESCE($4, notes), status = COALESCE($5, status) WHERE id = $6`,
-      [updates.name ?? null, updates.phone ?? null, updates.address ?? null, updates.notes ?? null, updates.status ?? null, id]
-    );
+    await withTransaction(async (client) => {
+      const existing = await client.query('SELECT * FROM suppliers WHERE id = $1 FOR UPDATE', [id]);
+      const cur = existing.rows[0];
+      if (!cur) throw new AppError(404, 'المورد غير موجود', 'SUPPLIER_NOT_FOUND');
+      if (updates.phone !== undefined) {
+        await assertNoSameRoleDuplicatesPgTx(client, {
+          entityType: 'supplier',
+          excludeEntityId: id,
+          phone: updates.phone,
+          allowPhoneOverlap: Boolean(updates.allowPhoneOverlap),
+        });
+      }
+      const nextPhone = updates.phone !== undefined ? String(updates.phone || '') : cur.phone;
+      await client.query(
+        `UPDATE suppliers SET name = COALESCE($1, name), phone = $2, normalized_phone = $3, address = COALESCE($4, address), notes = COALESCE($5, notes), status = COALESCE($6, status) WHERE id = $7`,
+        [updates.name ?? null, nextPhone, normalizePhoneDigits(nextPhone), updates.address ?? null, updates.notes ?? null, updates.status ?? null, id]
+      );
+      await attachRecordToIdentityPgTx(client, {
+        entityType: 'supplier',
+        entityId: id,
+        roleKey: 'supplier',
+        fullName: updates.name ?? cur.name,
+        phone: nextPhone || '',
+        address: updates.address ?? cur.address ?? '',
+        notes: updates.notes ?? cur.notes ?? '',
+        explicitIdentityId: updates.identityId || cur.identity_id || null,
+        now,
+      });
+    });
   } else {
     await withJsonTransaction((db) => {
-      db.suppliers = db.suppliers.map((s) => (s.id === id ? { ...s, ...updates, id } : s));
+      if (updates.phone !== undefined) {
+        assertNoSameRoleDuplicatesJsonTx(db, {
+          entityType: 'supplier',
+          excludeEntityId: id,
+          phone: updates.phone,
+          allowPhoneOverlap: Boolean(updates.allowPhoneOverlap),
+        });
+      }
+      let targetSupp = null;
+      db.suppliers = db.suppliers.map((s) => {
+        if (s.id !== id) return s;
+        targetSupp = { ...s, ...updates, id };
+        return targetSupp;
+      });
+      if (targetSupp) {
+        targetSupp.identityId = attachRecordToIdentityJsonTx(db, {
+          entityType: 'supplier',
+          entityId: id,
+          roleKey: 'supplier',
+          fullName: targetSupp.name,
+          phone: targetSupp.phone || '',
+          address: targetSupp.address || '',
+          notes: targetSupp.notes || '',
+          explicitIdentityId: updates.identityId || targetSupp.identityId || null,
+          now,
+        });
+      }
     });
   }
   await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تحديث مورد`, module: 'الموردون', recordId: id });
@@ -3543,10 +3999,11 @@ export async function recordSupplierPayment({ supplierId, amount, cashboxId, not
       const desc = `سداد للمورد ${sRes.rows[0].name}${isAdvance ? ' (دفعة مقدمة / رصيد لنا)' : ''}`;
       await client.query('UPDATE suppliers SET current_balance = $1 WHERE id = $2', [nextSupp, supplierId]);
       await client.query('UPDATE cashboxes SET current_balance = $1 WHERE id = $2', [nextCb, cashboxId]);
+      const actorCtx = await resolveActorIdentityPgTx(client, actor);
       await client.query(
-        `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, description, notes, created_by_user_id, created_by, created_at)
-         VALUES ($1,$2,$3,'supplier_payment',$4,$5,$6,$7,'سداد لمورد',$8,$9,$10,$11,$12,$13,$14)`,
-        [txId, txNo, txDate, payAmount, cbRes.rows[0].id, cbRes.rows[0].name, nextCb, supplierId, sRes.rows[0].name, desc, notes, actor.id, actor.fullName, now]
+        `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, description, notes, created_by_user_id, created_by, actor_identity_id, actor_employee_id, acting_role, created_at)
+         VALUES ($1,$2,$3,'supplier_payment',$4,$5,$6,$7,'سداد لمورد',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+        [txId, txNo, txDate, payAmount, cbRes.rows[0].id, cbRes.rows[0].name, nextCb, supplierId, sRes.rows[0].name, desc, notes, actor.id, actor.fullName, actorCtx.actorIdentityId || null, actorCtx.actorEmployeeId || null, actorCtx.actingRole || actor.role || null, now]
       );
       const payloadOut = {
         ok: true,
@@ -3588,6 +4045,7 @@ export async function recordSupplierPayment({ supplierId, amount, cashboxId, not
     supp.currentBalance = round2(curSuppBal - payAmount);
     cb.currentBalance = round2(Number(cb.currentBalance || 0) - payAmount);
     const desc = `سداد للمورد ${supp.name}${isAdvance ? ' (دفعة مقدمة / رصيد لنا)' : ''}`;
+    const actorCtxJson = resolveActorIdentityJsonTx(db, actor);
     db.financialTransactions.unshift({
       id: txId,
       transactionNumber: txNo,
@@ -3605,6 +4063,9 @@ export async function recordSupplierPayment({ supplierId, amount, cashboxId, not
       notes,
       createdByUserId: actor.id,
       createdBy: actor.fullName,
+      actorIdentityId: actorCtxJson.actorIdentityId,
+      actorEmployeeId: actorCtxJson.actorEmployeeId,
+      actingRole: actorCtxJson.actingRole,
       createdAt: now,
     });
     const payloadOut = {
@@ -4548,33 +5009,68 @@ export async function payInstallment({ scheduleId, installmentItemId, amount, ca
 export async function addRepresentative(payload, actor) {
   const id = generateServerId('REP');
   const opening = round2(payload.openingBalance || 0);
+  const now = nowIso();
   if (await isPgMode()) {
-    if (payload.userId) {
-      const existingRes = await getPool().query('SELECT * FROM representatives WHERE user_id = $1 LIMIT 1', [payload.userId]);
-      if (existingRes.rows[0]) {
-        const cur = existingRes.rows[0];
-        const nextOpening = Math.abs(Number(cur.opening_balance || 0)) < 0.001 && Math.abs(Number(cur.current_balance || 0)) < 0.001 ? opening : Number(cur.opening_balance || 0);
-        const nextCurrent = Math.abs(Number(cur.opening_balance || 0)) < 0.001 && Math.abs(Number(cur.current_balance || 0)) < 0.001 ? opening : Number(cur.current_balance || 0);
-        await getPool().query(
-          `UPDATE representatives SET name = COALESCE(NULLIF($1, ''), name), phone = COALESCE(NULLIF($2, ''), phone), normalized_phone = COALESCE(NULLIF($3, ''), normalized_phone), vehicle_number = COALESCE(NULLIF($4, ''), vehicle_number), opening_balance = $5, current_balance = $6, commission_rate = $7, notes = COALESCE(NULLIF($8, ''), notes), status = COALESCE($9, status) WHERE id = $10`,
-          [payload.name || '', payload.phone || '', normalizePhoneDigits(payload.phone || ''), payload.vehicleNumber || '', nextOpening, nextCurrent, Number(payload.commissionRate ?? cur.commission_rate ?? 0), payload.notes || '', payload.status || cur.status || 'active', cur.id]
-        );
-        return {
-          ...payload,
-          id: cur.id,
-          warehouseId: cur.warehouse_id || payload.warehouseId || undefined,
-          openingBalance: nextOpening,
-          currentBalance: nextCurrent,
-        };
+    return withTransaction(async (client) => {
+      if (payload.userId) {
+        const existingRes = await client.query('SELECT * FROM representatives WHERE user_id = $1 LIMIT 1', [payload.userId]);
+        if (existingRes.rows[0]) {
+          const cur = existingRes.rows[0];
+          const nextOpening = Math.abs(Number(cur.opening_balance || 0)) < 0.001 && Math.abs(Number(cur.current_balance || 0)) < 0.001 ? opening : Number(cur.opening_balance || 0);
+          const nextCurrent = Math.abs(Number(cur.opening_balance || 0)) < 0.001 && Math.abs(Number(cur.current_balance || 0)) < 0.001 ? opening : Number(cur.current_balance || 0);
+          await client.query(
+            `UPDATE representatives SET name = COALESCE(NULLIF($1, ''), name), phone = COALESCE(NULLIF($2, ''), phone), normalized_phone = COALESCE(NULLIF($3, ''), normalized_phone), vehicle_number = COALESCE(NULLIF($4, ''), vehicle_number), opening_balance = $5, current_balance = $6, commission_rate = $7, notes = COALESCE(NULLIF($8, ''), notes), status = COALESCE($9, status) WHERE id = $10`,
+            [payload.name || '', payload.phone || '', normalizePhoneDigits(payload.phone || ''), payload.vehicleNumber || '', nextOpening, nextCurrent, Number(payload.commissionRate ?? cur.commission_rate ?? 0), payload.notes || '', payload.status || cur.status || 'active', cur.id]
+          );
+          const idnId = await attachRecordToIdentityPgTx(client, {
+            entityType: 'representative',
+            entityId: cur.id,
+            roleKey: 'representative',
+            fullName: payload.name || cur.name,
+            phone: payload.phone || cur.phone || '',
+            explicitIdentityId: payload.identityId || cur.identity_id || null,
+            linkedUserId: payload.userId || null,
+            linkedEmployeeId: payload.employeeId || null,
+            now,
+          });
+          return {
+            ...payload,
+            id: cur.id,
+            identityId: idnId,
+            warehouseId: cur.warehouse_id || payload.warehouseId || undefined,
+            openingBalance: nextOpening,
+            currentBalance: nextCurrent,
+          };
+        }
       }
-    }
-    await getPool().query(
-      `INSERT INTO representatives (id, user_id, name, phone, normalized_phone, vehicle_number, opening_balance, current_balance, commission_rate, notes, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$7,$8,$9,$10)`,
-      [id, payload.userId || null, payload.name, payload.phone || '', normalizePhoneDigits(payload.phone || ''), payload.vehicleNumber || '', opening, Number(payload.commissionRate || 0), payload.notes || '', payload.status || 'active']
-    );
+      if (payload.phone && !payload.allowPhoneOverlap) {
+        await assertNoSameRoleDuplicatesPgTx(client, {
+          entityType: 'representative',
+          phone: payload.phone,
+          allowPhoneOverlap: false,
+        });
+      }
+      await client.query(
+        `INSERT INTO representatives (id, user_id, name, phone, normalized_phone, vehicle_number, opening_balance, current_balance, commission_rate, notes, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$7,$8,$9,$10)`,
+        [id, payload.userId || null, payload.name, payload.phone || '', normalizePhoneDigits(payload.phone || ''), payload.vehicleNumber || '', opening, Number(payload.commissionRate || 0), payload.notes || '', payload.status || 'active']
+      );
+      const idnId = await attachRecordToIdentityPgTx(client, {
+        entityType: 'representative',
+        entityId: id,
+        roleKey: 'representative',
+        fullName: payload.name,
+        phone: payload.phone || '',
+        explicitIdentityId: payload.identityId || null,
+        linkedUserId: payload.userId || null,
+        linkedEmployeeId: payload.employeeId || null,
+        now,
+      });
+      return { ...payload, id, identityId: idnId, openingBalance: opening, currentBalance: opening };
+    });
   } else {
     let existingRep = null;
+    let newRepObj = null;
     await withJsonTransaction((db) => {
       if (payload.userId) {
         const idx = (db.representatives || []).findIndex((r) => r.userId === payload.userId);
@@ -4589,39 +5085,120 @@ export async function addRepresentative(payload, actor) {
             openingBalance: canUpdateBal ? opening : cur.openingBalance,
             currentBalance: canUpdateBal ? opening : cur.currentBalance,
           };
+          db.representatives[idx].identityId = attachRecordToIdentityJsonTx(db, {
+            entityType: 'representative',
+            entityId: cur.id,
+            roleKey: 'representative',
+            fullName: db.representatives[idx].name,
+            phone: db.representatives[idx].phone || '',
+            explicitIdentityId: payload.identityId || cur.identityId || null,
+            linkedUserId: payload.userId || null,
+            linkedEmployeeId: payload.employeeId || null,
+            now,
+          });
           existingRep = db.representatives[idx];
           return;
         }
       }
-      db.representatives.push({ ...payload, id, openingBalance: opening, currentBalance: opening });
+      if (payload.phone && !payload.allowPhoneOverlap) {
+        assertNoSameRoleDuplicatesJsonTx(db, {
+          entityType: 'representative',
+          phone: payload.phone,
+          allowPhoneOverlap: false,
+        });
+      }
+      newRepObj = { ...payload, id, openingBalance: opening, currentBalance: opening };
+      db.representatives.push(newRepObj);
+      newRepObj.identityId = attachRecordToIdentityJsonTx(db, {
+        entityType: 'representative',
+        entityId: id,
+        roleKey: 'representative',
+        fullName: payload.name,
+        phone: payload.phone || '',
+        explicitIdentityId: payload.identityId || null,
+        linkedUserId: payload.userId || null,
+        linkedEmployeeId: payload.employeeId || null,
+        now,
+      });
     });
     if (existingRep) return existingRep;
+    return newRepObj;
   }
-  return { ...payload, id, openingBalance: opening, currentBalance: opening };
 }
 
 export async function updateRepresentative(id, updates, actor = null) {
+  const now = nowIso();
   if (await isPgMode()) {
-    await getPool().query(
-      `UPDATE representatives SET name = COALESCE($1, name), phone = COALESCE($2, phone), normalized_phone = COALESCE($3, normalized_phone), vehicle_number = COALESCE($4, vehicle_number), commission_rate = COALESCE($5, commission_rate), status = COALESCE($6, status), user_id = COALESCE($7, user_id), notes = COALESCE($8, notes), warehouse_id = COALESCE($9, warehouse_id), opening_balance = COALESCE($10, opening_balance), current_balance = COALESCE($11, current_balance) WHERE id = $12`,
-      [
-        updates.name ?? null,
-        updates.phone ?? null,
-        updates.phone !== undefined ? normalizePhoneDigits(updates.phone) : null,
-        updates.vehicleNumber ?? null,
-        updates.commissionRate ?? null,
-        updates.status ?? null,
-        updates.userId ?? null,
-        updates.notes ?? null,
-        updates.warehouseId ?? null,
-        updates.openingBalance !== undefined ? round2(updates.openingBalance) : null,
-        updates.currentBalance !== undefined ? round2(updates.currentBalance) : null,
-        id,
-      ]
-    );
+    await withTransaction(async (client) => {
+      const existing = await client.query('SELECT * FROM representatives WHERE id = $1 FOR UPDATE', [id]);
+      const cur = existing.rows[0];
+      if (!cur) throw new AppError(404, 'المندوب غير موجود', 'REP_NOT_FOUND');
+      if (updates.phone !== undefined) {
+        await assertNoSameRoleDuplicatesPgTx(client, {
+          entityType: 'representative',
+          excludeEntityId: id,
+          phone: updates.phone,
+          allowPhoneOverlap: Boolean(updates.allowPhoneOverlap),
+        });
+      }
+      await client.query(
+        `UPDATE representatives SET name = COALESCE($1, name), phone = COALESCE($2, phone), normalized_phone = COALESCE($3, normalized_phone), vehicle_number = COALESCE($4, vehicle_number), commission_rate = COALESCE($5, commission_rate), status = COALESCE($6, status), user_id = COALESCE($7, user_id), notes = COALESCE($8, notes), warehouse_id = COALESCE($9, warehouse_id), opening_balance = COALESCE($10, opening_balance), current_balance = COALESCE($11, current_balance) WHERE id = $12`,
+        [
+          updates.name ?? null,
+          updates.phone ?? null,
+          updates.phone !== undefined ? normalizePhoneDigits(updates.phone) : null,
+          updates.vehicleNumber ?? null,
+          updates.commissionRate ?? null,
+          updates.status ?? null,
+          updates.userId ?? null,
+          updates.notes ?? null,
+          updates.warehouseId ?? null,
+          updates.openingBalance !== undefined ? round2(updates.openingBalance) : null,
+          updates.currentBalance !== undefined ? round2(updates.currentBalance) : null,
+          id,
+        ]
+      );
+      await attachRecordToIdentityPgTx(client, {
+        entityType: 'representative',
+        entityId: id,
+        roleKey: 'representative',
+        fullName: updates.name ?? cur.name,
+        phone: updates.phone ?? cur.phone ?? '',
+        explicitIdentityId: updates.identityId || cur.identity_id || null,
+        linkedUserId: updates.userId ?? cur.user_id ?? null,
+        linkedEmployeeId: updates.employeeId || null,
+        now,
+      });
+    });
   } else {
     await withJsonTransaction((db) => {
-      db.representatives = db.representatives.map((r) => (r.id === id ? { ...r, ...updates, id } : r));
+      if (updates.phone !== undefined) {
+        assertNoSameRoleDuplicatesJsonTx(db, {
+          entityType: 'representative',
+          excludeEntityId: id,
+          phone: updates.phone,
+          allowPhoneOverlap: Boolean(updates.allowPhoneOverlap),
+        });
+      }
+      let targetRep = null;
+      db.representatives = db.representatives.map((r) => {
+        if (r.id !== id) return r;
+        targetRep = { ...r, ...updates, id };
+        return targetRep;
+      });
+      if (targetRep) {
+        targetRep.identityId = attachRecordToIdentityJsonTx(db, {
+          entityType: 'representative',
+          entityId: id,
+          roleKey: 'representative',
+          fullName: targetRep.name,
+          phone: targetRep.phone || '',
+          explicitIdentityId: updates.identityId || targetRep.identityId || null,
+          linkedUserId: targetRep.userId || null,
+          linkedEmployeeId: updates.employeeId || null,
+          now,
+        });
+      }
     });
   }
   if (actor) {
@@ -4651,36 +5228,99 @@ export async function addEmployee(payload, actor = null) {
   const code = String(payload.code || `E-${Date.now().toString().slice(-4)}`).trim();
   const hireDate = payload.hireDate || todayIso();
   const status = payload.status || 'active';
+  const phone = String(payload.phone || '').trim();
+  const nationalId = String(payload.nationalId || '').trim();
+  const linkedUserId = payload.userId || null;
+  const now = nowIso();
+  let resolvedIdentityId;
 
   if (await isPgMode()) {
-    await withTransaction(async (client) => {
+    resolvedIdentityId = await withTransaction(async (client) => {
       const dup = await client.query('SELECT id FROM employees WHERE LOWER(code) = LOWER($1) LIMIT 1', [code]);
       if (dup.rows[0]) throw new AppError(409, 'كود الموظف مستخدم مسبقًا', 'DUPLICATE_EMPLOYEE_CODE');
+      await assertNoSameRoleDuplicatesPgTx(client, {
+        entityType: 'employee',
+        phone,
+        nationalId,
+        allowPhoneOverlap: Boolean(payload.allowPhoneOverlap),
+      });
       await client.query(
-        `INSERT INTO employees (id, code, full_name, job_title, department, phone, national_id, hire_date, basic_salary, status, notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-        [id, code, name, jobTitle, payload.department || '', payload.phone || '', payload.nationalId || '', hireDate, basicSalary, status, payload.notes || '']
+        `INSERT INTO employees (id, code, full_name, job_title, department, phone, normalized_phone, national_id, user_id, hire_date, basic_salary, status, notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        [id, code, name, jobTitle, payload.department || '', phone, normalizePhoneDigits(phone), nationalId, linkedUserId, hireDate, basicSalary, status, payload.notes || '']
       );
+      const empIdentityId = await attachRecordToIdentityPgTx(client, {
+        entityType: 'employee',
+        entityId: id,
+        roleKey: 'employee',
+        fullName: name,
+        phone,
+        nationalId,
+        notes: payload.notes || '',
+        explicitIdentityId: payload.identityId || null,
+        linkedUserId,
+        isPrimary: true,
+        now,
+      });
+      if (linkedUserId) {
+        await client.query('UPDATE users SET employee_id = $1, identity_id = COALESCE(identity_id, $2), updated_at = $3 WHERE id = $4', [
+          id,
+          empIdentityId,
+          now,
+          linkedUserId,
+        ]);
+      }
+      return empIdentityId;
     });
   } else {
-    await withJsonTransaction((db) => {
+    resolvedIdentityId = await withJsonTransaction((db) => {
       if ((db.employees || []).some((e) => String(e.code || '').toLowerCase() === code.toLowerCase())) {
         throw new AppError(409, 'كود الموظف مستخدم مسبقًا', 'DUPLICATE_EMPLOYEE_CODE');
       }
-      db.employees.unshift({
+      assertNoSameRoleDuplicatesJsonTx(db, {
+        entityType: 'employee',
+        phone,
+        nationalId,
+        allowPhoneOverlap: Boolean(payload.allowPhoneOverlap),
+      });
+      const newEmp = {
         ...payload,
         id,
         code,
         name,
         jobTitle,
         department: payload.department || '',
-        phone: payload.phone || '',
-        nationalId: payload.nationalId || '',
+        phone,
+        nationalId,
+        userId: linkedUserId || undefined,
         hireDate,
         basicSalary,
         status,
         notes: payload.notes || '',
+      };
+      db.employees.unshift(newEmp);
+      const empIdentityId = attachRecordToIdentityJsonTx(db, {
+        entityType: 'employee',
+        entityId: id,
+        roleKey: 'employee',
+        fullName: name,
+        phone,
+        nationalId,
+        notes: payload.notes || '',
+        explicitIdentityId: payload.identityId || null,
+        linkedUserId,
+        isPrimary: true,
+        now,
       });
+      newEmp.identityId = empIdentityId;
+      if (linkedUserId) {
+        const usr = (db.users || []).find((u) => u.id === linkedUserId);
+        if (usr) {
+          usr.employeeId = id;
+          if (!usr.identityId) usr.identityId = empIdentityId;
+        }
+      }
+      return empIdentityId;
     });
   }
 
@@ -4702,6 +5342,8 @@ export async function addEmployee(payload, actor = null) {
     hireDate,
     basicSalary,
     status,
+    identityId: resolvedIdentityId,
+    ...(linkedUserId ? { userId: linkedUserId } : {}),
   };
 }
 
@@ -4709,6 +5351,7 @@ export async function updateEmployee(id, updates, actor = null) {
   if (updates.basicSalary !== undefined && (!Number.isFinite(Number(updates.basicSalary)) || Number(updates.basicSalary) < 0)) {
     throw new AppError(400, 'الراتب الأساسي غير صالح', 'INVALID_SALARY');
   }
+  const now = nowIso();
   let empName = updates.name || '';
   if (await isPgMode()) {
     await withTransaction(async (client) => {
@@ -4722,18 +5365,30 @@ export async function updateEmployee(id, updates, actor = null) {
         const dup = await client.query('SELECT id FROM employees WHERE LOWER(code) = LOWER($1) AND id <> $2 LIMIT 1', [nextCode, id]);
         if (dup.rows[0]) throw new AppError(409, 'كود الموظف مستخدم مسبقًا', 'DUPLICATE_EMPLOYEE_CODE');
       }
+      const nextPhone = updates.phone ?? cur.phone ?? '';
+      const nextNationalId = updates.nationalId ?? cur.national_id ?? '';
+      await assertNoSameRoleDuplicatesPgTx(client, {
+        entityType: 'employee',
+        excludeEntityId: id,
+        phone: nextPhone,
+        nationalId: nextNationalId,
+        allowPhoneOverlap: Boolean(updates.allowPhoneOverlap),
+      });
+      const nextUserId = updates.userId !== undefined ? (updates.userId || null) : (cur.user_id || null);
       await client.query(
         `UPDATE employees SET
-          code = $1, full_name = $2, job_title = $3, department = $4, phone = $5,
-          national_id = $6, hire_date = $7, basic_salary = $8, status = $9, notes = $10
-         WHERE id = $11`,
+          code = $1, full_name = $2, job_title = $3, department = $4, phone = $5, normalized_phone = $6,
+          national_id = $7, user_id = $8, hire_date = $9, basic_salary = $10, status = $11, notes = $12
+         WHERE id = $13`,
         [
           nextCode,
           empName,
           updates.jobTitle ?? cur.job_title,
           updates.department ?? cur.department ?? '',
-          updates.phone ?? cur.phone ?? '',
-          updates.nationalId ?? cur.national_id ?? '',
+          nextPhone,
+          normalizePhoneDigits(nextPhone),
+          nextNationalId,
+          nextUserId,
           updates.hireDate ?? isoDateOnly(cur.hire_date),
           round2(updates.basicSalary ?? cur.basic_salary),
           updates.status ?? cur.status,
@@ -4741,6 +5396,26 @@ export async function updateEmployee(id, updates, actor = null) {
           id,
         ]
       );
+      const empIdnId = await attachRecordToIdentityPgTx(client, {
+        entityType: 'employee',
+        entityId: id,
+        roleKey: 'employee',
+        fullName: empName,
+        phone: nextPhone,
+        nationalId: nextNationalId,
+        notes: updates.notes ?? cur.notes ?? '',
+        explicitIdentityId: updates.identityId || cur.identity_id || null,
+        linkedUserId: nextUserId,
+        now,
+      });
+      if (nextUserId) {
+        await client.query('UPDATE users SET employee_id = $1, identity_id = COALESCE(identity_id, $2), updated_at = $3 WHERE id = $4', [
+          id,
+          empIdnId,
+          now,
+          nextUserId,
+        ]);
+      }
     });
   } else {
     await withJsonTransaction((db) => {
@@ -4749,7 +5424,37 @@ export async function updateEmployee(id, updates, actor = null) {
       const cur = db.employees[idx];
       empName = String(updates.name ?? cur.name).trim();
       if (!empName) throw new AppError(400, 'اسم الموظف مطلوب', 'INVALID_EMPLOYEE_NAME');
-      db.employees[idx] = { ...cur, ...updates, id, name: empName };
+      const nextPhone = updates.phone ?? cur.phone ?? '';
+      const nextNationalId = updates.nationalId ?? cur.nationalId ?? '';
+      assertNoSameRoleDuplicatesJsonTx(db, {
+        entityType: 'employee',
+        excludeEntityId: id,
+        phone: nextPhone,
+        nationalId: nextNationalId,
+        allowPhoneOverlap: Boolean(updates.allowPhoneOverlap),
+      });
+      const nextUserId = updates.userId !== undefined ? (updates.userId || undefined) : cur.userId;
+      db.employees[idx] = { ...cur, ...updates, id, name: empName, userId: nextUserId };
+      const empIdnId = attachRecordToIdentityJsonTx(db, {
+        entityType: 'employee',
+        entityId: id,
+        roleKey: 'employee',
+        fullName: empName,
+        phone: nextPhone,
+        nationalId: nextNationalId,
+        notes: updates.notes ?? cur.notes ?? '',
+        explicitIdentityId: updates.identityId || cur.identityId || null,
+        linkedUserId: nextUserId || null,
+        now,
+      });
+      db.employees[idx].identityId = empIdnId;
+      if (nextUserId) {
+        const usr = (db.users || []).find((u) => u.id === nextUserId);
+        if (usr) {
+          usr.employeeId = id;
+          if (!usr.identityId) usr.identityId = empIdnId;
+        }
+      }
     });
   }
 

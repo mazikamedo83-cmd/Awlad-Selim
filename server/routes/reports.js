@@ -27,6 +27,24 @@ function checkReportsAccess(req, res) {
   return true;
 }
 
+function checkRepSupplierFilterAccess(req, res) {
+  const u = req.auth.user;
+  if (u.role !== 'representative') return true;
+  if (u.permissions?.canCreatePurchase || u.permissions?.canManagePurchases) return true;
+  const q = req.query || {};
+  const pk = String(q.partyKey || q.partyFilter || '').trim();
+  const sid = typeof q.supplierId === 'string' ? q.supplierId.trim() : '';
+  if (pk.startsWith('supplier:') || (sid && sid !== 'all')) {
+    res.status(403).json({
+      ok: false,
+      code: 'FORBIDDEN_SUPPLIER_REPORT',
+      error: 'ليس لديك صلاحية الاستعلام عن تقارير الموردين',
+    });
+    return false;
+  }
+  return true;
+}
+
 router.get(
   '/rep-summary',
   asyncHandler(async (req, res) => {
@@ -38,11 +56,14 @@ router.get(
         error: 'ليس لديك صلاحية عرض تقارير المناديب',
       });
     }
+    if (!checkRepSupplierFilterAccess(req, res)) return;
     const q = req.query || {};
     const report = await getRepDetailedReport(
       {
         dateFrom: typeof q.dateFrom === 'string' ? q.dateFrom : undefined,
         dateTo: typeof q.dateTo === 'string' ? q.dateTo : undefined,
+        partyKey: typeof q.partyKey === 'string' ? q.partyKey : (typeof q.partyFilter === 'string' ? q.partyFilter : undefined),
+        partyFilter: typeof q.partyFilter === 'string' ? q.partyFilter : undefined,
         customerId: typeof q.customerId === 'string' ? q.customerId : undefined,
         supplierId: typeof q.supplierId === 'string' ? q.supplierId : undefined,
         productId: typeof q.productId === 'string' ? q.productId : undefined,
@@ -70,10 +91,12 @@ router.get(
   '/comprehensive',
   asyncHandler(async (req, res) => {
     if (!checkReportsAccess(req, res)) return;
+    if (!checkRepSupplierFilterAccess(req, res)) return;
     const q = req.query || {};
     const report = await getComprehensiveReport(
       {
         reportType: typeof q.reportType === 'string' ? q.reportType : 'all',
+        movementType: typeof q.movementType === 'string' ? q.movementType : undefined,
         dateFrom: typeof q.dateFrom === 'string' ? q.dateFrom : undefined,
         dateTo: typeof q.dateTo === 'string' ? q.dateTo : undefined,
         branchId: typeof q.branchId === 'string' ? q.branchId : undefined,
@@ -82,6 +105,8 @@ router.get(
         productId: typeof q.productId === 'string' ? q.productId : undefined,
         productSearch: typeof q.productSearch === 'string' ? q.productSearch : undefined,
         barcode: typeof q.barcode === 'string' ? q.barcode : undefined,
+        partyKey: typeof q.partyKey === 'string' ? q.partyKey : (typeof q.partyFilter === 'string' ? q.partyFilter : undefined),
+        partyFilter: typeof q.partyFilter === 'string' ? q.partyFilter : undefined,
         customerId: typeof q.customerId === 'string' ? q.customerId : undefined,
         supplierId: typeof q.supplierId === 'string' ? q.supplierId : undefined,
         employeeId: typeof q.employeeId === 'string' ? q.employeeId : undefined,

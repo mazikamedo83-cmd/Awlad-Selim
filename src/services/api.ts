@@ -1103,3 +1103,60 @@ export async function fetchRepSummaryReport(
   return res.report;
 }
 
+export async function fetchIdentitiesOverview(): Promise<{
+  ok: boolean;
+  identities: import('../types').UnifiedIdentity[];
+  identityRoles: import('../types').IdentityRoleLink[];
+  conflicts: import('../types').IdentityConflict[];
+}> {
+  return apiRequest('/api/admin/identities');
+}
+
+export async function runIdentityAuditApi(createBackup = true): Promise<{
+  ok: boolean;
+  result?: any;
+  identities: import('../types').UnifiedIdentity[];
+  identityRoles: import('../types').IdentityRoleLink[];
+  conflicts: import('../types').IdentityConflict[];
+}> {
+  return apiRequest('/api/admin/identities/audit', {
+    method: 'POST',
+    body: { createBackup },
+  });
+}
+
+export async function linkEntityToIdentityApi(payload: {
+  targetType: import('../types').IdentityEntityType;
+  targetId: string;
+  identityId?: string | null;
+  linkEmployeeId?: string | null;
+  linkUserId?: string | null;
+}): Promise<{
+  ok: boolean;
+  result?: { ok: boolean; identityId: string; linkedBy?: string };
+  identities: import('../types').UnifiedIdentity[];
+  identityRoles: import('../types').IdentityRoleLink[];
+  conflicts: import('../types').IdentityConflict[];
+}> {
+  return apiRequest('/api/admin/identities/link', {
+    method: 'POST',
+    body: payload,
+  });
+}
+
+export async function resolveIdentityConflictApi(
+  conflictId: string,
+  payload: { status: 'resolved' | 'dismissed' | 'pending_review'; resolutionNotes?: string }
+): Promise<{
+  ok: boolean;
+  conflict?: import('../types').IdentityConflict;
+  identities: import('../types').UnifiedIdentity[];
+  identityRoles: import('../types').IdentityRoleLink[];
+  conflicts: import('../types').IdentityConflict[];
+}> {
+  return apiRequest(`/api/admin/identities/conflicts/${encodeURIComponent(conflictId)}/resolve`, {
+    method: 'POST',
+    body: payload,
+  });
+}
+

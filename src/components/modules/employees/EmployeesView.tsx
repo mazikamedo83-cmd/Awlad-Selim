@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Users, Calendar, DollarSign, CheckCircle2, AlertCircle, Edit, UserX, UserCheck, Plus, Printer
+  Users, Calendar, DollarSign, CheckCircle2, AlertCircle, Edit, UserX, UserCheck, Plus, Printer, Link2
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { Employee } from '../../../types';
@@ -13,7 +13,7 @@ export interface EmployeesViewProps {
 
 export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'employees' }) => {
   const {
-    employees, attendance, advancesDeductions, payrolls, cashboxes,
+    employees, users, representatives, attendance, advancesDeductions, payrolls, cashboxes,
     settings, addEmployee, updateEmployee, recordAttendance, addAdvanceDeduction, paySalary
   } = useData();
 
@@ -33,6 +33,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
   const [empDept, setEmpDept] = useState('المبيعات والتسويق');
   const [empSalary, setEmpSalary] = useState(6000);
   const [empNationalId, setEmpNationalId] = useState('');
+  const [empUserId, setEmpUserId] = useState('');
   const [empStatus, setEmpStatus] = useState<'active' | 'suspended'>('active');
   const [empNotes, setEmpNotes] = useState('');
   const [empError, setEmpError] = useState<string | null>(null);
@@ -126,6 +127,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
     setEmpDept('المبيعات والتسويق');
     setEmpSalary(6000);
     setEmpNationalId('');
+    setEmpUserId('');
     setEmpStatus('active');
     setEmpNotes('');
     setEmpError(null);
@@ -140,6 +142,8 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
     setEmpDept(emp.department);
     setEmpSalary(emp.basicSalary);
     setEmpNationalId(emp.nationalId || '');
+    const linkedUsr = users.find((u) => u.id === emp.userId || u.employeeId === emp.id);
+    setEmpUserId(linkedUsr?.id || emp.userId || '');
     setEmpStatus(emp.status);
     setEmpNotes(emp.notes || '');
     setEmpError(null);
@@ -164,6 +168,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
           department: empDept.trim(),
           basicSalary: empSalary,
           nationalId: empNationalId.trim() || undefined,
+          userId: empUserId || undefined,
           status: empStatus,
           notes: empNotes.trim() || undefined,
         });
@@ -182,6 +187,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
           basicSalary: empSalary,
           hireDate: new Date().toISOString().split('T')[0],
           nationalId: empNationalId.trim() || undefined,
+          userId: empUserId || undefined,
           status: empStatus,
           notes: empNotes.trim() || undefined,
         });
@@ -502,11 +508,17 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
               const unsettledAdv = advancesDeductions
                 .filter((a) => a.employeeId === emp.id && a.type === 'advance' && !a.isSettled)
                 .reduce((s, a) => s + a.amount, 0);
+              const linkedUsr = users.find((u) => u.id === emp.userId || u.employeeId === emp.id);
+              const linkedRep = representatives.find(
+                (r) =>
+                  (emp.identityId && r.identityId === emp.identityId) ||
+                  (linkedUsr && r.userId === linkedUsr.id)
+              );
               return (
                 <div key={emp.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-xs space-y-3">
                   <div className="flex justify-between items-start gap-2">
                     <div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <span className="font-mono text-[10px] font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded">
                           {emp.code}
                         </span>
@@ -519,10 +531,23 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                         >
                           {emp.status === 'active' ? 'نشط' : 'موقوف'}
                         </span>
+                        {linkedUsr && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-800">
+                            مستخدم: @{linkedUsr.username}
+                          </span>
+                        )}
+                        {linkedRep && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-800">
+                            مندوب ميداني
+                          </span>
+                        )}
                       </div>
                       <h3 className="text-sm font-black text-slate-900 mt-1.5">{emp.name}</h3>
                       <p className="text-slate-500">{emp.jobTitle} - {emp.department}</p>
                       {emp.phone && <p className="font-mono text-[11px] text-slate-500 mt-0.5">{emp.phone}</p>}
+                      {emp.identityId && (
+                        <p className="font-mono text-[10px] text-slate-400 mt-0.5">هوية موحدة: {emp.identityId}</p>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-1">
@@ -934,6 +959,30 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                 <option value="suspended">موقوف</option>
               </select>
             </div>
+          </div>
+          <div>
+            <label className="block font-bold mb-1 flex items-center gap-1.5">
+              <Link2 className="w-3.5 h-3.5 text-indigo-700" />
+              <span>ربط بحساب مستخدم دخول للنظام (اختياري):</span>
+            </label>
+            <select
+              value={empUserId}
+              onChange={(e) => setEmpUserId(e.target.value)}
+              className="w-full border rounded-xl p-2.5 font-bold bg-slate-50"
+            >
+              <option value="">-- بدون ربط بحساب مستخدم --</option>
+              {users
+                .filter(
+                  (u) =>
+                    u.role !== 'customer' &&
+                    (!u.employeeId || (editingEmp && (u.employeeId === editingEmp.id || u.id === editingEmp.userId)))
+                )
+                .map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.fullName} (@{u.username}) — {u.role}
+                  </option>
+                ))}
+            </select>
           </div>
           <div>
             <label className="block font-bold mb-1">ملاحظات:</label>

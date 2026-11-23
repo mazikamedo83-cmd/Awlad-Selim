@@ -55,6 +55,12 @@ import {
   findJsonIdempotency,
   saveJsonIdempotency,
 } from '../../utils/idempotency.js';
+import {
+  attachRecordToIdentityPgTx,
+  attachRecordToIdentityJsonTx,
+  resolveIdentityContextForUserPg,
+  resolveIdentityContextForUserJson,
+} from '../identityManager.js';
 
 const CUSTOMER_PHONE_CONFLICT_MARKER = '[LINK_CONFLICT:CUSTOMER_PHONE]';
 const CUSTOMER_PHONE_CONFLICT_WARNING =
@@ -69,6 +75,9 @@ const REFRESH_TOKEN_TTL_DAYS = 30;
 export async function recordAuditLog({
   userId = null,
   userName = 'النظام',
+  actorIdentityId = null,
+  actorEmployeeId = null,
+  actingRole = null,
   action,
   module,
   recordId = null,
@@ -90,13 +99,16 @@ export async function recordAuditLog({
     if (executor) {
       try {
         await executor.query(
-          `INSERT INTO audit_logs (id, timestamp, user_id, user_name, action, module, record_id, old_values, new_values, ip_address, device_info, notes)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+          `INSERT INTO audit_logs (id, timestamp, user_id, user_name, actor_identity_id, actor_employee_id, acting_role, action, module, record_id, old_values, new_values, ip_address, device_info, notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
           [
             id,
             timestamp,
             userId,
             userName,
+            actorIdentityId || null,
+            actorEmployeeId || null,
+            actingRole || null,
             action,
             module,
             recordId,
@@ -122,6 +134,9 @@ export async function recordAuditLog({
       timestamp,
       userId: userId || 'system',
       userName,
+      actorIdentityId: actorIdentityId || undefined,
+      actorEmployeeId: actorEmployeeId || undefined,
+      actingRole: actingRole || undefined,
       action,
       module,
       recordId: recordId || undefined,
@@ -138,6 +153,9 @@ export async function recordAuditLog({
     timestamp,
     userId: userId || 'system',
     userName,
+    actorIdentityId: actorIdentityId || undefined,
+    actorEmployeeId: actorEmployeeId || undefined,
+    actingRole: actingRole || undefined,
     action,
     module,
     recordId: recordId || undefined,
@@ -385,6 +403,16 @@ export async function bootstrapAdmin(
           }
         }
 
+          await attachRecordToIdentityPgTx(client, {
+            entityType: 'user',
+            entityId: adminId,
+            roleKey: 'user',
+            fullName: cleanName,
+            phone: phone || '',
+            isPrimary: true,
+            now,
+          });
+
           const uRes = await client.query('SELECT * FROM users WHERE id = $1', [adminId]);
           return mapPgUserRow(uRes.rows[0]);
         });
@@ -432,6 +460,15 @@ export async function bootstrapAdmin(
         createdAt: now,
       };
       db.users.push(adminUser);
+      attachRecordToIdentityJsonTx(db, {
+        entityType: 'user',
+        entityId: adminId,
+        roleKey: 'user',
+        fullName: cleanName,
+        phone: phone || '',
+        isPrimary: true,
+        now,
+      });
       if (cleanCompany) db.settings.companyName = cleanCompany;
       return adminUser;
     });
@@ -497,7 +534,15 @@ async function resolveLinkedProfilesPg(clientOrPool, user) {
     }
   }
 
-  return { customerProfile, representativeProfile, linkWarning };
+  const identityCtx = await resolveIdentityContextForUserPg(clientOrPool, user);
+  return {
+    customerProfile,
+    representativeProfile,
+    linkWarning,
+    identityId: identityCtx.identityId,
+    employeeId: identityCtx.employeeId,
+    linkedRoles: identityCtx.linkedRoles,
+  };
 }
 
 function resolveLinkedProfilesJson(db, user) {
@@ -536,6 +581,7 @@ function resolveLinkedProfilesJson(db, user) {
         warehouseId: rep.warehouseId || undefined,
         currentBalance: Number(rep.currentBalance || 0),
         status: rep.status || 'active',
+        identityId: rep.identityId || undefined,
       };
     } else if (String(user.notes || '').includes(REP_PHONE_CONFLICT_MARKER)) {
       linkWarning = REP_PHONE_CONFLICT_WARNING;
@@ -544,7 +590,15 @@ function resolveLinkedProfilesJson(db, user) {
     }
   }
 
-  return { customerProfile, representativeProfile, linkWarning };
+  const identityCtx = resolveIdentityContextForUserJson(db, user);
+  return {
+    customerProfile,
+    representativeProfile,
+    linkWarning,
+    identityId: identityCtx.identityId,
+    employeeId: identityCtx.employeeId,
+    linkedRoles: identityCtx.linkedRoles,
+  };
 }
 
 async function checkDeviceAuthGuardInternal(deviceId, clientOrPool = null) {
@@ -709,12 +763,21 @@ export async function loginUser({
       deviceInfo,
     });
 
+    const enrichedUser = {
+      ...result.user,
+      identityId: result.user.identityId || result.identityId,
+      employeeId: result.user.employeeId || result.employeeId,
+    };
+
     return {
       installationId,
       accessToken,
       refreshToken,
       expiresIn: ACCESS_TOKEN_TTL_SEC,
-      user: sanitizeUserForRole(result.user),
+      user: sanitizeUserForRole(enrichedUser),
+      identityId: enrichedUser.identityId,
+      employeeId: enrichedUser.employeeId,
+      linkedRoles: result.linkedRoles || [],
       customerProfile: result.customerProfile,
       representativeProfile: result.representativeProfile,
       linkWarning: result.linkWarning,
@@ -817,12 +880,21 @@ export async function loginUser({
     deviceInfo,
   });
 
+  const enrichedFoundUser = {
+    ...found.user,
+    identityId: found.user.identityId || found.identityId,
+    employeeId: found.user.employeeId || found.employeeId,
+  };
+
   return {
     installationId,
     accessToken,
     refreshToken,
     expiresIn: ACCESS_TOKEN_TTL_SEC,
-    user: sanitizeUserForRole(found.user),
+    user: sanitizeUserForRole(enrichedFoundUser),
+    identityId: enrichedFoundUser.identityId,
+    employeeId: enrichedFoundUser.employeeId,
+    linkedRoles: found.linkedRoles || [],
     customerProfile: found.customerProfile,
     representativeProfile: found.representativeProfile,
     linkWarning: found.linkWarning,
@@ -1238,8 +1310,76 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
           }
         }
 
+        let sharedIdentityId =
+          lockedUnlinkedCustomer?.identity_id ||
+          lockedUnlinkedRep?.identity_id ||
+          null;
+
+        if (!sharedIdentityId && lockedUnlinkedCustomer) {
+          sharedIdentityId = await attachRecordToIdentityPgTx(client, {
+            entityType: 'customer',
+            entityId: lockedUnlinkedCustomer.id,
+            fullName: lockedUnlinkedCustomer.name || fullName,
+            phone: lockedUnlinkedCustomer.phone || phone,
+            address: lockedUnlinkedCustomer.address || address,
+            isPrimary: false,
+            now,
+          });
+        } else if (!sharedIdentityId && lockedUnlinkedRep) {
+          sharedIdentityId = await attachRecordToIdentityPgTx(client, {
+            entityType: 'representative',
+            entityId: lockedUnlinkedRep.id,
+            fullName: lockedUnlinkedRep.name || fullName,
+            phone: lockedUnlinkedRep.phone || phone,
+            address: lockedUnlinkedRep.address || address,
+            isPrimary: false,
+            now,
+          });
+        }
+
+        sharedIdentityId = await attachRecordToIdentityPgTx(client, {
+          entityType: 'user',
+          entityId: userId,
+          roleKey: 'user',
+          fullName,
+          phone,
+          address,
+          explicitIdentityId: sharedIdentityId,
+          isPrimary: true,
+          now,
+        });
+
+        if (customerProfile?.id) {
+          await attachRecordToIdentityPgTx(client, {
+            entityType: 'customer',
+            entityId: customerProfile.id,
+            roleKey: 'customer',
+            fullName: customerProfile.name || fullName,
+            phone: customerProfile.phone || phone,
+            address: customerProfile.address || address,
+            explicitIdentityId: sharedIdentityId,
+            now,
+          });
+          customerProfile.identityId = sharedIdentityId;
+        }
+        if (representativeProfile?.id) {
+          await attachRecordToIdentityPgTx(client, {
+            entityType: 'representative',
+            entityId: representativeProfile.id,
+            roleKey: 'representative',
+            fullName: representativeProfile.name || fullName,
+            phone: representativeProfile.phone || phone,
+            address: address || '',
+            explicitIdentityId: sharedIdentityId,
+            now,
+          });
+          representativeProfile.identityId = sharedIdentityId;
+        }
+
         const uRes = await client.query(`SELECT * FROM users WHERE id = $1 LIMIT 1`, [userId]);
         const mappedUser = mapPgUserRow(uRes.rows[0]);
+        mappedUser.identityId = mappedUser.identityId || sharedIdentityId;
+        const idCtx = await resolveIdentityContextForUserPg(client, mappedUser);
         const accessToken = signJwt(
           {
             sub: mappedUser.id,
@@ -1258,6 +1398,9 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
           refreshToken,
           expiresIn: ACCESS_TOKEN_TTL_SEC,
           user: sanitizeUserForRole(mappedUser),
+          identityId: idCtx.identityId,
+          employeeId: idCtx.employeeId,
+          linkedRoles: idCtx.linkedRoles,
           customerProfile,
           representativeProfile,
           linkWarning: null,
@@ -1540,6 +1683,47 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
     });
     writeJsonSessions(sessions);
 
+    const sharedIdentityIdJson = attachRecordToIdentityJsonTx(db, {
+      entityType: 'user',
+      entityId: newUser.id,
+      roleKey: 'user',
+      fullName,
+      phone,
+      address,
+      explicitIdentityId:
+        customerProfile?.identityId ||
+        representativeProfile?.identityId ||
+        null,
+      isPrimary: true,
+      now,
+    });
+    newUser.identityId = sharedIdentityIdJson;
+    if (customerProfile?.id) {
+      attachRecordToIdentityJsonTx(db, {
+        entityType: 'customer',
+        entityId: customerProfile.id,
+        roleKey: 'customer',
+        fullName: customerProfile.name || fullName,
+        phone: customerProfile.phone || phone,
+        address: customerProfile.address || address,
+        explicitIdentityId: sharedIdentityIdJson,
+        now,
+      });
+    }
+    if (representativeProfile?.id) {
+      attachRecordToIdentityJsonTx(db, {
+        entityType: 'representative',
+        entityId: representativeProfile.id,
+        roleKey: 'representative',
+        fullName: representativeProfile.name || fullName,
+        phone: representativeProfile.phone || phone,
+        address: address || '',
+        explicitIdentityId: sharedIdentityIdJson,
+        now,
+      });
+    }
+    const idCtxJson = resolveIdentityContextForUserJson(db, newUser);
+
     const accessToken = signJwt(
       {
         sub: newUser.id,
@@ -1558,6 +1742,9 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
       refreshToken,
       expiresIn: ACCESS_TOKEN_TTL_SEC,
       user: sanitizeUserForRole(newUser),
+      identityId: idCtxJson.identityId,
+      employeeId: idCtxJson.employeeId,
+      linkedRoles: idCtxJson.linkedRoles,
       customerProfile,
       representativeProfile,
       linkWarning: null,
@@ -1662,12 +1849,21 @@ export async function refreshUserSession({ refreshToken, deviceId = '', deviceIn
       ACCESS_TOKEN_TTL_SEC
     );
 
+    const refreshedUser = {
+      ...result.user,
+      identityId: result.user.identityId || result.identityId,
+      employeeId: result.user.employeeId || result.employeeId,
+    };
+
     return {
       installationId,
       accessToken,
       refreshToken: newRefresh,
       expiresIn: ACCESS_TOKEN_TTL_SEC,
-      user: sanitizeUserForRole(result.user),
+      user: sanitizeUserForRole(refreshedUser),
+      identityId: refreshedUser.identityId,
+      employeeId: refreshedUser.employeeId,
+      linkedRoles: result.linkedRoles || [],
       customerProfile: result.customerProfile,
       representativeProfile: result.representativeProfile,
       linkWarning: result.linkWarning,
@@ -1718,12 +1914,21 @@ export async function refreshUserSession({ refreshToken, deviceId = '', deviceIn
     ACCESS_TOKEN_TTL_SEC
   );
 
+  const refreshedJsonUser = {
+    ...sesFound.user,
+    identityId: sesFound.user.identityId || sesFound.identityId,
+    employeeId: sesFound.user.employeeId || sesFound.employeeId,
+  };
+
   return {
     installationId,
     accessToken,
     refreshToken: newRefresh,
     expiresIn: ACCESS_TOKEN_TTL_SEC,
-    user: sanitizeUserForRole(sesFound.user),
+    user: sanitizeUserForRole(refreshedJsonUser),
+    identityId: refreshedJsonUser.identityId,
+    employeeId: refreshedJsonUser.employeeId,
+    linkedRoles: sesFound.linkedRoles || [],
     customerProfile: sesFound.customerProfile,
     representativeProfile: sesFound.representativeProfile,
     linkWarning: sesFound.linkWarning,
@@ -1778,10 +1983,18 @@ export async function validateActiveSession(sessionId, userId, tokenInstallation
     if (!row || !row.is_active) return null;
     const user = mapPgUserRow(row);
     const profiles = await resolveLinkedProfilesPg(pool, user);
+    const validatedUser = {
+      ...user,
+      identityId: user.identityId || profiles.identityId,
+      employeeId: user.employeeId || profiles.employeeId,
+    };
     return {
       installationId,
-      user: sanitizeUserForRole(user),
-      rawUser: user,
+      user: sanitizeUserForRole(validatedUser),
+      rawUser: validatedUser,
+      identityId: validatedUser.identityId,
+      employeeId: validatedUser.employeeId,
+      linkedRoles: profiles.linkedRoles || [],
       deviceId: row.session_device_id || '',
       customerProfile: profiles.customerProfile,
       representativeProfile: profiles.representativeProfile,
@@ -1803,10 +2016,18 @@ export async function validateActiveSession(sessionId, userId, tokenInstallation
   const user = db.users.find((u) => u.id === userId);
   if (!user || !user.isActive) return null;
   const profiles = resolveLinkedProfilesJson(db, user);
+  const validatedJsonUser = {
+    ...user,
+    identityId: user.identityId || profiles.identityId,
+    employeeId: user.employeeId || profiles.employeeId,
+  };
   return {
     installationId,
-    user: sanitizeUserForRole(user),
-    rawUser: user,
+    user: sanitizeUserForRole(validatedJsonUser),
+    rawUser: validatedJsonUser,
+    identityId: validatedJsonUser.identityId,
+    employeeId: validatedJsonUser.employeeId,
+    linkedRoles: profiles.linkedRoles || [],
     deviceId: ses.deviceId || '',
     customerProfile: profiles.customerProfile,
     representativeProfile: profiles.representativeProfile,

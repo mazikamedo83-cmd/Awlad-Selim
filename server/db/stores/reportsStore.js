@@ -133,12 +133,13 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
 
   if (await isPgMode()) {
     const pool = getPool();
+    const parsedHintParty = parseUnifiedPartyFilter(filterHints);
     const hintDateFrom = filterHints.dateFrom ? String(filterHints.dateFrom).split('T')[0] : null;
     const hintDateTo = filterHints.dateTo ? String(filterHints.dateTo).split('T')[0] : null;
     const hintWh = filterHints.warehouseId && filterHints.warehouseId !== 'all' ? String(filterHints.warehouseId) : null;
     const hintProd = filterHints.productId && filterHints.productId !== 'all' ? String(filterHints.productId) : null;
-    const hintCustomerId = filterHints.customerId && filterHints.customerId !== 'all' ? String(filterHints.customerId) : null;
-    const hintSupplierId = filterHints.supplierId && filterHints.supplierId !== 'all' ? String(filterHints.supplierId) : null;
+    const hintCustomerId = parsedHintParty.customerId;
+    const hintSupplierId = isRep && !isRepCanPurchase ? null : parsedHintParty.supplierId;
     const hintRepId = !isRep && filterHints.representativeId && filterHints.representativeId !== 'all' ? String(filterHints.representativeId) : null;
     const hintCashboxId = filterHints.cashboxId && filterHints.cashboxId !== 'all' ? String(filterHints.cashboxId) : null;
     const hintInvoiceNumber = filterHints.invoiceNumber ? String(filterHints.invoiceNumber).trim() : '';
@@ -451,7 +452,7 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
         ? pool.query('SELECT id, code, name, warehouse_id, user_id FROM representatives WHERE user_id = $1 ORDER BY created_at ASC', [actor.id])
         : pool.query('SELECT * FROM representatives ORDER BY created_at ASC'),
       isRep ? Promise.resolve({ rows: [] }) : pool.query('SELECT * FROM employees ORDER BY created_at ASC'),
-      isRep ? Promise.resolve({ rows: [] }) : pool.query('SELECT id, full_name, username, role, job_title FROM users ORDER BY full_name ASC'),
+      isRep ? Promise.resolve({ rows: [] }) : pool.query('SELECT id, full_name, username, role, job_title, identity_id, employee_id FROM users ORDER BY full_name ASC'),
       pool.query(`SELECT * FROM invoices ${invWhereSql} ORDER BY date DESC, created_at DESC`, invParams),
       pool.query(`SELECT * FROM invoice_items ${invItemWhereSql}`, invParams),
       pool.query(`SELECT * FROM invoice_payments ${invPayWhereSql} ORDER BY created_at ASC`, invParams),
@@ -587,6 +588,9 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
         notes: r.notes || '',
         createdBy: r.created_by,
         createdByUserId: r.created_by_user_id || undefined,
+        actorIdentityId: r.actor_identity_id || undefined,
+        actorEmployeeId: r.actor_employee_id || undefined,
+        actingRole: r.acting_role || undefined,
         createdAt: isoTimestamp(r.created_at),
       }))
       .filter((r) => {
@@ -741,11 +745,11 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
       ),
       categories: catRes.rows.map((c) => ({ id: c.id, name: c.name })),
       products,
-      customers: custRes.rows.map((c) => ({ id: c.id, code: c.code, name: c.name, shopName: c.shop_name || undefined, phone: c.phone || '', assignedRepId: c.assigned_rep_id || undefined, currentBalance: Number(c.current_balance || 0) })),
-      suppliers: isRep && !isRepCanPurchase ? [] : suppRes.rows.map((s) => ({ id: s.id, code: s.code, name: s.name, companyName: s.company_name || undefined, phone: s.phone || '', currentBalance: Number(s.current_balance || 0) })),
-      representatives: repRes.rows.map((r) => ({ id: r.id, userId: r.user_id || undefined, code: r.code || '', name: r.name, phone: isRep ? '' : (r.phone || ''), warehouseId: r.warehouse_id || undefined })),
-      employees: isRep ? [] : empRes.rows.map((e) => ({ id: e.id, code: e.code, name: e.full_name, jobTitle: e.job_title || '', department: e.department || '' })),
-      users: isRep ? [] : userRes.rows.map((u) => ({ id: u.id, fullName: u.full_name, username: u.username, role: u.role })),
+      customers: custRes.rows.map((c) => ({ id: c.id, code: c.code, name: c.name, shopName: c.shop_name || undefined, phone: c.phone || '', assignedRepId: c.assigned_rep_id || undefined, identityId: c.identity_id || undefined, currentBalance: Number(c.current_balance || 0) })),
+      suppliers: isRep && !isRepCanPurchase ? [] : suppRes.rows.map((s) => ({ id: s.id, code: s.code, name: s.name, companyName: s.company_name || undefined, phone: s.phone || '', identityId: s.identity_id || undefined, currentBalance: Number(s.current_balance || 0) })),
+      representatives: repRes.rows.map((r) => ({ id: r.id, userId: r.user_id || undefined, identityId: r.identity_id || undefined, code: r.code || '', name: r.name, phone: isRep ? '' : (r.phone || ''), warehouseId: r.warehouse_id || undefined })),
+      employees: isRep ? [] : empRes.rows.map((e) => ({ id: e.id, code: e.code, name: e.full_name, jobTitle: e.job_title || '', department: e.department || '', identityId: e.identity_id || undefined, userId: e.user_id || undefined })),
+      users: isRep ? [] : userRes.rows.map((u) => ({ id: u.id, fullName: u.full_name, username: u.username, role: u.role, identityId: u.identity_id || undefined, employeeId: u.employee_id || undefined })),
       invoices,
       invoiceReturns,
       purchaseReturnRequests,
@@ -795,6 +799,9 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
           notes: f.notes || '',
           createdBy: f.created_by,
           createdByUserId: f.created_by_user_id || undefined,
+          actorIdentityId: f.actor_identity_id || undefined,
+          actorEmployeeId: f.actor_employee_id || undefined,
+          actingRole: f.acting_role || undefined,
           createdAt: isoTimestamp(f.created_at),
         })),
       stockMovements: smRes.rows
@@ -821,6 +828,10 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
           referenceNumber: sm.related_doc_number || undefined,
           notes: sm.notes || '',
           createdBy: sm.created_by,
+          createdByUserId: sm.created_by_user_id || undefined,
+          actorIdentityId: sm.actor_identity_id || undefined,
+          actorEmployeeId: sm.actor_employee_id || undefined,
+          actingRole: sm.acting_role || undefined,
           createdAt: isoTimestamp(sm.created_at),
         })),
       stockCounts,
@@ -848,6 +859,10 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
         notes: op.notes || '',
         status: op.status || 'approved',
         createdBy: op.created_by,
+        createdByUserId: op.created_by_user_id || undefined,
+        actorIdentityId: op.actor_identity_id || undefined,
+        actorEmployeeId: op.actor_employee_id || undefined,
+        actingRole: op.acting_role || undefined,
         createdAt: isoTimestamp(op.created_at),
       })),
       expenseIncomes: expIncRes.rows.map((e) => ({
@@ -1009,7 +1024,7 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
           .map((r) => ({ id: r.id, userId: r.userId || undefined, code: r.code || '', name: r.name, phone: '', warehouseId: r.warehouseId || undefined }))
       : (db.representatives || []),
     employees: isRep ? [] : (db.employees || []),
-    users: isRep ? [] : (db.users || []).map((u) => ({ id: u.id, fullName: u.fullName, username: u.username, role: u.role })),
+    users: isRep ? [] : (db.users || []).map((u) => ({ id: u.id, fullName: u.fullName, username: u.username, role: u.role, identityId: u.identityId || undefined, employeeId: u.employeeId || undefined })),
     invoices,
     invoiceReturns,
     purchaseReturnRequests,
@@ -1060,34 +1075,74 @@ function buildBranchResolvers(data) {
   return { branches, branchById, branchByWh, branchByCb, warehouseMap, cashboxMap, resolveBranchName, resolveCashboxName };
 }
 
-function resolveUserMatchKey(userFilterValue, users) {
-  if (!userFilterValue || userFilterValue === 'all') return null;
-  const val = String(userFilterValue).trim();
-  const matchedUser = (users || []).find((u) => u.id === val || u.fullName === val || u.username === val);
-  if (!matchedUser) return new Set([val.toLowerCase()]);
-  return new Set([matchedUser.id, matchedUser.fullName, matchedUser.username].filter(Boolean).map((s) => String(s).toLowerCase()));
+function parseUnifiedPartyFilter(filters = {}) {
+  const rawParty = String(filters.partyKey || filters.partyFilter || '').trim();
+  let customerId = filters.customerId && filters.customerId !== 'all' ? String(filters.customerId).trim() : null;
+  let supplierId = filters.supplierId && filters.supplierId !== 'all' ? String(filters.supplierId).trim() : null;
+  if (rawParty && rawParty !== 'all') {
+    if (rawParty.startsWith('customer:')) {
+      customerId = rawParty.slice('customer:'.length).trim() || null;
+      supplierId = null;
+    } else if (rawParty.startsWith('supplier:')) {
+      supplierId = rawParty.slice('supplier:'.length).trim() || null;
+      customerId = null;
+    }
+  }
+  const partyKey = customerId ? `customer:${customerId}` : supplierId ? `supplier:${supplierId}` : 'all';
+  return { customerId, supplierId, partyKey };
 }
 
-function resolveEmployeeMatchKey(empFilterValue, employees, reps, users) {
+function normalizeMovementTypeFilter(rawMovement) {
+  const clean = String(rawMovement || 'all').trim();
+  const allowed = new Set(['all', 'sales', 'sales_return', 'purchase', 'purchase_return', 'damaged', 'cash_in', 'cash_out']);
+  return allowed.has(clean) ? clean : 'all';
+}
+
+function resolveUserFilterSpec(userFilterValue, users) {
+  if (!userFilterValue || userFilterValue === 'all') return null;
+  const val = String(userFilterValue).trim();
+  const matchedUser = (users || []).find((u) => u.id === val || u.username === val || u.fullName === val);
+  if (!matchedUser) {
+    return {
+      userId: null,
+      legacyNames: new Set([val.toLowerCase()]),
+    };
+  }
+  return {
+    userId: matchedUser.id,
+    legacyNames: new Set([matchedUser.fullName, matchedUser.username].filter(Boolean).map((s) => String(s).trim().toLowerCase())),
+  };
+}
+
+function resolveEmployeeFilterSpec(empFilterValue, employees, users, reps) {
   if (!empFilterValue || empFilterValue === 'all') return null;
   const val = String(empFilterValue).trim();
-  const keys = new Set([val.toLowerCase()]);
-  const emp = (employees || []).find((e) => e.id === val || e.name === val);
-  if (emp) {
-    if (emp.id) keys.add(emp.id.toLowerCase());
-    if (emp.name) keys.add(emp.name.toLowerCase());
+  const matchedEmp = (employees || []).find((e) => e.id === val || e.name === val);
+  if (!matchedEmp) {
+    return {
+      employeeId: val,
+      identityId: null,
+      linkedUserIds: new Set(),
+      linkedRepIds: new Set(),
+    };
   }
-  const rep = (reps || []).find((r) => r.id === val || r.name === val);
-  if (rep) {
-    if (rep.id) keys.add(rep.id.toLowerCase());
-    if (rep.name) keys.add(rep.name.toLowerCase());
+  const linkedUserIds = new Set();
+  if (matchedEmp.userId) linkedUserIds.add(matchedEmp.userId);
+  for (const u of users || []) {
+    if (u.employeeId === matchedEmp.id) linkedUserIds.add(u.id);
+    if (matchedEmp.identityId && u.identityId === matchedEmp.identityId) linkedUserIds.add(u.id);
   }
-  const usr = (users || []).find((u) => u.id === val || u.fullName === val);
-  if (usr) {
-    if (usr.id) keys.add(usr.id.toLowerCase());
-    if (usr.fullName) keys.add(usr.fullName.toLowerCase());
+  const linkedRepIds = new Set();
+  for (const r of reps || []) {
+    if (matchedEmp.identityId && r.identityId === matchedEmp.identityId) linkedRepIds.add(r.id);
+    if (r.userId && linkedUserIds.has(r.userId)) linkedRepIds.add(r.id);
   }
-  return keys;
+  return {
+    employeeId: matchedEmp.id,
+    identityId: matchedEmp.identityId || null,
+    linkedUserIds,
+    linkedRepIds,
+  };
 }
 
 function classifyCashTransaction(tx, customerMap, supplierMap, employeeMap) {
@@ -1200,11 +1255,13 @@ const SQL_PAGINATABLE_TYPES = new Set([
 
 async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, pageSize) {
   if (!SQL_PAGINATABLE_TYPES.has(reportType)) return null;
+  const normalizedMovement = normalizeMovementTypeFilter(filters.movementType);
   if (
+    (normalizedMovement && normalizedMovement !== 'all') ||
     filters.productSearch ||
     filters.barcode ||
-    filters.employeeId ||
-    filters.userId ||
+    (filters.employeeId && filters.employeeId !== 'all') ||
+    (filters.userId && filters.userId !== 'all') ||
     filters.userName ||
     filters.recordId ||
     filters.search
@@ -1234,7 +1291,7 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
   const invType = isSales ? 'sales' : 'purchase';
   const retType = isSales ? 'sales_return' : 'purchase_return';
 
-  const [whRes, cbRes, custRes, suppRes, repRes, prodRes, unitRes] = await Promise.all([
+  const [whRes, cbRes, custRes, suppRes, repRes, prodRes, unitRes, empRes, userRes] = await Promise.all([
     pool.query('SELECT * FROM warehouses ORDER BY created_at ASC'),
     isRep
       ? pool.query('SELECT id, name, type, is_default FROM cashboxes ORDER BY created_at ASC')
@@ -1242,10 +1299,12 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
     pool.query('SELECT * FROM customers ORDER BY created_at DESC'),
     isRep && !isRepCanPurchase ? Promise.resolve({ rows: [] }) : pool.query('SELECT * FROM suppliers ORDER BY created_at DESC'),
     isRep
-      ? pool.query('SELECT id, code, name, warehouse_id, user_id FROM representatives WHERE user_id = $1 ORDER BY created_at ASC', [actor.id])
+      ? pool.query('SELECT id, code, name, warehouse_id, user_id, identity_id FROM representatives WHERE user_id = $1 ORDER BY created_at ASC', [actor.id])
       : pool.query('SELECT * FROM representatives ORDER BY created_at ASC'),
     pool.query('SELECT * FROM products ORDER BY created_at DESC'),
     pool.query('SELECT * FROM product_units'),
+    isRep ? Promise.resolve({ rows: [] }) : pool.query('SELECT id, code, full_name, job_title, identity_id, user_id FROM employees ORDER BY created_at ASC'),
+    isRep ? Promise.resolve({ rows: [] }) : pool.query('SELECT id, full_name, username, role, identity_id, employee_id FROM users ORDER BY full_name ASC'),
   ]);
 
   const unitsByProd = new Map();
@@ -1277,12 +1336,15 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
       actor
     )
   );
-  const representatives = repRes.rows.map((r) => ({ id: r.id, userId: r.user_id || undefined, code: r.code || '', name: r.name, phone: isRep ? '' : (r.phone || ''), warehouseId: r.warehouse_id || undefined }));
+  const representatives = repRes.rows.map((r) => ({ id: r.id, userId: r.user_id || undefined, identityId: r.identity_id || undefined, code: r.code || '', name: r.name, phone: isRep ? '' : (r.phone || ''), warehouseId: r.warehouse_id || undefined }));
+  const employeesList = isRep ? [] : empRes.rows.map((e) => ({ id: e.id, code: e.code, name: e.full_name, jobTitle: e.job_title || '', identityId: e.identity_id || undefined, userId: e.user_id || undefined }));
+  const usersList = isRep ? [] : userRes.rows.map((u) => ({ id: u.id, fullName: u.full_name, username: u.username, role: u.role, identityId: u.identity_id || undefined, employeeId: u.employee_id || undefined }));
 
   const metaData = { settings, warehouses, cashboxes, products, customers, suppliers, representatives };
   const resolvers = buildBranchResolvers(metaData);
   const { branchById, resolveBranchName, resolveCashboxName } = resolvers;
 
+  const parsedParty = parseUnifiedPartyFilter(filters);
   const dateFrom = filters.dateFrom ? String(filters.dateFrom).split('T')[0] : null;
   const dateTo = filters.dateTo ? String(filters.dateTo).split('T')[0] : null;
   const branchId = filters.branchId && filters.branchId !== 'all' ? String(filters.branchId) : null;
@@ -1290,8 +1352,8 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
   const warehouseId = filters.warehouseId && filters.warehouseId !== 'all' ? String(filters.warehouseId) : (branchObj?.warehouseId || null);
   const cashboxId = filters.cashboxId && filters.cashboxId !== 'all' ? String(filters.cashboxId) : (branchObj?.cashboxId || null);
   const productId = filters.productId && filters.productId !== 'all' ? String(filters.productId) : null;
-  const customerId = filters.customerId && filters.customerId !== 'all' ? String(filters.customerId) : null;
-  const supplierId = filters.supplierId && filters.supplierId !== 'all' ? String(filters.supplierId) : null;
+  const customerId = parsedParty.customerId;
+  const supplierId = isRep && !isRepCanPurchase && parsedParty.supplierId ? '__FORBIDDEN_SUPPLIER__' : parsedParty.supplierId;
   const representativeId = !isRep && filters.representativeId && filters.representativeId !== 'all' ? String(filters.representativeId) : null;
   const invoiceNumber = filters.invoiceNumber ? String(filters.invoiceNumber).trim() : '';
 
@@ -2052,6 +2114,8 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
       productId: productId || 'all',
       productSearch: '',
       barcode: '',
+      partyKey: parsedParty.partyKey,
+      movementType: 'all',
       customerId: customerId || 'all',
       supplierId: supplierId || 'all',
       employeeId: 'all',
@@ -2068,9 +2132,9 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
       products: products.map((p) => ({ id: p.id, code: p.code, barcode: p.barcode, name: p.name, category: p.category, baseUnit: p.baseUnit, size: p.size, color: p.color })),
       customers: customers.map((c) => ({ id: c.id, name: c.name, phone: c.phone })),
       suppliers: isRep && !isRepCanPurchase ? [] : suppliers.map((s) => ({ id: s.id, name: s.name, phone: s.phone })),
-      employees: [],
+      employees: employeesList,
       representatives: isRep ? representatives.filter((r) => r.userId === actor?.id || r.id === repProfile?.id) : representatives,
-      users: [],
+      users: usersList,
     },
     sections: [
       {
@@ -2137,6 +2201,10 @@ export async function getComprehensiveReport(filters = {}, actor) {
   const resolvers = buildBranchResolvers(data);
   const { branchById, branchByWh, branchByCb, cashboxMap, resolveBranchName, resolveCashboxName } = resolvers;
 
+  const parsedParty = parseUnifiedPartyFilter(filters);
+  const movementType = normalizeMovementTypeFilter(filters.movementType);
+  const isRepActorTop = actor?.role === 'representative';
+  const isRepCanPurchaseTop = isRepActorTop && Boolean(actor?.permissions?.canCreatePurchase || actor?.permissions?.canManagePurchases);
   const dateFrom = filters.dateFrom ? String(filters.dateFrom).split('T')[0] : null;
   const dateTo = filters.dateTo ? String(filters.dateTo).split('T')[0] : null;
   const branchId = filters.branchId && filters.branchId !== 'all' ? String(filters.branchId) : null;
@@ -2146,19 +2214,19 @@ export async function getComprehensiveReport(filters = {}, actor) {
   const productId = filters.productId && filters.productId !== 'all' ? String(filters.productId) : null;
   const productSearch = filters.productSearch ? String(filters.productSearch).trim().toLowerCase() : '';
   const barcode = filters.barcode ? String(filters.barcode).trim().toLowerCase() : '';
-  const customerId = filters.customerId && filters.customerId !== 'all' ? String(filters.customerId) : null;
-  const supplierId = filters.supplierId && filters.supplierId !== 'all' ? String(filters.supplierId) : null;
+  const customerId = parsedParty.customerId;
+  const supplierId = isRepActorTop && !isRepCanPurchaseTop && parsedParty.supplierId ? '__FORBIDDEN_SUPPLIER__' : parsedParty.supplierId;
   const representativeId = filters.representativeId && filters.representativeId !== 'all' ? String(filters.representativeId) : null;
   const invoiceNumber = filters.invoiceNumber ? String(filters.invoiceNumber).trim().toLowerCase() : '';
   const recordId = filters.recordId ? String(filters.recordId).trim().toLowerCase() : '';
   const search = filters.search ? String(filters.search).trim().toLowerCase() : '';
 
-  const userMatchKeys = resolveUserMatchKey(filters.userId || filters.userName, data.users);
-  const employeeMatchKeys = resolveEmployeeMatchKey(
+  const userFilterSpec = resolveUserFilterSpec(filters.userId || filters.userName, data.users);
+  const employeeFilterSpec = resolveEmployeeFilterSpec(
     filters.employeeId,
     data.employees,
-    data.representatives,
-    data.users
+    data.users,
+    data.representatives
   );
 
   const productMap = new Map((data.products || []).map((p) => [p.id, p]));
@@ -2167,6 +2235,58 @@ export async function getComprehensiveReport(filters = {}, actor) {
   const employeeMap = new Map((data.employees || []).map((e) => [e.id, e]));
   const repMap = new Map((data.representatives || []).map((r) => [r.id, r]));
   const invoiceMap = new Map((data.invoices || []).map((i) => [i.id, i]));
+  const userByIdMap = new Map((data.users || []).map((u) => [u.id, u]));
+  const userByNameMap = new Map();
+  for (const u of data.users || []) {
+    if (u.username) userByNameMap.set(String(u.username).trim().toLowerCase(), u);
+    if (u.fullName) userByNameMap.set(String(u.fullName).trim().toLowerCase(), u);
+  }
+  const employeeByIdentityId = new Map();
+  const employeeByUserId = new Map();
+  for (const e of data.employees || []) {
+    if (e.identityId && !employeeByIdentityId.has(e.identityId)) employeeByIdentityId.set(e.identityId, e);
+    if (e.userId && !employeeByUserId.has(e.userId)) employeeByUserId.set(e.userId, e);
+  }
+  for (const u of data.users || []) {
+    if (u.employeeId && employeeMap.has(u.employeeId) && !employeeByUserId.has(u.id)) {
+      employeeByUserId.set(u.id, employeeMap.get(u.employeeId));
+    }
+  }
+
+  const resolveRowActorInfo = (rawDoc, explicitEmpId = null, explicitRepId = null, explicitRepName = '') => {
+    const fallbackUser = !rawDoc?.createdByUserId && rawDoc?.createdBy
+      ? userByNameMap.get(String(rawDoc.createdBy).trim().toLowerCase()) || null
+      : null;
+    const resolvedUserId = rawDoc?.createdByUserId || fallbackUser?.id || undefined;
+    const userObj = (resolvedUserId ? userByIdMap.get(resolvedUserId) : null) || fallbackUser || null;
+    const resolvedUserName = userObj?.fullName || rawDoc?.createdBy || '-';
+
+    const repId = explicitRepId || rawDoc?.representativeId || undefined;
+    const repObj = repId ? repMap.get(repId) || null : null;
+    const empCandidate =
+      (explicitEmpId ? employeeMap.get(explicitEmpId) : null) ||
+      (rawDoc?.actorEmployeeId ? employeeMap.get(rawDoc.actorEmployeeId) : null) ||
+      (userObj?.employeeId ? employeeMap.get(userObj.employeeId) : null) ||
+      (resolvedUserId ? employeeByUserId.get(resolvedUserId) : null) ||
+      (rawDoc?.actorIdentityId ? employeeByIdentityId.get(rawDoc.actorIdentityId) : null) ||
+      (userObj?.identityId ? employeeByIdentityId.get(userObj.identityId) : null) ||
+      (repObj?.identityId ? employeeByIdentityId.get(repObj.identityId) : null) ||
+      (repObj?.userId ? employeeByUserId.get(repObj.userId) : null) ||
+      null;
+    const resolvedEmployeeId = empCandidate?.id || explicitEmpId || rawDoc?.actorEmployeeId || undefined;
+    const resolvedEmployeeName = empCandidate?.name || explicitRepName || repObj?.name || rawDoc?.representativeName || '-';
+    const resolvedActorIdentityId = rawDoc?.actorIdentityId || userObj?.identityId || empCandidate?.identityId || repObj?.identityId || undefined;
+    const resolvedActorEmployeeId = rawDoc?.actorEmployeeId || empCandidate?.id || undefined;
+
+    return {
+      userId: resolvedUserId,
+      userName: resolvedUserName,
+      employeeId: resolvedEmployeeId,
+      employeeName: resolvedEmployeeName,
+      actorEmployeeId: resolvedActorEmployeeId,
+      actorIdentityId: resolvedActorIdentityId,
+    };
+  };
 
   const branchWarehouseId = branchObj?.warehouseId || null;
   const branchCashboxId = branchObj?.cashboxId || null;
@@ -2180,6 +2300,7 @@ export async function getComprehensiveReport(filters = {}, actor) {
 
   const matchesCommonFilters = (ctx) => {
     if (!matchesDateRange(ctx.date)) return false;
+    if (movementType !== 'all' && ctx.movementCategory !== movementType) return false;
 
     if (branchId) {
       const whMatch = branchWarehouseId && ctx.warehouseId === branchWarehouseId;
@@ -2222,15 +2343,22 @@ export async function getComprehensiveReport(filters = {}, actor) {
       if (!ids.some((v) => v.includes(recordId))) return false;
     }
 
-    if (userMatchKeys) {
-      const uVal = String(ctx.userName || '').trim().toLowerCase();
-      if (!userMatchKeys.has(uVal)) return false;
+    if (userFilterSpec) {
+      if (userFilterSpec.userId && ctx.userId) {
+        if (ctx.userId !== userFilterSpec.userId) return false;
+      } else {
+        const uVal = String(ctx.userName || '').trim().toLowerCase();
+        if (!userFilterSpec.legacyNames.has(uVal)) return false;
+      }
     }
-    if (employeeMatchKeys) {
-      const eCandidates = [ctx.employeeId, ctx.employeeName, ctx.representativeId, ctx.representativeName, ctx.userName]
-        .filter(Boolean)
-        .map((v) => String(v).trim().toLowerCase());
-      if (!eCandidates.some((v) => employeeMatchKeys.has(v))) return false;
+    if (employeeFilterSpec) {
+      const empMatched =
+        ctx.employeeId === employeeFilterSpec.employeeId ||
+        ctx.actorEmployeeId === employeeFilterSpec.employeeId ||
+        (employeeFilterSpec.identityId && ctx.actorIdentityId === employeeFilterSpec.identityId) ||
+        (ctx.userId && employeeFilterSpec.linkedUserIds.has(ctx.userId)) ||
+        (ctx.representativeId && employeeFilterSpec.linkedRepIds.has(ctx.representativeId));
+      if (!empMatched) return false;
     }
 
     if (search) {
@@ -2281,7 +2409,7 @@ export async function getComprehensiveReport(filters = {}, actor) {
 
     const branchName = resolveBranchName(inv.warehouseId, inv.cashboxId);
     const cashboxName = resolveCashboxName(inv.cashboxId);
-    const empName = inv.representativeName || inv.createdBy || '-';
+    const invActorInfo = resolveRowActorInfo(inv, null, inv.representativeId, inv.representativeName || '');
     const actualDt = formatActualDateTimeAr(inv.createdAt, inv.date);
     const bizDate = formatBusinessDateSlash(inv.date);
 
@@ -2324,6 +2452,7 @@ export async function getComprehensiveReport(filters = {}, actor) {
       const itemRow = {
         rowId: `${inv.id}-IT-${idx}`,
         docType: isSales ? 'sales_invoice' : 'purchase_invoice',
+        movementCategory: isSales ? 'sales' : 'purchase',
         docId: inv.id,
         productId: it.productId,
         productCode: prod?.code || '',
@@ -2343,9 +2472,12 @@ export async function getComprehensiveReport(filters = {}, actor) {
         remainingAmount: round2(inv.remainingAmount || 0),
         paymentStatus: Number(inv.remainingAmount || 0) <= 0.01 ? 'paid' : Number(inv.paidAmount || 0) > 0 ? 'partial' : 'unpaid',
         invoiceStatus: inv.status,
-        employeeId: inv.representativeId || undefined,
-        employeeName: empName,
-        userName: inv.createdBy,
+        employeeId: invActorInfo.employeeId,
+        employeeName: invActorInfo.employeeName,
+        actorEmployeeId: invActorInfo.actorEmployeeId,
+        actorIdentityId: invActorInfo.actorIdentityId,
+        userId: invActorInfo.userId,
+        userName: invActorInfo.userName,
         businessDate: bizDate,
         rawDate: inv.date,
         actualDateTime: actualDt,
@@ -2397,6 +2529,7 @@ export async function getComprehensiveReport(filters = {}, actor) {
       const invRow = {
         rowId: `${inv.id}-INV`,
         docType: isSales ? 'sales_invoice' : 'purchase_invoice',
+        movementCategory: isSales ? 'sales' : 'purchase',
         docId: inv.id,
         operationLabel: partyWithPhone,
         quantity: invQtySum,
@@ -2408,9 +2541,12 @@ export async function getComprehensiveReport(filters = {}, actor) {
         remainingAmount: round2(inv.remainingAmount || 0),
         paymentStatus: Number(inv.remainingAmount || 0) <= 0.01 ? 'paid' : Number(inv.paidAmount || 0) > 0 ? 'partial' : 'unpaid',
         invoiceStatus: inv.status,
-        employeeId: inv.representativeId || undefined,
-        employeeName: empName,
-        userName: inv.createdBy,
+        employeeId: invActorInfo.employeeId,
+        employeeName: invActorInfo.employeeName,
+        actorEmployeeId: invActorInfo.actorEmployeeId,
+        actorIdentityId: invActorInfo.actorIdentityId,
+        userId: invActorInfo.userId,
+        userName: invActorInfo.userName,
         businessDate: bizDate,
         rawDate: inv.date,
         actualDateTime: actualDt,
@@ -2455,6 +2591,7 @@ export async function getComprehensiveReport(filters = {}, actor) {
     const cbId = ret.cashboxId || origInv?.cashboxId || '';
     const branchName = resolveBranchName(ret.warehouseId, cbId);
     const cashboxName = resolveCashboxName(cbId, ret.refundType === 'balance' ? 'رصيد الحساب' : '-');
+    const retActorInfo = resolveRowActorInfo(ret, null, origInv?.representativeId || ret.representativeId, origInv?.representativeName || ret.representativeName || '');
     const actualDt = formatActualDateTimeAr(ret.createdAt, ret.date);
     const bizDate = formatBusinessDateSlash(ret.date);
 
@@ -2480,6 +2617,7 @@ export async function getComprehensiveReport(filters = {}, actor) {
       const retItemRow = {
         rowId: `${ret.id}-RIT-${idx}`,
         docType: ret.type,
+        movementCategory: isSalesRet ? 'sales_return' : 'purchase_return',
         docId: ret.id,
         productId: it.productId,
         productName: it.productName || prod?.name || '',
@@ -2490,8 +2628,12 @@ export async function getComprehensiveReport(filters = {}, actor) {
         priceOrTotal: unitPrice,
         valueOrPaid: lineTotal,
         movementOrRemaining: `${ret.partyName || ''} (${isSalesRet ? 'مرتجع بيع' : 'مرتجع شراء'})`,
-        employeeName: ret.createdBy || '-',
-        userName: ret.createdBy || '-',
+        employeeId: retActorInfo.employeeId,
+        employeeName: retActorInfo.employeeName,
+        actorEmployeeId: retActorInfo.actorEmployeeId,
+        actorIdentityId: retActorInfo.actorIdentityId,
+        userId: retActorInfo.userId,
+        userName: retActorInfo.userName,
         businessDate: bizDate,
         rawDate: ret.date,
         actualDateTime: actualDt,
@@ -2511,6 +2653,7 @@ export async function getComprehensiveReport(filters = {}, actor) {
         profitPercent: isSalesRet ? calcProfitPctOnCost(lineProfitImpact, lineCost) : 0,
         customerId: isSalesRet ? ret.partyId : undefined,
         supplierId: !isSalesRet ? ret.partyId : undefined,
+        representativeId: origInv?.representativeId || ret.representativeId || undefined,
         partyName: ret.partyName,
         rowTone: 'warning_rose',
         scopeType: 'inventory',
@@ -2536,6 +2679,7 @@ export async function getComprehensiveReport(filters = {}, actor) {
       const retRow = {
         rowId: `${ret.id}-RET`,
         docType: ret.type,
+        movementCategory: isSalesRet ? 'sales_return' : 'purchase_return',
         docId: ret.id,
         operationLabel: ret.partyName || '-',
         quantity: retQtySum,
@@ -2543,8 +2687,12 @@ export async function getComprehensiveReport(filters = {}, actor) {
         priceOrTotal: round2(ret.grandTotal || 0),
         valueOrPaid: ret.refundType === 'cash' ? round2(ret.grandTotal || 0) : 0,
         movementOrRemaining: ret.refundType === 'balance' ? round2(ret.grandTotal || 0) : 0,
-        employeeName: ret.createdBy || '-',
-        userName: ret.createdBy || '-',
+        employeeId: retActorInfo.employeeId,
+        employeeName: retActorInfo.employeeName,
+        actorEmployeeId: retActorInfo.actorEmployeeId,
+        actorIdentityId: retActorInfo.actorIdentityId,
+        userId: retActorInfo.userId,
+        userName: retActorInfo.userName,
         businessDate: bizDate,
         rawDate: ret.date,
         actualDateTime: actualDt,
@@ -2564,6 +2712,7 @@ export async function getComprehensiveReport(filters = {}, actor) {
         profitPercent: isSalesRet ? calcProfitPctOnCost(retProfit, retCostSum) : 0,
         customerId: isSalesRet ? ret.partyId : undefined,
         supplierId: !isSalesRet ? ret.partyId : undefined,
+        representativeId: origInv?.representativeId || ret.representativeId || undefined,
         partyName: ret.partyName,
         rowTone: 'warning_rose',
         scopeType: 'inventory',
@@ -2590,10 +2739,12 @@ export async function getComprehensiveReport(filters = {}, actor) {
     const lossVal = round2(baseQty * costPerBase);
     const branchName = resolveBranchName(op.warehouseId, null);
     const docNo = op.operationNumber || op.id;
+    const opActorInfo = resolveRowActorInfo(op, null, op.representativeId, op.representativeName || '');
 
     const dmgRow = {
       rowId: `DMG-OP-${op.id}`,
       docType: 'damaged_voucher',
+      movementCategory: 'damaged',
       docId: op.id,
       productId: op.productId,
       productName: op.productName || prod?.name || '',
@@ -2604,9 +2755,12 @@ export async function getComprehensiveReport(filters = {}, actor) {
       priceOrTotal: round2(costPerBase),
       valueOrPaid: lossVal,
       movementOrRemaining: `تالف عهدة (${op.representativeName})`,
-      employeeId: op.representativeId,
-      employeeName: op.representativeName || op.createdBy,
-      userName: op.createdBy,
+      employeeId: opActorInfo.employeeId,
+      employeeName: opActorInfo.employeeName,
+      actorEmployeeId: opActorInfo.actorEmployeeId,
+      actorIdentityId: opActorInfo.actorIdentityId,
+      userId: opActorInfo.userId,
+      userName: opActorInfo.userName,
       businessDate: formatBusinessDateSlash(op.date),
       rawDate: op.date,
       actualDateTime: formatActualDateTimeAr(op.createdAt, op.date),
@@ -2639,9 +2793,12 @@ export async function getComprehensiveReport(filters = {}, actor) {
           warehouseId: op.warehouseId,
           warehouseName: op.warehouseName,
           branchName,
-          employeeId: op.representativeId,
-          employeeName: op.representativeName || op.createdBy,
-          userName: op.createdBy,
+          employeeId: opActorInfo.employeeId,
+          employeeName: opActorInfo.employeeName,
+          actorEmployeeId: opActorInfo.actorEmployeeId,
+          actorIdentityId: opActorInfo.actorIdentityId,
+          userId: opActorInfo.userId,
+          userName: opActorInfo.userName,
           notes: op.notes || 'توالف عهدة مندوب',
           items: [],
           totalQty: 0,
@@ -2665,10 +2822,12 @@ export async function getComprehensiveReport(filters = {}, actor) {
     const branchName = resolveBranchName(sm.warehouseId, null);
     const voucherKey = sm.referenceId || sm.referenceNumber || `DMG-${String(sm.date).replace(/-/g, '')}-${sm.warehouseId}-${String(sm.createdAt || '').slice(0, 16)}`;
     const docNo = sm.referenceNumber || `DMG-${String(sm.date).replace(/-/g, '')}-${sm.id.slice(-4)}`;
+    const smActorInfo = resolveRowActorInfo(sm);
 
     const dmgRow = {
       rowId: `DMG-SM-${sm.id}`,
       docType: 'damaged_voucher',
+      movementCategory: 'damaged',
       docId: voucherKey,
       productId: sm.productId,
       productName: sm.productName || prod?.name || '',
@@ -2679,8 +2838,12 @@ export async function getComprehensiveReport(filters = {}, actor) {
       priceOrTotal: round2(costPerBase),
       valueOrPaid: lossVal,
       movementOrRemaining: `تالف (${sm.warehouseName})`,
-      employeeName: sm.createdBy,
-      userName: sm.createdBy,
+      employeeId: smActorInfo.employeeId,
+      employeeName: smActorInfo.employeeName,
+      actorEmployeeId: smActorInfo.actorEmployeeId,
+      actorIdentityId: smActorInfo.actorIdentityId,
+      userId: smActorInfo.userId,
+      userName: smActorInfo.userName,
       businessDate: formatBusinessDateSlash(sm.date),
       rawDate: sm.date,
       actualDateTime: formatActualDateTimeAr(sm.createdAt, sm.date),
@@ -2711,8 +2874,12 @@ export async function getComprehensiveReport(filters = {}, actor) {
           warehouseId: sm.warehouseId,
           warehouseName: sm.warehouseName,
           branchName,
-          employeeName: sm.createdBy,
-          userName: sm.createdBy,
+          employeeId: smActorInfo.employeeId,
+          employeeName: smActorInfo.employeeName,
+          actorEmployeeId: smActorInfo.actorEmployeeId,
+          actorIdentityId: smActorInfo.actorIdentityId,
+          userId: smActorInfo.userId,
+          userName: smActorInfo.userName,
           notes: sm.notes || 'مستند توالف',
           items: [],
           totalQty: 0,
@@ -2729,6 +2896,7 @@ export async function getComprehensiveReport(filters = {}, actor) {
   const damagedInvoiceRows = Array.from(damagedVoucherBuckets.values()).map((b) => ({
     rowId: `DMG-DOC-${b.docId}`,
     docType: 'damaged_voucher',
+    movementCategory: 'damaged',
     docId: b.docId,
     operationLabel: `سند توالف (${b.warehouseName})`,
     quantity: b.totalQty,
@@ -2738,6 +2906,9 @@ export async function getComprehensiveReport(filters = {}, actor) {
     movementOrRemaining: 0,
     employeeId: b.employeeId,
     employeeName: b.employeeName,
+    actorEmployeeId: b.actorEmployeeId,
+    actorIdentityId: b.actorIdentityId,
+    userId: b.userId,
     userName: b.userName,
     businessDate: formatBusinessDateSlash(b.date),
     rawDate: b.date,
@@ -2786,12 +2957,13 @@ export async function getComprehensiveReport(filters = {}, actor) {
       ? ((data.invoiceReturns || []).find((r) => r.id === tx.relatedDocId) || data.linkedRetMetaMap?.get(tx.relatedDocId) || null)
       : null;
     const linkedWarehouseId = linkedInv?.warehouseId || linkedRet?.warehouseId || undefined;
-    const empName = linkedInv?.representativeName || tx.createdBy || '-';
+    const txActorInfo = resolveRowActorInfo(tx, empId || null, linkedInv?.representativeId, linkedInv?.representativeName || '');
     const invNo = tx.relatedDocNumber || tx.transactionNumber || '-';
 
     const row = {
       rowId: `FT-${tx.id}`,
       docType: tx.relatedDocType && tx.relatedDocId ? tx.relatedDocType : 'cash_tx',
+      movementCategory: classified.bucket === 'cash_payment' ? 'cash_in' : 'cash_out',
       docId: tx.relatedDocId || tx.id,
       txId: tx.id,
       operationLabel: partyLabel,
@@ -2800,9 +2972,12 @@ export async function getComprehensiveReport(filters = {}, actor) {
       priceOrTotal: round2(tx.amount || 0),
       valueOrPaid: round2(tx.amount || 0),
       movementOrRemaining: tx.category || tx.description || (classified.bucket === 'cash_payment' ? 'سداد نقدي' : 'سحب نقدي'),
-      employeeId: empId || linkedInv?.representativeId,
-      employeeName: empName,
-      userName: tx.createdBy,
+      employeeId: txActorInfo.employeeId,
+      employeeName: txActorInfo.employeeName,
+      actorEmployeeId: txActorInfo.actorEmployeeId,
+      actorIdentityId: txActorInfo.actorIdentityId,
+      userId: txActorInfo.userId,
+      userName: txActorInfo.userName,
       businessDate: formatBusinessDateSlash(tx.date),
       rawDate: tx.date,
       actualDateTime: formatActualDateTimeAr(tx.createdAt, tx.date),
@@ -3205,7 +3380,7 @@ export async function getComprehensiveReport(filters = {}, actor) {
   const itemLifecycle = productId
     ? buildProductLifecycleHistory(productId, data, resolvers, { dateFrom, dateTo, warehouseId, isRep: isRepActor })
     : null;
-  const rawItemPnlList = buildProductsPnlAnalysis(data, { dateFrom, dateTo, warehouseId, branchWarehouseId, productId, customerId, supplierId, userMatchKeys });
+  const rawItemPnlList = buildProductsPnlAnalysis(data, { dateFrom, dateTo, warehouseId, branchWarehouseId, productId, customerId, supplierId, userFilterSpec });
   const itemPnlList = isRepActor
     ? rawItemPnlList.map((it) => ({
         ...it,
@@ -3274,6 +3449,8 @@ export async function getComprehensiveReport(filters = {}, actor) {
       productId: productId || 'all',
       productSearch,
       barcode,
+      partyKey: parsedParty.partyKey,
+      movementType,
       customerId: customerId || 'all',
       supplierId: supplierId || 'all',
       employeeId: filters.employeeId || 'all',
@@ -3303,13 +3480,13 @@ export async function getComprehensiveReport(filters = {}, actor) {
       suppliers: (isRepActor && !(actor?.permissions?.canCreatePurchase || actor?.permissions?.canManagePurchases))
         ? []
         : (data.suppliers || []).map((s) => ({ id: s.id, name: s.name, phone: s.phone })),
-      employees: canViewPayrollRows && !isRepActor ? (data.employees || []).map((e) => ({ id: e.id, name: e.name, jobTitle: e.jobTitle })) : [],
+      employees: canViewPayrollRows && !isRepActor ? (data.employees || []).map((e) => ({ id: e.id, name: e.name, jobTitle: e.jobTitle, identityId: e.identityId, userId: e.userId })) : [],
       representatives: isRepActor
         ? (data.representatives || [])
             .filter((r) => r.userId === actor?.id || r.id === repProfile?.id)
-            .map((r) => ({ id: r.id, name: r.name, warehouseId: r.warehouseId }))
-        : (data.representatives || []).map((r) => ({ id: r.id, name: r.name, warehouseId: r.warehouseId })),
-      users: isRepActor ? [] : (data.users || []).map((u) => ({ id: u.id, fullName: u.fullName, username: u.username, role: u.role })),
+            .map((r) => ({ id: r.id, name: r.name, warehouseId: r.warehouseId, identityId: r.identityId }))
+        : (data.representatives || []).map((r) => ({ id: r.id, name: r.name, warehouseId: r.warehouseId, identityId: r.identityId })),
+      users: isRepActor ? [] : (data.users || []).map((u) => ({ id: u.id, fullName: u.fullName, username: u.username, role: u.role, identityId: u.identityId, employeeId: u.employeeId })),
     },
     sections: pagedSections,
     pagination: {
@@ -3807,7 +3984,12 @@ function buildProductLifecycleHistory(productId, data, resolvers, filterOpts = {
 }
 
 function buildProductsPnlAnalysis(data, filterOpts = {}) {
-  const { dateFrom, dateTo, warehouseId, branchWarehouseId, productId, customerId, supplierId, userMatchKeys } = filterOpts;
+  const { dateFrom, dateTo, warehouseId, branchWarehouseId, productId, customerId, supplierId, userFilterSpec } = filterOpts;
+  const matchesPnlUser = (doc) => {
+    if (!userFilterSpec) return true;
+    if (userFilterSpec.userId && doc.createdByUserId) return doc.createdByUserId === userFilterSpec.userId;
+    return userFilterSpec.legacyNames.has(String(doc.createdBy || '').trim().toLowerCase());
+  };
   const effectiveWh = warehouseId || branchWarehouseId || null;
 
   const statsMap = new Map();
@@ -3878,7 +4060,7 @@ function buildProductsPnlAnalysis(data, filterOpts = {}) {
   for (const inv of sortedInvoices) {
     if (!inPeriod(inv.date)) continue;
     if (effectiveWh && inv.warehouseId !== effectiveWh) continue;
-    if (userMatchKeys && !userMatchKeys.has(String(inv.createdBy || '').toLowerCase())) continue;
+    if (!matchesPnlUser(inv)) continue;
     if (inv.type === 'sales' && customerId && inv.customerId !== customerId) continue;
     if (inv.type === 'purchase' && supplierId && inv.supplierId !== supplierId) continue;
 
@@ -3955,7 +4137,7 @@ function buildProductsPnlAnalysis(data, filterOpts = {}) {
   for (const ret of data.invoiceReturns || []) {
     if (!inPeriod(ret.date)) continue;
     if (effectiveWh && ret.warehouseId !== effectiveWh) continue;
-    if (userMatchKeys && !userMatchKeys.has(String(ret.createdBy || '').toLowerCase())) continue;
+    if (!matchesPnlUser(ret)) continue;
     const origInv = ret.originalInvoiceId ? invoiceMap.get(ret.originalInvoiceId) : null;
     if (ret.type === 'sales_return' && customerId) {
       const retCustomerId = origInv?.customerId || ret.partyId;
@@ -4362,10 +4544,11 @@ export async function getRepDetailedReport(filters = {}, actor) {
     ? new Set((data.invoices || []).filter(belongsToSelectedRep).map((i) => i.id))
     : null;
 
+  const parsedRepParty = parseUnifiedPartyFilter(filters);
   const dateFrom = filters.dateFrom ? String(filters.dateFrom).split('T')[0] : null;
   const dateTo = filters.dateTo ? String(filters.dateTo).split('T')[0] : null;
-  const customerId = filters.customerId && filters.customerId !== 'all' ? String(filters.customerId) : null;
-  const supplierId = canPurchase && filters.supplierId && filters.supplierId !== 'all' ? String(filters.supplierId) : null;
+  const customerId = parsedRepParty.customerId;
+  const supplierId = !canPurchase && parsedRepParty.supplierId ? '__FORBIDDEN_SUPPLIER__' : parsedRepParty.supplierId;
   const productId = filters.productId && filters.productId !== 'all' ? String(filters.productId) : null;
   const invoiceNumber = filters.invoiceNumber ? String(filters.invoiceNumber).trim().toLowerCase() : '';
   const opType = filters.opType && filters.opType !== 'all' ? String(filters.opType) : 'all';

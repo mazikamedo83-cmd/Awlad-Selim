@@ -34,6 +34,10 @@ import {
   getSystemSettingsSafe,
   findProductDuplicateMatchInList,
 } from './catalogStore.js';
+import {
+  resolveActorIdentityPgTx,
+  resolveActorIdentityJsonTx,
+} from '../identityManager.js';
 
 export { isRepOwnerOfInvoice };
 
@@ -825,9 +829,10 @@ export async function createInvoiceInsidePgTx(client, type, payload, actor) {
     }
   }
 
+  const actorIdCtx = await resolveActorIdentityPgTx(client, actor);
   await client.query(
-    `INSERT INTO invoices (id, invoice_number, type, date, customer_id, customer_name, supplier_id, supplier_name, representative_id, representative_name, warehouse_id, warehouse_name, subtotal, discount_total, tax_total, grand_total, paid_amount, applied_advance_amount, remaining_amount, payment_type, payment_method, cashbox_id, status, notes, linked_rep_transfer_id, linked_rep_transfer_number, linked_customer_order_id, returned_quantity_by_item, idempotency_key, origin_device_id, sync_status, review_status, dispatch_status, sent_by, sent_by_user_id, sent_at, recipient_user_id, recipient_name, dispatch_history, version, created_by, created_by_user_id, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,'{}'::jsonb,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,1,$39,$40,$41)`,
+    `INSERT INTO invoices (id, invoice_number, type, date, customer_id, customer_name, supplier_id, supplier_name, representative_id, representative_name, warehouse_id, warehouse_name, subtotal, discount_total, tax_total, grand_total, paid_amount, applied_advance_amount, remaining_amount, payment_type, payment_method, cashbox_id, status, notes, linked_rep_transfer_id, linked_rep_transfer_number, linked_customer_order_id, returned_quantity_by_item, idempotency_key, origin_device_id, sync_status, review_status, dispatch_status, sent_by, sent_by_user_id, sent_at, recipient_user_id, recipient_name, dispatch_history, version, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,'{}'::jsonb,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,1,$39,$40,$41,$42,$43,$44)`,
     [
       invoiceId,
       invoiceNumber,
@@ -869,6 +874,9 @@ export async function createInvoiceInsidePgTx(client, type, payload, actor) {
       JSON.stringify(dispatchHistory),
       actor.fullName,
       actor.id || null,
+      actorIdCtx.actorIdentityId || null,
+      actorIdCtx.actorEmployeeId || null,
+      actorIdCtx.actingRole || actor.role || null,
       now,
     ]
   );
@@ -950,6 +958,9 @@ export async function createInvoiceInsidePgTx(client, type, payload, actor) {
     version: 1,
     createdBy: actor.fullName,
     createdByUserId: actor.id,
+    actorIdentityId: actorIdCtx.actorIdentityId || undefined,
+    actorEmployeeId: actorIdCtx.actorEmployeeId || undefined,
+    actingRole: actorIdCtx.actingRole || actor.role || undefined,
     createdAt: now,
   };
 
@@ -1070,6 +1081,7 @@ export function createInvoiceInsideJsonTx(db, type, payload, actor) {
     }
   }
 
+  const actorIdCtxJson = resolveActorIdentityJsonTx(db, actor);
   const newInvoice = {
     id: invoiceId,
     invoiceNumber,
@@ -1116,6 +1128,9 @@ export function createInvoiceInsideJsonTx(db, type, payload, actor) {
     version: 1,
     createdBy: actor.fullName,
     createdByUserId: actor.id,
+    actorIdentityId: actorIdCtxJson.actorIdentityId,
+    actorEmployeeId: actorIdCtxJson.actorEmployeeId,
+    actingRole: actorIdCtxJson.actingRole,
     createdAt: now,
   };
 
@@ -4156,13 +4171,14 @@ export async function addInvoicePaymentPgTx(client, invoiceId, paymentData, acto
   const newRem = round2(Math.max(0, Number(inv.grand_total || 0) - newPaid));
   const newPayType = newRem <= 0 ? 'cash' : 'partial';
 
+  const payActorCtx = await resolveActorIdentityPgTx(client, actor);
   await client.query(
     `UPDATE invoices SET paid_amount = $1, remaining_amount = $2, payment_type = $3, updated_at = $4 WHERE id = $5`,
     [newPaid, newRem, newPayType, now, invoiceId]
   );
   await client.query(
-    `INSERT INTO invoice_payments (id, invoice_id, invoice_number, amount, date, payment_method, cashbox_id, cashbox_name, notes, created_by, created_by_user_id, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+    `INSERT INTO invoice_payments (id, invoice_id, invoice_number, amount, date, payment_method, cashbox_id, cashbox_name, notes, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
     [
       payId,
       invoiceId,
@@ -4175,6 +4191,9 @@ export async function addInvoicePaymentPgTx(client, invoiceId, paymentData, acto
       paymentData.notes || 'سداد دفعة على الفاتورة',
       actor.fullName,
       actor.id || null,
+      payActorCtx.actorIdentityId || null,
+      payActorCtx.actorEmployeeId || null,
+      payActorCtx.actingRole || actor.role || null,
       now,
     ]
   );
@@ -4205,8 +4224,8 @@ export async function addInvoicePaymentPgTx(client, invoiceId, paymentData, acto
 
   const txId = generateServerId('FT');
   await client.query(
-    `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, notes, created_by, created_by_user_id, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+    `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, notes, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
     [
       txId,
       `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`,
@@ -4226,6 +4245,9 @@ export async function addInvoicePaymentPgTx(client, invoiceId, paymentData, acto
       paymentData.notes || '',
       actor.fullName,
       actor.id || null,
+      payActorCtx.actorIdentityId || null,
+      payActorCtx.actorEmployeeId || null,
+      payActorCtx.actingRole || actor.role || null,
       now,
     ]
   );
@@ -4293,6 +4315,7 @@ export function addInvoicePaymentJsonTx(db, invoiceId, paymentData, actor, idemp
       : db.cashboxes.find((c) => c.isDefault) || db.cashboxes[0];
   if (!cb) throw new AppError(404, 'الخزينة المحددة غير موجودة', 'CASHBOX_NOT_FOUND');
 
+  const payActorCtxJson = resolveActorIdentityJsonTx(db, actor);
   const newPayment = {
     id: payId,
     invoiceId: inv.id,
@@ -4305,6 +4328,9 @@ export function addInvoicePaymentJsonTx(db, invoiceId, paymentData, actor, idemp
     notes: paymentData.notes || 'سداد دفعة على الفاتورة',
     createdBy: actor.fullName,
     createdByUserId: actor.id,
+    actorIdentityId: payActorCtxJson.actorIdentityId,
+    actorEmployeeId: payActorCtxJson.actorEmployeeId,
+    actingRole: payActorCtxJson.actingRole,
     createdAt: now,
   };
 
@@ -4343,6 +4369,9 @@ export function addInvoicePaymentJsonTx(db, invoiceId, paymentData, actor, idemp
     notes: paymentData.notes || '',
     createdBy: actor.fullName,
     createdByUserId: actor.id,
+    actorIdentityId: payActorCtxJson.actorIdentityId,
+    actorEmployeeId: payActorCtxJson.actorEmployeeId,
+    actingRole: payActorCtxJson.actingRole,
     createdAt: now,
   });
   if (scopedIdem) {
@@ -4590,9 +4619,10 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
       const seqNum = Number((await client.query(`SELECT nextval('${seqName}') AS n`)).rows[0]?.n || 1);
       const returnNumber = `${isSalesReturn ? 'RET-SAL' : 'RET-PUR'}-${new Date().getFullYear()}-${String(seqNum).padStart(4, '0')}`;
 
+      const retActorCtx = await resolveActorIdentityPgTx(client, actor);
       await client.query(
-        `INSERT INTO invoice_returns (id, return_number, type, original_invoice_id, original_invoice_number, date, party_id, party_name, warehouse_id, warehouse_name, grand_total, refund_type, cashbox_id, reason, notes, created_by, created_by_user_id, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+        `INSERT INTO invoice_returns (id, return_number, type, original_invoice_id, original_invoice_number, date, party_id, party_name, warehouse_id, warehouse_name, grand_total, refund_type, cashbox_id, reason, notes, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
         [
           retId,
           returnNumber,
@@ -4611,6 +4641,9 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
           returnData.notes || '',
           actor.fullName,
           actor.id || null,
+          retActorCtx.actorIdentityId || null,
+          retActorCtx.actorEmployeeId || null,
+          retActorCtx.actingRole || actor.role || null,
           now,
         ]
       );
@@ -4698,8 +4731,8 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
         await client.query(`UPDATE cashboxes SET current_balance = $1 WHERE id = $2`, [nextCb, resolvedCbRow.id]);
         const txId = generateServerId('FT');
         await client.query(
-          `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, created_by, created_by_user_id, created_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+          `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
           [
             txId,
             `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`,
@@ -4718,6 +4751,9 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
             `تسوية نقدية لمرتجع رقم ${returnNumber}`,
             actor.fullName,
             actor.id || null,
+            retActorCtx.actorIdentityId || null,
+            retActorCtx.actorEmployeeId || null,
+            retActorCtx.actingRole || actor.role || null,
             now,
           ]
         );
@@ -4937,6 +4973,7 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
       }
     }
 
+    const retJsonActorCtx = resolveActorIdentityJsonTx(db, actor);
     if (refundType === 'balance') {
       if (isSalesReturn && authoritativePartyId) {
         const cust = db.customers.find((c) => c.id === authoritativePartyId);
@@ -4967,6 +5004,9 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
         description: `تسوية نقدية لمرتجع رقم ${returnNumber}`,
         createdBy: actor.fullName,
         createdByUserId: actor.id,
+        actorIdentityId: retJsonActorCtx.actorIdentityId || undefined,
+        actorEmployeeId: retJsonActorCtx.actorEmployeeId || undefined,
+        actingRole: retJsonActorCtx.actingRole || actor.role || undefined,
         createdAt: now,
       });
     }
@@ -4993,6 +5033,9 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
       notes: returnData.notes || '',
       createdBy: actor.fullName,
       createdByUserId: actor.id,
+      actorIdentityId: retJsonActorCtx.actorIdentityId || undefined,
+      actorEmployeeId: retJsonActorCtx.actorEmployeeId || undefined,
+      actingRole: retJsonActorCtx.actingRole || actor.role || undefined,
       createdAt: now,
     };
     db.invoiceReturns.unshift(newRet);

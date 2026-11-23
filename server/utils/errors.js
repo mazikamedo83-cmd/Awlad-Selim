@@ -37,6 +37,12 @@ export function sanitizeUser(user) {
     role: safe.role,
     jobTitle: safe.jobTitle ?? safe.job_title ?? '',
     department: safe.department || '',
+    identityId: safe.identityId ?? safe.identity_id ?? undefined,
+    employeeId: safe.employeeId ?? safe.employee_id ?? undefined,
+    activeRole: safe.activeRole ?? safe.active_role ?? undefined,
+    additionalRoles: Array.isArray(safe.additionalRoles ?? safe.additional_roles)
+      ? (safe.additionalRoles ?? safe.additional_roles)
+      : undefined,
     isActive: safe.isActive ?? safe.is_active ?? true,
     mustChangePassword: safe.mustChangePassword ?? safe.must_change_password ?? false,
     lastLogin: safe.lastLogin ?? safe.last_login ?? undefined,

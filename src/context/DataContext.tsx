@@ -16,6 +16,10 @@ import {
   testServerHealth,
   getDefaultConnectionProfiles,
   subscribeServerDbStatus,
+  fetchIdentitiesOverview,
+  runIdentityAuditApi,
+  linkEntityToIdentityApi,
+  resolveIdentityConflictApi,
 } from '../services/api';
 import { syncConnectionConfigFromServer } from '../services/discovery';
 import { notifyLocal, subscribeAppForeground, subscribeNetworkStatus } from '../services/native';
@@ -74,6 +78,10 @@ import {
   PurchaseReturnRequestItem,
   SalesReturnRequest,
   SalesReturnRequestItem,
+  UnifiedIdentity,
+  IdentityRoleLink,
+  IdentityConflict,
+  IdentityEntityType,
 } from '../types';
 import { useAuth } from './AuthContext';
 
@@ -300,13 +308,29 @@ export interface DataContextType extends DatabaseState {
   addAdvanceDeduction: (item: Omit<EmployeeAdvanceDeduction, 'id' | 'createdAt' | 'isSettled'>) => Promise<{ success: boolean; error?: string }>;
   paySalary: (payroll: Omit<SalaryPayroll, 'id' | 'payrollNumber'>) => Promise<{ success: boolean; error?: string }>;
 
-  // Users & Settings
+  // Users, Unified Identities & Settings
   auditLogs: AuditLogItem[];
+  identities: UnifiedIdentity[];
+  identityRoles: IdentityRoleLink[];
+  identityConflicts: IdentityConflict[];
+  refreshIdentitiesOverview: () => Promise<{ success: boolean; error?: string }>;
+  runIdentityAudit: (createBackup?: boolean) => Promise<{ success: boolean; result?: any; error?: string }>;
+  linkEntityToIdentity: (payload: {
+    targetType: IdentityEntityType;
+    targetId: string;
+    identityId?: string | null;
+    linkEmployeeId?: string | null;
+    linkUserId?: string | null;
+  }) => Promise<{ success: boolean; identityId?: string; error?: string }>;
+  resolveIdentityConflict: (
+    conflictId: string,
+    payload: { status: 'resolved' | 'dismissed' | 'pending_review'; resolutionNotes?: string }
+  ) => Promise<{ success: boolean; error?: string }>;
   permissionPresets: RoleDefaultPermissionPresets | null;
   loadPermissionPresets: () => Promise<RoleDefaultPermissionPresets | null>;
   updatePermissionPresets: (presets: Partial<RoleDefaultPermissionPresets>) => Promise<{ success: boolean; presets?: RoleDefaultPermissionPresets; error?: string }>;
-  addUser: (userData: Omit<User, 'id' | 'createdAt'> & { password?: string; linkedCustomerId?: string; autoCreateCustomerProfile?: boolean; autoCreateRepProfile?: boolean; applyRolePreset?: boolean }) => Promise<{ success: boolean; user?: User; linkedCustomerId?: string; linkedRepresentativeId?: string; error?: string }>;
-  updateUser: (id: string, updates: Partial<User> & { newPassword?: string; linkedCustomerId?: string; autoCreateCustomerProfile?: boolean; autoCreateRepProfile?: boolean; applyRolePreset?: boolean }) => Promise<{ success: boolean; user?: User; linkedCustomerId?: string; linkedRepresentativeId?: string; error?: string }>;
+  addUser: (userData: Omit<User, 'id' | 'createdAt'> & { password?: string; linkedCustomerId?: string; linkedRepId?: string; linkedEmployeeId?: string; autoCreateCustomerProfile?: boolean; autoCreateRepProfile?: boolean; applyRolePreset?: boolean }) => Promise<{ success: boolean; user?: User; linkedCustomerId?: string; linkedRepresentativeId?: string; error?: string }>;
+  updateUser: (id: string, updates: Partial<User> & { newPassword?: string; linkedCustomerId?: string; linkedRepId?: string; linkedEmployeeId?: string; autoCreateCustomerProfile?: boolean; autoCreateRepProfile?: boolean; applyRolePreset?: boolean }) => Promise<{ success: boolean; user?: User; linkedCustomerId?: string; linkedRepresentativeId?: string; error?: string }>;
   deleteUser: (id: string) => Promise<{ success: boolean; error?: string }>;
   updateSettings: (newSettings: Partial<SystemSettings>) => Promise<void>;
 
@@ -1431,6 +1455,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           purchaseReceivers: pullData.purchaseReceivers || [],
           purchaseReturnRequests: pullData.purchaseReturnRequests || [],
           salesReturnRequests: pullData.salesReturnRequests || [],
+          identities: pullData.identities || [],
+          identityRoles: pullData.identityRoles || [],
+          identityConflicts: pullData.identityConflicts || [],
           serverSettings: hydratedServerSettings,
         };
       }
@@ -4056,11 +4083,77 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const applyIdentityOverviewToState = (overview: {
+    identities?: UnifiedIdentity[];
+    identityRoles?: IdentityRoleLink[];
+    conflicts?: IdentityConflict[];
+  }) => {
+    setData((prev) => ({
+      ...prev,
+      identities: overview.identities || prev.identities || [],
+      identityRoles: overview.identityRoles || prev.identityRoles || [],
+      identityConflicts: overview.conflicts || prev.identityConflicts || [],
+    }));
+  };
+
+  const refreshIdentitiesOverview = async () => {
+    try {
+      const res = await fetchIdentitiesOverview();
+      applyIdentityOverviewToState(res);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تحميل سجل الهويات الموحدة' };
+    }
+  };
+
+  const runIdentityAudit = async (createBackup = true) => {
+    try {
+      const res = await runIdentityAuditApi(createBackup);
+      applyIdentityOverviewToState(res);
+      await loadRoleScopedData();
+      return { success: true, result: res.result };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تنفيذ تدقيق الهويات الموحدة' };
+    }
+  };
+
+  const linkEntityToIdentity = async (payload: {
+    targetType: IdentityEntityType;
+    targetId: string;
+    identityId?: string | null;
+    linkEmployeeId?: string | null;
+    linkUserId?: string | null;
+  }) => {
+    try {
+      const res = await linkEntityToIdentityApi(payload);
+      applyIdentityOverviewToState(res);
+      await loadRoleScopedData();
+      return { success: true, identityId: res.result?.identityId };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر ربط السجل بالهوية الموحدة' };
+    }
+  };
+
+  const resolveIdentityConflict = async (
+    conflictId: string,
+    payload: { status: 'resolved' | 'dismissed' | 'pending_review'; resolutionNotes?: string }
+  ) => {
+    try {
+      const res = await resolveIdentityConflictApi(conflictId, payload);
+      applyIdentityOverviewToState(res);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تحديث حالة التعارض' };
+    }
+  };
+
   // Users & Settings
   const addUser = async (
     userData: Omit<User, 'id' | 'createdAt'> & {
       password?: string;
       linkedCustomerId?: string;
+      linkedRepId?: string;
+      linkedEmployeeId?: string;
       autoCreateCustomerProfile?: boolean;
       autoCreateRepProfile?: boolean;
       applyRolePreset?: boolean;
@@ -4091,6 +4184,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     updates: Partial<User> & {
       newPassword?: string;
       linkedCustomerId?: string;
+      linkedRepId?: string;
+      linkedEmployeeId?: string;
       autoCreateCustomerProfile?: boolean;
       autoCreateRepProfile?: boolean;
       applyRolePreset?: boolean;
@@ -4669,6 +4764,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         recordAttendance,
         addAdvanceDeduction,
         paySalary,
+        identities: data.identities || [],
+        identityRoles: data.identityRoles || [],
+        identityConflicts: data.identityConflicts || [],
+        refreshIdentitiesOverview,
+        runIdentityAudit,
+        linkEntityToIdentity,
+        resolveIdentityConflict,
         permissionPresets,
         loadPermissionPresets,
         updatePermissionPresets,

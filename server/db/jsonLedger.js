@@ -98,6 +98,9 @@ export function createEmptyDatabaseState() {
     syncConflicts: [],
     syncOperationLogs: [],
     repCustodyOperations: [],
+    identities: [],
+    identityRoles: [],
+    identityConflicts: [],
     settings: {
       companyName: 'مؤسسة أولاد سليم للتجارة والتوزيع',
       companySubtitle: 'نظام المحاسبة وإدارة الأعمال المتكامل',
@@ -194,6 +197,9 @@ export function normalizeDbState(raw) {
     'syncConflicts',
     'syncOperationLogs',
     'repCustodyOperations',
+    'identities',
+    'identityRoles',
+    'identityConflicts',
   ];
   for (const key of arrayKeys) {
     if (!Array.isArray(db[key])) db[key] = [];

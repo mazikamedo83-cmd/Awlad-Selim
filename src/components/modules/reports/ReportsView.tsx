@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import {
   Search,
   RotateCcw,
@@ -17,6 +18,7 @@ import {
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { fetchComprehensiveReport, fetchReportSourceDocument } from '../../../services/api';
+import { SearchableFilterSelect, type SearchableFilterOption } from '../../common/SearchableFilterSelect';
 import { exportToExcel } from '../../common/ExcelExporter';
 import { exportTableToPdf } from '../../common/PdfExporter';
 import { PrintDocumentModal, type PrintData } from '../../common/PrintDocument';
@@ -27,6 +29,7 @@ import type {
   ComprehensiveReportResponse,
   ComprehensiveReportRow,
   ComprehensiveReportTypeKey,
+  ReportMovementTypeKey,
   ReportSourceDocumentResponse,
 } from '../../../types';
 
@@ -170,8 +173,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
   const [productId, setProductId] = useState(initialProductId || 'all');
   const [productSearch, setProductSearch] = useState('');
   const [barcode, setBarcode] = useState('');
-  const [customerId, setCustomerId] = useState('all');
-  const [supplierId, setSupplierId] = useState('all');
+  const [partyKey, setPartyKey] = useState('all');
+  const [movementType, setMovementType] = useState<ReportMovementTypeKey>('all');
   const [employeeId, setEmployeeId] = useState('all');
   const [userId, setUserId] = useState('all');
   const [representativeId, setRepresentativeId] = useState('all');
@@ -180,6 +183,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
   const [search, setSearch] = useState('');
   const [showMoreFilters, setShowMoreFilters] = useState(true);
   const [inlineTableSearch, setInlineTableSearch] = useState('');
+
+  const [debouncedTextFilters, setDebouncedTextFilters] = useState({
+    search: '',
+    productSearch: '',
+    barcode: '',
+    invoiceNumber: '',
+    recordId: '',
+  });
+  const textDebounceTimerRef = useRef<number | null>(null);
+  const requestSeqRef = useRef(0);
 
   const [sortCol, setSortCol] = useState<SortColumnKey | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -190,6 +203,15 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
 
   const [isReportDropdownOpen, setIsReportDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const reportDropdownBtnRef = useRef<HTMLButtonElement | null>(null);
+  const reportDropdownPanelRef = useRef<HTMLDivElement | null>(null);
+  const [reportDropdownPos, setReportDropdownPos] = useState<{
+    top?: number;
+    bottom?: number;
+    left: number;
+    width: number;
+    maxHeight: number;
+  }>({ bottom: 60, left: 16, width: 288, maxHeight: 380 });
 
   const [sourceModalOpen, setSourceModalOpen] = useState(false);
   const [sourceLoading, setSourceLoading] = useState(false);
@@ -209,22 +231,116 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
     }
   }, [initialTab, initialProductId]);
 
-  useEffect(() => {
-    const onDocClick = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setIsReportDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
+  const updateReportDropdownPosition = useCallback(() => {
+    const btn = reportDropdownBtnRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const margin = 8;
+    const width = Math.min(Math.max(rect.width, 288), vw - margin * 2);
+    let left = rect.right - width;
+    if (left + width > vw - margin) left = vw - width - margin;
+    if (left < margin) left = margin;
+
+    const spaceAbove = rect.top - margin;
+    const spaceBelow = vh - rect.bottom - margin;
+    const openUpward = spaceAbove >= 220 || spaceAbove >= spaceBelow;
+    const available = openUpward ? spaceAbove : spaceBelow;
+    const maxHeight = Math.max(180, Math.min(420, available - 8));
+
+    if (openUpward) {
+      setReportDropdownPos({
+        bottom: vh - rect.top + 6,
+        left,
+        width,
+        maxHeight,
+      });
+    } else {
+      setReportDropdownPos({
+        top: rect.bottom + 6,
+        left,
+        width,
+        maxHeight,
+      });
+    }
   }, []);
 
+  useEffect(() => {
+    if (!isReportDropdownOpen) return;
+    updateReportDropdownPosition();
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (
+        dropdownRef.current?.contains(target) ||
+        reportDropdownPanelRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setIsReportDropdownOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsReportDropdownOpen(false);
+        reportDropdownBtnRef.current?.focus();
+      }
+    };
+    const onReposition = () => updateReportDropdownPosition();
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    window.addEventListener('resize', onReposition);
+    window.addEventListener('scroll', onReposition, true);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('resize', onReposition);
+      window.removeEventListener('scroll', onReposition, true);
+    };
+  }, [isReportDropdownOpen, updateReportDropdownPosition]);
+
+  useEffect(() => {
+    if (textDebounceTimerRef.current !== null) {
+      window.clearTimeout(textDebounceTimerRef.current);
+    }
+    textDebounceTimerRef.current = window.setTimeout(() => {
+      textDebounceTimerRef.current = null;
+      setDebouncedTextFilters((prev) => {
+        if (
+          prev.search === search &&
+          prev.productSearch === productSearch &&
+          prev.barcode === barcode &&
+          prev.invoiceNumber === invoiceNumber &&
+          prev.recordId === recordId
+        ) {
+          return prev;
+        }
+        setPage(1);
+        return { search, productSearch, barcode, invoiceNumber, recordId };
+      });
+    }, 320);
+    return () => {
+      if (textDebounceTimerRef.current !== null) {
+        window.clearTimeout(textDebounceTimerRef.current);
+        textDebounceTimerRef.current = null;
+      }
+    };
+  }, [search, productSearch, barcode, invoiceNumber, recordId]);
+
   const loadReport = useCallback(
-    async (overrideType?: ComprehensiveReportTypeKey) => {
+    async (
+      overrideType?: ComprehensiveReportTypeKey,
+      overrideText?: { search: string; productSearch: string; barcode: string; invoiceNumber: string; recordId: string },
+      overridePage?: number
+    ) => {
+      const seq = ++requestSeqRef.current;
       setIsLoading(true);
       setErrorMsg(null);
       try {
         const activeType = overrideType ?? reportType;
+        const activeText = overrideText ?? debouncedTextFilters;
+        const activePage = overridePage ?? page;
+        const selectedCustomerId = partyKey.startsWith('customer:') ? partyKey.slice('customer:'.length) : undefined;
+        const selectedSupplierId = partyKey.startsWith('supplier:') ? partyKey.slice('supplier:'.length) : undefined;
         const data = await fetchComprehensiveReport({
           reportType: activeType,
           dateFrom: dateFrom || undefined,
@@ -233,23 +349,29 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
           warehouseId,
           cashboxId,
           productId,
-          productSearch: productSearch.trim() || undefined,
-          barcode: barcode.trim() || undefined,
-          customerId,
-          supplierId,
+          productSearch: activeText.productSearch.trim() || undefined,
+          barcode: activeText.barcode.trim() || undefined,
+          partyKey: partyKey !== 'all' ? partyKey : undefined,
+          customerId: selectedCustomerId,
+          supplierId: selectedSupplierId,
+          movementType: movementType !== 'all' ? movementType : undefined,
           employeeId,
           userId,
           representativeId,
-          invoiceNumber: invoiceNumber.trim() || undefined,
-          recordId: recordId.trim() || undefined,
-          search: search.trim() || undefined,
-          ...(pageSize > 0 ? { page, pageSize } : {}),
+          invoiceNumber: activeText.invoiceNumber.trim() || undefined,
+          recordId: activeText.recordId.trim() || undefined,
+          search: activeText.search.trim() || undefined,
+          ...(pageSize > 0 ? { page: activePage, pageSize } : {}),
         });
+        if (seq !== requestSeqRef.current) return;
         setReportData(data);
       } catch (err: any) {
+        if (seq !== requestSeqRef.current) return;
         setErrorMsg(err?.message || 'تعذر تحميل بيانات التقرير');
       } finally {
-        setIsLoading(false);
+        if (seq === requestSeqRef.current) {
+          setIsLoading(false);
+        }
       }
     },
     [
@@ -261,16 +383,12 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
       warehouseId,
       cashboxId,
       productId,
-      productSearch,
-      barcode,
-      customerId,
-      supplierId,
+      partyKey,
+      movementType,
       employeeId,
       userId,
       representativeId,
-      invoiceNumber,
-      recordId,
-      search,
+      debouncedTextFilters,
       page,
       pageSize,
     ]
@@ -280,6 +398,27 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
   useEffect(() => {
     loadReport();
   }, [loadReport]);
+
+  const handleApplySearchSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (textDebounceTimerRef.current !== null) {
+      window.clearTimeout(textDebounceTimerRef.current);
+      textDebounceTimerRef.current = null;
+    }
+    const nextText = { search, productSearch, barcode, invoiceNumber, recordId };
+    const textChanged =
+      debouncedTextFilters.search !== nextText.search ||
+      debouncedTextFilters.productSearch !== nextText.productSearch ||
+      debouncedTextFilters.barcode !== nextText.barcode ||
+      debouncedTextFilters.invoiceNumber !== nextText.invoiceNumber ||
+      debouncedTextFilters.recordId !== nextText.recordId;
+    if (textChanged || page !== 1) {
+      setPage(1);
+      setDebouncedTextFilters(nextText);
+    } else {
+      loadReport(undefined, nextText, 1);
+    }
+  };
 
   const applyPeriodPreset = (preset: typeof periodPreset) => {
     setPage(1);
@@ -317,6 +456,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
   };
 
   const handleResetFilters = () => {
+    if (textDebounceTimerRef.current !== null) {
+      window.clearTimeout(textDebounceTimerRef.current);
+      textDebounceTimerRef.current = null;
+    }
     setPage(1);
     setReportType('all');
     const t = todayYmd();
@@ -330,14 +473,21 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
     setProductId('all');
     setProductSearch('');
     setBarcode('');
-    setCustomerId('all');
-    setSupplierId('all');
+    setPartyKey('all');
+    setMovementType('all');
     setEmployeeId('all');
     setUserId('all');
     setRepresentativeId('all');
     setInvoiceNumber('');
     setRecordId('');
     setSearch('');
+    setDebouncedTextFilters({
+      search: '',
+      productSearch: '',
+      barcode: '',
+      invoiceNumber: '',
+      recordId: '',
+    });
     setInlineTableSearch('');
   };
 
@@ -376,12 +526,19 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
     const isCashSupplier = reportType === 'cash_payment_supplier' || reportType === 'cash_withdrawal_supplier';
     const isCashEmployee = reportType === 'cash_payment_employee';
 
+    const showCustomer = reportType === 'all' || isSalesOnly || isCashCustomer || reportType === 'cash_payment' || reportType === 'cash_withdrawal';
+    const showSupplier = !isRepRole
+      ? (reportType === 'all' || isPurchaseOnly || isCashSupplier || reportType === 'cash_payment' || reportType === 'cash_withdrawal')
+      : ((hasPermission('canCreatePurchase') || hasPermission('canManagePurchases')) && (reportType === 'all' || isPurchaseOnly));
+
     return {
       showWarehouse: !isCashOnly,
       showCashbox: !isDamaged && !isRepRole,
       showProductFilters: !isCashOnly,
-      showCustomer: reportType === 'all' || isSalesOnly || isCashCustomer || reportType === 'cash_payment' || reportType === 'cash_withdrawal',
-      showSupplier: !isRepRole ? (reportType === 'all' || isPurchaseOnly || isCashSupplier || reportType === 'cash_payment' || reportType === 'cash_withdrawal') : ((hasPermission('canCreatePurchase') || hasPermission('canManagePurchases')) && (reportType === 'all' || isPurchaseOnly)),
+      showCustomer,
+      showSupplier,
+      showParty: showCustomer || showSupplier,
+      showMovementType: true,
       showRepresentative: !isRepRole && (reportType === 'all' || isSalesOnly || isDamaged || (!isCashSupplier && !isCashEmployee)),
       showEmployee: !isRepRole,
       showUser: !isRepRole,
@@ -389,6 +546,39 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
       showRecordId: true,
     };
   }, [reportType, isRepRole, hasPermission]);
+
+  const activeDetailedFiltersCount = useMemo(() => {
+    let count = 0;
+    if (filterVisibility.showParty && partyKey !== 'all') count++;
+    if (movementType !== 'all') count++;
+    if (filterVisibility.showRepresentative && representativeId !== 'all') count++;
+    if (filterVisibility.showEmployee && employeeId !== 'all') count++;
+    if (filterVisibility.showCashbox && cashboxId !== 'all') count++;
+    if (filterVisibility.showUser && userId !== 'all') count++;
+    if (filterVisibility.showWarehouse && warehouseId !== 'all') count++;
+    if (filterVisibility.showProductFilters && productId !== 'all') count++;
+    if (filterVisibility.showProductFilters && productSearch.trim()) count++;
+    if (filterVisibility.showProductFilters && barcode.trim()) count++;
+    if (filterVisibility.showInvoiceNumber && invoiceNumber.trim()) count++;
+    if (filterVisibility.showRecordId && recordId.trim()) count++;
+    return count;
+  }, [
+    filterVisibility,
+    partyKey,
+    movementType,
+    representativeId,
+    employeeId,
+    cashboxId,
+    userId,
+    warehouseId,
+    productId,
+    productSearch,
+    barcode,
+    invoiceNumber,
+    recordId,
+  ]);
+
+  const mobileDetailedItemClass = showMoreFilters ? '' : 'hidden md:block';
 
   // Apply optional inline search + sorting within each section
   const processedSections = useMemo(() => {
@@ -694,40 +884,174 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
   const filterOpts = reportData?.filterOptions;
   const summary = reportData?.summary;
 
+  const branchOptions = useMemo<SearchableFilterOption[]>(
+    () =>
+      (filterOpts?.branches || []).map((b) => ({
+        value: b.id,
+        label: b.name,
+        subtitle: b.code,
+        searchText: `${b.id} ${b.code || ''}`,
+      })),
+    [filterOpts?.branches]
+  );
+
+  const warehouseOptions = useMemo<SearchableFilterOption[]>(
+    () =>
+      (filterOpts?.warehouses || []).map((w) => ({
+        value: w.id,
+        label: w.name,
+        subtitle: w.code,
+        searchText: `${w.id} ${w.code || ''}`,
+      })),
+    [filterOpts?.warehouses]
+  );
+
+  const cashboxOptions = useMemo<SearchableFilterOption[]>(
+    () =>
+      (filterOpts?.cashboxes || []).map((cb) => ({
+        value: cb.id,
+        label: cb.name,
+        badge: cb.type === 'bank' ? 'بنك' : 'خزنة',
+        searchText: cb.id,
+      })),
+    [filterOpts?.cashboxes]
+  );
+
+  // Strict separation: Employee options contain HR employees only
+  const employeeOptions = useMemo<SearchableFilterOption[]>(
+    () =>
+      (filterOpts?.employees || []).map((emp) => ({
+        value: emp.id,
+        label: emp.name,
+        subtitle: emp.jobTitle || 'موظف',
+        badge: emp.userId ? 'مرتبط بمستخدم' : 'موظف',
+        searchText: `${emp.id} ${emp.jobTitle || ''} ${emp.identityId || ''}`,
+      })),
+    [filterOpts?.employees]
+  );
+
+  // Strict separation: User options contain system user accounts only
+  const userOptions = useMemo<SearchableFilterOption[]>(
+    () =>
+      (filterOpts?.users || []).map((u) => ({
+        value: u.id,
+        label: u.fullName,
+        subtitle: `@${u.username}`,
+        badge: u.role,
+        searchText: `${u.id} ${u.username} ${u.role} ${u.identityId || ''}`,
+      })),
+    [filterOpts?.users]
+  );
+
+  const representativeOptions = useMemo<SearchableFilterOption[]>(
+    () =>
+      (filterOpts?.representatives || []).map((r) => ({
+        value: r.id,
+        label: r.name,
+        badge: r.identityId ? 'مندوب' : undefined,
+        searchText: `${r.id} ${r.identityId || ''}`,
+      })),
+    [filterOpts?.representatives]
+  );
+
+  // Unified grouped Customer / Supplier options ("العميل / المورد")
+  const partyOptions = useMemo<SearchableFilterOption[]>(() => {
+    const list: SearchableFilterOption[] = [];
+    if (filterVisibility.showCustomer) {
+      for (const c of filterOpts?.customers || []) {
+        list.push({
+          value: `customer:${c.id}`,
+          label: c.name,
+          subtitle: c.phone || undefined,
+          badge: 'عميل',
+          groupLabel: 'العملاء',
+          searchText: `${c.id} ${c.phone || ''} عميل`,
+        });
+      }
+    }
+    if (filterVisibility.showSupplier) {
+      for (const s of filterOpts?.suppliers || []) {
+        list.push({
+          value: `supplier:${s.id}`,
+          label: s.name,
+          subtitle: s.phone || undefined,
+          badge: 'مورد',
+          groupLabel: 'الموردون',
+          searchText: `${s.id} ${s.phone || ''} مورد`,
+        });
+      }
+    }
+    return list;
+  }, [filterOpts?.customers, filterOpts?.suppliers, filterVisibility.showCustomer, filterVisibility.showSupplier]);
+
+  const productOptions = useMemo<SearchableFilterOption[]>(
+    () =>
+      (filterOpts?.products || []).map((p) => ({
+        value: p.id,
+        label: p.name,
+        subtitle: [p.code ? `كود: ${p.code}` : '', p.barcode ? `باركود: ${p.barcode}` : '', p.category]
+          .filter(Boolean)
+          .join(' • '),
+        badge: p.code || undefined,
+        searchText: `${p.id} ${p.code || ''} ${p.barcode || ''} ${p.category || ''} ${p.size || ''} ${p.color || ''}`,
+      })),
+    [filterOpts?.products]
+  );
+
+  const movementTypeOptions = useMemo<SearchableFilterOption[]>(() => {
+    const canViewPurchases = !isRepRole || hasPermission('canCreatePurchase') || hasPermission('canManagePurchases');
+    const items: SearchableFilterOption[] = [
+      { value: 'sales', label: 'مبيعات', badge: 'بيع' },
+      { value: 'sales_return', label: 'مرتجع بيع', badge: 'مرتجع' },
+    ];
+    if (canViewPurchases) {
+      items.push(
+        { value: 'purchase', label: 'مشتريات', badge: 'شراء' },
+        { value: 'purchase_return', label: 'مرتجع شراء', badge: 'مرتجع' }
+      );
+    }
+    items.push(
+      { value: 'damaged', label: 'تالف وهالك', badge: 'تالف' },
+      { value: 'cash_in', label: 'مقبوضات وسداد عملاء', badge: 'وارد' },
+      { value: 'cash_out', label: 'مدفوعات ومصروفات وسحب', badge: 'صادر' }
+    );
+    return items;
+  }, [isRepRole, hasPermission]);
+
   return (
-    <div className="flex flex-col gap-2.5 text-slate-900 select-none sm:select-text" dir="rtl">
-      {/* Top Unified Header + Mode Toggle + Quick Period Presets */}
-      <div className="bg-white border border-slate-300 rounded-xl p-2.5 shadow-2xs flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-1.5">
+    <div className="flex flex-col text-slate-900 select-none sm:select-text" dir="rtl">
+      {/* Slim Top Mode + Quick Period Presets + Export Strip (Brand-Store-compact, no floating white cards) */}
+      <div className="bg-[#e8ebef] border border-slate-300 border-b-slate-300/80 rounded-t-md px-2 py-1 flex flex-wrap items-center justify-between gap-1.5">
+        <div className="flex flex-wrap items-center gap-1">
           <button
             type="button"
             onClick={() => setViewMode('unified_grid')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors cursor-pointer ${
+            className={`flex items-center gap-1 h-6 px-2 rounded-sm text-[11px] font-extrabold transition-colors cursor-pointer ${
               viewMode === 'unified_grid'
-                ? 'bg-[#22b14c] text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                ? 'bg-[#22b14c] text-white'
+                : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-100'
             }`}
           >
-            <Table2 className="w-4 h-4" />
+            <Table2 className="w-3.5 h-3.5" />
             <span>نظام التقارير التفصيلية الموحد</span>
           </button>
 
           <button
             type="button"
             onClick={() => setViewMode('item_lifecycle')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors cursor-pointer ${
+            className={`flex items-center gap-1 h-6 px-2 rounded-sm text-[11px] font-extrabold transition-colors cursor-pointer ${
               viewMode === 'item_lifecycle'
-                ? 'bg-slate-800 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                ? 'bg-slate-800 text-white'
+                : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-100'
             }`}
           >
-            <History className="w-4 h-4" />
+            <History className="w-3.5 h-3.5" />
             <span>تاريخ الصنف والأرباح والخسائر</span>
           </button>
 
-          <div className="h-5 w-px bg-slate-300 mx-1 hidden sm:block" />
+          <div className="h-4 w-px bg-slate-300 mx-0.5 hidden sm:block" />
 
-          {/* Reference Quick Period Presets */}
+          {/* Quick Period Presets */}
           <div className="flex flex-wrap items-center gap-1 text-[11px]">
             {[
               { id: 'today', label: 'تقرير اليوم' },
@@ -741,10 +1065,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                 key={p.id}
                 type="button"
                 onClick={() => applyPeriodPreset(p.id as any)}
-                className={`px-2.5 py-1 rounded-md font-bold border transition-colors cursor-pointer ${
+                className={`h-6 px-2 rounded-sm font-bold border transition-colors cursor-pointer ${
                   periodPreset === p.id
                     ? 'bg-emerald-700 text-white border-emerald-700'
-                    : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
                 }`}
               >
                 {p.label}
@@ -753,13 +1077,27 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
           </div>
         </div>
 
-        {/* Print & Export Actions */}
-        <div className="flex flex-wrap items-center gap-1.5">
+        {/* Print, Export & Mobile-Only Filter Toggle */}
+        <div className="flex flex-wrap items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setShowMoreFilters((p) => !p)}
+            aria-expanded={showMoreFilters}
+            className={`md:hidden flex items-center gap-1 h-6 px-2 rounded-sm border text-[11px] font-bold cursor-pointer ${
+              showMoreFilters
+                ? 'bg-blue-900 text-white border-blue-900'
+                : 'bg-white text-slate-700 border-slate-300'
+            }`}
+          >
+            <SlidersHorizontal className="w-3 h-3" />
+            <span>فلاتر{activeDetailedFiltersCount > 0 ? ` (${activeDetailedFiltersCount})` : ''}</span>
+          </button>
+
           <select
             value={exportScope}
             onChange={(e) => setExportScope(e.target.value as 'filtered' | 'all')}
             aria-label="نطاق التصدير"
-            className="h-8 px-2 text-[11px] font-bold bg-slate-50 border border-slate-300 rounded-md text-slate-700"
+            className="h-6 px-1.5 text-[11px] font-bold bg-white border border-slate-300 rounded-sm text-slate-700"
           >
             <option value="filtered">تصدير المعروض المفلتر</option>
             <option value="all">تصدير كامل التقرير</option>
@@ -770,18 +1108,18 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
               <button
                 type="button"
                 onClick={handleOpenThermalOrA4Print}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-slate-700 hover:bg-slate-800 text-white text-[11px] font-bold cursor-pointer"
+                className="flex items-center gap-1 h-6 px-2 rounded-sm bg-slate-700 hover:bg-slate-800 text-white text-[11px] font-bold cursor-pointer"
                 title="طباعة A4 أو حراري 80/58 مم"
               >
-                <Printer className="w-3.5 h-3.5" />
+                <Printer className="w-3 h-3" />
                 <span>طباعة</span>
               </button>
               <button
                 type="button"
                 onClick={handleExportPdf}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-blue-700 hover:bg-blue-800 text-white text-[11px] font-bold cursor-pointer"
+                className="flex items-center gap-1 h-6 px-2 rounded-sm bg-blue-700 hover:bg-blue-800 text-white text-[11px] font-bold cursor-pointer"
               >
-                <FileText className="w-3.5 h-3.5" />
+                <FileText className="w-3 h-3" />
                 <span>PDF</span>
               </button>
             </>
@@ -790,343 +1128,409 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
             <button
               type="button"
               onClick={handleExportExcel}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold cursor-pointer"
+              className="flex items-center gap-1 h-6 px-2 rounded-sm bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold cursor-pointer"
             >
-              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <FileSpreadsheet className="w-3 h-3" />
               <span>Excel</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Top Reference Filter Bar */}
-      <div className="bg-[#f4f6f8] border border-slate-300 rounded-xl p-2.5 shadow-2xs space-y-2">
-        {/* Row 1 matching desktop reference */}
-        <div className="flex flex-wrap items-center gap-2 text-xs">
+      {/* Brand-Store Top Filter Band (Zone 2 & 3 & 4) Connected Directly Above «عرض» */}
+      <form
+        onSubmit={handleApplySearchSubmit}
+        aria-label="فلاتر البحث والتصفية للتقارير"
+        className="w-full bg-[#f4f6f8] border-x border-b border-slate-300 px-2.5 py-2 space-y-2 text-xs"
+      >
+        {/* Zone 2: Structured Selectors & Date Range (No cramping, no clipping, Portal dropdowns) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-2 items-end">
           {/* الفرع */}
-          <div className="flex items-center gap-1.5">
-            <label className="font-bold text-slate-700">الفرع</label>
-            <select
+          <div className="min-w-0">
+            <SearchableFilterSelect
+              id="rpt-filter-branch"
+              label="الفرع"
               value={branchId}
-              onChange={(e) => setBranchId(e.target.value)}
-              className="h-8 min-w-[125px] bg-white border border-slate-300 rounded px-2 text-xs font-semibold focus:border-emerald-600 focus:outline-none"
-            >
-              <option value="all">الكل</option>
-              {(filterOpts?.branches || []).map((b) => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* من تاريخ with +/- day steppers */}
-          <div className="flex items-center gap-1">
-            <label className="font-bold text-slate-700 flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-slate-500" />
-              <span>من</span>
-            </label>
-            <button
-              type="button"
-              onClick={() => {
-                setPeriodPreset('custom');
-                setDateFrom((prev) => addDaysYmd(prev || todayYmd(), -1));
+              onChange={(val) => {
+                setBranchId(val);
+                setPage(1);
               }}
-              className="h-8 w-6 bg-white border border-slate-300 rounded hover:bg-slate-100 font-bold cursor-pointer"
-              title="يوم سابق"
-            >
-              -
-            </button>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => {
-                setPeriodPreset('custom');
-                setDateFrom(e.target.value);
-              }}
-              className="h-8 bg-white border border-slate-300 rounded px-2 text-xs font-mono"
+              options={branchOptions}
+              allOptionLabel="كل الفروع"
+              allowClear
             />
-            <button
-              type="button"
-              onClick={() => {
-                setPeriodPreset('custom');
-                setDateFrom((prev) => addDaysYmd(prev || todayYmd(), 1));
-              }}
-              className="h-8 w-6 bg-white border border-slate-300 rounded hover:bg-slate-100 font-bold cursor-pointer"
-              title="يوم تالٍ"
-            >
-              +
-            </button>
           </div>
 
-          {/* إلى checkbox + date */}
-          <div className="flex items-center gap-1.5">
-            <label className="flex items-center gap-1 font-bold text-slate-700 cursor-pointer">
+          {/* التاريخ الموحد (من -/+ و ☑ إلى) */}
+          <div className="sm:col-span-2 md:col-span-2 xl:col-span-2 grid grid-cols-2 gap-1.5 min-w-0">
+            <div className="min-w-0">
+              <label htmlFor="rpt-filter-date-from" className="flex items-center gap-1 text-[11.5px] font-semibold text-slate-700 leading-tight mb-1 whitespace-nowrap">
+                <Calendar className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                <span>من تاريخ</span>
+              </label>
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPeriodPreset('custom');
+                    setPage(1);
+                    setDateFrom((prev) => addDaysYmd(prev || todayYmd(), -1));
+                  }}
+                  className="h-[34px] w-7 shrink-0 bg-white border border-slate-300 rounded-md hover:bg-slate-100 text-slate-700 font-bold leading-none cursor-pointer"
+                  title="يوم سابق"
+                  aria-label="يوم سابق"
+                >
+                  -
+                </button>
+                <input
+                  id="rpt-filter-date-from"
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => {
+                    setPeriodPreset('custom');
+                    setPage(1);
+                    setDateFrom(e.target.value);
+                  }}
+                  className="w-full min-w-0 h-[34px] bg-white border border-slate-300 rounded-md px-2 text-xs font-mono tabular-nums text-slate-800 focus:border-emerald-600 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPeriodPreset('custom');
+                    setPage(1);
+                    setDateFrom((prev) => addDaysYmd(prev || todayYmd(), 1));
+                  }}
+                  className="h-[34px] w-7 shrink-0 bg-white border border-slate-300 rounded-md hover:bg-slate-100 text-slate-700 font-bold leading-none cursor-pointer"
+                  title="يوم تالٍ"
+                  aria-label="يوم تالٍ"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              <label htmlFor="rpt-filter-use-date-to" className="flex items-center gap-1.5 text-[11.5px] font-semibold text-slate-700 leading-tight mb-1 cursor-pointer whitespace-nowrap">
+                <input
+                  id="rpt-filter-use-date-to"
+                  type="checkbox"
+                  checked={useDateTo}
+                  onChange={(e) => {
+                    setPeriodPreset('custom');
+                    setPage(1);
+                    setUseDateTo(e.target.checked);
+                  }}
+                  className="accent-emerald-700 w-3.5 h-3.5 shrink-0"
+                />
+                <span>إلى تاريخ</span>
+              </label>
               <input
-                type="checkbox"
-                checked={useDateTo}
+                id="rpt-filter-date-to"
+                type="date"
+                disabled={!useDateTo}
+                value={dateTo}
                 onChange={(e) => {
                   setPeriodPreset('custom');
-                  setUseDateTo(e.target.checked);
+                  setPage(1);
+                  setDateTo(e.target.value);
                 }}
-                className="accent-emerald-600 w-3.5 h-3.5"
+                aria-label="إلى تاريخ"
+                className="w-full min-w-0 h-[34px] bg-white border border-slate-300 rounded-md px-2 text-xs font-mono tabular-nums text-slate-800 disabled:opacity-45 focus:border-emerald-600 focus:outline-none"
               />
-              <span>إلى</span>
-            </label>
-            <input
-              type="date"
-              disabled={!useDateTo}
-              value={dateTo}
-              onChange={(e) => {
-                setPeriodPreset('custom');
-                setDateTo(e.target.value);
-              }}
-              className="h-8 bg-white border border-slate-300 rounded px-2 text-xs font-mono disabled:opacity-45"
-            />
+            </div>
           </div>
 
-          {/* الموظف */}
-          {filterVisibility.showEmployee && (
-            <div className="flex items-center gap-1">
-              <label className="font-bold text-slate-700">الموظف</label>
-              <select
-                value={employeeId}
-                onChange={(e) => setEmployeeId(e.target.value)}
-                className="h-8 min-w-[115px] bg-white border border-slate-300 rounded px-2 text-xs font-semibold"
-              >
-                <option value="all">الكل</option>
-                {(filterOpts?.employees || []).map((emp) => (
-                  <option key={emp.id} value={emp.id}>{emp.name}</option>
-                ))}
-              </select>
+          {/* العميل / المورد الموحد (مقسم إلى مجموعات داخل القائمة) */}
+          {filterVisibility.showParty && (
+            <div className={`min-w-0 sm:col-span-2 md:col-span-2 xl:col-span-2 ${mobileDetailedItemClass}`}>
+              <SearchableFilterSelect
+                id="rpt-filter-party"
+                label={filterVisibility.showSupplier ? 'العميل / المورد' : 'العميل'}
+                value={partyKey}
+                onChange={(val) => {
+                  setPartyKey(val);
+                  setPage(1);
+                }}
+                options={partyOptions}
+                allOptionLabel="كل العملاء والموردين"
+                searchPlaceholder="ابحث باسم العميل أو المورد أو الهاتف..."
+                allowClear
+                minPanelWidth={280}
+              />
+            </div>
+          )}
+
+          {/* نوع الحركة */}
+          {filterVisibility.showMovementType && (
+            <div className={`min-w-0 ${mobileDetailedItemClass}`}>
+              <SearchableFilterSelect
+                id="rpt-filter-movement-type"
+                label="نوع الحركة"
+                value={movementType}
+                onChange={(val) => {
+                  setMovementType((val as ReportMovementTypeKey) || 'all');
+                  setPage(1);
+                }}
+                options={movementTypeOptions}
+                allOptionLabel="كل الحركات"
+                allowClear
+              />
+            </div>
+          )}
+
+          {/* المخزن */}
+          {filterVisibility.showWarehouse && (
+            <div className={`min-w-0 ${mobileDetailedItemClass}`}>
+              <SearchableFilterSelect
+                id="rpt-filter-warehouse"
+                label="المخزن"
+                value={warehouseId}
+                onChange={(val) => {
+                  setWarehouseId(val);
+                  setPage(1);
+                }}
+                options={warehouseOptions}
+                allOptionLabel="كل المخازن"
+                allowClear
+              />
             </div>
           )}
 
           {/* الخزنة */}
           {filterVisibility.showCashbox && (
-            <div className="flex items-center gap-1">
-              <label className="font-bold text-slate-700">الخزنة</label>
-              <select
+            <div className={`min-w-0 ${mobileDetailedItemClass}`}>
+              <SearchableFilterSelect
+                id="rpt-filter-cashbox"
+                label="الخزنة"
                 value={cashboxId}
-                onChange={(e) => setCashboxId(e.target.value)}
-                className="h-8 min-w-[115px] bg-white border border-slate-300 rounded px-2 text-xs font-semibold"
-              >
-                <option value="all">الكل</option>
-                {(filterOpts?.cashboxes || []).map((cb) => (
-                  <option key={cb.id} value={cb.id}>{cb.name}</option>
-                ))}
-              </select>
+                onChange={(val) => {
+                  setCashboxId(val);
+                  setPage(1);
+                }}
+                options={cashboxOptions}
+                allOptionLabel="كل الخزائن"
+                allowClear
+              />
             </div>
           )}
 
-          {/* المستخدم */}
+          {/* المندوب */}
+          {filterVisibility.showRepresentative && (
+            <div className={`min-w-0 ${mobileDetailedItemClass}`}>
+              <SearchableFilterSelect
+                id="rpt-filter-rep"
+                label="المندوب"
+                value={representativeId}
+                onChange={(val) => {
+                  setRepresentativeId(val);
+                  setPage(1);
+                }}
+                options={representativeOptions}
+                allOptionLabel="كل المندوبين"
+                allowClear
+              />
+            </div>
+          )}
+
+          {/* الموظف (منفصل تماماً عن المستخدم) */}
+          {filterVisibility.showEmployee && (
+            <div className={`min-w-0 ${mobileDetailedItemClass}`}>
+              <SearchableFilterSelect
+                id="rpt-filter-employee"
+                label="الموظف"
+                value={employeeId}
+                onChange={(val) => {
+                  setEmployeeId(val);
+                  setPage(1);
+                }}
+                options={employeeOptions}
+                allOptionLabel="كل الموظفين"
+                searchPlaceholder="بحث في الموظفين..."
+                allowClear
+              />
+            </div>
+          )}
+
+          {/* المستخدم (منفصل تماماً عن الموظف) */}
           {filterVisibility.showUser && (
-            <div className="flex items-center gap-1">
-              <label className="font-bold text-slate-700">المستخدم</label>
-              <select
+            <div className={`min-w-0 ${mobileDetailedItemClass}`}>
+              <SearchableFilterSelect
+                id="rpt-filter-user"
+                label="المستخدم"
                 value={userId}
-                onChange={(e) => setUserId(e.target.value)}
-                className="h-8 min-w-[115px] bg-white border border-slate-300 rounded px-2 text-xs font-semibold"
-              >
-                <option value="all">الكل</option>
-                {(filterOpts?.users || []).map((u) => (
-                  <option key={u.id} value={u.id}>{u.fullName}</option>
-                ))}
-              </select>
+                onChange={(val) => {
+                  setUserId(val);
+                  setPage(1);
+                }}
+                options={userOptions}
+                allOptionLabel="كل المستخدمين"
+                searchPlaceholder="بحث في حسابات المستخدمين..."
+                allowClear
+              />
             </div>
           )}
 
-          {/* بحث عام + أزرار التحكم */}
-          <div className="flex items-center gap-1.5 mr-auto">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && loadReport()}
-              placeholder="بحث شامل..."
-              className="h-8 w-36 sm:w-44 bg-white border border-slate-300 rounded px-2.5 text-xs focus:border-emerald-600 focus:outline-none"
-            />
-            <button
-              type="button"
-              onClick={() => loadReport()}
-              className="h-8 px-3.5 rounded bg-[#22b14c] hover:bg-[#1a963f] text-white font-extrabold text-xs flex items-center gap-1 shadow-2xs cursor-pointer"
-            >
-              <Search className="w-3.5 h-3.5" />
-              <span>بحث</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowMoreFilters((p) => !p)}
-              className="h-8 px-2.5 rounded bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
-              title="الفلاتر التفصيلية"
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">فلاتر</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleResetFilters}
-              className="h-8 px-2.5 rounded bg-white border border-slate-300 hover:bg-rose-50 hover:text-rose-700 text-slate-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
-              title="عرض الكل / مسح الفلاتر"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          {/* الصنف */}
+          {filterVisibility.showProductFilters && (
+            <div className={`min-w-0 sm:col-span-2 md:col-span-2 xl:col-span-2 ${mobileDetailedItemClass}`}>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <label htmlFor="rpt-filter-product" className="block text-[11.5px] font-semibold text-slate-700 leading-tight whitespace-nowrap">
+                  الصنف
+                </label>
+                {productId !== 'all' && viewMode === 'unified_grid' && (
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('item_lifecycle')}
+                    className="text-[11px] font-bold text-blue-700 hover:underline leading-none shrink-0 cursor-pointer"
+                    title="عرض تاريخ وربح الصنف"
+                  >
+                    عرض تاريخ الصنف
+                  </button>
+                )}
+              </div>
+              <SearchableFilterSelect
+                id="rpt-filter-product"
+                value={productId}
+                onChange={(val) => {
+                  setProductId(val);
+                  setPage(1);
+                }}
+                options={productOptions}
+                allOptionLabel="كل الأصناف"
+                searchPlaceholder="ابحث بالاسم أو الكود أو الباركود..."
+                allowClear
+                minPanelWidth={290}
+              />
+            </div>
+          )}
         </div>
 
-        {/* Row 2: Contextual Upper Filters (Warehouse, Product, Barcode, Customer, Supplier, Rep, Invoice#, ID) */}
-        {showMoreFilters && (
-          <div className="pt-2 border-t border-slate-200/80 flex flex-wrap items-center gap-2 text-xs">
-            {filterVisibility.showWarehouse && (
-              <div className="flex items-center gap-1">
-                <label className="font-bold text-slate-600">المخزن</label>
-                <select
-                  value={warehouseId}
-                  onChange={(e) => setWarehouseId(e.target.value)}
-                  className="h-7 min-w-[115px] bg-white border border-slate-300 rounded px-2 text-xs"
-                >
-                  <option value="all">الكل</option>
-                  {(filterOpts?.warehouses || []).map((w) => (
-                    <option key={w.id} value={w.id}>{w.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {filterVisibility.showProductFilters && (
-              <>
-                <div className="flex items-center gap-1">
-                  <label className="font-bold text-slate-600">الصنف</label>
-                  <select
-                    value={productId}
-                    onChange={(e) => setProductId(e.target.value)}
-                    className="h-7 min-w-[150px] max-w-[220px] bg-white border border-slate-300 rounded px-2 text-xs"
-                  >
-                    <option value="all">الكل</option>
-                    {(filterOpts?.products || []).map((p) => (
-                      <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
-                    ))}
-                  </select>
-                  {productId !== 'all' && viewMode === 'unified_grid' && (
-                    <button
-                      type="button"
-                      onClick={() => setViewMode('item_lifecycle')}
-                      className="h-7 px-2 rounded bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold cursor-pointer"
-                    >
-                      تاريخ وربح الصنف
-                    </button>
-                  )}
-                </div>
-
+        {/* Zone 3 & Zone 4: Text Search Inputs + Search / Reset Actions */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-2 items-end pt-1.5 border-t border-slate-200/90">
+          {filterVisibility.showProductFilters && (
+            <>
+              <div className={`min-w-0 ${mobileDetailedItemClass}`}>
+                <label htmlFor="rpt-filter-product-search" className="block text-[11.5px] font-semibold text-slate-700 leading-tight mb-1 whitespace-nowrap">
+                  اسم الصنف
+                </label>
                 <input
+                  id="rpt-filter-product-search"
                   type="text"
                   value={productSearch}
                   onChange={(e) => setProductSearch(e.target.value)}
-                  placeholder="بحث باسم الصنف..."
-                  className="h-7 w-32 bg-white border border-slate-300 rounded px-2 text-xs"
+                  placeholder="جزء من اسم الصنف..."
+                  className="w-full min-w-0 h-[34px] bg-white border border-slate-300 rounded-md px-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-emerald-600 focus:outline-none"
                 />
+              </div>
 
+              <div className={`min-w-0 ${mobileDetailedItemClass}`}>
+                <label htmlFor="rpt-filter-barcode" className="block text-[11.5px] font-semibold text-slate-700 leading-tight mb-1 whitespace-nowrap">
+                  الباركود
+                </label>
                 <input
+                  id="rpt-filter-barcode"
                   type="text"
                   value={barcode}
                   onChange={(e) => setBarcode(e.target.value)}
-                  placeholder="الباركود..."
-                  className="h-7 w-28 bg-white border border-slate-300 rounded px-2 text-xs font-mono"
+                  placeholder="الباركود أو الكود..."
+                  className="w-full min-w-0 h-[34px] bg-white border border-slate-300 rounded-md px-2.5 text-xs font-mono tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-emerald-600 focus:outline-none"
                 />
-              </>
-            )}
-
-            {filterVisibility.showCustomer && (
-              <div className="flex items-center gap-1">
-                <label className="font-bold text-slate-600">العميل</label>
-                <select
-                  value={customerId}
-                  onChange={(e) => setCustomerId(e.target.value)}
-                  className="h-7 min-w-[125px] max-w-[180px] bg-white border border-slate-300 rounded px-2 text-xs"
-                >
-                  <option value="all">الكل</option>
-                  {(filterOpts?.customers || []).map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
               </div>
-            )}
+            </>
+          )}
 
-            {filterVisibility.showSupplier && (
-              <div className="flex items-center gap-1">
-                <label className="font-bold text-slate-600">المورد</label>
-                <select
-                  value={supplierId}
-                  onChange={(e) => setSupplierId(e.target.value)}
-                  className="h-7 min-w-[125px] max-w-[180px] bg-white border border-slate-300 rounded px-2 text-xs"
-                >
-                  <option value="all">الكل</option>
-                  {(filterOpts?.suppliers || []).map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {filterVisibility.showRepresentative && (
-              <div className="flex items-center gap-1">
-                <label className="font-bold text-slate-600">المندوب</label>
-                <select
-                  value={representativeId}
-                  onChange={(e) => setRepresentativeId(e.target.value)}
-                  className="h-7 min-w-[115px] bg-white border border-slate-300 rounded px-2 text-xs"
-                >
-                  <option value="all">الكل</option>
-                  {(filterOpts?.representatives || []).map((r) => (
-                    <option key={r.id} value={r.id}>{r.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {filterVisibility.showInvoiceNumber && (
+          {filterVisibility.showInvoiceNumber && (
+            <div className={`min-w-0 ${mobileDetailedItemClass}`}>
+              <label htmlFor="rpt-filter-invoice-no" className="block text-[11.5px] font-semibold text-slate-700 leading-tight mb-1 whitespace-nowrap">
+                رقم الفاتورة
+              </label>
               <input
+                id="rpt-filter-invoice-no"
                 type="text"
                 value={invoiceNumber}
                 onChange={(e) => setInvoiceNumber(e.target.value)}
                 placeholder="رقم الفاتورة..."
-                className="h-7 w-28 bg-white border border-slate-300 rounded px-2 text-xs font-mono"
+                className="w-full min-w-0 h-[34px] bg-white border border-slate-300 rounded-md px-2.5 text-xs font-mono tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-emerald-600 focus:outline-none"
               />
-            )}
+            </div>
+          )}
 
-            {filterVisibility.showRecordId && (
+          {filterVisibility.showRecordId && (
+            <div className={`min-w-0 ${mobileDetailedItemClass}`}>
+              <label htmlFor="rpt-filter-record-id" className="block text-[11.5px] font-semibold text-slate-700 leading-tight mb-1 whitespace-nowrap">
+                كود السجل
+              </label>
               <input
+                id="rpt-filter-record-id"
                 type="text"
                 value={recordId}
                 onChange={(e) => setRecordId(e.target.value)}
-                placeholder="الرقم التعريفي ID..."
-                className="h-7 w-28 bg-white border border-slate-300 rounded px-2 text-xs font-mono"
+                placeholder="ID السجل..."
+                className="w-full min-w-0 h-[34px] bg-white border border-slate-300 rounded-md px-2.5 text-xs font-mono tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-emerald-600 focus:outline-none"
               />
-            )}
+            </div>
+          )}
+
+          {/* Zone 4: بحث عام + زر البحث الأخضر وإعادة الضبط */}
+          <div className="sm:col-span-2 md:col-span-2 xl:col-span-2 min-w-0">
+            <label htmlFor="rpt-filter-search" className="block text-[11.5px] font-semibold text-slate-700 leading-tight mb-1 whitespace-nowrap">
+              بحث عام
+            </label>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <input
+                id="rpt-filter-search"
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="بحث شامل بالاسم أو الملاحظات أو المستند..."
+                className="flex-1 min-w-0 h-[34px] bg-white border border-slate-300 rounded-md px-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-emerald-600 focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="h-[34px] px-3.5 rounded-md bg-[#22b14c] hover:bg-[#1a963f] disabled:opacity-60 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
+              >
+                <Search className="w-3.5 h-3.5 shrink-0" />
+                <span>بحث</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="h-[34px] px-2.5 rounded-md bg-white border border-slate-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 text-slate-700 font-bold text-xs flex items-center justify-center gap-1 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
+                title="عرض الكل / إعادة ضبط الفلاتر"
+              >
+                <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                <span>إعادة ضبط</span>
+              </button>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      </form>
 
       {/* Error State */}
       {errorMsg && (
-        <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold">
+        <div className="mt-1 p-2 rounded-sm bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold">
           {errorMsg}
         </div>
       )}
 
       {/* MAIN CONTENT: Either Reference 19-Column Unified Table OR Item Lifecycle & P&L Panel */}
       {viewMode === 'item_lifecycle' && reportData ? (
-        <ItemLifecycleAndPnlPanel
-          lifecycle={reportData.itemLifecycle}
-          selectedPnl={reportData.itemPnl.selectedItem}
-          pnlItems={reportData.itemPnl.items}
-          portfolioTotals={reportData.itemPnl.portfolioTotals}
-          currency={currency}
-          onSelectProduct={(pid) => setProductId(pid)}
-          onInspectDocument={handleInspectDocument}
-        />
+        <div className="mt-1.5">
+          <ItemLifecycleAndPnlPanel
+            lifecycle={reportData.itemLifecycle}
+            selectedPnl={reportData.itemPnl.selectedItem}
+            pnlItems={reportData.itemPnl.items}
+            portfolioTotals={reportData.itemPnl.portfolioTotals}
+            currency={currency}
+            onSelectProduct={(pid) => setProductId(pid)}
+            onInspectDocument={handleInspectDocument}
+          />
+        </div>
       ) : (
-        <div className="bg-white border border-slate-400 rounded-md overflow-hidden shadow-xs">
-          {/* Reference Green Header Strip: عرض + in-table search */}
-          <div className="bg-[#22b14c] text-white px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs font-extrabold">
+        <div className="bg-white border border-t-0 border-slate-400 rounded-b-md overflow-hidden shadow-xs">
+          {/* Reference Green Header Strip: عرض + in-table search (directly under filters) */}
+          <div className="bg-[#22b14c] text-white px-2.5 py-1 flex flex-wrap items-center justify-between gap-2 text-xs font-extrabold">
             <div className="flex items-center gap-3">
               <span>عرض — {activeReportOption.label}</span>
               <span className="bg-white/20 px-2 py-0.5 rounded font-mono text-[11px]">
@@ -1371,7 +1775,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
 
       {/* Optional Server-Side Pagination Controls */}
       {viewMode === 'unified_grid' && (reportData?.summary?.totalRows || 0) > 0 && (
-        <div className="bg-white border border-slate-300 rounded-xl px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div className="mt-1.5 bg-white border border-slate-300 rounded-md px-2.5 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-2">
             <span className="font-bold text-slate-700">حجم الصفحة:</span>
             <select
@@ -1416,7 +1820,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
       )}
 
       {/* FIXED BOTTOM BAR: Cashbox Balances + Report Selector («نوع التقرير») + عرض التقرير */}
-      <div className="bg-[#eef0f3] border border-slate-400 rounded-xl p-2.5 shadow-sm flex flex-wrap items-center justify-between gap-2.5">
+      <div className="mt-1.5 bg-[#eef0f3] border border-slate-400 rounded-md p-2 shadow-xs flex flex-wrap items-center justify-between gap-2">
         {/* 4 Summary Boxes matching Brand Store Reference (hidden financial/profit boxes for rep role) */}
         {!isRepRole ? (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 flex-1 min-w-[280px]">
@@ -1471,6 +1875,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
           <div className="flex items-center gap-1.5 relative" ref={dropdownRef}>
             <span className="text-xs font-extrabold text-slate-800 whitespace-nowrap">نوع التقرير</span>
             <button
+              ref={reportDropdownBtnRef}
               type="button"
               onClick={() => setIsReportDropdownOpen((o) => !o)}
               aria-haspopup="listbox"
@@ -1481,43 +1886,57 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
               {isReportDropdownOpen ? <ChevronUp className="w-4 h-4 text-slate-600" /> : <ChevronDown className="w-4 h-4 text-slate-600" />}
             </button>
 
-            {isReportDropdownOpen && (
-              <div
-                role="listbox"
-                aria-label="نوع التقرير"
-                className="absolute bottom-full mb-1.5 left-0 w-72 max-h-[60vh] overflow-y-auto bg-white border border-slate-400 rounded-lg shadow-2xl z-40 py-1 text-right"
-              >
-                {REPORT_TYPE_OPTIONS.map((opt, idx) => {
-                  const prevGroup = idx > 0 ? REPORT_TYPE_OPTIONS[idx - 1].group : opt.group;
-                  const showDivider = idx > 0 && opt.group !== prevGroup;
-                  const isSelected = opt.key === reportType;
-                  return (
-                    <React.Fragment key={opt.key}>
-                      {showDivider && <div className="my-1 border-t border-slate-300" role="separator" />}
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={isSelected}
-                        data-report-type={opt.key}
-                        onClick={() => {
-                          setReportType(opt.key);
-                          setPage(1);
-                          setViewMode('unified_grid');
-                          setIsReportDropdownOpen(false);
-                        }}
-                        className={`w-full text-right px-3 py-1.5 text-xs transition-colors cursor-pointer ${
-                          isSelected
-                            ? 'bg-[#22b14c] text-white font-extrabold'
-                            : 'text-slate-800 font-semibold hover:bg-emerald-50'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    </React.Fragment>
-                  );
-                })}
-              </div>
-            )}
+            {isReportDropdownOpen &&
+              typeof document !== 'undefined' &&
+              ReactDOM.createPortal(
+                <div
+                  ref={reportDropdownPanelRef}
+                  dir="rtl"
+                  role="listbox"
+                  aria-label="نوع التقرير"
+                  style={{
+                    position: 'fixed',
+                    top: reportDropdownPos.top,
+                    bottom: reportDropdownPos.bottom,
+                    left: reportDropdownPos.left,
+                    width: reportDropdownPos.width,
+                    maxHeight: reportDropdownPos.maxHeight,
+                    zIndex: 95,
+                  }}
+                  className="overflow-y-auto bg-white border border-slate-400 rounded-lg shadow-2xl py-1 text-right"
+                >
+                  {REPORT_TYPE_OPTIONS.map((opt, idx) => {
+                    const prevGroup = idx > 0 ? REPORT_TYPE_OPTIONS[idx - 1].group : opt.group;
+                    const showDivider = idx > 0 && opt.group !== prevGroup;
+                    const isSelected = opt.key === reportType;
+                    return (
+                      <React.Fragment key={opt.key}>
+                        {showDivider && <div className="my-1 border-t border-slate-300" role="separator" />}
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={isSelected}
+                          data-report-type={opt.key}
+                          onClick={() => {
+                            setReportType(opt.key);
+                            setPage(1);
+                            setViewMode('unified_grid');
+                            setIsReportDropdownOpen(false);
+                          }}
+                          className={`w-full text-right px-3 py-1.5 text-xs transition-colors cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#22b14c] text-white font-extrabold'
+                              : 'text-slate-800 font-semibold hover:bg-emerald-50'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      </React.Fragment>
+                    );
+                  })}
+                </div>,
+                document.body
+              )}
           </div>
 
           <button

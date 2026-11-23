@@ -51,6 +51,12 @@ import {
 } from '../db/stores/connectionPairingStore.js';
 import { checkPostgresHealth, initializeSchema, isStrictPostgresMode } from '../db/postgres.js';
 import { runDataMigration, rollbackMigration, readMigrationLogs } from '../db/migrator.js';
+import {
+  listIdentitiesOverview,
+  runSafeIdentityAuditAndBackfill,
+  linkEntityToIdentityManual,
+  resolveIdentityConflictManual,
+} from '../db/identityManager.js';
 import { readJsonDatabase, hasJsonDatabaseFile, getDataPaths } from '../db/jsonLedger.js';
 import {
   requireAuth,
@@ -298,6 +304,52 @@ router.get(
   asyncHandler(async (req, res) => {
     const logs = await listAuditLogs(req.query.limit);
     res.json({ ok: true, logs });
+  })
+);
+
+router.get(
+  '/identities',
+  blockRepAndCustomer,
+  requirePermission('canManageUsers'),
+  asyncHandler(async (_req, res) => {
+    const overview = await listIdentitiesOverview();
+    res.json({ ok: true, ...overview });
+  })
+);
+
+router.post(
+  '/identities/audit',
+  blockRepAndCustomer,
+  requirePermission('canManageUsers'),
+  asyncHandler(async (req, res) => {
+    const result = await runSafeIdentityAuditAndBackfill({
+      executedBy: req.auth.user.fullName,
+      createBackup: Boolean(req.body?.createBackup !== false),
+    });
+    const overview = await listIdentitiesOverview();
+    res.json({ ok: true, result, ...overview });
+  })
+);
+
+router.post(
+  '/identities/link',
+  blockRepAndCustomer,
+  requirePermission('canManageUsers'),
+  asyncHandler(async (req, res) => {
+    const result = await linkEntityToIdentityManual(req.body || {}, req.auth.user);
+    const overview = await listIdentitiesOverview();
+    res.json({ ok: true, result, ...overview });
+  })
+);
+
+router.post(
+  '/identities/conflicts/:id/resolve',
+  blockRepAndCustomer,
+  requirePermission('canManageUsers'),
+  asyncHandler(async (req, res) => {
+    const resolved = await resolveIdentityConflictManual(req.params.id, req.body || {}, req.auth.user);
+    const overview = await listIdentitiesOverview();
+    res.json({ ok: true, ...resolved, ...overview });
   })
 );
 

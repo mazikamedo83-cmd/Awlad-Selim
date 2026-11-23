@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { getPool, withTransaction, initializeSchema, checkPostgresHealth, isStrictPostgresMode } from './postgres.js';
 import { generateServerId } from '../utils/crypto.js';
 import { normalizeCustomerPhonesList } from './stores/mode.js';
+import { runSafeIdentityAuditAndBackfill } from './identityManager.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = process.env.AWLAD_DATA_DIR
@@ -279,8 +280,8 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
         for (const u of users) {
           const algo = String(u.passwordHash || '').startsWith('$2') ? 'bcrypt' : 'legacy_sha256';
           await client.query(`
-            INSERT INTO users (id, full_name, username, password_hash, password_algo, phone, address, notes, role, job_title, department, is_active, must_change_password, last_login, permissions, shortcuts, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            INSERT INTO users (id, full_name, username, password_hash, password_algo, phone, address, notes, role, job_title, department, is_active, must_change_password, last_login, permissions, shortcuts, identity_id, employee_id, active_role, additional_roles, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
             ON CONFLICT (id) DO UPDATE SET
               full_name = EXCLUDED.full_name,
               username = EXCLUDED.username,
@@ -293,7 +294,11 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
               department = EXCLUDED.department,
               is_active = EXCLUDED.is_active,
               permissions = EXCLUDED.permissions,
-              shortcuts = EXCLUDED.shortcuts;
+              shortcuts = EXCLUDED.shortcuts,
+              identity_id = COALESCE(EXCLUDED.identity_id, users.identity_id),
+              employee_id = COALESCE(EXCLUDED.employee_id, users.employee_id),
+              active_role = COALESCE(EXCLUDED.active_role, users.active_role),
+              additional_roles = EXCLUDED.additional_roles;
           `, [
             u.id,
             u.fullName || u.username,
@@ -311,6 +316,10 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             u.lastLogin || null,
             JSON.stringify(u.permissions || {}),
             JSON.stringify(Array.isArray(u.shortcuts) ? u.shortcuts : []),
+            u.identityId || null,
+            u.employeeId || null,
+            u.activeRole || u.role || 'sales',
+            JSON.stringify(Array.isArray(u.additionalRoles) ? u.additionalRoles : []),
             u.createdAt || new Date().toISOString(),
           ]);
           details.users++;
@@ -465,12 +474,13 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
           const normalizedPhones = normalizeCustomerPhonesList(c.phones, c.phone || '', secondaryPhone);
           const governorate = c.governorate || '';
           await client.query(`
-            INSERT INTO customers (id, code, user_id, assigned_rep_id, allowed_rep_ids, name, phone, secondary_phone, phone2, phones, shop_name, shop_photo, photo, address, shop_address, governorate, area, geo_coordinates, map_location, opening_balance, current_balance, price_history, notes, status, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+            INSERT INTO customers (id, code, user_id, assigned_rep_id, allowed_rep_ids, identity_id, name, phone, secondary_phone, phone2, phones, shop_name, shop_photo, photo, address, shop_address, governorate, area, geo_coordinates, map_location, opening_balance, current_balance, price_history, notes, status, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
             ON CONFLICT (id) DO UPDATE SET
               user_id = COALESCE(EXCLUDED.user_id, customers.user_id),
               assigned_rep_id = COALESCE(EXCLUDED.assigned_rep_id, customers.assigned_rep_id),
               allowed_rep_ids = EXCLUDED.allowed_rep_ids,
+              identity_id = COALESCE(EXCLUDED.identity_id, customers.identity_id),
               name = EXCLUDED.name,
               phone = EXCLUDED.phone,
               secondary_phone = EXCLUDED.secondary_phone,
@@ -489,6 +499,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             linkedUserId,
             assignedRepId,
             JSON.stringify(allowedRepIds),
+            c.identityId || null,
             c.name,
             c.phone || '',
             secondaryPhone,
@@ -516,9 +527,11 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
         // 7. Suppliers
         for (const s of suppliers) {
           await client.query(`
-            INSERT INTO suppliers (id, code, name, phone, address, opening_balance, current_balance, notes, status, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            INSERT INTO suppliers (id, code, identity_id, user_id, name, phone, address, opening_balance, current_balance, notes, status, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             ON CONFLICT (id) DO UPDATE SET
+              identity_id = COALESCE(EXCLUDED.identity_id, suppliers.identity_id),
+              user_id = COALESCE(EXCLUDED.user_id, suppliers.user_id),
               name = EXCLUDED.name,
               phone = EXCLUDED.phone,
               address = EXCLUDED.address,
@@ -527,6 +540,8 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
           `, [
             s.id,
             s.code || `SUPP-${s.id}`,
+            s.identityId || null,
+            s.userId && userById.has(s.userId) ? s.userId : null,
             s.name,
             s.phone || '',
             s.address || '',
@@ -562,10 +577,11 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
         // 9. Representatives
         for (const r of representatives) {
           await client.query(`
-            INSERT INTO representatives (id, code, user_id, name, phone, vehicle_number, opening_balance, current_balance, commission_rate, notes, status, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            INSERT INTO representatives (id, code, user_id, identity_id, name, phone, vehicle_number, opening_balance, current_balance, commission_rate, notes, status, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             ON CONFLICT (id) DO UPDATE SET
               user_id = COALESCE(EXCLUDED.user_id, representatives.user_id),
+              identity_id = COALESCE(EXCLUDED.identity_id, representatives.identity_id),
               name = EXCLUDED.name,
               phone = EXCLUDED.phone,
               current_balance = EXCLUDED.current_balance,
@@ -574,6 +590,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             r.id,
             r.code || r.id,
             r.userId && userById.has(r.userId) ? r.userId : null,
+            r.identityId || null,
             r.name,
             r.phone || '',
             r.vehicleNumber || '',
@@ -1064,10 +1081,15 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
 
         for (const emp of employees) {
           await client.query(`
-            INSERT INTO employees (id, code, full_name, job_title, department, phone, national_id, hire_date, basic_salary, status, notes)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            ON CONFLICT (id) DO UPDATE SET full_name = EXCLUDED.full_name, basic_salary = EXCLUDED.basic_salary, status = EXCLUDED.status;
-          `, [emp.id, emp.code, emp.name || emp.fullName, emp.jobTitle, emp.department || '', emp.phone || '', emp.nationalId || '', emp.hireDate, Number(emp.basicSalary || 0), emp.status || 'active', emp.notes || '']);
+            INSERT INTO employees (id, code, full_name, job_title, department, phone, national_id, hire_date, basic_salary, status, notes, identity_id, user_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            ON CONFLICT (id) DO UPDATE SET
+              full_name = EXCLUDED.full_name,
+              basic_salary = EXCLUDED.basic_salary,
+              status = EXCLUDED.status,
+              identity_id = COALESCE(EXCLUDED.identity_id, employees.identity_id),
+              user_id = COALESCE(EXCLUDED.user_id, employees.user_id);
+          `, [emp.id, emp.code, emp.name || emp.fullName, emp.jobTitle, emp.department || '', emp.phone || '', emp.nationalId || '', emp.hireDate, Number(emp.basicSalary || 0), emp.status || 'active', emp.notes || '', emp.identityId || null, emp.userId && userById.has(emp.userId) ? emp.userId : null]);
           details.employees++;
         }
 
@@ -1313,6 +1335,16 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
           throw new Error('فشل فحص تطابق الأعداد والأرصدة بعد الترحيل - تم التراجع تلقائياً (ROLLBACK) لحماية البيانات.');
         }
       }, customPool);
+
+      const idAudit = await runSafeIdentityAuditAndBackfill({
+        targetPool: customPool,
+        executedBy: `${executedBy} (migrator)`,
+        createBackup: false,
+      });
+      details.identityAudit = idAudit || null;
+      if ((idAudit?.newConflictsCount || 0) > 0) {
+        details.warnings.push(`تم رصد ${idAudit.newConflictsCount} تعارض محتمل في الهويات للمراجعة الإدارية دون دمج تلقائي.`);
+      }
     } else {
       details.users = users.length;
       details.warehouses = warehouses.length;
@@ -1426,7 +1458,7 @@ export async function rollbackMigration(migrationIdOrBackup, executedBy = 'مد�
         'stock_movements', 'financial_transactions', 'cheques', 'installments',
         'advances_deductions', 'attendance', 'payrolls', 'expenses_incomes',
         'product_units', 'products', 'product_categories', 'customers', 'suppliers',
-        'representatives', 'warehouses', 'cashboxes', 'employees', 'user_sessions', 'users', 'system_settings',
+        'representatives', 'warehouses', 'cashboxes', 'employees', 'identity_conflicts', 'identity_roles', 'identities', 'user_sessions', 'users', 'system_settings',
       ];
       for (const tbl of tables) {
         await client.query(`DELETE FROM ${tbl}`);

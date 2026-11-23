@@ -36,6 +36,7 @@ import { compressImageFileToDataUrl } from '../../../utils/image';
 import { RefreshSyncScreen } from './RefreshSyncScreen';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
+import { SearchableFilterSelect, type SearchableFilterOption } from '../../common/SearchableFilterSelect';
 import {
   SalesInvoiceIcon,
   SalesInvoicesListIcon,
@@ -529,8 +530,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [repReportIsOfflineFallback, setRepReportIsOfflineFallback] = useState(false);
   const [rptDateFrom, setRptDateFrom] = useState('');
   const [rptDateTo, setRptDateTo] = useState('');
-  const [rptCustomerId, setRptCustomerId] = useState('');
-  const [rptSupplierId, setRptSupplierId] = useState('');
+  const [rptPartyKey, setRptPartyKey] = useState('all');
+  const rptCustomerId = rptPartyKey.startsWith('customer:') ? rptPartyKey.slice('customer:'.length) : '';
+  const rptSupplierId = rptPartyKey.startsWith('supplier:') ? rptPartyKey.slice('supplier:'.length) : '';
   const [rptProductId, setRptProductId] = useState('');
   const [rptInvoiceNumber, setRptInvoiceNumber] = useState('');
   const [rptOpType, setRptOpType] = useState<'all' | 'sales' | 'purchase' | 'sales_return' | 'purchase_return' | 'purchase_return_request'>('all');
@@ -1043,6 +1045,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       const report = await fetchRepSummaryReport({
         dateFrom: rptDateFrom || undefined,
         dateTo: rptDateTo || undefined,
+        partyKey: rptPartyKey !== 'all' ? rptPartyKey : undefined,
         customerId: rptCustomerId || undefined,
         supplierId: canCreatePurchase && rptSupplierId ? rptSupplierId : undefined,
         productId: rptProductId || undefined,
@@ -1067,6 +1070,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   }, [
     rptDateFrom,
     rptDateTo,
+    rptPartyKey,
     rptCustomerId,
     rptSupplierId,
     rptProductId,
@@ -7773,8 +7777,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   onClick={() => {
                     setRptDateFrom('');
                     setRptDateTo('');
-                    setRptCustomerId('');
-                    setRptSupplierId('');
+                    setRptPartyKey('all');
                     setRptProductId('');
                     setRptInvoiceNumber('');
                     setRptOpType('all');
@@ -7853,105 +7856,147 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   className="w-full min-h-[38px] rounded-xl border border-slate-300 px-2 font-mono bg-white"
                 />
               </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">العميل</label>
-                <select
-                  value={rptCustomerId}
-                  onChange={(e) => {
-                    setRptCustomerId(e.target.value);
+              <div className="sm:col-span-2">
+                <SearchableFilterSelect
+                  id="rep-rpt-party"
+                  label={canCreatePurchase ? 'العميل / المورد' : 'العميل'}
+                  value={rptPartyKey}
+                  onChange={(val) => {
+                    setRptPartyKey(val);
                     setRptPage(1);
                   }}
-                  className="w-full min-h-[38px] rounded-xl border border-slate-300 px-2 font-bold bg-white"
-                >
-                  <option value="">كل العملاء</option>
-                  {data.customers.map((c) => (
-                    <option key={c.id} value={c.id}>{c.shopName || c.name}</option>
-                  ))}
-                </select>
+                  options={[
+                    ...data.customers.map<SearchableFilterOption>((c) => ({
+                      value: `customer:${c.id}`,
+                      label: c.shopName || c.name,
+                      subtitle: c.phone || c.name,
+                      badge: 'عميل',
+                      groupLabel: 'العملاء',
+                      searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''}`,
+                    })),
+                    ...(canCreatePurchase
+                      ? data.suppliers.map<SearchableFilterOption>((s) => ({
+                          value: `supplier:${s.id}`,
+                          label: s.name,
+                          subtitle: s.phone || s.companyName,
+                          badge: 'مورد',
+                          groupLabel: 'الموردون',
+                          searchText: `${s.name} ${s.companyName || ''} ${s.phone || ''}`,
+                        }))
+                      : []),
+                  ]}
+                  allOptionLabel={canCreatePurchase ? 'كل العملاء والموردين' : 'كل العملاء'}
+                  allOptionValue="all"
+                  searchPlaceholder="ابحث باسم العميل أو المحل أو المورد..."
+                  allowClear
+                  buttonClassName="min-h-[38px] rounded-xl"
+                />
               </div>
-              {canCreatePurchase && (
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">المورد</label>
-                  <select
-                    value={rptSupplierId}
-                    onChange={(e) => {
-                      setRptSupplierId(e.target.value);
-                      setRptPage(1);
-                    }}
-                    className="w-full min-h-[38px] rounded-xl border border-slate-300 px-2 font-bold bg-white"
-                  >
-                    <option value="">كل الموردين</option>
-                    {data.suppliers.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              <div>
-                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">الصنف</label>
-                <select
-                  value={rptProductId}
-                  onChange={(e) => {
-                    setRptProductId(e.target.value);
+              <div className="sm:col-span-2">
+                <SearchableFilterSelect
+                  id="rep-rpt-product"
+                  label="الصنف"
+                  value={rptProductId || 'all'}
+                  onChange={(val) => {
+                    setRptProductId(val === 'all' ? '' : val);
                     setRptPage(1);
                   }}
-                  className="w-full min-h-[38px] rounded-xl border border-slate-300 px-2 font-bold bg-white"
-                >
-                  <option value="">كل الأصناف</option>
-                  {activeProducts.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
+                  options={activeProducts.map<SearchableFilterOption>((p) => ({
+                    value: p.id,
+                    label: p.name,
+                    subtitle: [p.code, p.barcode].filter(Boolean).join(' • '),
+                    badge: p.code || undefined,
+                    searchText: `${p.code || ''} ${p.barcode || ''} ${p.category || ''}`,
+                  }))}
+                  allOptionLabel="كل الأصناف"
+                  allOptionValue="all"
+                  searchPlaceholder="ابحث باسم الصنف أو الكود أو الباركود..."
+                  allowClear
+                  buttonClassName="min-h-[38px] rounded-xl"
+                />
               </div>
               <div>
-                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">نوع العملية</label>
-                <select
+                <SearchableFilterSelect
+                  id="rep-rpt-optype"
+                  label="نوع العملية"
                   value={rptOpType}
-                  onChange={(e) => {
-                    setRptOpType(e.target.value as any);
+                  onChange={(val) => {
+                    setRptOpType((val as any) || 'all');
                     setRptPage(1);
                   }}
-                  className="w-full min-h-[38px] rounded-xl border border-slate-300 px-2 font-bold bg-white"
-                >
-                  <option value="all">جميع العمليات</option>
-                  <option value="sales">فواتير البيع</option>
-                  {canCreatePurchase && <option value="purchase">فواتير الشراء</option>}
-                  <option value="sales_return">مرتجعات البيع</option>
-                  {canCreatePurchase && <option value="purchase_return">مرتجعات الشراء</option>}
-                  {canCreatePurchase && <option value="purchase_return_request">طلبات مرتجع الشراء</option>}
-                </select>
+                  options={[
+                    { value: 'sales', label: 'فواتير البيع' },
+                    ...(canCreatePurchase ? [{ value: 'purchase', label: 'فواتير الشراء' }] : []),
+                    { value: 'sales_return', label: 'مرتجعات البيع' },
+                    ...(canCreatePurchase
+                      ? [
+                          { value: 'purchase_return', label: 'مرتجعات الشراء' },
+                          { value: 'purchase_return_request', label: 'طلبات مرتجع الشراء' },
+                        ]
+                      : []),
+                  ]}
+                  allOptionLabel="جميع العمليات"
+                  allOptionValue="all"
+                  buttonClassName="min-h-[38px] rounded-xl"
+                />
               </div>
               <div>
-                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">حالة السداد</label>
-                <select
+                <SearchableFilterSelect
+                  id="rep-rpt-payment-status"
+                  label="حالة السداد"
                   value={rptPaymentStatus}
-                  onChange={(e) => {
-                    setRptPaymentStatus(e.target.value as any);
+                  onChange={(val) => {
+                    setRptPaymentStatus((val as any) || 'all');
                     setRptPage(1);
                   }}
-                  className="w-full min-h-[38px] rounded-xl border border-slate-300 px-2 font-bold bg-white"
-                >
-                  <option value="all">الكل</option>
-                  <option value="paid">مسددة بالكامل</option>
-                  <option value="partial">مسددة جزئياً</option>
-                  <option value="credit">آجل بالكامل</option>
-                </select>
+                  options={[
+                    { value: 'paid', label: 'مسددة بالكامل' },
+                    { value: 'partial', label: 'مسددة جزئياً' },
+                    { value: 'credit', label: 'آجل بالكامل' },
+                  ]}
+                  allOptionLabel="الكل"
+                  allOptionValue="all"
+                  buttonClassName="min-h-[38px] rounded-xl"
+                />
               </div>
               <div>
-                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">حالة الفاتورة</label>
-                <select
+                <SearchableFilterSelect
+                  id="rep-rpt-invoice-status"
+                  label="حالة الفاتورة"
                   value={rptInvoiceStatus}
-                  onChange={(e) => {
-                    setRptInvoiceStatus(e.target.value as any);
+                  onChange={(val) => {
+                    setRptInvoiceStatus((val as any) || 'all');
                     setRptPage(1);
                   }}
-                  className="w-full min-h-[38px] rounded-xl border border-slate-300 px-2 font-bold bg-white"
+                  options={[
+                    { value: 'confirmed', label: 'معتمدة' },
+                    { value: 'draft', label: 'مسودة / بانتظار المراجعة' },
+                    { value: 'cancelled', label: 'ملغاة' },
+                  ]}
+                  allOptionLabel="الكل"
+                  allOptionValue="all"
+                  buttonClassName="min-h-[38px] rounded-xl"
+                />
+              </div>
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRptDateFrom('');
+                    setRptDateTo('');
+                    setRptPartyKey('all');
+                    setRptProductId('');
+                    setRptInvoiceNumber('');
+                    setRptOpType('all');
+                    setRptPaymentStatus('all');
+                    setRptInvoiceStatus('all');
+                    setRptPage(1);
+                  }}
+                  className="w-full min-h-[38px] px-3 rounded-xl border border-slate-300 bg-white hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                 >
-                  <option value="all">الكل</option>
-                  <option value="confirmed">معتمدة</option>
-                  <option value="draft">مسودة / بانتظار المراجعة</option>
-                  <option value="cancelled">ملغاة</option>
-                </select>
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>إعادة ضبط الفلاتر</span>
+                </button>
               </div>
             </div>
           </div>

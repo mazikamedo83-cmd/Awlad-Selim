@@ -33,6 +33,14 @@ import {
   findJsonIdempotency,
   saveJsonIdempotency,
 } from '../../utils/idempotency.js';
+import {
+  attachRecordToIdentityPgTx,
+  attachRecordToIdentityJsonTx,
+  resolveActorIdentityPgTx,
+  resolveActorIdentityJsonTx,
+  logIdentityConflictPgTx,
+  logIdentityConflictJsonTx,
+} from '../identityManager.js';
 
 export const DEFAULT_MOBILE_CONFIG = {
   enableCustomerApp: true,
@@ -282,8 +290,42 @@ export async function createCustomer(payload, actor) {
           now,
         ]
       );
+      const custIdentityId = await attachRecordToIdentityPgTx(client, {
+        entityType: 'customer',
+        entityId: id,
+        roleKey: 'customer',
+        fullName: name,
+        phone: primaryPhone,
+        secondaryPhone: secondaryPhone || '',
+        address: payload.address || '',
+        notes: payload.notes || '',
+        explicitIdentityId: payload.identityId || null,
+        linkedUserId: userId,
+        matchByUniquePhone: false,
+        now,
+      });
+      const normCustPh = normalizePhoneDigitsShared(primaryPhone);
+      if (normCustPh) {
+        const dupCustPhones = await client.query(
+          `SELECT id, name, code, phone FROM customers WHERE normalized_phone = $1 AND id <> $2 LIMIT 3`,
+          [normCustPh, id]
+        );
+        if (dupCustPhones.rows.length > 0) {
+          await logIdentityConflictPgTx(client, {
+            conflictType: 'shared_customer_phone_notice',
+            severity: 'warning',
+            identifierKey: `customer:phone:${normCustPh}`,
+            candidateRecords: [
+              { entityType: 'customer', id, name, code, phone: primaryPhone, identityId: custIdentityId },
+              ...dupCustPhones.rows.map((dc) => ({ entityType: 'customer', id: dc.id, name: dc.name, code: dc.code, phone: dc.phone })),
+            ],
+          });
+        }
+      }
       const r = await client.query('SELECT * FROM customers WHERE id = $1', [id]);
-      return mapPgCustomerRow(r.rows[0]);
+      const mapped = mapPgCustomerRow(r.rows[0]);
+      if (!mapped.identityId) mapped.identityId = custIdentityId;
+      return mapped;
     });
 
     await recordAuditLog({
@@ -328,6 +370,38 @@ export async function createCustomer(payload, actor) {
       createdAt: now,
     });
     db.customers.unshift(item);
+    const custIdentityId = attachRecordToIdentityJsonTx(db, {
+      entityType: 'customer',
+      entityId: id,
+      roleKey: 'customer',
+      fullName: name,
+      phone: primaryPhone,
+      secondaryPhone: secondaryPhone || '',
+      address: payload.address || '',
+      notes: payload.notes || '',
+      explicitIdentityId: payload.identityId || null,
+      linkedUserId: userId,
+      matchByUniquePhone: false,
+      now,
+    });
+    item.identityId = custIdentityId;
+    const normCustPh = normalizePhoneDigitsShared(primaryPhone);
+    if (normCustPh) {
+      const dupCust = (db.customers || []).filter(
+        (c) => c.id !== id && normalizePhoneDigitsShared(c.phone) === normCustPh
+      );
+      if (dupCust.length > 0) {
+        logIdentityConflictJsonTx(db, {
+          conflictType: 'shared_customer_phone_notice',
+          severity: 'warning',
+          identifierKey: `customer:phone:${normCustPh}`,
+          candidateRecords: [
+            { entityType: 'customer', id, name, code, phone: primaryPhone, identityId: custIdentityId },
+            ...dupCust.slice(0, 3).map((dc) => ({ entityType: 'customer', id: dc.id, name: dc.name, code: dc.code, phone: dc.phone })),
+          ],
+        });
+      }
+    }
     return item;
   });
 
@@ -454,6 +528,20 @@ export async function updateCustomer(customerId, updates, actor) {
           customerId,
         ]
       );
+      await attachRecordToIdentityPgTx(client, {
+        entityType: 'customer',
+        entityId: customerId,
+        roleKey: 'customer',
+        fullName: updates.name ?? cur.name,
+        phone: nextPrimary,
+        secondaryPhone: nextSecondary || '',
+        address: updates.address ?? cur.address ?? '',
+        notes: updates.notes ?? cur.notes ?? '',
+        explicitIdentityId: updates.identityId || cur.identityId || null,
+        linkedUserId: nextUserId,
+        matchByUniquePhone: false,
+        now,
+      });
       const r = await client.query('SELECT * FROM customers WHERE id = $1', [customerId]);
       return mapPgCustomerRow(r.rows[0]);
     });
@@ -506,6 +594,20 @@ export async function updateCustomer(customerId, updates, actor) {
       updatedAt: now,
     });
     db.customers[idx] = merged;
+    merged.identityId = attachRecordToIdentityJsonTx(db, {
+      entityType: 'customer',
+      entityId: customerId,
+      roleKey: 'customer',
+      fullName: merged.name,
+      phone: merged.phone,
+      secondaryPhone: merged.secondaryPhone || '',
+      address: merged.address || '',
+      notes: merged.notes || '',
+      explicitIdentityId: updates.identityId || cur.identityId || null,
+      linkedUserId: merged.userId || null,
+      matchByUniquePhone: false,
+      now,
+    });
     return merged;
   });
 
@@ -832,10 +934,46 @@ export async function linkCustomerToUser({ customerId, existingUserId, createUse
       }
 
       await client.query('UPDATE customers SET user_id = $1, updated_at = $2 WHERE id = $3', [targetUserId, now, customerId]);
+      const baseCustIdentityId =
+        customer.identityId ||
+        (await attachRecordToIdentityPgTx(client, {
+          entityType: 'customer',
+          entityId: customerId,
+          roleKey: 'customer',
+          fullName: customer.name,
+          phone: customer.phone || '',
+          address: customer.address || '',
+          matchByUniquePhone: false,
+          now,
+        }));
+      await attachRecordToIdentityPgTx(client, {
+        entityType: 'user',
+        entityId: targetUserId,
+        roleKey: 'user',
+        fullName: createdUser?.fullName || customer.name,
+        phone: createdUser?.phone || customer.phone || '',
+        explicitIdentityId: baseCustIdentityId,
+        isPrimary: true,
+        now,
+      });
+      await attachRecordToIdentityPgTx(client, {
+        entityType: 'customer',
+        entityId: customerId,
+        roleKey: 'customer',
+        fullName: customer.name,
+        phone: customer.phone || '',
+        explicitIdentityId: baseCustIdentityId,
+        matchByUniquePhone: false,
+        now,
+      });
+      if (createdUser) {
+        createdUser.identityId = baseCustIdentityId;
+      }
       const updatedCust = await client.query('SELECT * FROM customers WHERE id = $1', [customerId]);
       return {
         customer: mapPgCustomerRow(updatedCust.rows[0]),
         user: createdUser,
+        identityId: baseCustIdentityId,
       };
     });
 
@@ -892,10 +1030,46 @@ export async function linkCustomerToUser({ customerId, existingUserId, createUse
       }
     }
 
-    db.customers[cIdx] = { ...customer, userId: targetUserId };
+    const baseCustIdentityId =
+      customer.identityId ||
+      attachRecordToIdentityJsonTx(db, {
+        entityType: 'customer',
+        entityId: customerId,
+        roleKey: 'customer',
+        fullName: customer.name,
+        phone: customer.phone || '',
+        address: customer.address || '',
+        matchByUniquePhone: false,
+        now,
+      });
+    const usrObj = db.users.find((u) => u.id === targetUserId);
+    attachRecordToIdentityJsonTx(db, {
+      entityType: 'user',
+      entityId: targetUserId,
+      roleKey: 'user',
+      fullName: usrObj?.fullName || customer.name,
+      phone: usrObj?.phone || customer.phone || '',
+      explicitIdentityId: baseCustIdentityId,
+      isPrimary: true,
+      now,
+    });
+    if (usrObj) usrObj.identityId = baseCustIdentityId;
+    if (createdUser) createdUser.identityId = baseCustIdentityId;
+    db.customers[cIdx] = { ...customer, userId: targetUserId, identityId: baseCustIdentityId };
+    attachRecordToIdentityJsonTx(db, {
+      entityType: 'customer',
+      entityId: customerId,
+      roleKey: 'customer',
+      fullName: customer.name,
+      phone: customer.phone || '',
+      explicitIdentityId: baseCustIdentityId,
+      matchByUniquePhone: false,
+      now,
+    });
     return {
       customer: db.customers[cIdx],
       user: createdUser,
+      identityId: baseCustIdentityId,
     };
   });
 
@@ -957,9 +1131,10 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
       ]);
       await client.query('UPDATE cashboxes SET current_balance = $1 WHERE id = $2', [nextCbBalance, cb.id]);
 
+      const actorCtx = await resolveActorIdentityPgTx(client, actor);
       await client.query(
-        `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, description, notes, created_by_user_id, created_by, created_at)
-         VALUES ($1, $2, $3, 'customer_payment', $4, $5, $6, $7, $8, 'customer', $9, $10, 'manual', $11, $12, $13, $14, $15)`,
+        `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, description, notes, created_by_user_id, created_by, actor_identity_id, actor_employee_id, acting_role, created_at)
+         VALUES ($1, $2, $3, 'customer_payment', $4, $5, $6, $7, $8, 'customer', $9, $10, 'manual', $11, $12, $13, $14, $15, $16, $17, $18)`,
         [
           txId,
           txNumber,
@@ -975,6 +1150,9 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
           notes || '',
           actor.id,
           actor.fullName,
+          actorCtx.actorIdentityId || null,
+          actorCtx.actorEmployeeId || null,
+          actorCtx.actingRole || actor.role || null,
           now,
         ]
       );
@@ -1028,6 +1206,7 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
     cb.currentBalance = round2(Number(cb.currentBalance || 0) + payAmount);
     const desc = `تحصيل (${methodLabel}) من العميل: ${cust.name}${isAdvanceCredit ? ' (رصيد دائن / مقدم)' : ''}`;
 
+    const actorCtxJson = resolveActorIdentityJsonTx(db, actor);
     db.financialTransactions.unshift({
       id: txId,
       transactionNumber: txNumber,
@@ -1047,6 +1226,9 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
       notes: notes || '',
       createdByUserId: actor.id,
       createdBy: actor.fullName,
+      actorIdentityId: actorCtxJson.actorIdentityId,
+      actorEmployeeId: actorCtxJson.actorEmployeeId,
+      actingRole: actorCtxJson.actingRole,
       createdAt: now,
     });
 

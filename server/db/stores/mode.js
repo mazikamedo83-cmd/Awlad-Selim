@@ -477,6 +477,10 @@ export function mapPgUserRow(r) {
     isActive: Boolean(r.is_active),
     mustChangePassword: Boolean(r.must_change_password),
     lastLogin: r.last_login ? isoTimestamp(r.last_login) : undefined,
+    identityId: r.identity_id || undefined,
+    employeeId: r.employee_id || undefined,
+    activeRole: r.active_role || r.role,
+    additionalRoles: Array.isArray(r.additional_roles) ? r.additional_roles : [],
     permissions: sanitizeEffectivePermissionsForRole(r.role, r.permissions || {}),
     shortcuts: Array.isArray(r.shortcuts) ? r.shortcuts : [],
     createdAt: isoTimestamp(r.created_at),
@@ -553,6 +557,7 @@ export function mapPgCustomerRow(r) {
   return {
     id: r.id,
     code: r.code,
+    identityId: r.identity_id || undefined,
     userId: r.user_id || undefined,
     assignedRepId: r.assigned_rep_id || mergedAllowed[0] || undefined,
     allowedRepIds: mergedAllowed,
@@ -785,6 +790,9 @@ export function mapPgInvoiceRow(r, items = [], payments = []) {
     updatedAt: r.updated_at ? isoTimestamp(r.updated_at) : isoTimestamp(r.created_at),
     createdBy: r.created_by,
     createdByUserId: r.created_by_user_id || undefined,
+    actorIdentityId: r.actor_identity_id || undefined,
+    actorEmployeeId: r.actor_employee_id || undefined,
+    actingRole: r.acting_role || undefined,
     createdAt: isoTimestamp(r.created_at),
   };
 }

@@ -35,6 +35,9 @@ import {
   PurchaseReceiverOption,
   PurchaseReturnRequest,
   SalesReturnRequest,
+  UnifiedIdentity,
+  IdentityRoleLink,
+  IdentityConflict,
 } from '../types';
 
 const OFFLINE_ORDERS_QUEUE_KEY = 'awlad_selim_offline_orders_queue_v3';
@@ -73,6 +76,9 @@ export interface DatabaseState {
   purchaseReturnRequests?: PurchaseReturnRequest[];
   salesReturnRequests?: SalesReturnRequest[];
   auditLogs?: AuditLogItem[];
+  identities?: UnifiedIdentity[];
+  identityRoles?: IdentityRoleLink[];
+  identityConflicts?: IdentityConflict[];
   settings: SystemSettings;
   serverSettings?: ServerConnectionSettings;
   migrationLogs?: MigrationLogEntry[];
@@ -117,6 +123,9 @@ export function getEmptyClientDatabaseState(): DatabaseState {
     purchaseReturnRequests: [],
     salesReturnRequests: [],
     auditLogs: [],
+    identities: [],
+    identityRoles: [],
+    identityConflicts: [],
     settings: {
       companyName: 'أولاد سليم لتجارة المواد الغذائية بالجملة',
       companySubtitle: 'AWLAD SELIM - برنامج محاسبة وإدارة الأعمال المتكامل',

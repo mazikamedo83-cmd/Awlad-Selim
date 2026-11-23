@@ -1,15 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Plus, KeyRound, AlertCircle, CheckCircle2, Trash2, Shield, RotateCcw, Save
+  Plus, KeyRound, AlertCircle, CheckCircle2, Trash2, Shield, RotateCcw, Save, Link2, GitMerge, RefreshCw, AlertTriangle, UserCheck
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
-import { User, UserRole, UserPermissions } from '../../../types';
+import { IdentityEntityType, User, UserRole, UserPermissions } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
+import { SearchableFilterSelect } from '../../common/SearchableFilterSelect';
 
 interface UsersManagementViewProps {
-  initialTab?: 'users' | 'audit' | 'presets';
+  initialTab?: 'users' | 'audit' | 'presets' | 'identities';
 }
 
 const REP_SAFE_PRESET_KEYS: Array<{ key: keyof UserPermissions; label: string; locked?: boolean }> = [
@@ -71,7 +72,17 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
   const {
     users,
     customers,
+    employees,
+    representatives,
+    suppliers,
     auditLogs,
+    identities,
+    identityRoles,
+    identityConflicts,
+    refreshIdentitiesOverview,
+    runIdentityAudit,
+    linkEntityToIdentity,
+    resolveIdentityConflict,
     addUser,
     updateUser,
     deleteUser,
@@ -81,7 +92,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
   } = useData();
   const { currentUser } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'users' | 'audit' | 'presets'>(initialTab || 'users');
+  const [activeTab, setActiveTab] = useState<'users' | 'presets' | 'identities' | 'audit'>(initialTab || 'users');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -91,6 +102,19 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
   const [togglingUserId, setTogglingUserId] = useState<string | null>(null);
   const [hasManualPermEdits, setHasManualPermEdits] = useState(false);
   const [isSavingPresets, setIsSavingPresets] = useState(false);
+
+  // Unified Identity & Conflicts tab state
+  const [isRunningAudit, setIsRunningAudit] = useState(false);
+  const [isLoadingIdentities, setIsLoadingIdentities] = useState(false);
+  const [identitySearch, setIdentitySearch] = useState('');
+  const [linkTargetType, setLinkTargetType] = useState<IdentityEntityType>('user');
+  const [linkTargetId, setLinkTargetId] = useState('');
+  const [linkIdentityId, setLinkIdentityId] = useState('');
+  const [linkEmployeeTargetId, setLinkEmployeeTargetId] = useState('');
+  const [linkUserTargetId, setLinkUserTargetId] = useState('');
+  const [isLinkingIdentity, setIsLinkingIdentity] = useState(false);
+  const [conflictNotesById, setConflictNotesById] = useState<Record<string, string>>({});
+  const [busyConflictId, setBusyConflictId] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialTab) setActiveTab(initialTab);
@@ -103,6 +127,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<UserRole>('sales');
   const [linkedCustomerId, setLinkedCustomerId] = useState('');
+  const [linkedEmployeeId, setLinkedEmployeeId] = useState('');
   const [jobTitle, setJobTitle] = useState('موظف مبيعات');
   const [department, setDepartment] = useState('المبيعات');
   const [mustChangePassword, setMustChangePassword] = useState(false);
@@ -282,6 +307,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
     setPhone('');
     setRole('sales');
     setLinkedCustomerId('');
+    setLinkedEmployeeId('');
     setJobTitle(ROLE_PERMISSION_PRESETS.sales.jobTitle);
     setDepartment(ROLE_PERMISSION_PRESETS.sales.department);
     setPermissions(buildPresetPermissions('sales'));
@@ -300,6 +326,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
     setRole(u.role);
     const linkedCust = customers.find((c) => c.userId === u.id);
     setLinkedCustomerId(linkedCust?.id || '');
+    const linkedEmp = employees.find((e) => e.id === u.employeeId || e.userId === u.id);
+    setLinkedEmployeeId(linkedEmp?.id || u.employeeId || '');
     setJobTitle(u.jobTitle);
     setDepartment(u.department);
     setPermissions({ ...DEFAULT_PERMISSIONS, ...(u.permissions || {}) });
@@ -341,6 +369,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           mustChangePassword,
           newPassword: password.trim() || undefined,
           linkedCustomerId: role === 'customer' && linkedCustomerId ? linkedCustomerId : undefined,
+          linkedEmployeeId: role !== 'customer' && linkedEmployeeId ? linkedEmployeeId : undefined,
           autoCreateCustomerProfile: role === 'customer' && !linkedCustomerId && !currentLinkedCustomer,
           autoCreateRepProfile: role === 'representative',
           applyRolePreset: !hasManualPermEdits,
@@ -364,6 +393,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           mustChangePassword,
           permissions,
           linkedCustomerId: role === 'customer' && linkedCustomerId ? linkedCustomerId : undefined,
+          linkedEmployeeId: role !== 'customer' && linkedEmployeeId ? linkedEmployeeId : undefined,
           autoCreateCustomerProfile: role === 'customer' && !linkedCustomerId,
           autoCreateRepProfile: role === 'representative',
           applyRolePreset: !hasManualPermEdits,
@@ -379,7 +409,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
               ? `تم إنشاء حساب العميل (${username.trim()}) وتفعيل صلاحياته وربطه بملف عميل تلقائياً بنجاح.`
               : role === 'representative'
               ? `تم إنشاء حساب المندوب (${username.trim()}) وتفعيل صلاحياته الميدانية وإنشاء ملف المندوب ومستودع السيارة تلقائياً بنجاح.`
-              : `تم إنشاء حساب (${username.trim()}) بنجاح على السيرفر.`,
+              : `تم إنشاء حساب (${username.trim()}) وربطه بالهوية الموحدة بنجاح.`,
         });
       }
       setIsAddModalOpen(false);
@@ -477,6 +507,90 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
     }
   };
 
+  const pendingConflictsCount = useMemo(
+    () => identityConflicts.filter((c) => c.status === 'pending_review').length,
+    [identityConflicts]
+  );
+
+  const linkTargetOptions = useMemo(() => {
+    if (linkTargetType === 'user') {
+      return users.map((u) => ({ value: u.id, label: u.fullName, subtitle: `@${u.username} • ${u.phone || ''}` }));
+    }
+    if (linkTargetType === 'employee') {
+      return employees.map((e) => ({ value: e.id, label: e.name, subtitle: `${e.code} • ${e.jobTitle}` }));
+    }
+    if (linkTargetType === 'representative') {
+      return representatives.map((r) => ({ value: r.id, label: r.name, subtitle: r.phone }));
+    }
+    if (linkTargetType === 'customer') {
+      return customers.map((c) => ({ value: c.id, label: c.name, subtitle: `${c.code} • ${c.phone || ''}` }));
+    }
+    return suppliers.map((s) => ({ value: s.id, label: s.name, subtitle: `${s.code} • ${s.phone || ''}` }));
+  }, [linkTargetType, users, employees, representatives, customers, suppliers]);
+
+  const filteredIdentities = useMemo(() => {
+    const q = identitySearch.trim().toLowerCase();
+    if (!q) return identities;
+    return identities.filter((idn) =>
+      [idn.id, idn.fullName, idn.phone, idn.nationalId, idn.address]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [identities, identitySearch]);
+
+  const handleRunIdentityAudit = async () => {
+    setIsRunningAudit(true);
+    setStatusMessage(null);
+    try {
+      const res = await runIdentityAudit(true);
+      if (res.success) {
+        setStatusMessage({
+          type: 'success',
+          text: 'تم تنفيذ تدقيق الهويات الموحدة وحفظ نسخة احتياطية آمنة بنجاح دون دمج تلقائي غير مؤكد.',
+        });
+      } else {
+        setStatusMessage({ type: 'error', text: res.error || 'تعذر تنفيذ التدقيق الآمن للهويات' });
+      }
+    } finally {
+      setIsRunningAudit(false);
+    }
+  };
+
+  const handleManualIdentityLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!linkTargetId) {
+      setStatusMessage({ type: 'error', text: 'يرجى اختيار السجل المستهدف لربطه.' });
+      return;
+    }
+    setIsLinkingIdentity(true);
+    setStatusMessage(null);
+    try {
+      const res = await linkEntityToIdentity({
+        targetType: linkTargetType,
+        targetId: linkTargetId,
+        identityId: linkIdentityId || null,
+        linkEmployeeId: linkEmployeeTargetId || null,
+        linkUserId: linkUserTargetId || null,
+      });
+      if (res.success) {
+        setStatusMessage({
+          type: 'success',
+          text: `تم ربط السجل بنجاح بالهوية الموحدة (${res.identityId || 'محدثة'}).`,
+        });
+        setLinkTargetId('');
+        setLinkIdentityId('');
+        setLinkEmployeeTargetId('');
+        setLinkUserTargetId('');
+      } else {
+        setStatusMessage({ type: 'error', text: res.error || 'تعذر ربط السجل بالهوية الموحدة' });
+      }
+    } finally {
+      setIsLinkingIdentity(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -541,6 +655,24 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           <span>قوالب الصلاحيات التلقائية (المندوب / العميل)</span>
         </button>
         <button
+          onClick={() => {
+            setActiveTab('identities');
+            setIsLoadingIdentities(true);
+            refreshIdentitiesOverview().finally(() => setIsLoadingIdentities(false));
+          }}
+          className={`pb-2.5 transition-colors border-b-2 cursor-pointer flex items-center gap-1.5 ${
+            activeTab === 'identities' ? 'border-blue-900 text-blue-950' : 'border-transparent text-slate-500'
+          }`}
+        >
+          <GitMerge className="w-3.5 h-3.5" />
+          <span>الهويات الموحدة والتعارضات ({identities.length})</span>
+          {pendingConflictsCount > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black">
+              {pendingConflictsCount}
+            </span>
+          )}
+        </button>
+        <button
           onClick={() => setActiveTab('audit')}
           className={`pb-2.5 transition-colors border-b-2 cursor-pointer ${
             activeTab === 'audit' ? 'border-blue-900 text-blue-950' : 'border-transparent text-slate-500'
@@ -557,9 +689,9 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
             <table className="w-full text-right text-xs">
               <thead>
                 <tr className="bg-slate-50 font-bold border-b text-slate-700">
-                  <th className="p-3">الاسم الكامل</th>
+                  <th className="p-3">الاسم الكامل والهوية</th>
                   <th className="p-3">اسم المستخدم</th>
-                  <th className="p-3">الدور / الرتبة</th>
+                  <th className="p-3">الدور / الأدوار المرتبطة</th>
                   <th className="p-3">الوظيفة والقسم</th>
                   <th className="p-3">رقم الهاتف</th>
                   <th className="p-3">الحالة</th>
@@ -568,28 +700,54 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {users.map((u) => (
+                {users.map((u) => {
+                  const linkedEmp = employees.find((e) => e.id === u.employeeId || e.userId === u.id);
+                  const linkedRep = representatives.find((r) => r.userId === u.id);
+                  const linkedCust = customers.find((c) => c.userId === u.id);
+                  return (
                   <tr key={u.id} className="hover:bg-slate-50">
-                    <td className="p-3 font-bold text-slate-900">{u.fullName}</td>
+                    <td className="p-3 font-bold text-slate-900">
+                      <div>{u.fullName}</div>
+                      {u.identityId && (
+                        <div className="text-[10px] font-mono text-slate-500 mt-0.5">هوية: {u.identityId}</div>
+                      )}
+                    </td>
                     <td className="p-3 font-mono text-blue-900 font-bold">{u.username}</td>
                     <td className="p-3">
-                      <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 text-[10px] font-bold">
-                        {u.role === 'admin'
-                          ? 'مالك / مدير عام'
-                          : u.role === 'manager'
-                          ? 'مدير'
-                          : u.role === 'accountant'
-                          ? 'محاسب'
-                          : u.role === 'purchases'
-                          ? 'موظف مشتريات'
-                          : u.role === 'representative'
-                          ? 'مندوب مبيعات'
-                          : u.role === 'customer'
-                          ? 'عميل - تطبيق العملاء'
-                          : u.role === 'warehouse'
-                          ? 'أمين مستودع'
-                          : 'موظف مبيعات'}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 text-[10px] font-bold">
+                          {u.role === 'admin'
+                            ? 'مالك / مدير عام'
+                            : u.role === 'manager'
+                            ? 'مدير'
+                            : u.role === 'accountant'
+                            ? 'محاسب'
+                            : u.role === 'purchases'
+                            ? 'موظف مشتريات'
+                            : u.role === 'representative'
+                            ? 'مندوب مبيعات'
+                            : u.role === 'customer'
+                            ? 'عميل - تطبيق العملاء'
+                            : u.role === 'warehouse'
+                            ? 'أمين مستودع'
+                            : 'موظف مبيعات'}
+                        </span>
+                        {linkedEmp && (
+                          <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-800 text-[10px] font-bold" title={`ملف موظف HR: ${linkedEmp.name}`}>
+                            موظف HR: {linkedEmp.code}
+                          </span>
+                        )}
+                        {linkedRep && (
+                          <span className="px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-800 text-[10px] font-bold">
+                            ملف مندوب
+                          </span>
+                        )}
+                        {linkedCust && (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-[10px] font-bold">
+                            عميل: {linkedCust.code}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="p-3 text-slate-600">
                       {u.jobTitle} - {u.department}
@@ -657,7 +815,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -780,6 +939,303 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
               <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-[11px] text-blue-900 font-bold">
                 ملاحظة أمنية: حساب العميل معزول بالكامل في بياناته وطلباته وفواتيره وكشف حسابه الشخصي ولا يمكنه الوصول لأي بيانات عملاء آخرين أو مالية الشركة.
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unified Identities & Conflicts Tab */}
+      {activeTab === 'identities' && (
+        <div className="space-y-4 text-xs">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                <GitMerge className="w-4 h-4 text-blue-900" />
+                <span>سجل الهويات الموحدة وإدارة تداخل السجلات</span>
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                يربط هذا النظام ملفات الموظفين والمستخدمين والمندوبين والعملاء والموردين تحت معرف هوية موحد مع الحفاظ على فصل القيود المالية والرواتب.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={isLoadingIdentities}
+                onClick={() => {
+                  setIsLoadingIdentities(true);
+                  refreshIdentitiesOverview().finally(() => setIsLoadingIdentities(false));
+                }}
+                className="px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingIdentities ? 'animate-spin' : ''}`} />
+                <span>تحديث</span>
+              </button>
+              <button
+                type="button"
+                disabled={isRunningAudit}
+                onClick={handleRunIdentityAudit}
+                className="px-4 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <UserCheck className="w-4 h-4" />
+                <span>{isRunningAudit ? 'جاري الفحص الآمن...' : 'تشغيل التدقيق الآمن للهويات'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Manual Link Form */}
+          <form onSubmit={handleManualIdentityLink} className="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 space-y-3">
+            <h4 className="font-black text-slate-900 flex items-center gap-1.5">
+              <Link2 className="w-4 h-4 text-emerald-700" />
+              <span>ربط يدوي مؤكد بين سجل وهوية أو موظف / مستخدم</span>
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 items-end">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">نوع السجل الأساسي:</label>
+                <select
+                  value={linkTargetType}
+                  onChange={(e) => {
+                    setLinkTargetType(e.target.value as IdentityEntityType);
+                    setLinkTargetId('');
+                  }}
+                  className="w-full h-[34px] border border-slate-300 rounded-md px-2 font-bold bg-white"
+                >
+                  <option value="user">حساب مستخدم</option>
+                  <option value="employee">ملف موظف (HR)</option>
+                  <option value="representative">مندوب مبيعات</option>
+                  <option value="customer">عميل</option>
+                  <option value="supplier">مورد</option>
+                </select>
+              </div>
+              <div>
+                <SearchableFilterSelect
+                  label="السجل المطلوب ربطه"
+                  value={linkTargetId || 'all'}
+                  onChange={(val) => setLinkTargetId(val === 'all' ? '' : val)}
+                  options={linkTargetOptions}
+                  allOptionLabel="-- اختر السجل --"
+                  allOptionValue="all"
+                />
+              </div>
+              <div>
+                <SearchableFilterSelect
+                  label="ربط بهوية قائمة (اختياري)"
+                  value={linkIdentityId || 'all'}
+                  onChange={(val) => setLinkIdentityId(val === 'all' ? '' : val)}
+                  options={identities.map((idn) => ({
+                    value: idn.id,
+                    label: idn.fullName,
+                    subtitle: `${idn.id}${idn.phone ? ` • ${idn.phone}` : ''}`,
+                  }))}
+                  allOptionLabel="تلقائي / إنشاء جديد"
+                  allOptionValue="all"
+                />
+              </div>
+              <div>
+                <SearchableFilterSelect
+                  label="ربط بملف موظف (اختياري)"
+                  value={linkEmployeeTargetId || 'all'}
+                  onChange={(val) => setLinkEmployeeTargetId(val === 'all' ? '' : val)}
+                  options={employees.map((e) => ({
+                    value: e.id,
+                    label: e.name,
+                    subtitle: `${e.code} • ${e.jobTitle}`,
+                  }))}
+                  allOptionLabel="بدون تغيير"
+                  allOptionValue="all"
+                />
+              </div>
+              <div className="flex items-end gap-2">
+                <div className="flex-1">
+                  <SearchableFilterSelect
+                    label="ربط بمستخدم (اختياري)"
+                    value={linkUserTargetId || 'all'}
+                    onChange={(val) => setLinkUserTargetId(val === 'all' ? '' : val)}
+                    options={users.map((u) => ({
+                      value: u.id,
+                      label: u.fullName,
+                      subtitle: `@${u.username}`,
+                    }))}
+                    allOptionLabel="بدون تغيير"
+                    allOptionValue="all"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={isLinkingIdentity || !linkTargetId}
+                  className="h-[34px] px-4 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white font-black disabled:opacity-50 shrink-0 cursor-pointer"
+                >
+                  {isLinkingIdentity ? '...' : 'ربط'}
+                </button>
+              </div>
+            </div>
+          </form>
+
+          {/* Identity Conflicts Review Section */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="p-4 border-b bg-amber-50/70 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 font-black text-amber-950">
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                <span>سجلات الاشتباه والتعارض ({identityConflicts.length})</span>
+              </div>
+              <span className="text-[11px] font-bold text-amber-800">
+                قيد المراجعة: {pendingConflictsCount}
+              </span>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {identityConflicts.length === 0 ? (
+                <div className="p-6 text-center text-slate-400 font-bold">
+                  لا توجد أي تعارضات أو اشتباهات مسجلة حالياً.
+                </div>
+              ) : (
+                identityConflicts.map((cf) => (
+                  <div key={cf.id} className="p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                    <div className="space-y-1.5 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono font-bold text-slate-600">{cf.id}</span>
+                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 font-bold text-[10px]">
+                          {cf.conflictType}
+                        </span>
+                        {cf.identifierKey && (
+                          <span className="font-mono text-[11px] text-blue-900 bg-blue-50 px-2 py-0.5 rounded">
+                            المؤشر: {cf.identifierKey}
+                          </span>
+                        )}
+                        <span
+                          className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                            cf.status === 'pending_review'
+                              ? 'bg-amber-100 text-amber-800'
+                              : cf.status === 'resolved'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-slate-200 text-slate-700'
+                          }`}
+                        >
+                          {cf.status === 'pending_review'
+                            ? 'قيد المراجعة'
+                            : cf.status === 'resolved'
+                            ? 'تم الحل'
+                            : 'مستبعد'}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(cf.candidateRecords || []).map((cand, idx) => (
+                          <span
+                            key={`${cf.id}-cand-${idx}`}
+                            className="px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 text-[11px] font-bold text-slate-800"
+                          >
+                            {cand.recordType}: {cand.name || cand.recordId}
+                            {cand.phone ? ` (${cand.phone})` : ''}
+                          </span>
+                        ))}
+                      </div>
+                      {cf.resolutionNotes && (
+                        <div className="text-[11px] text-slate-600">ملاحظة المعالجة: {cf.resolutionNotes}</div>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      <input
+                        type="text"
+                        value={conflictNotesById[cf.id] ?? ''}
+                        onChange={(e) => setConflictNotesById((prev) => ({ ...prev, [cf.id]: e.target.value }))}
+                        placeholder="ملاحظة قرار المراجعة..."
+                        className="h-8 w-44 border border-slate-300 rounded-lg px-2 text-xs"
+                      />
+                      <button
+                        type="button"
+                        disabled={busyConflictId === cf.id}
+                        onClick={async () => {
+                          setBusyConflictId(cf.id);
+                          await resolveIdentityConflict(cf.id, {
+                            status: 'resolved',
+                            resolutionNotes: conflictNotesById[cf.id] || 'تم التحقق واعتماد الربط من الإدارة',
+                          });
+                          setBusyConflictId(null);
+                        }}
+                        className="h-8 px-3 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer disabled:opacity-50"
+                      >
+                        تأكيد الحل
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busyConflictId === cf.id}
+                        onClick={async () => {
+                          setBusyConflictId(cf.id);
+                          await resolveIdentityConflict(cf.id, {
+                            status: 'dismissed',
+                            resolutionNotes: conflictNotesById[cf.id] || 'شخصان مختلفان — مستبعد',
+                          });
+                          setBusyConflictId(null);
+                        }}
+                        className="h-8 px-3 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold cursor-pointer disabled:opacity-50"
+                      >
+                        تجاهل
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Unified Identities Directory */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="p-4 border-b flex flex-wrap items-center justify-between gap-3 bg-slate-50">
+              <div className="font-black text-slate-900">دليل الهويات الموحدة ({filteredIdentities.length})</div>
+              <input
+                type="text"
+                value={identitySearch}
+                onChange={(e) => setIdentitySearch(e.target.value)}
+                placeholder="بحث بالاسم أو الهاتف أو الرقم القومي أو معرف الهوية..."
+                className="h-8 w-full sm:w-72 border border-slate-300 rounded-lg px-3 text-xs bg-white"
+              />
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-right text-xs">
+                <thead>
+                  <tr className="bg-slate-50 font-bold border-b text-slate-700">
+                    <th className="p-3">معرف الهوية</th>
+                    <th className="p-3">الاسم الكامل</th>
+                    <th className="p-3">الهاتف</th>
+                    <th className="p-3">الرقم القومي</th>
+                    <th className="p-3">السجلات والأدوار المرتبطة</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredIdentities.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="p-6 text-center text-slate-400">
+                        لا توجد هويات مطابقة
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredIdentities.map((idn) => {
+                      const roles =
+                        idn.roles && idn.roles.length > 0
+                          ? idn.roles
+                          : identityRoles.filter((r) => r.identityId === idn.id);
+                      return (
+                        <tr key={idn.id} className="hover:bg-slate-50">
+                          <td className="p-3 font-mono font-bold text-blue-900">{idn.id}</td>
+                          <td className="p-3 font-bold text-slate-900">{idn.fullName}</td>
+                          <td className="p-3 font-mono">{idn.phone || '-'}</td>
+                          <td className="p-3 font-mono">{idn.nationalId || '-'}</td>
+                          <td className="p-3">
+                            <div className="flex flex-wrap gap-1">
+                              {roles.map((r) => (
+                                <span
+                                  key={r.id}
+                                  className="px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-slate-800 text-[10px] font-bold"
+                                >
+                                  {r.linkedRecordType}: {r.linkedRecordId}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -920,6 +1376,38 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
               />
             </div>
           </div>
+
+          {role !== 'customer' && (
+            <div className="p-3 rounded-xl bg-indigo-50/70 border border-indigo-200 space-y-1.5">
+              <label className="block font-bold text-indigo-950">ربط بسجل الموظف (HR) — لمنع تكرار الموظف وتوحيد الهوية:</label>
+              <select
+                value={linkedEmployeeId}
+                onChange={(e) => {
+                  const empId = e.target.value;
+                  setLinkedEmployeeId(empId);
+                  if (!editingUser && empId) {
+                    const emp = employees.find((item) => item.id === empId);
+                    if (emp) {
+                      if (!fullName.trim()) setFullName(emp.name);
+                      if (!phone.trim() && emp.phone) setPhone(emp.phone);
+                      if (emp.jobTitle) setJobTitle(emp.jobTitle);
+                      if (emp.department) setDepartment(emp.department);
+                    }
+                  }
+                }}
+                className="w-full bg-white border border-indigo-300 rounded-xl p-2 font-bold"
+              >
+                <option value="">-- بدون ربط بموظف / اختياري --</option>
+                {employees
+                  .filter((e) => !e.userId || (editingUser && (e.userId === editingUser.id || e.id === editingUser.employeeId)))
+                  .map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.name} ({e.code}) — {e.jobTitle}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
 
           {role === 'representative' && (
             <div className="p-3 rounded-xl bg-cyan-50 border border-cyan-200 text-cyan-950 font-bold text-[11px] leading-relaxed">

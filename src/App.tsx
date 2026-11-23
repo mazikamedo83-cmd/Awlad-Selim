@@ -667,7 +667,13 @@ const MainAppContent: React.FC = () => {
               onNavigateToTransfers={() => setCurrentPage('rep-transfers')}
             />
 
-            <main className="flex-1 p-3 sm:p-4 lg:p-6 max-w-7xl w-full mx-auto min-w-0">
+            <main
+              className={`flex-1 w-full mx-auto min-w-0 ${
+                currentPage === 'reports' || currentPage === 'item-movement-report'
+                  ? 'max-w-full px-2 sm:px-3 lg:px-4 py-2 sm:py-2.5'
+                  : 'max-w-7xl p-3 sm:p-4 lg:p-6'
+              }`}
+            >
               {renderDbOrSyncAlert()}
               {renderActivePage()}
             </main>
