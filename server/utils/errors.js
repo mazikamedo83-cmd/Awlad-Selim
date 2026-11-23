@@ -117,6 +117,35 @@ export function sanitizeInvoiceForRepresentative(invoice) {
   };
 }
 
+export function isRepOwnerOfInvoice(inv, actor, repProfile = null) {
+  if (!inv || !actor) return false;
+  if (repProfile?.id && inv.representativeId === repProfile.id) return true;
+  if (actor.id && inv.createdByUserId === actor.id) return true;
+  if (actor.id && inv.sentByUserId === actor.id) return true;
+  if (
+    actor.id &&
+    !inv.createdByUserId &&
+    !inv.representativeId &&
+    !inv.sentByUserId &&
+    inv.createdBy === actor.id
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function buildPgInPredicate(columnSql, values, params) {
+  const list = Array.isArray(values)
+    ? Array.from(new Set(values.filter((v) => v !== null && v !== undefined && v !== '')))
+    : [];
+  if (list.length === 0) return '1 = 0';
+  const placeholders = list.map((v) => {
+    params.push(v);
+    return `$${params.length}`;
+  });
+  return `${columnSql} IN (${placeholders.join(', ')})`;
+}
+
 export function getUnitSellingPrice(product, unitName) {
   if (!product) return 0;
   if (!unitName || unitName === product.baseUnit) {

@@ -1,7 +1,16 @@
 import { getPool, withTransaction } from '../postgres.js';
 import { withJsonTransaction, nextJsonSequence, readJsonDatabase } from '../jsonLedger.js';
 import { generateServerId } from '../../utils/crypto.js';
-import { AppError, nowIso, todayIso, round2, round3, sanitizeInvoiceForRepresentative } from '../../utils/errors.js';
+import {
+  AppError,
+  nowIso,
+  todayIso,
+  round2,
+  round3,
+  sanitizeInvoiceForRepresentative,
+  isRepOwnerOfInvoice,
+  buildPgInPredicate,
+} from '../../utils/errors.js';
 import { isPgMode, mapPgInvoiceRow, mapPgCustomerRow, mapPgProductRow, mapPgPurchaseReturnRequestRow } from './mode.js';
 import { recordAuditLog } from './authStore.js';
 import {
@@ -18,16 +27,7 @@ import {
   findProductDuplicateMatchInList,
 } from './catalogStore.js';
 
-export function isRepOwnerOfInvoice(inv, actor, repProfile = null) {
-  if (!inv || !actor) return false;
-  if (repProfile?.id && inv.representativeId === repProfile.id) return true;
-  if (actor.id && inv.createdByUserId === actor.id) return true;
-  if (actor.id && inv.sentByUserId === actor.id) return true;
-  if (!inv.createdByUserId && !inv.representativeId && !inv.sentByUserId) {
-    return inv.createdBy === actor.id || (Boolean(actor.fullName) && inv.createdBy === actor.fullName);
-  }
-  return false;
-}
+export { isRepOwnerOfInvoice };
 
 function recomputeInvoiceTotals(payload, existingItems = []) {
   const items = Array.isArray(payload.items) ? payload.items : existingItems;
@@ -1740,6 +1740,10 @@ export async function convertQuoteToInvoice(quoteId, overrides = {}, actor, idem
   const endpoint = `POST /api/invoices/quotes/${quoteId}/convert`;
   const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
   const now = nowIso();
+  const repActor = actor?.role === 'representative' ? await getRepresentativeByUserId(actor.id) : null;
+  if (actor?.role === 'representative' && !repActor) {
+    throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
+  }
 
   const out = (await isPgMode())
     ? await withTransaction(async (client) => {
@@ -1749,14 +1753,17 @@ export async function convertQuoteToInvoice(quoteId, overrides = {}, actor, idem
         if (!quote) throw new AppError(404, 'عرض السعر غير موجود', 'QUOTE_NOT_FOUND');
         if (quote.type !== 'quote') throw new AppError(400, 'المستند المحدد ليس عرض سعر', 'NOT_A_QUOTE');
         if (quote.status === 'cancelled') throw new AppError(409, 'عرض السعر ملغى', 'QUOTE_CANCELLED');
+        if (repActor && !isRepOwnerOfInvoice(quote, actor, repActor)) {
+          throw new AppError(403, 'غير مصرح للمندوب بتحويل عرض سعر لا يخصه', 'FORBIDDEN_INVOICE_ACCESS');
+        }
 
         const invoicePayload = {
           customerId: overrides.customerId || quote.customerId,
           customerName: overrides.customerName || quote.customerName,
-          representativeId: overrides.representativeId || quote.representativeId,
-          representativeName: overrides.representativeName || quote.representativeName,
+          representativeId: repActor ? repActor.id : (overrides.representativeId || quote.representativeId),
+          representativeName: repActor ? repActor.name : (overrides.representativeName || quote.representativeName),
           warehouseId: overrides.warehouseId || quote.warehouseId,
-          cashboxId: overrides.cashboxId || quote.cashboxId,
+          cashboxId: repActor ? undefined : (overrides.cashboxId || quote.cashboxId),
           paymentType: overrides.paymentType || 'credit',
           paymentMethod: overrides.paymentMethod || 'cash',
           paidAmount: overrides.paidAmount ?? 0,
@@ -1783,14 +1790,17 @@ export async function convertQuoteToInvoice(quoteId, overrides = {}, actor, idem
         if (!quote) throw new AppError(404, 'عرض السعر غير موجود', 'QUOTE_NOT_FOUND');
         if (quote.type !== 'quote') throw new AppError(400, 'المستند المحدد ليس عرض سعر', 'NOT_A_QUOTE');
         if (quote.status === 'cancelled') throw new AppError(409, 'عرض السعر ملغى', 'QUOTE_CANCELLED');
+        if (repActor && !isRepOwnerOfInvoice(quote, actor, repActor)) {
+          throw new AppError(403, 'غير مصرح للمندوب بتحويل عرض سعر لا يخصه', 'FORBIDDEN_INVOICE_ACCESS');
+        }
 
         const invoicePayload = {
           customerId: overrides.customerId || quote.customerId,
           customerName: overrides.customerName || quote.customerName,
-          representativeId: overrides.representativeId || quote.representativeId,
-          representativeName: overrides.representativeName || quote.representativeName,
+          representativeId: repActor ? repActor.id : (overrides.representativeId || quote.representativeId),
+          representativeName: repActor ? repActor.name : (overrides.representativeName || quote.representativeName),
           warehouseId: overrides.warehouseId || quote.warehouseId,
-          cashboxId: overrides.cashboxId || quote.cashboxId,
+          cashboxId: repActor ? undefined : (overrides.cashboxId || quote.cashboxId),
           paymentType: overrides.paymentType || 'credit',
           paymentMethod: overrides.paymentMethod || 'cash',
           paidAmount: overrides.paidAmount ?? 0,
@@ -1864,10 +1874,8 @@ export async function confirmDraftInvoice(invoiceId, actor) {
         }
       }
 
-      if (repActor) {
-        if (inv.representativeId && inv.representativeId !== repActor.id) {
-          throw new AppError(403, 'غير مصرح لك باعتماد فاتورة مندوب آخر', 'FORBIDDEN_INVOICE_ACCESS');
-        }
+      if (repActor && !isRepOwnerOfInvoice(inv, actor, repActor)) {
+        throw new AppError(403, 'غير مصرح لك باعتماد فاتورة لا تخصك', 'FORBIDDEN_INVOICE_ACCESS');
       }
 
       if (inv.linkedRepTransferId) {
@@ -1951,10 +1959,8 @@ export async function confirmDraftInvoice(invoiceId, actor) {
         }
       }
 
-      if (repActor) {
-        if (inv.representativeId && inv.representativeId !== repActor.id) {
-          throw new AppError(403, 'غير مصرح لك باعتماد فاتورة مندوب آخر', 'FORBIDDEN_INVOICE_ACCESS');
-        }
+      if (repActor && !isRepOwnerOfInvoice(inv, actor, repActor)) {
+        throw new AppError(403, 'غير مصرح لك باعتماد فاتورة لا تخصك', 'FORBIDDEN_INVOICE_ACCESS');
       }
 
       if (inv.linkedRepTransferId) {
@@ -4197,8 +4203,8 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
           orig.id,
           orig.invoiceNumber,
           retDate,
-          returnData.partyId || (isSalesReturn ? orig.customerId : orig.supplierId) || 'general',
-          returnData.partyName || (isSalesReturn ? orig.customerName : orig.supplierName) || '',
+          (isSalesReturn ? orig.customerId : orig.supplierId) || returnData.partyId || 'general',
+          (isSalesReturn ? orig.customerName : orig.supplierName) || returnData.partyName || '',
           whId,
           whName,
           grandTotal,
@@ -4326,8 +4332,8 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
         originalInvoiceId: orig.id,
         originalInvoiceNumber: orig.invoiceNumber,
         date: retDate,
-        partyId: returnData.partyId || orig.customerId || orig.supplierId || 'general',
-        partyName: returnData.partyName || orig.customerName || orig.supplierName || '',
+        partyId: (isSalesReturn ? orig.customerId : orig.supplierId) || returnData.partyId || 'general',
+        partyName: (isSalesReturn ? orig.customerName : orig.supplierName) || returnData.partyName || '',
         warehouseId: whId,
         warehouseName: whName,
         items: normalizedItems,
@@ -4479,8 +4485,8 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
       originalInvoiceId: orig.id,
       originalInvoiceNumber: orig.invoiceNumber,
       date: retDate,
-      partyId: returnData.partyId || orig.customerId || orig.supplierId || 'general',
-      partyName: returnData.partyName || orig.customerName || orig.supplierName || '',
+      partyId: (isSalesReturn ? orig.customerId : orig.supplierId) || returnData.partyId || 'general',
+      partyName: (isSalesReturn ? orig.customerName : orig.supplierName) || returnData.partyName || '',
       warehouseId: whId,
       warehouseName: whName,
       items: normalizedItems,
@@ -4534,9 +4540,11 @@ export async function listPurchaseReturnRequests(actor = null) {
     }
     if (reqRes.rows.length === 0) return [];
     const reqIds = reqRes.rows.map((r) => r.id);
+    const prrParams = [];
+    const prrPred = buildPgInPredicate('request_id', reqIds, prrParams);
     const itemsRes = await pool.query(
-      `SELECT * FROM purchase_return_request_items WHERE request_id = ANY($1::varchar[])`,
-      [reqIds]
+      `SELECT * FROM purchase_return_request_items WHERE ${prrPred}`,
+      prrParams
     );
     const itemsMap = new Map();
     for (const it of itemsRes.rows) {
@@ -5356,3 +5364,152 @@ export async function listInvoices(actor = null, filters = {}) {
 
   return allInvoices;
 }
+
+export async function getLegacyOwnershipDiagnostics() {
+  let users = [];
+  let invoices = [];
+  let returns = [];
+  let transactions = [];
+
+  if (await isPgMode()) {
+    const pool = getPool();
+    const [uRes, iRes, rRes, fRes] = await Promise.all([
+      pool.query(`SELECT id, full_name, username, role, is_active FROM users`),
+      pool.query(
+        `SELECT id, invoice_number, type, date, status, customer_id, supplier_id, representative_id, created_by_user_id, sent_by_user_id, created_by, grand_total
+         FROM invoices
+         WHERE created_by_user_id IS NULL AND representative_id IS NULL AND sent_by_user_id IS NULL
+         ORDER BY created_at DESC LIMIT 200`
+      ),
+      pool.query(
+        `SELECT id, return_number, type, date, original_invoice_id, created_by_user_id, created_by, grand_total
+         FROM invoice_returns
+         WHERE created_by_user_id IS NULL
+         ORDER BY created_at DESC LIMIT 200`
+      ),
+      pool.query(
+        `SELECT id, transaction_number, type, date, related_doc_id, created_by_user_id, created_by, amount
+         FROM financial_transactions
+         WHERE created_by_user_id IS NULL
+         ORDER BY created_at DESC LIMIT 200`
+      ),
+    ]);
+    users = uRes.rows.map((u) => ({
+      id: u.id,
+      fullName: u.full_name,
+      username: u.username,
+      role: u.role,
+      isActive: Boolean(u.is_active),
+    }));
+    invoices = iRes.rows.map((i) => ({
+      id: i.id,
+      invoiceNumber: i.invoice_number,
+      type: i.type,
+      date: i.date,
+      status: i.status,
+      customerId: i.customer_id || undefined,
+      supplierId: i.supplier_id || undefined,
+      createdBy: i.created_by || '',
+      grandTotal: Number(i.grand_total || 0),
+    }));
+    returns = rRes.rows.map((r) => ({
+      id: r.id,
+      returnNumber: r.return_number,
+      type: r.type,
+      date: r.date,
+      originalInvoiceId: r.original_invoice_id || undefined,
+      createdBy: r.created_by || '',
+      grandTotal: Number(r.grand_total || 0),
+    }));
+    transactions = fRes.rows.map((t) => ({
+      id: t.id,
+      transactionNumber: t.transaction_number,
+      type: t.type,
+      date: t.date,
+      relatedDocId: t.related_doc_id || undefined,
+      createdBy: t.created_by || '',
+      amount: Number(t.amount || 0),
+    }));
+  } else {
+    const db = readJsonDatabase();
+    users = (db.users || []).map((u) => ({
+      id: u.id,
+      fullName: u.fullName,
+      username: u.username,
+      role: u.role,
+      isActive: u.isActive !== false,
+    }));
+    invoices = (db.invoices || [])
+      .filter((i) => !i.createdByUserId && !i.representativeId && !i.sentByUserId)
+      .slice(0, 200)
+      .map((i) => ({
+        id: i.id,
+        invoiceNumber: i.invoiceNumber,
+        type: i.type,
+        date: i.date,
+        status: i.status,
+        customerId: i.customerId || undefined,
+        supplierId: i.supplierId || undefined,
+        createdBy: i.createdBy || '',
+        grandTotal: Number(i.grandTotal || 0),
+      }));
+    returns = (db.invoiceReturns || [])
+      .filter((r) => !r.createdByUserId)
+      .slice(0, 200)
+      .map((r) => ({
+        id: r.id,
+        returnNumber: r.returnNumber,
+        type: r.type,
+        date: r.date,
+        originalInvoiceId: r.originalInvoiceId || undefined,
+        createdBy: r.createdBy || '',
+        grandTotal: Number(r.grandTotal || 0),
+      }));
+    transactions = (db.financialTransactions || [])
+      .filter((t) => !t.createdByUserId)
+      .slice(0, 200)
+      .map((t) => ({
+        id: t.id,
+        transactionNumber: t.transactionNumber,
+        type: t.type,
+        date: t.date,
+        relatedDocId: t.relatedDocId || undefined,
+        createdBy: t.createdBy || '',
+        amount: Number(t.amount || 0),
+      }));
+  }
+
+  const usersByFullName = new Map();
+  for (const u of users) {
+    const key = String(u.fullName || '').trim();
+    if (!key) continue;
+    const list = usersByFullName.get(key) || [];
+    list.push({ id: u.id, username: u.username, role: u.role, isActive: u.isActive });
+    usersByFullName.set(key, list);
+  }
+  const duplicateFullNameGroups = [];
+  for (const [fullName, matchedUsers] of usersByFullName.entries()) {
+    if (matchedUsers.length > 1) {
+      duplicateFullNameGroups.push({ fullName, usersCount: matchedUsers.length, users: matchedUsers });
+    }
+  }
+
+  return {
+    nonDestructive: true,
+    repMatchingMode: 'strict_id_only',
+    summary: {
+      unattributedInvoicesCount: invoices.length,
+      unattributedReturnsCount: returns.length,
+      unattributedTransactionsCount: transactions.length,
+      duplicateFullNameGroupsCount: duplicateFullNameGroups.length,
+    },
+    unattributedInvoices: invoices.map((i) => ({
+      ...i,
+      ambiguousNameMatch: duplicateFullNameGroups.some((g) => g.fullName === String(i.createdBy || '').trim()),
+    })),
+    unattributedReturns: returns,
+    unattributedTransactions: transactions,
+    duplicateFullNameGroups,
+  };
+}
+

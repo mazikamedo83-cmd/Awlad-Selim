@@ -401,11 +401,12 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     try {
       const rep =
         representatives.find((r) => r.id === selectedRepId) ||
-        representatives.find(
-          (r) =>
-            (r.userId && r.userId === currentUser?.id) ||
-            r.name.toLowerCase() === currentUser?.fullName?.toLowerCase()
-        );
+        representatives.find((r) => r.userId && r.userId === currentUser?.id) ||
+        (currentUser?.role !== 'representative'
+          ? representatives.find(
+              (r) => !r.userId && r.name.toLowerCase() === currentUser?.fullName?.toLowerCase()
+            )
+          : undefined);
 
       let linkedTransferId: string | undefined;
       let linkedTransferNumber: string | undefined;

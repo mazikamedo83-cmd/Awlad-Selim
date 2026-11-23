@@ -33,6 +33,7 @@ import {
   exportFullBackup,
   restoreFullBackup,
 } from '../db/stores/inventoryAdminStore.js';
+import { getLegacyOwnershipDiagnostics } from '../db/stores/invoicesStore.js';
 import { listAuditLogs } from '../db/stores/authStore.js';
 import { getSystemSettingsSafe } from '../db/stores/catalogStore.js';
 import {
@@ -496,6 +497,10 @@ router.post('/db/init-schema', blockRepAndCustomer, requireAdmin, asyncHandler(a
   const result = await initializeSchema();
   if (!result.success) return res.status(500).json({ ok: false, error: result.error });
   res.json({ ok: true, message: result.message });
+}));
+router.get('/diagnostics/legacy-ownership', blockRepAndCustomer, requireAdmin, asyncHandler(async (_req, res) => {
+  const diagnostics = await getLegacyOwnershipDiagnostics();
+  res.json({ ok: true, diagnostics });
 }));
 router.get('/migration/logs', blockRepAndCustomer, requirePermission('canManageSettings'), asyncHandler(async (_req, res) => {
   res.json({ ok: true, logs: readMigrationLogs() });

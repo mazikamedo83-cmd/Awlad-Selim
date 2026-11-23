@@ -27,6 +27,8 @@ import {
   canViewAllRepresentatives,
   canManageSyncConflictsGlobally,
   sanitizeSyncPayload,
+  isRepOwnerOfInvoice,
+  buildPgInPredicate,
 } from '../../utils/errors.js';
 import {
   buildScopedIdemKey,
@@ -686,11 +688,7 @@ export async function getStaffBootstrapData(actor) {
   const scopedInvoices = isRep
     ? (db.invoices || [])
         .filter((inv) => {
-          const isOwnInv =
-            (repProfile && inv.representativeId === repProfile.id) ||
-            inv.createdByUserId === actor.id ||
-            inv.sentByUserId === actor.id ||
-            (!inv.createdByUserId && !inv.representativeId && !inv.sentByUserId && (inv.createdBy === actor.id || inv.createdBy === actor.fullName));
+          const isOwnInv = isRepOwnerOfInvoice(inv, actor, repProfile);
           if (!isOwnInv) return false;
           if (inv.type === 'sales' || inv.type === 'quote') return true;
           if (inv.type === 'purchase') return canViewSuppliers;
@@ -3582,16 +3580,7 @@ export async function getSupplierStatementData(supplierId, actor = null) {
     throw new AppError(403, 'عرض كشف حساب المورد متاح فقط للمندوبين المصرح لهم بإنشاء أو إدارة المشتريات', 'FORBIDDEN_REP_SUPPLIER_STATEMENT');
   }
   const repProfile = isRep ? await getRepresentativeByUserId(actor.id) : null;
-  const isRepOwnInvoice = (inv) =>
-    Boolean(
-      (repProfile && inv.representativeId === repProfile.id) ||
-        inv.createdByUserId === actor.id ||
-        inv.sentByUserId === actor.id ||
-        (!inv.createdByUserId &&
-          !inv.representativeId &&
-          !inv.sentByUserId &&
-          (inv.createdBy === actor.id || inv.createdBy === actor.fullName))
-    );
+  const isRepOwnInvoice = (inv) => isRepOwnerOfInvoice(inv, actor, repProfile);
 
   let supplier = null;
   let invoices = [];
@@ -3624,21 +3613,42 @@ export async function getSupplierStatementData(supplierId, actor = null) {
     const itemsMap = new Map();
     const payMap = new Map();
     if (invIds.length > 0) {
-      const itRes = await pool.query(`SELECT * FROM invoice_items WHERE invoice_id = ANY($1::varchar[])`, [invIds]);
+      const itParams = [];
+      const itPred = buildPgInPredicate('invoice_id', invIds, itParams);
+      const itRes = await pool.query(`SELECT * FROM invoice_items WHERE ${itPred}`, itParams);
       for (const it of itRes.rows) {
         const arr = itemsMap.get(it.invoice_id) || [];
         arr.push(it);
         itemsMap.set(it.invoice_id, arr);
       }
-      const pyRes = await pool.query(`SELECT * FROM invoice_payments WHERE invoice_id = ANY($1::varchar[]) ORDER BY created_at ASC`, [invIds]);
+      const pyParams = [];
+      const pyPred = buildPgInPredicate('invoice_id', invIds, pyParams);
+      const pyRes = await pool.query(`SELECT * FROM invoice_payments WHERE ${pyPred} ORDER BY created_at ASC`, pyParams);
       for (const py of pyRes.rows) {
         const arr = payMap.get(py.invoice_id) || [];
         arr.push(py);
         payMap.set(py.invoice_id, arr);
       }
     }
+    const sanitizePurchaseForRep = (inv) => {
+      const base = sanitizeInvoiceForRepresentative(inv);
+      if (!isRep) return base;
+      return {
+        ...base,
+        cashboxId: '',
+        cashboxName: '-',
+        payments: Array.isArray(base.payments)
+          ? base.payments.map((p) => ({
+              ...p,
+              cashboxId: '',
+              cashboxName: '-',
+            }))
+          : [],
+      };
+    };
+
     const mappedInvs = invRes.rows.map((r) => mapPgInvoiceRow(r, itemsMap.get(r.id) || [], payMap.get(r.id) || []));
-    invoices = isRep ? mappedInvs.filter(isRepOwnInvoice).map(sanitizeInvoiceForRepresentative) : mappedInvs;
+    invoices = isRep ? mappedInvs.filter(isRepOwnInvoice).map(sanitizePurchaseForRep) : mappedInvs;
     const allowedInvIds = new Set(invoices.map((i) => i.id));
 
     const retRes = await pool.query(
@@ -3658,7 +3668,10 @@ export async function getSupplierStatementData(supplierId, actor = null) {
         partyName: r.party_name,
         grandTotal: round2(r.grand_total || 0),
         refundType: r.refund_type,
+        ...(isRep ? {} : { cashboxId: r.cashbox_id || undefined }),
         reason: r.reason || '',
+        createdBy: r.created_by || '',
+        createdByUserId: r.created_by_user_id || undefined,
         createdAt: isoTimestamp(r.created_at),
       }));
 
@@ -3677,6 +3690,8 @@ export async function getSupplierStatementData(supplierId, actor = null) {
         cashboxName: r.cashbox_name || '',
         description: r.description || '',
         notes: r.notes || '',
+        createdBy: r.created_by || '',
+        createdByUserId: r.created_by_user_id || undefined,
         createdAt: isoTimestamp(r.created_at),
       }));
     }
@@ -3690,13 +3705,34 @@ export async function getSupplierStatementData(supplierId, actor = null) {
       openingBalance: round2(sRow.openingBalance || 0),
       currentBalance: round2(sRow.currentBalance || 0),
     };
+    const sanitizePurchaseForRep = (inv) => {
+      const base = sanitizeInvoiceForRepresentative(inv);
+      if (!isRep) return base;
+      return {
+        ...base,
+        cashboxId: '',
+        cashboxName: '-',
+        payments: Array.isArray(base.payments)
+          ? base.payments.map((p) => ({
+              ...p,
+              cashboxId: '',
+              cashboxName: '-',
+            }))
+          : [],
+      };
+    };
     const allSuppInvs = (db.invoices || [])
       .filter((i) => i.supplierId === supplierId && i.type === 'purchase' && i.status === 'confirmed')
       .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
-    invoices = isRep ? allSuppInvs.filter(isRepOwnInvoice).map(sanitizeInvoiceForRepresentative) : allSuppInvs;
+    invoices = isRep ? allSuppInvs.filter(isRepOwnInvoice).map(sanitizePurchaseForRep) : allSuppInvs;
     const allowedInvIds = new Set(invoices.map((i) => i.id));
     returns = (db.invoiceReturns || [])
       .filter((r) => r.partyId === supplierId && r.type === 'purchase_return' && (!isRep || allowedInvIds.has(r.originalInvoiceId)))
+      .map((r) => {
+        if (!isRep) return r;
+        const { cashboxId: _cb, ...rest } = r;
+        return rest;
+      })
       .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
     if (!isRep) {
       paymentTxs = (db.financialTransactions || [])
@@ -3735,6 +3771,17 @@ export async function getSupplierStatementData(supplierId, actor = null) {
             .reduce((s, p) => s + Number(p.amount || 0), 0)
         : invCashAtCreate
     );
+    const externalPayers = Array.isArray(inv.payments)
+      ? [...new Set(
+          inv.payments
+            .filter((p) => p.createdBy && (!inv.createdByUserId || (p.createdByUserId && p.createdByUserId !== inv.createdByUserId)))
+            .map((p) => p.createdBy)
+        )]
+      : [];
+    const baseDesc =
+      nonSettlementPaid > 0
+        ? `إجمالي المشتريات ${round2(inv.grandTotal)} · مسدد ${nonSettlementPaid}`
+        : `فاتورة مشتريات آجلة — رقم ${inv.invoiceNumber}`;
     rawEntries.push({
       id: `PINV-${inv.id}`,
       docId: inv.id,
@@ -3744,14 +3791,13 @@ export async function getSupplierStatementData(supplierId, actor = null) {
       docNumber: inv.invoiceNumber,
       type: 'purchase_invoice',
       label: `فاتورة مشتريات (${inv.items?.length || 0} صنف)`,
-      description:
-        nonSettlementPaid > 0
-          ? `إجمالي المشتريات ${round2(inv.grandTotal)} · مسدد ${nonSettlementPaid}`
-          : `فاتورة مشتريات آجلة — رقم ${inv.invoiceNumber}`,
+      description: externalPayers.length > 0 ? `${baseDesc} · سداد لاحق: ${externalPayers.join('، ')}` : baseDesc,
       credit: round2(inv.grandTotal || 0),
       debit: nonSettlementPaid,
       paidAmount: round2(inv.paidAmount || 0),
       remainingAmount: round2(inv.remainingAmount || 0),
+      createdBy: inv.createdBy || '',
+      createdByUserId: inv.createdByUserId || undefined,
     });
   }
 
@@ -3773,6 +3819,8 @@ export async function getSupplierStatementData(supplierId, actor = null) {
       debit: round2(tx.amount || 0),
       paidAmount: round2(tx.amount || 0),
       remainingAmount: 0,
+      createdBy: tx.createdBy || '',
+      createdByUserId: tx.createdByUserId || undefined,
     });
   }
 
@@ -3791,6 +3839,8 @@ export async function getSupplierStatementData(supplierId, actor = null) {
       debit: ret.refundType === 'balance' ? round2(ret.grandTotal || 0) : 0,
       paidAmount: ret.refundType === 'cash' ? round2(ret.grandTotal || 0) : 0,
       remainingAmount: 0,
+      createdBy: ret.createdBy || '',
+      createdByUserId: ret.createdByUserId || undefined,
     });
   }
 

@@ -5,7 +5,7 @@ import {
   readJsonDatabase,
 } from '../jsonLedger.js';
 import { generateServerId } from '../../utils/crypto.js';
-import { AppError, nowIso, todayIso, round2, round3, getUnitSellingPrice, getUnitFactor, canViewCashboxBalances } from '../../utils/errors.js';
+import { AppError, nowIso, todayIso, round2, round3, getUnitSellingPrice, getUnitFactor, canViewCashboxBalances, buildPgInPredicate } from '../../utils/errors.js';
 import {
   buildScopedIdemKey,
   findPgIdempotency,
@@ -198,19 +198,30 @@ export async function listOrders(authContext, filters = {}) {
 
     const ordIds = ordRes.rows.map((r) => r.id);
     const invIds = Array.from(new Set(ordRes.rows.map((r) => r.invoice_id).filter(Boolean)));
+    const ordItemsParams = [];
+    const ordItemsPred = buildPgInPredicate('order_id', ordIds, ordItemsParams);
+    const ordHistParams = [];
+    const ordHistPred = buildPgInPredicate('order_id', ordIds, ordHistParams);
+    const ordAdvParams = [];
+    const ordAdvPred = buildPgInPredicate('order_id', ordIds, ordAdvParams);
+    const invParams = [];
+    const invPred = invIds.length ? buildPgInPredicate('id', invIds, invParams) : '';
+    const invPayParams = [];
+    const invPayPred = invIds.length ? buildPgInPredicate('invoice_id', invIds, invPayParams) : '';
+
     const [itemsRes, histRes, prodImgRes, advPayRes, invRes, invPayRes] = await Promise.all([
-      pool.query(`SELECT * FROM customer_item_order_items WHERE order_id = ANY($1::varchar[])`, [ordIds]),
+      pool.query(`SELECT * FROM customer_item_order_items WHERE ${ordItemsPred}`, ordItemsParams),
       pool.query(
-        `SELECT * FROM order_status_history WHERE order_id = ANY($1::varchar[]) ORDER BY changed_at ASC`,
-        [ordIds]
+        `SELECT * FROM order_status_history WHERE ${ordHistPred} ORDER BY changed_at ASC`,
+        ordHistParams
       ),
       pool.query(`SELECT id, image FROM products WHERE image IS NOT NULL AND image <> ''`),
-      pool.query(`SELECT * FROM order_advance_payments WHERE order_id = ANY($1::varchar[]) ORDER BY created_at ASC`, [ordIds]),
+      pool.query(`SELECT * FROM order_advance_payments WHERE ${ordAdvPred} ORDER BY created_at ASC`, ordAdvParams),
       invIds.length
-        ? pool.query(`SELECT id, invoice_number, grand_total, paid_amount, remaining_amount FROM invoices WHERE id = ANY($1::varchar[])`, [invIds])
+        ? pool.query(`SELECT id, invoice_number, grand_total, paid_amount, remaining_amount FROM invoices WHERE ${invPred}`, invParams)
         : Promise.resolve({ rows: [] }),
       invIds.length
-        ? pool.query(`SELECT * FROM invoice_payments WHERE invoice_id = ANY($1::varchar[]) ORDER BY created_at ASC`, [invIds])
+        ? pool.query(`SELECT * FROM invoice_payments WHERE ${invPayPred} ORDER BY created_at ASC`, invPayParams)
         : Promise.resolve({ rows: [] }),
     ]);
 

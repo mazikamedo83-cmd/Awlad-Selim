@@ -516,6 +516,7 @@ export interface FinancialTransaction {
   notes?: string;
   syncStatus?: SyncQueueStatus | 'synced';
   createdBy: string;
+  createdByUserId?: string;
   createdAt: string;
 }
 
@@ -1463,12 +1464,19 @@ export interface CustomerStatementEntry {
   paidAmount?: number | null;
   remainingAmount?: number | null;
   runningBalance: number | null;
+  createdBy?: string;
+  createdByUserId?: string;
 }
 
 export interface CustomerStatementResponse {
   customer: Customer | null;
   customerType?: 'regular' | 'app' | 'hybrid';
   allowPriceView: boolean;
+  scope?: {
+    isRepScoped?: boolean;
+    accountBalanceScope?: 'company_wide' | string;
+    operationsScope?: string;
+  };
   invoices?: Invoice[];
   returns?: InvoiceReturn[];
   orders?: CustomerItemOrderRequest[];
@@ -1511,6 +1519,8 @@ export interface SupplierStatementEntry {
   paidAmount?: number;
   remainingAmount?: number;
   runningBalance: number;
+  createdBy?: string;
+  createdByUserId?: string;
 }
 
 export interface SupplierStatementResponse {

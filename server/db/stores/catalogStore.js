@@ -11,6 +11,8 @@ import {
   sanitizeInvoiceForRepresentative,
   sanitizeUser,
   canViewCashboxBalances,
+  isRepOwnerOfInvoice,
+  buildPgInPredicate,
   normalizePhoneDigits as normalizePhoneDigitsShared,
 } from '../../utils/errors.js';
 import {
@@ -2106,9 +2108,36 @@ export async function getCustomerProductPriceHistory(customerId, productId = nul
 
   // Fallback for legacy numeric entries stored directly on customer.priceHistory with no matching invoice item yet
   const rawLegacy = customer.priceHistory || {};
-  for (const [prodId, entries] of Object.entries(rawLegacy)) {
+  const legacyEntries = Object.entries(rawLegacy);
+  let nonConfirmedInvoiceNumbers = new Set();
+  if (legacyEntries.length > 0) {
+    if (await isPgMode()) {
+      const ncRes = await getPool().query(
+        `SELECT invoice_number FROM invoices WHERE customer_id = $1 AND (type <> 'sales' OR status <> 'confirmed')`,
+        [customerId]
+      );
+      nonConfirmedInvoiceNumbers = new Set(ncRes.rows.map((r) => String(r.invoice_number || '').trim()).filter(Boolean));
+    } else {
+      const db = readJsonDatabase();
+      nonConfirmedInvoiceNumbers = new Set(
+        (db.invoices || [])
+          .filter((i) => i.customerId === customerId && (i.type !== 'sales' || i.status !== 'confirmed'))
+          .map((i) => String(i.invoiceNumber || '').trim())
+          .filter(Boolean)
+      );
+    }
+  }
+  for (const [prodId, entries] of legacyEntries) {
+    if (cleanProdId && prodId !== cleanProdId) continue;
     if (!historyMap[prodId] && Array.isArray(entries) && entries.length > 0) {
-      historyMap[prodId] = entries.slice(-3).map((entry) =>
+      const validLegacy = entries.filter((entry) => {
+        if (typeof entry === 'object' && entry !== null && entry.invoiceNumber) {
+          return !nonConfirmedInvoiceNumbers.has(String(entry.invoiceNumber).trim());
+        }
+        return true;
+      });
+      if (validLegacy.length === 0) continue;
+      historyMap[prodId] = validLegacy.slice(-3).map((entry) =>
         typeof entry === 'object' && entry !== null
           ? {
               price: Number(entry.price || 0),
@@ -2137,17 +2166,9 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
   const customer = await getCustomerById(customerId);
   if (!customer) throw new AppError(404, 'العميل غير موجود', 'CUSTOMER_NOT_FOUND');
   const isRep = actor?.role === 'representative';
+  const hideCashboxMeta = isRep || actor?.role === 'customer';
   const repProfile = isRep ? await getRepresentativeByUserId(actor.id) : null;
-  const isRepOwnCustInv = (inv) =>
-    Boolean(
-      (repProfile && inv.representativeId === repProfile.id) ||
-        inv.createdByUserId === actor.id ||
-        inv.sentByUserId === actor.id ||
-        (!inv.createdByUserId &&
-          !inv.representativeId &&
-          !inv.sentByUserId &&
-          (inv.createdBy === actor.id || inv.createdBy === actor.fullName))
-    );
+  const isRepOwnCustInv = (inv) => isRepOwnerOfInvoice(inv, actor, repProfile);
 
   let invoices = [];
   let returns = [];
@@ -2175,16 +2196,20 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
       [customerId]
     );
     const invIds = invRes.rows.map((r) => r.id);
-    let itemsMap = new Map();
-    let payMap = new Map();
+    const itemsMap = new Map();
+    const payMap = new Map();
     if (invIds.length > 0) {
-      const itRes = await pool.query(`SELECT * FROM invoice_items WHERE invoice_id = ANY($1::varchar[])`, [invIds]);
+      const itParams = [];
+      const itPred = buildPgInPredicate('invoice_id', invIds, itParams);
+      const itRes = await pool.query(`SELECT * FROM invoice_items WHERE ${itPred}`, itParams);
       for (const it of itRes.rows) {
         const arr = itemsMap.get(it.invoice_id) || [];
         arr.push(it);
         itemsMap.set(it.invoice_id, arr);
       }
-      const pyRes = await pool.query(`SELECT * FROM invoice_payments WHERE invoice_id = ANY($1::varchar[]) ORDER BY created_at ASC`, [invIds]);
+      const pyParams = [];
+      const pyPred = buildPgInPredicate('invoice_id', invIds, pyParams);
+      const pyRes = await pool.query(`SELECT * FROM invoice_payments WHERE ${pyPred} ORDER BY created_at ASC`, pyParams);
       for (const py of pyRes.rows) {
         const arr = payMap.get(py.invoice_id) || [];
         arr.push(py);
@@ -2209,7 +2234,10 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
       partyName: r.party_name,
       grandTotal: Number(r.grand_total || 0),
       refundType: r.refund_type,
+      ...(hideCashboxMeta ? {} : { cashboxId: r.cashbox_id || undefined }),
       reason: r.reason || '',
+      createdBy: r.created_by || '',
+      createdByUserId: r.created_by_user_id || undefined,
       createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at || '',
     }));
 
@@ -2225,6 +2253,8 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
       relatedDocType: r.related_doc_type,
       relatedDocId: r.related_doc_id,
       description: r.description || '',
+      createdBy: r.created_by || '',
+      createdByUserId: r.created_by_user_id || undefined,
       createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at || '',
     }));
 
@@ -2252,6 +2282,7 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
       status: r.status || 'active',
       appliedInvoiceId: r.applied_invoice_id || undefined,
       createdBy: r.created_by,
+      createdByUserId: r.created_by_user_id || undefined,
       createdAt: isoTimestamp(r.created_at),
     }));
   } else {
@@ -2280,10 +2311,11 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
   }
 
   const visibleInvoices = isRep ? invoices.filter(isRepOwnCustInv) : invoices;
+  const visibleInvoiceIds = new Set(visibleInvoices.map((i) => i.id));
   const sanitizedInvoices = visibleInvoices.map((inv) => {
     const baseInv = {
       ...inv,
-      ...(isRep || actor?.role === 'customer' ? { cashboxId: '', cashboxName: '-' } : {}),
+      ...(hideCashboxMeta ? { cashboxId: '', cashboxName: '-' } : {}),
       items: (inv.items || []).map((it) => ({
         productId: it.productId,
         productName: it.productName,
@@ -2297,7 +2329,7 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
       payments: Array.isArray(inv.payments)
         ? inv.payments.map((p) => ({
             ...p,
-            ...(isRep || actor?.role === 'customer' ? { cashboxId: '', cashboxName: '-' } : {}),
+            ...(hideCashboxMeta ? { cashboxId: '', cashboxName: '-' } : {}),
             amount: allowPriceView ? Number(p.amount || 0) : 0,
           }))
         : [],
@@ -2311,10 +2343,45 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
     return isRep ? sanitizeInvoiceForRepresentative(baseInv) : baseInv;
   });
 
-  const confirmedRaw = invoices.filter((i) => i.status === 'confirmed');
+  const scopedOrders = isRep
+    ? orders.filter(
+        (o) =>
+          o.userId === actor.id ||
+          (repProfile && (o.representativeId === repProfile.id || o.deliveryRepId === repProfile.id))
+      )
+    : orders;
+  const scopedOrderIds = new Set(scopedOrders.map((o) => o.id));
+
+  const scopedReturnsRaw = (isRep
+    ? returns.filter((r) =>
+        r.originalInvoiceId ? visibleInvoiceIds.has(r.originalInvoiceId) : r.createdByUserId === actor.id
+      )
+    : returns
+  ).map((r) => {
+    if (!hideCashboxMeta) return r;
+    const { cashboxId: _cb, ...rest } = r;
+    return rest;
+  });
+
+  const scopedPaymentTxs = isRep
+    ? paymentTxs.filter(
+        (tx) =>
+          (tx.relatedDocType === 'sales' && tx.relatedDocId && visibleInvoiceIds.has(tx.relatedDocId)) ||
+          (tx.relatedDocType === 'order_advance' &&
+            tx.relatedDocId &&
+            (scopedOrderIds.has(tx.relatedDocId) || tx.createdByUserId === actor.id)) ||
+          (!tx.relatedDocId && tx.createdByUserId === actor.id)
+      )
+    : paymentTxs;
+
+  const scopedAdvancePayments = isRep
+    ? advancePayments.filter((a) => scopedOrderIds.has(a.orderId) || a.createdByUserId === actor.id)
+    : advancePayments;
+
+  const confirmedRaw = visibleInvoices.filter((i) => i.status === 'confirmed');
   const rawEntries = [];
   const openingBal = round2(customer.openingBalance || 0);
-  if (openingBal !== 0) {
+  if (!isRep && openingBal !== 0) {
     rawEntries.push({
       id: `OPEN-${customer.id}`,
       date: (customer.createdAt || '').split('T')[0] || '-',
@@ -2335,6 +2402,16 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
     if (appliedAdv > 0) descParts.push(`خصم دفعة مقدمة ${appliedAdv}`);
     if (cashAtInvoice > 0) descParts.push(`مسدد عند الفوترة ${cashAtInvoice}`);
     if (inv.linkedCustomerOrderId) descParts.push('محولة من طلب');
+    const externalCollectors = Array.isArray(inv.payments)
+      ? [...new Set(
+          inv.payments
+            .filter((p) => p.createdBy && (!inv.createdByUserId || (p.createdByUserId && p.createdByUserId !== inv.createdByUserId)))
+            .map((p) => p.createdBy)
+        )]
+      : [];
+    if (externalCollectors.length > 0) {
+      descParts.push(`تحصيل لاحق: ${externalCollectors.join('، ')}`);
+    }
     rawEntries.push({
       id: `INV-${inv.id}`,
       docId: inv.id,
@@ -2345,18 +2422,20 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
       type: 'sales_invoice',
       label: `فاتورة مبيعات (${inv.items?.length || 0} صنف)`,
       description:
-        inv.paidAmount > 0 || inv.linkedCustomerOrderId
+        inv.paidAmount > 0 || inv.linkedCustomerOrderId || externalCollectors.length > 0
           ? descParts.join(' · ')
           : `فاتورة مبيعات آجلة — رقم ${inv.invoiceNumber}`,
       debit: round2(inv.grandTotal || 0),
       credit: cashAtInvoice,
       paidAmount: round2(inv.paidAmount || 0),
       remainingAmount: round2(inv.remainingAmount || 0),
+      createdBy: inv.createdBy || '',
+      createdByUserId: inv.createdByUserId || undefined,
     });
   }
 
   const confirmedInvoiceIds = new Set(confirmedRaw.map((i) => i.id));
-  for (const tx of paymentTxs) {
+  for (const tx of scopedPaymentTxs) {
     // Skip payments already tied directly to a confirmed invoice line so we don't double-count paidAmount
     if (tx.relatedDocType === 'sales' && tx.relatedDocId && confirmedInvoiceIds.has(tx.relatedDocId)) {
       continue;
@@ -2376,10 +2455,12 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
       credit: round2(tx.amount || 0),
       paidAmount: round2(tx.amount || 0),
       remainingAmount: 0,
+      createdBy: tx.createdBy || '',
+      createdByUserId: tx.createdByUserId || undefined,
     });
   }
 
-  for (const ret of returns) {
+  for (const ret of scopedReturnsRaw) {
     rawEntries.push({
       id: `RET-${ret.id}`,
       docId: ret.id,
@@ -2394,6 +2475,8 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
       credit: ret.refundType === 'balance' ? round2(ret.grandTotal || 0) : 0,
       paidAmount: ret.refundType === 'cash' ? round2(ret.grandTotal || 0) : 0,
       remainingAmount: 0,
+      createdBy: ret.createdBy || '',
+      createdByUserId: ret.createdByUserId || undefined,
     });
   }
 
@@ -2416,19 +2499,19 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
     };
   });
 
-  const openOrders = orders.filter((o) => !['invoiced', 'rejected', 'cancelled'].includes(o.status));
+  const openOrders = scopedOrders.filter((o) => !['invoiced', 'rejected', 'cancelled'].includes(o.status));
   const activeAdvanceBalance = round2(
-    advancePayments.filter((a) => a.status === 'active').reduce((s, a) => s + Number(a.amount || 0), 0)
+    scopedAdvancePayments.filter((a) => a.status === 'active').reduce((s, a) => s + Number(a.amount || 0), 0)
   );
   const directSalesCount = confirmedRaw.filter((i) => !i.linkedCustomerOrderId).length;
-  const appSourceFlag = Boolean(customer.userId) || orders.length > 0;
+  const appSourceFlag = Boolean(customer.userId) || scopedOrders.length > 0;
   const customerType =
     appSourceFlag && directSalesCount > 0 ? 'hybrid' : appSourceFlag ? 'app' : 'regular';
 
   const curBal = round2(customer.currentBalance || 0);
   const totalSales = round2(confirmedRaw.reduce((s, i) => s + Number(i.grandTotal || 0), 0));
   const standalonePaid = round2(
-    paymentTxs
+    scopedPaymentTxs
       .filter((tx) => !(tx.relatedDocType === 'sales' && tx.relatedDocId && confirmedInvoiceIds.has(tx.relatedDocId)))
       .reduce((s, tx) => s + Number(tx.amount || 0), 0)
   );
@@ -2440,7 +2523,7 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
     `${b.date || ''}-${b.createdAt || ''}`.localeCompare(`${a.date || ''}-${a.createdAt || ''}`)
   );
   const lastInv = sortedConfirmedByDate[0] || null;
-  const sortedPaymentsByDate = [...paymentTxs].sort((a, b) =>
+  const sortedPaymentsByDate = [...scopedPaymentTxs].sort((a, b) =>
     `${b.date || ''}-${b.createdAt || ''}`.localeCompare(`${a.date || ''}-${a.createdAt || ''}`)
   );
   const lastPay = sortedPaymentsByDate[0] || null;
@@ -2462,20 +2545,20 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
     },
     customerType,
     invoices: sanitizedInvoices,
-    returns: returns.map((r) => ({ ...r, grandTotal: allowPriceView ? r.grandTotal : 0 })),
-    orders: orders.map((o) => ({
+    returns: scopedReturnsRaw.map((r) => ({ ...r, grandTotal: allowPriceView ? r.grandTotal : 0 })),
+    orders: scopedOrders.map((o) => ({
       ...o,
       totalAmount: allowPriceView ? o.totalAmount : 0,
       advancePaidAmount: allowPriceView ? o.advancePaidAmount : 0,
       remainingAmount: allowPriceView ? o.remainingAmount : 0,
     })),
-    advancePayments: advancePayments.map((a) => ({
+    advancePayments: scopedAdvancePayments.map((a) => ({
       ...a,
-      ...(isRep || actor?.role === 'customer' ? { cashboxId: '', cashboxName: '-' } : {}),
+      ...(hideCashboxMeta ? { cashboxId: '', cashboxName: '-' } : {}),
       amount: allowPriceView ? a.amount : 0,
     })),
     summary: {
-      openingBalance: allowPriceView ? openingBal : null,
+      openingBalance: allowPriceView ? (isRep ? 0 : openingBal) : null,
       totalDebit: allowPriceView ? totalDebit : null,
       totalCredit: allowPriceView ? totalCredit : null,
       totalSales: allowPriceView ? totalSales : null,
@@ -2490,8 +2573,8 @@ export async function getCustomerStatementData(customerId, { allowPriceView = tr
         ? round2(openOrders.reduce((s, o) => s + Number(o.totalAmount || 0), 0))
         : null,
       invoicesCount: confirmedRaw.length,
-      returnsCount: returns.length,
-      ordersCount: orders.length,
+      returnsCount: scopedReturnsRaw.length,
+      ordersCount: scopedOrders.length,
       lastInvoiceDate: lastInv?.date || null,
       lastInvoiceNumber: lastInv?.invoiceNumber || null,
       lastPaymentDate: lastPay?.date || null,

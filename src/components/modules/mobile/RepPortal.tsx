@@ -189,11 +189,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
   const rep =
     representativeProfile ||
-    data.representatives.find(
-      (r) =>
-        (r.userId && r.userId === currentUser?.id) ||
-        r.name === currentUser?.fullName
-    ) ||
+    data.representatives.find((r) => r.userId && r.userId === currentUser?.id) ||
+    (!isRepRoleAccount
+      ? data.representatives.find((r) => !r.userId && r.name === currentUser?.fullName)
+      : undefined) ||
     null;
 
   const vanWarehouse = useMemo(() => {
@@ -1822,9 +1821,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           i.type === 'purchase' &&
           i.status === 'confirmed' &&
           (!isRepRoleAccount ||
-            !i.createdByUserId ||
-            i.createdByUserId === currentUser?.id ||
-            i.representativeId === rep?.id)
+            (rep?.id && i.representativeId === rep.id) ||
+            (currentUser?.id && i.createdByUserId === currentUser.id) ||
+            (currentUser?.id && i.sentByUserId === currentUser.id) ||
+            (!i.createdByUserId && !i.representativeId && !i.sentByUserId && currentUser?.id && i.createdBy === currentUser.id))
       )
       .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   }, [data.invoices, isRepRoleAccount, currentUser?.id, rep?.id]);
@@ -3287,7 +3287,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         (t) =>
           t.date === todayStr &&
           (t.type === 'deposit' || t.type === 'income') &&
-          (!currentUser || t.createdBy === currentUser.fullName || t.createdBy === currentUser.username)
+          (t.createdByUserId
+            ? t.createdByUserId === currentUser?.id
+            : !currentUser || t.createdBy === currentUser.id)
       )
       .reduce((s, t) => s + Number(t.amount || 0), 0);
     const todayRepRemittances = myCashTransfers
@@ -6498,12 +6500,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 inv.status === 'confirmed' &&
                 remainingVal > 0.009 &&
                 (!isRepRoleAccount ||
-                  (inv.createdByUserId
-                    ? inv.createdByUserId === currentUser?.id
-                    : !inv.createdBy ||
-                      inv.createdBy === currentUser?.id ||
-                      inv.createdByName === currentUser?.fullName ||
-                      inv.representativeId === rep?.id));
+                  (rep?.id && inv.representativeId === rep.id) ||
+                  (currentUser?.id && inv.createdByUserId === currentUser.id) ||
+                  (currentUser?.id && inv.sentByUserId === currentUser.id) ||
+                  (!inv.createdByUserId &&
+                    !inv.representativeId &&
+                    !inv.sentByUserId &&
+                    currentUser?.id &&
+                    inv.createdBy === currentUser.id));
               return (
               <div key={inv.id} className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2.5">
                 <div className="flex items-start justify-between gap-2">
@@ -8548,6 +8552,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     <p className="text-center py-8 text-slate-500 font-bold">جاري تحميل كشف الحساب التفصيلي...</p>
                   ) : (
                     <>
+                      {customerDetailStatement?.scope?.isRepScoped && (
+                        <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-950 font-bold text-[11px]">
+                          رصيد حساب العميل يمثل الرصيد العام على مستوى الشركة، بينما الفواتير والمرتجعات والدفعات المعروضة أدناه تخص عملياتك معه فقط.
+                        </div>
+                      )}
+
                       {stmtSummary && (() => {
                         const totalDebit = Number(stmtSummary.totalDebit || 0);
                         const totalCredit = Number(stmtSummary.totalCredit || 0);
@@ -8584,7 +8594,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
                       <div className="border border-slate-200 rounded-2xl overflow-hidden">
                         {(customerDetailStatement?.entries || []).length === 0 ? (
-                          <p className="text-center text-slate-400 py-6">لا توجد حركات مسجلة في كشف حساب العميل.</p>
+                          <p className="text-center text-slate-400 py-6">لا توجد حركات مسجلة لك مع هذا العميل.</p>
                         ) : (
                           <div className="divide-y divide-slate-100 max-h-[42vh] overflow-y-auto">
                             {customerDetailStatement!.entries.map((entry) => {
@@ -8612,6 +8622,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                                     </span>
                                   </div>
                                   <p className="text-[11px] text-slate-600">{entry.description}</p>
+                                  {entry.createdBy && (
+                                    <p className="text-[10px] text-slate-400">بواسطة: {entry.createdBy}</p>
+                                  )}
                                   <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] tabular-nums pt-0.5">
                                     <span className="text-red-700">
                                       {entry.debit ? `مدين: ${entry.debit.toLocaleString()}` : ''}
@@ -9142,14 +9155,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   pur.status === 'confirmed' &&
                   Number(pur.remainingAmount || 0) > 0.009 &&
                   (!isRepRoleAccount ||
-                    pur.createdByUserId === currentUser?.id ||
-                    pur.sentByUserId === currentUser?.id ||
-                    pur.representativeId === rep?.id ||
+                    (rep?.id && pur.representativeId === rep.id) ||
+                    (currentUser?.id && pur.createdByUserId === currentUser.id) ||
+                    (currentUser?.id && pur.sentByUserId === currentUser.id) ||
                     (!pur.createdByUserId &&
                       !pur.representativeId &&
                       !pur.sentByUserId &&
-                      (pur.createdBy === currentUser?.id ||
-                        pur.createdByName === currentUser?.fullName))) && (
+                      currentUser?.id &&
+                      pur.createdBy === currentUser.id)) && (
                     <button
                       type="button"
                       onClick={() => {
@@ -9693,6 +9706,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                               </span>
                             </div>
                             <p className="text-[11px] text-slate-600">{entry.description}</p>
+                            {entry.createdBy && (
+                              <p className="text-[10px] text-slate-400">بواسطة: {entry.createdBy}</p>
+                            )}
                             <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] tabular-nums">
                               <span className="text-rose-700">
                                 {entry.credit ? `له (علينا): ${entry.credit.toLocaleString()}` : ''}

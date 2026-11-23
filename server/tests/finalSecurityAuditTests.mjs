@@ -1602,6 +1602,495 @@ async function runFullModeAudit(modeName) {
         assert.equal(Number(it.purchasePriceAtTime || 0), 0, 'cancelInvoice must zero purchasePriceAtTime for rep');
       }
     });
+
+    await test(`[${modeName}] 17. Duplicate-fullName isolation, legacy unattributed diagnostics, customer/supplier statement strict rep scoping, return/quote spoofing & price-history filtering`, async () => {
+      const sharedFullName = 'محمد أحمد المتشابه';
+      const repAReg = await req(baseUrl, 'POST', '/api/auth/register', {
+        body: {
+          role: 'representative',
+          fullName: sharedFullName,
+          username: `dup_a_${modeName}`,
+          phone: '01077770001',
+          password: 'Password!2026',
+        },
+      });
+      assert.equal(repAReg.status, 201);
+      const repAUser = repAReg.json.user;
+      const repAId = repAReg.json.representativeProfile?.id;
+
+      const repBReg = await req(baseUrl, 'POST', '/api/auth/register', {
+        body: {
+          role: 'representative',
+          fullName: sharedFullName,
+          username: `dup_b_${modeName}`,
+          phone: '01077770002',
+          password: 'Password!2026',
+        },
+      });
+      assert.equal(repBReg.status, 201);
+      const repBUser = repBReg.json.user;
+      const repBId = repBReg.json.representativeProfile?.id;
+
+      for (const uid of [repAUser.id, repBUser.id]) {
+        const permRes = await req(baseUrl, 'PUT', `/api/admin/users/${uid}`, {
+          token: adminToken,
+          body: {
+            permissions: {
+              canView: true,
+              canAdd: true,
+              canEdit: true,
+              canDelete: true,
+              canManageSales: true,
+              canCreatePurchase: true,
+              canViewReports: true,
+            },
+          },
+        });
+        assert.equal(permRes.status, 200);
+      }
+
+      const repALogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: `dup_a_${modeName}`, password: 'Password!2026' },
+      });
+      const repBLogin = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: `dup_b_${modeName}`, password: 'Password!2026' },
+      });
+      assert.equal(repALogin.status, 200);
+      assert.equal(repBLogin.status, 200);
+      const repAToken = repALogin.json.accessToken;
+      const repBToken = repBLogin.json.accessToken;
+
+      // Fresh customer & fresh supplier for clean math
+      const custRes = await req(baseUrl, 'POST', '/api/customers', {
+        token: adminToken,
+        body: { name: 'عميل عزل المندوبين', phone: '01066661111', openingBalance: 500 },
+      });
+      assert.equal(custRes.status, 201);
+      const scopedCustId = custRes.json.customer.id;
+
+      const supRes = await req(baseUrl, 'POST', '/api/admin/suppliers', {
+        token: adminToken,
+        body: { name: 'مورد عزل المندوبين', phone: '01066662222', openingBalance: 1000 },
+      });
+      assert.equal(supRes.status, 201);
+      const scopedSupId = supRes.json.supplier.id;
+
+      // 17a. Legacy unattributed sales invoices (NULL user/rep IDs, createdBy = sharedFullName)
+      const legacyConfirmedId = `INV-LEG-CONF-${modeName}`;
+      const legacyDraftId = `INV-LEG-DRAFT-${modeName}`;
+      if (modeName === 'pg') {
+        await pgPool.query(
+          `INSERT INTO invoices (id, invoice_number, type, status, date, customer_id, customer_name, warehouse_id, warehouse_name, cashbox_id, subtotal, discount_total, grand_total, paid_amount, remaining_amount, payment_type, created_by)
+           VALUES
+             ($1, 'INV-LEG-C1', 'sales', 'confirmed', '2026-11-20', $3, 'عميل عزل المندوبين', $4, 'مخزن التدقيق', $5, 120, 0, 120, 0, 120, 'credit', $6),
+             ($2, 'INV-LEG-D1', 'sales', 'draft', '2026-11-20', $3, 'عميل عزل المندوبين', $4, 'مخزن التدقيق', $5, 60, 0, 60, 0, 60, 'credit', $6)`,
+          [legacyConfirmedId, legacyDraftId, scopedCustId, mainWhId, cashboxId, sharedFullName]
+        );
+      } else {
+        await withJsonTransaction(async (db) => {
+          db.invoices.push(
+            {
+              id: legacyConfirmedId,
+              invoiceNumber: 'INV-LEG-C1',
+              type: 'sales',
+              status: 'confirmed',
+              date: '2026-11-20',
+              customerId: scopedCustId,
+              customerName: 'عميل عزل المندوبين',
+              warehouseId: mainWhId,
+              warehouseName: 'مخزن التدقيق',
+              cashboxId,
+              cashboxName: 'الخزينة الرئيسية',
+              items: [],
+              subtotal: 120,
+              discountTotal: 0,
+              grandTotal: 120,
+              paidAmount: 0,
+              remainingAmount: 120,
+              paymentType: 'credit',
+              createdBy: sharedFullName,
+              createdAt: '2026-11-20T08:00:00.000Z',
+            },
+            {
+              id: legacyDraftId,
+              invoiceNumber: 'INV-LEG-D1',
+              type: 'sales',
+              status: 'draft',
+              date: '2026-11-20',
+              customerId: scopedCustId,
+              customerName: 'عميل عزل المندوبين',
+              warehouseId: mainWhId,
+              warehouseName: 'مخزن التدقيق',
+              cashboxId,
+              cashboxName: 'الخزينة الرئيسية',
+              items: [],
+              subtotal: 60,
+              discountTotal: 0,
+              grandTotal: 60,
+              paidAmount: 0,
+              remainingAmount: 60,
+              paymentType: 'credit',
+              createdBy: sharedFullName,
+              createdAt: '2026-11-20T08:05:00.000Z',
+            }
+          );
+        });
+      }
+
+      // Neither repA nor repB sees legacy unattributed invoices; both get 403 trying to pay/confirm/return them
+      for (const tk of [repAToken, repBToken]) {
+        const listRes = await req(baseUrl, 'GET', '/api/invoices', { token: tk });
+        assert.equal(listRes.status, 200);
+        assert.equal(listRes.json.invoices.some((i) => i.id === legacyConfirmedId || i.id === legacyDraftId), false);
+        const payLeg = await req(baseUrl, 'POST', `/api/invoices/${legacyConfirmedId}/payments`, {
+          token: tk,
+          body: { amount: 10, paymentMethod: 'cash', date: '2026-11-20' },
+        });
+        assert.equal(payLeg.status, 403);
+        const confLeg = await req(baseUrl, 'POST', `/api/invoices/${legacyDraftId}/confirm`, {
+          token: tk,
+          body: {},
+        });
+        assert.equal(confLeg.status, 403);
+      }
+
+      // Admin sees legacy invoices + diagnostics endpoint reports them non-destructively (rep gets 403 on diagnostics)
+      const diagDenied = await req(baseUrl, 'GET', '/api/admin/diagnostics/legacy-ownership', { token: repAToken });
+      assert.equal(diagDenied.status, 403);
+      const diagAdmin = await req(baseUrl, 'GET', '/api/admin/diagnostics/legacy-ownership', { token: adminToken });
+      assert.equal(diagAdmin.status, 200);
+      assert.equal(diagAdmin.json.diagnostics.nonDestructive, true);
+      const diagEntry = (diagAdmin.json.diagnostics.unattributedInvoices || []).find((x) => x.id === legacyConfirmedId);
+      assert.ok(diagEntry, 'Diagnostics must detect unattributed legacy invoice');
+      assert.equal(diagEntry.ambiguousNameMatch, true);
+      assert.ok(
+        (diagAdmin.json.diagnostics.duplicateFullNameGroups || []).some((g) => g.fullName === sharedFullName && g.usersCount >= 2)
+      );
+
+      // 17b. Customer statement strict rep scoping + admin-recorded payment & return on repA's own invoice
+      const repASale = await req(baseUrl, 'POST', '/api/invoices/sales', {
+        token: repAToken,
+        body: {
+          customerId: scopedCustId,
+          warehouseId: mainWhId,
+          cashboxId,
+          date: '2026-11-20',
+          paidAmount: 0,
+          paymentType: 'credit',
+          items: [{ productId, quantity: 2, unit: 'زجاجة', unitPrice: 50 }], // total = 100
+        },
+      });
+      assert.equal(repASale.status, 201);
+      const repASaleId = repASale.json.invoice.id;
+
+      // Admin collects 40 on repA's invoice + creates 20 balance return on repA's invoice
+      const adminPayOnRepA = await req(baseUrl, 'POST', `/api/invoices/${repASaleId}/payments`, {
+        token: adminToken,
+        body: { amount: 40, paymentMethod: 'cash', cashboxId, date: '2026-11-20', notes: 'تحصيل من الإدارة' },
+      });
+      assert.equal(adminPayOnRepA.status, 200);
+
+      const adminRetOnRepA = await req(baseUrl, 'POST', '/api/invoices/returns', {
+        token: adminToken,
+        body: {
+          type: 'sales_return',
+          originalInvoiceId: repASaleId,
+          warehouseId: mainWhId,
+          cashboxId,
+          date: '2026-11-20',
+          refundType: 'balance',
+          reason: 'مرتجع معتمد على فاتورة المندوب أ',
+          items: [{ productId, quantity: 1, unit: 'زجاجة', unitFactor: 1, unitPrice: 20 }],
+        },
+      });
+      assert.equal(adminRetOnRepA.status, 201);
+
+      // repB (same fullName) & admin create competing operations on the same customer
+      const repBSale = await req(baseUrl, 'POST', '/api/invoices/sales', {
+        token: repBToken,
+        body: {
+          customerId: scopedCustId,
+          warehouseId: mainWhId,
+          cashboxId,
+          date: '2026-11-20',
+          paidAmount: 0,
+          paymentType: 'credit',
+          items: [{ productId, quantity: 5, unit: 'زجاجة', unitPrice: 60 }], // total = 300
+        },
+      });
+      assert.equal(repBSale.status, 201);
+
+      const admSale = await req(baseUrl, 'POST', '/api/invoices/sales', {
+        token: adminToken,
+        body: {
+          customerId: scopedCustId,
+          warehouseId: mainWhId,
+          cashboxId,
+          date: '2026-11-20',
+          paidAmount: 0,
+          paymentType: 'credit',
+          items: [{ productId, quantity: 4, unit: 'زجاجة', unitPrice: 50 }], // total = 200
+        },
+      });
+      assert.equal(admSale.status, 201);
+
+      const admStandalonePay = await req(baseUrl, 'POST', `/api/customers/${scopedCustId}/payment`, {
+        token: adminToken,
+        body: { amount: 50, cashboxId, paymentMethod: 'cash', date: '2026-11-20', notes: 'دفعة إدارية عامة' },
+      });
+      assert.equal(admStandalonePay.status, 200);
+
+      const repACustStmtRes = await req(baseUrl, 'GET', `/api/customers/${scopedCustId}/statement`, {
+        token: repAToken,
+      });
+      assert.equal(repACustStmtRes.status, 200);
+      const rcStmt = repACustStmtRes.json.statement;
+      // Company balance = 500 (open) + 100 - 40 - 20 + 300 + 200 - 50 = 990
+      assert.equal(Number(rcStmt.summary.currentBalance), 990, 'Company-wide customer balance must stay intact');
+      assert.equal(rcStmt.summary.openingBalance, 0, 'Rep customer statement summary.openingBalance must be 0');
+      assert.equal(rcStmt.summary.invoicesCount, 1, 'Rep customer statement must count ONLY own invoices');
+      assert.equal(rcStmt.summary.returnsCount, 1, 'Rep customer statement must count ONLY returns tied to own invoices');
+      assert.equal(Number(rcStmt.summary.totalSales), 100);
+      assert.equal(Number(rcStmt.summary.totalDebit), 100);
+      assert.equal(Number(rcStmt.summary.totalPaid), 40, 'Must reflect admin payment on repA invoice without admin standalone payout');
+      assert.equal(Number(rcStmt.summary.totalCredit), 60, 'Must equal 40 payment + 20 balance return without double counting');
+      assert.equal(rcStmt.invoices.length, 1);
+      assert.equal(rcStmt.invoices[0].id, repASaleId);
+      assert.equal(rcStmt.returns.length, 1);
+      assert.equal(rcStmt.entries.some((e) => e.type === 'opening_balance'), false);
+      assert.equal(rcStmt.entries.some((e) => e.docId === repBSale.json.invoice.id || e.docId === admSale.json.invoice.id), false);
+      const repAEntry = rcStmt.entries.find((e) => e.docId === repASaleId);
+      assert.ok(repAEntry && String(repAEntry.description || '').includes('تحصيل لاحق'));
+      const repARetEntry = rcStmt.entries.find((e) => e.docType === 'sales_return');
+      assert.ok(repARetEntry && repARetEntry.createdBy === 'مدير التدقيق الشامل');
+
+      // 17c. Supplier statement strict rep scoping + cashbox sanitization + return party spoofing prevention
+      const repAPurCreate = await req(baseUrl, 'POST', '/api/invoices/purchase', {
+        token: repAToken,
+        body: {
+          supplierId: scopedSupId,
+          warehouseId: mainWhId,
+          cashboxId,
+          date: '2026-11-20',
+          paidAmount: 0,
+          paymentType: 'credit',
+          items: [{ productId, quantity: 3, unit: 'زجاجة', unitPrice: 50 }], // 150
+        },
+      });
+      assert.equal(repAPurCreate.status, 201);
+      const repAPurId = repAPurCreate.json.invoice.id;
+      await req(baseUrl, 'POST', `/api/invoices/purchase/${repAPurId}/send`, { token: repAToken, body: {} });
+      await req(baseUrl, 'POST', `/api/invoices/purchase/${repAPurId}/receive`, {
+        token: adminToken,
+        body: { confirmNow: true, warehouseId: mainWhId, cashboxId },
+      });
+      await req(baseUrl, 'POST', `/api/invoices/${repAPurId}/payments`, {
+        token: adminToken,
+        body: { amount: 50, paymentMethod: 'cash', cashboxId, date: '2026-11-20', notes: 'سداد إداري لمشتريات أ' },
+      });
+
+      // Return on repA's purchase attempting spoofed partyId/partyName must resolve back to scopedSupId
+      const spoofedRetRes = await req(baseUrl, 'POST', '/api/invoices/returns', {
+        token: adminToken,
+        body: {
+          type: 'purchase_return',
+          originalInvoiceId: repAPurId,
+          partyId: 'SUP-SPOOFED-999',
+          partyName: 'مورد مزيف',
+          warehouseId: mainWhId,
+          cashboxId,
+          date: '2026-11-20',
+          refundType: 'balance',
+          reason: 'اختبار منع تزوير الطرف',
+          items: [{ productId, quantity: 1, unit: 'زجاجة', unitFactor: 1, unitPrice: 30 }],
+        },
+      });
+      assert.equal(spoofedRetRes.status, 201);
+      assert.equal(spoofedRetRes.json.invoiceReturn.partyId, scopedSupId, 'Return must ignore spoofed partyId');
+      assert.equal(spoofedRetRes.json.invoiceReturn.partyName, 'مورد عزل المندوبين', 'Return must ignore spoofed partyName');
+
+      // Competing repB purchase (400) & admin purchase (200) + admin standalone supplier payout (100)
+      const repBPur = await req(baseUrl, 'POST', '/api/invoices/purchase', {
+        token: repBToken,
+        body: {
+          supplierId: scopedSupId,
+          warehouseId: mainWhId,
+          cashboxId,
+          date: '2026-11-20',
+          paidAmount: 0,
+          paymentType: 'credit',
+          items: [{ productId, quantity: 8, unit: 'زجاجة', unitPrice: 50 }],
+        },
+      });
+      assert.equal(repBPur.status, 201);
+      await req(baseUrl, 'POST', `/api/invoices/purchase/${repBPur.json.invoice.id}/send`, { token: repBToken, body: {} });
+      await req(baseUrl, 'POST', `/api/invoices/purchase/${repBPur.json.invoice.id}/receive`, {
+        token: adminToken,
+        body: { confirmNow: true, warehouseId: mainWhId, cashboxId },
+      });
+
+      const admPur = await req(baseUrl, 'POST', '/api/invoices/purchase', {
+        token: adminToken,
+        body: {
+          supplierId: scopedSupId,
+          warehouseId: mainWhId,
+          cashboxId,
+          date: '2026-11-20',
+          paidAmount: 0,
+          paymentType: 'credit',
+          status: 'confirmed',
+          items: [{ productId, quantity: 4, unit: 'زجاجة', unitPrice: 50 }],
+        },
+      });
+      assert.equal(admPur.status, 201);
+      await req(baseUrl, 'POST', '/api/admin/suppliers/payment', {
+        token: adminToken,
+        body: { supplierId: scopedSupId, cashboxId, amount: 100, date: '2026-11-20' },
+      });
+
+      const repASupStmt = await req(baseUrl, 'GET', `/api/admin/suppliers/${scopedSupId}/statement`, {
+        token: repAToken,
+      });
+      assert.equal(repASupStmt.status, 200);
+      // Company supplier balance: 1000 + 150 - 50 - 30 + 400 + 200 - 100 = 1570
+      assert.equal(Number(repASupStmt.json.summary.currentBalance), 1570);
+      assert.equal(repASupStmt.json.invoices.length, 1);
+      assert.equal(repASupStmt.json.invoices[0].id, repAPurId);
+      assert.equal(repASupStmt.json.invoices[0].cashboxId || '', '');
+      assert.equal(repASupStmt.json.invoices[0].cashboxName || '-', '-');
+      for (const p of repASupStmt.json.invoices[0].payments || []) {
+        assert.equal(p.cashboxId || '', '', 'Supplier statement for rep must strip payment cashboxId');
+        assert.equal(p.cashboxName || '-', '-', 'Supplier statement for rep must strip payment cashboxName');
+      }
+      assert.equal(repASupStmt.json.returns.length, 1);
+      assert.equal(repASupStmt.json.returns[0].cashboxId, undefined);
+      assert.equal(Number(repASupStmt.json.summary.totalPurchases), 150);
+      assert.equal(Number(repASupStmt.json.summary.totalPaid), 50);
+      assert.equal(Number(repASupStmt.json.summary.totalDebit), 80);
+
+      // 17d. Quote conversion cross-rep block & representativeId/cashbox spoofing rejection
+      const repAQuote = await req(baseUrl, 'POST', '/api/invoices/quotes', {
+        token: repAToken,
+        body: {
+          customerId: scopedCustId,
+          warehouseId: mainWhId,
+          cashboxId,
+          date: '2026-11-20',
+          paidAmount: 0,
+          paymentType: 'credit',
+          items: [{ productId, quantity: 1, unit: 'زجاجة', unitPrice: 60 }],
+        },
+      });
+      assert.equal(repAQuote.status, 201);
+      const quoteId = repAQuote.json.invoice.id;
+
+      const repBConvertQuote = await req(baseUrl, 'POST', `/api/invoices/quotes/${quoteId}/convert`, {
+        token: repBToken,
+        body: {},
+      });
+      assert.equal(repBConvertQuote.status, 403, 'Same-fullName repB must get 403 converting repA quote');
+
+      const spoofConvertQuote = await req(baseUrl, 'POST', `/api/invoices/quotes/${quoteId}/convert`, {
+        token: repAToken,
+        body: { representativeId: repBId, representativeName: 'مندوب مزور', cashboxId: cashbox2Id },
+      });
+      assert.equal(spoofConvertQuote.status, 201);
+      assert.equal(spoofConvertQuote.json.invoice.representativeId, repAId, 'Quote conversion must force actor repId');
+      assert.notEqual(spoofConvertQuote.json.invoice.cashboxId, cashbox2Id, 'Quote conversion for rep must ignore spoofed cashboxId');
+
+      const syncSpoofPush = await req(baseUrl, 'POST', '/api/sync/push', {
+        token: repAToken,
+        body: {
+          operations: [{
+            operationId: `SYNC-SPOOF-REP-${modeName}`,
+            operationType: 'create_sales_invoice',
+            payload: {
+              customerId: scopedCustId,
+              warehouseId: mainWhId,
+              cashboxId: cashbox2Id,
+              date: '2026-11-20',
+              representativeId: repBId,
+              representativeName: 'تزوير عبر المزامنة',
+              paidAmount: 0,
+              paymentType: 'credit',
+              items: [{ productId, quantity: 1, unit: 'زجاجة', unitPrice: 62 }],
+            },
+          }],
+        },
+      });
+      assert.equal(syncSpoofPush.status, 200);
+      assert.equal(syncSpoofPush.json.results[0].status, 'synced');
+      const syncedInvId = syncSpoofPush.json.results[0].result?.id || syncSpoofPush.json.results[0].result?.invoice?.id;
+      assert.ok(syncedInvId, 'Expected created invoice ID from sync push result');
+      const syncedInvListRes = await req(baseUrl, 'GET', '/api/invoices', { token: adminToken });
+      assert.equal(syncedInvListRes.status, 200);
+      const syncedInv = (syncedInvListRes.json.invoices || []).find((x) => x.id === syncedInvId);
+      assert.ok(syncedInv, 'Synced invoice must exist in admin invoice list');
+      assert.equal(syncedInv.representativeId, repAId, 'Sync push must override spoofed representativeId');
+
+      // 17e. Cancelled invoice excluded from last 3 prices & productId filter respected
+      const prod2Res = await req(baseUrl, 'POST', '/api/products', {
+        token: adminToken,
+        body: {
+          name: 'صنف سجل أسعار ثانوي',
+          code: `PH-SEC-${modeName}`,
+          baseUnit: 'قطعة',
+          purchasePrice: 20,
+          sellingPrice: 35,
+          stockPerWarehouse: { [mainWhId]: 50 },
+        },
+      });
+      assert.equal(prod2Res.status, 201);
+      const secProdId = prod2Res.json.product.id;
+
+      for (const [d, p] of [['2026-11-10', 31], ['2026-11-11', 33], ['2026-11-12', 36]]) {
+        const sr = await req(baseUrl, 'POST', '/api/invoices/sales', {
+          token: adminToken,
+          body: {
+            customerId: scopedCustId,
+            warehouseId: mainWhId,
+            cashboxId,
+            date: d,
+            paidAmount: 0,
+            paymentType: 'credit',
+            items: [{ productId: secProdId, quantity: 1, unit: 'قطعة', unitFactor: 1, unitPrice: p }],
+          },
+        });
+        assert.equal(sr.status, 201);
+      }
+      const cancelledSale = await req(baseUrl, 'POST', '/api/invoices/sales', {
+        token: adminToken,
+        body: {
+          customerId: scopedCustId,
+          warehouseId: mainWhId,
+          cashboxId,
+          date: '2026-11-15',
+          paidAmount: 0,
+          paymentType: 'credit',
+          items: [{ productId: secProdId, quantity: 1, unit: 'قطعة', unitFactor: 1, unitPrice: 999 }],
+        },
+      });
+      assert.equal(cancelledSale.status, 201);
+      const cancelSaleDone = await req(baseUrl, 'POST', `/api/invoices/${cancelledSale.json.invoice.id}/cancel`, {
+        token: adminToken,
+        body: { reason: 'ملغاة لا تظهر في آخر 3 أسعار' },
+      });
+      assert.equal(cancelSaleDone.status, 200);
+
+      const filtHistRes = await req(
+        baseUrl,
+        'GET',
+        `/api/customers/${scopedCustId}/price-history?productId=${encodeURIComponent(secProdId)}`,
+        { token: repAToken }
+      );
+      assert.equal(filtHistRes.status, 200);
+      assert.deepEqual(Object.keys(filtHistRes.json.priceHistory), [secProdId]);
+      assert.deepEqual(
+        filtHistRes.json.priceHistory[secProdId].map((x) => x.price),
+        [31, 33, 36],
+        'Cancelled invoice price (999) must be excluded from last 3 prices'
+      );
+    });
   } finally {
     await new Promise((resolve) => server.close(resolve));
     setInjectedPool(null);

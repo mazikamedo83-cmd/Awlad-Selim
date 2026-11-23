@@ -6,6 +6,7 @@ import {
   sanitizeCashboxForViewer,
   sanitizeProductForRepresentative,
   sanitizeInvoiceForRepresentative,
+  buildPgInPredicate,
 } from '../../utils/errors.js';
 import {
   isPgMode,
@@ -115,11 +116,8 @@ function buildPgRepOwnInvPred(alias, actor, repProfile, params) {
     const idRef = `$${params.length}`;
     parts.push(`${pfx}created_by_user_id = ${idRef}`);
     parts.push(`${pfx}sent_by_user_id = ${idRef}`);
-  }
-  if (actor?.fullName) {
-    params.push(actor.fullName);
     parts.push(
-      `(${pfx}created_by_user_id IS NULL AND ${pfx}representative_id IS NULL AND ${pfx}sent_by_user_id IS NULL AND ${pfx}created_by = $${params.length})`
+      `(${pfx}created_by_user_id IS NULL AND ${pfx}representative_id IS NULL AND ${pfx}sent_by_user_id IS NULL AND ${pfx}created_by = ${idRef})`
     );
   }
   return parts.length > 0 ? `(${parts.join(' OR ')})` : '1 = 0';
@@ -196,20 +194,16 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
     if (isRep) {
       const repOwnFtParts = [];
       if (repAllInvIdSet && repAllInvIdSet.size > 0) {
-        ftParams.push(Array.from(repAllInvIdSet));
-        repOwnFtParts.push(`related_doc_id = ANY($${ftParams.length}::varchar[])`);
+        repOwnFtParts.push(buildPgInPredicate('related_doc_id', Array.from(repAllInvIdSet), ftParams));
       }
       if (repAllRetIdSet && repAllRetIdSet.size > 0) {
-        ftParams.push(Array.from(repAllRetIdSet));
-        repOwnFtParts.push(`related_doc_id = ANY($${ftParams.length}::varchar[])`);
+        repOwnFtParts.push(buildPgInPredicate('related_doc_id', Array.from(repAllRetIdSet), ftParams));
       }
       if (actor?.id) {
         ftParams.push(actor.id);
-        repOwnFtParts.push(`created_by_user_id = $${ftParams.length}`);
-      }
-      if (actor?.fullName) {
-        ftParams.push(actor.fullName);
-        repOwnFtParts.push(`(created_by_user_id IS NULL AND related_doc_id IS NULL AND created_by = $${ftParams.length})`);
+        const idRef = `$${ftParams.length}`;
+        repOwnFtParts.push(`created_by_user_id = ${idRef}`);
+        repOwnFtParts.push(`(created_by_user_id IS NULL AND related_doc_id IS NULL AND created_by = ${idRef})`);
       }
       ftClauses.push(repOwnFtParts.length > 0 ? `(${repOwnFtParts.join(' OR ')})` : `1 = 0`);
       if (isRepCanPurchase) {
@@ -271,16 +265,13 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
       }
       const ownRetParts = [];
       if (repAllInvIdSet && repAllInvIdSet.size > 0) {
-        retParams.push(Array.from(repAllInvIdSet));
-        ownRetParts.push(`original_invoice_id = ANY($${retParams.length}::varchar[])`);
+        ownRetParts.push(buildPgInPredicate('original_invoice_id', Array.from(repAllInvIdSet), retParams));
       }
       if (actor?.id) {
         retParams.push(actor.id);
-        ownRetParts.push(`(original_invoice_id IS NULL AND created_by_user_id = $${retParams.length})`);
-      }
-      if (actor?.fullName) {
-        retParams.push(actor.fullName);
-        ownRetParts.push(`(original_invoice_id IS NULL AND created_by_user_id IS NULL AND created_by = $${retParams.length})`);
+        const idRef = `$${retParams.length}`;
+        ownRetParts.push(`(original_invoice_id IS NULL AND created_by_user_id = ${idRef})`);
+        ownRetParts.push(`(original_invoice_id IS NULL AND created_by_user_id IS NULL AND created_by = ${idRef})`);
       }
       retClauses.push(ownRetParts.length > 0 ? `(${ownRetParts.join(' OR ')})` : `1 = 0`);
     }
@@ -495,10 +486,15 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
       isRep && !isRepCanPurchase
         ? Promise.resolve({ rows: [] })
         : isRep
-        ? pool.query(
-            'SELECT * FROM purchase_return_requests WHERE requested_by_user_id = $1 OR ($2::varchar[] IS NOT NULL AND original_invoice_id = ANY($2::varchar[])) ORDER BY date DESC, created_at DESC',
-            [actor.id, repAllInvIdSet && repAllInvIdSet.size > 0 ? Array.from(repAllInvIdSet) : []]
-          )
+        ? (() => {
+            const prrParams = [actor.id];
+            const invIds = repAllInvIdSet && repAllInvIdSet.size > 0 ? Array.from(repAllInvIdSet) : [];
+            const extraClause = invIds.length > 0 ? ` OR ${buildPgInPredicate('original_invoice_id', invIds, prrParams)}` : '';
+            return pool.query(
+              `SELECT * FROM purchase_return_requests WHERE requested_by_user_id = $1${extraClause} ORDER BY date DESC, created_at DESC`,
+              prrParams
+            );
+          })()
         : pool.query('SELECT * FROM purchase_return_requests ORDER BY date DESC, created_at DESC'),
       isRep && !isRepCanPurchase
         ? Promise.resolve({ rows: [] })
@@ -582,7 +578,7 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
         if (r.originalInvoiceId) {
           return effectiveRepInvSet.has(r.originalInvoiceId) || visibleInvIdSet.has(r.originalInvoiceId);
         }
-        return r.createdByUserId === actor.id || (!r.createdByUserId && r.createdBy === actor.fullName);
+        return r.createdByUserId === actor.id || (!r.createdByUserId && r.createdBy === actor.id);
       });
     const effectiveRepRetSet = repAllRetIdSet || new Set(invoiceReturns.map((r) => r.id));
 
@@ -743,7 +739,7 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
           );
           if (linkedToOwnDoc) return true;
           if (f.created_by_user_id) return f.created_by_user_id === actor.id;
-          return !f.related_doc_id && f.created_by === actor.fullName;
+          return !f.related_doc_id && f.created_by === actor.id;
         })
         .map((f) => ({
           id: f.id,
@@ -917,7 +913,7 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
     if (r.type === 'purchase_return' && !isRepCanPurchase) return false;
     if (r.originalInvoiceId) return visibleJsonInvIdSet.has(r.originalInvoiceId);
     if (r.createdByUserId) return r.createdByUserId === actor.id;
-    return r.createdBy === actor.fullName;
+    return r.createdBy === actor.id;
   });
   const visibleJsonRetIdSet = new Set(invoiceReturns.map((r) => r.id));
   const purchaseReturnRequests = isRep && !isRepCanPurchase
@@ -940,7 +936,7 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
       );
       if (linkedToOwnDoc) return true;
       if (f.createdByUserId) return f.createdByUserId === actor.id;
-      return !f.relatedDocId && f.createdBy === actor.fullName;
+      return !f.relatedDocId && f.createdBy === actor.id;
     })
     .map((f) => {
       if (!isRep) return f;
@@ -1267,11 +1263,9 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
         ];
         if (actor?.id) {
           retParams.push(actor.id);
-          ownRetParts.push(`(r.original_invoice_id IS NULL AND r.created_by_user_id = $${retParams.length})`);
-        }
-        if (actor?.fullName) {
-          retParams.push(actor.fullName);
-          ownRetParts.push(`(r.original_invoice_id IS NULL AND r.created_by_user_id IS NULL AND r.created_by = $${retParams.length})`);
+          const idRef = `$${retParams.length}`;
+          ownRetParts.push(`(r.original_invoice_id IS NULL AND r.created_by_user_id = ${idRef})`);
+          ownRetParts.push(`(r.original_invoice_id IS NULL AND r.created_by_user_id IS NULL AND r.created_by = ${idRef})`);
         }
         retClauses.push(`(${ownRetParts.join(' OR ')})`);
       }
@@ -1349,10 +1343,18 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
       const pageOrigInvIds = [...new Set(pageRetRes.rows.map((x) => x.original_invoice_id).filter(Boolean))];
       const [retItemsRes, origInvItemsRes, fullRetCostItemsRes] = await Promise.all([
         pageRetIds.length > 0
-          ? pool.query(`SELECT * FROM invoice_return_items WHERE return_id = ANY($1::varchar[])`, [pageRetIds])
+          ? (() => {
+              const p = [];
+              const pred = buildPgInPredicate('return_id', pageRetIds, p);
+              return pool.query(`SELECT * FROM invoice_return_items WHERE ${pred}`, p);
+            })()
           : Promise.resolve({ rows: [] }),
         pageOrigInvIds.length > 0 && !isRep && isSales
-          ? pool.query(`SELECT invoice_id, product_id, purchase_price_at_time FROM invoice_items WHERE invoice_id = ANY($1::varchar[])`, [pageOrigInvIds])
+          ? (() => {
+              const p = [];
+              const pred = buildPgInPredicate('invoice_id', pageOrigInvIds, p);
+              return pool.query(`SELECT invoice_id, product_id, purchase_price_at_time FROM invoice_items WHERE ${pred}`, p);
+            })()
           : Promise.resolve({ rows: [] }),
         !isRep
           ? pool.query(
@@ -1377,9 +1379,11 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
       if (!isRep && isSales && fullRetCostItemsRes.rows.length > 0) {
         const missingOrigIds = [...new Set(fullRetCostItemsRes.rows.map((x) => x.original_invoice_id).filter((id) => id && !pageOrigInvIds.includes(id)))];
         if (missingOrigIds.length > 0) {
+          const p = [];
+          const pred = buildPgInPredicate('invoice_id', missingOrigIds, p);
           const extraOrigRes = await pool.query(
-            `SELECT invoice_id, product_id, purchase_price_at_time FROM invoice_items WHERE invoice_id = ANY($1::varchar[])`,
-            [missingOrigIds]
+            `SELECT invoice_id, product_id, purchase_price_at_time FROM invoice_items WHERE ${pred}`,
+            p
           );
           for (const it of extraOrigRes.rows) {
             origCostByInvProd.set(`${it.invoice_id}::${it.product_id}`, Number(it.purchase_price_at_time || 0));
@@ -1514,7 +1518,11 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
         ),
       ];
       const origInvItemsRes = origInvIdsForCost.length > 0 && !isRep && isSales
-        ? await pool.query(`SELECT invoice_id, product_id, purchase_price_at_time FROM invoice_items WHERE invoice_id = ANY($1::varchar[])`, [origInvIdsForCost])
+        ? await (() => {
+            const p = [];
+            const pred = buildPgInPredicate('invoice_id', origInvIdsForCost, p);
+            return pool.query(`SELECT invoice_id, product_id, purchase_price_at_time FROM invoice_items WHERE ${pred}`, p);
+          })()
         : { rows: [] };
       const origCostByInvProd = new Map();
       for (const it of origInvItemsRes.rows) {
@@ -1676,7 +1684,9 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
       const pageInvIds = pageInvRes.rows.map((r) => r.id);
       const itemsByInv = new Map();
       if (pageInvIds.length > 0) {
-        const itRes = await pool.query(`SELECT * FROM invoice_items WHERE invoice_id = ANY($1::varchar[])`, [pageInvIds]);
+        const p = [];
+        const pred = buildPgInPredicate('invoice_id', pageInvIds, p);
+        const itRes = await pool.query(`SELECT * FROM invoice_items WHERE ${pred}`, p);
         for (const it of itRes.rows) {
           const list = itemsByInv.get(it.invoice_id) || [];
           list.push(it);
@@ -1927,11 +1937,9 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
       ];
       if (actor?.id) {
         retParams.push(actor.id);
-        ownRetParts.push(`(r.original_invoice_id IS NULL AND r.created_by_user_id = $${retParams.length})`);
-      }
-      if (actor?.fullName) {
-        retParams.push(actor.fullName);
-        ownRetParts.push(`(r.original_invoice_id IS NULL AND r.created_by_user_id IS NULL AND r.created_by = $${retParams.length})`);
+        const idRef = `$${retParams.length}`;
+        ownRetParts.push(`(r.original_invoice_id IS NULL AND r.created_by_user_id = ${idRef})`);
+        ownRetParts.push(`(r.original_invoice_id IS NULL AND r.created_by_user_id IS NULL AND r.created_by = ${idRef})`);
       }
       retClauses.push(`(${ownRetParts.join(' OR ')})`);
     }

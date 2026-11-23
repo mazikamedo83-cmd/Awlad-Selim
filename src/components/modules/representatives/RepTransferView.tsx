@@ -164,8 +164,11 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
   // Role constraint: If current user is a representative, default to rep_to_owner and filter to their own transfers
   const isRepUser = currentUser?.role === 'representative';
   const myRepProfile = useMemo(() => {
-    return representatives.find(r => r.userId === currentUser?.id || r.name === currentUser?.fullName);
-  }, [representatives, currentUser]);
+    return (
+      representatives.find((r) => r.userId && r.userId === currentUser?.id) ||
+      (!isRepUser ? representatives.find((r) => !r.userId && r.name === currentUser?.fullName) : undefined)
+    );
+  }, [representatives, currentUser, isRepUser]);
 
   // Sync defaults when async data arrives
   useEffect(() => {

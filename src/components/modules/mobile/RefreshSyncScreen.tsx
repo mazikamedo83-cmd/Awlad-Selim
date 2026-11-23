@@ -36,9 +36,10 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
   const rep = useMemo(
     () =>
       representativeProfile ||
-      data.representatives.find(
-        (r) => (r.userId && r.userId === currentUser?.id) || r.name === currentUser?.fullName
-      ) ||
+      data.representatives.find((r) => r.userId && r.userId === currentUser?.id) ||
+      (currentUser?.role !== 'representative'
+        ? data.representatives.find((r) => !r.userId && r.name === currentUser?.fullName)
+        : undefined) ||
       null,
     [representativeProfile, data.representatives, currentUser]
   );
