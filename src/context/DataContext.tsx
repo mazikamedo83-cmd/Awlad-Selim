@@ -159,7 +159,7 @@ export interface DataContextType extends DatabaseState {
   linkCustomerUser: (customerId: string, payload: { existingUserId?: string; createUser?: { fullName?: string; username: string; password: string; phone?: string; mustChangePassword?: boolean } }) => Promise<{ success: boolean; customer?: Customer; user?: User; error?: string }>;
   repairUnlinkedCustomerUsers: () => Promise<{ success: boolean; repairedCount?: number; error?: string }>;
   toggleCustomerUserStatus: (customerId: string, isActive: boolean) => Promise<{ success: boolean; isActive?: boolean; error?: string }>;
-  recordCustomerPayment: (customerId: string, amount: number, cashboxId: string, notes: string, paymentMethod?: 'cash' | 'bank' | 'cheque') => Promise<{ success: boolean; queuedOffline?: boolean; error?: string }>;
+  recordCustomerPayment: (customerId: string, amount: number, cashboxId: string, notes: string, paymentMethod?: 'cash' | 'bank' | 'cheque', invoiceId?: string) => Promise<{ success: boolean; queuedOffline?: boolean; collectionLocation?: string; error?: string }>;
 
   addSupplier: (supplier: Omit<Supplier, 'id' | 'createdAt' | 'currentBalance'>) => Promise<Supplier>;
   updateSupplier: (id: string, updates: Partial<Supplier>) => Promise<void>;
@@ -2682,17 +2682,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     amount: number,
     cashboxId: string,
     notes: string,
-    paymentMethod: 'cash' | 'bank' | 'cheque' = 'cash'
+    paymentMethod: 'cash' | 'bank' | 'cheque' = 'cash',
+    invoiceId?: string
   ) => {
     const idempotencyKey = generateId('IDEMP');
     try {
-      await apiRequest(`/api/customers/${customerId}/payment`, {
+      const res = await apiRequest<{ ok?: boolean; collectionLocation?: string }>(`/api/customers/${customerId}/payment`, {
         method: 'POST',
-        body: { amount, cashboxId, notes, paymentMethod },
+        body: { amount, cashboxId, notes, paymentMethod, ...(invoiceId ? { invoiceId } : {}) },
         idempotencyKey,
       });
       await loadRoleScopedData();
-      return { success: true };
+      return { success: true, collectionLocation: res?.collectionLocation };
     } catch (err: any) {
       if (isNetworkFailure(err) && currentUser) {
         const cust = data.customers.find((c) => c.id === customerId);
@@ -2701,7 +2702,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           entityType: 'payment',
           entityId: customerId,
           summaryAr: `تحصيل عميل (${cust?.name || customerId}): ${amount} ج.م`,
-          payload: { customerId, amount, cashboxId, notes, paymentMethod },
+          payload: { customerId, amount, cashboxId, notes, paymentMethod, ...(invoiceId ? { invoiceId } : {}) },
         });
         return { success: true, queuedOffline: true };
       }

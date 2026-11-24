@@ -168,6 +168,7 @@ export async function getSystemSettingsSafe() {
       phone1: s?.phone1 || '',
       phone2: s?.phone2 || '',
       address: s?.address || '',
+      branchNumber: s?.branch_number || extra.branchNumber || '',
       currency: s?.currency || 'ج.م',
       allowNegativeStock: Boolean(s?.allow_negative_stock),
       extraSettings: { ...extra, mobileConfig },
@@ -1083,19 +1084,21 @@ export async function linkCustomerToUser({ customerId, existingUserId, createUse
   return result;
 }
 
-export async function recordCustomerPayment({ customerId, amount, cashboxId, paymentMethod = 'cash', notes = '', date }, actor, idempotencyKey = '') {
+export async function recordCustomerPayment({ customerId, invoiceId, amount, cashboxId, paymentMethod = 'cash', notes = '', date }, actor, idempotencyKey = '') {
   const payAmount = round2(amount);
   if (!Number.isFinite(payAmount) || payAmount <= 0) {
     throw new AppError(400, 'مبلغ التحصيل يجب أن يكون أكبر من الصفر', 'INVALID_AMOUNT');
   }
   const cleanMethod = ['cash', 'bank', 'cheque'].includes(paymentMethod) ? paymentMethod : 'cash';
   const methodLabel = cleanMethod === 'bank' ? 'تحويل بنكي' : cleanMethod === 'cheque' ? 'شيك' : 'نقداً';
+  const collectionLocation = actor?.role === 'representative' ? 'rep' : 'branch';
   const txDate = date || todayIso();
   const now = nowIso();
-  const txId = generateServerId('FIN');
-  const txNumber = `REC-${Date.now().toString().slice(-6)}`;
+  const baseTxId = generateServerId('FIN');
+  const baseTxNumber = `REC-${Date.now().toString().slice(-6)}`;
   const endpoint = `POST /api/customers/${customerId}/payment`;
   const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey);
+  const requestedInvoiceId = invoiceId ? String(invoiceId).trim() : '';
 
   if (await isPgMode()) {
     const res = await withTransaction(async (client) => {
@@ -1119,10 +1122,58 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
       if (!cbRes.rows[0]) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
       const cb = cbRes.rows[0];
 
-      const isAdvanceCredit = Number(cust.currentBalance || 0) <= 0 || payAmount > Number(cust.currentBalance || 0);
+      const prevCbBalance = round2(Number(cb.current_balance || 0));
       const nextCustBalance = round2(cust.currentBalance - payAmount);
-      const nextCbBalance = round2(Number(cb.current_balance || 0) + payAmount);
-      const desc = `تحصيل (${methodLabel}) من العميل: ${cust.name}${isAdvanceCredit ? ' (رصيد دائن / مقدم)' : ''}`;
+      const nextCbBalance = round2(prevCbBalance + payAmount);
+
+      const actorCtx = await resolveActorIdentityPgTx(client, actor);
+      let repProfile = null;
+      if (actor?.role === 'representative') {
+        const repRow = (await client.query('SELECT id FROM representatives WHERE user_id = $1 LIMIT 1', [actor.id])).rows[0];
+        repProfile = repRow ? { id: repRow.id } : null;
+      }
+
+      const openInvRes = await client.query(
+        `SELECT * FROM invoices
+         WHERE customer_id = $1 AND type = 'sales' AND status = 'confirmed' AND remaining_amount > 0.01
+         ORDER BY date ASC, created_at ASC
+         FOR UPDATE`,
+        [customerId]
+      );
+      const retRes = await client.query(
+        `SELECT original_invoice_id, COALESCE(SUM(grand_total), 0) AS ret_total
+         FROM invoice_returns
+         WHERE party_id = $1 AND type = 'sales_return' AND refund_type = 'balance'
+         GROUP BY original_invoice_id`,
+        [customerId]
+      );
+      const retByInv = new Map(retRes.rows.map((r) => [r.original_invoice_id, round2(r.ret_total || 0)]));
+
+      const openInvoices = openInvRes.rows.filter((inv) => {
+        if (actor?.role !== 'representative') return true;
+        return isRepOwnerOfInvoice(
+          {
+            representativeId: inv.representative_id,
+            sentByUserId: inv.sent_by_user_id,
+            createdBy: inv.created_by,
+            createdByUserId: inv.created_by_user_id,
+          },
+          actor,
+          repProfile
+        );
+      });
+
+      if (requestedInvoiceId) {
+        const checkTarget = openInvRes.rows.find((r) => r.id === requestedInvoiceId);
+        if (!checkTarget) {
+          const existsAny = (await client.query(`SELECT id, customer_id, status FROM invoices WHERE id = $1 LIMIT 1`, [requestedInvoiceId])).rows[0];
+          if (!existsAny || existsAny.customer_id !== customerId) {
+            throw new AppError(404, 'الفاتورة المحددة غير موجودة لهذا العميل', 'INVOICE_NOT_FOUND');
+          }
+        } else if (actor?.role === 'representative' && !openInvoices.some((o) => o.id === requestedInvoiceId)) {
+          throw new AppError(403, 'غير مصرح للمندوب بالتحصيل على فاتورة لا تخصه', 'FORBIDDEN_REP_INVOICE_ACCESS');
+        }
+      }
 
       await client.query('UPDATE customers SET current_balance = $1, updated_at = $2 WHERE id = $3', [
         nextCustBalance,
@@ -1131,31 +1182,164 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
       ]);
       await client.query('UPDATE cashboxes SET current_balance = $1 WHERE id = $2', [nextCbBalance, cb.id]);
 
-      const actorCtx = await resolveActorIdentityPgTx(client, actor);
-      await client.query(
-        `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, description, notes, created_by_user_id, created_by, actor_identity_id, actor_employee_id, acting_role, created_at)
-         VALUES ($1, $2, $3, 'customer_payment', $4, $5, $6, $7, $8, 'customer', $9, $10, 'manual', $11, $12, $13, $14, $15, $16, $17, $18)`,
-        [
-          txId,
-          txNumber,
-          txDate,
-          payAmount,
-          cb.id,
-          cb.name,
-          nextCbBalance,
-          `تحصيل من عميل (${methodLabel})`,
-          cust.id,
-          cust.name,
-          desc,
-          notes || '',
-          actor.id,
-          actor.fullName,
-          actorCtx.actorIdentityId || null,
-          actorCtx.actorEmployeeId || null,
-          actorCtx.actingRole || actor.role || null,
-          now,
-        ]
-      );
+      let remainingToAllocate = payAmount;
+      let openingAllocated = 0;
+      const allocatedInvoices = [];
+      let runningCb = prevCbBalance;
+      let txCounter = 0;
+
+      const emitPaymentAndFtForInvoice = async (invRow, allocAmt) => {
+        const newPaid = round2(Number(invRow.paid_amount || 0) + allocAmt);
+        const newRem = round2(Math.max(0, Number(invRow.grand_total || 0) - newPaid));
+        const newPayType = newRem <= 0.01 ? 'cash' : 'partial';
+        const payId = generateServerId('PAY');
+
+        await client.query(
+          `UPDATE invoices SET paid_amount = $1, remaining_amount = $2, payment_type = $3, updated_at = $4 WHERE id = $5`,
+          [newPaid, newRem, newPayType, now, invRow.id]
+        );
+        await client.query(
+          `INSERT INTO invoice_payments (id, invoice_id, invoice_number, amount, date, payment_method, cashbox_id, cashbox_name, notes, collection_location, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+          [
+            payId,
+            invRow.id,
+            invRow.invoice_number,
+            allocAmt,
+            txDate,
+            cleanMethod,
+            cb.id,
+            cb.name,
+            notes || (collectionLocation === 'branch' ? 'تحصيل من الفرع على الفاتورة' : 'تحصيل المندوب على الفاتورة'),
+            collectionLocation,
+            actor.fullName,
+            actor.id || null,
+            actorCtx.actorIdentityId || null,
+            actorCtx.actorEmployeeId || null,
+            actorCtx.actingRole || actor.role || null,
+            now,
+          ]
+        );
+
+        runningCb = round2(runningCb + allocAmt);
+        const curTxId = txCounter === 0 ? baseTxId : generateServerId('FIN');
+        const curTxNum = txCounter === 0 ? baseTxNumber : `${baseTxNumber}-${txCounter + 1}`;
+        txCounter++;
+
+        await client.query(
+          `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, notes, created_by_user_id, created_by, actor_identity_id, actor_employee_id, acting_role, created_at)
+           VALUES ($1, $2, $3, 'customer_payment', $4, $5, $6, $7, $8, 'customer', $9, $10, 'sales', $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+          [
+            curTxId,
+            curTxNum,
+            txDate,
+            allocAmt,
+            cb.id,
+            cb.name,
+            runningCb,
+            `تحصيل من عميل (${methodLabel})`,
+            cust.id,
+            cust.name,
+            invRow.id,
+            invRow.invoice_number,
+            `تحصيل (${methodLabel}) على الفاتورة ${invRow.invoice_number} - العميل: ${cust.name}`,
+            notes || '',
+            actor.id,
+            actor.fullName,
+            actorCtx.actorIdentityId || null,
+            actorCtx.actorEmployeeId || null,
+            actorCtx.actingRole || actor.role || null,
+            now,
+          ]
+        );
+
+        allocatedInvoices.push({
+          invoiceId: invRow.id,
+          invoiceNumber: invRow.invoice_number,
+          allocatedAmount: allocAmt,
+          paidAmountAfter: newPaid,
+          remainingAmountAfter: newRem,
+          paymentId: payId,
+        });
+      };
+
+      const getEffectiveRem = (invRow) => {
+        const retDed = retByInv.get(invRow.id) || 0;
+        return Math.max(0, round2(Number(invRow.remaining_amount || 0) - retDed));
+      };
+
+      if (requestedInvoiceId) {
+        const target = openInvoices.find((inv) => inv.id === requestedInvoiceId);
+        if (target) {
+          const eff = getEffectiveRem(target);
+          const alloc = round2(Math.min(remainingToAllocate, eff));
+          if (alloc > 0.009) {
+            await emitPaymentAndFtForInvoice(target, alloc);
+            remainingToAllocate = round2(Math.max(0, remainingToAllocate - alloc));
+          }
+        }
+      } else if (Number(cust.openingBalance || 0) > 0.01) {
+        const priorManRes = await client.query(
+          `SELECT COALESCE(SUM(amount), 0) AS s FROM financial_transactions WHERE related_entity_id = $1 AND type = 'customer_payment' AND COALESCE(related_doc_type, 'manual') NOT IN ('sales', 'order_advance')`,
+          [customerId]
+        );
+        const priorManualPaid = round2(priorManRes.rows[0]?.s || 0);
+        const unallocatedOpening = Math.max(0, round2(Number(cust.openingBalance || 0) - priorManualPaid));
+        if (unallocatedOpening > 0.009) {
+          openingAllocated = round2(Math.min(remainingToAllocate, unallocatedOpening));
+          remainingToAllocate = round2(Math.max(0, remainingToAllocate - openingAllocated));
+        }
+      }
+
+      for (const invRow of openInvoices) {
+        if (remainingToAllocate <= 0.009) break;
+        if (requestedInvoiceId && invRow.id === requestedInvoiceId) continue;
+        const eff = getEffectiveRem(invRow);
+        if (eff <= 0.009) continue;
+        const alloc = round2(Math.min(remainingToAllocate, eff));
+        if (alloc > 0.009) {
+          await emitPaymentAndFtForInvoice(invRow, alloc);
+          remainingToAllocate = round2(Math.max(0, remainingToAllocate - alloc));
+        }
+      }
+
+      const manualAmount = round2(openingAllocated + remainingToAllocate);
+      let finalTxId = baseTxId;
+      let finalTxNum = baseTxNumber;
+      if (manualAmount > 0.009 || allocatedInvoices.length === 0) {
+        const amountToRecord = manualAmount > 0.009 ? manualAmount : payAmount;
+        runningCb = round2(runningCb + amountToRecord);
+        const curTxId = txCounter === 0 ? baseTxId : generateServerId('FIN');
+        const curTxNum = txCounter === 0 ? baseTxNumber : `${baseTxNumber}-${txCounter + 1}`;
+        finalTxId = curTxId;
+        finalTxNum = curTxNum;
+        const isAdv = nextCustBalance < 0;
+        const desc = `تحصيل (${methodLabel}) من العميل: ${cust.name}${isAdv ? ' (رصيد دائن / مقدم)' : ''}`;
+        await client.query(
+          `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, description, notes, created_by_user_id, created_by, actor_identity_id, actor_employee_id, acting_role, created_at)
+           VALUES ($1, $2, $3, 'customer_payment', $4, $5, $6, $7, $8, 'customer', $9, $10, 'manual', $11, $12, $13, $14, $15, $16, $17, $18)`,
+          [
+            curTxId,
+            curTxNum,
+            txDate,
+            amountToRecord,
+            cb.id,
+            cb.name,
+            runningCb,
+            `تحصيل من عميل (${methodLabel})`,
+            cust.id,
+            cust.name,
+            desc,
+            notes || '',
+            actor.id,
+            actor.fullName,
+            actorCtx.actorIdentityId || null,
+            actorCtx.actorEmployeeId || null,
+            actorCtx.actingRole || actor.role || null,
+            now,
+          ]
+        );
+      }
 
       const updatedCust = await client.query('SELECT * FROM customers WHERE id = $1', [customerId]);
       const mappedCust = mapPgCustomerRow(updatedCust.rows[0]);
@@ -1163,8 +1347,11 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
         customer: mappedCust,
         cashboxBalance: nextCbBalance,
         paymentMethod: cleanMethod,
-        transactionId: txId,
-        transactionNumber: txNumber,
+        collectionLocation,
+        transactionId: finalTxId,
+        transactionNumber: finalTxNum,
+        allocatedInvoices,
+        unallocatedAmount: manualAmount,
         isAdvanceCredit: mappedCust.currentBalance < 0,
         creditAmount: mappedCust.currentBalance < 0 ? round2(Math.abs(mappedCust.currentBalance)) : 0,
       };
@@ -1176,7 +1363,7 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
       await recordAuditLog({
         userId: actor.id,
         userName: actor.fullName,
-        action: `تحصيل مبلغ ${payAmount} (${methodLabel}) من العميل ${res.customer.name}`,
+        action: `تحصيل مبلغ ${payAmount} (${methodLabel}) من العميل ${res.customer.name}${res.allocatedInvoices?.length ? ` (ربط بـ ${res.allocatedInvoices.length} فاتورة)` : ''}`,
         module: 'العملاء',
         recordId: customerId,
       });
@@ -1201,43 +1388,215 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
       : db.cashboxes.find((c) => c.isDefault) || db.cashboxes[0];
     if (!cb) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
 
-    const isAdvanceCredit = Number(cust.currentBalance || 0) <= 0 || payAmount > Number(cust.currentBalance || 0);
-    cust.currentBalance = round2(Number(cust.currentBalance || 0) - payAmount);
-    cb.currentBalance = round2(Number(cb.currentBalance || 0) + payAmount);
-    const desc = `تحصيل (${methodLabel}) من العميل: ${cust.name}${isAdvanceCredit ? ' (رصيد دائن / مقدم)' : ''}`;
-
+    const prevCbBalance = round2(Number(cb.currentBalance || 0));
     const actorCtxJson = resolveActorIdentityJsonTx(db, actor);
-    db.financialTransactions.unshift({
-      id: txId,
-      transactionNumber: txNumber,
-      date: txDate,
-      type: 'customer_payment',
-      cashboxId: cb.id,
-      cashboxName: cb.name,
-      balanceAfter: cb.currentBalance,
-      amount: payAmount,
-      paymentMethod: cleanMethod,
-      category: `تحصيل من عميل (${methodLabel})`,
-      relatedDocType: 'manual',
-      relatedEntityId: cust.id,
-      partyId: cust.id,
-      partyName: cust.name,
-      description: desc,
-      notes: notes || '',
-      createdByUserId: actor.id,
-      createdBy: actor.fullName,
-      actorIdentityId: actorCtxJson.actorIdentityId,
-      actorEmployeeId: actorCtxJson.actorEmployeeId,
-      actingRole: actorCtxJson.actingRole,
-      createdAt: now,
+    const repProfile =
+      actor?.role === 'representative'
+        ? (db.representatives || []).find((r) => r.userId === actor.id) || null
+        : null;
+
+    const allOpenInvoices = (db.invoices || [])
+      .filter((i) => i.customerId === customerId && i.type === 'sales' && i.status === 'confirmed' && Number(i.remainingAmount || 0) > 0.01)
+      .sort((a, b) => {
+        const cmpDate = String(a.date || '').localeCompare(String(b.date || ''));
+        return cmpDate !== 0 ? cmpDate : String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
+      });
+
+    const openInvoices = allOpenInvoices.filter((inv) => {
+      if (actor?.role !== 'representative') return true;
+      return isRepOwnerOfInvoice(inv, actor, repProfile);
     });
+
+    if (requestedInvoiceId) {
+      const checkTarget = (db.invoices || []).find((i) => i.id === requestedInvoiceId);
+      if (checkTarget && checkTarget.customerId !== customerId) {
+        throw new AppError(404, 'الفاتورة المحددة غير موجودة لهذا العميل', 'INVOICE_NOT_FOUND');
+      }
+      if (!checkTarget) {
+        throw new AppError(404, 'الفاتورة المحددة غير موجودة لهذا العميل', 'INVOICE_NOT_FOUND');
+      }
+      if (actor?.role === 'representative' && !openInvoices.some((o) => o.id === requestedInvoiceId)) {
+        throw new AppError(403, 'غير مصرح للمندوب بالتحصيل على فاتورة لا تخصه', 'FORBIDDEN_REP_INVOICE_ACCESS');
+      }
+    }
+
+    cust.currentBalance = round2(Number(cust.currentBalance || 0) - payAmount);
+    cb.currentBalance = round2(prevCbBalance + payAmount);
+
+    const retByInv = new Map();
+    for (const r of db.invoiceReturns || []) {
+      if (r.partyId === customerId && r.type === 'sales_return' && r.refundType === 'balance' && r.originalInvoiceId) {
+        retByInv.set(r.originalInvoiceId, round2((retByInv.get(r.originalInvoiceId) || 0) + Number(r.grandTotal || 0)));
+      }
+    }
+    const getEffectiveRem = (inv) => Math.max(0, round2(Number(inv.remainingAmount || 0) - (retByInv.get(inv.id) || 0)));
+
+    let remainingToAllocate = payAmount;
+    let openingAllocated = 0;
+    const allocatedInvoices = [];
+    let runningCb = prevCbBalance;
+    let txCounter = 0;
+
+    const emitPaymentAndFtForInvoiceJson = (inv, allocAmt) => {
+      const newPaid = round2(Number(inv.paidAmount || 0) + allocAmt);
+      const newRem = round2(Math.max(0, Number(inv.grandTotal || 0) - newPaid));
+      const payId = generateServerId('PAY');
+
+      inv.paidAmount = newPaid;
+      inv.remainingAmount = newRem;
+      inv.paymentType = newRem <= 0.01 ? 'cash' : 'partial';
+      inv.updatedAt = now;
+      inv.payments = [
+        ...(inv.payments || []),
+        {
+          id: payId,
+          invoiceId: inv.id,
+          invoiceNumber: inv.invoiceNumber,
+          amount: allocAmt,
+          date: txDate,
+          paymentMethod: cleanMethod,
+          cashboxId: cb.id,
+          cashboxName: cb.name,
+          notes: notes || (collectionLocation === 'branch' ? 'تحصيل من الفرع على الفاتورة' : 'تحصيل المندوب على الفاتورة'),
+          collectionLocation,
+          createdBy: actor.fullName,
+          createdByUserId: actor.id,
+          actorIdentityId: actorCtxJson.actorIdentityId,
+          actorEmployeeId: actorCtxJson.actorEmployeeId,
+          actingRole: actorCtxJson.actingRole,
+          createdAt: now,
+        },
+      ];
+
+      runningCb = round2(runningCb + allocAmt);
+      const curTxId = txCounter === 0 ? baseTxId : generateServerId('FIN');
+      const curTxNum = txCounter === 0 ? baseTxNumber : `${baseTxNumber}-${txCounter + 1}`;
+      txCounter++;
+
+      db.financialTransactions.unshift({
+        id: curTxId,
+        transactionNumber: curTxNum,
+        date: txDate,
+        type: 'customer_payment',
+        cashboxId: cb.id,
+        cashboxName: cb.name,
+        balanceAfter: runningCb,
+        amount: allocAmt,
+        paymentMethod: cleanMethod,
+        category: `تحصيل من عميل (${methodLabel})`,
+        relatedDocType: 'sales',
+        relatedDocId: inv.id,
+        relatedDocNumber: inv.invoiceNumber,
+        relatedEntityId: cust.id,
+        partyId: cust.id,
+        partyName: cust.name,
+        description: `تحصيل (${methodLabel}) على الفاتورة ${inv.invoiceNumber} - العميل: ${cust.name}`,
+        notes: notes || '',
+        createdByUserId: actor.id,
+        createdBy: actor.fullName,
+        actorIdentityId: actorCtxJson.actorIdentityId,
+        actorEmployeeId: actorCtxJson.actorEmployeeId,
+        actingRole: actorCtxJson.actingRole,
+        createdAt: now,
+      });
+
+      allocatedInvoices.push({
+        invoiceId: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        allocatedAmount: allocAmt,
+        paidAmountAfter: newPaid,
+        remainingAmountAfter: newRem,
+        paymentId: payId,
+      });
+    };
+
+    if (requestedInvoiceId) {
+      const target = openInvoices.find((inv) => inv.id === requestedInvoiceId);
+      if (target) {
+        const eff = getEffectiveRem(target);
+        const alloc = round2(Math.min(remainingToAllocate, eff));
+        if (alloc > 0.009) {
+          emitPaymentAndFtForInvoiceJson(target, alloc);
+          remainingToAllocate = round2(Math.max(0, remainingToAllocate - alloc));
+        }
+      }
+    } else if (Number(cust.openingBalance || 0) > 0.01) {
+      const priorManualPaid = round2(
+        (db.financialTransactions || [])
+          .filter(
+            (tx) =>
+              (tx.relatedEntityId === customerId || tx.partyId === customerId) &&
+              tx.type === 'customer_payment' &&
+              !['sales', 'order_advance'].includes(tx.relatedDocType || 'manual')
+          )
+          .reduce((s, tx) => s + Number(tx.amount || 0), 0)
+      );
+      const unallocatedOpening = Math.max(0, round2(Number(cust.openingBalance || 0) - priorManualPaid));
+      if (unallocatedOpening > 0.009) {
+        openingAllocated = round2(Math.min(remainingToAllocate, unallocatedOpening));
+        remainingToAllocate = round2(Math.max(0, remainingToAllocate - openingAllocated));
+      }
+    }
+
+    for (const inv of openInvoices) {
+      if (remainingToAllocate <= 0.009) break;
+      if (requestedInvoiceId && inv.id === requestedInvoiceId) continue;
+      const eff = getEffectiveRem(inv);
+      if (eff <= 0.009) continue;
+      const alloc = round2(Math.min(remainingToAllocate, eff));
+      if (alloc > 0.009) {
+        emitPaymentAndFtForInvoiceJson(inv, alloc);
+        remainingToAllocate = round2(Math.max(0, remainingToAllocate - alloc));
+      }
+    }
+
+    const manualAmount = round2(openingAllocated + remainingToAllocate);
+    let finalTxId = baseTxId;
+    let finalTxNum = baseTxNumber;
+    if (manualAmount > 0.009 || allocatedInvoices.length === 0) {
+      const amountToRecord = manualAmount > 0.009 ? manualAmount : payAmount;
+      runningCb = round2(runningCb + amountToRecord);
+      const curTxId = txCounter === 0 ? baseTxId : generateServerId('FIN');
+      const curTxNum = txCounter === 0 ? baseTxNumber : `${baseTxNumber}-${txCounter + 1}`;
+      finalTxId = curTxId;
+      finalTxNum = curTxNum;
+      const isAdv = Number(cust.currentBalance || 0) < 0;
+      const desc = `تحصيل (${methodLabel}) من العميل: ${cust.name}${isAdv ? ' (رصيد دائن / مقدم)' : ''}`;
+      db.financialTransactions.unshift({
+        id: curTxId,
+        transactionNumber: curTxNum,
+        date: txDate,
+        type: 'customer_payment',
+        cashboxId: cb.id,
+        cashboxName: cb.name,
+        balanceAfter: runningCb,
+        amount: amountToRecord,
+        paymentMethod: cleanMethod,
+        category: `تحصيل من عميل (${methodLabel})`,
+        relatedDocType: 'manual',
+        relatedEntityId: cust.id,
+        partyId: cust.id,
+        partyName: cust.name,
+        description: desc,
+        notes: notes || '',
+        createdByUserId: actor.id,
+        createdBy: actor.fullName,
+        actorIdentityId: actorCtxJson.actorIdentityId,
+        actorEmployeeId: actorCtxJson.actorEmployeeId,
+        actingRole: actorCtxJson.actingRole,
+        createdAt: now,
+      });
+    }
 
     const payloadOut = {
       customer: cust,
       cashboxBalance: cb.currentBalance,
       paymentMethod: cleanMethod,
-      transactionId: txId,
-      transactionNumber: txNumber,
+      collectionLocation,
+      transactionId: finalTxId,
+      transactionNumber: finalTxNum,
+      allocatedInvoices,
+      unallocatedAmount: manualAmount,
       isAdvanceCredit: Number(cust.currentBalance || 0) < 0,
       creditAmount: Number(cust.currentBalance || 0) < 0 ? round2(Math.abs(Number(cust.currentBalance || 0))) : 0,
     };
@@ -1249,7 +1608,7 @@ export async function recordCustomerPayment({ customerId, amount, cashboxId, pay
     await recordAuditLog({
       userId: actor.id,
       userName: actor.fullName,
-      action: `تحصيل مبلغ ${payAmount} (${methodLabel}) من العميل ${res.customer.name}`,
+      action: `تحصيل مبلغ ${payAmount} (${methodLabel}) من العميل ${res.customer.name}${res.allocatedInvoices?.length ? ` (ربط بـ ${res.allocatedInvoices.length} فاتورة)` : ''}`,
       module: 'العملاء',
       recordId: customerId,
     });

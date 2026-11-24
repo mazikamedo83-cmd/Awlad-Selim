@@ -237,6 +237,7 @@ router.post(
     const result = await recordCustomerPayment(
       {
         customerId: req.params.id,
+        invoiceId: req.body?.invoiceId,
         amount: req.body?.amount,
         cashboxId: req.body?.cashboxId,
         paymentMethod: req.body?.paymentMethod,

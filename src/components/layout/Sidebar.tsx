@@ -130,11 +130,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const { customerItemOrders = [] } = useData();
   const pendingOrdersCount = customerItemOrders.filter((o) => o.status === 'pending').length;
 
-  // Expandable/collapsible section groups; current page's section stays open smoothly
+  // Expand all Windows desktop sections by default; users can collapse/expand freely
   const [openSectionIds, setOpenSectionIds] = useState<Record<string, boolean>>({
     sales: true,
-    inventory: false,
-    finance: false,
+    purchases: true,
+    inventory: true,
+    finance: true,
+    'cheques-inst': true,
+    representatives: true,
+    employees: true,
+    reports: true,
+    management: true,
+    settings: true,
   });
 
   const navSections: NavSection[] = useMemo(
@@ -150,11 +157,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {
             key: 'customer-orders',
             label: 'طلبات العملاء والمندوبين',
-            badge: pendingOrdersCount > 0 ? `${pendingOrdersCount} جديد` : undefined,
+            badge: pendingOrdersCount > 0 ? `${pendingOrdersCount}` : undefined,
           },
           { key: 'sales-invoices', label: 'فواتير المبيعات' },
-          { key: 'quotes', label: 'عروض الأسعار', badge: 'جديد' },
-          { key: 'new-sale', label: 'فاتورة مبيعات جديدة (+)', badge: 'جديد' },
+          { key: 'quotes', label: 'عروض الأسعار' },
+          { key: 'new-sale', label: 'فاتورة مبيعات جديدة (+)' },
           { key: 'customers', label: 'العملاء والأرصدة' },
           { key: 'sales-returns', label: 'مرتجع المبيعات' },
           { key: 'deleted-invoices', label: 'الفواتير المحذوفة والملغاة', permission: 'canViewDeletedInvoices' },
@@ -164,8 +171,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'purchases',
         title: 'المشتريات والموردون',
         icon: SuppliersTruckIcon,
-        headerGradient: 'bg-gradient-to-l from-indigo-50/90 via-violet-50/70 to-white text-indigo-950 border-indigo-100',
-        iconAccent: 'bg-white border border-indigo-100 shadow-2xs',
+        headerGradient: 'bg-slate-50 text-indigo-950 border-slate-200',
+        iconAccent: 'bg-white border border-indigo-100',
         permission: ['canManagePurchases', 'canCreatePurchase'],
         items: [
           { key: 'purchase-invoices', label: 'فواتير المشتريات' },
@@ -178,8 +185,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'inventory',
         title: 'المخازن والمنتجات',
         icon: WarehouseBoxesIcon,
-        headerGradient: 'bg-gradient-to-l from-sky-50/95 via-cyan-50/70 to-white text-sky-950 border-sky-100',
-        iconAccent: 'bg-white border border-sky-100 shadow-2xs',
+        headerGradient: 'bg-slate-50 text-sky-950 border-slate-200',
+        iconAccent: 'bg-white border border-sky-100',
         permission: 'canManageInventory',
         items: [
           { key: 'products', label: 'المنتجات والأسعار' },
@@ -189,50 +196,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
             label: 'الوحدات ومعاملات التحويل',
             permission: ['canManageInventory', 'canManageSettings'],
           },
-          { key: 'abu-selim-import', label: 'استيراد الملفات', badge: 'جديد' },
+          { key: 'abu-selim-import', label: 'استيراد الملفات' },
           { key: 'warehouses', label: 'أرصدة المستودعات', permission: 'canManageWarehouses' },
           {
             key: 'stock-transfers-orders',
             label: 'أوامر تحويل الأصناف',
-            badge: 'منظم',
             permission: ['canCreateStockTransfer', 'canApproveStockTransfer', 'canExecuteStockTransfer', 'canManageInventory'],
           },
           {
             key: 'stock-counts',
             label: 'جرد المخزن المعتمد',
-            badge: 'جرد',
             permission: ['canCreateStockCount', 'canApproveStockCount', 'canManageInventory'],
           },
           { key: 'stock-transfers', label: 'تحويل سريع بين المستودعات' },
           { key: 'stock-adjustments', label: 'تسوية سريعة للمخزون' },
           { key: 'damaged-stock', label: 'بضاعة تالفة ومنتهية' },
           { key: 'stock-movements', label: 'سجل حركة الأصناف' },
-          {
-            key: 'item-movement-report',
-            label: 'تقرير حركة الصنف المفصل',
-            badge: 'مفصل',
-            permission: ['canManageInventory', 'canViewReports'],
-          },
         ],
       },
       {
         id: 'finance',
         title: 'الحسابات والخزائن',
         icon: SafeVaultIcon,
-        headerGradient: 'bg-gradient-to-l from-emerald-50/90 via-teal-50/65 to-white text-emerald-950 border-emerald-100',
-        iconAccent: 'bg-white border border-emerald-100 shadow-2xs',
+        headerGradient: 'bg-slate-50 text-emerald-950 border-slate-200',
+        iconAccent: 'bg-white border border-emerald-100',
         permission: ['canManageCashboxes', 'canManageAccounts'],
         items: [
           {
             key: 'customer-accounts',
             label: 'حسابات العملاء وكشوف الحساب',
-            badge: 'العملاء',
             permission: ['canManageAccounts', 'canManageCashboxes'],
           },
           {
             key: 'supplier-accounts',
             label: 'حسابات الموردين وكشوف الحساب',
-            badge: 'الموردون',
             permission: ['canManageAccounts', 'canManageCashboxes'],
           },
           { key: 'cashboxes', label: 'الخزائن والبنوك', permission: 'canManageCashboxes' },
@@ -241,7 +238,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {
             key: 'personal-accounts',
             label: 'الحسابات الشخصية للملاك',
-            badge: 'مستقل',
             permission: 'canViewPersonalAccounts',
           },
         ],
@@ -270,13 +266,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {
             key: 'rep-transfers',
             label: 'طلب تحويل بالنصف (المالي)',
-            badge: 'تأكيد ثنائي',
             permission: 'canManageTransfers',
           },
           {
             key: 'rep-item-transfers',
             label: 'تحويل أصناف وعهدة (فاتورة)',
-            badge: 'عهدة',
             permission: 'canManageTransfers',
           },
         ],
@@ -285,8 +279,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'employees',
         title: 'الموظفون والرواتب',
         icon: EmployeesHrIcon,
-        headerGradient: 'bg-gradient-to-l from-rose-50/85 via-pink-50/60 to-white text-rose-950 border-rose-100',
-        iconAccent: 'bg-white border border-rose-100 shadow-2xs',
+        headerGradient: 'bg-slate-50 text-rose-950 border-slate-200',
+        iconAccent: 'bg-white border border-rose-100',
         permission: 'canManageEmployees',
         items: [
           { key: 'employees', label: 'شؤون الموظفين' },
@@ -299,20 +293,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'reports',
         title: 'التقارير المحاسبية',
         icon: ReportsChartIcon,
-        headerGradient: 'bg-gradient-to-l from-blue-50/85 via-indigo-50/65 to-white text-blue-950 border-blue-100',
-        iconAccent: 'bg-white border border-blue-100 shadow-2xs',
+        headerGradient: 'bg-slate-50 text-blue-950 border-slate-200',
+        iconAccent: 'bg-white border border-blue-100',
         permission: 'canViewReports',
         items: [
           { key: 'reports', label: 'جميع التقارير والأرباح' },
-          { key: 'item-movement-report', label: 'تقرير حركة الصنف المفصل', badge: 'جديد' },
+          {
+            key: 'item-movement-report',
+            label: 'تقرير حركة الصنف المفصل',
+            permission: ['canViewReports', 'canManageInventory'],
+          },
         ],
       },
       {
         id: 'management',
         title: 'المستخدمون والصلاحيات',
         icon: UsersShieldIcon,
-        headerGradient: 'bg-gradient-to-l from-slate-100/95 via-blue-50/65 to-white text-slate-900 border-slate-200/80',
-        iconAccent: 'bg-white border border-slate-200 shadow-2xs',
+        headerGradient: 'bg-slate-50 text-slate-900 border-slate-200',
+        iconAccent: 'bg-white border border-slate-200',
         permission: 'canManageUsers',
         items: [
           { key: 'users', label: 'إدارة المستخدمين' },
@@ -323,8 +321,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'settings',
         title: 'الإعدادات والنسخ الاحتياطي',
         icon: SettingsTwinGearsIcon,
-        headerGradient: 'bg-gradient-to-l from-slate-100/90 via-indigo-50/60 to-white text-slate-900 border-slate-200/80',
-        iconAccent: 'bg-white border border-slate-200 shadow-2xs',
+        headerGradient: 'bg-slate-50 text-slate-900 border-slate-200',
+        iconAccent: 'bg-white border border-slate-200',
         permission: 'canManageSettings',
         items: [
           { key: 'system-settings', label: 'إعدادات النظام والحساب', allowAllStaff: true },
@@ -338,7 +336,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           { key: 'server-settings', label: 'إعدادات السيرفر والاتصال' },
           { key: 'diagnostics-settings', label: 'سجل التشخيص والأخطاء' },
           { key: 'backup', label: 'النسخ الاحتياطي والاستعادة' },
-          { key: 'migration', label: 'سجل الترحيل و PostgreSQL', badge: 'جديد' },
+          { key: 'migration', label: 'سجل الترحيل و PostgreSQL' },
           { key: 'shortcuts-settings', label: 'اختصارات لوحة المفاتيح', allowAllStaff: true },
         ],
       },
@@ -393,29 +391,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleItemClick = (key: NavItemKey) => {
     onNavigate(key);
-    // On mobile/tablet viewports, automatically close drawer after choosing a destination
-    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+    // On mobile viewports (< 768px), automatically close drawer after choosing a destination
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
       onClose();
     }
   };
 
   return (
     <>
-      {/* Soft Backdrop Overlay for Mobile/Tablet (tapping outside closes drawer cleanly) */}
+      {/* Backdrop Overlay for Narrow Viewports */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-[2px] transition-opacity lg:hidden no-print"
+          className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-[2px] transition-opacity md:hidden no-print"
           onClick={onClose}
           aria-hidden="true"
         />
       )}
 
-      {/* RTL Sliding Sidebar Drawer with Soft Calm Gradients */}
+      {/* RTL Sliding Sidebar Drawer — Traditional Accounting Structure */}
       <aside
         id="system-sections-drawer"
         aria-label="قائمة الأقسام الجانبية"
         aria-hidden={!isOpen}
-        className={`fixed top-0 bottom-0 right-0 z-50 lg:z-40 w-[82vw] max-w-[330px] sm:w-80 bg-gradient-to-b from-white via-sky-50/60 to-indigo-50/75 text-slate-800 border-l border-blue-200/80 shadow-2xl transition-transform duration-300 ease-out flex flex-col pt-safe pb-safe no-print ${
+        className={`fixed top-0 bottom-0 right-0 z-50 md:z-40 w-[82vw] max-w-[300px] md:w-72 bg-white text-slate-800 border-l border-slate-200 shadow-lg transition-transform duration-200 ease-out flex flex-col pt-safe pb-safe no-print ${
           isOpen ? 'translate-x-0 pointer-events-auto' : 'translate-x-full pointer-events-none'
         }`}
       >
@@ -485,9 +483,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => {
                     onOpenCashOp('cash_deposit');
-                    if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
+                    if (typeof window !== 'undefined' && window.innerWidth < 768) onClose();
                   }}
-                  className="min-h-[38px] flex items-center justify-center gap-1.5 rounded-xl bg-white/95 border border-emerald-200/80 text-emerald-800 hover:bg-emerald-50 transition-colors cursor-pointer"
+                  className="min-h-[36px] flex items-center justify-center gap-1.5 rounded-lg bg-white border border-emerald-200 text-emerald-800 hover:bg-emerald-50 transition-colors cursor-pointer"
                 >
                   <ArrowDownCircle className="w-3.5 h-3.5 shrink-0" />
                   <span>إيداع نقدي</span>
@@ -496,9 +494,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => {
                     onOpenCashOp('cash_withdrawal');
-                    if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
+                    if (typeof window !== 'undefined' && window.innerWidth < 768) onClose();
                   }}
-                  className="min-h-[38px] flex items-center justify-center gap-1.5 rounded-xl bg-white/95 border border-rose-200/80 text-rose-800 hover:bg-rose-50 transition-colors cursor-pointer"
+                  className="min-h-[36px] flex items-center justify-center gap-1.5 rounded-lg bg-white border border-rose-200 text-rose-800 hover:bg-rose-50 transition-colors cursor-pointer"
                 >
                   <ArrowUpCircle className="w-3.5 h-3.5 shrink-0" />
                   <span>سحب نقدي</span>
@@ -507,9 +505,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => {
                     onOpenCashOp('expense');
-                    if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
+                    if (typeof window !== 'undefined' && window.innerWidth < 768) onClose();
                   }}
-                  className="min-h-[38px] flex items-center justify-center gap-1.5 rounded-xl bg-white/95 border border-orange-200/80 text-orange-800 hover:bg-orange-50 transition-colors cursor-pointer"
+                  className="min-h-[36px] flex items-center justify-center gap-1.5 rounded-lg bg-white border border-orange-200 text-orange-800 hover:bg-orange-50 transition-colors cursor-pointer"
                 >
                   <TrendingDown className="w-3.5 h-3.5 shrink-0" />
                   <span>مصروف</span>
@@ -518,9 +516,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => {
                     onOpenCashOp('profit_deposit');
-                    if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
+                    if (typeof window !== 'undefined' && window.innerWidth < 768) onClose();
                   }}
-                  className="min-h-[38px] flex items-center justify-center gap-1.5 rounded-xl bg-white/95 border border-teal-200/80 text-teal-800 hover:bg-teal-50 transition-colors cursor-pointer"
+                  className="min-h-[36px] flex items-center justify-center gap-1.5 rounded-lg bg-white border border-teal-200 text-teal-800 hover:bg-teal-50 transition-colors cursor-pointer"
                 >
                   <TrendingUp className="w-3.5 h-3.5 shrink-0" />
                   <span>إيداع ربحي</span>
@@ -529,9 +527,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => {
                     onOpenCashOp('cashbox_transfer');
-                    if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
+                    if (typeof window !== 'undefined' && window.innerWidth < 768) onClose();
                   }}
-                  className="col-span-2 min-h-[38px] flex items-center justify-center gap-1.5 rounded-xl bg-white/95 border border-blue-200/80 text-blue-900 hover:bg-blue-50 transition-colors cursor-pointer"
+                  className="col-span-2 min-h-[36px] flex items-center justify-center gap-1.5 rounded-lg bg-white border border-blue-200 text-blue-900 hover:bg-blue-50 transition-colors cursor-pointer"
                 >
                   <ArrowLeftRight className="w-3.5 h-3.5 shrink-0" />
                   <span>ترحيل فوري بين الخزائن</span>
@@ -549,8 +547,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             return (
               <div
                 key={section.id}
-                className={`rounded-2xl border overflow-hidden bg-white/90 backdrop-blur-xs shadow-2xs transition-colors ${
-                  hasActiveChild ? 'border-blue-300' : 'border-slate-200/80'
+                className={`rounded-xl border overflow-hidden bg-white transition-colors ${
+                  hasActiveChild ? 'border-blue-400' : 'border-slate-200'
                 }`}
               >
                 {/* Accordion Header */}
@@ -558,21 +556,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => toggleSection(section.id)}
                   aria-expanded={isExpanded}
-                  className={`w-full min-h-[44px] flex items-center justify-between px-3.5 py-2.5 text-xs font-black transition-colors cursor-pointer ${
+                  className={`w-full min-h-[40px] flex items-center justify-between px-3 py-2 text-xs font-black transition-colors cursor-pointer ${
                     section.headerGradient
-                  } ${isExpanded ? 'border-b' : ''}`}
+                  } ${isExpanded ? 'border-b border-slate-200' : ''}`}
                 >
-                  <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0">
                     <span
-                      className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 p-1 ${section.iconAccent}`}
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 p-1 ${section.iconAccent}`}
                     >
-                      <SectionIcon className="w-6 h-6" />
+                      <SectionIcon className="w-5 h-5" />
                     </span>
                     <span className="truncate">{section.title}</span>
                   </div>
 
                   <ChevronDown
-                    className={`w-4 h-4 shrink-0 text-slate-500 transition-transform duration-200 ${
+                    className={`w-4 h-4 shrink-0 text-slate-500 transition-transform duration-150 ${
                       isExpanded ? 'rotate-180 text-blue-700' : ''
                     }`}
                   />
@@ -580,7 +578,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                 {/* Collapsible Submenu Items */}
                 {isExpanded && (
-                  <div className="p-1.5 space-y-1 bg-gradient-to-b from-white to-slate-50/70">
+                  <div className="p-1 space-y-0.5 bg-white">
                     {section.items.map((item) => {
                       const isActive = currentPage === item.key;
                       return (
@@ -588,27 +586,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           key={item.key}
                           type="button"
                           onClick={() => handleItemClick(item.key)}
-                          className={`w-full min-h-[40px] flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs transition-all cursor-pointer ${
+                          className={`w-full min-h-[36px] flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
                             isActive
-                              ? 'bg-gradient-to-l from-blue-600 to-indigo-600 text-white font-black shadow-xs shadow-blue-600/20'
-                              : 'text-slate-700 hover:bg-blue-50/80 hover:text-blue-950 font-semibold'
+                              ? 'bg-blue-900 text-white font-black'
+                              : 'text-slate-700 hover:bg-slate-100 hover:text-blue-950 font-semibold'
                           }`}
                         >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span
-                              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                isActive ? 'bg-white' : 'bg-blue-400/70'
-                              }`}
-                            />
-                            <span className="truncate">{item.label}</span>
-                          </div>
+                          <span className="truncate">{item.label}</span>
 
                           {item.badge && (
                             <span
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0 ${
+                              className={`text-[10px] font-bold font-mono tabular-nums px-1.5 py-0.5 rounded shrink-0 ${
                                 isActive
                                   ? 'bg-white/20 text-white'
-                                  : 'bg-blue-50 text-blue-800 border border-blue-200/80'
+                                  : 'bg-blue-50 text-blue-900 border border-blue-200'
                               }`}
                             >
                               {item.badge}
@@ -624,12 +615,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </div>
 
-        {/* Soft Gradient Drawer Footer */}
-        <div className="p-3 border-t border-blue-100 bg-gradient-to-l from-sky-50/90 via-white to-indigo-50/90 text-center shrink-0">
+        {/* Clean Drawer Footer */}
+        <div className="p-2.5 border-t border-slate-200 bg-slate-50 text-center shrink-0">
           <div className="text-[11px] text-slate-600 font-semibold">
-            <span>أولاد سليم v3.0.0</span>
-            <span className="mx-2 text-slate-300">•</span>
-            <span className="text-emerald-700 font-bold">نظام محاسبي متكامل</span>
+            <span>أولاد سليم للمحاسبة • v3.0.0</span>
           </div>
         </div>
       </aside>

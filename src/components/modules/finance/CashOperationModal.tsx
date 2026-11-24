@@ -57,7 +57,7 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
   const [targetCashboxId, setTargetCashboxId] = useState<string>('');
   const [amount, setAmount] = useState<number>(0);
   const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [category, setCategory] = useState<string>(OP_LABELS[initialMode].defaultCategory);
+  const [category, setCategory] = useState<string>('');
   const [recipientOrPayer, setRecipientOrPayer] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [printAfterSave, setPrintAfterSave] = useState<boolean>(false);
@@ -68,7 +68,7 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setOpType(initialMode);
-      setCategory(OP_LABELS[initialMode].defaultCategory);
+      setCategory('');
       setCashboxId(cashboxes[0]?.id || '');
       setTargetCashboxId(cashboxes[1]?.id || cashboxes[0]?.id || '');
       setAmount(0);
@@ -92,7 +92,6 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
 
   const handleModeChange = (nextMode: CashOperationType) => {
     setOpType(nextMode);
-    setCategory(OP_LABELS[nextMode].defaultCategory);
     setError(null);
   };
 

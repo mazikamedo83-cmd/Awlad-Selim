@@ -125,11 +125,11 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
   const [quoteWarehouseId, setQuoteWarehouseId] = useState(warehouses[0]?.id || 'wh-main');
   const [quoteRepId, setQuoteRepId] = useState('');
   const [quoteDate, setQuoteDate] = useState(new Date().toISOString().split('T')[0]);
-  const [quoteDiscountTotal, setQuoteDiscountTotal] = useState(0);
+  const [quoteDiscountTotal, setQuoteDiscountTotal] = useState<number | ''>('');
   const [quoteNotes, setQuoteNotes] = useState('');
   const [quoteItems, setQuoteItems] = useState<InvoiceItem[]>([]);
   const [quoteSelectedProductId, setQuoteSelectedProductId] = useState('');
-  const [quoteQty, setQuoteQty] = useState<number>(1);
+  const [quoteQty, setQuoteQty] = useState<number | ''>('');
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [isSubmittingQuote, setIsSubmittingQuote] = useState(false);
 
@@ -138,8 +138,8 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
   const [convertWarehouseId, setConvertWarehouseId] = useState(warehouses[0]?.id || 'wh-main');
   const [convertCashboxId, setConvertCashboxId] = useState(cashboxes[0]?.id || 'cb-main');
   const [convertPaymentType, setConvertPaymentType] = useState<'cash' | 'partial' | 'credit'>('cash');
-  const [convertPaidAtInvoice, setConvertPaidAtInvoice] = useState<number>(0);
-  const [convertDiscountTotal, setConvertDiscountTotal] = useState<number>(0);
+  const [convertPaidAtInvoice, setConvertPaidAtInvoice] = useState<number | ''>('');
+  const [convertDiscountTotal, setConvertDiscountTotal] = useState<number | ''>('');
   const [convertNotes, setConvertNotes] = useState('');
   const [isConvertingQuote, setIsConvertingQuote] = useState(false);
 
@@ -404,7 +404,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
       ];
     });
     setQuoteSelectedProductId('');
-    setQuoteQty(1);
+    setQuoteQty('');
   };
 
   const handleSubmitQuote = async (e: React.FormEvent) => {
@@ -450,7 +450,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
     setIsNewQuoteOpen(false);
     setQuoteItems([]);
     setQuoteNotes('');
-    setQuoteDiscountTotal(0);
+    setQuoteDiscountTotal('');
     setActionMessage({
       type: 'success',
       text: `تم إنشاء عرض السعر (${res.invoice?.invoiceNumber || ''}) بنجاح دون أي تأثير على المخزون أو الحسابات.`,
@@ -483,8 +483,8 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
       warehouseId: convertWarehouseId,
       cashboxId: convertCashboxId,
       paymentType: convertPaymentType,
-      paidAtInvoice: convertPaidAtInvoice,
-      discountTotal: convertDiscountTotal,
+      paidAtInvoice: Number(convertPaidAtInvoice || 0),
+      discountTotal: Number(convertDiscountTotal || 0),
       notes: convertNotes.trim() || undefined,
     });
     setIsConvertingQuote(false);
@@ -756,15 +756,15 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     <td className="p-3.5">
                       <div className="flex flex-col items-start gap-1">
                         {inv.status === 'confirmed' ? (
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                          <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
                             مؤكدة
                           </span>
                         ) : inv.status === 'draft' ? (
-                          <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold">
+                          <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold">
                             مسودة (بلا خصم)
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold">
+                          <span className="px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold">
                             ملغاة
                           </span>
                         )}
@@ -908,15 +908,15 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                       </td>
                       <td className="p-3.5">
                         {quote.status === 'cancelled' ? (
-                          <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold">
+                          <span className="px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold">
                             ملغي
                           </span>
                         ) : isConverted ? (
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                          <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
                             تم التحويل لفاتورة
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-bold">
+                          <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-bold">
                             عرض سعر (بلا خصم مخزني)
                           </span>
                         )}
@@ -1749,8 +1749,9 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     type="number"
                     min={0}
                     step="0.01"
+                    placeholder="0.00"
                     value={quoteDiscountTotal}
-                    onChange={(e) => setQuoteDiscountTotal(parseFloat(e.target.value) || 0)}
+                    onChange={(e) => setQuoteDiscountTotal(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
                     className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
                   />
                 </div>
@@ -1768,7 +1769,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
 
               <div className="flex items-center justify-between pt-3 border-t">
                 <div className="text-sm font-black text-blue-950 tabular-nums">
-                  الصافي المقترح: {Math.max(0, quoteItems.reduce((s, it) => s + it.total, 0) - quoteDiscountTotal).toLocaleString()} {settings.currency}
+                  الصافي المقترح: {Math.max(0, quoteItems.reduce((s, it) => s + it.total, 0) - Number(quoteDiscountTotal || 0)).toLocaleString()} {settings.currency}
                 </div>
                 <div className="flex gap-2">
                   <button type="button" onClick={() => setIsNewQuoteOpen(false)} className="px-4 py-2 rounded-xl border border-slate-300 font-bold cursor-pointer">
@@ -1836,9 +1837,9 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                       const nextType = e.target.value as 'cash' | 'partial' | 'credit';
                       setConvertPaymentType(nextType);
                       if (nextType === 'cash') {
-                        setConvertPaidAtInvoice(Math.max(0, convertQuoteTarget.subtotal - convertDiscountTotal));
+                        setConvertPaidAtInvoice(Math.max(0, convertQuoteTarget.subtotal - Number(convertDiscountTotal || 0)));
                       } else if (nextType === 'credit') {
-                        setConvertPaidAtInvoice(0);
+                        setConvertPaidAtInvoice('');
                       }
                     }}
                     className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
@@ -1854,8 +1855,9 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     type="number"
                     min={0}
                     step="0.01"
+                    placeholder="0.00"
                     value={convertPaidAtInvoice}
-                    onChange={(e) => setConvertPaidAtInvoice(parseFloat(e.target.value) || 0)}
+                    onChange={(e) => setConvertPaidAtInvoice(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
                     className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
                   />
                 </div>
@@ -1865,8 +1867,9 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     type="number"
                     min={0}
                     step="0.01"
+                    placeholder="0.00"
                     value={convertDiscountTotal}
-                    onChange={(e) => setConvertDiscountTotal(parseFloat(e.target.value) || 0)}
+                    onChange={(e) => setConvertDiscountTotal(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
                     className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
                   />
                 </div>

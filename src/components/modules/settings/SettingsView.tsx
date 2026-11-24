@@ -164,6 +164,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
   ]);
   const [newBranchName, setNewBranchName] = useState('');
   const [newBranchCode, setNewBranchCode] = useState('');
+  const [newBranchNumber, setNewBranchNumber] = useState('');
   const [newBranchPhone, setNewBranchPhone] = useState('');
   const [newBranchAddress, setNewBranchAddress] = useState('');
   const [newBranchWarehouseId, setNewBranchWarehouseId] = useState(warehouses[0]?.id || '');
@@ -1123,7 +1124,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 />
               </div>
 
-              <div className="sm:col-span-2">
+              <div>
+                <label className="block font-bold mb-1">رقم الفرع الرئيسي (يظهر بالمستندات المطبوعة):</label>
+                <input
+                  type="text"
+                  placeholder="مثال: 01 أو BR-01 (اختياري)"
+                  value={formData.branchNumber || ''}
+                  onChange={(e) => setFormData({ ...formData, branchNumber: e.target.value })}
+                  className="w-full border rounded-xl p-2.5 font-mono"
+                />
+              </div>
+
+              <div>
                 <label className="block font-bold mb-1">عنوان المحل / المقر الرئيسي:</label>
                 <input
                   type="text"
@@ -1998,16 +2010,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-bold text-slate-800">إجمالي السجلات المكتشفة ({importCandidates.length}):</span>
-                  <span className="text-[11px] text-emerald-800 bg-emerald-100/70 px-2.5 py-0.5 rounded-full border border-emerald-300 font-bold">
+                  <span className="text-[11px] text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded border border-emerald-300 font-bold">
                     أصناف صالحة: {importCandidates.filter(c => c.isValid).length}
                   </span>
                   {importCandidates.some(c => c.isDuplicateCode) && (
-                    <span className="text-[11px] text-red-800 bg-red-100/70 px-2.5 py-0.5 rounded-full border border-red-300 font-bold">
+                    <span className="text-[11px] text-red-800 bg-red-50 px-2.5 py-0.5 rounded border border-red-300 font-bold">
                       أكواد مكررة: {importCandidates.filter(c => c.isDuplicateCode).length}
                     </span>
                   )}
                   {importCandidates.some(c => c.isDuplicateName) && (
-                    <span className="text-[11px] text-amber-800 bg-amber-100/70 px-2.5 py-0.5 rounded-full border border-amber-300 font-bold">
+                    <span className="text-[11px] text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded border border-amber-300 font-bold">
                       أسماء مكررة: {importCandidates.filter(c => c.isDuplicateName).length}
                     </span>
                   )}
@@ -2060,11 +2072,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                         <td className="p-2 text-slate-400 font-mono">0 (فارغ)</td>
                         <td className="p-2 text-center">
                           {cand.isValid ? (
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">صالح</span>
+                            <span className="px-2 py-0.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-800 text-[10px] font-bold">صالح</span>
                           ) : cand.isDuplicateCode ? (
-                            <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-800 text-[10px] font-bold">كود مكرر</span>
+                            <span className="px-2 py-0.5 rounded border border-red-200 bg-red-50 text-red-800 text-[10px] font-bold">كود مكرر</span>
                           ) : (
-                            <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">اسم مكرر</span>
+                            <span className="px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-800 text-[10px] font-bold">اسم مكرر</span>
                           )}
                         </td>
                         <td className="p-2 text-center">
@@ -2441,7 +2453,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                         <td className="p-3 text-center font-mono font-black text-emerald-600">{log.migratedRecords}</td>
                         <td className="p-3 text-center font-mono font-bold text-red-600">{log.failedRecords}</td>
                         <td className="p-3 text-center">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                             log.status === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
                             log.status === 'pending' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
                             'bg-red-50 text-red-700 border border-red-200'
@@ -2469,6 +2481,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <input type="text" placeholder="اسم الفرع *" value={newBranchName} onChange={(e) => setNewBranchName(e.target.value)} className="border rounded-xl p-2 font-bold" />
+              <input type="text" placeholder="رقم الفرع (مثال: 01)" value={newBranchNumber} onChange={(e) => setNewBranchNumber(e.target.value)} className="border rounded-xl p-2 font-mono" />
               <input type="text" placeholder="كود الفرع (BR-02)" value={newBranchCode} onChange={(e) => setNewBranchCode(e.target.value)} className="border rounded-xl p-2 font-mono" />
               <input type="text" placeholder="رقم الهاتف" value={newBranchPhone} onChange={(e) => setNewBranchPhone(e.target.value)} className="border rounded-xl p-2 font-mono" />
               <input type="text" placeholder="العنوان التفصيلي" value={newBranchAddress} onChange={(e) => setNewBranchAddress(e.target.value)} className="border rounded-xl p-2" />
@@ -2490,6 +2503,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     id: `BR-${Date.now().toString().slice(-5)}`,
                     name: newBranchName.trim(),
                     code: newBranchCode.trim() || `BR-${branches.length + 1}`,
+                    branchNumber: newBranchNumber.trim() || undefined,
                     phone: newBranchPhone.trim() || undefined,
                     address: newBranchAddress.trim() || undefined,
                     warehouseId: newBranchWarehouseId || undefined,
@@ -2499,6 +2513,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   const next = [...branches, item];
                   setBranches(next);
                   setNewBranchName('');
+                  setNewBranchNumber('');
                   setNewBranchCode('');
                   setNewBranchPhone('');
                   setNewBranchAddress('');
@@ -2516,6 +2531,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               <thead>
                 <tr className="bg-slate-50 border-b font-bold text-slate-700">
                   <th className="p-3">الكود</th>
+                  <th className="p-3">رقم الفرع</th>
                   <th className="p-3">اسم الفرع</th>
                   <th className="p-3">الهاتف والعنوان</th>
                   <th className="p-3">المستودع / الخزينة</th>
@@ -2526,8 +2542,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 {branches.map((br) => (
                   <tr key={br.id} className="hover:bg-slate-50">
                     <td className="p-3 font-mono font-bold text-blue-900">{br.code}</td>
+                    <td className="p-3">
+                      <input
+                        type="text"
+                        value={br.branchNumber || ''}
+                        placeholder="رقم الفرع"
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setBranches((prev) => prev.map((b) => (b.id === br.id ? { ...b, branchNumber: val } : b)));
+                        }}
+                        onBlur={async () => {
+                          await persistExtraSettings({ branches }, `تم تحديث رقم الفرع (${br.name}).`);
+                        }}
+                        className="w-24 border border-slate-200 rounded-lg px-2 py-1 font-mono text-xs bg-white"
+                      />
+                    </td>
                     <td className="p-3 font-black">{br.name}</td>
-                    <td className="p-3 text-slate-600">{br.phone || '-'} | {br.address || '-'}</td>
+                    <td className="p-3 text-slate-600">{[br.phone, br.address].filter(Boolean).join(' | ') || '-'}</td>
                     <td className="p-3 text-slate-700">
                       {warehouses.find((w) => w.id === br.warehouseId)?.name || '-'} / {cashboxes.find((c) => c.id === br.cashboxId)?.name || '-'}
                     </td>

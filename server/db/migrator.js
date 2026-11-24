@@ -329,14 +329,15 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
         if (sourceData.settings) {
           const s = sourceData.settings;
           await client.query(`
-            INSERT INTO system_settings (id, company_name, company_subtitle, phone1, phone2, address, commercial_registration, tax_number, currency, default_print_mode, invoice_notes, allow_negative_stock, extra_settings, updated_at)
-            VALUES ('default', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+            INSERT INTO system_settings (id, company_name, company_subtitle, phone1, phone2, address, commercial_registration, tax_number, branch_number, currency, default_print_mode, invoice_notes, allow_negative_stock, extra_settings, updated_at)
+            VALUES ('default', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
             ON CONFLICT (id) DO UPDATE SET
               company_name = EXCLUDED.company_name,
               company_subtitle = EXCLUDED.company_subtitle,
               phone1 = EXCLUDED.phone1,
               phone2 = EXCLUDED.phone2,
               address = EXCLUDED.address,
+              branch_number = EXCLUDED.branch_number,
               currency = EXCLUDED.currency,
               allow_negative_stock = EXCLUDED.allow_negative_stock,
               extra_settings = EXCLUDED.extra_settings;
@@ -348,6 +349,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             s.address || '',
             s.commercialRegistration || '',
             s.taxNumber || '',
+            s.branchNumber || s.extraSettings?.branchNumber || '',
             s.currency || 'ج.م',
             s.defaultPrintMode || 'a4',
             s.invoiceNotes || '',
@@ -728,8 +730,8 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             for (const pay of inv.payments) {
               const pCbId = cashboxIds.has(pay.cashboxId) ? pay.cashboxId : fallbackCashboxId;
               await client.query(`
-                INSERT INTO invoice_payments (id, invoice_id, invoice_number, amount, date, payment_method, cashbox_id, cashbox_name, notes, created_by, created_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                INSERT INTO invoice_payments (id, invoice_id, invoice_number, amount, date, payment_method, cashbox_id, cashbox_name, notes, collection_location, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
                 ON CONFLICT (id) DO NOTHING;
               `, [
                 pay.id,
@@ -741,7 +743,12 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
                 pCbId,
                 pay.cashboxName || 'الخزينة',
                 pay.notes || '',
+                pay.collectionLocation || (pay.actingRole === 'representative' ? 'rep' : 'branch'),
                 pay.createdBy || 'المدير العام',
+                pay.createdByUserId || null,
+                pay.actorIdentityId || null,
+                pay.actorEmployeeId || null,
+                pay.actingRole || null,
                 pay.createdAt || new Date().toISOString(),
               ]);
               details.payments++;

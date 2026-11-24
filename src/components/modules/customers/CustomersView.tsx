@@ -46,7 +46,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'blocked'>('all');
   const [classificationFilter, setClassificationFilter] = useState<'all' | 'app_and_direct' | 'app_only' | 'regular'>('all');
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('table');
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -127,7 +127,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
     photo: string;
     clearShopPhoto: boolean;
     notes: string;
-    openingBalance: number;
+    openingBalance: number | '';
     status: 'active' | 'blocked';
     allowedRepIds: string[];
   }>({
@@ -143,7 +143,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
     photo: '',
     clearShopPhoto: false,
     notes: '',
-    openingBalance: 0,
+    openingBalance: '',
     status: 'active',
     allowedRepIds: [],
   });
@@ -443,7 +443,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
       photo: '',
       clearShopPhoto: false,
       notes: '',
-      openingBalance: 0,
+      openingBalance: '',
       status: 'active',
       allowedRepIds: [],
     });
@@ -986,12 +986,12 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
           {/* Offline / Online Network Indicator */}
           <div className="flex items-center gap-2 text-xs font-bold">
             {networkStatus === 'disconnected' ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-[11px]">
-                <WifiOff className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-50 text-amber-800 border border-amber-200 text-[11px]">
+                <WifiOff className="w-3.5 h-3.5 text-amber-600" />
                 <span>وضع عدم الاتصال (Offline) - حفظ فوري ومزامنة تلقائية</span>
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px]">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px]">
                 <Wifi className="w-3.5 h-3.5 text-emerald-600" />
                 <span>متصل بالإنترنت - البيانات متزامنة محلياً</span>
               </span>
@@ -1025,10 +1025,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                     <span className="text-[10px] font-bold mt-1 text-slate-400">لا توجد صورة</span>
                   </div>
                 )}
-                <span className={`absolute -bottom-1 -right-1 px-2 py-0.5 rounded-full text-[10px] font-black border shadow-xs ${
+                <span className={`absolute -bottom-1 -right-1 px-2 py-0.5 rounded-md text-[10px] font-black border shadow-xs ${
                   selectedCustomer.status === 'active' 
-                    ? 'bg-emerald-500 text-white border-white' 
-                    : 'bg-red-500 text-white border-white'
+                    ? 'bg-emerald-600 text-white border-white' 
+                    : 'bg-red-600 text-white border-white'
                 }`}>
                   {selectedCustomer.status === 'active' ? 'محل نشط' : 'محظور'}
                 </span>
@@ -1054,13 +1054,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                   {(() => {
                     const cls = customerClassificationMap.get(selectedCustomer.id);
                     return cls ? (
-                      <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-full ${cls.badgeClass}`}>
+                      <span className={`text-[11px] font-black px-2 py-0.5 rounded-md ${cls.badgeClass}`}>
                         {cls.label}
                       </span>
                     ) : null;
                   })()}
                   {tentativeCustomerIds.has(selectedCustomer.id) && (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-black px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                    <span className="inline-flex items-center gap-1 text-[11px] font-black px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
                       <CloudOff className="w-3 h-3" />
                       <span>رصيد محلي مبدئي لحين المزامنة</span>
                     </span>
@@ -1585,7 +1585,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                           </span>
                         </td>
                         <td className="p-3">
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200">
+                          <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200">
                             {inv.status === 'confirmed' ? 'مؤكدة' : 'ملغاة'}
                           </span>
                         </td>
@@ -1902,7 +1902,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                           {Number(adv.amount).toLocaleString()} {settings.currency}
                         </td>
                         <td className="p-3">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${adv.status === 'applied' ? 'bg-blue-50 text-blue-800 border border-blue-200' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'}`}>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${adv.status === 'applied' ? 'bg-blue-50 text-blue-800 border border-blue-200' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'}`}>
                             {adv.status === 'applied' ? 'مطبقة على فاتورة' : 'رصيد دائن متاح'}
                           </span>
                         </td>
@@ -1982,16 +1982,18 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
 
       {/* Compact Summary Banner Routing to Dedicated Orders Section */}
       {customerItemOrders.length > 0 && (
-        <section className="rounded-3xl border border-blue-200 bg-blue-50/70 p-4 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h3 className="text-sm font-black text-blue-950">طلبات العملاء والمندوبين الواردة من الموبايل</h3>
-            <span className="rounded-full bg-amber-600 px-2.5 py-0.5 font-bold text-white">
+        <section className="rounded-xl border border-blue-200 bg-blue-50/70 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-3">
+            <h3 className="text-xs font-black text-blue-950">طلبات العملاء والمندوبين الواردة من الموبايل</h3>
+            <span className="font-bold text-amber-800 tabular-nums">
               {customerItemOrders.filter((o) => o.status === 'pending').length} جديد
             </span>
-            <span className="rounded-full bg-sky-700 px-2.5 py-0.5 font-bold text-white">
+            <span className="text-slate-300">·</span>
+            <span className="font-bold text-sky-800 tabular-nums">
               {customerItemOrders.filter((o) => o.status === 'under_review').length} قيد المراجعة
             </span>
-            <span className="rounded-full bg-emerald-700 px-2.5 py-0.5 font-bold text-white">
+            <span className="text-slate-300">·</span>
+            <span className="font-bold text-emerald-800 tabular-nums">
               {customerItemOrders.filter((o) => o.status === 'approved').length} مقبول
             </span>
           </div>
@@ -2000,116 +2002,63 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
             <button
               type="button"
               onClick={() => onNavigate('customer-orders')}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black shadow-xs cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-bold cursor-pointer"
             >
-              <ShoppingCart className="w-4 h-4" />
-              <span>فتح قسم طلبات العملاء والمندوبين</span>
+              <ShoppingCart className="w-3.5 h-3.5" />
+              <span>فتح قسم الطلبات</span>
             </button>
           )}
         </section>
       )}
 
-      {/* Top Header Card */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
-        <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0">
-            <CustomersGroupIcon className="w-9 h-9" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-xl font-black text-slate-900 tracking-tight">العملاء والأرصدة</h2>
-              <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-900 text-xs font-black border border-blue-200">
-                {customers.length} محل
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              منظومة العملاء الموحدة — أرصدة وكشوف حسابات موحدة لجميع المبيعات المباشرة وطلبات التطبيق والمندوبين والدفعات المقدمة
-            </p>
-          </div>
+      {/* Top Header Strip */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white px-4 py-3 rounded-xl border border-slate-200">
+        <div>
+          <h2 className="text-base font-black text-slate-900">
+            العملاء والأرصدة <span className="text-xs font-mono tabular-nums text-slate-500">({customers.length})</span>
+          </h2>
+          <p className="text-[11px] text-slate-500">
+            أرصدة وكشوف حسابات العملاء للمبيعات المباشرة وطلبات التطبيق والمندوبين
+          </p>
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-          {/* Offline / Online Network Indicator */}
-          {networkStatus === 'disconnected' ? (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold shrink-0">
-              <WifiOff className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
-              <span>وضع عدم الاتصال (Offline)</span>
-            </span>
-          ) : (
-            <span className="hidden md:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold shrink-0">
-              <Wifi className="w-3.5 h-3.5 text-emerald-600" />
-              <span>متصل بالإنترنت</span>
-            </span>
-          )}
-
-          <button
-            onClick={handleOpenAdd}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-lg shadow-blue-900/20 active:scale-95 transition-all cursor-pointer shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>إضافة عميل / محل جديد</span>
-          </button>
-        </div>
+        <button
+          onClick={handleOpenAdd}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-900 hover:bg-blue-950 text-white text-xs font-bold transition-colors cursor-pointer shrink-0"
+        >
+          <Plus className="w-4 h-4" />
+          <span>إضافة عميل / محل جديد</span>
+        </button>
       </div>
 
-      {/* Financial Overview Metrics Cards */}
-      <div className={`grid grid-cols-1 ${canViewAggregateCustomerTotals ? 'sm:grid-cols-3' : ''} gap-4`}>
-        {/* Total Customers */}
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-xs font-bold text-slate-500">إجمالي المحلات المسجلة</span>
-            <div className="text-2xl font-black text-slate-900 mt-1 font-mono">
-              {customers.length}
+      {/* Compact Accounting Summary Strip */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className={`grid grid-cols-1 ${canViewAggregateCustomerTotals ? 'sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x sm:divide-x-reverse divide-slate-200' : ''}`}>
+          <div className="px-4 py-3">
+            <span className="text-[11px] font-bold text-slate-500 block">إجمالي المحلات المسجلة</span>
+            <div className="text-lg font-black text-slate-900 font-mono tabular-nums">
+              {customers.length} <span className="text-[11px] font-sans font-semibold text-emerald-700">({customers.filter(c => c.status === 'active').length} نشط)</span>
             </div>
-            <span className="text-[11px] text-emerald-700 font-bold">
-              {customers.filter(c => c.status === 'active').length} محل نشط
-            </span>
-            {!canViewAggregateCustomerTotals && (
-              <span className="block text-[11px] text-slate-500 mt-1">
-                يمكنك متابعة رصيد كل عميل وكشف حسابه الفردي من بطاقة العميل مباشرة.
-              </span>
-            )}
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-900 flex items-center justify-center">
-            <Store className="w-6 h-6" />
-          </div>
+
+          {canViewAggregateCustomerTotals && (
+            <>
+              <div className="px-4 py-3">
+                <span className="text-[11px] font-bold text-slate-500 block">إجمالي مديونيات العملاء (لنا)</span>
+                <div className="text-lg font-black text-red-700 font-mono tabular-nums">
+                  {totalDebts.toLocaleString()} <span className="text-[11px] text-slate-500 font-normal">{settings.currency}</span>
+                </div>
+              </div>
+
+              <div className="px-4 py-3">
+                <span className="text-[11px] font-bold text-slate-500 block">أرصدة العملاء الدائنة (دفعات مقدمة)</span>
+                <div className="text-lg font-black text-emerald-700 font-mono tabular-nums">
+                  {totalCredits.toLocaleString()} <span className="text-[11px] text-slate-500 font-normal">{settings.currency}</span>
+                </div>
+              </div>
+            </>
+          )}
         </div>
-
-        {canViewAggregateCustomerTotals && (
-          <>
-            {/* Total Outstanding Customer Debts */}
-            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-slate-500">إجمالي مديونيات العملاء (لنا)</span>
-                <div className="text-2xl font-black text-red-700 mt-1 font-mono">
-                  {totalDebts.toLocaleString()} <span className="text-xs text-slate-500 font-normal">{settings.currency}</span>
-                </div>
-                <span className="text-[11px] text-slate-500">
-                  مستحقات آجلة قيد التحصيل
-                </span>
-              </div>
-              <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-700 flex items-center justify-center">
-                <DollarSign className="w-6 h-6" />
-              </div>
-            </div>
-
-            {/* Total Advance Credits */}
-            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-slate-500">أرصدة العملاء الدائنة (دفعات مقدمة)</span>
-                <div className="text-2xl font-black text-emerald-700 mt-1 font-mono">
-                  {totalCredits.toLocaleString()} <span className="text-xs text-slate-500 font-normal">{settings.currency}</span>
-                </div>
-                <span className="text-[11px] text-emerald-700 font-bold">
-                  مبالغ مسددة مقدماً من العملاء
-                </span>
-              </div>
-              <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
-                <ArrowDownLeft className="w-6 h-6" />
-              </div>
-            </div>
-          </>
-        )}
       </div>
 
       {/* Search and Filters Bar */}
@@ -2249,13 +2198,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                       {(() => {
                         const cls = customerClassificationMap.get(cust.id);
                         return cls ? (
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cls.badgeClass}`}>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${cls.badgeClass}`}>
                             {cls.label}
                           </span>
                         ) : null;
                       })()}
                       {tentativeCustomerIds.has(cust.id) && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
                           <CloudOff className="w-2.5 h-2.5" />
                           <span>رصيد محلي مبدئي لحين المزامنة</span>
                         </span>
@@ -2446,7 +2395,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                       </span>
                     </td>
                     <td className="p-3 text-center">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                         cust.status === 'active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
                       }`}>
                         {cust.status === 'active' ? 'نشط' : 'محظور'}
@@ -2991,8 +2940,15 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 </label>
                 <input
                   type="number"
+                  step="any"
                   value={formData.openingBalance}
-                  onChange={(e) => setFormData({ ...formData, openingBalance: Number(e.target.value) })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      openingBalance: e.target.value === '' ? '' : Number(e.target.value),
+                    })
+                  }
+                  placeholder="0.00"
                   className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-mono font-bold"
                 />
                 <span className="text-[10px] text-slate-500 mt-0.5 block">

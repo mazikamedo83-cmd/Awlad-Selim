@@ -25,14 +25,17 @@ import {
   ChevronLeft,
   ChevronDown,
   ArrowRight,
+  Search,
+  Plus,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
-import { isMobileAppPlatform, registerAndroidBackButton } from '../../../services/native';
+import { registerAndroidBackButton } from '../../../services/native';
 import { CashOperationType, MobileNotificationItem, UserPermissions } from '../../../types';
 import { NavItemKey } from '../../layout/Sidebar';
 import { MobileNotificationsSheet } from './MobileNotificationsSheet';
 import { MobileServerModal } from './MobileServerModal';
+import { MobileAddProductModal } from './MobileAddProductModal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import {
   SalesInvoiceIcon,
@@ -66,6 +69,7 @@ import {
   PersonalAccountsIcon,
   DamagedStockIcon,
   BranchesBuildingIcon,
+  ProductAddIcon,
 } from '../../common/AppIcons';
 
 interface StaffMobileShellProps {
@@ -100,12 +104,14 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
 }) => {
   const { currentUser, hasPermission, logout, refreshAuthContext, setIsAccountSwitcherOpen, savedAccounts } = useAuth();
   const data = useData();
-  const hideSectionsNav = isMobileAppPlatform();
 
-  const [isLauncherOpen, setIsLauncherOpen] = useState(false);
+  const [isMoreViewOpen, setIsMoreViewOpen] = useState(false);
+  const [moreSearchQuery, setMoreSearchQuery] = useState('');
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<Record<string, boolean>>({});
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
+  const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
+  const [mobileBanner, setMobileBanner] = useState<string | null>(null);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const toggleSectionCollapse = (sectionId: string) => {
@@ -119,11 +125,18 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     return hasPermission(perm);
   };
 
+  const canMobileAddProduct =
+    checkPerm('canManageInventory') && (currentUser?.role === 'admin' || checkPerm('canAdd'));
+
   // Android hardware back button handling: close sheets/modals first, else go back to dashboard
   useEffect(() => {
     return registerAndroidBackButton(() => {
       if (showLogoutConfirm) {
         setShowLogoutConfirm(false);
+        return true;
+      }
+      if (isAddProductModalOpen) {
+        setIsAddProductModalOpen(false);
         return true;
       }
       if (isNotificationsOpen) {
@@ -134,8 +147,8 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         setIsServerModalOpen(false);
         return true;
       }
-      if (isLauncherOpen) {
-        setIsLauncherOpen(false);
+      if (isMoreViewOpen) {
+        setIsMoreViewOpen(false);
         return true;
       }
       if (currentPage !== 'dashboard') {
@@ -144,19 +157,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
       }
       return false;
     });
-  }, [showLogoutConfirm, isNotificationsOpen, isServerModalOpen, isLauncherOpen, currentPage, onNavigate]);
-
-  // Close drawer cleanly via Escape key on desktop/tablet keyboards
-  useEffect(() => {
-    if (!isLauncherOpen) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setIsLauncherOpen(false);
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [isLauncherOpen]);
+  }, [showLogoutConfirm, isAddProductModalOpen, isNotificationsOpen, isServerModalOpen, isMoreViewOpen, currentPage, onNavigate]);
 
   const sections: LauncherSection[] = useMemo(
     () => [
@@ -214,7 +215,6 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
           { key: 'stock-adjustments', label: 'تسوية سريعة للمخزون' },
           { key: 'damaged-stock', label: 'بضاعة تالفة ومنتهية' },
           { key: 'stock-movements', label: 'سجل حركة الأصناف' },
-          { key: 'item-movement-report', label: 'تقرير حركة الصنف المفصل', badge: 'مفصل', permission: ['canManageInventory', 'canViewReports'] },
           { key: 'abu-selim-import', label: 'استيراد الملفات' },
         ],
       },
@@ -377,16 +377,38 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     }
   };
 
-  // Primary top navigation tabs scoped strictly by actual Windows permissions
-  const topNavTabs = useMemo(() => {
-    const tabs: Array<{ key: string; label: string; icon: React.ElementType; active: boolean; onClick: () => void }> = [
+  // Filtered sections for "المزيد" Searchable Categorized Accordion
+  const searchableSections = useMemo(() => {
+    const q = moreSearchQuery.trim().toLowerCase();
+    if (!q) return filteredSections;
+    return filteredSections
+      .map((sec) => ({
+        ...sec,
+        items: sec.items.filter(
+          (it) =>
+            it.label.toLowerCase().includes(q) ||
+            sec.title.toLowerCase().includes(q)
+        ),
+      }))
+      .filter((sec) => sec.items.length > 0);
+  }, [filteredSections, moreSearchQuery]);
+
+  // Fixed 5-Tab Bottom Navigation Bar (permission-gated)
+  const bottomNavTabs = useMemo(() => {
+    const tabs: Array<{
+      key: string;
+      label: string;
+      icon: React.ElementType;
+      active: boolean;
+      onClick: () => void;
+    }> = [
       {
         key: 'dashboard',
         label: 'الرئيسية',
         icon: LayoutDashboard,
-        active: currentPage === 'dashboard',
+        active: !isMoreViewOpen && currentPage === 'dashboard',
         onClick: () => {
-          setIsLauncherOpen(false);
+          setIsMoreViewOpen(false);
           onNavigate('dashboard');
         },
       },
@@ -397,21 +419,23 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         key: 'sales',
         label: 'المبيعات',
         icon: ShoppingCart,
-        active: ['sales-invoices', 'new-sale', 'customers', 'sales-returns', 'deleted-invoices'].includes(currentPage),
+        active:
+          !isMoreViewOpen &&
+          ['sales-invoices', 'new-sale', 'customers', 'sales-returns', 'customer-orders', 'quotes'].includes(currentPage),
         onClick: () => {
-          setIsLauncherOpen(false);
+          setIsMoreViewOpen(false);
           onNavigate('sales-invoices');
         },
       });
-    } else if (checkPerm('canManagePurchases')) {
+    } else if (checkPerm('canManageAccounts')) {
       tabs.push({
-        key: 'purchases',
-        label: 'المشتريات',
-        icon: Truck,
-        active: ['purchase-invoices', 'new-purchase', 'suppliers', 'purchase-returns'].includes(currentPage),
+        key: 'accounts',
+        label: 'الحسابات',
+        icon: Wallet,
+        active: !isMoreViewOpen && ['customer-accounts', 'supplier-accounts', 'cheques'].includes(currentPage),
         onClick: () => {
-          setIsLauncherOpen(false);
-          onNavigate('purchase-invoices');
+          setIsMoreViewOpen(false);
+          onNavigate('customer-accounts');
         },
       });
     }
@@ -421,51 +445,47 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         key: 'inventory',
         label: 'المخزون',
         icon: Boxes,
-        active: [
-          'products',
-          'product-categories',
-          'units-settings',
-          'warehouses',
-          'stock-transfers',
-          'stock-transfers-orders',
-          'stock-counts',
-          'stock-adjustments',
-          'damaged-stock',
-          'stock-movements',
-          'abu-selim-import',
-        ].includes(currentPage),
+        active:
+          !isMoreViewOpen &&
+          [
+            'products',
+            'product-categories',
+            'units-settings',
+            'warehouses',
+            'stock-transfers',
+            'stock-transfers-orders',
+            'stock-counts',
+            'stock-adjustments',
+            'damaged-stock',
+            'stock-movements',
+          ].includes(currentPage),
         onClick: () => {
-          setIsLauncherOpen(false);
+          setIsMoreViewOpen(false);
           onNavigate(checkPerm('canManageInventory') ? 'products' : 'stock-counts');
         },
       });
     }
 
-    if (checkPerm(['canManageCashboxes', 'canManageAccounts'])) {
+    if (checkPerm(['canManagePurchases', 'canCreatePurchase'])) {
       tabs.push({
-        key: 'finance',
-        label: 'الحسابات',
-        icon: Wallet,
-        active: [
-          'accounts',
-          'customer-accounts',
-          'supplier-accounts',
-          'cashboxes',
-          'cashbox-transfer',
-          'expenses',
-          'personal-accounts',
-          'cheques',
-          'installments',
-        ].includes(currentPage),
+        key: 'purchases',
+        label: 'المشتريات',
+        icon: Truck,
+        active: !isMoreViewOpen && ['purchase-invoices', 'new-purchase', 'suppliers', 'purchase-returns'].includes(currentPage),
         onClick: () => {
-          setIsLauncherOpen(false);
-          onNavigate(
-            checkPerm('canManageAccounts')
-              ? 'customer-accounts'
-              : checkPerm('canManageCashboxes')
-              ? 'cashboxes'
-              : 'cheques'
-          );
+          setIsMoreViewOpen(false);
+          onNavigate('purchase-invoices');
+        },
+      });
+    } else if (checkPerm('canManageCashboxes')) {
+      tabs.push({
+        key: 'cashboxes',
+        label: 'الخزينة',
+        icon: Wallet,
+        active: !isMoreViewOpen && ['cashboxes', 'cashbox-transfer', 'expenses'].includes(currentPage),
+        onClick: () => {
+          setIsMoreViewOpen(false);
+          onNavigate('cashboxes');
         },
       });
     } else if (checkPerm('canViewReports')) {
@@ -473,16 +493,24 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         key: 'reports',
         label: 'التقارير',
         icon: FileBarChart,
-        active: currentPage === 'reports',
+        active: !isMoreViewOpen && ['reports', 'item-movement-report'].includes(currentPage),
         onClick: () => {
-          setIsLauncherOpen(false);
+          setIsMoreViewOpen(false);
           onNavigate('reports');
         },
       });
     }
 
+    tabs.push({
+      key: 'more',
+      label: 'المزيد',
+      icon: Menu,
+      active: isMoreViewOpen,
+      onClick: () => setIsMoreViewOpen((prev) => !prev),
+    });
+
     return tabs;
-  }, [currentPage, currentUser, onNavigate]);
+  }, [currentPage, currentUser, isMoreViewOpen, onNavigate]);
 
   const mobileGridTiles = useMemo(() => {
     const tiles: Array<{
@@ -568,11 +596,19 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
       });
     }
 
+    if (canMobileAddProduct) {
+      tiles.push({
+        id: 'mobile-add-product',
+        label: 'إضافة صنف جديد',
+        icon: <ProductAddIcon className="w-10 h-10" />,
+        onClick: () => setIsAddProductModalOpen(true),
+      });
+    }
     if (checkPerm(['canManageInventory', 'canManageWarehouses'])) {
       tiles.push({
         id: 'inventory',
         label: 'المخزن والأصناف',
-        icon: <WarehouseBoxesIcon className="w-11 h-11" />,
+        icon: <WarehouseBoxesIcon className="w-10 h-10" />,
         onClick: () =>
           onNavigate(
             checkPerm('canManageInventory') ? 'products' : 'warehouses'
@@ -583,7 +619,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
       tiles.push({
         id: 'damaged-stock',
         label: 'بضاعة تالفة',
-        icon: <DamagedStockIcon className="w-11 h-11" />,
+        icon: <DamagedStockIcon className="w-10 h-10" />,
         onClick: () => onNavigate('damaged-stock'),
       });
     }
@@ -734,210 +770,114 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
   }, [currentUser, onNavigate]);
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-800 font-['Cairo'] antialiased pb-6">
-      {/* Unified Blue Top Header Bar */}
-      <header className="sticky top-0 z-30 bg-blue-950 text-white shadow-md pt-safe no-print">
-        <div className="max-w-7xl mx-auto px-2.5 sm:px-5">
-          {/* Desktop single-row / Mobile row 1: Brand + (Desktop inline nav) + Utility actions */}
-          <div className="h-14 flex items-center justify-between gap-2 sm:gap-4">
-            {/* Brand & Identity */}
-            <div className="flex items-center gap-2.5 min-w-0 shrink">
-              <img
-                src="/awlad-selim-logo.png"
-                alt="AWLAD SELIM"
-                className="h-9 w-9 object-contain bg-white rounded-xl p-1 shrink-0"
-              />
-              <div className="min-w-0">
-                <h1 className="text-xs sm:text-sm font-black truncate leading-tight">AWLAD SELIM</h1>
-                <p className="text-[10px] text-blue-200 truncate">
-                  {getRoleArabicLabel(currentUser?.role)} · {currentUser?.fullName}
-                </p>
-              </div>
-            </div>
-
-            {/* Primary Navigation + الأقسام Button (Single-row on lg+ screens) */}
-            <nav
-              aria-label="التنقل الرئيسي"
-              className="hidden lg:flex items-center gap-1.5 flex-1 justify-center min-w-0"
-            >
-              {!hideSectionsNav && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setIsLauncherOpen((prev) => !prev)}
-                    aria-expanded={isLauncherOpen}
-                    aria-controls="staff-sections-drawer"
-                    className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 border transition-colors cursor-pointer ${
-                      isLauncherOpen
-                        ? 'bg-sky-400/20 text-white border-sky-300/70'
-                        : 'bg-white/10 text-blue-50 border-white/15 hover:bg-white/20 hover:text-white'
-                    }`}
-                  >
-                    <Menu className="w-4 h-4 shrink-0" />
-                    <span>الأقسام</span>
-                  </button>
-
-                  <div className="h-5 w-px bg-white/15 mx-0.5 shrink-0" aria-hidden="true" />
-                </>
-              )}
-
-              {topNavTabs.map((tab) => {
-                const TabIcon = tab.icon;
-                return (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    onClick={tab.onClick}
-                    aria-current={tab.active ? 'page' : undefined}
-                    className={`min-h-[40px] px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
-                      tab.active
-                        ? 'bg-white text-blue-950 font-black shadow-xs'
-                        : 'text-blue-100 hover:bg-white/10 hover:text-white font-bold'
-                    }`}
-                  >
-                    <TabIcon className="w-4 h-4 shrink-0" />
-                    <span>{tab.label}</span>
-                  </button>
-                );
-              })}
-            </nav>
-
-            {/* Right Utility Controls */}
-            <div className="flex items-center gap-1 shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsNotificationsOpen(true);
-                  data.markNotificationsRead();
-                }}
-                className="relative min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer"
-                title="التنبيهات والإشعارات"
-                aria-label="الإشعارات"
-              >
-                <Bell className="w-4 h-4" />
-                {data.unreadNotificationCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-black flex items-center justify-center">
-                    {data.unreadNotificationCount}
-                  </span>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsServerModalOpen(true)}
-                className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer"
-                title="عنوان السيرفر المركزي"
-                aria-label="إعدادات السيرفر"
-              >
-                <Server className="w-4 h-4" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => data.triggerManualSync()}
-                className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer"
-                title="تحديث ومزامنة"
-                aria-label="تحديث ومزامنة"
-              >
-                <RefreshCw className={`w-4 h-4 ${data.networkStatus === 'synchronizing' ? 'animate-spin' : ''}`} />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsAccountSwitcherOpen(true)}
-                className="relative min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer"
-                title="الحسابات المحفوظة وتبديل الحساب"
-                aria-label="تبديل الحساب"
-              >
-                <Users className="w-4 h-4" />
-                {savedAccounts.length > 1 && (
-                  <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-emerald-500 text-white text-[9px] font-black flex items-center justify-center">
-                    {savedAccounts.length}
-                  </span>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onNavigate('system-settings')}
-                className={`min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl text-white cursor-pointer ${
-                  currentPage === 'system-settings' ? 'bg-white text-blue-950' : 'bg-white/10 hover:bg-white/20'
-                }`}
-                title="الإعدادات"
-                aria-label="الإعدادات"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowLogoutConfirm(true)}
-                className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-red-600/90 hover:bg-red-700 text-white cursor-pointer"
-                title="تسجيل الخروج"
-                aria-label="تسجيل الخروج"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
+    <div className="min-h-screen bg-[#f5f7fb] text-slate-800 font-['Cairo'] antialiased pb-20">
+      {/* Slim Purple Top App Header Bar (<= 15% aggregate sticky budget) */}
+      <header className="sticky top-0 z-30 bg-[#2d1b69] text-white shadow-sm pt-safe no-print">
+        <div className="max-w-3xl mx-auto px-3 h-13 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0 shrink">
+            <img
+              src="/awlad-selim-logo.png"
+              alt="AWLAD SELIM"
+              className="h-8 w-8 object-contain bg-white rounded-lg p-0.5 shrink-0"
+            />
+            <div className="min-w-0">
+              <h1 className="text-xs font-black truncate leading-tight">AWLAD SELIM</h1>
+              <p className="text-[10px] text-purple-200 truncate">
+                {getRoleArabicLabel(currentUser?.role)} · {currentUser?.fullName}
+              </p>
             </div>
           </div>
 
-          {/* Mobile & Tablet (< lg) Navigation Strip inside the Blue Top Bar */}
-          <nav
-            aria-label="أزرار التنقل الرئيسية"
-            className="lg:hidden border-t border-white/10 py-1.5 flex items-center justify-between sm:justify-start gap-1 sm:gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none]"
-          >
-            {!hideSectionsNav && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setIsLauncherOpen((prev) => !prev)}
-                  aria-expanded={isLauncherOpen}
-                  aria-controls="staff-sections-drawer"
-                  className={`min-h-[40px] px-2 sm:px-3.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold flex items-center gap-1 sm:gap-1.5 whitespace-nowrap shrink-0 border transition-colors cursor-pointer ${
-                    isLauncherOpen
-                      ? 'bg-sky-400/20 text-white border-sky-300/70'
-                      : 'bg-white/10 text-blue-50 border-white/15 hover:bg-white/20 hover:text-white'
-                  }`}
-                >
-                  <Menu className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                  <span>الأقسام</span>
-                </button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setIsNotificationsOpen(true);
+                data.markNotificationsRead();
+              }}
+              className="relative min-h-[44px] min-w-[40px] flex items-center justify-center rounded-lg hover:bg-white/15 text-white cursor-pointer"
+              title="الإشعارات"
+              aria-label="الإشعارات"
+            >
+              <Bell className="w-4 h-4" />
+              {data.unreadNotificationCount > 0 && (
+                <span className="absolute top-1.5 right-1 min-w-[16px] h-[16px] px-1 rounded bg-red-600 text-white text-[9px] font-black flex items-center justify-center tabular-nums">
+                  {data.unreadNotificationCount}
+                </span>
+              )}
+            </button>
 
-                <div className="h-5 w-px bg-white/15 shrink-0" aria-hidden="true" />
-              </>
-            )}
+            <button
+              type="button"
+              onClick={() => setIsServerModalOpen(true)}
+              className="min-h-[44px] min-w-[40px] flex items-center justify-center rounded-lg hover:bg-white/15 text-white cursor-pointer"
+              title="عنوان السيرفر المركزي"
+              aria-label="إعدادات السيرفر"
+            >
+              <Server className="w-4 h-4" />
+            </button>
 
-            {topNavTabs.map((tab) => {
-              const TabIcon = tab.icon;
-              return (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={tab.onClick}
-                  aria-current={tab.active ? 'page' : undefined}
-                  className={`min-h-[40px] px-2 sm:px-3.5 py-1.5 rounded-xl text-[11px] sm:text-xs flex items-center gap-1 sm:gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
-                    tab.active
-                      ? 'bg-white text-blue-950 font-black shadow-xs'
-                      : 'text-blue-100 hover:bg-white/10 hover:text-white font-bold'
-                  }`}
-                >
-                  <TabIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-          </nav>
+            <button
+              type="button"
+              onClick={() => data.triggerManualSync()}
+              className="min-h-[44px] min-w-[40px] flex items-center justify-center rounded-lg hover:bg-white/15 text-white cursor-pointer"
+              title="تحديث ومزامنة"
+              aria-label="تحديث ومزامنة"
+            >
+              <RefreshCw className={`w-4 h-4 ${data.networkStatus === 'synchronizing' ? 'animate-spin' : ''}`} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsAccountSwitcherOpen(true)}
+              className="relative min-h-[44px] min-w-[40px] flex items-center justify-center rounded-lg hover:bg-white/15 text-white cursor-pointer"
+              title="الحسابات المحفوظة"
+              aria-label="تبديل الحساب"
+            >
+              <Users className="w-4 h-4" />
+              {savedAccounts.length > 1 && (
+                <span className="absolute top-1.5 right-1 min-w-[15px] h-[15px] px-1 rounded bg-emerald-500 text-white text-[9px] font-black flex items-center justify-center tabular-nums">
+                  {savedAccounts.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setIsMoreViewOpen(false);
+                onNavigate('system-settings');
+              }}
+              className={`min-h-[44px] min-w-[40px] flex items-center justify-center rounded-lg cursor-pointer ${
+                !isMoreViewOpen && currentPage === 'system-settings' ? 'bg-white text-[#2d1b69]' : 'text-white hover:bg-white/15'
+              }`}
+              title="الإعدادات"
+              aria-label="الإعدادات"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowLogoutConfirm(true)}
+              className="min-h-[44px] min-w-[40px] flex items-center justify-center rounded-lg bg-red-600/90 hover:bg-red-700 text-white cursor-pointer"
+              title="تسجيل الخروج"
+              aria-label="تسجيل الخروج"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto p-3 sm:p-5 space-y-3">
+      <main className="max-w-3xl mx-auto p-3 space-y-3">
         {(data.isUsingOfflineCache || data.networkStatus === 'disconnected') && (
-          <div className="p-3 rounded-2xl bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-center justify-between gap-2 no-print">
+          <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-center justify-between gap-2 no-print">
             <div className="flex items-center gap-2 min-w-0">
               <WifiOff className="w-4 h-4 text-amber-700 shrink-0" />
               <span className="truncate">
-                بيانات مخزنة مؤقتاً — تعذر الاتصال بالسيرفر المركزي
+                بيانات مخزنة مؤقتاً
                 {data.lastCacheTimestamp
                   ? ` · ${new Date(data.lastCacheTimestamp).toLocaleTimeString('ar-EG')}`
                   : ''}
@@ -946,229 +886,252 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
             <button
               type="button"
               onClick={() => data.triggerManualSync()}
-              className="px-3 py-1.5 rounded-xl bg-amber-600 text-white text-[11px] font-bold shrink-0 cursor-pointer"
+              className="min-h-[36px] px-3 rounded-lg bg-amber-600 text-white text-[11px] font-bold shrink-0 cursor-pointer"
             >
               إعادة المحاولة
             </button>
           </div>
         )}
 
-        {hideSectionsNav && currentPage !== 'dashboard' && (
-          <div className="flex items-center justify-between bg-white rounded-2xl border border-slate-200 px-3 py-2 shadow-2xs no-print">
+        {mobileBanner && (
+          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold flex items-center justify-between gap-2 no-print">
+            <span>{mobileBanner}</span>
             <button
               type="button"
-              onClick={() => onNavigate('dashboard')}
-              className="min-h-[40px] px-3 py-1.5 rounded-xl bg-blue-50 text-blue-900 hover:bg-blue-100 text-xs font-black flex items-center gap-1.5 cursor-pointer"
+              onClick={() => setMobileBanner(null)}
+              className="text-[11px] underline shrink-0 cursor-pointer"
             >
-              <ArrowRight className="w-4 h-4 shrink-0" />
-              <span>العودة للرئيسية</span>
+              إغلاق
             </button>
-            <span className="text-[11px] font-bold text-slate-500">AWLAD SELIM</span>
           </div>
         )}
 
-        {hideSectionsNav && currentPage === 'dashboard' && (
-          <section aria-label="الخدمات والشاشات الرئيسية" className="space-y-2.5 no-print">
-            <div className="grid grid-cols-3 gap-2.5">
-              {mobileGridTiles.map((tile) => (
-                <button
-                  key={tile.id}
-                  type="button"
-                  onClick={tile.onClick}
-                  className="bg-white rounded-2xl border border-slate-200/90 shadow-xs hover:border-blue-300 hover:shadow-md active:scale-[0.98] p-3 min-h-[104px] flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer"
-                >
-                  <div className="flex items-center justify-center">{tile.icon}</div>
-                  <span className="text-xs font-black text-slate-800 leading-tight">{tile.label}</span>
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {children}
-      </main>
-
-      {/* Side Drawer Backdrop & Aside (Windows/Web only — completely removed on Android & iOS) */}
-      {!hideSectionsNav && isLauncherOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-slate-950/55 backdrop-blur-xs transition-opacity no-print"
-          onClick={() => setIsLauncherOpen(false)}
-          aria-hidden="true"
-        />
-      )}
-
-      {!hideSectionsNav && (
-      <aside
-        id="staff-sections-drawer"
-        aria-label="قائمة الأقسام الجانبية"
-        aria-hidden={!isLauncherOpen}
-        className={`fixed inset-y-0 right-0 z-50 w-[86vw] max-w-[340px] sm:w-80 lg:w-96 bg-white text-slate-800 shadow-2xl border-l border-slate-200 flex flex-col pt-safe pb-safe transition-transform duration-200 ease-out no-print ${
-          isLauncherOpen ? 'translate-x-0 pointer-events-auto' : 'translate-x-full pointer-events-none'
-        }`}
-      >
-        {/* Drawer Header */}
-        <div className="flex items-center justify-between gap-3 px-4 py-3.5 border-b border-slate-200 bg-blue-950 text-white shrink-0">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <img
-              src="/awlad-selim-logo.png"
-              alt="AWLAD SELIM"
-              className="h-8 w-8 object-contain bg-white rounded-lg p-1 shrink-0"
-            />
-            <div className="min-w-0">
-              <h2 className="text-sm font-black truncate">أقسام النظام</h2>
-              <p className="text-[11px] text-blue-200 truncate">
-                {getRoleArabicLabel(currentUser?.role)} · {currentUser?.fullName}
-              </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setIsLauncherOpen(false)}
-            className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer shrink-0"
-            aria-label="إغلاق القائمة الجانبية"
-            title="إغلاق القائمة"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Drawer Scrollable Sections & Sub-Functions */}
-        <div className="flex-1 overflow-y-auto p-3.5 space-y-3 bg-slate-50/70">
-          {/* Quick Dashboard Link */}
-          <button
-            type="button"
-            onClick={() => {
-              setIsLauncherOpen(false);
-              onNavigate('dashboard');
-            }}
-            className={`w-full min-h-[44px] px-3.5 py-2.5 rounded-xl flex items-center justify-between text-xs font-bold border transition-colors cursor-pointer ${
-              currentPage === 'dashboard'
-                ? 'bg-blue-950 text-white border-blue-950 shadow-xs font-black'
-                : 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50'
-            }`}
-          >
-            <div className="flex items-center gap-2.5">
-              <LayoutDashboard className="w-4 h-4 shrink-0" />
-              <span>لوحة التحكم الرئيسية</span>
-            </div>
-            <ChevronLeft className={`w-4 h-4 shrink-0 ${currentPage === 'dashboard' ? 'text-blue-200' : 'text-slate-400'}`} />
-          </button>
-
-          {/* Quick Cash Operations (if cashbox permission granted) */}
-          {checkPerm('canManageCashboxes') && (
-            <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-3 space-y-2">
-              <p className="text-xs font-black text-emerald-950">العمليات النقدية السريعة</p>
-              <div className="grid grid-cols-2 gap-2 text-xs font-bold">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsLauncherOpen(false);
-                    onOpenCashOp('cash_deposit');
-                  }}
-                  className="min-h-[42px] flex items-center justify-center gap-1.5 rounded-xl bg-white border border-emerald-200 text-emerald-800 hover:bg-emerald-100 cursor-pointer"
-                >
-                  <ArrowDownCircle className="w-4 h-4 shrink-0" />
-                  <span>إيداع نقدي</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsLauncherOpen(false);
-                    onOpenCashOp('cash_withdrawal');
-                  }}
-                  className="min-h-[42px] flex items-center justify-center gap-1.5 rounded-xl bg-white border border-rose-200 text-rose-800 hover:bg-rose-50 cursor-pointer"
-                >
-                  <ArrowUpCircle className="w-4 h-4 shrink-0" />
-                  <span>سحب نقدي</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsLauncherOpen(false);
-                    onOpenCashOp('expense');
-                  }}
-                  className="min-h-[42px] flex items-center justify-center gap-1.5 rounded-xl bg-white border border-orange-200 text-orange-800 hover:bg-orange-50 cursor-pointer"
-                >
-                  <TrendingDown className="w-4 h-4 shrink-0" />
-                  <span>مصروف</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsLauncherOpen(false);
-                    onOpenCashOp('profit_deposit');
-                  }}
-                  className="min-h-[42px] flex items-center justify-center gap-1.5 rounded-xl bg-white border border-teal-200 text-teal-800 hover:bg-teal-50 cursor-pointer"
-                >
-                  <TrendingUp className="w-4 h-4 shrink-0" />
-                  <span>إيداع ربحي</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Filtered System Sections */}
-          {filteredSections.map((sec) => {
-            const SecIcon = sec.icon;
-            const isSectionCollapsed = Boolean(collapsedSectionIds[sec.id]);
-            return (
-              <div key={sec.id} className="rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-2xs">
-                <button
-                  type="button"
-                  onClick={() => toggleSectionCollapse(sec.id)}
-                  aria-expanded={!isSectionCollapsed}
-                  className={`w-full px-3.5 py-2.5 flex items-center justify-between gap-2 text-xs font-black cursor-pointer ${
-                    !isSectionCollapsed ? 'border-b ' : ''
-                  }${sec.colorClass}`}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <SecIcon className="w-4 h-4 shrink-0" />
-                    <span className="truncate">{sec.title}</span>
-                  </div>
-                  <ChevronDown
-                    className={`w-4 h-4 shrink-0 transition-transform duration-150 ${
-                      isSectionCollapsed ? 'rotate-90' : ''
-                    }`}
-                  />
-                </button>
-
-                {!isSectionCollapsed && (
-                  <div className="divide-y divide-slate-100">
-                    {sec.items.map((item) => {
-                      const active = currentPage === item.key;
-                      return (
-                        <button
-                          key={item.key}
-                          type="button"
-                          onClick={() => {
-                            setIsLauncherOpen(false);
-                            onNavigate(item.key);
-                          }}
-                          className={`w-full min-h-[44px] px-4 py-2.5 flex items-center justify-between gap-2 text-right text-xs font-bold transition-colors cursor-pointer ${
-                            active ? 'bg-blue-50 text-blue-950 font-black' : 'text-slate-700 hover:bg-slate-50'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="truncate">{item.label}</span>
-                            {item.badge && (
-                              <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 text-[10px] font-black shrink-0">
-                                {item.badge}
-                              </span>
-                            )}
-                          </div>
-                          <ChevronLeft className={`w-4 h-4 shrink-0 ${active ? 'text-blue-700' : 'text-slate-400'}`} />
-                        </button>
-                      );
-                    })}
-                  </div>
+        {/* WA0007 Searchable Categorized Accordion View ("المزيد") */}
+        {isMoreViewOpen ? (
+          <section aria-label="جميع الأقسام والعمليات" className="space-y-3 no-print">
+            <div className="bg-white rounded-xl border border-slate-200 p-2.5">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={moreSearchQuery}
+                  onChange={(e) => setMoreSearchQuery(e.target.value)}
+                  placeholder="ابحث عن قسم أو شاشة..."
+                  className="w-full min-h-[44px] rounded-lg border border-slate-300 pr-9 pl-8 text-xs font-bold bg-slate-50 focus:bg-white focus:outline-hidden focus:border-[#2d1b69]"
+                />
+                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3.5" />
+                {moreSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setMoreSearchQuery('')}
+                    className="absolute left-2 top-2.5 p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    aria-label="مسح البحث"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 )}
               </div>
+            </div>
+
+            {checkPerm('canManageCashboxes') && !moreSearchQuery.trim() && (
+              <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
+                <p className="text-xs font-black text-slate-900">عمليات الخزينة السريعة</p>
+                <div className="grid grid-cols-2 gap-2 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMoreViewOpen(false);
+                      onOpenCashOp('cash_deposit');
+                    }}
+                    className="min-h-[44px] flex items-center justify-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 cursor-pointer"
+                  >
+                    <ArrowDownCircle className="w-4 h-4 shrink-0" />
+                    <span>إيداع نقدي</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMoreViewOpen(false);
+                      onOpenCashOp('cash_withdrawal');
+                    }}
+                    className="min-h-[44px] flex items-center justify-center gap-1.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-900 cursor-pointer"
+                  >
+                    <ArrowUpCircle className="w-4 h-4 shrink-0" />
+                    <span>سحب نقدي</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMoreViewOpen(false);
+                      onOpenCashOp('expense');
+                    }}
+                    className="min-h-[44px] flex items-center justify-center gap-1.5 rounded-lg bg-orange-50 border border-orange-200 text-orange-900 cursor-pointer"
+                  >
+                    <TrendingDown className="w-4 h-4 shrink-0" />
+                    <span>مصروف</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMoreViewOpen(false);
+                      onOpenCashOp('profit_deposit');
+                    }}
+                    className="min-h-[44px] flex items-center justify-center gap-1.5 rounded-lg bg-teal-50 border border-teal-200 text-teal-900 cursor-pointer"
+                  >
+                    <TrendingUp className="w-4 h-4 shrink-0" />
+                    <span>إيداع ربحي</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2.5">
+              {searchableSections.map((sec) => {
+                const SecIcon = sec.icon;
+                const isCollapsed = !moreSearchQuery.trim() && Boolean(collapsedSectionIds[sec.id]);
+                return (
+                  <div key={sec.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => toggleSectionCollapse(sec.id)}
+                      aria-expanded={!isCollapsed}
+                      className="w-full min-h-[48px] px-3.5 py-2.5 flex items-center justify-between gap-2 text-xs font-black bg-slate-50 border-b border-slate-200 text-slate-900 cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <SecIcon className="w-4 h-4 text-[#2d1b69] shrink-0" />
+                        <span className="truncate">{sec.title}</span>
+                      </div>
+                      <ChevronDown
+                        className={`w-4 h-4 text-slate-500 shrink-0 transition-transform duration-150 ${
+                          isCollapsed ? 'rotate-90' : ''
+                        }`}
+                      />
+                    </button>
+
+                    {!isCollapsed && (
+                      <div className="divide-y divide-slate-100">
+                        {sec.items.map((item) => {
+                          const active = currentPage === item.key;
+                          return (
+                            <button
+                              key={item.key}
+                              type="button"
+                              onClick={() => {
+                                setIsMoreViewOpen(false);
+                                onNavigate(item.key);
+                              }}
+                              className={`w-full min-h-[46px] px-4 py-2.5 flex items-center justify-between gap-2 text-right text-xs transition-colors cursor-pointer ${
+                                active ? 'bg-purple-50 text-[#2d1b69] font-black' : 'text-slate-800 hover:bg-slate-50 font-bold'
+                              }`}
+                            >
+                              <span className="truncate">{item.label}</span>
+                              <ChevronLeft className={`w-4 h-4 shrink-0 ${active ? 'text-[#2d1b69]' : 'text-slate-400'}`} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ) : (
+          <>
+            {currentPage !== 'dashboard' && (
+              <div className="flex items-center justify-between bg-white rounded-xl border border-slate-200 px-3 py-1.5 no-print">
+                <button
+                  type="button"
+                  onClick={() => onNavigate('dashboard')}
+                  className="min-h-[44px] px-3 rounded-lg text-[#2d1b69] hover:bg-purple-50 text-xs font-black flex items-center gap-1.5 cursor-pointer"
+                >
+                  <ArrowRight className="w-4 h-4 shrink-0" />
+                  <span>العودة للرئيسية</span>
+                </button>
+                <span className="text-[11px] font-bold text-slate-500">{data.settings.companyName || 'أولاد سليم'}</span>
+              </div>
+            )}
+
+            {currentPage === 'dashboard' && (
+              <section aria-label="الاختصارات السريعة" className="space-y-3 no-print">
+                {/* Compact Purple Store Banner */}
+                <div className="rounded-xl bg-[#2d1b69] text-white p-3.5 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-xs font-black truncate">{data.settings.companyName || 'AWLAD SELIM'}</div>
+                    <div className="text-[11px] text-purple-200 truncate mt-0.5">
+                      {getRoleArabicLabel(currentUser?.role)} · {currentUser?.fullName}
+                    </div>
+                  </div>
+                  {canMobileAddProduct && (
+                    <button
+                      type="button"
+                      onClick={() => setIsAddProductModalOpen(true)}
+                      className="min-h-[44px] px-3 rounded-lg bg-white text-[#2d1b69] text-xs font-black flex items-center gap-1 shrink-0 cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>أضف صنف</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* 3-Col Square Quick Shortcuts Grid (WA0007) */}
+                <div>
+                  <h2 className="text-xs font-black text-slate-700 mb-2">الاختصارات السريعة</h2>
+                  <div className="grid grid-cols-3 gap-2.5">
+                    {mobileGridTiles.map((tile) => (
+                      <button
+                        key={tile.id}
+                        type="button"
+                        onClick={tile.onClick}
+                        className="bg-white rounded-xl border border-slate-200 hover:border-[#2d1b69]/40 active:scale-[0.98] p-2.5 min-h-[96px] flex flex-col items-center justify-center gap-1.5 text-center transition-all cursor-pointer"
+                      >
+                        <div className="flex items-center justify-center">{tile.icon}</div>
+                        <span className="text-[11px] font-black text-slate-800 leading-tight">{tile.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {children}
+          </>
+        )}
+      </main>
+
+      {/* Fixed 5-Tab Bottom Navigation Bar (WA0007, >=44px hitboxes) */}
+      <nav
+        aria-label="التنقل السفلي"
+        className="fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200 pb-safe shadow-[0_-2px_10px_rgba(15,23,42,0.06)] no-print"
+      >
+        <div className="max-w-3xl mx-auto flex items-stretch justify-around">
+          {bottomNavTabs.map((tab) => {
+            const TabIcon = tab.icon;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={tab.onClick}
+                aria-current={tab.active ? 'page' : undefined}
+                className={`flex-1 min-h-[54px] py-1.5 px-1 flex flex-col items-center justify-center gap-0.5 relative cursor-pointer transition-colors ${
+                  tab.active ? 'text-[#2d1b69] font-black' : 'text-slate-500 hover:text-slate-800 font-bold'
+                }`}
+              >
+                {tab.active && (
+                  <span className="absolute top-0 inset-x-4 h-[3px] rounded-b bg-[#2d1b69]" aria-hidden="true" />
+                )}
+                <TabIcon className="w-5 h-5 shrink-0" />
+                <span className="text-[10px] leading-tight whitespace-nowrap">{tab.label}</span>
+              </button>
             );
           })}
         </div>
-      </aside>
-      )}
+      </nav>
+
+      <MobileAddProductModal
+        isOpen={isAddProductModalOpen}
+        onClose={() => setIsAddProductModalOpen(false)}
+        onSaved={(pname) => setMobileBanner(`تمت إضافة الصنف "${pname}" بنجاح.`)}
+      />
 
       <MobileNotificationsSheet
         isOpen={isNotificationsOpen}

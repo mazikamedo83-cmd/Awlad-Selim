@@ -67,6 +67,7 @@ export const MobilePortal: React.FC = () => {
   const [pwdFeedback, setPwdFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [hasUnsavedRepInvoice, setHasUnsavedRepInvoice] = useState(false);
   const [pendingRepTab, setPendingRepTab] = useState<RepTabKey | null>(null);
+  const [customerCartCount, setCustomerCartCount] = useState(0);
 
   const requestRepTabChange = (nextTab: RepTabKey) => {
     if (isRep && repTab === 'new-invoice' && hasUnsavedRepInvoice && nextTab !== 'new-invoice') {
@@ -153,19 +154,68 @@ export const MobilePortal: React.FC = () => {
     }
   };
 
-  // Top Blue Bar navigation items + Drawer full destinations (zero bottom navigation bar)
-  const topQuickButtons = isRep
+  // Rep permission flags for bottom nav
+  const isAdmin = currentUser?.role === 'admin';
+  const canRepSales = isAdmin || hasPermission('canManageSales');
+  const canRepCreatePurchase = isAdmin || hasPermission('canManagePurchases') || hasPermission('canCreatePurchase');
+  const canRepCash =
+    isAdmin ||
+    hasPermission('canManageCashboxes') ||
+    hasPermission('canManageAccounts') ||
+    hasPermission('canManageTransfers') ||
+    hasPermission('canManageSales');
+
+  const repMoreSecondaryTabs: RepTabKey[] = [
+    'more',
+    'new-purchase',
+    'sales-return',
+    'purchase-return',
+    'cash-deposit',
+    'cash-withdrawal',
+    'custody-transfer',
+    'new-customer',
+    'new-supplier',
+    'refresh',
+    'cheques-installments',
+    'new-quote',
+    'orders',
+    'invoices',
+    'purchases-list',
+    'sales-returns-list',
+    'purchase-returns-list',
+    'custody',
+    'suppliers',
+    'rep-reports',
+  ];
+
+  // Fixed 5-tab bottom navigation bar items
+  const bottomNavItems = isRep
     ? [
-        { key: 'home' as const, label: 'الرئيسية', icon: Home, active: repTab === 'home', onSelect: () => requestRepTabChange('home') },
-        { key: 'cash' as const, label: 'النقدية', icon: Receipt, active: repTab === 'cash', onSelect: () => requestRepTabChange('cash') },
-        { key: 'custody' as const, label: 'العهدة', icon: ArrowLeftRight, active: repTab === 'custody', onSelect: () => requestRepTabChange('custody') },
-        { key: 'more' as const, label: 'المزيد', icon: LayoutGrid, active: repTab === 'more', onSelect: () => requestRepTabChange('more') },
+        { key: 'home', label: 'الرئيسية', icon: Home, active: repTab === 'home', badge: 0, onSelect: () => requestRepTabChange('home') },
+        { key: 'customers', label: 'العملاء', icon: Users, active: repTab === 'customers', badge: 0, onSelect: () => requestRepTabChange('customers') },
+        canRepSales
+          ? { key: 'new-invoice', label: 'فاتورة', icon: FilePlus2, active: repTab === 'new-invoice', badge: 0, onSelect: () => requestRepTabChange('new-invoice') }
+          : canRepCreatePurchase
+          ? { key: 'new-purchase', label: 'شراء', icon: Receipt, active: repTab === 'new-purchase', badge: 0, onSelect: () => requestRepTabChange('new-purchase') }
+          : { key: 'orders', label: 'الطلبات', icon: ClipboardList, active: repTab === 'orders', badge: 0, onSelect: () => requestRepTabChange('orders') },
+        canRepCash
+          ? { key: 'cash', label: 'النقدية', icon: Receipt, active: repTab === 'cash', badge: 0, onSelect: () => requestRepTabChange('cash') }
+          : { key: 'rep-reports', label: 'التقارير', icon: FileText, active: repTab === 'rep-reports', badge: 0, onSelect: () => requestRepTabChange('rep-reports') },
+        {
+          key: 'more',
+          label: 'المزيد',
+          icon: LayoutGrid,
+          active: repMoreSecondaryTabs.includes(repTab) && !(repTab === 'rep-reports' && !canRepCash) && !(repTab === 'new-purchase' && !canRepSales) && !(repTab === 'orders' && !canRepSales && !canRepCreatePurchase),
+          badge: 0,
+          onSelect: () => requestRepTabChange('more'),
+        },
       ]
     : [
-        { key: 'home' as const, label: 'الرئيسية', icon: Home, active: customerTab === 'home', onSelect: () => setCustomerTab('home') },
-        { key: 'catalog' as const, label: 'الكتالوج', icon: Package, active: customerTab === 'catalog', onSelect: () => setCustomerTab('catalog') },
-        { key: 'account' as const, label: 'فواتيري', icon: Receipt, active: customerTab === 'account', onSelect: () => setCustomerTab('account') },
-        { key: 'cart' as const, label: 'الطلبات', icon: ShoppingCart, active: customerTab === 'cart' || customerTab === 'orders', onSelect: () => setCustomerTab('orders') },
+        { key: 'home', label: 'الرئيسية', icon: Home, active: customerTab === 'home', badge: 0, onSelect: () => setCustomerTab('home') },
+        { key: 'catalog', label: 'الكتالوج', icon: Package, active: customerTab === 'catalog', badge: 0, onSelect: () => setCustomerTab('catalog') },
+        { key: 'cart', label: 'السلة', icon: ShoppingCart, active: customerTab === 'cart', badge: customerCartCount, onSelect: () => setCustomerTab('cart') },
+        { key: 'orders', label: 'طلباتي', icon: ClipboardList, active: customerTab === 'orders', badge: 0, onSelect: () => setCustomerTab('orders') },
+        { key: 'account', label: 'حسابي', icon: Receipt, active: customerTab === 'account', badge: 0, onSelect: () => setCustomerTab('account') },
       ];
 
   const allPortalDestinations = isRep
@@ -197,20 +247,31 @@ export const MobilePortal: React.FC = () => {
       ];
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-800 font-sans antialiased pb-6 pb-safe">
-      {/* Top Blue Rectangle Header with Unified Navigation (Zero Bottom Nav Bar) */}
-      <header className="sticky top-0 z-30 bg-gradient-to-l from-blue-950 via-blue-900 to-blue-950 text-white shadow-md border-b border-blue-800/80 pt-safe">
+    <div className="min-h-screen bg-[#f5f7fb] text-slate-800 font-sans antialiased pb-24 pb-safe">
+      {/* Slim Purple Mobile App Header (#2d1b69) */}
+      <header className="sticky top-0 z-30 bg-[#2d1b69] text-white shadow-sm border-b border-[#3f2987] pt-safe">
         <div className="max-w-5xl mx-auto px-3 sm:px-5">
-          <div className="h-14 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2.5 min-w-0">
+          <div className="h-13 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              {!hideSectionsNav && (
+                <button
+                  type="button"
+                  onClick={() => setIsDrawerOpen((prev) => !prev)}
+                  className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer shrink-0"
+                  title="أقسام البوابة"
+                  aria-label="أقسام البوابة"
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+              )}
               <img
                 src="/awlad-selim-logo.png"
                 alt="AWLAD SELIM"
-                className="h-9 w-9 object-contain bg-white rounded-xl p-1 shrink-0"
+                className="h-8 w-8 object-contain bg-white rounded-lg p-0.5 shrink-0"
               />
               <div className="min-w-0">
-                <h1 className="text-sm font-black truncate leading-tight">AWLAD SELIM</h1>
-                <p className="text-[10px] text-blue-200 truncate">
+                <h1 className="text-sm font-black truncate leading-tight">أولاد سليم</h1>
+                <p className="text-[10px] text-purple-200 truncate">
                   {isRep ? 'بوابة المندوب' : 'بوابة العميل'} · {currentUser?.fullName}
                 </p>
               </div>
@@ -232,7 +293,7 @@ export const MobilePortal: React.FC = () => {
               >
                 <CloudOff className="w-4 h-4" />
                 {syncBadgeCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 rounded-full bg-slate-900 text-white text-[10px] font-black flex items-center justify-center">
+                  <span className="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 rounded bg-slate-900 text-white text-[10px] font-black flex items-center justify-center tabular-nums">
                     {syncBadgeCount}
                   </span>
                 )}
@@ -250,20 +311,10 @@ export const MobilePortal: React.FC = () => {
               >
                 <Bell className="w-4 h-4" />
                 {data.unreadNotificationCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 rounded-full bg-red-600 text-white text-[10px] font-black flex items-center justify-center">
+                  <span className="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 rounded bg-red-600 text-white text-[10px] font-black flex items-center justify-center tabular-nums">
                     {data.unreadNotificationCount}
                   </span>
                 )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsServerModalOpen(true)}
-                className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer"
-                title="عنوان السيرفر المركزي"
-                aria-label="إعدادات السيرفر"
-              >
-                <Server className="w-4 h-4" />
               </button>
 
               <button
@@ -297,48 +348,6 @@ export const MobilePortal: React.FC = () => {
               </button>
             </div>
           </div>
-
-          {/* Top Blue Navigation Strip (Ordered Right-to-Left; الأقسام hidden ONLY on Android/iOS) */}
-          <nav
-            aria-label="التنقل الرئيسي"
-            className={`border-t border-white/15 py-1.5 grid ${hideSectionsNav ? 'grid-cols-4' : 'grid-cols-5'} gap-1`}
-          >
-            {!hideSectionsNav && (
-              <button
-                type="button"
-                onClick={() => setIsDrawerOpen((prev) => !prev)}
-                aria-expanded={isDrawerOpen}
-                className={`min-h-[42px] px-1 py-1.5 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 text-[11px] sm:text-xs whitespace-nowrap transition-all cursor-pointer ${
-                  isDrawerOpen
-                    ? 'bg-white text-blue-950 font-black shadow-sm'
-                    : 'bg-white/10 text-blue-50 hover:bg-white/20 font-bold'
-                }`}
-              >
-                <LayoutGrid className="w-4 h-4 shrink-0" />
-                <span className="leading-none truncate max-w-full">الأقسام</span>
-              </button>
-            )}
-
-            {topQuickButtons.map((btn) => {
-              const Icon = btn.icon;
-              return (
-                <button
-                  key={btn.key}
-                  type="button"
-                  onClick={btn.onSelect}
-                  aria-current={btn.active ? 'page' : undefined}
-                  className={`min-h-[42px] px-1 py-1.5 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 text-[11px] sm:text-xs whitespace-nowrap transition-all cursor-pointer ${
-                    btn.active
-                      ? 'bg-white text-blue-950 font-black shadow-sm'
-                      : 'bg-white/10 text-blue-50 hover:bg-white/20 font-bold'
-                  }`}
-                >
-                  <Icon className="w-4 h-4 shrink-0" />
-                  <span className="leading-none truncate max-w-full">{btn.label}</span>
-                </button>
-              );
-            })}
-          </nav>
         </div>
       </header>
 
@@ -507,9 +516,49 @@ export const MobilePortal: React.FC = () => {
             onUnsavedInvoiceChange={setHasUnsavedRepInvoice}
           />
         ) : (
-          <CustomerPortal activeTab={customerTab} onTabChange={setCustomerTab} />
+          <CustomerPortal
+            activeTab={customerTab}
+            onTabChange={setCustomerTab}
+            onCartCountChange={setCustomerCartCount}
+          />
         )}
       </main>
+
+      {/* Fixed 5-Tab Mobile Bottom Navigation Bar */}
+      <nav
+        aria-label="شريط التنقل السفلي"
+        className="fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200 pb-safe shadow-sm"
+      >
+        <div className="max-w-5xl mx-auto grid grid-cols-5 gap-0.5 px-1">
+          {bottomNavItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={item.onSelect}
+                aria-current={item.active ? 'page' : undefined}
+                className={`relative min-h-[54px] py-1.5 px-1 flex flex-col items-center justify-center gap-0.5 transition-colors cursor-pointer ${
+                  item.active ? 'text-[#2d1b69] font-black' : 'text-slate-500 hover:text-slate-800 font-bold'
+                }`}
+              >
+                {item.active && (
+                  <span className="absolute top-0 inset-x-3 h-[3px] rounded-b bg-[#2d1b69]" />
+                )}
+                <div className="relative">
+                  <Icon className="w-5 h-5 shrink-0" />
+                  {item.badge > 0 && (
+                    <span className="absolute -top-1.5 -left-2 min-w-[16px] h-[16px] px-1 rounded bg-[#2d1b69] text-white text-[9px] font-black flex items-center justify-center tabular-nums">
+                      {item.badge}
+                    </span>
+                  )}
+                </div>
+                <span className="text-[10px] leading-none truncate max-w-full">{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
 
       {pendingRepTab && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">

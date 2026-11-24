@@ -6,7 +6,8 @@ import {
   CloudOff, CloudCheck, Camera, ShoppingBag, RotateCcw, ArrowDownCircle,
   ArrowUpCircle, UserPlus, Building2, Receipt, CreditCard, FileSpreadsheet,
   Wallet, Settings, LogOut, ChevronLeft, Lock, Warehouse as WarehouseIcon,
-  Barcode, X, Eye, Calculator, ClipboardCheck, Send, Clock, Edit, Upload, ExternalLink, Store, PackagePlus
+  Barcode, X, Eye, Calculator, ClipboardCheck, Send, Clock, Edit, Upload, ExternalLink, Store, PackagePlus,
+  ArrowRight, Printer, Info, Calendar
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
@@ -222,11 +223,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [invProductId, setInvProductId] = useState<string>('');
   const [invOnlyVanStock, setInvOnlyVanStock] = useState<boolean>(false);
   const [invUnitName, setInvUnitName] = useState<string>('');
-  const [invQty, setInvQty] = useState<number>(1);
-  const [invPrice, setInvPrice] = useState<number>(0);
-  const [invLineDiscount, setInvLineDiscount] = useState<number>(0);
+  const [invQty, setInvQty] = useState<number | ''>('');
+  const [invPrice, setInvPrice] = useState<number | ''>('');
+  const [invLineDiscount, setInvLineDiscount] = useState<number | ''>('');
   const [invPaymentType, setInvPaymentType] = useState<'cash' | 'credit' | 'partial'>('cash');
-  const [invPaidAmount, setInvPaidAmount] = useState<number>(0);
+  const [invPaidAmount, setInvPaidAmount] = useState<number | ''>('');
   const [invCashboxId, setInvCashboxId] = useState<string>(data.cashboxes[0]?.id || 'CASH-01');
   const [invNotes, setInvNotes] = useState<string>('');
   const [invItems, setInvItems] = useState<Array<{
@@ -250,6 +251,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [customerDetailSubTab, setCustomerDetailSubTab] = useState<'overview' | 'statement'>('overview');
   const [customerDetailStatement, setCustomerDetailStatement] = useState<CustomerStatementResponse | null>(null);
   const [isLoadingCustomerStatement, setIsLoadingCustomerStatement] = useState(false);
+  const [stmtDateFrom, setStmtDateFrom] = useState('');
+  const [stmtDateTo, setStmtDateTo] = useState('');
+  const [stmtSearch, setStmtSearch] = useState('');
   const [statementPreviewDoc, setStatementPreviewDoc] = useState<{
     type: 'invoice' | 'payment';
     docId: string;
@@ -269,9 +273,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [purUnitName, setPurUnitName] = useState<string>('');
   const [purQty, setPurQty] = useState<number | ''>('');
   const [purPrice, setPurPrice] = useState<number | ''>('');
-  const [purDiscount, setPurDiscount] = useState<number>(0);
+  const [purDiscount, setPurDiscount] = useState<number | ''>('');
   const [purPaymentType, setPurPaymentType] = useState<'cash' | 'credit' | 'partial'>('cash');
-  const [purPaidAmount, setPurPaidAmount] = useState<number>(0);
+  const [purPaidAmount, setPurPaidAmount] = useState<number | ''>('');
   const [purCashboxId, setPurCashboxId] = useState<string>(data.cashboxes[0]?.id || 'CASH-01');
   const [purNotes, setPurNotes] = useState<string>('');
   const [purItems, setPurItems] = useState<Array<{
@@ -291,8 +295,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [newPurProdName, setNewPurProdName] = useState('');
   const [newPurProdBarcode, setNewPurProdBarcode] = useState('');
   const [newPurProdCode, setNewPurProdCode] = useState('');
-  const [newPurProdCategory, setNewPurProdCategory] = useState('أصناف عامة');
-  const [newPurProdBaseUnit, setNewPurProdBaseUnit] = useState('قطعة');
+  const [newPurProdCategory, setNewPurProdCategory] = useState('');
+  const [newPurProdBaseUnit, setNewPurProdBaseUnit] = useState('');
   const [newPurProdQty, setNewPurProdQty] = useState<number | ''>('');
   const [newPurProdBuyPrice, setNewPurProdBuyPrice] = useState<number | ''>('');
   const [newPurProdSellPrice, setNewPurProdSellPrice] = useState<number | ''>('');
@@ -318,8 +322,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [sRetInvoiceId, setSRetInvoiceId] = useState('');
   const [sRetWarehouseId, setSRetWarehouseId] = useState('');
   const [sRetProductId, setSRetProductId] = useState('');
-  const [sRetQty, setSRetQty] = useState(1);
-  const [sRetPrice, setSRetPrice] = useState(0);
+  const [sRetQty, setSRetQty] = useState<number | ''>('');
+  const [sRetPrice, setSRetPrice] = useState<number | ''>('');
   const [sRetSettlement, setSRetSettlement] = useState<'account' | 'cash'>('account');
   const [sRetCashboxId, setSRetCashboxId] = useState(data.cashboxes[0]?.id || 'CASH-01');
   const [sRetReason, setSRetReason] = useState('');
@@ -338,8 +342,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [pRetInvoiceId, setPRetInvoiceId] = useState('');
   const [pRetWarehouseId, setPRetWarehouseId] = useState('');
   const [pRetProductId, setPRetProductId] = useState('');
-  const [pRetQty, setPRetQty] = useState(1);
-  const [pRetPrice, setPRetPrice] = useState(0);
+  const [pRetQty, setPRetQty] = useState<number | ''>('');
+  const [pRetPrice, setPRetPrice] = useState<number | ''>('');
   const [pRetSettlement, setPRetSettlement] = useState<'account' | 'cash'>('account');
   const [pRetCashboxId, setPRetCashboxId] = useState(data.cashboxes[0]?.id || 'CASH-01');
   const [pRetReason, setPRetReason] = useState('');
@@ -357,16 +361,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   // ==================== 4. CASH DEPOSIT & WITHDRAWAL STATE ====================
   const [depMode, setDepMode] = useState<'customer_collection' | 'cashbox_deposit'>('customer_collection');
   const [depCustomerId, setDepCustomerId] = useState('');
+  const [depInvoiceId, setDepInvoiceId] = useState('');
   const [depCashboxId, setDepCashboxId] = useState(data.cashboxes[0]?.id || 'CASH-01');
   const [depMethod, setDepMethod] = useState<'cash' | 'bank' | 'cheque'>('cash');
-  const [depAmount, setDepAmount] = useState<number>(0);
+  const [depDate, setDepDate] = useState(new Date().toISOString().split('T')[0]);
+  const [depAmount, setDepAmount] = useState<number | ''>('');
   const [depNotes, setDepNotes] = useState('');
   const [isSubmittingDeposit, setIsSubmittingDeposit] = useState(false);
 
   const [wdCashboxId, setWdCashboxId] = useState(data.cashboxes[0]?.id || 'CASH-01');
-  const [wdCategory, setWdCategory] = useState('مصروف تشغيل ومندوب');
+  const [wdCategory, setWdCategory] = useState('');
   const [wdBeneficiary, setWdBeneficiary] = useState('');
-  const [wdAmount, setWdAmount] = useState<number>(0);
+  const [wdAmount, setWdAmount] = useState<number | ''>('');
   const [wdNotes, setWdNotes] = useState('');
   const [isSubmittingWithdrawal, setIsSubmittingWithdrawal] = useState(false);
 
@@ -381,7 +387,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [newCustGeo, setNewCustGeo] = useState('');
   const [newCustShopPhoto, setNewCustShopPhoto] = useState('');
   const [newCustNotes, setNewCustNotes] = useState('');
-  const [newCustOpening, setNewCustOpening] = useState<number>(0);
+  const [newCustOpening, setNewCustOpening] = useState<number | ''>('');
   const [isLocatingCust, setIsLocatingCust] = useState(false);
   const [isUploadingCustPhoto, setIsUploadingCustPhoto] = useState(false);
   const [custPhoneNotice, setCustPhoneNotice] = useState<{ type: 'info' | 'error'; text: string } | null>(null);
@@ -415,7 +421,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [newSupCompany, setNewSupCompany] = useState('');
   const [newSupPhone, setNewSupPhone] = useState('');
   const [newSupAddress, setNewSupAddress] = useState('');
-  const [newSupOpening, setNewSupOpening] = useState<number>(0);
+  const [newSupOpening, setNewSupOpening] = useState<number | ''>('');
   const [supPhoneNotice, setSupPhoneNotice] = useState<{ type: 'info' | 'error'; text: string } | null>(null);
   const [isSavingSupplier, setIsSavingSupplier] = useState(false);
 
@@ -423,8 +429,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [quoteCustomerId, setQuoteCustomerId] = useState('');
   const [quoteProductId, setQuoteProductId] = useState('');
   const [quoteUnitName, setQuoteUnitName] = useState('');
-  const [quoteQty, setQuoteQty] = useState(1);
-  const [quotePrice, setQuotePrice] = useState(0);
+  const [quoteQty, setQuoteQty] = useState<number | ''>('');
+  const [quotePrice, setQuotePrice] = useState<number | ''>('');
   const [quoteNotes, setQuoteNotes] = useState('');
   const [quoteItems, setQuoteItems] = useState<Array<{
     productId: string;
@@ -447,7 +453,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [chqNumber, setChqNumber] = useState('');
   const [chqBank, setChqBank] = useState('');
   const [chqPartyName, setChqPartyName] = useState('');
-  const [chqAmount, setChqAmount] = useState<number>(0);
+  const [chqAmount, setChqAmount] = useState<number | ''>('');
   const [chqDueDate, setChqDueDate] = useState(new Date().toISOString().split('T')[0]);
   const [isSavingCheque, setIsSavingCheque] = useState(false);
   const [payingInstKey, setPayingInstKey] = useState<string | null>(null);
@@ -458,7 +464,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [custodyStatement, setCustodyStatement] = useState<RepCustodyStatementResponse | null>(null);
   const [isLoadingCustodyStmt, setIsLoadingCustodyStmt] = useState(false);
   const [reqProdId, setReqProdId] = useState('');
-  const [reqQty, setReqQty] = useState(5);
+  const [reqQty, setReqQty] = useState<number | ''>('');
   const [reqItems, setReqItems] = useState<Array<{
     productId: string;
     productName: string;
@@ -469,11 +475,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   }>>([]);
   const [delivCustomerId, setDelivCustomerId] = useState('');
   const [delivProdId, setDelivProdId] = useState('');
-  const [delivQty, setDelivQty] = useState(1);
+  const [delivQty, setDelivQty] = useState<number | ''>('');
   const [delivNotes, setDelivNotes] = useState('');
   const [retCustodyProdId, setRetCustodyProdId] = useState('');
   const [retCustodyUnit, setRetCustodyUnit] = useState('');
-  const [retCustodyQty, setRetCustodyQty] = useState(1);
+  const [retCustodyQty, setRetCustodyQty] = useState<number | ''>('');
   const [retCustodyTargetWhId, setRetCustodyTargetWhId] = useState('');
   const [retCustodyNotes, setRetCustodyNotes] = useState('');
   const [cashAmount, setCashAmount] = useState<number>(0);
@@ -1146,23 +1152,25 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setInvUnitName(prod.baseUnit);
       setInvPrice(prod.sellingPrice);
     }
-    setInvQty(1);
-    setInvLineDiscount(0);
+    setInvQty('');
+    setInvLineDiscount('');
   };
 
   const handleUnitChange = (unitName: string) => {
     setInvUnitName(unitName);
     if (!selectedProduct) return;
     if (unitName === selectedProduct.baseUnit) {
-      setInvPrice(selectedProduct.sellingPrice);
+      setInvPrice(selectedProduct.sellingPrice > 0 ? selectedProduct.sellingPrice : '');
     } else {
       const u = selectedProduct.units.find((x) => x.name === unitName);
-      if (u) setInvPrice(u.sellingPrice);
+      if (u) setInvPrice(u.sellingPrice > 0 ? u.sellingPrice : '');
     }
   };
 
   const handleAddInvoiceItem = () => {
-    if (!selectedProduct || invQty <= 0) return;
+    const qtyNum = Number(invQty || 0);
+    const priceNum = Math.max(0, Number(invPrice || 0));
+    if (!selectedProduct || qtyNum <= 0) return;
     let unitFactor = 1;
     let purchasePriceAtTime = selectedProduct.purchasePrice;
     if (invUnitName !== selectedProduct.baseUnit) {
@@ -1173,7 +1181,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       }
     }
     const safeDiscount = Math.max(0, Number(invLineDiscount || 0));
-    const total = computeLineTotal(invQty, invPrice, safeDiscount);
+    const total = computeLineTotal(qtyNum, priceNum, safeDiscount);
     setInvItems((prev) => [
       ...prev,
       {
@@ -1182,17 +1190,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         barcode: selectedProduct.barcode,
         unit: invUnitName || selectedProduct.baseUnit,
         unitFactor,
-        quantity: invQty,
-        unitPrice: invPrice,
+        quantity: qtyNum,
+        unitPrice: priceNum,
         purchasePriceAtTime,
         discount: safeDiscount,
         total,
       },
     ]);
     setInvProductId('');
-    setInvQty(1);
-    setInvPrice(0);
-    setInvLineDiscount(0);
+    setInvQty('');
+    setInvPrice('');
+    setInvLineDiscount('');
   };
 
   const handleUpdateInvItemQty = (idx: number, nextQty: number) => {
@@ -1281,7 +1289,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         ? invGrandTotal
         : invPaymentType === 'credit'
         ? 0
-        : Math.min(invGrandTotal, Math.max(0, invPaidAmount));
+        : Math.min(invGrandTotal, Math.max(0, Number(invPaidAmount || 0)));
 
     const forceDraft = shortageItems.length > 0 || mode !== 'confirmed';
 
@@ -1661,7 +1669,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         ? purTotal
         : purPaymentType === 'credit'
         ? 0
-        : Math.min(purTotal, Math.max(0, purPaidAmount));
+        : Math.min(purTotal, Math.max(0, Number(purPaidAmount || 0)));
     const chosenRecipient = (data.purchaseReceivers || []).find((r) => r.id === purRecipientUserId);
 
     setIsSubmittingPurchase(true);
@@ -1703,7 +1711,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
       setPurEditingInvoiceId(null);
       setPurItems([]);
-      setPurDiscount(0);
+      setPurDiscount('');
       setPurNotes('');
       setPurReviewOpen(false);
       setFeedback({
@@ -2017,7 +2025,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   // ==================== CASH DEPOSIT / WITHDRAWAL HANDLERS ====================
   const handleSubmitCashDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (depAmount <= 0) {
+    const depNum = Number(depAmount || 0);
+    if (depNum <= 0) {
       setFeedback({ type: 'error', text: 'يرجى إدخال مبلغ صحيح أكبر من الصفر.' });
       return;
     }
@@ -2038,19 +2047,27 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         }
         const res = await data.recordCustomerPayment(
           depCustomerId,
-          depAmount,
+          depNum,
           isRepRoleAccount || !canCashOps ? '' : depCashboxId,
           depNotes.trim() || 'تحصيل نقدي عبر تطبيق المندوب',
-          depMethod
+          depMethod,
+          depInvoiceId || undefined
         );
         if (res.success) {
-          setDepAmount(0);
+          const collectedCustId = depCustomerId;
+          setDepAmount('');
+          setDepInvoiceId('');
           setDepNotes('');
+          if (selectedCustomerDetail?.id === collectedCustId) {
+            data.getCustomerStatement(collectedCustId).then((st) => {
+              if (st) setCustomerDetailStatement(st);
+            }).catch(() => {});
+          }
           setFeedback({
             type: res.queuedOffline ? 'warning' : 'success',
             text: res.queuedOffline
               ? 'تم حفظ التحصيل محلياً بانتظار المزامنة.'
-              : 'تم تسجيل الإيداع / تحصيل العميل وتحديث الرصيد.',
+              : 'تم تسجيل التحصيل من العميل وتحديث الرصيد.',
           });
         } else {
           setFeedback({ type: 'error', text: res.error || 'تعذر تسجيل التحصيل' });
@@ -2059,14 +2076,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         const res = await data.executeCashOperation({
           type: 'cash_deposit',
           cashboxId: depCashboxId,
-          amount: depAmount,
-          date: new Date().toISOString().split('T')[0],
+          amount: depNum,
+          date: depDate || new Date().toISOString().split('T')[0],
           category: 'إيداع نقدي',
           recipientOrPayer: rep?.name || currentUser?.fullName || 'المندوب',
           notes: depNotes.trim() || 'إيداع نقدي من الشاشة الرئيسية',
         });
         if (res.success) {
-          setDepAmount(0);
+          setDepAmount('');
           setDepNotes('');
           setFeedback({
             type: res.queuedOffline ? 'warning' : 'success',
@@ -2094,7 +2111,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       });
       return;
     }
-    if (wdAmount <= 0) {
+    const wdNum = Number(wdAmount || 0);
+    if (wdNum <= 0) {
       setFeedback({ type: 'error', text: 'يرجى إدخال مبلغ سحب صحيح أكبر من الصفر.' });
       return;
     }
@@ -2104,14 +2122,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       const res = await data.executeCashOperation({
         type: 'expense',
         cashboxId: wdCashboxId,
-        amount: wdAmount,
+        amount: wdNum,
         date: new Date().toISOString().split('T')[0],
         category: wdCategory.trim() || 'سحب نقدي ومصروفات',
         recipientOrPayer: wdBeneficiary.trim() || rep?.name || currentUser?.fullName || '',
         notes: wdNotes.trim() || 'سحب نقدي عبر تطبيق المندوب',
       });
       if (res.success) {
-        setWdAmount(0);
+        setWdAmount('');
+        setWdCategory('');
         setWdNotes('');
         setFeedback({
           type: res.queuedOffline ? 'warning' : 'success',
@@ -2275,7 +2294,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setNewCustGeo('');
       setNewCustShopPhoto('');
       setNewCustNotes('');
-      setNewCustOpening(0);
+      setNewCustOpening('');
       if (custCameraInputRef.current) custCameraInputRef.current.value = '';
       if (custGalleryInputRef.current) custGalleryInputRef.current.value = '';
       setInvCustomerId(cust.id);
@@ -2473,7 +2492,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setNewSupCompany('');
       setNewSupPhone('');
       setNewSupAddress('');
-      setNewSupOpening(0);
+      setNewSupOpening('');
       setPurSupplierId(sup.id);
       setFeedback({
         type: 'success',
@@ -2494,13 +2513,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     const prod = activeProducts.find((p) => p.id === prodId);
     if (!prod) return;
     setQuoteUnitName(prod.baseUnit);
-    setQuotePrice(prod.sellingPrice);
-    setQuoteQty(1);
+    setQuotePrice(prod.sellingPrice > 0 ? prod.sellingPrice : '');
+    setQuoteQty('');
   };
 
   const handleAddQuoteItem = () => {
     const prod = activeProducts.find((p) => p.id === quoteProductId);
-    if (!prod || quoteQty <= 0) return;
+    const qQty = Number(quoteQty || 0);
+    const qPrice = Math.max(0, Number(quotePrice || 0));
+    if (!prod || qQty <= 0) return;
     let factor = 1;
     if (quoteUnitName !== prod.baseUnit) {
       const u = prod.units.find((x) => x.name === quoteUnitName);
@@ -2514,16 +2535,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         barcode: prod.barcode,
         unit: quoteUnitName || prod.baseUnit,
         unitFactor: factor,
-        quantity: quoteQty,
-        unitPrice: quotePrice,
+        quantity: qQty,
+        unitPrice: qPrice,
         purchasePriceAtTime: prod.purchasePrice * factor,
         discount: 0,
-        total: computeLineTotal(quoteQty, quotePrice),
+        total: computeLineTotal(qQty, qPrice),
       },
     ]);
     setQuoteProductId('');
-    setQuoteQty(1);
-    setQuotePrice(0);
+    setQuoteQty('');
+    setQuotePrice('');
   };
 
   const handleCreateQuote = async (e: React.FormEvent) => {
@@ -2589,7 +2610,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   // ==================== CHEQUES & INSTALLMENTS HANDLERS ====================
   const handleAddCheque = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chqNumber.trim() || !chqPartyName.trim() || chqAmount <= 0) {
+    const chqNumAmt = Number(chqAmount || 0);
+    if (!chqNumber.trim() || !chqPartyName.trim() || chqNumAmt <= 0) {
       setFeedback({ type: 'error', text: 'يرجى استكمال رقم الشيك والجهة والمبلغ.' });
       return;
     }
@@ -2602,7 +2624,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         partyId: '',
         partyName: chqPartyName.trim(),
         bankName: chqBank.trim() || 'بنك',
-        amount: chqAmount,
+        amount: chqNumAmt,
         dueDate: chqDueDate,
         issueDate: new Date().toISOString().split('T')[0],
         status: 'pending',
@@ -2610,7 +2632,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setChqNumber('');
       setChqPartyName('');
       setChqBank('');
-      setChqAmount(0);
+      setChqAmount('');
       setFeedback({ type: 'success', text: 'تم تسجيل الشيك بنجاح.' });
     } catch (err: any) {
       setFeedback({ type: 'error', text: err?.message || 'تعذر حفظ الشيك' });
@@ -2978,7 +3000,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
   const handleRecordPartialCustodyDelivery = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!delivProdId || delivQty <= 0) {
+    const dQty = Number(delivQty || 0);
+    if (!delivProdId || dQty <= 0) {
       setFeedback({ type: 'error', text: 'يرجى اختيار الصنف وكمية التسليم الجزئي.' });
       return;
     }
@@ -2990,14 +3013,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       customerId: delivCustomerId || undefined,
       customerName: cust?.name || undefined,
       productId: delivProdId,
-      quantity: delivQty,
+      quantity: dQty,
       date: new Date().toISOString().split('T')[0],
       notes: delivNotes.trim() || 'تسليم عهدة جزئي لعميل من تطبيق المندوب',
     });
     setIsSendingTransfer(false);
     if (res.success) {
       setDelivProdId('');
-      setDelivQty(1);
+      setDelivQty('');
       setDelivNotes('');
       setFeedback({
         type: res.queuedOffline ? 'warning' : 'success',
@@ -3013,7 +3036,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
   const handleRecordCustodyReturn = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!retCustodyProdId || retCustodyQty <= 0) {
+    const rQty = Number(retCustodyQty || 0);
+    if (!retCustodyProdId || rQty <= 0) {
       setFeedback({ type: 'error', text: 'يرجى اختيار الصنف والكمية المرتجعة للمخزن.' });
       return;
     }
@@ -3025,10 +3049,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       if (u) factor = u.conversionFactor;
     }
     const vanAvail = prod?.stockPerWarehouse?.[effectiveVanId] || 0;
-    if (retCustodyQty * factor > vanAvail) {
+    if (rQty * factor > vanAvail) {
       setFeedback({
         type: 'error',
-        text: `الكمية المطلوب إرجاعها (${retCustodyQty * factor} ${prod?.baseUnit || ''}) تتجاوز المتاح في عهدة السيارة (${vanAvail}).`,
+        text: `الكمية المطلوب إرجاعها (${rQty * factor} ${prod?.baseUnit || ''}) تتجاوز المتاح في عهدة السيارة (${vanAvail}).`,
       });
       return;
     }
@@ -3038,7 +3062,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       representativeId: rep?.id,
       targetWarehouseId: retCustodyTargetWhId || mainWarehouse?.id,
       productId: retCustodyProdId,
-      quantity: retCustodyQty,
+      quantity: rQty,
       unit: chosenUnit,
       unitFactor: factor,
       date: new Date().toISOString().split('T')[0],
@@ -3048,7 +3072,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     if (res.success) {
       setRetCustodyProdId('');
       setRetCustodyUnit('');
-      setRetCustodyQty(1);
+      setRetCustodyQty('');
       setRetCustodyNotes('');
       setFeedback({
         type: res.queuedOffline ? 'warning' : 'success',
@@ -3121,15 +3145,30 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   };
 
   const exportInvoiceDocument = (inv: Invoice) => {
+    const activeBranches = data.settings.extraSettings?.branches || [];
+    const matchedBranch =
+      (inv.warehouseId ? activeBranches.find((b) => b.warehouseId === inv.warehouseId) : undefined) ||
+      activeBranches.find((b) => b.isDefault) ||
+      activeBranches[0];
+    const resolvedRep = inv.representativeId
+      ? data.representatives.find((r) => r.id === inv.representativeId)
+      : rep;
+
     exportHtmlToPdf({
       title: inv.type === 'quote' ? 'عرض سعر' : inv.type === 'purchase' ? 'فاتورة مشتريات' : inv.status === 'draft' ? 'مسودة فاتورة مبيعات' : 'فاتورة مبيعات',
       companyName: data.settings.companyName,
       companySubtitle: data.settings.companySubtitle,
+      address: data.settings.address,
+      phone1: data.settings.phone1,
+      phone2: data.settings.phone2,
+      branchName: matchedBranch?.name,
+      branchNumber: matchedBranch?.branchNumber || data.settings.branchNumber,
+      representativeName: inv.representativeName || resolvedRep?.name,
+      representativePhone: resolvedRep?.phone,
       docNumber: inv.invoiceNumber,
       dateRangeText: inv.date,
       meta: [
         { label: inv.type === 'purchase' ? 'المورد' : 'العميل', value: inv.supplierName || inv.customerName || '-' },
-        { label: 'المندوب', value: inv.representativeName || rep?.name || '-' },
         { label: 'المخزن', value: inv.warehouseName || '-' },
       ],
       tableHeaders: ['م', 'الصنف', 'الوحدة', 'الكمية', 'السعر', 'الإجمالي'],
@@ -3383,42 +3422,60 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Brand Store Permission-Gated Top Tabs: الرئيسية | النقدية | المزيد */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-1.5 shadow-2xs grid grid-cols-3 gap-1.5 text-xs">
-        <button
-          type="button"
-          onClick={() => guardedTabChange('home')}
-          className={`min-h-[44px] rounded-xl font-black transition-colors cursor-pointer ${
-            activeTab === 'home' ? 'bg-blue-900 text-white shadow-xs' : 'text-slate-700 hover:bg-slate-50'
-          }`}
-        >
-          الرئيسية
-        </button>
-        {canCash ? (
+      {/* Slim Sub-page Return Bar (Primary tabs are navigated via fixed bottom bar) */}
+      {!['home', 'cash', 'more', 'customers', 'new-invoice'].includes(activeTab) && (
+        <div className="bg-white rounded-xl border border-slate-200 px-3 py-2 shadow-2xs flex items-center justify-between gap-2 text-xs">
           <button
             type="button"
-            onClick={() => guardedTabChange('cash')}
-            className={`min-h-[44px] rounded-xl font-black transition-colors cursor-pointer ${
-              activeTab === 'cash' ? 'bg-blue-900 text-white shadow-xs' : 'text-slate-700 hover:bg-slate-50'
-            }`}
+            onClick={() => guardedTabChange('home')}
+            className="min-h-[38px] px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-[#2d1b69] font-black inline-flex items-center gap-1.5 cursor-pointer"
           >
-            النقدية
+            <ArrowRight className="w-4 h-4" />
+            <span>الرئيسية</span>
           </button>
-        ) : (
-          <div className="min-h-[44px] rounded-xl flex items-center justify-center text-slate-400 bg-slate-50 text-[11px] font-bold">
-            النقدية (مقيد)
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={() => guardedTabChange('more')}
-          className={`min-h-[44px] rounded-xl font-black transition-colors cursor-pointer ${
-            activeTab === 'more' ? 'bg-blue-900 text-white shadow-xs' : 'text-slate-700 hover:bg-slate-50'
-          }`}
-        >
-          المزيد
-        </button>
-      </div>
+          <span className="font-black text-slate-800 truncate">
+            {activeTab === 'cash-deposit'
+              ? 'تحصيل من العميل'
+              : activeTab === 'cash-withdrawal'
+              ? 'سحب / مصروف'
+              : activeTab === 'custody-transfer'
+              ? 'تحويل عهدة'
+              : activeTab === 'new-purchase'
+              ? 'فاتورة شراء'
+              : activeTab === 'sales-return'
+              ? 'مرتجع مبيعات'
+              : activeTab === 'purchase-return'
+              ? 'مرتجع مشتريات'
+              : activeTab === 'new-customer'
+              ? 'إضافة عميل'
+              : activeTab === 'new-supplier'
+              ? 'إضافة مورد'
+              : activeTab === 'new-quote'
+              ? 'عرض سعر'
+              : activeTab === 'orders'
+              ? 'الطلبات والتسليمات'
+              : activeTab === 'invoices'
+              ? 'فواتير المبيعات'
+              : activeTab === 'purchases-list'
+              ? 'فواتير الشراء'
+              : activeTab === 'sales-returns-list'
+              ? 'سجل مرتجع البيع'
+              : activeTab === 'purchase-returns-list'
+              ? 'سجل مرتجع الشراء'
+              : activeTab === 'custody'
+              ? 'مخزون وعهدة السيارة'
+              : activeTab === 'suppliers'
+              ? 'الموردون'
+              : activeTab === 'rep-reports'
+              ? 'تقارير المندوب'
+              : activeTab === 'refresh'
+              ? 'المزامنة السحابية'
+              : activeTab === 'cheques-installments'
+              ? 'الشيكات والأقساط'
+              : ''}
+          </span>
+        </div>
+      )}
 
       {feedback && (
         <div
@@ -3624,7 +3681,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     <Lock className="w-3.5 h-3.5 absolute top-2 left-2 text-slate-400" />
                   )}
                   {tile.badgeCount && tile.badgeCount > 0 ? (
-                    <span className="absolute top-1.5 left-1.5 min-w-[20px] h-[20px] px-1 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black font-mono flex items-center justify-center">
+                    <span className="absolute top-1.5 left-1.5 min-w-[20px] h-[20px] px-1 rounded bg-amber-500 text-slate-950 text-[10px] font-black font-mono tabular-nums flex items-center justify-center">
                       {tile.badgeCount}
                     </span>
                   ) : null}
@@ -4164,10 +4221,24 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       <button
                         type="button"
                         onClick={() => {
+                          setDepMode('customer_collection');
+                          setDepCustomerId(c.id);
+                          setDepInvoiceId('');
+                          setDepAmount('');
+                          onTabChange('cash-deposit');
+                        }}
+                        className="min-h-[40px] px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <Wallet className="w-3.5 h-3.5" />
+                        <span>تحصيل</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
                           setInvCustomerId(c.id);
                           onTabChange('new-invoice');
                         }}
-                        className="min-h-[40px] flex-1 px-3 rounded-xl bg-blue-900 text-white font-bold cursor-pointer"
+                        className="min-h-[40px] flex-1 px-3 rounded-xl bg-[#2d1b69] hover:bg-[#231454] text-white font-bold cursor-pointer"
                       >
                         فاتورة
                       </button>
@@ -4358,7 +4429,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       step="0.5"
                       min={0}
                       value={invPrice}
-                      onChange={(e) => setInvPrice(Math.max(0, Number(e.target.value)))}
+                      onChange={(e) => setInvPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                      placeholder="0.00"
                       className="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
                     />
                   </div>
@@ -4369,7 +4441,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       step="0.5"
                       min={0}
                       value={invLineDiscount}
-                      onChange={(e) => setInvLineDiscount(Math.max(0, Number(e.target.value)))}
+                      onChange={(e) => setInvLineDiscount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                      placeholder="0"
                       className="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
                     />
                   </div>
@@ -4473,7 +4546,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       min={0}
                       max={invGrandTotal}
                       value={invPaidAmount}
-                      onChange={(e) => setInvPaidAmount(Number(e.target.value))}
+                      onChange={(e) => setInvPaidAmount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                      placeholder="0.00"
                       className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-mono font-bold"
                     />
                   </div>
@@ -4784,6 +4858,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       type="text"
                       value={newPurProdCategory}
                       onChange={(e) => setNewPurProdCategory(e.target.value)}
+                      placeholder="التصنيف (اختياري)"
                       className="w-full min-h-[42px] border border-slate-300 rounded-xl px-3 font-semibold bg-white"
                     />
                   </div>
@@ -4953,7 +5028,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               min={0}
               max={purTotal}
               value={purPaidAmount}
-              onChange={(e) => setPurPaidAmount(Number(e.target.value))}
+              onChange={(e) => setPurPaidAmount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
               placeholder="المدفوع للمورد الآن"
               className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-mono font-bold"
             />
@@ -5081,7 +5156,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   min={0}
                   step="0.5"
                   value={sRetPrice}
-                  onChange={(e) => setSRetPrice(Number(e.target.value))}
+                  onChange={(e) => setSRetPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                  placeholder="السعر"
                   className="min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
                 />
               </div>
@@ -5091,7 +5167,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 type="button"
                 onClick={() => {
                   const p = activeProducts.find((x) => x.id === sRetProductId);
-                  if (!p || sRetQty <= 0) return;
+                  const rq = Number(sRetQty || 0);
+                  const rp = Math.max(0, Number(sRetPrice || 0));
+                  if (!p || rq <= 0) return;
                   setSRetItems((prev) => [
                     ...prev,
                     {
@@ -5099,13 +5177,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       productName: p.name,
                       unit: p.baseUnit,
                       unitFactor: 1,
-                      quantity: sRetQty,
-                      unitPrice: sRetPrice,
-                      total: computeLineTotal(sRetQty, sRetPrice),
+                      quantity: rq,
+                      unitPrice: rp,
+                      total: computeLineTotal(rq, rp),
                     },
                   ]);
                   setSRetProductId('');
-                  setSRetQty(1);
+                  setSRetQty('');
+                  setSRetPrice('');
                 }}
                 className="w-full min-h-[44px] rounded-xl bg-rose-700 text-white font-black cursor-pointer"
               >
@@ -5331,7 +5410,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                               min={0}
                               step="0.5"
                               value={pRetPrice}
-                              onChange={(e) => setPRetPrice(Number(e.target.value))}
+                              onChange={(e) => setPRetPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                              placeholder="السعر"
                               className="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
                             />
                           </div>
@@ -5339,11 +5419,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         <button
                           type="button"
                           onClick={() => {
-                            if (pRetQty <= 0) return;
-                            if (pRetQty > selectedLine.maxReturnableQty + 0.0001) {
+                            const rq = Number(pRetQty || 0);
+                            const rp = Math.max(0, Number(pRetPrice || 0));
+                            if (rq <= 0) return;
+                            if (rq > selectedLine.maxReturnableQty + 0.0001) {
                               setFeedback({
                                 type: 'error',
-                                text: `الكمية المطلوبة (${pRetQty}) تتجاوز المتاح للإرجاع (${selectedLine.maxReturnableQty}).`,
+                                text: `الكمية المطلوبة (${rq}) تتجاوز المتاح للإرجاع (${selectedLine.maxReturnableQty}).`,
                               });
                               return;
                             }
@@ -5354,13 +5436,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                                 productName: selectedLine.productName,
                                 unit: selectedLine.unit,
                                 unitFactor: Number(selectedLine.unitFactor || 1),
-                                quantity: pRetQty,
-                                unitPrice: pRetPrice,
-                                total: computeLineTotal(pRetQty, pRetPrice),
+                                quantity: rq,
+                                unitPrice: rp,
+                                total: computeLineTotal(rq, rp),
                               },
                             ]);
                             setPRetProductId('');
-                            setPRetQty(1);
+                            setPRetQty('');
+                            setPRetPrice('');
                           }}
                           className="w-full min-h-[44px] rounded-xl bg-orange-700 text-white font-black cursor-pointer"
                         >
@@ -5378,7 +5461,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   onChange={(e) => {
                     setPRetProductId(e.target.value);
                     const p = activeProducts.find((x) => x.id === e.target.value);
-                    if (p) setPRetPrice(p.purchasePrice);
+                    if (p) setPRetPrice(p.purchasePrice > 0 ? p.purchasePrice : '');
                   }}
                   className="w-full min-h-[44px] rounded-xl border border-orange-300 px-3 font-bold bg-white"
                 >
@@ -5402,7 +5485,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       min={0}
                       step="0.5"
                       value={pRetPrice}
-                      onChange={(e) => setPRetPrice(Number(e.target.value))}
+                      onChange={(e) => setPRetPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                      placeholder="السعر"
                       className="min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
                     />
                   </div>
@@ -5412,7 +5496,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     type="button"
                     onClick={() => {
                       const p = activeProducts.find((x) => x.id === pRetProductId);
-                      if (!p || pRetQty <= 0) return;
+                      const rq = Number(pRetQty || 0);
+                      const rp = Math.max(0, Number(pRetPrice || 0));
+                      if (!p || rq <= 0) return;
                       setPRetItems((prev) => [
                         ...prev,
                         {
@@ -5420,13 +5506,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           productName: p.name,
                           unit: p.baseUnit,
                           unitFactor: 1,
-                          quantity: pRetQty,
-                          unitPrice: pRetPrice,
-                          total: computeLineTotal(pRetQty, pRetPrice),
+                          quantity: rq,
+                          unitPrice: rp,
+                          total: computeLineTotal(rq, rp),
                         },
                       ]);
                       setPRetProductId('');
-                      setPRetQty(1);
+                      setPRetQty('');
+                      setPRetPrice('');
                     }}
                     className="w-full min-h-[44px] rounded-xl bg-orange-700 text-white font-black cursor-pointer"
                   >
@@ -5526,109 +5613,244 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         </form>
       )}
 
-      {/* ==================== CASH DEPOSIT / COLLECTION ==================== */}
-      {activeTab === 'cash-deposit' && (
-        <form onSubmit={handleSubmitCashDeposit} className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs">
-          <h3 className="text-sm font-black text-emerald-900">
-            {isRepRoleAccount ? 'تحصيل نقدي من عميل' : 'إيداع نقدي / تحصيل من عميل'}
-          </h3>
-          {!isRepRoleAccount ? (
-            <div className="grid grid-cols-2 gap-2">
+      {/* ==================== CASH DEPOSIT / WA0005 COLLECTION ==================== */}
+      {activeTab === 'cash-deposit' && (() => {
+        const depCustomer = data.customers.find((c) => c.id === depCustomerId) || null;
+        const openCustomerInvoices = depCustomer
+          ? myInvoices.filter(
+              (inv) =>
+                inv.customerId === depCustomer.id &&
+                inv.status !== 'cancelled' &&
+                Number(inv.remainingAmount || 0) > 0.009
+            )
+          : [];
+        const selectedTargetInvoice = openCustomerInvoices.find((inv) => inv.id === depInvoiceId) || null;
+        const currentDueTotal = Math.max(0, Number(depCustomer?.currentBalance || 0));
+        const targetDueForQuickFill = selectedTargetInvoice
+          ? Math.max(0, Number(selectedTargetInvoice.remainingAmount || 0))
+          : currentDueTotal;
+        const payNow = Math.max(0, Number(depAmount || 0));
+        const remainingAfterPay = Math.max(0, currentDueTotal - payNow);
+        const currency = data.settings.currency || 'ج.م';
+
+        return (
+          <form onSubmit={handleSubmitCashDeposit} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs text-xs">
+            {/* WA0005 Purple Collection Header */}
+            <div className="bg-[#2d1b69] text-white px-4 py-3 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <h3 className="text-sm font-black">
+                  {depMode === 'cashbox_deposit' && !isRepRoleAccount ? 'إيداع مباشر بالخزينة' : 'تحصيل من العميل'}
+                </h3>
+                {depCustomer && depMode === 'customer_collection' && (
+                  <p className="text-[11px] text-purple-200 truncate mt-0.5">
+                    {depCustomer.shopName || depCustomer.name}
+                  </p>
+                )}
+              </div>
               <button
                 type="button"
-                onClick={() => setDepMode('customer_collection')}
-                className={`min-h-[42px] rounded-xl font-bold border cursor-pointer ${
-                  depMode === 'customer_collection'
-                    ? 'bg-emerald-700 text-white border-emerald-700'
-                    : 'bg-slate-50 text-slate-700 border-slate-300'
-                }`}
+                onClick={() => onTabChange('customers')}
+                className="min-h-[36px] px-3 rounded-lg bg-white/15 hover:bg-white/25 text-white font-bold cursor-pointer shrink-0"
               >
-                تحصيل من عميل
-              </button>
-              <button
-                type="button"
-                disabled={!canCashOps}
-                onClick={() => setDepMode('cashbox_deposit')}
-                className={`min-h-[42px] rounded-xl font-bold border cursor-pointer disabled:opacity-45 ${
-                  depMode === 'cashbox_deposit'
-                    ? 'bg-emerald-700 text-white border-emerald-700'
-                    : 'bg-slate-50 text-slate-700 border-slate-300'
-                }`}
-              >
-                {canCashOps ? 'إيداع مباشر بالخزينة' : 'إيداع بالخزينة (مقيد)'}
+                إلغاء
               </button>
             </div>
-          ) : (
-            <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 font-bold text-[11px]">
-              تحصيل دفعات العملاء فقط — الإيداعات العامة للخزينة وتوريدات العهدة تتم من تبويب النقدية / تحويل العهدة.
+
+            <div className="p-4 space-y-3.5">
+              {!isRepRoleAccount && (
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDepMode('customer_collection')}
+                    className={`min-h-[44px] rounded-xl font-bold border cursor-pointer ${
+                      depMode === 'customer_collection'
+                        ? 'bg-[#2d1b69] text-white border-[#2d1b69]'
+                        : 'bg-slate-50 text-slate-700 border-slate-300'
+                    }`}
+                  >
+                    تحصيل من عميل
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canCashOps}
+                    onClick={() => setDepMode('cashbox_deposit')}
+                    className={`min-h-[44px] rounded-xl font-bold border cursor-pointer disabled:opacity-45 ${
+                      depMode === 'cashbox_deposit'
+                        ? 'bg-[#2d1b69] text-white border-[#2d1b69]'
+                        : 'bg-slate-50 text-slate-700 border-slate-300'
+                    }`}
+                  >
+                    {canCashOps ? 'إيداع مباشر بالخزينة' : 'إيداع بالخزينة (مقيد)'}
+                  </button>
+                </div>
+              )}
+
+              {(depMode === 'customer_collection' || isRepRoleAccount) && (
+                <>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">العميل</label>
+                    <select
+                      value={depCustomerId}
+                      onChange={(e) => {
+                        setDepCustomerId(e.target.value);
+                        setDepInvoiceId('');
+                      }}
+                      className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
+                    >
+                      <option value="">-- اختر العميل --</option>
+                      {data.customers.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.shopName || c.name} — رصيد: {Number(c.currentBalance || 0).toLocaleString()} {currency}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* WA0005 3-Line Balance Summary Box */}
+                  {depCustomer && (
+                    <div className="rounded-2xl border border-slate-200 bg-[#f5f7fb] p-3.5 space-y-2 tabular-nums">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-slate-600">عليه حالياً</span>
+                        <strong className="font-mono text-sm font-black text-slate-900">
+                          {currentDueTotal.toLocaleString()} {currency}
+                        </strong>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-slate-600">هيدفع دلوقتي</span>
+                        <strong className="font-mono text-sm font-black text-emerald-700">
+                          {payNow.toLocaleString()} {currency}
+                        </strong>
+                      </div>
+                      <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-200">
+                        <span className="font-bold text-slate-700">هيتبقى عليه</span>
+                        <strong className={`font-mono text-sm font-black ${remainingAfterPay > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+                          {remainingAfterPay.toLocaleString()} {currency}
+                        </strong>
+                      </div>
+                    </div>
+                  )}
+
+                  {depCustomer && openCustomerInvoices.length > 0 && (
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">سداد فاتورة محددة (اختياري)</label>
+                      <select
+                        value={depInvoiceId}
+                        onChange={(e) => setDepInvoiceId(e.target.value)}
+                        className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
+                      >
+                        <option value="">توزيع تلقائي (الأقدم أولاً FIFO)</option>
+                        {openCustomerInvoices.map((inv) => (
+                          <option key={inv.id} value={inv.id}>
+                            {inv.invoiceNumber} · {inv.date} — متبقي: {Number(inv.remainingAmount || 0).toLocaleString()} {currency}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Amount Input + Quick Fill "ادفع المبلغ كله" */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="font-bold text-slate-700">المبلغ المدفوع ({currency})</label>
+                  {(depMode === 'customer_collection' || isRepRoleAccount) && targetDueForQuickFill > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setDepAmount(targetDueForQuickFill)}
+                      className="min-h-[34px] px-3 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-black cursor-pointer"
+                    >
+                      ادفع المبلغ كله ({targetDueForQuickFill.toLocaleString()})
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="number"
+                  min={0.01}
+                  step="0.01"
+                  value={depAmount === '' ? '' : depAmount}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    if (raw === '') {
+                      setDepAmount('');
+                    } else {
+                      setDepAmount(Math.max(0, Number(raw)));
+                    }
+                  }}
+                  placeholder={`أدخل المبلغ (${currency})`}
+                  className="w-full min-h-[48px] rounded-xl border border-slate-300 px-3 font-mono text-base font-black text-center text-emerald-800 bg-white tabular-nums"
+                />
+              </div>
+
+              <div className={`grid gap-2 ${!isRepRoleAccount ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2'}`}>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">التاريخ</label>
+                  <input
+                    type="date"
+                    value={depDate}
+                    onChange={(e) => setDepDate(e.target.value)}
+                    className="w-full min-h-[44px] rounded-xl border border-slate-300 px-2.5 font-mono font-bold bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">طريقة السداد</label>
+                  <select
+                    value={depMethod}
+                    onChange={(e) => setDepMethod(e.target.value as any)}
+                    className="w-full min-h-[44px] rounded-xl border border-slate-300 px-2.5 font-bold bg-white"
+                  >
+                    <option value="cash">نقدي</option>
+                    <option value="bank">تحويل بنكي</option>
+                    <option value="cheque">شيك</option>
+                  </select>
+                </div>
+                {!isRepRoleAccount && (
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">الخزينة</label>
+                    <select
+                      value={depCashboxId}
+                      onChange={(e) => setDepCashboxId(e.target.value)}
+                      className="w-full min-h-[44px] rounded-xl border border-slate-300 px-2.5 font-bold bg-white"
+                    >
+                      {data.cashboxes.map((cb) => (
+                        <option key={cb.id} value={cb.id}>{cb.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">ملاحظات (اختياري)</label>
+                <input
+                  type="text"
+                  value={depNotes}
+                  onChange={(e) => setDepNotes(e.target.value)}
+                  placeholder="ملاحظات (اختياري) - تظهر في إيصال الدفع"
+                  className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 bg-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => onTabChange('customers')}
+                  className="min-h-[48px] rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingDeposit || Number(depAmount || 0) <= 0}
+                  className="col-span-2 min-h-[48px] rounded-xl bg-[#2d1b69] hover:bg-[#231454] text-white font-black cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingDeposit ? 'جاري التسجيل...' : 'دفع وتأكيد التحصيل'}
+                </button>
+              </div>
             </div>
-          )}
-
-          {(depMode === 'customer_collection' || isRepRoleAccount) && (
-            <select
-              value={depCustomerId}
-              onChange={(e) => setDepCustomerId(e.target.value)}
-              className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
-            >
-              <option value="">-- اختر العميل --</option>
-              {data.customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.shopName || c.name} — رصيد: {c.currentBalance}
-                </option>
-              ))}
-            </select>
-          )}
-
-          <div className={`grid gap-2 ${isRepRoleAccount ? 'grid-cols-1' : 'grid-cols-2'}`}>
-            {!isRepRoleAccount && (
-              <select
-                value={depCashboxId}
-                onChange={(e) => setDepCashboxId(e.target.value)}
-                className="min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
-              >
-                {data.cashboxes.map((cb) => (
-                  <option key={cb.id} value={cb.id}>{cb.name}</option>
-                ))}
-              </select>
-            )}
-            <select
-              value={depMethod}
-              onChange={(e) => setDepMethod(e.target.value as any)}
-              className="min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
-            >
-              <option value="cash">نقدي</option>
-              <option value="bank">تحويل بنكي</option>
-              <option value="cheque">شيك</option>
-            </select>
-          </div>
-
-          <input
-            type="number"
-            min={1}
-            step="0.01"
-            value={depAmount || ''}
-            onChange={(e) => setDepAmount(Math.max(0, Number(e.target.value)))}
-            placeholder={`المبلغ (${data.settings.currency})`}
-            className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-mono font-black text-center text-emerald-800"
-          />
-
-          <input
-            type="text"
-            value={depNotes}
-            onChange={(e) => setDepNotes(e.target.value)}
-            placeholder="ملاحظات التحصيل..."
-            className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
-          />
-
-          <button
-            type="submit"
-            disabled={isSubmittingDeposit}
-            className="w-full min-h-[48px] rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
-          >
-            {isSubmittingDeposit ? 'جاري التسجيل...' : isRepRoleAccount ? 'تأكيد تحصيل الدفعة من العميل' : 'تأكيد الإيداع / التحصيل'}
-          </button>
-        </form>
-      )}
+          </form>
+        );
+      })()}
 
       {/* ==================== CASH WITHDRAWAL ==================== */}
       {activeTab === 'cash-withdrawal' && (
@@ -6318,7 +6540,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     min={0}
                     step="0.5"
                     value={quotePrice}
-                    onChange={(e) => setQuotePrice(Number(e.target.value))}
+                    onChange={(e) => setQuotePrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                    placeholder="السعر"
                     className="min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
                   />
                 </div>
@@ -7179,7 +7402,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     type="button"
                     onClick={() => {
                       const prod = activeProducts.find((p) => p.id === reqProdId);
-                      if (!prod || reqQty <= 0) return;
+                      const rq = Number(reqQty || 0);
+                      if (!prod || rq <= 0) return;
                       const vanQty = prod.stockPerWarehouse?.[effectiveVanId] || 0;
                       setReqItems((prev) => [
                         ...prev,
@@ -7187,12 +7411,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           productId: prod.id,
                           productName: prod.name,
                           unit: prod.baseUnit,
-                          requestedQty: reqQty,
+                          requestedQty: rq,
                           availableInVanQty: vanQty,
-                          shortageQty: Math.max(0, reqQty - vanQty),
+                          shortageQty: Math.max(0, rq - vanQty),
                         },
                       ]);
                       setReqProdId('');
+                      setReqQty('');
                     }}
                     className="min-h-[42px] px-3.5 rounded-xl bg-blue-900 text-white font-bold cursor-pointer"
                   >
@@ -7478,8 +7703,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     type="number"
                     step="0.5"
                     min={0}
-                    value={ordPrice}
+                    value={ordPrice || ''}
                     onChange={(e) => setOrdPrice(Math.max(0, Number(e.target.value)))}
+                    placeholder="السعر"
                     className="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
                   />
                 </div>
@@ -8428,8 +8654,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 type="number"
                 min={0}
                 step="0.01"
-                value={deliveryCollectedAmount}
+                value={deliveryCollectedAmount || ''}
                 onChange={(e) => setDeliveryCollectedAmount(Math.max(0, Number(e.target.value)))}
+                placeholder="المبلغ المحصل"
                 className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-mono font-black text-center text-emerald-800"
               />
             </div>
@@ -8499,7 +8726,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         </div>
       )}
 
-      {/* Customer Tap-for-Details & Account Statement Sheet */}
+      {/* Customer Tap-for-Details & WA0004 Account Statement Sheet */}
       {selectedCustomerDetail && (() => {
         const c = selectedCustomerDetail;
         const custInvoices = myInvoices
@@ -8532,420 +8759,609 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           statementPreviewDoc?.type === 'payment'
             ? data.financialTransactions.find((tx) => tx.id === statementPreviewDoc.docId) || null
             : null;
+
+        const filteredStmtEntries = (customerDetailStatement?.entries || []).filter((entry) => {
+          const entryDate = String(entry.date || '').slice(0, 10);
+          if (stmtDateFrom && entryDate && entryDate < stmtDateFrom) return false;
+          if (stmtDateTo && entryDate && entryDate > stmtDateTo) return false;
+          const q = stmtSearch.trim().toLowerCase();
+          if (q) {
+            const hay = `${entry.label || ''} ${entry.docNumber || ''} ${entry.description || ''}`.toLowerCase();
+            if (!hay.includes(q)) return false;
+          }
+          return true;
+        });
+
+        const totalRemainingVal = Number(stmtSummary?.currentBalance ?? c.currentBalance ?? 0);
+
+        const handlePrintCustomerStatementPdf = () => {
+          const activeBranches = data.settings.extraSettings?.branches || [];
+          const defaultBranch = activeBranches.find((b) => b.isDefault) || activeBranches[0];
+          const currency = data.settings.currency || 'ج.م';
+          exportHtmlToPdf({
+            title: 'كشف حساب تفصيلي للعميل',
+            subtitle: data.settings.companySubtitle,
+            companyName: data.settings.companyName,
+            address: data.settings.address,
+            phone1: data.settings.phone1,
+            phone2: data.settings.phone2,
+            branchName: defaultBranch?.name,
+            branchNumber: defaultBranch?.branchNumber || data.settings.branchNumber,
+            representativeName: rep?.name,
+            representativePhone: rep?.phone,
+            docNumber: c.code || c.id,
+            dateRangeText: stmtDateFrom || stmtDateTo ? `${stmtDateFrom || '...'} إلى ${stmtDateTo || '...'}` : undefined,
+            meta: [
+              { label: 'العميل', value: c.shopName || c.name },
+              ...(c.phone ? [{ label: 'هاتف العميل', value: c.phone }] : []),
+              ...(c.address && c.address !== '-' ? [{ label: 'عنوان العميل', value: c.address }] : []),
+            ],
+            tableHeaders: ['العملية', 'دفع', 'تاريخ', 'الفاتورة', 'باقي'],
+            tableRows: filteredStmtEntries.map((entry) => [
+              entry.label || '',
+              Number(entry.credit || 0).toLocaleString(),
+              entry.date || '',
+              Number(entry.debit || 0).toLocaleString(),
+              Number(entry.runningBalance ?? 0).toLocaleString(),
+            ]),
+            summaryPairs: [
+              { label: 'الإجمالي المتبقي', value: `${totalRemainingVal.toLocaleString()} ${currency}`, highlight: true },
+            ],
+          });
+        };
+
+        const handleShareCsvStatement = () => {
+          const lines = [
+            'العملية,دفع,تاريخ,الفاتورة,باقي,الرقم المرجعي',
+            ...filteredStmtEntries.map((entry) =>
+              `"${(entry.label || '').replace(/"/g, '""')}",${Number(entry.credit || 0)},${entry.date || ''},${Number(entry.debit || 0)},${Number(entry.runningBalance ?? 0)},"${(entry.docNumber || '').replace(/"/g, '""')}"`
+            ),
+          ];
+          const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `statement-${c.code || c.id}.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
+        };
+
         return (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
-            <div className="w-full max-w-2xl bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto flex flex-col gap-3 text-xs pb-safe">
-              <div className="flex items-start justify-between gap-2 border-b pb-3">
-                <div className="flex items-start gap-3">
-                  {(c.shopPhoto || c.photo) ? (
-                    <button
-                      type="button"
-                      onClick={() => setPreviewShopPhoto(c.shopPhoto || c.photo || null)}
-                      className="shrink-0 cursor-pointer"
-                      title="عرض صورة المحل بالحجم الكامل"
-                    >
-                      <img
-                        src={c.shopPhoto || c.photo}
-                        alt={c.shopName || c.name}
-                        className="w-16 h-16 rounded-2xl object-cover border border-slate-200 shadow-xs"
-                      />
-                    </button>
-                  ) : (
-                    <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-800 shrink-0">
-                      <Store className="w-7 h-7" />
-                    </div>
-                  )}
-                  <div>
-                    <h4 className="font-black text-base text-slate-900">{c.shopName || c.name}</h4>
-                    <p className="text-slate-500">
-                      {c.name} · {c.code}
-                      {c.governorate ? ` · ${c.governorate}` : ''}
-                      {c.area ? ` · ${c.area}` : ''}
+            <div className="w-full max-w-2xl bg-[#f5f7fb] rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl border border-slate-200 max-h-[92vh] flex flex-col text-xs pb-safe">
+              {/* WA0004 Purple Header Bar */}
+              <div className="bg-[#2d1b69] text-white px-4 py-3 flex items-center justify-between gap-2 shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCustomerDetail(null)}
+                    className="min-h-[38px] min-w-[38px] rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center text-white cursor-pointer shrink-0"
+                    aria-label="رجوع"
+                  >
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                  <div className="min-w-0">
+                    <h4 className="font-black text-sm truncate">
+                      {customerDetailSubTab === 'statement' ? 'عرض تفصيلي لحساب الآجل' : (c.shopName || c.name)}
+                    </h4>
+                    <p className="text-[11px] text-purple-200 truncate">
+                      {c.shopName || c.name} · {c.code}
                     </p>
-                    {c.address && c.address !== '-' && (
-                      <p className="text-[11px] text-slate-600 mt-0.5">{c.address}</p>
-                    )}
-                    {c.notes && (
-                      <p className="text-[11px] text-slate-500 mt-0.5">{c.notes}</p>
-                    )}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setSelectedCustomerDetail(null)}
-                  className="min-h-[38px] px-3 rounded-xl bg-slate-100 font-bold text-slate-700 cursor-pointer shrink-0"
-                >
-                  إغلاق
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setCustomerDetailSubTab(customerDetailSubTab === 'statement' ? 'overview' : 'statement')}
+                    className="min-h-[38px] min-w-[38px] rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center text-white cursor-pointer"
+                    title={customerDetailSubTab === 'statement' ? 'معلومات العميل' : 'كشف الحساب'}
+                  >
+                    <Info className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handlePrintCustomerStatementPdf}
+                    className="min-h-[38px] px-3 rounded-xl bg-white text-[#2d1b69] font-black inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>طباعة</span>
+                  </button>
+                </div>
               </div>
 
               {/* Detail Modal Sub-Tabs */}
-              <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-2xl">
-                <button
-                  type="button"
-                  onClick={() => setCustomerDetailSubTab('overview')}
-                  className={`min-h-[40px] rounded-xl font-black cursor-pointer ${
-                    customerDetailSubTab === 'overview' ? 'bg-blue-900 text-white shadow-xs' : 'text-slate-700'
-                  }`}
-                >
-                  ملف العميل والملخص
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCustomerDetailSubTab('statement')}
-                  className={`min-h-[40px] rounded-xl font-black cursor-pointer ${
-                    customerDetailSubTab === 'statement' ? 'bg-blue-900 text-white shadow-xs' : 'text-slate-700'
-                  }`}
-                >
-                  كشف الحساب التفصيلي
-                </button>
+              <div className="px-4 pt-3 pb-2 bg-white border-b border-slate-200 shrink-0">
+                <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => setCustomerDetailSubTab('overview')}
+                    className={`min-h-[40px] rounded-lg font-black cursor-pointer ${
+                      customerDetailSubTab === 'overview' ? 'bg-[#2d1b69] text-white shadow-xs' : 'text-slate-700'
+                    }`}
+                  >
+                    ملف العميل والملخص
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCustomerDetailSubTab('statement')}
+                    className={`min-h-[40px] rounded-lg font-black cursor-pointer ${
+                      customerDetailSubTab === 'statement' ? 'bg-[#2d1b69] text-white shadow-xs' : 'text-slate-700'
+                    }`}
+                  >
+                    كشف الحساب التفصيلي
+                  </button>
+                </div>
               </div>
 
-              {customerDetailSubTab === 'overview' && (
-                <>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-center tabular-nums">
-                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                      <span className="text-[10px] text-slate-500 block">
-                        {c.currentBalance < -0.009
-                          ? 'رصيد دائن للعميل (علينا)'
-                          : c.currentBalance > 0.009
-                          ? 'المبلغ المتبقي (لنا)'
-                          : 'الحساب متوازن'}
-                      </span>
-                      <strong
-                        className={`font-mono text-sm ${
-                          c.currentBalance > 0.009 ? 'text-red-700' : 'text-emerald-700'
-                        }`}
-                      >
-                        {Math.abs(c.currentBalance).toLocaleString()} {data.settings.currency}
-                      </strong>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200">
-                      <span className="text-[10px] text-blue-800 block">إجمالي المشتريات/الفواتير</span>
-                      <strong className="font-mono text-sm text-blue-950">
-                        {(stmtSummary?.totalSales ?? custInvoices.reduce((s, i) => s + Number(i.grandTotal || 0), 0)).toLocaleString()} {data.settings.currency}
-                      </strong>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
-                      <span className="text-[10px] text-emerald-800 block">إجمالي المدفوع والمحصل</span>
-                      <strong className="font-mono text-sm text-emerald-950">
-                        {(stmtSummary?.totalPaid ?? stmtSummary?.totalCredit ?? 0).toLocaleString()} {data.settings.currency}
-                      </strong>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                      <span className="text-[10px] text-slate-500 block">آخر فاتورة</span>
-                      <strong className="font-mono text-[11px] text-blue-950">
-                        {stmtSummary?.lastInvoiceDate
-                          ? `${stmtSummary.lastInvoiceDate} (${stmtSummary.lastInvoiceNumber || ''})`
-                          : latestInvoice
-                          ? `${latestInvoice.date} (${latestInvoice.invoiceNumber})`
-                          : 'لا يوجد'}
-                      </strong>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 col-span-1 sm:col-span-2">
-                      <span className="text-[10px] text-slate-500 block">آخر تحصيل / سداد</span>
-                      <strong className="font-mono text-[11px] text-emerald-900">
-                        {stmtSummary?.lastPaymentDate
-                          ? stmtSummary.lastPaymentDate
-                          : latestPaymentTx
-                          ? `${latestPaymentTx.amount.toLocaleString()} (${latestPaymentTx.date})`
-                          : 'لا يوجد'}
-                      </strong>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    {allPhones.map((ph, idx) => {
-                      const rawPhone = String(ph.phone || ph.number || '').trim();
-                      const clean = rawPhone.replace(/[^\d+]/g, '');
-                      if (clean.replace(/\D/g, '').length < 5) return null;
-                      return (
-                        <a
-                          key={ph.id || idx}
-                          href={`tel:${clean}`}
-                          className={`min-h-[42px] px-3 rounded-xl font-mono font-bold inline-flex items-center gap-1.5 border ${
-                            ph.isPrimary || idx === 0
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                              : 'bg-teal-50 text-teal-800 border-teal-200'
-                          }`}
-                        >
-                          <Phone className="w-4 h-4" />
-                          <span>{rawPhone}</span>
-                          {ph.label && <span className="font-sans text-[10px]">({ph.label})</span>}
-                        </a>
-                      );
-                    })}
-                    {hasValidMap && (
-                      <a
-                        href={mapsHref}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="min-h-[42px] px-3 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1.5"
-                      >
-                        <MapPin className="w-4 h-4 text-red-600" />
-                        <span>فتح في الخرائط</span>
-                      </a>
-                    )}
-                  </div>
-
-                  {parsedMap && (() => {
-                    const delta = 0.005;
-                    const bbox = `${parsedMap.lng - delta},${parsedMap.lat - delta},${parsedMap.lng + delta},${parsedMap.lat + delta}`;
-                    return (
-                      <div className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-50">
-                        <iframe
-                          title="معاينة موقع العميل"
-                          src={`https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${parsedMap.lat},${parsedMap.lng}`}
-                          className="w-full h-36 border-0"
-                          loading="lazy"
-                        />
-                      </div>
-                    );
-                  })()}
-
-                  <div className="space-y-1.5 border border-slate-200 rounded-2xl p-3">
-                    <span className="font-black text-slate-800 block mb-1">آخر فواتير العميل ({custInvoices.length})</span>
-                    {custInvoices.length === 0 ? (
-                      <p className="text-slate-400 text-center py-3">لا توجد فواتير مسجلة لهذا العميل.</p>
-                    ) : (
-                      custInvoices.map((inv) => (
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {customerDetailSubTab === 'overview' && (
+                  <>
+                    <div className="bg-white rounded-2xl border border-slate-200 p-3.5 flex items-start gap-3">
+                      {(c.shopPhoto || c.photo) ? (
                         <button
-                          key={inv.id}
                           type="button"
-                          onClick={() =>
-                            setStatementPreviewDoc({
-                              type: 'invoice',
-                              docId: inv.id,
-                              title: inv.invoiceNumber,
-                            })
-                          }
-                          className="w-full flex items-center justify-between py-2 px-2 rounded-xl hover:bg-blue-50/70 border-b border-slate-100 last:border-0 text-right cursor-pointer"
+                          onClick={() => setPreviewShopPhoto(c.shopPhoto || c.photo || null)}
+                          className="shrink-0 cursor-pointer"
+                          title="عرض صورة المحل بالحجم الكامل"
                         >
-                          <div>
-                            <span className="font-mono font-bold text-blue-950">{inv.invoiceNumber}</span>
-                            <span className="text-[10px] text-slate-500 mr-2">{inv.date}</span>
-                          </div>
-                          <div className="text-left">
-                            <strong className="font-mono text-slate-900 tabular-nums block">
-                              {inv.grandTotal.toLocaleString()} {data.settings.currency}
-                            </strong>
-                            {inv.remainingAmount > 0 && (
-                              <span className="text-[10px] font-bold text-red-700">
-                                متبقي: {inv.remainingAmount.toLocaleString()}
-                              </span>
-                            )}
-                          </div>
+                          <img
+                            src={c.shopPhoto || c.photo}
+                            alt={c.shopName || c.name}
+                            className="w-14 h-14 rounded-xl object-cover border border-slate-200"
+                          />
                         </button>
-                      ))
-                    )}
-                  </div>
-                </>
-              )}
-
-              {customerDetailSubTab === 'statement' && (
-                <div className="space-y-3">
-                  {isLoadingCustomerStatement ? (
-                    <p className="text-center py-8 text-slate-500 font-bold">جاري تحميل كشف الحساب التفصيلي...</p>
-                  ) : (
-                    <>
-                      {customerDetailStatement?.scope?.isRepScoped && (
-                        <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-950 font-bold text-[11px]">
-                          رصيد حساب العميل يمثل الرصيد العام على مستوى الشركة، بينما الفواتير والمرتجعات والدفعات المعروضة أدناه تخص عملياتك معه فقط.
+                      ) : (
+                        <div className="w-14 h-14 rounded-xl bg-purple-50 border border-purple-200 flex items-center justify-center text-[#2d1b69] shrink-0">
+                          <Store className="w-6 h-6" />
                         </div>
                       )}
+                      <div className="min-w-0">
+                        <h4 className="font-black text-sm text-slate-900">{c.shopName || c.name}</h4>
+                        <p className="text-slate-500">
+                          {c.name} · {c.code}
+                          {c.governorate ? ` · ${c.governorate}` : ''}
+                          {c.area ? ` · ${c.area}` : ''}
+                        </p>
+                        {c.address && c.address !== '-' && (
+                          <p className="text-[11px] text-slate-600 mt-0.5">{c.address}</p>
+                        )}
+                        {c.notes && (
+                          <p className="text-[11px] text-slate-500 mt-0.5">{c.notes}</p>
+                        )}
+                      </div>
+                    </div>
 
-                      {stmtSummary && (() => {
-                        const totalDebit = Number(stmtSummary.totalDebit || 0);
-                        const totalCredit = Number(stmtSummary.totalCredit || 0);
-                        const curBal = Number(stmtSummary.currentBalance || 0);
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-center tabular-nums">
+                      <div className="p-2.5 rounded-xl bg-white border border-slate-200">
+                        <span className="text-[10px] text-slate-500 block">
+                          {c.currentBalance < -0.009
+                            ? 'رصيد دائن للعميل (علينا)'
+                            : c.currentBalance > 0.009
+                            ? 'المبلغ المتبقي (لنا)'
+                            : 'الحساب متوازن'}
+                        </span>
+                        <strong
+                          className={`font-mono text-sm ${
+                            c.currentBalance > 0.009 ? 'text-red-700' : 'text-emerald-700'
+                          }`}
+                        >
+                          {Math.abs(c.currentBalance).toLocaleString()} {data.settings.currency}
+                        </strong>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-white border border-slate-200">
+                        <span className="text-[10px] text-blue-800 block">إجمالي الفواتير</span>
+                        <strong className="font-mono text-sm text-blue-950">
+                          {(stmtSummary?.totalSales ?? custInvoices.reduce((s, i) => s + Number(i.grandTotal || 0), 0)).toLocaleString()} {data.settings.currency}
+                        </strong>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-white border border-slate-200">
+                        <span className="text-[10px] text-emerald-800 block">إجمالي المحصل</span>
+                        <strong className="font-mono text-sm text-emerald-950">
+                          {(stmtSummary?.totalPaid ?? stmtSummary?.totalCredit ?? 0).toLocaleString()} {data.settings.currency}
+                        </strong>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-white border border-slate-200">
+                        <span className="text-[10px] text-slate-500 block">آخر فاتورة</span>
+                        <strong className="font-mono text-[11px] text-blue-950">
+                          {stmtSummary?.lastInvoiceDate
+                            ? `${stmtSummary.lastInvoiceDate} (${stmtSummary.lastInvoiceNumber || ''})`
+                            : latestInvoice
+                            ? `${latestInvoice.date} (${latestInvoice.invoiceNumber})`
+                            : 'لا يوجد'}
+                        </strong>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-white border border-slate-200 col-span-1 sm:col-span-2">
+                        <span className="text-[10px] text-slate-500 block">آخر تحصيل / سداد</span>
+                        <strong className="font-mono text-[11px] text-emerald-900">
+                          {stmtSummary?.lastPaymentDate
+                            ? stmtSummary.lastPaymentDate
+                            : latestPaymentTx
+                            ? `${latestPaymentTx.amount.toLocaleString()} (${latestPaymentTx.date})`
+                            : 'لا يوجد'}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {allPhones.map((ph, idx) => {
+                        const rawPhone = String(ph.phone || ph.number || '').trim();
+                        const clean = rawPhone.replace(/[^\d+]/g, '');
+                        if (clean.replace(/\D/g, '').length < 5) return null;
                         return (
-                          <div className="grid grid-cols-3 gap-2 text-center tabular-nums">
-                            <div className="p-2.5 rounded-xl bg-red-50 border border-red-200">
-                              <span className="text-[10px] text-red-700 block">إجمالي مدين (لنا)</span>
-                              <strong className="font-mono text-sm text-red-800">
-                                {totalDebit.toLocaleString()}
-                              </strong>
-                            </div>
-                            <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
-                              <span className="text-[10px] text-emerald-700 block">إجمالي دائن (سداد/مرتجع)</span>
-                              <strong className="font-mono text-sm text-emerald-800">
-                                {totalCredit.toLocaleString()}
-                              </strong>
-                            </div>
-                            <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200">
-                              <span className="text-[10px] text-blue-800 block">
-                                {curBal > 0.009
-                                  ? 'الرصيد (لنا)'
-                                  : curBal < -0.009
-                                  ? 'رصيد دائن (علينا)'
-                                  : 'متوازن'}
-                              </span>
-                              <strong className="font-mono text-sm text-blue-950">
-                                {Math.abs(curBal).toLocaleString()}
-                              </strong>
-                            </div>
-                          </div>
+                          <a
+                            key={ph.id || idx}
+                            href={`tel:${clean}`}
+                            className={`min-h-[42px] px-3 rounded-xl font-mono font-bold inline-flex items-center gap-1.5 border ${
+                              ph.isPrimary || idx === 0
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : 'bg-teal-50 text-teal-800 border-teal-200'
+                            }`}
+                          >
+                            <Phone className="w-4 h-4" />
+                            <span>{rawPhone}</span>
+                            {ph.label && <span className="font-sans text-[10px]">({ph.label})</span>}
+                          </a>
                         );
-                      })()}
+                      })}
+                      {hasValidMap && (
+                        <a
+                          href={mapsHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="min-h-[42px] px-3 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1.5"
+                        >
+                          <MapPin className="w-4 h-4 text-red-600" />
+                          <span>فتح في الخرائط</span>
+                        </a>
+                      )}
+                    </div>
 
-                      <div className="border border-slate-200 rounded-2xl overflow-hidden">
-                        {(customerDetailStatement?.entries || []).length === 0 ? (
-                          <p className="text-center text-slate-400 py-6">لا توجد حركات مسجلة لك مع هذا العميل.</p>
+                    {parsedMap && (() => {
+                      const delta = 0.005;
+                      const bbox = `${parsedMap.lng - delta},${parsedMap.lat - delta},${parsedMap.lng + delta},${parsedMap.lat + delta}`;
+                      return (
+                        <div className="rounded-2xl overflow-hidden border border-slate-200 bg-white">
+                          <iframe
+                            title="معاينة موقع العميل"
+                            src={`https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${parsedMap.lat},${parsedMap.lng}`}
+                            className="w-full h-36 border-0"
+                            loading="lazy"
+                          />
+                        </div>
+                      );
+                    })()}
+
+                    <div className="bg-white space-y-1.5 border border-slate-200 rounded-2xl p-3">
+                      <span className="font-black text-slate-800 block mb-1">آخر فواتير العميل ({custInvoices.length})</span>
+                      {custInvoices.length === 0 ? (
+                        <p className="text-slate-400 text-center py-3">لا توجد فواتير مسجلة لهذا العميل.</p>
+                      ) : (
+                        custInvoices.map((inv) => (
+                          <button
+                            key={inv.id}
+                            type="button"
+                            onClick={() =>
+                              setStatementPreviewDoc({
+                                type: 'invoice',
+                                docId: inv.id,
+                                title: inv.invoiceNumber,
+                              })
+                            }
+                            className="w-full flex items-center justify-between py-2 px-2 rounded-xl hover:bg-blue-50/70 border-b border-slate-100 last:border-0 text-right cursor-pointer"
+                          >
+                            <div>
+                              <span className="font-mono font-bold text-blue-950">{inv.invoiceNumber}</span>
+                              <span className="text-[10px] text-slate-500 mr-2">{inv.date}</span>
+                            </div>
+                            <div className="text-left">
+                              <strong className="font-mono text-slate-900 tabular-nums block">
+                                {inv.grandTotal.toLocaleString()} {data.settings.currency}
+                              </strong>
+                              {inv.remainingAmount > 0 && (
+                                <span className="text-[10px] font-bold text-red-700">
+                                  متبقي: {inv.remainingAmount.toLocaleString()}
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {customerDetailSubTab === 'statement' && (
+                  <div className="space-y-3">
+                    {/* Customer Switcher + Date Range Filter Strip */}
+                    <div className="bg-white rounded-2xl border border-slate-200 p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={c.id}
+                          onChange={(e) => {
+                            const nextC = data.customers.find((x) => x.id === e.target.value);
+                            if (nextC) {
+                              setSelectedCustomerDetail(nextC);
+                              setCustomerDetailSubTab('statement');
+                            }
+                          }}
+                          className="flex-1 min-h-[40px] rounded-xl border border-slate-300 px-2.5 font-bold bg-slate-50"
+                        >
+                          {data.customers.map((x) => (
+                            <option key={x.id} value={x.id}>
+                              {x.shopName || x.name} ({Number(x.currentBalance || 0).toLocaleString()} {data.settings.currency})
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsLoadingCustomerStatement(true);
+                            data.getCustomerStatement(c.id).then((res) => {
+                              if (res) setCustomerDetailStatement(res);
+                            }).finally(() => setIsLoadingCustomerStatement(false));
+                          }}
+                          className="min-h-[40px] min-w-[40px] rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700 cursor-pointer"
+                          title="تحديث كشف الحساب"
+                        >
+                          <RefreshCw className={`w-4 h-4 ${isLoadingCustomerStatement ? 'animate-spin' : ''}`} />
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        <input
+                          type="date"
+                          value={stmtDateFrom}
+                          onChange={(e) => setStmtDateFrom(e.target.value)}
+                          title="من تاريخ"
+                          className="min-h-[38px] rounded-xl border border-slate-300 px-2 font-mono text-[11px] bg-slate-50"
+                        />
+                        <input
+                          type="date"
+                          value={stmtDateTo}
+                          onChange={(e) => setStmtDateTo(e.target.value)}
+                          title="إلى تاريخ"
+                          className="min-h-[38px] rounded-xl border border-slate-300 px-2 font-mono text-[11px] bg-slate-50"
+                        />
+                        <input
+                          type="text"
+                          value={stmtSearch}
+                          onChange={(e) => setStmtSearch(e.target.value)}
+                          placeholder="بحث برقم المستند أو العملية..."
+                          className="col-span-2 sm:col-span-1 min-h-[38px] rounded-xl border border-slate-300 px-2.5 text-[11px] bg-slate-50"
+                        />
+                      </div>
+                    </div>
+
+                    {/* WA0004 3-Button Action & Remaining Bar */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDepMode('customer_collection');
+                          setDepCustomerId(c.id);
+                          setDepInvoiceId('');
+                          setDepAmount('');
+                          setSelectedCustomerDetail(null);
+                          onTabChange('cash-deposit');
+                        }}
+                        className="min-h-[48px] rounded-xl bg-[#2d1b69] hover:bg-[#231454] text-white font-black cursor-pointer"
+                      >
+                        دفع
+                      </button>
+                      <div className="min-h-[48px] rounded-xl bg-white border border-slate-200 px-2 py-1 flex flex-col items-center justify-center text-center tabular-nums">
+                        <span className="text-[10px] text-slate-500 font-bold">اجمالي المتبقي</span>
+                        <strong className={`font-mono text-sm font-black ${totalRemainingVal > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+                          {totalRemainingVal.toLocaleString()} {data.settings.currency}
+                        </strong>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (canEditCustomer) {
+                            openEditCustomerSheet(c);
+                          } else {
+                            setCustomerDetailSubTab('overview');
+                          }
+                        }}
+                        className="min-h-[48px] rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-black cursor-pointer"
+                      >
+                        تصحيح
+                      </button>
+                    </div>
+
+                    {customerDetailStatement?.scope?.isRepScoped && (
+                      <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-950 font-bold text-[11px]">
+                        رصيد حساب العميل يمثل الرصيد العام على مستوى الشركة، بينما الفواتير والمرتجعات والدفعات المعروضة أدناه تخص عملياتك معه فقط.
+                      </div>
+                    )}
+
+                    {/* WA0004 5-Column Tabular Ledger Table */}
+                    {isLoadingCustomerStatement ? (
+                      <p className="text-center py-8 text-slate-500 font-bold">جاري تحميل كشف الحساب التفصيلي...</p>
+                    ) : (
+                      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+                        {filteredStmtEntries.length === 0 ? (
+                          <p className="text-center text-slate-400 py-8">لا توجد حركات مسجلة مطابقة للبحث.</p>
                         ) : (
-                          <div className="divide-y divide-slate-100 max-h-[42vh] overflow-y-auto">
-                            {customerDetailStatement!.entries.map((entry) => {
-                              const rb = Number(entry.runningBalance ?? 0);
-                              const dirLabel = rb > 0.009 ? 'لنا' : rb < -0.009 ? 'علينا' : 'متوازن';
-                              const clickable = Boolean(entry.docId && (entry.docType === 'sales' || entry.docType === 'customer_payment'));
-                              return (
-                                <div
-                                  key={entry.id}
-                                  onClick={() => {
-                                    if (clickable && entry.docId) {
-                                      setStatementPreviewDoc({
-                                        type: entry.docType === 'customer_payment' ? 'payment' : 'invoice',
-                                        docId: entry.docId,
-                                        title: entry.docNumber || entry.label,
-                                      });
-                                    }
-                                  }}
-                                  className={`p-3 space-y-1 ${clickable ? 'hover:bg-blue-50/70 cursor-pointer' : ''}`}
-                                >
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className="font-black text-slate-900">{entry.label}</span>
-                                    <span className="font-mono text-[11px] text-slate-500">
-                                      {entry.docNumber} · {entry.date}
-                                    </span>
-                                  </div>
-                                  <p className="text-[11px] text-slate-600">{entry.description}</p>
-                                  {entry.createdBy && (
-                                    <p className="text-[10px] text-slate-400">بواسطة: {entry.createdBy}</p>
-                                  )}
-                                  <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] tabular-nums pt-0.5">
-                                    <span className="text-red-700">
-                                      {entry.debit ? `مدين: ${entry.debit.toLocaleString()}` : ''}
-                                    </span>
-                                    <span className="text-emerald-700">
-                                      {entry.credit ? `دائن: ${entry.credit.toLocaleString()}` : ''}
-                                    </span>
-                                    {typeof entry.remainingAmount === 'number' && entry.remainingAmount > 0 && (
-                                      <span className="text-amber-700">
-                                        متبقي: {entry.remainingAmount.toLocaleString()}
-                                      </span>
-                                    )}
-                                    <span className="font-black text-blue-950">
-                                      الرصيد: {Math.abs(rb).toLocaleString()} ({dirLabel})
-                                    </span>
-                                  </div>
-                                </div>
-                              );
-                            })}
+                          <div className="overflow-x-auto max-h-[42vh]">
+                            <table className="w-full text-right text-[11px] border-collapse">
+                              <thead className="sticky top-0 bg-slate-100 text-slate-700 font-black border-b border-slate-200">
+                                <tr>
+                                  <th className="py-2.5 px-2 whitespace-nowrap">العملية</th>
+                                  <th className="py-2.5 px-2 whitespace-nowrap text-center">دفع</th>
+                                  <th className="py-2.5 px-2 whitespace-nowrap text-center">تاريخ</th>
+                                  <th className="py-2.5 px-2 whitespace-nowrap text-center">الفاتورة</th>
+                                  <th className="py-2.5 px-2 whitespace-nowrap text-center">باقي</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 tabular-nums">
+                                {filteredStmtEntries.map((entry) => {
+                                  const rb = Number(entry.runningBalance ?? 0);
+                                  const clickable = Boolean(entry.docId && (entry.docType === 'sales' || entry.docType === 'customer_payment'));
+                                  return (
+                                    <tr
+                                      key={entry.id}
+                                      onClick={() => {
+                                        if (clickable && entry.docId) {
+                                          setStatementPreviewDoc({
+                                            type: entry.docType === 'customer_payment' ? 'payment' : 'invoice',
+                                            docId: entry.docId,
+                                            title: entry.docNumber || entry.label,
+                                          });
+                                        }
+                                      }}
+                                      className={clickable ? 'hover:bg-purple-50/70 cursor-pointer' : ''}
+                                    >
+                                      <td className="py-2.5 px-2 font-bold text-slate-900">
+                                        <span className="block truncate max-w-[110px]">{entry.label}</span>
+                                        {entry.docNumber && (
+                                          <span className="font-mono text-[10px] text-slate-400 block">{entry.docNumber}</span>
+                                        )}
+                                      </td>
+                                      <td className="py-2.5 px-2 text-center font-mono font-bold text-emerald-700 whitespace-nowrap">
+                                        {entry.credit ? Number(entry.credit).toLocaleString() : '-'}
+                                      </td>
+                                      <td className="py-2.5 px-2 text-center font-mono text-slate-600 whitespace-nowrap">
+                                        {entry.date}
+                                      </td>
+                                      <td className="py-2.5 px-2 text-center font-mono font-bold text-slate-800 whitespace-nowrap">
+                                        {entry.debit ? Number(entry.debit).toLocaleString() : '-'}
+                                      </td>
+                                      <td className={`py-2.5 px-2 text-center font-mono font-black whitespace-nowrap ${rb > 0.009 ? 'text-red-700' : 'text-emerald-700'}`}>
+                                        {rb.toLocaleString()}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
                           </div>
                         )}
                       </div>
-                    </>
-                  )}
-                </div>
-              )}
+                    )}
 
-              {statementPreviewDoc && (
-                <div className="p-3 rounded-2xl bg-blue-50 border border-blue-200 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <strong className="text-blue-950 font-black">
-                      تفاصيل المستند: {statementPreviewDoc.title}
-                    </strong>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={handleShareCsvStatement}
+                        className="min-h-[42px] rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Share2 className="w-4 h-4" />
+                        <span>مشاركة / CSV</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handlePrintCustomerStatementPdf}
+                        className="min-h-[42px] rounded-xl bg-[#2d1b69] hover:bg-[#231454] text-white font-black flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Printer className="w-4 h-4" />
+                        <span>طباعة</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {statementPreviewDoc && (
+                  <div className="p-3 rounded-2xl bg-blue-50 border border-blue-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <strong className="text-blue-950 font-black">
+                        تفاصيل المستند: {statementPreviewDoc.title}
+                      </strong>
+                      <button
+                        type="button"
+                        onClick={() => setStatementPreviewDoc(null)}
+                        className="px-2.5 py-1 rounded-lg bg-white text-slate-700 font-bold cursor-pointer"
+                      >
+                        إغلاق
+                      </button>
+                    </div>
+                    {previewInvoiceObj ? (
+                      <div className="space-y-1 text-[11px]">
+                        <div className="flex justify-between font-bold text-slate-700">
+                          <span>التاريخ: {previewInvoiceObj.date}</span>
+                          <span>الإجمالي: {previewInvoiceObj.grandTotal.toLocaleString()} {data.settings.currency}</span>
+                        </div>
+                        <div className="divide-y divide-blue-200/70 bg-white rounded-xl p-2">
+                          {(previewInvoiceObj.items || []).map((it, idx) => (
+                            <div key={idx} className="py-1 flex justify-between">
+                              <span>{it.productName} ({it.quantity} {it.unit})</span>
+                              <strong className="font-mono">{it.total.toLocaleString()}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : previewPaymentObj ? (
+                      <div className="bg-white rounded-xl p-2.5 space-y-1 text-[11px]">
+                        <div className="flex justify-between">
+                          <span>التاريخ:</span>
+                          <strong className="font-mono">{previewPaymentObj.date}</strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>المبلغ المحصل:</span>
+                          <strong className="font-mono text-emerald-700">
+                            {previewPaymentObj.amount.toLocaleString()} {data.settings.currency}
+                          </strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>البيان:</span>
+                          <span>{previewPaymentObj.notes || '-'}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-slate-600">لا تتوفر تفاصيل إضافية لهذا المستند محلياً.</p>
+                    )}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInvCustomerId(c.id);
+                      setSelectedCustomerDetail(null);
+                      onTabChange('new-invoice');
+                    }}
+                    className="min-h-[44px] rounded-xl bg-[#2d1b69] text-white font-black cursor-pointer"
+                  >
+                    + فاتورة جديدة
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDepMode('customer_collection');
+                      setDepCustomerId(c.id);
+                      setDepInvoiceId('');
+                      setDepAmount('');
+                      setSelectedCustomerDetail(null);
+                      onTabChange('cash-deposit');
+                    }}
+                    className="min-h-[44px] rounded-xl bg-emerald-700 text-white font-black cursor-pointer"
+                  >
+                    + تحصيل دفعة
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {canEditCustomer && (
                     <button
                       type="button"
-                      onClick={() => setStatementPreviewDoc(null)}
-                      className="px-2.5 py-1 rounded-lg bg-white text-slate-700 font-bold cursor-pointer"
+                      onClick={() => openEditCustomerSheet(c)}
+                      className="min-h-[42px] flex-1 rounded-xl bg-white hover:bg-slate-100 text-slate-900 border border-slate-300 font-bold inline-flex items-center justify-center gap-2 cursor-pointer"
                     >
-                      إغلاق
+                      <Edit className="w-4 h-4" />
+                      <span>تعديل بيانات العميل</span>
                     </button>
-                  </div>
-                  {previewInvoiceObj ? (
-                    <div className="space-y-1 text-[11px]">
-                      <div className="flex justify-between font-bold text-slate-700">
-                        <span>التاريخ: {previewInvoiceObj.date}</span>
-                        <span>الإجمالي: {previewInvoiceObj.grandTotal.toLocaleString()} {data.settings.currency}</span>
-                      </div>
-                      <div className="divide-y divide-blue-200/70 bg-white rounded-xl p-2">
-                        {(previewInvoiceObj.items || []).map((it, idx) => (
-                          <div key={idx} className="py-1 flex justify-between">
-                            <span>{it.productName} ({it.quantity} {it.unit})</span>
-                            <strong className="font-mono">{it.total.toLocaleString()}</strong>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : previewPaymentObj ? (
-                    <div className="bg-white rounded-xl p-2.5 space-y-1 text-[11px]">
-                      <div className="flex justify-between">
-                        <span>التاريخ:</span>
-                        <strong className="font-mono">{previewPaymentObj.date}</strong>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>المبلغ المحصل:</span>
-                        <strong className="font-mono text-emerald-700">
-                          {previewPaymentObj.amount.toLocaleString()} {data.settings.currency}
-                        </strong>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>البيان:</span>
-                        <span>{previewPaymentObj.notes || '-'}</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-[11px] text-slate-600">لا تتوفر تفاصيل إضافية لهذا المستند محلياً.</p>
+                  )}
+                  {canDeleteCustomer && (
+                    <button
+                      type="button"
+                      onClick={() => setDeleteCustomerTarget(c)}
+                      className="min-h-[42px] px-4 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>حذف</span>
+                    </button>
                   )}
                 </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setInvCustomerId(c.id);
-                    setSelectedCustomerDetail(null);
-                    onTabChange('new-invoice');
-                  }}
-                  className="min-h-[44px] rounded-xl bg-blue-900 text-white font-black cursor-pointer"
-                >
-                  + فاتورة جديدة
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDepMode('customer_collection');
-                    setDepCustomerId(c.id);
-                    setSelectedCustomerDetail(null);
-                    onTabChange('cash-deposit');
-                  }}
-                  className="min-h-[44px] rounded-xl bg-emerald-700 text-white font-black cursor-pointer"
-                >
-                  + تحصيل دفعة
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {canEditCustomer && (
-                  <button
-                    type="button"
-                    onClick={() => openEditCustomerSheet(c)}
-                    className="min-h-[42px] flex-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-300 font-bold inline-flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <Edit className="w-4 h-4" />
-                    <span>تعديل بيانات العميل</span>
-                  </button>
-                )}
-                {canDeleteCustomer && (
-                  <button
-                    type="button"
-                    onClick={() => setDeleteCustomerTarget(c)}
-                    className="min-h-[42px] px-4 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    <span>حذف</span>
-                  </button>
-                )}
               </div>
             </div>
           </div>
@@ -9075,7 +9491,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 <span>الإجمالي الفرعي:</span>
                 <strong className="font-mono">{purSubtotal.toLocaleString()} {data.settings.currency}</strong>
               </div>
-              {purDiscount > 0 && (
+              {Number(purDiscount) > 0 && (
                 <div className="flex justify-between text-rose-700">
                   <span>الخصم:</span>
                   <strong className="font-mono">-{Number(purDiscount).toLocaleString()} {data.settings.currency}</strong>

@@ -29,9 +29,9 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
   const [editingEmp, setEditingEmp] = useState<Employee | null>(null);
   const [empName, setEmpName] = useState('');
   const [empPhone, setEmpPhone] = useState('');
-  const [empJob, setEmpJob] = useState('مندوب مبيعات وتوزيع');
-  const [empDept, setEmpDept] = useState('المبيعات والتسويق');
-  const [empSalary, setEmpSalary] = useState(6000);
+  const [empJob, setEmpJob] = useState('');
+  const [empDept, setEmpDept] = useState('');
+  const [empSalary, setEmpSalary] = useState<number | ''>('');
   const [empNationalId, setEmpNationalId] = useState('');
   const [empUserId, setEmpUserId] = useState('');
   const [empStatus, setEmpStatus] = useState<'active' | 'suspended'>('active');
@@ -43,8 +43,8 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
   const [attDate, setAttDate] = useState(new Date().toISOString().split('T')[0]);
   const [attEmpId, setAttEmpId] = useState('');
   const [attStatus, setAttStatus] = useState<'present' | 'absent' | 'late' | 'leave'>('present');
-  const [attCheckIn, setAttCheckIn] = useState('08:30');
-  const [attCheckOut, setAttCheckOut] = useState('17:00');
+  const [attCheckIn, setAttCheckIn] = useState('');
+  const [attCheckOut, setAttCheckOut] = useState('');
   const [attNotes, setAttNotes] = useState('');
   const [isSavingAtt, setIsSavingAtt] = useState(false);
 
@@ -52,8 +52,8 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
   const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
   const [selectedEmpId, setSelectedEmpId] = useState(employees[0]?.id || '');
   const [advanceType, setAdvanceType] = useState<'advance' | 'deduction' | 'bonus'>('advance');
-  const [advanceAmount, setAdvanceAmount] = useState(500);
-  const [advanceReason, setAdvanceReason] = useState('سلفة نقدية على الراتب');
+  const [advanceAmount, setAdvanceAmount] = useState<number | ''>('');
+  const [advanceReason, setAdvanceReason] = useState('');
   const [advanceCashboxId, setAdvanceCashboxId] = useState(cashboxes[0]?.id || '');
   const [advanceError, setAdvanceError] = useState<string | null>(null);
   const [isSavingAdvance, setIsSavingAdvance] = useState(false);
@@ -123,9 +123,9 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
     setEditingEmp(null);
     setEmpName('');
     setEmpPhone('');
-    setEmpJob('مندوب مبيعات وتوزيع');
-    setEmpDept('المبيعات والتسويق');
-    setEmpSalary(6000);
+    setEmpJob('');
+    setEmpDept('');
+    setEmpSalary('');
     setEmpNationalId('');
     setEmpUserId('');
     setEmpStatus('active');
@@ -158,6 +158,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
       return;
     }
 
+    const salaryVal = Number(empSalary || 0);
     setIsSavingEmp(true);
     try {
       if (editingEmp) {
@@ -166,7 +167,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
           phone: empPhone.trim(),
           jobTitle: empJob.trim(),
           department: empDept.trim(),
-          basicSalary: empSalary,
+          basicSalary: salaryVal,
           nationalId: empNationalId.trim() || undefined,
           userId: empUserId || undefined,
           status: empStatus,
@@ -184,7 +185,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
           phone: empPhone.trim(),
           jobTitle: empJob.trim(),
           department: empDept.trim(),
-          basicSalary: empSalary,
+          basicSalary: salaryVal,
           hireDate: new Date().toISOString().split('T')[0],
           nationalId: empNationalId.trim() || undefined,
           userId: empUserId || undefined,
@@ -230,7 +231,8 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
       setAdvanceError('يرجى اختيار الموظف');
       return;
     }
-    if (advanceAmount <= 0) {
+    const advVal = Number(advanceAmount || 0);
+    if (advVal <= 0) {
       setAdvanceError('يرجى إدخال مبلغ صحيح أكبر من صفر');
       return;
     }
@@ -244,7 +246,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
       employeeId: emp.id,
       employeeName: emp.name,
       type: advanceType,
-      amount: advanceAmount,
+      amount: advVal,
       date: new Date().toISOString().split('T')[0],
       reason: advanceReason.trim(),
       cashboxId: advanceType === 'advance' ? advanceCashboxId : undefined,
@@ -255,6 +257,8 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
       setAdvanceError(res.error || 'تعذر تسجيل الحركة');
       return;
     }
+    setAdvanceAmount('');
+    setAdvanceReason('');
     setIsAdvanceModalOpen(false);
     setActionMessage({
       type: 'success',
@@ -920,6 +924,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
               <input
                 type="text"
                 required
+                placeholder="أدخل المسمى الوظيفي"
                 value={empJob}
                 onChange={(e) => setEmpJob(e.target.value)}
                 className="w-full border rounded-xl p-2.5"
@@ -930,6 +935,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
               <input
                 type="text"
                 required
+                placeholder="أدخل القسم"
                 value={empDept}
                 onChange={(e) => setEmpDept(e.target.value)}
                 className="w-full border rounded-xl p-2.5"
@@ -943,8 +949,9 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                 type="number"
                 min="0"
                 required
+                placeholder="0.00"
                 value={empSalary}
-                onChange={(e) => setEmpSalary(Number(e.target.value))}
+                onChange={(e) => setEmpSalary(e.target.value === '' ? '' : Number(e.target.value))}
                 className="w-full border rounded-xl p-2.5 font-mono font-bold"
               />
             </div>
@@ -1044,16 +1051,6 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
               onChange={(e) => {
                 const nextType = e.target.value as 'advance' | 'deduction' | 'bonus';
                 setAdvanceType(nextType);
-                const defaults = ['سلفة نقدية على الراتب', 'خصم إداري', 'مكافأة تشجيعية', ''];
-                if (defaults.includes(advanceReason.trim())) {
-                  setAdvanceReason(
-                    nextType === 'advance'
-                      ? 'سلفة نقدية على الراتب'
-                      : nextType === 'deduction'
-                      ? 'خصم إداري'
-                      : 'مكافأة تشجيعية'
-                  );
-                }
               }}
               className="w-full border rounded-xl p-2.5 font-bold"
             >
@@ -1069,8 +1066,9 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
               type="number"
               min="1"
               required
+              placeholder="0.00"
               value={advanceAmount}
-              onChange={(e) => setAdvanceAmount(Number(e.target.value))}
+              onChange={(e) => setAdvanceAmount(e.target.value === '' ? '' : Number(e.target.value))}
               className="w-full border rounded-xl p-2.5 font-mono font-black text-center text-sm"
             />
           </div>

@@ -151,7 +151,7 @@ Enforced strict `actor.role === 'customer'` ownership scoping on customer record
 ---
 
 ### 6. Local Automated Verification Summary
-All 15 suites in `.github/workflows/ci.yml` passed locally after final edits (PostgreSQL suites executed via `pg-mem`, while live PostgreSQL 16 verification is defined in `.github/workflows/ci.yml`):
+All 16 suites in `.github/workflows/ci.yml` passed locally after final edits (PostgreSQL suites executed via `pg-mem`, while live PostgreSQL 16 verification is defined in `.github/workflows/ci.yml`):
 - `node server/tests/runAllTests.mjs` — PASS
 - `node server/tests/repPurchaseCustomerRbacTests.mjs` — PASS
 - `node server/tests/masterRepairVerificationTests.mjs` — PASS
@@ -166,7 +166,9 @@ All 15 suites in `.github/workflows/ci.yml` passed locally after final edits (Po
 - `node server/tests/fullCompletionSuite.mjs` — PASS
 - `node server/tests/finalSecurityAuditTests.mjs` — PASS (37 assertion groups across JSON & `pg-mem`, including Group 17)
 - `node server/tests/productionReadinessAuditTests.mjs` — PASS (16 assertion groups across report titles, catalog hygiene, JSON & `pg-mem` workflows, `balanceAfter`, backup/restore, and order advance/stage isolation)
+- `node server/tests/identityAndFiltersTests.mjs` — PASS (14 assertion groups across JSON & `pg-mem` covering unified `identityId`, `nationalId` conflict guard, multi-role RBAC isolation, safe audit/conflict resolution, `actorIdentityId`/`actorEmployeeId`/`actingRole` attribution, and separate Employee vs User report filters)
 - `npx tsx server/tests/diagnosticsTests.mts` — PASS (3 / 3)
-- `bun install --frozen-lockfile` & `bun audit` — PASS (0 vulnerabilities)
+- `bun install --frozen-lockfile`, `bun audit` (0 vulnerabilities), `bun run lint`, `bun run build`, and `bun run cap:sync` — PASS
+
 
 

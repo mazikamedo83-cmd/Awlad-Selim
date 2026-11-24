@@ -4245,9 +4245,10 @@ export async function addInvoicePaymentPgTx(client, invoiceId, paymentData, acto
     `UPDATE invoices SET paid_amount = $1, remaining_amount = $2, payment_type = $3, updated_at = $4 WHERE id = $5`,
     [newPaid, newRem, newPayType, now, invoiceId]
   );
+  const collectionLocation = actor?.role === 'representative' ? 'rep' : 'branch';
   await client.query(
-    `INSERT INTO invoice_payments (id, invoice_id, invoice_number, amount, date, payment_method, cashbox_id, cashbox_name, notes, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+    `INSERT INTO invoice_payments (id, invoice_id, invoice_number, amount, date, payment_method, cashbox_id, cashbox_name, notes, collection_location, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
     [
       payId,
       invoiceId,
@@ -4258,6 +4259,7 @@ export async function addInvoicePaymentPgTx(client, invoiceId, paymentData, acto
       cbRes.rows[0].id,
       cbRes.rows[0].name,
       paymentData.notes || 'سداد دفعة على الفاتورة',
+      collectionLocation,
       actor.fullName,
       actor.id || null,
       payActorCtx.actorIdentityId || null,
@@ -4385,6 +4387,7 @@ export function addInvoicePaymentJsonTx(db, invoiceId, paymentData, actor, idemp
   if (!cb) throw new AppError(404, 'الخزينة المحددة غير موجودة', 'CASHBOX_NOT_FOUND');
 
   const payActorCtxJson = resolveActorIdentityJsonTx(db, actor);
+  const collectionLocation = actor?.role === 'representative' ? 'rep' : 'branch';
   const newPayment = {
     id: payId,
     invoiceId: inv.id,
@@ -4395,6 +4398,7 @@ export function addInvoicePaymentJsonTx(db, invoiceId, paymentData, actor, idemp
     cashboxId: cb.id,
     cashboxName: cb.name,
     notes: paymentData.notes || 'سداد دفعة على الفاتورة',
+    collectionLocation,
     createdBy: actor.fullName,
     createdByUserId: actor.id,
     actorIdentityId: payActorCtxJson.actorIdentityId,

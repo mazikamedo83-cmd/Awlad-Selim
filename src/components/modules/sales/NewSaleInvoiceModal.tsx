@@ -43,8 +43,8 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
   const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [paymentType, setPaymentType] = useState<'cash' | 'credit' | 'partial'>('cash');
   const [invoiceStatusMode, setInvoiceStatusMode] = useState<'confirmed' | 'draft'>('confirmed');
-  const [paidAmount, setPaidAmount] = useState<number>(0);
-  const [discountTotal, setDiscountTotal] = useState<number>(0);
+  const [paidAmount, setPaidAmount] = useState<number | ''>('');
+  const [discountTotal, setDiscountTotal] = useState<number | ''>('');
   const [notes, setNotes] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,8 +67,8 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
   const [barcodeInput, setBarcodeInput] = useState('');
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [selectedUnitName, setSelectedUnitName] = useState<string>('');
-  const [inputQuantity, setInputQuantity] = useState<number>(1);
-  const [inputUnitPrice, setInputUnitPrice] = useState<number>(0);
+  const [inputQuantity, setInputQuantity] = useState<number | ''>('');
+  const [inputUnitPrice, setInputUnitPrice] = useState<number | ''>('');
 
   const hydratedSourceOrderRef = useRef<CustomerItemOrderRequest | null>(sourceOrder);
   hydratedSourceOrderRef.current = sourceOrder;
@@ -93,8 +93,8 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
         setSelectedRepId(order.deliveryRepId || order.representativeId || '');
       }
       setPaymentType(orderAdvance > 0 ? 'partial' : 'credit');
-      setPaidAmount(0);
-      setDiscountTotal(0);
+      setPaidAmount('');
+      setDiscountTotal('');
       setNotes(
         `تحويل طلب عميل رقم ${order.requestNumber}${order.notes ? ` — ${order.notes}` : ''}`
       );
@@ -126,7 +126,8 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     } else {
       setSelectedCustomerId('');
       setPaymentType('cash');
-      setDiscountTotal(0);
+      setPaidAmount('');
+      setDiscountTotal('');
       setNotes('');
       setItems([]);
     }
@@ -228,11 +229,13 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
       setError('يرجى اختيار صنف أولاً');
       return;
     }
-    if (inputQuantity <= 0) {
+    const qtyVal = Number(inputQuantity || 0);
+    const priceVal = Number(inputUnitPrice || 0);
+    if (qtyVal <= 0) {
       setError('يرجى إدخال كمية صحيحة أكبر من صفر');
       return;
     }
-    if (inputUnitPrice < 0) {
+    if (priceVal < 0) {
       setError('سعر البيع لا يمكن أن يكون سالباً');
       return;
     }
@@ -249,7 +252,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     }
 
     const availInWh = selectedProduct.stockPerWarehouse[selectedWarehouseId] || 0;
-    const reqBase = inputQuantity * unitFactor;
+    const reqBase = qtyVal * unitFactor;
     const isRepInvoice = Boolean(selectedRepId || currentUser?.role === 'representative');
 
     if (invoiceStatusMode === 'confirmed' && availInWh < reqBase && !settings.allowNegativeStock && !isRepInvoice) {
@@ -257,7 +260,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
       return;
     }
 
-    const itemTotal = computeLineTotal(inputQuantity, inputUnitPrice);
+    const itemTotal = computeLineTotal(qtyVal, priceVal);
 
     setItems((prev) => [
       ...prev,
@@ -267,8 +270,8 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
         barcode: selectedProduct.barcode,
         unit: selectedUnitName,
         unitFactor,
-        quantity: inputQuantity,
-        unitPrice: inputUnitPrice,
+        quantity: qtyVal,
+        unitPrice: priceVal,
         purchasePriceAtTime,
         discount: 0,
         total: itemTotal,
@@ -276,8 +279,8 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     ]);
 
     setSelectedProductId('');
-    setInputQuantity(1);
-    setInputUnitPrice(0);
+    setInputQuantity('');
+    setInputUnitPrice('');
     setError(null);
     window.setTimeout(() => {
       productSearchRef.current?.focus();
@@ -318,7 +321,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
   }, [items]);
 
   const grandTotal = useMemo(() => {
-    return Math.max(0, subtotal - discountTotal);
+    return Math.max(0, subtotal - Number(discountTotal || 0));
   }, [subtotal, discountTotal]);
 
   const appliedAdvance = useMemo(() => {
@@ -445,7 +448,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
         warehouseName: wh?.name || 'المستودع الرئيسي',
         items,
         subtotal,
-        discountTotal,
+        discountTotal: Number(discountTotal || 0),
         taxTotal: 0,
         grandTotal,
         paidAmount: totalPaidOnInvoice,
@@ -725,8 +728,9 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                 <input
                   type="number"
                   step="0.5"
+                  placeholder="0.00"
                   value={inputUnitPrice}
-                  onChange={(e) => setInputUnitPrice(Number(e.target.value))}
+                  onChange={(e) => setInputUnitPrice(e.target.value === '' ? '' : Number(e.target.value))}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
@@ -940,8 +944,9 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                 <input
                   type="number"
                   min="0"
+                  placeholder="0.00"
                   value={discountTotal}
-                  onChange={(e) => setDiscountTotal(Number(e.target.value))}
+                  onChange={(e) => setDiscountTotal(e.target.value === '' ? '' : Number(e.target.value))}
                   className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-center font-mono font-bold text-red-600 text-xs"
                 />
               </div>
@@ -974,8 +979,9 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                     type="number"
                     min="0"
                     max={maxCashAtInvoice}
+                    placeholder="0.00"
                     value={paidAmount}
-                    onChange={(e) => setPaidAmount(Math.min(maxCashAtInvoice, Math.max(0, Number(e.target.value))))}
+                    onChange={(e) => setPaidAmount(e.target.value === '' ? '' : Math.min(maxCashAtInvoice, Math.max(0, Number(e.target.value))))}
                     className="w-full bg-emerald-50 border border-emerald-300 rounded-lg px-2 py-1 text-center font-mono font-bold text-emerald-800 text-xs"
                   />
                 </div>

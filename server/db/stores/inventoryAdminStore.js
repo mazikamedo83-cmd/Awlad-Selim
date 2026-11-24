@@ -311,6 +311,7 @@ export async function getStaffBootstrapData(actor) {
           address: sRow.address || '',
           commercialRegistration: sRow.commercial_registration || '',
           taxNumber: sRow.tax_number || '',
+          branchNumber: sRow.branch_number || rawExtra.branchNumber || '',
           currency: sRow.currency || 'ج.م',
           defaultPrintMode: sRow.default_print_mode || 'a4',
           invoiceNotes: sRow.invoice_notes || '',
@@ -4226,8 +4227,8 @@ export async function settleSupplierAdvance({ supplierId, invoiceId, amount, not
       );
       const actorCtx = await resolveActorIdentityPgTx(client, actor);
       await client.query(
-        `INSERT INTO invoice_payments (id, invoice_id, invoice_number, amount, date, payment_method, cashbox_id, cashbox_name, notes, created_by_user_id, created_by, actor_identity_id, actor_employee_id, acting_role, created_at)
-         VALUES ($1,$2,$3,$4,$5,'advance_settlement',$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        `INSERT INTO invoice_payments (id, invoice_id, invoice_number, amount, date, payment_method, cashbox_id, cashbox_name, notes, collection_location, created_by_user_id, created_by, actor_identity_id, actor_employee_id, acting_role, created_at)
+         VALUES ($1,$2,$3,$4,$5,'advance_settlement',$6,$7,$8,'branch',$9,$10,$11,$12,$13,$14)`,
         [
           payId,
           invoiceId,
@@ -6354,8 +6355,13 @@ export async function updateSystemSettings(updates, actor) {
             ...(updates.mobileConfig || {}),
           };
         }
+        const nextBranchNumber =
+          updates.branchNumber !== undefined
+            ? String(updates.branchNumber || '')
+            : (cur.branch_number ?? prevExtra.branchNumber ?? '');
+        mergedExtra.branchNumber = nextBranchNumber;
         await client.query(
-          `UPDATE system_settings SET company_name=$1, company_subtitle=$2, phone1=$3, phone2=$4, address=$5, commercial_registration=$6, tax_number=$7, currency=$8, default_print_mode=$9, invoice_notes=$10, allow_negative_stock=$11, extra_settings=$12, updated_at=$13 WHERE id=$14`,
+          `UPDATE system_settings SET company_name=$1, company_subtitle=$2, phone1=$3, phone2=$4, address=$5, commercial_registration=$6, tax_number=$7, branch_number=$8, currency=$9, default_print_mode=$10, invoice_notes=$11, allow_negative_stock=$12, extra_settings=$13, updated_at=$14 WHERE id=$15`,
           [
             updates.companyName ?? cur.company_name,
             updates.companySubtitle ?? cur.company_subtitle,
@@ -6364,6 +6370,7 @@ export async function updateSystemSettings(updates, actor) {
             updates.address ?? cur.address,
             updates.commercialRegistration ?? cur.commercial_registration,
             updates.taxNumber ?? cur.tax_number,
+            nextBranchNumber,
             updates.currency ?? cur.currency,
             updates.defaultPrintMode ?? cur.default_print_mode,
             updates.invoiceNotes ?? cur.invoice_notes,
@@ -6373,7 +6380,7 @@ export async function updateSystemSettings(updates, actor) {
             cur.id,
           ]
         );
-        return { ...updates, extraSettings: mergedExtra, mobileConfig: mergedExtra.mobileConfig };
+        return { ...updates, branchNumber: nextBranchNumber, extraSettings: mergedExtra, mobileConfig: mergedExtra.mobileConfig };
       } else {
         const extraSettings = { ...(updates.extraSettings || {}) };
         if (extraSettings.connectionConfig !== undefined) {
@@ -6382,9 +6389,11 @@ export async function updateSystemSettings(updates, actor) {
         if (updates.mobileConfig) {
           extraSettings.mobileConfig = { ...(extraSettings.mobileConfig || {}), ...(updates.mobileConfig || {}) };
         }
+        const nextBranchNumber = String(updates.branchNumber ?? extraSettings.branchNumber ?? '');
+        extraSettings.branchNumber = nextBranchNumber;
         await client.query(
-          `INSERT INTO system_settings (id, company_name, company_subtitle, phone1, phone2, address, commercial_registration, tax_number, currency, default_print_mode, invoice_notes, allow_negative_stock, extra_settings, updated_at)
-           VALUES ('default',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+          `INSERT INTO system_settings (id, company_name, company_subtitle, phone1, phone2, address, commercial_registration, tax_number, branch_number, currency, default_print_mode, invoice_notes, allow_negative_stock, extra_settings, updated_at)
+           VALUES ('default',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
           [
             updates.companyName || 'أولاد سليم',
             updates.companySubtitle || '',
@@ -6393,6 +6402,7 @@ export async function updateSystemSettings(updates, actor) {
             updates.address || '',
             updates.commercialRegistration || '',
             updates.taxNumber || '',
+            nextBranchNumber,
             updates.currency || 'ج.م',
             updates.defaultPrintMode || 'a4',
             updates.invoiceNotes || '',
@@ -6401,7 +6411,7 @@ export async function updateSystemSettings(updates, actor) {
             now,
           ]
         );
-        return { ...updates, extraSettings, mobileConfig: extraSettings.mobileConfig };
+        return { ...updates, branchNumber: nextBranchNumber, extraSettings, mobileConfig: extraSettings.mobileConfig };
       }
     });
     await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: 'تحديث إعدادات المؤسسة والاتصال', module: 'الإعدادات' });

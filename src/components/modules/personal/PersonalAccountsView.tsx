@@ -49,7 +49,7 @@ export const PersonalAccountsView: React.FC = () => {
   const [accOwnerName, setAccOwnerName] = useState('');
   const [accName, setAccName] = useState('');
   const [accDesc, setAccDesc] = useState('');
-  const [accOpening, setAccOpening] = useState<number>(0);
+  const [accOpening, setAccOpening] = useState<number | ''>('');
   const [accStatus, setAccStatus] = useState<'active' | 'suspended'>('active');
   const [accNotes, setAccNotes] = useState('');
   const [accError, setAccError] = useState<string | null>(null);
@@ -59,7 +59,7 @@ export const PersonalAccountsView: React.FC = () => {
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
   const [txAccountId, setTxAccountId] = useState('');
   const [txType, setTxType] = useState<OwnerPersonalTransaction['type']>('personal_deposit');
-  const [txAmount, setTxAmount] = useState<number>(0);
+  const [txAmount, setTxAmount] = useState<number | ''>('');
   const [txDate, setTxDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [txCashboxId, setTxCashboxId] = useState<string>('');
   const [txReason, setTxReason] = useState('');
@@ -115,7 +115,7 @@ export const PersonalAccountsView: React.FC = () => {
     setAccOwnerName('');
     setAccName('');
     setAccDesc('');
-    setAccOpening(0);
+    setAccOpening('');
     setAccStatus('active');
     setAccNotes('');
     setAccError(null);
@@ -173,7 +173,7 @@ export const PersonalAccountsView: React.FC = () => {
     const targetAccId = presetAccountId || (selectedAccountId !== 'all' ? selectedAccountId : ownerAccounts[0]?.id || '');
     setTxAccountId(targetAccId);
     setTxType(presetType || 'personal_deposit');
-    setTxAmount(0);
+    setTxAmount('');
     setTxDate(new Date().toISOString().split('T')[0]);
     setTxCashboxId('');
     setTxReason('');
@@ -189,7 +189,8 @@ export const PersonalAccountsView: React.FC = () => {
       setTxError('يرجى اختيار الحساب الشخصي أولاً.');
       return;
     }
-    if (!txAmount || (txType !== 'adjustment' && txAmount <= 0)) {
+    const numTxAmt = Number(txAmount || 0);
+    if (txAmount === '' || (txType !== 'adjustment' && numTxAmt <= 0)) {
       setTxError('يرجى إدخال مبلغ صحيح.');
       return;
     }
@@ -201,7 +202,7 @@ export const PersonalAccountsView: React.FC = () => {
     setIsSavingTx(true);
     const res = await createOwnerTransaction(txAccountId, {
       type: txType,
-      amount: txAmount,
+      amount: numTxAmt,
       date: txDate,
       cashboxId: txType === 'adjustment' ? undefined : txCashboxId || undefined,
       reason: txReason.trim(),
@@ -432,7 +433,7 @@ export const PersonalAccountsView: React.FC = () => {
                     {acc.description && <p className="text-[11px] text-slate-500 mt-0.5">{acc.description}</p>}
                   </div>
                   <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${acc.status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
+                    <span className={`px-2 py-0.5 rounded border text-[10px] font-bold ${acc.status === 'active' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
                       {acc.status === 'active' ? 'نشط' : 'موقوف'}
                     </span>
                     {canEditTx && (
@@ -564,7 +565,7 @@ export const PersonalAccountsView: React.FC = () => {
                         <span className="text-[10px] text-slate-500">{tx.accountName}</span>
                       </td>
                       <td className="p-3">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${meta.color}`}>{meta.label}</span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${meta.color}`}>{meta.label}</span>
                       </td>
                       <td className="p-3 text-center font-mono font-black text-slate-900">
                         {tx.amount.toLocaleString()} {settings.currency}
@@ -649,8 +650,9 @@ export const PersonalAccountsView: React.FC = () => {
               <input
                 type="number"
                 step="0.01"
+                placeholder="0.00"
                 value={accOpening}
-                onChange={(e) => setAccOpening(Number(e.target.value))}
+                onChange={(e) => setAccOpening(e.target.value === '' ? '' : Number(e.target.value))}
                 className="w-full border rounded-xl p-2.5 font-mono font-bold"
               />
             </div>

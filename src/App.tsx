@@ -115,9 +115,11 @@ const ShortcutGlobalActions: React.FC<{ onOpenCashOp: (mode: CashOperationType) 
   useEffect(() => {
     const u1 = registerHandler('action:cash_deposit', () => onOpenCashOp('cash_deposit'));
     const u2 = registerHandler('action:cash_withdrawal', () => onOpenCashOp('cash_withdrawal'));
+    const u3 = registerHandler('action:add_expense', () => onOpenCashOp('expense'));
     return () => {
       u1();
       u2();
+      u3();
     };
   }, [registerHandler, onOpenCashOp]);
   return null;
@@ -140,10 +142,10 @@ const MainAppContent: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<NavItemKey>('dashboard');
   const [reportProductId, setReportProductId] = useState<string | undefined>(undefined);
   const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.innerWidth < 1024 || isNativeCapacitor() : false
+    typeof window !== 'undefined' ? window.innerWidth < 768 || isNativeCapacitor() : false
   );
   const [isSectionsOpen, setIsSectionsOpen] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.innerWidth >= 1024 && !isNativeCapacitor() : true
+    typeof window !== 'undefined' ? window.innerWidth >= 768 && !isNativeCapacitor() : true
   );
   const [cashOpModal, setCashOpModal] = useState<{ open: boolean; mode: CashOperationType }>({
     open: false,
@@ -153,7 +155,7 @@ const MainAppContent: React.FC = () => {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const handleResize = () => {
-      const mobile = window.innerWidth < 1024 || isNativeCapacitor();
+      const mobile = window.innerWidth < 768 || isNativeCapacitor();
       setIsMobileViewport(mobile);
     };
     window.addEventListener('resize', handleResize);
@@ -163,7 +165,7 @@ const MainAppContent: React.FC = () => {
   // Auto-open sections sidebar upon desktop login while keeping toggle control
   useEffect(() => {
     if (isAuthenticated && currentUser && currentUser.role !== 'customer' && currentUser.role !== 'representative') {
-      if (typeof window !== 'undefined' && window.innerWidth >= 1024 && !isNativeCapacitor()) {
+      if (typeof window !== 'undefined' && window.innerWidth >= 768 && !isNativeCapacitor()) {
         setIsSectionsOpen(true);
       }
     }
@@ -655,8 +657,8 @@ const MainAppContent: React.FC = () => {
           />
 
           <div
-            className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${
-              isSectionsOpen ? 'lg:mr-80' : ''
+            className={`flex-1 flex flex-col min-w-0 transition-all duration-200 ${
+              isSectionsOpen ? 'md:mr-72' : ''
             }`}
           >
             <Header

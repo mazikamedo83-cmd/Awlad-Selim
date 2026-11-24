@@ -70,7 +70,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
   const [returnType, setReturnType] = useState<'sales_return' | 'purchase_return'>('sales_return');
   const [selectedInvoiceId, setSelectedInvoiceId] = useState('');
   const [returnDate, setReturnDate] = useState(new Date().toISOString().split('T')[0]);
-  const [reason, setReason] = useState('عيوب تصنيع / تلف في العبوة');
+  const [reason, setReason] = useState('');
   const [refundType, setRefundType] = useState<'balance' | 'cash'>('balance');
   const [refundCashboxId, setRefundCashboxId] = useState(cashboxes[0]?.id || '');
   const [returnQuantities, setReturnQuantities] = useState<Record<string, number>>({});
@@ -652,13 +652,13 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                       </td>
                       <td className="p-3 whitespace-nowrap">
                         {req.status === 'pending' && (
-                          <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold text-[10px]">
+                          <span className="px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-900 font-bold text-[10px]">
                             قيد الانتظار
                           </span>
                         )}
                         {req.status === 'approved' && (
                           <div className="space-y-0.5">
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-bold text-[10px] inline-block">
+                            <span className="px-2 py-0.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-900 font-bold text-[10px] inline-block">
                               معتمد
                             </span>
                             {req.approvedReturnNumber && (
@@ -668,7 +668,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                         )}
                         {req.status === 'rejected' && (
                           <div className="space-y-0.5">
-                            <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-900 font-bold text-[10px] inline-block">
+                            <span className="px-2 py-0.5 rounded border border-red-200 bg-red-50 text-red-900 font-bold text-[10px] inline-block">
                               مرفوض
                             </span>
                             {req.rejectionReason && (
@@ -728,7 +728,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm font-black text-slate-900">طلبات مرتجع المشتريات من المناديب</h3>
                   {pendingPrReqCount > 0 && (
-                    <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-mono font-black text-[11px]">
+                    <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-300 font-mono font-black text-[11px] tabular-nums">
                       {pendingPrReqCount} بانتظار المراجعة
                     </span>
                   )}
@@ -830,13 +830,13 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                       </td>
                       <td className="p-3 whitespace-nowrap">
                         {req.status === 'pending' && (
-                          <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold text-[10px]">
+                          <span className="px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-900 font-bold text-[10px]">
                             قيد الانتظار
                           </span>
                         )}
                         {req.status === 'approved' && (
                           <div className="space-y-0.5">
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-bold text-[10px] inline-block">
+                            <span className="px-2 py-0.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-900 font-bold text-[10px] inline-block">
                               معتمد
                             </span>
                             {req.approvedReturnNumber && (
@@ -846,7 +846,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                         )}
                         {req.status === 'rejected' && (
                           <div className="space-y-0.5">
-                            <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-900 font-bold text-[10px] inline-block">
+                            <span className="px-2 py-0.5 rounded border border-red-200 bg-red-50 text-red-900 font-bold text-[10px] inline-block">
                               مرفوض
                             </span>
                             {req.rejectionReason && (

@@ -23,8 +23,8 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
   const [isAddChequeOpen, setIsAddChequeOpen] = useState(false);
   const [chequeNum, setChequeNum] = useState('');
   const [chequeType, setChequeType] = useState<'incoming' | 'outgoing'>('incoming');
-  const [bankName, setBankName] = useState('البنك الأهلي المصري');
-  const [amount, setAmount] = useState(10000);
+  const [bankName, setBankName] = useState('');
+  const [amount, setAmount] = useState<number | ''>('');
   const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
   const [partyName, setPartyName] = useState('');
   const [notes, setNotes] = useState('');
@@ -65,7 +65,8 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
     e.preventDefault();
     if (isSavingCheque) return;
     setChequeError(null);
-    if (!chequeNum.trim() || amount <= 0) {
+    const numAmt = Number(amount || 0);
+    if (!chequeNum.trim() || numAmt <= 0) {
       setChequeError('يرجى إدخال رقم الشيك ومبلغ أكبر من صفر.');
       return;
     }
@@ -76,7 +77,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
         chequeNumber: chequeNum.trim(),
         type: chequeType,
         bankName: bankName.trim(),
-        amount,
+        amount: numAmt,
         issueDate: new Date().toISOString().split('T')[0],
         dueDate,
         partyName: partyName.trim(),
@@ -87,7 +88,8 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
       setStatusBanner({ type: 'success', text: `تم تسجيل الشيك رقم (${chequeNum.trim()}) بنجاح.` });
       setIsAddChequeOpen(false);
       setChequeNum('');
-      setAmount(0);
+      setBankName('');
+      setAmount('');
       setPartyName('');
       setNotes('');
     } catch (err: any) {
@@ -457,8 +459,9 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
                 type="number"
                 min="1"
                 required
+                placeholder="0.00"
                 value={amount}
-                onChange={(e) => setAmount(Number(e.target.value))}
+                onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
                 className="w-full border rounded-xl p-2.5 font-mono font-black text-center"
               />
             </div>

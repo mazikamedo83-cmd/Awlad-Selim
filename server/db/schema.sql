@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS system_settings (
   address TEXT,
   commercial_registration VARCHAR(64),
   tax_number VARCHAR(64),
+  branch_number VARCHAR(64),
   currency VARCHAR(16) NOT NULL DEFAULT 'ج.م',
   default_print_mode VARCHAR(16) NOT NULL DEFAULT 'a4',
   invoice_notes TEXT,
@@ -282,6 +283,7 @@ CREATE TABLE IF NOT EXISTS invoice_payments (
   cashbox_id VARCHAR(64) NOT NULL REFERENCES cashboxes(id) ON DELETE RESTRICT,
   cashbox_name TEXT NOT NULL,
   notes TEXT,
+  collection_location VARCHAR(24),
   created_by VARCHAR(64) NOT NULL,
   created_by_user_id VARCHAR(64),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -1212,6 +1214,7 @@ ALTER TABLE invoices ADD COLUMN IF NOT EXISTS acting_role VARCHAR(32);
 ALTER TABLE invoice_payments ADD COLUMN IF NOT EXISTS actor_identity_id VARCHAR(64);
 ALTER TABLE invoice_payments ADD COLUMN IF NOT EXISTS actor_employee_id VARCHAR(64);
 ALTER TABLE invoice_payments ADD COLUMN IF NOT EXISTS acting_role VARCHAR(32);
+ALTER TABLE invoice_payments ADD COLUMN IF NOT EXISTS collection_location VARCHAR(24);
 
 ALTER TABLE invoice_returns ADD COLUMN IF NOT EXISTS actor_identity_id VARCHAR(64);
 ALTER TABLE invoice_returns ADD COLUMN IF NOT EXISTS actor_employee_id VARCHAR(64);

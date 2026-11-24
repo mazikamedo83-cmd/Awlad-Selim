@@ -81,7 +81,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
   const [settleSupplierTarget, setSettleSupplierTarget] = useState<Supplier | null>(null);
   const [settleInvoiceId, setSettleInvoiceId] = useState<string>('');
   const [settleAmount, setSettleAmount] = useState<number>(0);
-  const [settleNotes, setSettleNotes] = useState<string>('تسوية دفعة مقدمة على فاتورة مشتريات');
+  const [settleNotes, setSettleNotes] = useState<string>('');
   const [settleError, setSettleError] = useState<string | null>(null);
   const [isConfirmingSettle, setIsConfirmingSettle] = useState(false);
   const [isSettlingAdvance, setIsSettlingAdvance] = useState(false);
@@ -106,7 +106,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(initialTab === 'transfer');
   const [fromCbId, setFromCbId] = useState(cashboxes[0]?.id || '');
   const [toCbId, setToCbId] = useState(cashboxes[1]?.id || cashboxes[0]?.id || '');
-  const [transferAmount, setTransferAmount] = useState(1000);
+  const [transferAmount, setTransferAmount] = useState<number | ''>('');
   const [transferNotes, setTransferNotes] = useState('');
   const [transferError, setTransferError] = useState<string | null>(null);
   const [isSubmittingTransfer, setIsSubmittingTransfer] = useState(false);
@@ -116,15 +116,15 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
   const [newCbName, setNewCbName] = useState('');
   const [newCbType, setNewCbType] = useState<'cashbox' | 'bank'>('cashbox');
   const [newCbAccount, setNewCbAccount] = useState('');
-  const [newCbOpening, setNewCbOpening] = useState(0);
+  const [newCbOpening, setNewCbOpening] = useState<number | ''>('');
   const [cashboxError, setCashboxError] = useState<string | null>(null);
   const [isSubmittingCashbox, setIsSubmittingCashbox] = useState(false);
 
   // Expense / Income modal
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [recordType, setRecordType] = useState<'expense' | 'income'>('expense');
-  const [category, setCategory] = useState('وقود ونقل وتوزيع');
-  const [amount, setAmount] = useState(500);
+  const [category, setCategory] = useState('');
+  const [amount, setAmount] = useState<number | ''>('');
   const [selectedCashboxId, setSelectedCashboxId] = useState(cashboxes[0]?.id || '');
   const [recipientOrPayer, setRecipientOrPayer] = useState('');
   const [notes, setNotes] = useState('');
@@ -547,6 +547,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
     e.preventDefault();
     if (isSubmittingTransfer) return;
     setTransferError(null);
+    const numTransferAmount = Number(transferAmount || 0);
     if (!fromCbId || !toCbId) {
       setTransferError('يرجى تحديد الخزينة المحول منها والمحول إليها.');
       return;
@@ -555,15 +556,20 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
       setTransferError('لا يمكن التحويل من نفس الخزينة إلى نفسها.');
       return;
     }
+    if (numTransferAmount <= 0) {
+      setTransferError('يرجى إدخال مبلغ تحويل أكبر من صفر.');
+      return;
+    }
     setIsSubmittingTransfer(true);
     try {
-      const res = await transferBetweenCashboxes(fromCbId, toCbId, transferAmount, transferNotes || 'تحويل مالي بين الخزائن');
+      const res = await transferBetweenCashboxes(fromCbId, toCbId, numTransferAmount, transferNotes || 'تحويل مالي بين الخزائن');
       if (!res.success) {
         setTransferError(res.error || 'فشل التحويل');
       } else {
         setIsTransferModalOpen(false);
+        setTransferAmount('');
         setTransferNotes('');
-        setStatusBanner({ type: 'success', text: `تم تنفيذ التحويل المالي بمبلغ ${transferAmount.toLocaleString()} ${settings.currency} بنجاح.` });
+        setStatusBanner({ type: 'success', text: `تم تنفيذ التحويل المالي بمبلغ ${numTransferAmount.toLocaleString()} ${settings.currency} بنجاح.` });
       }
     } finally {
       setIsSubmittingTransfer(false);
@@ -591,7 +597,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
       setStatusBanner({ type: 'success', text: `تمت إضافة (${newCbName.trim()}) بنجاح.` });
       setNewCbName('');
       setNewCbAccount('');
-      setNewCbOpening(0);
+      setNewCbOpening('');
     } catch (err: any) {
       setCashboxError(err?.message || 'تعذر إنشاء الخزينة أو الحساب البنكي');
     } finally {
@@ -603,7 +609,12 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
     e.preventDefault();
     if (isSubmittingExpense) return;
     setExpenseError(null);
-    if (amount <= 0) {
+    const numAmount = Number(amount || 0);
+    if (!category.trim()) {
+      setExpenseError(`يرجى إدخال بند ${recordType === 'expense' ? 'المصروف' : 'الإيراد'}.`);
+      return;
+    }
+    if (numAmount <= 0) {
       setExpenseError('يرجى إدخال مبلغ أكبر من صفر.');
       return;
     }
@@ -618,7 +629,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
       await addExpenseIncome({
         type: recordType,
         category: category.trim(),
-        amount,
+        amount: numAmount,
         date: new Date().toISOString().split('T')[0],
         cashboxId: selectedCashboxId,
         cashboxName: cb?.name || '',
@@ -628,12 +639,16 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
       });
 
       setIsExpenseModalOpen(false);
+      setAmount('');
+      setCategory('');
+      setRecipientOrPayer('');
+      setNotes('');
       setStatusBanner({
         type: 'success',
         text:
           recordType === 'expense'
-            ? `تم تسجيل سند صرف (${category}) بمبلغ ${amount.toLocaleString()} ${settings.currency}.`
-            : `تم تسجيل سند قبض إيراد (${category}) بمبلغ ${amount.toLocaleString()} ${settings.currency}.`,
+            ? `تم تسجيل سند صرف (${category.trim()}) بمبلغ ${numAmount.toLocaleString()} ${settings.currency}.`
+            : `تم تسجيل سند قبض إيراد (${category.trim()}) بمبلغ ${numAmount.toLocaleString()} ${settings.currency}.`,
       });
 
       setPrintData({
@@ -642,9 +657,9 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         docType: recordType === 'expense' ? 'سند صرف' : 'سند قبض',
         date: new Date().toISOString().split('T')[0],
         partyName: recipientOrPayer,
-        grandTotal: amount,
-        paidAmount: amount,
-        notes: `${category} - ${notes}`,
+        grandTotal: numAmount,
+        paidAmount: numAmount,
+        notes: `${category.trim()} - ${notes}`,
       });
       setIsPrintModalOpen(true);
     } catch (err: any) {
@@ -682,20 +697,20 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
   const formatCustomerBalBadge = (bal: number) => {
     if (bal > 0.005) {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-red-50 text-red-800 border border-red-200 text-[10px] font-black">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-50 text-red-800 border border-red-200 text-[10px] font-black tabular-nums">
           لنا (مستحق): {bal.toLocaleString()} {settings.currency}
         </span>
       );
     }
     if (bal < -0.005) {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-black">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-black tabular-nums">
           علينا (دفعة مقدمة): {Math.abs(bal).toLocaleString()} {settings.currency}
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-bold">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-bold">
         متوازن (0)
       </span>
     );
@@ -704,20 +719,20 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
   const formatSupplierBalBadge = (bal: number) => {
     if (bal > 0.005) {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-900 border border-purple-200 text-[10px] font-black">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-purple-50 text-purple-900 border border-purple-200 text-[10px] font-black tabular-nums">
           علينا للمورد: {bal.toLocaleString()} {settings.currency}
         </span>
       );
     }
     if (bal < -0.005) {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-black">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-black tabular-nums">
           لنا (دفعة مقدمة): {Math.abs(bal).toLocaleString()} {settings.currency}
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-bold">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-bold">
         متوازن (0)
       </span>
     );
@@ -1312,7 +1327,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                   <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-900 flex items-center justify-center font-bold">
                     {cb.type === 'bank' ? <Landmark className="w-5 h-5" /> : <Wallet className="w-5 h-5" />}
                   </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
                     {cb.type === 'bank' ? 'حساب بنكي' : 'خزينة نقدية'}
                   </span>
                 </div>
@@ -1468,11 +1483,11 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                       <td className="p-3 font-mono text-slate-600">{rec.date}</td>
                       <td className="p-3">
                         {rec.type === 'expense' ? (
-                          <span className="px-2 py-0.5 rounded-full bg-orange-50 text-orange-800 border border-orange-200 font-bold text-[10px]">
+                          <span className="px-2 py-0.5 rounded bg-orange-50 text-orange-800 border border-orange-200 font-bold text-[10px]">
                             سند صرف (مصروف)
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-full bg-teal-50 text-teal-800 border border-teal-200 font-bold text-[10px]">
+                          <span className="px-2 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200 font-bold text-[10px]">
                             سند قبض (إيراد)
                           </span>
                         )}
@@ -1652,12 +1667,12 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                             </td>
                             <td className="p-2.5 text-center">
                               <span
-                                className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                                className={`px-2 py-0.5 rounded text-[10px] font-black border ${
                                   rb > 0.005
-                                    ? 'bg-red-50 text-red-700'
+                                    ? 'bg-red-50 text-red-700 border-red-200'
                                     : rb < -0.005
-                                    ? 'bg-emerald-50 text-emerald-700'
-                                    : 'bg-slate-100 text-slate-600'
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    : 'bg-slate-100 text-slate-600 border-slate-200'
                                 }`}
                               >
                                 {rb > 0.005 ? 'لنا' : rb < -0.005 ? 'علينا' : 'متوازن'}
@@ -1832,12 +1847,12 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                             </td>
                             <td className="p-2.5 text-center">
                               <span
-                                className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                                className={`px-2 py-0.5 rounded text-[10px] font-black border ${
                                   rb > 0.005
-                                    ? 'bg-purple-50 text-purple-800'
+                                    ? 'bg-purple-50 text-purple-800 border-purple-200'
                                     : rb < -0.005
-                                    ? 'bg-emerald-50 text-emerald-700'
-                                    : 'bg-slate-100 text-slate-600'
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    : 'bg-slate-100 text-slate-600 border-slate-200'
                                 }`}
                               >
                                 {rb > 0.005 ? 'علينا' : rb < -0.005 ? 'لنا (مقدم)' : 'متوازن'}
@@ -1869,7 +1884,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         >
           <div className="space-y-4 text-xs">
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-2">
-              <span className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-950 font-black text-[11px]">
+              <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-950 font-black text-[11px] border border-blue-200">
                 {previewStatementDoc.badge}
               </span>
               <span className="text-slate-700 font-semibold">{previewStatementDoc.description}</span>
@@ -2311,8 +2326,9 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               type="number"
               min="1"
               required
+              placeholder="0.00"
               value={transferAmount}
-              onChange={(e) => setTransferAmount(Number(e.target.value))}
+              onChange={(e) => setTransferAmount(e.target.value === '' ? '' : Number(e.target.value))}
               className="w-full border rounded-xl p-2.5 font-mono font-black text-center text-sm"
             />
           </div>
@@ -2402,8 +2418,9 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             <label className="block font-bold mb-1">الرصيد الافتتاحي:</label>
             <input
               type="number"
+              placeholder="0.00"
               value={newCbOpening}
-              onChange={(e) => setNewCbOpening(Number(e.target.value))}
+              onChange={(e) => setNewCbOpening(e.target.value === '' ? '' : Number(e.target.value))}
               className="w-full border rounded-xl p-2.5 font-mono font-bold"
             />
           </div>
@@ -2451,8 +2468,9 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               type="number"
               min="1"
               required
+              placeholder="0.00"
               value={amount}
-              onChange={(e) => setAmount(Number(e.target.value))}
+              onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
               className="w-full border rounded-xl p-2.5 font-mono font-black text-center text-sm"
             />
           </div>

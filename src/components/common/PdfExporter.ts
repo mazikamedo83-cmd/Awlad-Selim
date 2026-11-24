@@ -8,6 +8,15 @@ export interface PdfExportOptions {
   subtitle?: string;
   companyName?: string;
   companySubtitle?: string;
+  address?: string;
+  phone1?: string;
+  phone2?: string;
+  branchName?: string;
+  branchNumber?: string;
+  representativeName?: string;
+  representativePhone?: string;
+  commercialRegistration?: string;
+  taxNumber?: string;
   docNumber?: string;
   dateRangeText?: string;
   meta?: Array<{ label: string; value: string }>;
@@ -32,6 +41,15 @@ export function buildPrintableHtml(options: PdfExportOptions): string {
     subtitle,
     companyName = 'مؤسسة أولاد سليم لتجارة المواد الغذائية بالجملة',
     companySubtitle = 'AWLAD SELIM ERP',
+    address,
+    phone1,
+    phone2,
+    branchName,
+    branchNumber,
+    representativeName,
+    representativePhone,
+    commercialRegistration,
+    taxNumber,
     docNumber,
     dateRangeText,
     meta = [],
@@ -48,8 +66,32 @@ export function buildPrintableHtml(options: PdfExportOptions): string {
       : '';
   const generatedAt = new Date().toLocaleString('ar-EG');
 
-  const metaHtml = meta.length
-    ? `<div class="meta-grid">${meta
+  const phoneLine = [phone1?.trim(), phone2?.trim()].filter(Boolean).join(' / ');
+  const branchParts = [
+    branchName?.trim() || '',
+    branchNumber?.trim() ? `رقم الفرع: ${branchNumber.trim()}` : '',
+  ].filter(Boolean);
+  const branchLine = branchParts.join(' · ');
+
+  const contactBits = [
+    address?.trim() || '',
+    phoneLine ? `هاتف: ${phoneLine}` : '',
+  ].filter(Boolean);
+
+  const enrichedMeta = [...meta];
+  if (representativeName?.trim() && !enrichedMeta.some((m) => m.label.includes('المندوب'))) {
+    enrichedMeta.push({ label: 'المندوب المسؤول', value: representativeName.trim() });
+  }
+  if (representativePhone?.trim() && !enrichedMeta.some((m) => m.label.includes('هاتف المندوب'))) {
+    enrichedMeta.push({ label: 'هاتف المندوب', value: representativePhone.trim() });
+  }
+  if (branchLine && !enrichedMeta.some((m) => m.label.includes('الفرع'))) {
+    enrichedMeta.push({ label: 'الفرع', value: branchLine });
+  }
+
+  const metaHtml = enrichedMeta.length
+    ? `<div class="meta-grid">${enrichedMeta
+        .filter((m) => String(m.value ?? '').trim() !== '')
         .map(
           (m) =>
             `<div class="meta-item"><span class="meta-label">${escapeHtml(m.label)}:</span> <strong>${escapeHtml(m.value)}</strong></div>`
@@ -86,6 +128,8 @@ export function buildPrintableHtml(options: PdfExportOptions): string {
         )
         .join('')}</div>`
     : '';
+
+  const legalParts = [commercialRegistration?.trim(), taxNumber?.trim()].filter(Boolean);
 
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -124,7 +168,9 @@ export function buildPrintableHtml(options: PdfExportOptions): string {
     ${origin ? `<img src="${origin}/awlad-selim-logo.png" alt="AWLAD SELIM" onerror="this.style.display='none'" />` : ''}
     <div class="company-info">
       <h1>${escapeHtml(companyName)}</h1>
-      <p>${escapeHtml(subtitle || companySubtitle)}</p>
+      ${subtitle || companySubtitle ? `<p>${escapeHtml(subtitle || companySubtitle)}</p>` : ''}
+      ${branchLine ? `<p><strong>${escapeHtml(branchLine)}</strong></p>` : ''}
+      ${contactBits.length > 0 ? `<p>${escapeHtml(contactBits.join(' • '))}</p>` : ''}
       ${dateRangeText ? `<p>${escapeHtml(dateRangeText)}</p>` : ''}
     </div>
     <div class="doc-badge">
@@ -135,7 +181,7 @@ export function buildPrintableHtml(options: PdfExportOptions): string {
   ${metaHtml}
   ${tableHtml}
   ${summaryHtml}
-  ${notes ? `<div class="notes"><strong>ملاحظات:</strong> ${escapeHtml(notes)}</div>` : ''}
+  ${notes || legalParts.length > 0 ? `<div class="notes">${notes ? `<div><strong>ملاحظات:</strong> ${escapeHtml(notes)}</div>` : ''}${legalParts.length > 0 ? `<div style="margin-top:4px;color:#64748b;">${escapeHtml(legalParts.join(' • '))}</div>` : ''}</div>` : ''}
   <div class="footer">
     <span>${escapeHtml(footerText)}</span>
     <span>تاريخ الطباعة: ${escapeHtml(generatedAt)}</span>

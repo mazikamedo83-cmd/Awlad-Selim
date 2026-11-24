@@ -177,8 +177,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   const [newProdName, setNewProdName] = useState('');
   const [newProdBarcode, setNewProdBarcode] = useState('');
   const [newProdCode, setNewProdCode] = useState('');
-  const [newProdCategory, setNewProdCategory] = useState('أصناف عامة');
-  const [newProdBaseUnit, setNewProdBaseUnit] = useState('قطعة');
+  const [newProdCategory, setNewProdCategory] = useState('');
+  const [newProdBaseUnit, setNewProdBaseUnit] = useState('');
   const [newProdQty, setNewProdQty] = useState<number | ''>('');
   const [newProdPurchasePrice, setNewProdPurchasePrice] = useState<number | ''>('');
   const [newProdSellingPrice, setNewProdSellingPrice] = useState<number | ''>('');
@@ -881,7 +881,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     <td className="p-3 text-center text-emerald-700 font-bold">{inv.paidAmount.toLocaleString()}</td>
                     <td className="p-3 text-center text-red-700 font-bold">{inv.remainingAmount.toLocaleString()}</td>
                     <td className="p-3 text-center">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-block ${badge.cls}`}>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold inline-block ${badge.cls}`}>
                         {badge.label}
                       </span>
                     </td>
@@ -1519,7 +1519,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 <h3 className="text-base font-black text-slate-900">
                   تفاصيل فاتورة المشتريات: {displayedActiveInvoice.invoiceNumber}
                 </h3>
-                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${badge.cls}`}>
+                <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${badge.cls}`}>
                   {badge.label}
                 </span>
               </div>

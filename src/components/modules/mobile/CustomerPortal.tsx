@@ -27,6 +27,7 @@ interface CustomerPortalProps {
   activeTab: CustomerTabKey;
   onTabChange: (tab: CustomerTabKey) => void;
   focusReferenceId?: string | null;
+  onCartCountChange?: (count: number) => void;
 }
 
 const CUSTOMER_ORDER_STATUS_LABELS: Record<string, string> = {
@@ -63,6 +64,7 @@ const createClientIdempotencyKey = () =>
 export const CustomerPortal: React.FC<CustomerPortalProps> = ({
   activeTab,
   onTabChange,
+  onCartCountChange,
 }) => {
   const { currentUser, customerProfile, mobileConfig } = useAuth();
   const data = useData();
@@ -113,6 +115,10 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       setCheckoutGeo((prev) => prev || customer.geoCoordinates || '');
     }
   }, [customer, currentUser?.phone]);
+
+  useEffect(() => {
+    onCartCountChange?.(cartItems.length);
+  }, [cartItems.length, onCartCountChange]);
 
   const activeProducts = useMemo(
     () => data.products.filter((p) => p.status === 'active'),
@@ -362,10 +368,28 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
   );
 
   const exportInvoiceDocument = (inv: Invoice) => {
+    const activeBranches = data.settings.extraSettings?.branches || [];
+    const matchedBranch =
+      activeBranches.find((b) => b.isDefault) ||
+      activeBranches[0];
+    const resolvedBranchNumber = matchedBranch?.branchNumber || data.settings.branchNumber || '';
+    const repObj = inv.representativeId
+      ? data.representatives.find((r) => r.id === inv.representativeId)
+      : inv.representativeName
+      ? data.representatives.find((r) => r.name === inv.representativeName)
+      : undefined;
+
     exportHtmlToPdf({
       title: 'فاتورة مبيعات',
       companyName: data.settings.companyName,
       companySubtitle: data.settings.companySubtitle,
+      address: data.settings.address,
+      phone1: data.settings.phone1,
+      phone2: data.settings.phone2,
+      branchName: matchedBranch?.name,
+      branchNumber: resolvedBranchNumber,
+      representativeName: inv.representativeName || repObj?.name,
+      representativePhone: repObj?.phone,
       docNumber: inv.invoiceNumber,
       dateRangeText: inv.date,
       meta: [
@@ -607,7 +631,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                 onClick={() => setSelectedCategory('all')}
                 className={`min-h-[40px] px-4 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer ${
                   selectedCategory === 'all'
-                    ? 'bg-blue-900 text-white'
+                    ? 'bg-[#2d1b69] text-white'
                     : 'bg-slate-100 text-slate-700'
                 }`}
               >
@@ -620,7 +644,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                   onClick={() => setSelectedCategory(cat)}
                   className={`min-h-[40px] px-4 rounded-xl text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer ${
                     selectedCategory === cat
-                      ? 'bg-blue-900 text-white'
+                      ? 'bg-[#2d1b69] text-white'
                       : 'bg-slate-100 text-slate-700'
                   }`}
                 >
@@ -722,7 +746,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                       <button
                         type="button"
                         onClick={() => handleAddToCart(prod)}
-                        className="w-full min-h-[44px] rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-bold flex items-center justify-center gap-2 active:scale-98 transition-transform cursor-pointer"
+                        className="w-full min-h-[44px] rounded-xl bg-[#2d1b69] hover:bg-[#231454] text-white font-bold flex items-center justify-center gap-2 active:scale-98 transition-transform cursor-pointer"
                       >
                         <Plus className="w-4 h-4" />
                         <span>إضافة للسلة</span>
@@ -931,12 +955,12 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                           : CUSTOMER_ORDER_STATUS_LABELS[ord.status] || ord.status}
                       </span>
                       {ord.syncStatus && ord.syncStatus !== 'synced' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
                           <CloudOff className="w-3 h-3" />
                           <span>محلي بانتظار المزامنة</span>
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
                           <CloudCheck className="w-3 h-3" />
                           <span>معتمد مركزيًا</span>
                         </span>
@@ -1118,7 +1142,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
               type="button"
               onClick={() => setAccountSubTab('invoices')}
               className={`flex-1 min-h-[44px] rounded-xl text-xs font-black cursor-pointer ${
-                accountSubTab === 'invoices' ? 'bg-blue-900 text-white' : 'text-slate-600'
+                accountSubTab === 'invoices' ? 'bg-[#2d1b69] text-white' : 'text-slate-600'
               }`}
             >
               فواتيري ({myInvoices.length})
@@ -1130,7 +1154,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                 data.refreshCustomerStatement();
               }}
               className={`flex-1 min-h-[44px] rounded-xl text-xs font-black cursor-pointer ${
-                accountSubTab === 'statement' ? 'bg-blue-900 text-white' : 'text-slate-600'
+                accountSubTab === 'statement' ? 'bg-[#2d1b69] text-white' : 'text-slate-600'
               }`}
             >
               كشف الحساب التفصيلي
@@ -1311,7 +1335,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
             <button
               type="button"
               onClick={() => exportInvoiceDocument(selectedInvoice)}
-              className="min-h-[46px] rounded-xl bg-blue-900 text-white font-black flex items-center justify-center gap-2 cursor-pointer"
+              className="min-h-[46px] rounded-xl bg-[#2d1b69] text-white font-black flex items-center justify-center gap-2 cursor-pointer"
             >
               {isNative ? <Share2 className="w-4 h-4" /> : <FileDown className="w-4 h-4" />}
               <span>{isNative ? 'مشاركة / حفظ الفاتورة' : 'طباعة / PDF'}</span>

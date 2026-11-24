@@ -59,13 +59,20 @@ export const SuppliersView: React.FC = () => {
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
   // Form state
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    code: string;
+    name: string;
+    phone: string;
+    address: string;
+    notes: string;
+    openingBalance: number | '';
+  }>({
     code: '',
     name: '',
     phone: '',
     address: '',
     notes: '',
-    openingBalance: 0,
+    openingBalance: '',
   });
 
   useEffect(() => {
@@ -91,7 +98,7 @@ export const SuppliersView: React.FC = () => {
       phone: '',
       address: '',
       notes: '',
-      openingBalance: 0,
+      openingBalance: '',
     });
     setSupplierFormError(null);
     setEditingSupplier(null);
@@ -613,8 +620,8 @@ export const SuppliersView: React.FC = () => {
                         <td className="p-2.5 text-center font-mono font-bold text-emerald-700">{mov.debit > 0 ? mov.debit.toLocaleString() : '-'}</td>
                         <td className="p-2.5 text-center font-mono font-black text-purple-900 tabular-nums">{Math.abs(mov.runningBalance).toLocaleString()}</td>
                         <td className="p-2.5 text-center">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-                            mov.runningBalance > 0.005 ? 'bg-purple-50 text-purple-800' : mov.runningBalance < -0.005 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-black border ${
+                            mov.runningBalance > 0.005 ? 'bg-purple-50 text-purple-800 border-purple-200' : mov.runningBalance < -0.005 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'
                           }`}>
                             {mov.runningBalance > 0.005 ? 'علينا' : mov.runningBalance < -0.005 ? 'لنا (مقدم)' : 'متوازن'}
                           </span>
@@ -687,8 +694,9 @@ export const SuppliersView: React.FC = () => {
               <label className="block font-bold mb-1">رصيد أول المدة المستحق له:</label>
               <input
                 type="number"
+                placeholder="0.00"
                 value={formData.openingBalance}
-                onChange={(e) => setFormData({ ...formData, openingBalance: Number(e.target.value) })}
+                onChange={(e) => setFormData({ ...formData, openingBalance: e.target.value === '' ? '' : Number(e.target.value) })}
                 className="w-full border rounded-xl p-2.5 font-mono font-bold"
               />
             </div>

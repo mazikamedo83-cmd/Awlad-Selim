@@ -14,7 +14,10 @@ export interface PrintData {
   partyPhone?: string;
   partyAddress?: string;
   warehouseName?: string;
+  branchName?: string;
+  branchNumber?: string;
   representativeName?: string;
+  representativePhone?: string;
   paymentType?: string;
   items?: Array<{
     name: string;
@@ -43,9 +46,30 @@ interface PrintDocumentProps {
 }
 
 export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClose, data }) => {
-  const { settings } = useData();
+  const { settings, representatives, warehouses } = useData();
   const { registerHandler } = useShortcuts();
   const [printFormat, setPrintFormat] = useState<'a4' | 'thermal80' | 'thermal58'>(settings.defaultPrintMode || 'a4');
+
+  const activeBranches = settings.extraSettings?.branches || [];
+  const matchedWarehouse = data?.warehouseName
+    ? warehouses.find((w) => w.name === data.warehouseName || w.id === data.warehouseName)
+    : undefined;
+  const matchedBranch =
+    (matchedWarehouse ? activeBranches.find((b) => b.warehouseId === matchedWarehouse.id) : undefined) ||
+    activeBranches.find((b) => b.isDefault) ||
+    activeBranches[0];
+  const resolvedBranchName = (data?.branchName || matchedBranch?.name || '').trim();
+  const resolvedBranchNumber = (data?.branchNumber || matchedBranch?.branchNumber || settings.branchNumber || '').trim();
+  const resolvedRepPhone = (
+    data?.representativePhone ||
+    (data?.representativeName ? representatives.find((r) => r.name === data.representativeName)?.phone : '') ||
+    ''
+  ).trim();
+  const resolvedPhonesStr = [settings.phone1?.trim(), settings.phone2?.trim()].filter(Boolean).join(' / ');
+  const resolvedAddressStr = (settings.address || '').trim();
+  const branchLabelStr = [resolvedBranchName, resolvedBranchNumber ? `فرع رقم: ${resolvedBranchNumber}` : '']
+    .filter(Boolean)
+    .join(' · ');
 
   useEffect(() => {
     if (isOpen) {
@@ -53,68 +77,21 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
     }
   }, [isOpen, settings.defaultPrintMode]);
 
-  const handlePrint = () => {
-    if (isNativeCapacitor()) {
-      handleExportPdf();
-      return;
-    }
-    window.print();
-  };
-
-  useEffect(() => {
-    if (!isOpen || !data) return;
-    return registerHandler('action:print_document', () => {
-      if (isNativeCapacitor()) {
-        exportHtmlToPdf({
-          title: data.docType,
-          subtitle: settings.companySubtitle,
-          companyName: settings.companyName,
-          docNumber: data.docNumber,
-          dateRangeText: data.date,
-          meta: [
-            ...(data.partyName ? [{ label: 'العميل / الطرف', value: data.partyName }] : []),
-            ...(data.partyPhone ? [{ label: 'الهاتف', value: data.partyPhone }] : []),
-            ...(data.partyAddress ? [{ label: 'العنوان', value: data.partyAddress }] : []),
-            ...(data.warehouseName ? [{ label: 'المستودع', value: data.warehouseName }] : []),
-            ...(data.representativeName ? [{ label: 'المندوب', value: data.representativeName }] : []),
-            ...(data.paymentType ? [{ label: 'طريقة السداد', value: data.paymentType }] : []),
-          ],
-          tableHeaders: data.items && data.items.length > 0
-            ? (data.tableHeaders || ['م', 'البيان / الصنف', 'الوحدة', 'الكمية', 'السعر', 'الخصم', 'الإجمالي'])
-            : undefined,
-          tableRows: data.items && data.items.length > 0
-            ? data.items.map((it, idx) => [
-                idx + 1,
-                it.name,
-                it.unit,
-                it.quantity,
-                it.price.toFixed(2),
-                it.discount ? it.discount.toFixed(2) : '-',
-                it.total.toFixed(2),
-              ])
-            : undefined,
-          summaryPairs: [
-            ...(data.subtotal !== undefined ? [{ label: 'المجموع الفرعي', value: `${data.subtotal.toFixed(2)} ${settings.currency}` }] : []),
-            ...(data.discountTotal ? [{ label: 'الخصم', value: `-${data.discountTotal.toFixed(2)} ${settings.currency}` }] : []),
-            { label: 'الصافي الإجمالي', value: `${data.grandTotal.toFixed(2)} ${settings.currency}`, highlight: true },
-            ...(data.paidAmount !== undefined ? [{ label: 'المدفوع', value: `${data.paidAmount.toFixed(2)} ${settings.currency}` }] : []),
-            ...(data.remainingAmount !== undefined ? [{ label: 'المتبقي', value: `${data.remainingAmount.toFixed(2)} ${settings.currency}` }] : []),
-          ],
-          notes: data.notes || settings.invoiceNotes,
-        });
-      } else {
-        window.print();
-      }
-    });
-  }, [isOpen, data, registerHandler, settings]);
-
-  if (!isOpen || !data) return null;
-
-  const handleExportPdf = () => {
-    exportHtmlToPdf({
+  const buildPdfPayload = () => {
+    if (!data) return null;
+    return {
       title: data.docType,
       subtitle: settings.companySubtitle,
       companyName: settings.companyName,
+      address: resolvedAddressStr || undefined,
+      phone1: settings.phone1?.trim() || undefined,
+      phone2: settings.phone2?.trim() || undefined,
+      branchName: resolvedBranchName || undefined,
+      branchNumber: resolvedBranchNumber || undefined,
+      representativeName: data.representativeName?.trim() || undefined,
+      representativePhone: resolvedRepPhone || undefined,
+      commercialRegistration: settings.commercialRegistration?.trim() || undefined,
+      taxNumber: settings.taxNumber?.trim() || undefined,
       docNumber: data.docNumber,
       dateRangeText: data.date,
       meta: [
@@ -122,7 +99,9 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
         ...(data.partyPhone ? [{ label: 'الهاتف', value: data.partyPhone }] : []),
         ...(data.partyAddress ? [{ label: 'العنوان', value: data.partyAddress }] : []),
         ...(data.warehouseName ? [{ label: 'المستودع', value: data.warehouseName }] : []),
+        ...(branchLabelStr ? [{ label: 'الفرع', value: branchLabelStr }] : []),
         ...(data.representativeName ? [{ label: 'المندوب', value: data.representativeName }] : []),
+        ...(resolvedRepPhone ? [{ label: 'هاتف المندوب', value: resolvedRepPhone }] : []),
         ...(data.paymentType ? [{ label: 'طريقة السداد', value: data.paymentType }] : []),
       ],
       tableHeaders: data.items && data.items.length > 0
@@ -147,7 +126,34 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
         ...(data.remainingAmount !== undefined ? [{ label: 'المتبقي', value: `${data.remainingAmount.toFixed(2)} ${settings.currency}` }] : []),
       ],
       notes: data.notes || settings.invoiceNotes,
+    };
+  };
+
+  const handlePrint = () => {
+    if (isNativeCapacitor()) {
+      handleExportPdf();
+      return;
+    }
+    window.print();
+  };
+
+  useEffect(() => {
+    if (!isOpen || !data) return;
+    return registerHandler('action:print_document', () => {
+      if (isNativeCapacitor()) {
+        const payload = buildPdfPayload();
+        if (payload) exportHtmlToPdf(payload);
+      } else {
+        window.print();
+      }
     });
+  }, [isOpen, data, registerHandler, settings, resolvedBranchName, resolvedBranchNumber, resolvedRepPhone]);
+
+  if (!isOpen || !data) return null;
+
+  const handleExportPdf = () => {
+    const payload = buildPdfPayload();
+    if (payload) exportHtmlToPdf(payload);
   };
 
   return (
@@ -235,12 +241,19 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                   </div>
                   <div className="text-center flex-1 px-4">
                     <h1 className="text-2xl font-black text-blue-950 tracking-tight">{settings.companyName}</h1>
-                    <p className="text-xs font-semibold text-slate-600 mt-1">{settings.companySubtitle}</p>
-                    <div className="text-[11px] text-slate-500 mt-1.5 flex flex-wrap justify-center gap-3">
-                      <span>{settings.address}</span>
-                      <span>•</span>
-                      <span>هاتف: {settings.phone1} / {settings.phone2}</span>
-                    </div>
+                    {settings.companySubtitle?.trim() && (
+                      <p className="text-xs font-semibold text-slate-600 mt-1">{settings.companySubtitle}</p>
+                    )}
+                    {branchLabelStr && (
+                      <p className="text-[11px] font-bold text-blue-900 mt-0.5">{branchLabelStr}</p>
+                    )}
+                    {(resolvedAddressStr || resolvedPhonesStr) && (
+                      <div className="text-[11px] text-slate-500 mt-1.5 flex flex-wrap justify-center gap-3">
+                        {resolvedAddressStr && <span>{resolvedAddressStr}</span>}
+                        {resolvedAddressStr && resolvedPhonesStr && <span>•</span>}
+                        {resolvedPhonesStr && <span>هاتف: {resolvedPhonesStr}</span>}
+                      </div>
+                    )}
                   </div>
                   <div className="w-44 text-left font-mono text-xs text-slate-600 space-y-1">
                     <div className="bg-blue-50 border border-blue-200 p-2 rounded-lg text-center">
@@ -257,10 +270,12 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                     {data.partyPhone && <div className="flex"><span className="text-slate-500 w-24">رقم الهاتف:</span><span>{data.partyPhone}</span></div>}
                     {data.partyAddress && <div className="flex"><span className="text-slate-500 w-24">العنوان:</span><span>{data.partyAddress}</span></div>}
                     {data.representativeName && <div className="flex"><span className="text-slate-500 w-24">المندوب المسؤول:</span><strong className="text-blue-800">{data.representativeName}</strong></div>}
+                    {resolvedRepPhone && <div className="flex"><span className="text-slate-500 w-24">هاتف المندوب:</span><span className="font-mono font-bold text-blue-900">{resolvedRepPhone}</span></div>}
                   </div>
                   <div className="space-y-1.5">
                     <div className="flex"><span className="text-slate-500 w-24">تاريخ التحرير:</span><strong>{data.date}</strong></div>
                     {data.warehouseName && <div className="flex"><span className="text-slate-500 w-24">المستودع المصروف:</span><span>{data.warehouseName}</span></div>}
+                    {branchLabelStr && <div className="flex"><span className="text-slate-500 w-24">الفرع:</span><span className="font-semibold">{branchLabelStr}</span></div>}
                     {data.paymentType && <div className="flex"><span className="text-slate-500 w-24">نوع الدفع:</span><span className="px-2 py-0.5 rounded bg-slate-200 font-bold">{data.paymentType}</span></div>}
                   </div>
                 </div>
@@ -368,7 +383,9 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                     className="max-h-12 mx-auto object-contain mb-1"
                   />
                   <h2 className="font-extrabold text-sm">{settings.companyName}</h2>
-                  <p className="text-[10px] text-slate-600">{settings.phone1} - {settings.phone2}</p>
+                  {branchLabelStr && <p className="text-[10px] font-bold text-slate-700">{branchLabelStr}</p>}
+                  {resolvedPhonesStr && <p className="text-[10px] text-slate-600">{resolvedPhonesStr}</p>}
+                  {resolvedAddressStr && <p className="text-[10px] text-slate-500">{resolvedAddressStr}</p>}
                 </div>
 
                 <div className="my-2 py-1 border-b border-dashed border-slate-400 text-[11px] space-y-0.5">
@@ -390,6 +407,12 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                     <div className="flex justify-between">
                       <span>المندوب:</span>
                       <span>{data.representativeName}</span>
+                    </div>
+                  )}
+                  {resolvedRepPhone && (
+                    <div className="flex justify-between">
+                      <span>هاتف المندوب:</span>
+                      <span className="font-mono">{resolvedRepPhone}</span>
                     </div>
                   )}
                 </div>
@@ -449,13 +472,20 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
             {printFormat === 'thermal58' && (
               <div className="thermal-58 bg-white p-2 shadow-md border border-slate-300 text-slate-900 rounded-sm font-sans text-[10px]">
                 <div className="text-center pb-1 border-b border-dashed border-slate-400">
-                  <h3 className="font-black text-xs">أولاد سليم</h3>
+                  <h3 className="font-black text-xs">{settings.companyName || 'أولاد سليم'}</h3>
+                  {resolvedBranchNumber && <p className="text-[9px] font-bold">فرع رقم: {resolvedBranchNumber}</p>}
+                  {resolvedPhonesStr && <p className="text-[8px] text-slate-600">{resolvedPhonesStr}</p>}
                   <p className="text-[9px]">{data.docType}: {data.docNumber}</p>
                   <p className="text-[8px]">{data.date}</p>
                 </div>
 
                 {data.partyName && (
                   <p className="font-bold my-1 text-[9px]">العميل: {data.partyName}</p>
+                )}
+                {(data.representativeName || resolvedRepPhone) && (
+                  <p className="my-0.5 text-[9px] text-slate-700">
+                    {[data.representativeName ? `المندوب: ${data.representativeName}` : '', resolvedRepPhone ? `ت: ${resolvedRepPhone}` : ''].filter(Boolean).join(' · ')}
+                  </p>
                 )}
 
                 {data.items && (

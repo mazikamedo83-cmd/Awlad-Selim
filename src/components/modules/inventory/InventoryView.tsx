@@ -88,7 +88,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
   // Units Catalog State
   const [newUnitName, setNewUnitName] = useState('');
   const [newUnitCode, setNewUnitCode] = useState('');
-  const [newUnitFactor, setNewUnitFactor] = useState<number>(1);
+  const [newUnitFactor, setNewUnitFactor] = useState<number | ''>('');
   const [newUnitNotes, setNewUnitNotes] = useState('');
   const [isSavingUnits, setIsSavingUnits] = useState(false);
 
@@ -100,20 +100,20 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
   const [transferProdId, setTransferProdId] = useState('');
   const [fromWhId, setFromWhId] = useState(warehouses[0]?.id || '');
   const [toWhId, setToWhId] = useState(warehouses[1]?.id || warehouses[0]?.id || '');
-  const [transferQty, setTransferQty] = useState(10);
+  const [transferQty, setTransferQty] = useState<number | ''>('');
   const [transferNotes, setTransferNotes] = useState('');
 
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
   const [adjustProdId, setAdjustProdId] = useState('');
   const [adjustWhId, setAdjustWhId] = useState(warehouses[0]?.id || '');
-  const [adjustNewQty, setAdjustNewQty] = useState(0);
-  const [adjustReason, setAdjustReason] = useState('جرد دوري فعلي بالمستودع');
+  const [adjustNewQty, setAdjustNewQty] = useState<number | ''>('');
+  const [adjustReason, setAdjustReason] = useState('');
 
   const [isDamageModalOpen, setIsDamageModalOpen] = useState(false);
   const [damageProdId, setDamageProdId] = useState('');
   const [damageWhId, setDamageWhId] = useState(warehouses[0]?.id || '');
-  const [damageQty, setDamageQty] = useState(1);
-  const [damageReason, setDamageReason] = useState('تلف في العبوة أثناء النقل أو انتهاء صلاحية');
+  const [damageQty, setDamageQty] = useState<number | ''>('');
+  const [damageReason, setDamageReason] = useState('');
 
   // Product form
   const [formData, setFormData] = useState<{
@@ -125,9 +125,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     units: ProductUnit[];
     size?: string;
     color?: string;
-    purchasePrice: number;
-    sellingPrice: number;
-    minStockLevel: number;
+    purchasePrice: number | '';
+    sellingPrice: number | '';
+    minStockLevel: number | '';
     image?: string;
     notes: string;
     initialStockPerWarehouse: Record<string, number>;
@@ -135,14 +135,14 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     code: '',
     barcode: '',
     name: '',
-    category: 'زيوت وسمن',
-    baseUnit: 'قطعة',
+    category: '',
+    baseUnit: '',
     units: [],
     size: '',
     color: '',
-    purchasePrice: 0,
-    sellingPrice: 0,
-    minStockLevel: 50,
+    purchasePrice: '',
+    sellingPrice: '',
+    minStockLevel: '',
     image: '',
     notes: '',
     initialStockPerWarehouse: {},
@@ -212,26 +212,22 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
   const handleOpenAdd = () => {
     const nextCode = `FOOD-${(products.length + 101)}`;
     const nextBarcode = `622100100${(products.length + 1).toString().padStart(2, '0')}`;
-    const initialStocks: Record<string, number> = {};
-    warehouses.forEach(w => { initialStocks[w.id] = 100; });
 
     setFormData({
       code: nextCode,
       barcode: nextBarcode,
       name: '',
-      category: 'زيوت وسمن',
-      baseUnit: 'قطعة',
-      units: [
-        { id: 'u1', name: 'كرتونة (12 قطعة)', conversionFactor: 12, sellingPrice: 0, purchasePrice: 0 }
-      ],
+      category: '',
+      baseUnit: '',
+      units: [],
       size: '',
       color: '',
-      purchasePrice: 0,
-      sellingPrice: 0,
-      minStockLevel: 50,
+      purchasePrice: '',
+      sellingPrice: '',
+      minStockLevel: '',
       image: '',
       notes: '',
-      initialStockPerWarehouse: initialStocks,
+      initialStockPerWarehouse: {},
     });
     setProductModalError(null);
     setEditingProduct(null);
@@ -278,7 +274,14 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
       setProductModalError('يرجى إدخال اسم الصنف الغذائي');
       return;
     }
-    if (formData.purchasePrice < 0 || formData.sellingPrice < 0) {
+    if (!formData.baseUnit.trim()) {
+      setProductModalError('يرجى إدخال الوحدة الأساسية للصنف');
+      return;
+    }
+    const purchasePriceVal = Number(formData.purchasePrice || 0);
+    const sellingPriceVal = Number(formData.sellingPrice || 0);
+    const minStockVal = Number(formData.minStockLevel || 0);
+    if (purchasePriceVal < 0 || sellingPriceVal < 0) {
       setProductModalError('لا يمكن أن تكون أسعار الشراء أو البيع سالبة');
       return;
     }
@@ -290,14 +293,14 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           name: formData.name.trim(),
           code: formData.code.trim(),
           barcode: formData.barcode.trim(),
-          category: formData.category,
+          category: formData.category.trim(),
           baseUnit: formData.baseUnit.trim(),
           units: formData.units,
           size: formData.size?.trim() || undefined,
           color: formData.color?.trim() || undefined,
-          purchasePrice: formData.purchasePrice,
-          sellingPrice: formData.sellingPrice,
-          minStockLevel: formData.minStockLevel,
+          purchasePrice: purchasePriceVal,
+          sellingPrice: sellingPriceVal,
+          minStockLevel: minStockVal,
           image: formData.image || '',
           notes: formData.notes.trim(),
         });
@@ -306,14 +309,14 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           code: formData.code.trim(),
           barcode: formData.barcode.trim(),
           name: formData.name.trim(),
-          category: formData.category,
+          category: formData.category.trim(),
           baseUnit: formData.baseUnit.trim(),
           units: formData.units,
           size: formData.size?.trim() || undefined,
           color: formData.color?.trim() || undefined,
-          purchasePrice: formData.purchasePrice,
-          sellingPrice: formData.sellingPrice,
-          minStockLevel: formData.minStockLevel,
+          purchasePrice: purchasePriceVal,
+          sellingPrice: sellingPriceVal,
+          minStockLevel: minStockVal,
           image: formData.image || undefined,
           stockPerWarehouse: formData.initialStockPerWarehouse,
           status: 'active',
@@ -333,13 +336,20 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     e.preventDefault();
     if (isSubmittingTransfer) return;
     setTransferModalError(null);
+    const qtyVal = Number(transferQty || 0);
+    if (qtyVal <= 0) {
+      setTransferModalError('يرجى إدخال كمية محولة أكبر من صفر.');
+      return;
+    }
     setIsSubmittingTransfer(true);
     try {
-      const res = await transferStock(transferProdId, fromWhId, toWhId, transferQty, transferNotes || 'تحويل داخلي');
+      const res = await transferStock(transferProdId, fromWhId, toWhId, qtyVal, transferNotes || 'تحويل داخلي');
       if (!res.success) {
         setTransferModalError(res.error || 'فشل التحويل المخزني');
       } else {
         setIsTransferModalOpen(false);
+        setTransferQty('');
+        setTransferNotes('');
         setStatusBanner({ type: 'success', text: 'تم تنفيذ التحويل المخزني بنجاح.' });
       }
     } finally {
@@ -351,10 +361,16 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     e.preventDefault();
     if (isSubmittingAdjust) return;
     setAdjustModalError(null);
+    if (adjustNewQty === '' || Number(adjustNewQty) < 0) {
+      setAdjustModalError('يرجى إدخال الرصيد الفعلي الجديد بعد الجرد.');
+      return;
+    }
     setIsSubmittingAdjust(true);
     try {
-      await adjustStock(adjustProdId, adjustWhId, adjustNewQty, adjustReason);
+      await adjustStock(adjustProdId, adjustWhId, Number(adjustNewQty), adjustReason.trim());
       setIsAdjustModalOpen(false);
+      setAdjustNewQty('');
+      setAdjustReason('');
       setStatusBanner({ type: 'success', text: 'تم اعتماد التسوية الجردية للمخزون بنجاح.' });
     } catch (err: any) {
       setAdjustModalError(err?.message || 'تعذر اعتماد التسوية الجردية');
@@ -367,10 +383,17 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     e.preventDefault();
     if (isSubmittingDamage) return;
     setDamageModalError(null);
+    const qtyVal = Number(damageQty || 0);
+    if (qtyVal <= 0) {
+      setDamageModalError('يرجى إدخال الكمية التالفة أكبر من صفر.');
+      return;
+    }
     setIsSubmittingDamage(true);
     try {
-      await recordDamagedStock(damageProdId, damageWhId, damageQty, damageReason);
+      await recordDamagedStock(damageProdId, damageWhId, qtyVal, damageReason.trim());
       setIsDamageModalOpen(false);
+      setDamageQty('');
+      setDamageReason('');
       setStatusBanner({ type: 'success', text: 'تم تسجيل وخصم التالف من المخزون بنجاح.' });
     } catch (err: any) {
       setDamageModalError(err?.message || 'تعذر تسجيل البضاعة التالفة');
@@ -512,12 +535,12 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                     <div className="flex items-center gap-2">
                       <h3 className="font-black text-sm text-slate-900">{wh.name}</h3>
                       {wh.isDefault && (
-                        <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-900 text-[10px] font-black">افتراضي</span>
+                        <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-900 text-[10px] font-black">افتراضي</span>
                       )}
                     </div>
                     <span className="text-[11px] font-mono text-slate-500">كود: {wh.code}</span>
                   </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isSuspended ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${isSuspended ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'}`}>
                     {isSuspended ? 'موقوف' : 'نشط'}
                   </span>
                 </div>
@@ -817,7 +840,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                       <tr key={m.id} className="hover:bg-slate-50">
                         <td className="p-3.5 font-mono text-slate-600">{m.date}</td>
                         <td className="p-3.5">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${meta.cls}`}>{meta.label}</span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${meta.cls}`}>{meta.label}</span>
                         </td>
                         <td className="p-3.5 font-bold text-slate-900">{m.productName}</td>
                         <td className="p-3.5">
@@ -982,7 +1005,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                     <td className="p-3.5 text-slate-600">{cat.description || '-'}</td>
                     <td className="p-3.5 text-center font-mono font-bold text-blue-900">{linkedCount} صنف</td>
                     <td className="p-3.5 text-center">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${cat.status !== 'suspended' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${cat.status !== 'suspended' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
                         {cat.status !== 'suspended' ? 'نشط' : 'موقوف'}
                       </span>
                     </td>
@@ -1096,8 +1119,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               type="number"
               min="1"
               required
+              placeholder="1"
               value={newUnitFactor}
-              onChange={(e) => setNewUnitFactor(Number(e.target.value))}
+              onChange={(e) => setNewUnitFactor(e.target.value === '' ? '' : Number(e.target.value))}
               className="w-full border border-slate-300 rounded-xl p-2 font-mono font-bold text-center"
             />
           </div>
@@ -1363,11 +1387,11 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                     </td>
                     <td className="p-3.5 text-center">
                       {isLow ? (
-                        <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-800 font-bold text-[10px] border border-red-300">
+                        <span className="px-2 py-0.5 rounded bg-red-100 text-red-800 font-bold text-[10px] border border-red-300">
                           نقص مخزون (حد أدنى: {prod.minStockLevel})
                         </span>
                       ) : (
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                        <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">
                           متوفر كافي
                         </span>
                       )}
@@ -1727,8 +1751,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                 type="number"
                 step="0.5"
                 required
+                placeholder="0.00"
                 value={formData.purchasePrice}
-                onChange={(e) => setFormData({ ...formData, purchasePrice: Number(e.target.value) })}
+                onChange={(e) => setFormData({ ...formData, purchasePrice: e.target.value === '' ? '' : Number(e.target.value) })}
                 className="w-full bg-white border border-slate-300 rounded-xl p-2 font-mono font-bold"
               />
             </div>
@@ -1738,8 +1763,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                 type="number"
                 step="0.5"
                 required
+                placeholder="0.00"
                 value={formData.sellingPrice}
-                onChange={(e) => setFormData({ ...formData, sellingPrice: Number(e.target.value) })}
+                onChange={(e) => setFormData({ ...formData, sellingPrice: e.target.value === '' ? '' : Number(e.target.value) })}
                 className="w-full bg-white border border-slate-300 rounded-xl p-2 font-mono font-black text-blue-900"
               />
             </div>
@@ -1748,8 +1774,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               <input
                 type="number"
                 required
+                placeholder="0"
                 value={formData.minStockLevel}
-                onChange={(e) => setFormData({ ...formData, minStockLevel: Number(e.target.value) })}
+                onChange={(e) => setFormData({ ...formData, minStockLevel: e.target.value === '' ? '' : Number(e.target.value) })}
                 className="w-full bg-white border border-slate-300 rounded-xl p-2 font-mono font-bold"
               />
             </div>
@@ -1765,16 +1792,19 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                     <input
                       type="number"
                       min="0"
-                      value={formData.initialStockPerWarehouse[w.id] ?? 0}
+                      placeholder="0"
+                      value={formData.initialStockPerWarehouse[w.id] ?? ''}
                       onChange={(e) => {
-                        const qty = Math.max(0, Number(e.target.value) || 0);
-                        setFormData((prev) => ({
-                          ...prev,
-                          initialStockPerWarehouse: {
-                            ...prev.initialStockPerWarehouse,
-                            [w.id]: qty,
-                          },
-                        }));
+                        const raw = e.target.value;
+                        setFormData((prev) => {
+                          const next = { ...prev.initialStockPerWarehouse };
+                          if (raw === '') {
+                            delete next[w.id];
+                          } else {
+                            next[w.id] = Math.max(0, Number(raw) || 0);
+                          }
+                          return { ...prev, initialStockPerWarehouse: next };
+                        });
                       }}
                       className="w-full border border-slate-200 rounded p-1 font-mono font-bold text-center"
                     />
@@ -1873,8 +1903,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               type="number"
               min="1"
               required
+              placeholder="أدخل الكمية"
               value={transferQty}
-              onChange={(e) => setTransferQty(Number(e.target.value))}
+              onChange={(e) => setTransferQty(e.target.value === '' ? '' : Number(e.target.value))}
               className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-mono font-black text-center text-sm"
             />
           </div>
@@ -1962,8 +1993,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               type="number"
               min="0"
               required
+              placeholder="0"
               value={adjustNewQty}
-              onChange={(e) => setAdjustNewQty(Number(e.target.value))}
+              onChange={(e) => setAdjustNewQty(e.target.value === '' ? '' : Number(e.target.value))}
               className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-mono font-black text-center text-sm"
             />
           </div>
@@ -1973,6 +2005,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
             <input
               type="text"
               required
+              placeholder="أدخل سبب التسوية (مثال: جرد دوري بالمستودع)"
               value={adjustReason}
               onChange={(e) => setAdjustReason(e.target.value)}
               className="w-full bg-white border border-slate-300 rounded-xl p-2.5"
@@ -2043,8 +2076,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               type="number"
               min="1"
               required
+              placeholder="أدخل الكمية التالفة"
               value={damageQty}
-              onChange={(e) => setDamageQty(Number(e.target.value))}
+              onChange={(e) => setDamageQty(e.target.value === '' ? '' : Number(e.target.value))}
               className="w-full bg-red-50 border border-red-300 rounded-xl p-2.5 font-mono font-black text-center text-red-900 text-sm"
             />
           </div>
@@ -2054,6 +2088,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
             <input
               type="text"
               required
+              placeholder="أدخل سبب التلف (مثال: تلف عبوة / انتهاء صلاحية)"
               value={damageReason}
               onChange={(e) => setDamageReason(e.target.value)}
               className="w-full bg-white border border-slate-300 rounded-xl p-2.5"

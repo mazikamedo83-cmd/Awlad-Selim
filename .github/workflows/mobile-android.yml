@@ -50,6 +50,7 @@ jobs:
           node --experimental-strip-types server/tests/pairingVerificationTests.mts
           node server/tests/finalSecurityAuditTests.mjs
           node server/tests/productionReadinessAuditTests.mjs
+          node server/tests/identityAndFiltersTests.mjs
 
       - name: Build web bundle
         run: bun run build

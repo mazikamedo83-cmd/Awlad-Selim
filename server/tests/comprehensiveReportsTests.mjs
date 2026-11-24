@@ -356,8 +356,8 @@ async function runComprehensiveScenario(modeLabel) {
       assert.equal(invFilter.status, 200);
       assert.equal(invFilter.json.report.sections[0].rows.length, 1);
       assert.equal(invFilter.json.report.sections[0].rows[0].priceOrTotal, 560);
-      assert.equal(invFilter.json.report.sections[0].rows[0].valueOrPaid, 500);
-      assert.equal(invFilter.json.report.sections[0].rows[0].movementOrRemaining, 60);
+      assert.equal(invFilter.json.report.sections[0].rows[0].valueOrPaid, 560);
+      assert.equal(invFilter.json.report.sections[0].rows[0].movementOrRemaining, 0);
 
       const cashEmp = await req(
         baseUrl,

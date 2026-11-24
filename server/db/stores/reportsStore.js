@@ -4674,14 +4674,25 @@ export async function getRepDetailedReport(filters = {}, actor) {
       paymentStatus: payStatus,
       itemsCount: (inv.items || []).length,
       items: safeItems,
-      payments: (inv.payments || []).map((py) => ({
-        id: py.id,
-        date: py.date || inv.date,
-        amount: round2(py.amount || 0),
-        paymentMethod: py.paymentMethod || 'cash',
-        notes: py.notes || '',
-        createdBy: py.createdBy || inv.createdBy || '',
-      })),
+      payments: (inv.payments || []).map((py) => {
+        const pyLoc =
+          py.collectionLocation ||
+          (py.actingRole === 'representative' || (py.createdByUserId && (data.representatives || []).some((r) => r.userId === py.createdByUserId))
+            ? 'rep'
+            : 'branch');
+        return {
+          id: py.id,
+          date: py.date || inv.date,
+          amount: round2(py.amount || 0),
+          paymentMethod: py.paymentMethod || 'cash',
+          collectionLocation: pyLoc,
+          collectedByRep: pyLoc === 'rep',
+          collectedByBranch: pyLoc === 'branch',
+          actingRole: py.actingRole || undefined,
+          notes: py.notes || '',
+          createdBy: py.createdBy || inv.createdBy || '',
+        };
+      }),
       notes: inv.notes || '',
     });
 
@@ -4907,6 +4918,7 @@ export async function getRepDetailedReport(filters = {}, actor) {
     return true;
   });
 
+  const repUserIds = new Set((data.representatives || []).map((r) => r.userId).filter(Boolean));
   const collections = [];
   if (opType === 'all' || opType === 'collection' || opType === 'sales') {
     for (const tx of data.financialTransactions || []) {
@@ -4934,6 +4946,11 @@ export async function getRepDetailedReport(filters = {}, actor) {
         if (!hay.includes(search)) continue;
       }
       const linkedInv = tx.relatedDocId ? invoiceMapAll.get(tx.relatedDocId) : null;
+      const isRepCollector =
+        tx.actingRole === 'representative' ||
+        (tx.createdByUserId && repUserIds.has(tx.createdByUserId)) ||
+        Boolean(selectedRepProfile?.userId && tx.createdByUserId === selectedRepProfile.userId);
+      const collectionLocation = isRepCollector ? 'rep' : 'branch';
       collections.push({
         id: tx.id,
         transactionNumber: tx.transactionNumber || undefined,
@@ -4946,6 +4963,11 @@ export async function getRepDetailedReport(filters = {}, actor) {
         relatedDocNumber: tx.relatedDocNumber || linkedInv?.invoiceNumber || undefined,
         remainingAfter: linkedInv ? Math.max(0, round2(linkedInv.remainingAmount || 0)) : undefined,
         isInvoiceLinked: Boolean(tx.relatedDocId && linkedInv),
+        collectionLocation,
+        collectedByRep: collectionLocation === 'rep',
+        collectedByBranch: collectionLocation === 'branch',
+        collectorName: tx.createdBy || '',
+        collectorRole: tx.actingRole || (isRepCollector ? 'representative' : 'staff'),
         createdBy: tx.createdBy || '',
         notes: tx.notes || '',
       });
@@ -4968,6 +4990,8 @@ export async function getRepDetailedReport(filters = {}, actor) {
     .map((c) => {
       const cSales = confirmedSales.filter((i) => i.partyId === c.id);
       const cCol = collections.filter((x) => x.partyId === c.id);
+      const cColRep = cCol.filter((x) => x.collectionLocation === 'rep');
+      const cColBranch = cCol.filter((x) => x.collectionLocation === 'branch');
       return {
         id: c.id,
         name: c.name,
@@ -4978,6 +5002,8 @@ export async function getRepDetailedReport(filters = {}, actor) {
         repSalesTotal: round2(cSales.reduce((s, i) => s + i.grandTotal, 0)),
         repPaidTotal: round2(cSales.reduce((s, i) => s + i.paidAmount, 0)),
         repCollectionsTotal: round2(cCol.reduce((s, x) => s + x.amount, 0)),
+        repDirectCollectionsTotal: round2(cColRep.reduce((s, x) => s + x.amount, 0)),
+        branchCollectionsTotal: round2(cColBranch.reduce((s, x) => s + x.amount, 0)),
       };
     });
 
@@ -5036,6 +5062,10 @@ export async function getRepDetailedReport(filters = {}, actor) {
     pendingSalesReturnRequestsCount: scopedSalesReturnRequests.filter((r) => r.status === 'pending').length,
     collectionsCount: collections.length,
     collectionsTotal: round2(collections.reduce((s, c) => s + Number(c.amount || 0), 0)),
+    collectedByRepCount: collections.filter((c) => c.collectionLocation === 'rep').length,
+    collectedByRepTotal: round2(collections.filter((c) => c.collectionLocation === 'rep').reduce((s, c) => s + Number(c.amount || 0), 0)),
+    collectedByBranchCount: collections.filter((c) => c.collectionLocation === 'branch').length,
+    collectedByBranchTotal: round2(collections.filter((c) => c.collectionLocation === 'branch').reduce((s, c) => s + Number(c.amount || 0), 0)),
     purchasePaymentsTotal: canPurchase
       ? round2(
           purchasePayments.length > 0

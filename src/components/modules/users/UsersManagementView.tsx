@@ -128,8 +128,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
   const [role, setRole] = useState<UserRole>('sales');
   const [linkedCustomerId, setLinkedCustomerId] = useState('');
   const [linkedEmployeeId, setLinkedEmployeeId] = useState('');
-  const [jobTitle, setJobTitle] = useState('موظف مبيعات');
-  const [department, setDepartment] = useState('المبيعات');
+  const [jobTitle, setJobTitle] = useState('');
+  const [department, setDepartment] = useState('');
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -667,7 +667,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           <GitMerge className="w-3.5 h-3.5" />
           <span>الهويات الموحدة والتعارضات ({identities.length})</span>
           {pendingConflictsCount > 0 && (
-            <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black">
+            <span className="px-1.5 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-800 text-[10px] font-black tabular-nums">
               {pendingConflictsCount}
             </span>
           )}
@@ -715,7 +715,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                     <td className="p-3 font-mono text-blue-900 font-bold">{u.username}</td>
                     <td className="p-3">
                       <div className="flex flex-wrap items-center gap-1">
-                        <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 text-[10px] font-bold">
+                        <span className="px-2 py-0.5 rounded border border-blue-200 bg-blue-50 text-blue-800 text-[10px] font-bold">
                           {u.role === 'admin'
                             ? 'مالك / مدير عام'
                             : u.role === 'manager'
@@ -733,17 +733,17 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                             : 'موظف مبيعات'}
                         </span>
                         {linkedEmp && (
-                          <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-800 text-[10px] font-bold" title={`ملف موظف HR: ${linkedEmp.name}`}>
+                          <span className="px-2 py-0.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-800 text-[10px] font-bold" title={`ملف موظف HR: ${linkedEmp.name}`}>
                             موظف HR: {linkedEmp.code}
                           </span>
                         )}
                         {linkedRep && (
-                          <span className="px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-800 text-[10px] font-bold">
+                          <span className="px-2 py-0.5 rounded border border-cyan-200 bg-cyan-50 text-cyan-800 text-[10px] font-bold">
                             ملف مندوب
                           </span>
                         )}
                         {linkedCust && (
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-[10px] font-bold">
+                          <span className="px-2 py-0.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-800 text-[10px] font-bold">
                             عميل: {linkedCust.code}
                           </span>
                         )}
@@ -773,8 +773,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                             setTogglingUserId(null);
                           }
                         }}
-                        className={`px-2 py-0.5 rounded-full font-bold text-[10px] cursor-pointer disabled:opacity-50 ${
-                          u.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+                        className={`px-2 py-0.5 rounded border font-bold text-[10px] cursor-pointer disabled:opacity-50 ${
+                          u.isActive ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'
                         }`}
                       >
                         {togglingUserId === u.id ? '...' : u.isActive ? 'نشط' : 'معطل'}
@@ -1092,7 +1092,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                     <div className="space-y-1.5 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono font-bold text-slate-600">{cf.id}</span>
-                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 font-bold text-[10px]">
+                        <span className="px-2 py-0.5 rounded border border-slate-200 bg-slate-100 text-slate-800 font-bold text-[10px]">
                           {cf.conflictType}
                         </span>
                         {cf.identifierKey && (
@@ -1101,12 +1101,12 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                           </span>
                         )}
                         <span
-                          className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                          className={`px-2 py-0.5 rounded border font-bold text-[10px] ${
                             cf.status === 'pending_review'
-                              ? 'bg-amber-100 text-amber-800'
+                              ? 'bg-amber-50 border-amber-200 text-amber-800'
                               : cf.status === 'resolved'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-slate-200 text-slate-700'
+                              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                              : 'bg-slate-200 border-slate-300 text-slate-700'
                           }`}
                         >
                           {cf.status === 'pending_review'
@@ -1223,7 +1223,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                               {roles.map((r) => (
                                 <span
                                   key={r.id}
-                                  className="px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-slate-800 text-[10px] font-bold"
+                                  className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-800 text-[10px] font-bold"
                                 >
                                   {r.linkedRecordType}: {r.linkedRecordId}
                                 </span>

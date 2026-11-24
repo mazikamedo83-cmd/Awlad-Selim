@@ -96,7 +96,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
   const [direction, setDirection] = useState<'owner_to_rep' | 'rep_to_owner'>('rep_to_owner');
   const [selectedRepId, setSelectedRepId] = useState<string>(representatives[0]?.id || '');
   const [selectedCashboxId, setSelectedCashboxId] = useState<string>(cashboxes[0]?.id || '');
-  const [amount, setAmount] = useState<number>(0);
+  const [amount, setAmount] = useState<number | ''>('');
   const [notes, setNotes] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -123,7 +123,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
     shortageQty: number;
   }>>([]);
   const [tempProdId, setTempProdId] = useState<string>('');
-  const [tempQty, setTempQty] = useState<number>(10);
+  const [tempQty, setTempQty] = useState<number | ''>('');
   const [isSubmittingItemReq, setIsSubmittingItemReq] = useState(false);
   const [itemReqError, setItemReqError] = useState<string | null>(null);
 
@@ -133,7 +133,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
   const [repName, setRepName] = useState('');
   const [repPhone, setRepPhone] = useState('');
   const [repVehicle, setRepVehicle] = useState('');
-  const [repOpening, setRepOpening] = useState(0);
+  const [repOpening, setRepOpening] = useState<number | ''>('');
   const [createRepAccount, setCreateRepAccount] = useState(true);
   const [repUsername, setRepUsername] = useState('');
   const [repPassword, setRepPassword] = useState('');
@@ -152,7 +152,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
   // Custody Action Modals (Delivery / Return / Admin Adjustment)
   const [custodyActionModal, setCustodyActionModal] = useState<'deliver' | 'return' | 'adjust' | null>(null);
   const [custodyOpProductId, setCustodyOpProductId] = useState('');
-  const [custodyOpQty, setCustodyOpQty] = useState<number>(1);
+  const [custodyOpQty, setCustodyOpQty] = useState<number | ''>('');
   const [custodyOpCustomerId, setCustodyOpCustomerId] = useState('');
   const [custodyOpCustomerName, setCustodyOpCustomerName] = useState('');
   const [custodyOpTargetWhId, setCustodyOpTargetWhId] = useState(warehouses[0]?.id || 'wh-main');
@@ -246,7 +246,8 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
   const handleSubmitCashTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (amount <= 0) {
+    const numAmt = Number(amount || 0);
+    if (numAmt <= 0) {
       setError('يرجى تحديد مبلغ صالح أكبر من الصفر');
       return;
     }
@@ -288,7 +289,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       senderName,
       receiverId,
       receiverName,
-      amount,
+      amount: numAmt,
       cashboxId: selectedCashboxId,
       notes,
     });
@@ -297,7 +298,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
 
     if (res.success) {
       setIsNewCashModalOpen(false);
-      setAmount(0);
+      setAmount('');
       setNotes('');
       if (res.transfer) {
         handlePrintTransfer(res.transfer);
@@ -367,12 +368,13 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
 
   // Add item to request
   const handleAddItemToReq = () => {
-    if (!tempProdId || tempQty <= 0) return;
+    const qtyVal = Number(tempQty || 0);
+    if (!tempProdId || qtyVal <= 0) return;
     const prod = products.find(p => p.id === tempProdId);
     if (!prod) return;
 
     const vanStock = prod.stockPerWarehouse[itemReqTargetWhId] || 0;
-    const shortage = Math.max(0, tempQty - vanStock);
+    const shortage = Math.max(0, qtyVal - vanStock);
 
     setSelectedItemsForReq(prev => [
       ...prev,
@@ -380,13 +382,13 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
         productId: prod.id,
         productName: prod.name,
         unit: prod.baseUnit,
-        requestedQty: tempQty,
+        requestedQty: qtyVal,
         availableInVanQty: vanStock,
         shortageQty: shortage,
       }
     ]);
     setTempProdId('');
-    setTempQty(10);
+    setTempQty('');
     window.setTimeout(() => repProdSearchRef.current?.focus(), 25);
   };
 
@@ -472,7 +474,8 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
 
   const handleSubmitCustodyOp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!custodyActionModal || !custodyOpProductId || custodyOpQty <= 0) return;
+    const qtyVal = Number(custodyOpQty || 0);
+    if (!custodyActionModal || !custodyOpProductId || qtyVal <= 0) return;
     setIsSubmittingCustodyOp(true);
     let res: { success: boolean; error?: string } = { success: false };
     if (custodyActionModal === 'deliver') {
@@ -482,7 +485,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
         customerId: cust?.id,
         customerName: cust?.name || custodyOpCustomerName.trim() || undefined,
         productId: custodyOpProductId,
-        quantity: custodyOpQty,
+        quantity: qtyVal,
         date: custodyOpDate,
         notes: custodyOpNotes.trim() || undefined,
       });
@@ -491,7 +494,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
         representativeId: custodyRepId,
         targetWarehouseId: custodyOpTargetWhId,
         productId: custodyOpProductId,
-        quantity: custodyOpQty,
+        quantity: qtyVal,
         date: custodyOpDate,
         notes: custodyOpNotes.trim() || undefined,
       });
@@ -500,7 +503,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
         representativeId: custodyRepId,
         productId: custodyOpProductId,
         operationType: custodyOpType,
-        quantity: custodyOpQty,
+        quantity: qtyVal,
         date: custodyOpDate,
         notes: custodyOpNotes.trim() || undefined,
       });
@@ -510,6 +513,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       setStatusBanner({ type: 'error', text: res.error || 'تعذر تنفيذ عملية العهدة' });
     } else {
       setCustodyActionModal(null);
+      setCustodyOpQty('');
       setCustodyOpNotes('');
       setCustodyOpCustomerName('');
       setStatusBanner({ type: 'success', text: 'تم تسجيل حركة العهدة وتحديث رصيد المندوب بنجاح.' });
@@ -693,7 +697,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       setRepName('');
       setRepPhone('');
       setRepVehicle('');
-      setRepOpening(0);
+      setRepOpening('');
       setRepUsername('');
       setRepPassword('');
     } catch (err: any) {
@@ -707,28 +711,28 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
     switch (status) {
       case 'received':
         return (
-          <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold">
             <CheckCircle2 className="w-3.5 h-3.5" />
             <span>تم الاستلام وتعديل الأرصدة</span>
           </span>
         );
       case 'awaiting_receipt':
         return (
-          <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-300 text-xs font-bold animate-pulse">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300 text-xs font-bold">
             <Clock className="w-3.5 h-3.5" />
             <span>في انتظار تأكيد الاستلام</span>
           </span>
         );
       case 'rejected':
         return (
-          <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-50 text-red-700 border border-red-200 text-xs font-bold">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 text-xs font-bold">
             <XCircle className="w-3.5 h-3.5" />
             <span>مرفوض</span>
           </span>
         );
       case 'cancelled':
         return (
-          <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-bold">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-slate-200 bg-slate-100 text-slate-700 text-xs font-bold">
             ملغى
           </span>
         );
@@ -741,28 +745,28 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
     switch (status) {
       case 'received':
         return (
-          <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-300 text-[10px] font-bold">
             <CheckCircle2 className="w-3 h-3" />
             <span>تم الاستلام الفعلي في سيارة المندوب</span>
           </span>
         );
       case 'executed':
         return (
-          <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-teal-50 text-teal-800 border border-teal-200 text-[10px] font-bold">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200 text-[10px] font-bold">
             <Check className="w-3 h-3" />
             <span>تم الصرف من المخزن — بانتظار تأكيد استلام المندوب</span>
           </span>
         );
       case 'approved':
         return (
-          <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold">
             <CheckCircle2 className="w-3 h-3" />
             <span>معتمد (بانتظار الصرف)</span>
           </span>
         );
       case 'rejected':
         return (
-          <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold">
             <XCircle className="w-3 h-3" />
             <span>مرفوض من الإدارة</span>
           </span>
@@ -770,7 +774,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       case 'pending':
       default:
         return (
-          <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300 text-[10px] font-bold animate-pulse">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300 text-[10px] font-bold">
             <Clock className="w-3 h-3" />
             <span>قيد المراجعة الإدارية</span>
           </span>
@@ -785,7 +789,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-black text-slate-900 tracking-tight">إدارة المندوبين والتحويلات والعهد</h2>
-            <span className="bg-blue-100 text-blue-800 text-[11px] font-bold px-2 py-0.5 rounded-full border border-blue-200">
+            <span className="bg-blue-50 text-blue-800 text-[11px] font-bold px-2 py-0.5 rounded border border-blue-200">
               ربط الفواتير والتحصيل
             </span>
           </div>
@@ -823,7 +827,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 setRepName('');
                 setRepPhone('');
                 setRepVehicle('');
-                setRepOpening(0);
+                setRepOpening('');
                 setRepUsername('');
                 setRepPassword('');
                 setCreateRepAccount(true);
@@ -874,7 +878,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           <StockTransfersIcon className="w-5 h-5 shrink-0" />
           <span>طلبات تحويل الأصناف والعهد (مرتبطة بالفاتورة)</span>
           {repItemTransfers.filter(r => r.status === 'pending').length > 0 && (
-            <span className="bg-amber-500 text-white px-1.5 py-0.2 rounded-full text-[10px]">
+            <span className="bg-amber-600 text-white px-1.5 py-0.5 rounded text-[10px] tabular-nums">
               {repItemTransfers.filter(r => r.status === 'pending').length}
             </span>
           )}
@@ -1130,8 +1134,8 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   <h3 className="font-black text-sm text-slate-900">{rep.name}</h3>
                   <span className="text-[10px] text-slate-500 font-mono">هاتف: {rep.phone}</span>
                 </div>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                  rep.status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'
+                <span className={`px-2 py-0.5 rounded border text-[10px] font-bold ${
+                  rep.status === 'active' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-slate-100 border-slate-200 text-slate-700'
                 }`}>
                   {rep.status === 'active' ? 'نشط ميدانياً' : 'موقف'}
                 </span>
@@ -1548,8 +1552,9 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   type="number"
                   required
                   min={1}
+                  placeholder="0.00"
                   value={amount}
-                  onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
+                  onChange={(e) => setAmount(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
                   className="w-full p-2.5 rounded-xl border border-slate-300 font-bold text-sm"
                 />
               </div>
@@ -1724,7 +1729,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   type="number"
                   min={1}
                   value={tempQty}
-                  onChange={(e) => setTempQty(parseFloat(e.target.value) || 1)}
+                  onChange={(e) => setTempQty(e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
@@ -2003,8 +2008,9 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   required
                   min={0.001}
                   step="0.001"
+                  placeholder="أدخل الكمية"
                   value={custodyOpQty}
-                  onChange={(e) => setCustodyOpQty(parseFloat(e.target.value) || 0)}
+                  onChange={(e) => setCustodyOpQty(e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
                   className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
                 />
               </div>
@@ -2040,7 +2046,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               </button>
               <button
                 type="submit"
-                disabled={isSubmittingCustodyOp || !custodyOpProductId || custodyOpQty <= 0}
+                disabled={isSubmittingCustodyOp || !custodyOpProductId || Number(custodyOpQty || 0) <= 0}
                 className="px-5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
               >
                 {isSubmittingCustodyOp ? 'جاري التنفيذ...' : 'حفظ وتنفيذ'}
@@ -2107,8 +2113,9 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   <label className="block font-bold mb-1">رصيد العهدة الافتتاحي ({settings.currency}):</label>
                   <input
                     type="number"
+                    placeholder="0.00"
                     value={repOpening}
-                    onChange={(e) => setRepOpening(parseFloat(e.target.value) || 0)}
+                    onChange={(e) => setRepOpening(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
                     className="w-full p-2.5 rounded-xl border border-slate-300 font-mono"
                   />
                 </div>

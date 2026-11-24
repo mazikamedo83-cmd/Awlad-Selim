@@ -14,9 +14,15 @@ import {
   Server,
   Settings,
   Users,
+  UserPlus,
+  PackagePlus,
+  FilePlus2,
+  ReceiptText,
+  Truck,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
+import { useShortcuts } from '../../context/ShortcutsContext';
 import { OfflineIndicator } from './OfflineIndicator';
 import { NavItemKey } from './Sidebar';
 import { MobileNotificationItem, UserPermissions } from '../../types';
@@ -83,6 +89,7 @@ export const Header: React.FC<HeaderProps> = ({
     markNotificationsRead,
     triggerManualSync,
   } = useData();
+  const { triggerAction } = useShortcuts();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -97,7 +104,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   const hideSectionsNav = isMobileAppPlatform();
 
-  // Primary navigation buttons (Keep الأقسام on Windows; remove ONLY on Android & iOS)
+  // Primary navigation buttons (permission-gated; Keep الأقسام on Windows)
   const primaryNavButtons: Array<{
     key: string;
     label: string;
@@ -125,42 +132,99 @@ export const Header: React.FC<HeaderProps> = ({
       active: currentPage === 'dashboard',
       onClick: () => onNavigate('dashboard'),
     },
-    {
-      key: 'inventory',
-      label: 'المخزون',
-      icon: Boxes,
-      active: INVENTORY_KEYS.includes(currentPage),
-      onClick: () =>
-        onNavigate(
-          canPerm('canManageInventory')
-            ? 'products'
-            : canPerm('canManageWarehouses')
-            ? 'warehouses'
-            : 'stock-counts'
-        ),
-    },
-    {
-      key: 'finance',
-      label: 'الحسابات',
-      icon: Wallet,
-      active: FINANCE_KEYS.includes(currentPage),
-      onClick: () =>
-        onNavigate(
-          canPerm('canManageAccounts')
-            ? 'customer-accounts'
-            : canPerm('canManageCashboxes')
-            ? 'cashboxes'
-            : 'cheques'
-        ),
-    },
-    {
-      key: 'sales',
-      label: 'المبيعات',
-      icon: ShoppingCart,
-      active: SALES_KEYS.includes(currentPage),
-      onClick: () => onNavigate('sales-invoices'),
-    },
+    ...(canPerm(['canManageInventory', 'canManageWarehouses', 'canCreateStockCount', 'canApproveStockCount'])
+      ? [
+          {
+            key: 'inventory',
+            label: 'المخزون',
+            icon: Boxes,
+            active: INVENTORY_KEYS.includes(currentPage),
+            onClick: () =>
+              onNavigate(
+                canPerm('canManageInventory')
+                  ? 'products'
+                  : canPerm('canManageWarehouses')
+                  ? 'warehouses'
+                  : 'stock-counts'
+              ),
+          },
+        ]
+      : []),
+    ...(canPerm(['canManageAccounts', 'canManageCashboxes'])
+      ? [
+          {
+            key: 'finance',
+            label: 'الحسابات',
+            icon: Wallet,
+            active: FINANCE_KEYS.includes(currentPage),
+            onClick: () =>
+              onNavigate(
+                canPerm('canManageAccounts')
+                  ? 'customer-accounts'
+                  : canPerm('canManageCashboxes')
+                  ? 'cashboxes'
+                  : 'cheques'
+              ),
+          },
+        ]
+      : []),
+    ...(canPerm('canManageSales')
+      ? [
+          {
+            key: 'sales',
+            label: 'المبيعات',
+            icon: ShoppingCart,
+            active: SALES_KEYS.includes(currentPage),
+            onClick: () => onNavigate('sales-invoices'),
+          },
+        ]
+      : []),
   ];
+
+  // Permanent Quick Shortcuts inside Top Blue Bar (RBAC-gated, never hidden by desktop viewport resizing)
+  const quickBarShortcuts: Array<{
+    key: string;
+    label: string;
+    icon: React.ElementType;
+    onClick: () => void;
+    allowed: boolean;
+  }> = [
+    {
+      key: 'add-customer',
+      label: 'إضافة عميل',
+      icon: UserPlus,
+      onClick: () => triggerAction('action:new_customer'),
+      allowed: canPerm('canManageSales') && canPerm('canAdd'),
+    },
+    {
+      key: 'add-product',
+      label: 'إضافة صنف',
+      icon: PackagePlus,
+      onClick: () => triggerAction('action:add_product'),
+      allowed: canPerm('canManageInventory') && canPerm('canAdd'),
+    },
+    {
+      key: 'new-sale',
+      label: 'فاتورة بيع',
+      icon: FilePlus2,
+      onClick: () => triggerAction('nav:new-sale'),
+      allowed: canPerm('canManageSales'),
+    },
+    {
+      key: 'add-expense',
+      label: 'تسجيل مصروف',
+      icon: ReceiptText,
+      onClick: () => triggerAction('action:add_expense'),
+      allowed: canPerm('canManageCashboxes'),
+    },
+    {
+      key: 'stock-transfer',
+      label: 'تحويل أصناف',
+      icon: Truck,
+      onClick: () => triggerAction('action:new_stock_transfer'),
+      allowed: canPerm(['canCreateStockTransfer', 'canManageInventory']),
+    },
+  ].filter((s) => s.allowed);
 
   // Check pending transfers & new customer/rep orders
   const pendingTransfersCount = repTransfers.filter((t) => t.status === 'awaiting_receipt').length;
@@ -243,10 +307,10 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             </div>
 
-            {/* Desktop Center: Exact 5 Navigation Buttons inside the Top Blue Rectangle */}
+            {/* Desktop Center: Primary Navigation Buttons inside Top Blue Rectangle */}
             <nav
               aria-label="التنقل الرئيسي"
-              className="hidden lg:flex items-center justify-center gap-1.5 flex-1 min-w-0"
+              className="hidden md:flex items-center justify-center gap-1.5 flex-1 min-w-0 overflow-x-auto"
             >
               {primaryNavButtons.map((btn) => {
                 const Icon = btn.icon;
@@ -258,9 +322,9 @@ export const Header: React.FC<HeaderProps> = ({
                     aria-expanded={btn.controlsDrawer ? isSidebarOpen : undefined}
                     aria-controls={btn.controlsDrawer ? 'system-sections-drawer' : undefined}
                     aria-current={!btn.controlsDrawer && btn.active ? 'page' : undefined}
-                    className={`min-h-[40px] px-3.5 xl:px-4 py-1.5 rounded-xl text-xs flex items-center gap-2 whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                    className={`min-h-[38px] px-3 xl:px-4 py-1.5 rounded-lg text-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
                       btn.active
-                        ? 'bg-white text-blue-950 font-black shadow-sm'
+                        ? 'bg-white text-blue-950 font-black shadow-xs'
                         : 'bg-white/10 text-blue-50 border border-white/15 hover:bg-white/20 hover:text-white font-bold'
                     }`}
                   >
@@ -280,11 +344,11 @@ export const Header: React.FC<HeaderProps> = ({
                   type="button"
                   onClick={() => onNavigate('customer-orders')}
                   title={`يوجد ${pendingOrdersCount} طلب شراء جديد بانتظار المراجعة`}
-                  className="hidden sm:flex items-center gap-1 px-2 py-1.5 rounded-xl bg-sky-400/20 text-sky-100 border border-sky-300/35 text-[11px] font-black hover:bg-sky-400/30 transition-all cursor-pointer whitespace-nowrap"
+                  className="hidden sm:flex items-center gap-1 px-2 py-1.5 rounded-lg bg-sky-400/20 text-sky-100 border border-sky-300/35 text-[11px] font-black hover:bg-sky-400/30 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 >
                   <Bell className="w-3.5 h-3.5 shrink-0" />
-                  <span className="hidden xl:inline">طلبات جديدة</span>
-                  <span className="px-1.5 py-0.5 rounded-full bg-white text-blue-950 text-[10px] font-mono">
+                  <span className="hidden xl:inline">طلبات</span>
+                  <span className="px-1.5 py-0.5 rounded bg-white text-blue-950 text-[10px] font-mono tabular-nums">
                     {pendingOrdersCount}
                   </span>
                 </button>
@@ -294,11 +358,11 @@ export const Header: React.FC<HeaderProps> = ({
                 <button
                   type="button"
                   onClick={onNavigateToTransfers}
-                  title={`يوجد ${pendingTransfersCount} طلب تحويل بالنصف معلق`}
-                  className="hidden sm:flex items-center gap-1 px-2 py-1.5 rounded-xl bg-amber-400/20 text-amber-100 border border-amber-300/40 text-[11px] font-bold hover:bg-amber-400/30 transition-all cursor-pointer whitespace-nowrap"
+                  title={`يوجد ${pendingTransfersCount} طلب تحويل معلق`}
+                  className="hidden sm:flex items-center gap-1 px-2 py-1.5 rounded-lg bg-amber-400/20 text-amber-100 border border-amber-300/40 text-[11px] font-bold hover:bg-amber-400/30 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 >
                   <ArrowLeftRight className="w-3.5 h-3.5 shrink-0" />
-                  <span className="px-1.5 py-0.5 rounded-full bg-amber-300 text-amber-950 text-[10px] font-mono">
+                  <span className="px-1.5 py-0.5 rounded bg-amber-300 text-amber-950 text-[10px] font-mono tabular-nums">
                     {pendingTransfersCount}
                   </span>
                 </button>
@@ -310,13 +374,13 @@ export const Header: React.FC<HeaderProps> = ({
                   setIsNotificationsOpen(true);
                   markNotificationsRead();
                 }}
-                className="relative min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer"
+                className="relative min-h-[38px] min-w-[38px] flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer shrink-0"
                 title="التنبيهات والإشعارات"
                 aria-label="التنبيهات والإشعارات"
               >
                 <Bell className="w-4 h-4" />
                 {unreadNotificationCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 rounded-full bg-red-600 text-white text-[9px] font-black flex items-center justify-center">
+                  <span className="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 rounded bg-red-600 text-white text-[9px] font-mono tabular-nums font-black flex items-center justify-center">
                     {unreadNotificationCount}
                   </span>
                 )}
@@ -325,7 +389,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => setIsServerModalOpen(true)}
-                className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer"
+                className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer shrink-0"
                 title="عنوان وإعدادات السيرفر المركزي"
                 aria-label="إعدادات السيرفر"
               >
@@ -335,13 +399,13 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => setIsAccountSwitcherOpen(true)}
-                className="relative min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer"
+                className="relative min-h-[38px] min-w-[38px] flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer shrink-0"
                 title="الحسابات المحفوظة وتبديل الحساب"
                 aria-label="تبديل الحساب"
               >
                 <Users className="w-4 h-4" />
                 {savedAccounts.length > 1 && (
-                  <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-emerald-500 text-white text-[9px] font-black flex items-center justify-center">
+                  <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded bg-emerald-500 text-white text-[9px] font-mono tabular-nums font-black flex items-center justify-center">
                     {savedAccounts.length}
                   </span>
                 )}
@@ -350,7 +414,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => onNavigate('system-settings')}
-                className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer"
+                className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer shrink-0"
                 title="الإعدادات"
                 aria-label="الإعدادات"
               >
@@ -360,7 +424,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={toggleFullscreen}
-                className="hidden md:flex min-h-[38px] min-w-[38px] items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer"
+                className="hidden md:flex min-h-[38px] min-w-[38px] items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer shrink-0"
                 title="ملء الشاشة"
                 aria-label="ملء الشاشة"
               >
@@ -370,7 +434,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => setShowLogoutModal(true)}
-                className="min-h-[38px] px-2.5 sm:px-3 flex items-center justify-center gap-1.5 rounded-xl bg-red-600/90 hover:bg-red-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer whitespace-nowrap"
+                className="min-h-[38px] px-2.5 sm:px-3 flex items-center justify-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 title="تسجيل الخروج من النظام"
                 aria-label="تسجيل الخروج"
               >
@@ -380,10 +444,47 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Mobile & Tablet (< lg): Primary Navigation Buttons Inside Top Blue Rectangle */}
+          {/* Permanent Desktop Quick Shortcuts inside the Top Blue Bar */}
+          {quickBarShortcuts.length > 0 && (
+            <div
+              aria-label="اختصارات العمليات السريعة"
+              className="hidden md:flex items-center justify-between gap-2 border-t border-white/15 py-1.5 overflow-x-auto"
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-bold text-blue-200 whitespace-nowrap shrink-0 pl-1">
+                  وصول سريع:
+                </span>
+                {quickBarShortcuts.map((sc) => {
+                  const Icon = sc.icon;
+                  return (
+                    <button
+                      key={sc.key}
+                      type="button"
+                      onClick={sc.onClick}
+                      className="min-h-[32px] px-2.5 py-1 rounded-md bg-white/12 hover:bg-white/25 border border-white/20 text-white text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
+                    >
+                      <Icon className="w-3.5 h-3.5 shrink-0" />
+                      <span>{sc.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {currentPage !== 'dashboard' && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate('dashboard')}
+                  className="min-h-[32px] px-2.5 py-1 rounded-md text-blue-100 hover:text-white hover:bg-white/10 text-[11px] font-bold whitespace-nowrap shrink-0 transition-colors cursor-pointer"
+                >
+                  لوحة التحكم
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Narrow Viewport (< md): Primary Navigation Buttons Inside Top Blue Rectangle */}
           <nav
             aria-label="التنقل الرئيسي للجوال"
-            className={`lg:hidden border-t border-white/15 py-1.5 grid ${hideSectionsNav ? 'grid-cols-4' : 'grid-cols-5'} gap-1`}
+            className="md:hidden border-t border-white/15 py-1.5 flex items-center gap-1 overflow-x-auto"
           >
             {primaryNavButtons.map((btn) => {
               const Icon = btn.icon;
@@ -395,9 +496,9 @@ export const Header: React.FC<HeaderProps> = ({
                   aria-expanded={btn.controlsDrawer ? isSidebarOpen : undefined}
                   aria-controls={btn.controlsDrawer ? 'system-sections-drawer' : undefined}
                   aria-current={!btn.controlsDrawer && btn.active ? 'page' : undefined}
-                  className={`min-h-[44px] px-1 py-1.5 rounded-xl flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 text-[11px] sm:text-xs whitespace-nowrap transition-all cursor-pointer ${
+                  className={`flex-1 min-h-[44px] px-2 py-1.5 rounded-lg flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 text-[11px] sm:text-xs whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
                     btn.active
-                      ? 'bg-white text-blue-950 font-black shadow-sm'
+                      ? 'bg-white text-blue-950 font-black shadow-xs'
                       : 'bg-white/10 text-blue-50 hover:bg-white/20 font-bold'
                   }`}
                 >

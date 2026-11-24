@@ -47,7 +47,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
   const [pickedProductId, setPickedProductId] = useState('');
   const [pickedUnitName, setPickedUnitName] = useState('');
   const [pickedUnitFactor, setPickedUnitFactor] = useState<number>(1);
-  const [pickedQty, setPickedQty] = useState<number>(1);
+  const [pickedQty, setPickedQty] = useState<number | ''>('');
   const [pickedNotes, setPickedNotes] = useState('');
   const [items, setItems] = useState<Array<{
     productId: string;
@@ -82,7 +82,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
       setPickedProductId('');
       setPickedUnitName('');
       setPickedUnitFactor(1);
-      setPickedQty(1);
+      setPickedQty('');
       setPickedNotes('');
       setError(null);
       window.setTimeout(() => searchInputRef.current?.focus(), 60);
@@ -145,7 +145,8 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
       searchInputRef.current?.focus();
       return;
     }
-    if (!pickedQty || pickedQty <= 0) {
+    const qtyVal = Number(pickedQty || 0);
+    if (qtyVal <= 0) {
       setError('يرجى إدخال كمية صالحة أكبر من الصفر');
       qtyInputRef.current?.focus();
       return;
@@ -153,7 +154,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
 
     const available = effectiveSourceWarehouseId ? Number(prod.stockPerWarehouse?.[effectiveSourceWarehouseId] || 0) : 0;
     const factor = Number(pickedUnitFactor) || 1;
-    const requestedBaseQty = pickedQty * factor;
+    const requestedBaseQty = qtyVal * factor;
     const alreadyRequestedBase = items
       .filter((it) => it.productId === prod.id)
       .reduce((s, it) => s + it.requestedQty * it.unitFactor, 0);
@@ -170,7 +171,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
         productName: prod.name,
         unit: pickedUnitName || prod.baseUnit,
         unitFactor: factor,
-        requestedQty: pickedQty,
+        requestedQty: qtyVal,
         available,
         notes: pickedNotes.trim(),
       },
@@ -178,7 +179,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
     setPickedProductId('');
     setPickedUnitName('');
     setPickedUnitFactor(1);
-    setPickedQty(1);
+    setPickedQty('');
     setPickedNotes('');
     window.setTimeout(() => searchInputRef.current?.focus(), 25);
   };
@@ -427,8 +428,9 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
                 type="number"
                 min="0.01"
                 step="any"
+                placeholder="أدخل الكمية"
                 value={pickedQty}
-                onChange={(e) => setPickedQty(Number(e.target.value))}
+                onChange={(e) => setPickedQty(e.target.value === '' ? '' : Number(e.target.value))}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();

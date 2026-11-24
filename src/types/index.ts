@@ -838,6 +838,7 @@ export interface BranchSettingItem {
   id: string;
   name: string;
   code: string;
+  branchNumber?: string;
   phone?: string;
   address?: string;
   warehouseId?: string;
@@ -916,6 +917,7 @@ export interface RoleDefaultPermissionPresets {
 export interface SystemSettings {
   companyName: string;
   companySubtitle: string;
+  branchNumber?: string;
   phone1: string;
   phone2: string;
   address: string;
@@ -2223,6 +2225,10 @@ export interface RepDetailedReportResponse {
     pendingSalesReturnRequestsCount?: number;
     collectionsCount: number;
     collectionsTotal: number;
+    collectedByRepCount?: number;
+    collectedByRepTotal?: number;
+    collectedByBranchCount?: number;
+    collectedByBranchTotal?: number;
     purchasePaymentsTotal: number;
     totalCustomerReceivables?: number;
     totalSupplierPayables?: number;
@@ -2252,6 +2258,8 @@ export interface RepDetailedReportResponse {
     repSalesTotal: number;
     repPaidTotal: number;
     repCollectionsTotal: number;
+    repDirectCollectionsTotal?: number;
+    branchCollectionsTotal?: number;
   }>;
   suppliersSummary: Array<{
     id: string;
@@ -2280,6 +2288,11 @@ export interface RepDetailedReportResponse {
     relatedDocNumber?: string;
     remainingAfter?: number;
     isInvoiceLinked?: boolean;
+    collectionLocation?: 'rep' | 'branch';
+    collectedByRep?: boolean;
+    collectedByBranch?: boolean;
+    collectorName?: string;
+    collectorRole?: string;
     createdBy?: string;
     notes?: string;
   }>;
