@@ -276,7 +276,55 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
       }
 
       await withTransaction(async (client) => {
-        // 1. Users
+        // Build safe 1:1 User <-> Employee link plan before insertion so Step 1 users never violate fk_users_employee_id before Step 17 employees exist
+        const userSetById = new Map(users.map((u) => [u.id, u]));
+        const empSetById = new Map(employees.map((e) => [e.id, e]));
+        const claimedEmpIds = new Set();
+        const claimedEmpUserIds = new Set();
+        const verifiedEmpToUser = new Map();
+        const verifiedUserToEmp = new Map();
+        const conflictingUserEmpPairs = [];
+
+        for (const emp of employees) {
+          const rawUid = emp.userId && userSetById.has(emp.userId) ? emp.userId : null;
+          if (!rawUid) continue;
+          const u = userSetById.get(rawUid);
+          if (claimedEmpUserIds.has(rawUid)) {
+            conflictingUserEmpPairs.push(`تعارض ربط مستخدم (${rawUid}) بأكثر من موظف (${emp.id})`);
+            continue;
+          }
+          if (u?.employeeId && u.employeeId !== emp.id) {
+            conflictingUserEmpPairs.push(`تعارض عدم تماثل بين الموظف (${emp.id}) والمستخدم (${rawUid})`);
+            continue;
+          }
+          claimedEmpUserIds.add(rawUid);
+          claimedEmpIds.add(emp.id);
+          verifiedEmpToUser.set(emp.id, rawUid);
+          verifiedUserToEmp.set(rawUid, emp.id);
+        }
+        for (const u of users) {
+          const rawEmpId = u.employeeId && empSetById.has(u.employeeId) ? u.employeeId : null;
+          if (!rawEmpId) continue;
+          if (verifiedUserToEmp.get(u.id) === rawEmpId) continue;
+          if (claimedEmpIds.has(rawEmpId) || claimedEmpUserIds.has(u.id)) {
+            conflictingUserEmpPairs.push(`تعارض ربط موظف (${rawEmpId}) بأكثر من مستخدم (${u.id})`);
+            continue;
+          }
+          const emp = empSetById.get(rawEmpId);
+          if (emp?.userId && emp.userId !== u.id) {
+            conflictingUserEmpPairs.push(`تعارض عدم تماثل بين المستخدم (${u.id}) والموظف (${rawEmpId})`);
+            continue;
+          }
+          claimedEmpIds.add(rawEmpId);
+          claimedEmpUserIds.add(u.id);
+          verifiedEmpToUser.set(rawEmpId, u.id);
+          verifiedUserToEmp.set(u.id, rawEmpId);
+        }
+        for (const msg of conflictingUserEmpPairs) {
+          details.warnings.push(`${msg} — تم الاحتفاظ بالسجلات دون حذف للمراجعة اليدوية.`);
+        }
+
+        // 1. Users (employee_id applied cleanly after Step 17 employees insertion to honor fk_users_employee_id)
         for (const u of users) {
           const algo = String(u.passwordHash || '').startsWith('$2') ? 'bcrypt' : 'legacy_sha256';
           await client.query(`
@@ -296,7 +344,6 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
               permissions = EXCLUDED.permissions,
               shortcuts = EXCLUDED.shortcuts,
               identity_id = COALESCE(EXCLUDED.identity_id, users.identity_id),
-              employee_id = COALESCE(EXCLUDED.employee_id, users.employee_id),
               active_role = COALESCE(EXCLUDED.active_role, users.active_role),
               additional_roles = EXCLUDED.additional_roles;
           `, [
@@ -317,7 +364,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             JSON.stringify(u.permissions || {}),
             JSON.stringify(Array.isArray(u.shortcuts) ? u.shortcuts : []),
             u.identityId || null,
-            u.employeeId || null,
+            null,
             u.activeRole || u.role || 'sales',
             JSON.stringify(Array.isArray(u.additionalRoles) ? u.additionalRoles : []),
             u.createdAt || new Date().toISOString(),
@@ -1087,6 +1134,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
         }
 
         for (const emp of employees) {
+          const safeEmpUserId = verifiedEmpToUser.get(emp.id) || null;
           await client.query(`
             INSERT INTO employees (id, code, full_name, job_title, department, phone, national_id, hire_date, basic_salary, status, notes, identity_id, user_id)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
@@ -1096,8 +1144,16 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
               status = EXCLUDED.status,
               identity_id = COALESCE(EXCLUDED.identity_id, employees.identity_id),
               user_id = COALESCE(EXCLUDED.user_id, employees.user_id);
-          `, [emp.id, emp.code, emp.name || emp.fullName, emp.jobTitle, emp.department || '', emp.phone || '', emp.nationalId || '', emp.hireDate, Number(emp.basicSalary || 0), emp.status || 'active', emp.notes || '', emp.identityId || null, emp.userId && userById.has(emp.userId) ? emp.userId : null]);
+          `, [emp.id, emp.code, emp.name || emp.fullName, emp.jobTitle, emp.department || '', emp.phone || '', emp.nationalId || '', emp.hireDate, Number(emp.basicSalary || 0), emp.status || 'active', emp.notes || '', emp.identityId || null, safeEmpUserId]);
           details.employees++;
+        }
+
+        // Safely apply verified symmetrical 1:1 users.employee_id links after employees exist
+        for (const [uId, empId] of verifiedUserToEmp.entries()) {
+          await client.query(
+            `UPDATE users SET employee_id = $1 WHERE id = $2 AND (employee_id IS NULL OR employee_id = $1)`,
+            [empId, uId]
+          );
         }
 
         for (const adv of advancesDeductions) {

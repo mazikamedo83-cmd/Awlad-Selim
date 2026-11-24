@@ -78,6 +78,7 @@ jobs:
           node server/tests/branchCollectionAndAuditTests.mjs
           node server/tests/storefrontAndLocationTests.mjs
           node server/tests/offlineRefreshAndDispatchTests.mjs
+          npx tsx server/tests/offlineClientFlowChecks.mts
           npx tsx server/tests/diagnosticsTests.mts
 
       - name: Verify full schema, transactions, dispatches & strict disconnect against real PostgreSQL 16

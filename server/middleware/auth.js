@@ -445,6 +445,42 @@ export function errorMiddleware(err, _req, res, _next) {
       error: DATABASE_UNAVAILABLE_MESSAGE,
     });
   }
+  if (err?.code === '23505') {
+    const constraint = String(err?.constraint || '').toLowerCase();
+    const detail = String(err?.detail || err?.message || '').toLowerCase();
+    if (constraint.includes('users_employee_id') || detail.includes('idx_users_employee_id_unique') || detail.includes('(employee_id)')) {
+      return res.status(409).json({
+        ok: false,
+        code: 'EMPLOYEE_ALREADY_LINKED',
+        error: 'ملف الموظف المختار مربوط مسبقًا بحساب مستخدم آخر',
+      });
+    }
+    if (constraint.includes('employees_user_id') || detail.includes('idx_employees_user_id_unique') || detail.includes('(user_id)')) {
+      return res.status(409).json({
+        ok: false,
+        code: 'USER_ALREADY_LINKED_TO_EMPLOYEE',
+        error: 'حساب المستخدم المختار مربوط مسبقًا بملف موظف آخر',
+      });
+    }
+  }
+  if (err?.code === '23503') {
+    const constraint = String(err?.constraint || '').toLowerCase();
+    const detail = String(err?.detail || err?.message || '').toLowerCase();
+    if (constraint.includes('fk_users_employee_id') || detail.includes('fk_users_employee_id')) {
+      return res.status(404).json({
+        ok: false,
+        code: 'EMPLOYEE_NOT_FOUND',
+        error: 'سجل الموظف المحدد للربط غير موجود',
+      });
+    }
+    if (constraint.includes('fk_employees_user_id') || detail.includes('fk_employees_user_id')) {
+      return res.status(404).json({
+        ok: false,
+        code: 'USER_NOT_FOUND',
+        error: 'حساب المستخدم المحدد للربط غير موجود',
+      });
+    }
+  }
   const safeMsg = sanitizePgErrorMessage(err?.message);
   console.error('[API Error]:', safeMsg || err?.name || 'INTERNAL_ERROR');
   return res.status(500).json({

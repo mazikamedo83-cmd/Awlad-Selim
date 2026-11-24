@@ -731,6 +731,255 @@ export function attachRecordToIdentityJsonTx(
   return targetIdentityId;
 }
 
+export async function splitDetachedEmployeeUserIdentityPgTx(client, { detachType, detachId, sharedIdentityId, now = nowIso() }) {
+  if (!detachId || !sharedIdentityId) return null;
+  if (detachType === 'employee') {
+    const empRes = await client.query(`SELECT id, full_name, phone, national_id, notes, identity_id FROM employees WHERE id = $1 FOR UPDATE`, [detachId]);
+    const emp = empRes.rows[0];
+    if (!emp || emp.identity_id !== sharedIdentityId) return emp?.identity_id || null;
+    const otherRoles = await client.query(
+      `SELECT 1 FROM identity_roles WHERE identity_id = $1 AND NOT (linked_record_type = 'employee' AND linked_record_id = $2) LIMIT 1`,
+      [sharedIdentityId, detachId]
+    );
+    if (otherRoles.rows.length === 0) return sharedIdentityId;
+    const newIdn = generateServerId('IDN');
+    await client.query(
+      `INSERT INTO identities (id, identity_type, full_name, primary_phone, normalized_phone, national_id, status, notes, created_at, updated_at)
+       VALUES ($1, 'person', $2, $3, $4, $5, 'active', $6, $7, $7)`,
+      [newIdn, emp.full_name, emp.phone || '', normalizePhoneDigits(emp.phone), emp.national_id || '', emp.notes || '', now]
+    );
+    await client.query(`UPDATE employees SET identity_id = $1 WHERE id = $2`, [newIdn, detachId]);
+    await client.query(
+      `UPDATE identity_roles SET identity_id = $1, updated_at = $2 WHERE linked_record_type = 'employee' AND linked_record_id = $3`,
+      [newIdn, now, detachId]
+    );
+    return newIdn;
+  }
+  if (detachType === 'user') {
+    const uRes = await client.query(`SELECT id, full_name, username, phone, address, notes, identity_id FROM users WHERE id = $1 FOR UPDATE`, [detachId]);
+    const usr = uRes.rows[0];
+    if (!usr || usr.identity_id !== sharedIdentityId) return usr?.identity_id || null;
+    const otherRoles = await client.query(
+      `SELECT 1 FROM identity_roles WHERE identity_id = $1 AND NOT (linked_record_type = 'user' AND linked_record_id = $2) LIMIT 1`,
+      [sharedIdentityId, detachId]
+    );
+    if (otherRoles.rows.length === 0) return sharedIdentityId;
+    const newIdn = generateServerId('IDN');
+    await client.query(
+      `INSERT INTO identities (id, identity_type, full_name, primary_phone, normalized_phone, address, status, notes, created_at, updated_at)
+       VALUES ($1, 'person', $2, $3, $4, $5, 'active', $6, $7, $7)`,
+      [newIdn, usr.full_name || usr.username, usr.phone || '', normalizePhoneDigits(usr.phone), usr.address || '', usr.notes || '', now]
+    );
+    await client.query(`UPDATE users SET identity_id = $1 WHERE id = $2`, [newIdn, detachId]);
+    await client.query(
+      `UPDATE identity_roles SET identity_id = $1, updated_at = $2 WHERE linked_record_type = 'user' AND linked_record_id = $3`,
+      [newIdn, now, detachId]
+    );
+    return newIdn;
+  }
+  return null;
+}
+
+export function splitDetachedEmployeeUserIdentityJsonTx(db, { detachType, detachId, sharedIdentityId, now = nowIso() }) {
+  if (!detachId || !sharedIdentityId) return null;
+  if (!Array.isArray(db.identities)) db.identities = [];
+  if (!Array.isArray(db.identityRoles)) db.identityRoles = [];
+  if (detachType === 'employee') {
+    const emp = (db.employees || []).find((e) => e.id === detachId);
+    if (!emp || emp.identityId !== sharedIdentityId) return emp?.identityId || null;
+    const hasOtherRoles = db.identityRoles.some(
+      (ir) => ir.identityId === sharedIdentityId && !(ir.linkedRecordType === 'employee' && ir.linkedRecordId === detachId)
+    );
+    if (!hasOtherRoles) return sharedIdentityId;
+    const newIdn = generateServerId('IDN');
+    db.identities.push({
+      id: newIdn,
+      identityType: 'person',
+      fullName: emp.name,
+      primaryPhone: emp.phone || '',
+      normalizedPhone: normalizePhoneDigits(emp.phone),
+      secondaryPhone: '',
+      nationalId: emp.nationalId || '',
+      commercialReg: '',
+      address: '',
+      status: 'active',
+      notes: emp.notes || '',
+      createdAt: now,
+      updatedAt: now,
+    });
+    emp.identityId = newIdn;
+    const roleRow = db.identityRoles.find((ir) => ir.linkedRecordType === 'employee' && ir.linkedRecordId === detachId);
+    if (roleRow) {
+      roleRow.identityId = newIdn;
+      roleRow.updatedAt = now;
+    }
+    return newIdn;
+  }
+  if (detachType === 'user') {
+    const usr = (db.users || []).find((u) => u.id === detachId);
+    if (!usr || usr.identityId !== sharedIdentityId) return usr?.identityId || null;
+    const hasOtherRoles = db.identityRoles.some(
+      (ir) => ir.identityId === sharedIdentityId && !(ir.linkedRecordType === 'user' && ir.linkedRecordId === detachId)
+    );
+    if (!hasOtherRoles) return sharedIdentityId;
+    const newIdn = generateServerId('IDN');
+    db.identities.push({
+      id: newIdn,
+      identityType: 'person',
+      fullName: usr.fullName || usr.username,
+      primaryPhone: usr.phone || '',
+      normalizedPhone: normalizePhoneDigits(usr.phone),
+      secondaryPhone: '',
+      nationalId: '',
+      commercialReg: '',
+      address: usr.address || '',
+      status: 'active',
+      notes: usr.notes || '',
+      createdAt: now,
+      updatedAt: now,
+    });
+    usr.identityId = newIdn;
+    const roleRow = db.identityRoles.find((ir) => ir.linkedRecordType === 'user' && ir.linkedRecordId === detachId);
+    if (roleRow) {
+      roleRow.identityId = newIdn;
+      roleRow.updatedAt = now;
+    }
+    return newIdn;
+  }
+  return null;
+}
+
+export async function alignEmployeeUserIdentityPgTx(client, { userId, employeeId, preferredIdentityId = null, now = nowIso() }) {
+  const [uRes, eRes] = await Promise.all([
+    client.query(`SELECT id, full_name, username, phone, address, identity_id FROM users WHERE id = $1 FOR UPDATE`, [userId]),
+    client.query(`SELECT id, full_name, phone, national_id, notes, identity_id FROM employees WHERE id = $1 FOR UPDATE`, [employeeId]),
+  ]);
+  const usr = uRes.rows[0];
+  const emp = eRes.rows[0];
+  if (!usr || !emp) return preferredIdentityId || null;
+
+  let targetIdn = preferredIdentityId || null;
+  if (!targetIdn) {
+    if (emp.identity_id && usr.identity_id && emp.identity_id !== usr.identity_id) {
+      const empIdnHasUser = await client.query(
+        `SELECT linked_record_id FROM identity_roles WHERE identity_id = $1 AND role_key = 'user' LIMIT 1`,
+        [emp.identity_id]
+      );
+      const usrIdnHasEmp = await client.query(
+        `SELECT linked_record_id FROM identity_roles WHERE identity_id = $1 AND role_key = 'employee' LIMIT 1`,
+        [usr.identity_id]
+      );
+      if (!empIdnHasUser.rows[0] || empIdnHasUser.rows[0].linked_record_id === userId) {
+        targetIdn = emp.identity_id;
+      } else if (!usrIdnHasEmp.rows[0] || usrIdnHasEmp.rows[0].linked_record_id === employeeId) {
+        targetIdn = usr.identity_id;
+      }
+    } else {
+      targetIdn = emp.identity_id || usr.identity_id || null;
+    }
+  }
+
+  const prevEmpIdn = emp.identity_id;
+  const prevUsrIdn = usr.identity_id;
+
+  const sharedIdn = await attachRecordToIdentityPgTx(client, {
+    entityType: 'employee',
+    entityId: employeeId,
+    roleKey: 'employee',
+    fullName: emp.full_name,
+    phone: emp.phone || usr.phone || '',
+    nationalId: emp.national_id || '',
+    notes: emp.notes || '',
+    explicitIdentityId: targetIdn,
+    isPrimary: true,
+    now,
+  });
+
+  await attachRecordToIdentityPgTx(client, {
+    entityType: 'user',
+    entityId: userId,
+    roleKey: 'user',
+    fullName: usr.full_name || usr.username,
+    phone: usr.phone || emp.phone || '',
+    nationalId: emp.national_id || '',
+    address: usr.address || '',
+    explicitIdentityId: sharedIdn,
+    isPrimary: true,
+    now,
+  });
+
+  for (const oldIdn of [prevEmpIdn, prevUsrIdn]) {
+    if (oldIdn && oldIdn !== sharedIdn) {
+      const rem = await client.query(`SELECT 1 FROM identity_roles WHERE identity_id = $1 LIMIT 1`, [oldIdn]);
+      if (rem.rows.length === 0) {
+        await client.query(`DELETE FROM identities WHERE id = $1`, [oldIdn]);
+      }
+    }
+  }
+
+  return sharedIdn;
+}
+
+export function alignEmployeeUserIdentityJsonTx(db, { userId, employeeId, preferredIdentityId = null, now = nowIso() }) {
+  const usr = (db.users || []).find((u) => u.id === userId);
+  const emp = (db.employees || []).find((e) => e.id === employeeId);
+  if (!usr || !emp) return preferredIdentityId || null;
+  if (!Array.isArray(db.identityRoles)) db.identityRoles = [];
+  if (!Array.isArray(db.identities)) db.identities = [];
+
+  let targetIdn = preferredIdentityId || null;
+  if (!targetIdn) {
+    if (emp.identityId && usr.identityId && emp.identityId !== usr.identityId) {
+      const empIdnUser = db.identityRoles.find((ir) => ir.identityId === emp.identityId && ir.roleKey === 'user');
+      const usrIdnEmp = db.identityRoles.find((ir) => ir.identityId === usr.identityId && ir.roleKey === 'employee');
+      if (!empIdnUser || empIdnUser.linkedRecordId === userId) {
+        targetIdn = emp.identityId;
+      } else if (!usrIdnEmp || usrIdnEmp.linkedRecordId === employeeId) {
+        targetIdn = usr.identityId;
+      }
+    } else {
+      targetIdn = emp.identityId || usr.identityId || null;
+    }
+  }
+
+  const prevEmpIdn = emp.identityId;
+  const prevUsrIdn = usr.identityId;
+
+  const sharedIdn = attachRecordToIdentityJsonTx(db, {
+    entityType: 'employee',
+    entityId: employeeId,
+    roleKey: 'employee',
+    fullName: emp.name,
+    phone: emp.phone || usr.phone || '',
+    nationalId: emp.nationalId || '',
+    notes: emp.notes || '',
+    explicitIdentityId: targetIdn,
+    isPrimary: true,
+    now,
+  });
+
+  attachRecordToIdentityJsonTx(db, {
+    entityType: 'user',
+    entityId: userId,
+    roleKey: 'user',
+    fullName: usr.fullName || usr.username,
+    phone: usr.phone || emp.phone || '',
+    nationalId: emp.nationalId || '',
+    address: usr.address || '',
+    explicitIdentityId: sharedIdn,
+    isPrimary: true,
+    now,
+  });
+
+  for (const oldIdn of [prevEmpIdn, prevUsrIdn]) {
+    if (oldIdn && oldIdn !== sharedIdn && !db.identityRoles.some((ir) => ir.identityId === oldIdn)) {
+      db.identities = db.identities.filter((idn) => idn.id !== oldIdn);
+    }
+  }
+
+  return sharedIdn;
+}
+
 export async function resolveActorIdentityPgTx(client, actor) {
   if (!actor || !actor.id) {
     return { actorIdentityId: null, actorEmployeeId: null, actingRole: null };
@@ -1111,13 +1360,80 @@ function runSafeIdentityAuditCore({
     }
   }
 
-  // Step 1: Process Users first (preserving existing employee_id, rep, customer links)
+  // Detect 1:1 Employee <-> User duplicate / asymmetric links BEFORE auditing so conflicts are surfaced without overwriting
+  const auditUsersByEmp = new Map();
+  const auditEmpsByUser = new Map();
+  for (const u of users) {
+    if (u.employeeId) {
+      const arr = auditUsersByEmp.get(u.employeeId) || [];
+      arr.push(u);
+      auditUsersByEmp.set(u.employeeId, arr);
+    }
+  }
+  for (const e of employees) {
+    if (e.userId) {
+      const arr = auditEmpsByUser.get(e.userId) || [];
+      arr.push(e);
+      auditEmpsByUser.set(e.userId, arr);
+    }
+  }
+  const blockedUserIdsForEmpLink = new Set();
+  const blockedEmpIdsForUserLink = new Set();
+  for (const [eId, uList] of auditUsersByEmp.entries()) {
+    if (uList.length > 1) {
+      blockedEmpIdsForUserLink.add(eId);
+      uList.forEach((u) => blockedUserIdsForEmpLink.add(u.id));
+      ensureConflict(
+        'employee_user_link_conflict',
+        'high',
+        `employee:${eId}:multiple_users`,
+        [
+          ...(empById.has(eId) ? [{ recordType: 'employee', recordId: eId, name: empById.get(eId).name, phone: empById.get(eId).phone || '' }] : []),
+          ...uList.map((u) => ({ recordType: 'user', recordId: u.id, name: u.fullName, username: u.username, phone: u.phone || '' })),
+        ]
+      );
+    }
+  }
+  for (const [uId, eList] of auditEmpsByUser.entries()) {
+    if (eList.length > 1) {
+      blockedUserIdsForEmpLink.add(uId);
+      eList.forEach((e) => blockedEmpIdsForUserLink.add(e.id));
+      ensureConflict(
+        'employee_user_link_conflict',
+        'high',
+        `user:${uId}:multiple_employees`,
+        [
+          ...(userById.has(uId) ? [{ recordType: 'user', recordId: uId, name: userById.get(uId).fullName, username: userById.get(uId).username }] : []),
+          ...eList.map((e) => ({ recordType: 'employee', recordId: e.id, name: e.name, phone: e.phone || '' })),
+        ]
+      );
+    }
+  }
+  for (const u of users) {
+    if (!u.employeeId) continue;
+    const e = empById.get(u.employeeId);
+    if (e && e.userId && e.userId !== u.id) {
+      blockedUserIdsForEmpLink.add(u.id);
+      blockedEmpIdsForUserLink.add(e.id);
+      ensureConflict('employee_user_link_conflict', 'high', `asymmetric_user_emp:${u.id}:${e.id}`, [
+        { recordType: 'user', recordId: u.id, name: u.fullName, username: u.username },
+        { recordType: 'employee', recordId: e.id, name: e.name },
+        ...(userById.has(e.userId) ? [{ recordType: 'user', recordId: e.userId, name: userById.get(e.userId).fullName, username: userById.get(e.userId).username }] : []),
+      ]);
+    }
+  }
+
+  // Step 1: Process Users first (preserving existing 1:1 employee_id, rep, customer links)
   for (const u of users) {
     let targetIdn = getEntityRecordIdentity('user', u);
-    let linkedEmpId = u.employeeId || null;
-    if (!linkedEmpId) {
-      const empByUsr = employees.find((e) => e.userId === u.id);
-      if (empByUsr) linkedEmpId = empByUsr.id;
+    const isBlockedUser = blockedUserIdsForEmpLink.has(u.id);
+    let linkedEmpId = !isBlockedUser ? (u.employeeId || null) : null;
+    if (!isBlockedUser && !linkedEmpId) {
+      const empByUsr = employees.find((e) => e.userId === u.id && !blockedEmpIdsForUserLink.has(e.id));
+      if (empByUsr && (auditUsersByEmp.get(empByUsr.id) || []).length === 0) linkedEmpId = empByUsr.id;
+    }
+    if (linkedEmpId && blockedEmpIdsForUserLink.has(linkedEmpId)) {
+      linkedEmpId = null;
     }
     if (!targetIdn && linkedEmpId && empById.has(linkedEmpId)) {
       const emp = empById.get(linkedEmpId);
@@ -1155,10 +1471,14 @@ function runSafeIdentityAuditCore({
   // Step 2: Process Employees
   for (const e of employees) {
     let targetIdn = getEntityRecordIdentity('employee', e);
-    let linkedUserId = e.userId || null;
-    if (!linkedUserId) {
-      const uMatch = users.find((u) => u.employeeId === e.id);
-      if (uMatch) linkedUserId = uMatch.id;
+    const isBlockedEmp = blockedEmpIdsForUserLink.has(e.id);
+    let linkedUserId = !isBlockedEmp ? (e.userId || null) : null;
+    if (!isBlockedEmp && !linkedUserId) {
+      const uMatch = users.find((u) => u.employeeId === e.id && !blockedUserIdsForEmpLink.has(u.id));
+      if (uMatch && (auditEmpsByUser.get(uMatch.id) || []).length === 0) linkedUserId = uMatch.id;
+    }
+    if (linkedUserId && blockedUserIdsForEmpLink.has(linkedUserId)) {
+      linkedUserId = null;
     }
     if (!targetIdn && linkedUserId && userById.has(linkedUserId)) {
       targetIdn = recordUpdates.users.get(linkedUserId)?.identityId || getEntityRecordIdentity('user', userById.get(linkedUserId));
@@ -1181,7 +1501,7 @@ function runSafeIdentityAuditCore({
       userId: linkedUserId || undefined,
       normalizedPhone: ph,
     });
-    if (linkedUserId) {
+    if (linkedUserId && !blockedUserIdsForEmpLink.has(linkedUserId)) {
       const curU = recordUpdates.users.get(linkedUserId) || {};
       if (!curU.employeeId) {
         recordUpdates.users.set(linkedUserId, { ...curU, identityId: assignedIdn, employeeId: e.id });
@@ -1598,15 +1918,69 @@ export async function linkEntityToIdentityManual({ targetType, targetId, identit
     throw new AppError(400, 'بيانات السجل المطلوب ربطه غير مكتملة', 'INVALID_LINK_PAYLOAD');
   }
   const now = nowIso();
+  const cleanLinkEmployeeId = linkEmployeeId ? String(linkEmployeeId).trim() : null;
+  const cleanLinkUserId = linkUserId ? String(linkUserId).trim() : null;
 
   if (await isPgMode()) {
     const result = await withTransaction(async (client) => {
       const table = ENTITY_TYPE_TO_TABLE[targetType];
-      const targetRes = await client.query(`SELECT * FROM ${table} WHERE id = $1 LIMIT 1`, [targetId]);
+      const targetRes = await client.query(`SELECT * FROM ${table} WHERE id = $1 FOR UPDATE`, [targetId]);
       const target = targetRes.rows[0];
       if (!target) throw new AppError(404, 'السجل المطلوب ربطه غير موجود', 'ENTITY_NOT_FOUND');
 
-      const resolvedIdentityId = await attachRecordToIdentityPgTx(client, {
+      if (targetType === 'user' && cleanLinkEmployeeId) {
+        if (target.role === 'customer') {
+          throw new AppError(400, 'لا يمكن ربط حساب العميل بملف موظف', 'INVALID_ROLE_EMPLOYEE_LINK');
+        }
+        const empRes = await client.query(`SELECT id, user_id, identity_id FROM employees WHERE id = $1 FOR UPDATE`, [cleanLinkEmployeeId]);
+        const emp = empRes.rows[0];
+        if (!emp) throw new AppError(404, 'سجل الموظف المحدد للربط غير موجود', 'EMPLOYEE_NOT_FOUND');
+        if (emp.user_id && emp.user_id !== targetId) {
+          throw new AppError(409, 'ملف الموظف المختار مربوط مسبقًا بحساب مستخدم آخر', 'EMPLOYEE_ALREADY_LINKED');
+        }
+        const otherUsr = await client.query(`SELECT id FROM users WHERE employee_id = $1 AND id <> $2 LIMIT 1`, [cleanLinkEmployeeId, targetId]);
+        if (otherUsr.rows[0]) {
+          throw new AppError(409, 'ملف الموظف المختار مربوط مسبقًا بحساب مستخدم آخر', 'EMPLOYEE_ALREADY_LINKED');
+        }
+        if (target.employee_id && target.employee_id !== cleanLinkEmployeeId) {
+          await client.query(`UPDATE employees SET user_id = NULL WHERE id = $1 AND user_id = $2`, [target.employee_id, targetId]);
+          if (target.identity_id) {
+            await splitDetachedEmployeeUserIdentityPgTx(client, {
+              detachType: 'employee',
+              detachId: target.employee_id,
+              sharedIdentityId: target.identity_id,
+              now,
+            });
+          }
+        }
+      } else if (targetType === 'employee' && cleanLinkUserId) {
+        const usrRes = await client.query(`SELECT id, role, employee_id, identity_id FROM users WHERE id = $1 FOR UPDATE`, [cleanLinkUserId]);
+        const usr = usrRes.rows[0];
+        if (!usr) throw new AppError(404, 'حساب المستخدم المحدد للربط غير موجود', 'USER_NOT_FOUND');
+        if (usr.role === 'customer') {
+          throw new AppError(400, 'لا يمكن ربط ملف موظف بحساب عميل', 'INVALID_ROLE_EMPLOYEE_LINK');
+        }
+        if (usr.employee_id && usr.employee_id !== targetId) {
+          throw new AppError(409, 'حساب المستخدم المختار مربوط مسبقًا بملف موظف آخر', 'USER_ALREADY_LINKED_TO_EMPLOYEE');
+        }
+        const otherEmp = await client.query(`SELECT id FROM employees WHERE user_id = $1 AND id <> $2 LIMIT 1`, [cleanLinkUserId, targetId]);
+        if (otherEmp.rows[0]) {
+          throw new AppError(409, 'حساب المستخدم المختار مربوط مسبقًا بملف موظف آخر', 'USER_ALREADY_LINKED_TO_EMPLOYEE');
+        }
+        if (target.user_id && target.user_id !== cleanLinkUserId) {
+          await client.query(`UPDATE users SET employee_id = NULL, updated_at = $1 WHERE id = $2 AND employee_id = $3`, [now, target.user_id, targetId]);
+          if (target.identity_id) {
+            await splitDetachedEmployeeUserIdentityPgTx(client, {
+              detachType: 'user',
+              detachId: target.user_id,
+              sharedIdentityId: target.identity_id,
+              now,
+            });
+          }
+        }
+      }
+
+      let resolvedIdentityId = await attachRecordToIdentityPgTx(client, {
         entityType: targetType,
         entityId: targetId,
         fullName: target.full_name || target.name || targetId,
@@ -1614,21 +1988,33 @@ export async function linkEntityToIdentityManual({ targetType, targetId, identit
         nationalId: target.national_id || '',
         address: target.address || '',
         explicitIdentityId: identityId || null,
-        linkedEmployeeId: linkEmployeeId || null,
-        linkedUserId: linkUserId || null,
+        linkedEmployeeId: cleanLinkEmployeeId,
+        linkedUserId: cleanLinkUserId,
         now,
       });
 
-      if (targetType === 'user' && linkEmployeeId) {
-        await client.query(`UPDATE users SET employee_id = $1, updated_at = $2 WHERE id = $3`, [linkEmployeeId, now, targetId]);
-        await client.query(`UPDATE employees SET user_id = $1, identity_id = $2 WHERE id = $3`, [targetId, resolvedIdentityId, linkEmployeeId]);
-      } else if (targetType === 'employee' && linkUserId) {
-        await client.query(`UPDATE employees SET user_id = $1 WHERE id = $2`, [linkUserId, targetId]);
-        await client.query(`UPDATE users SET employee_id = $1, identity_id = $2, updated_at = $3 WHERE id = $4`, [targetId, resolvedIdentityId, now, linkUserId]);
-      } else if (targetType === 'supplier' && linkUserId) {
-        await client.query(`UPDATE suppliers SET user_id = $1 WHERE id = $2`, [linkUserId, targetId]);
-      } else if ((targetType === 'customer' || targetType === 'representative') && linkUserId) {
-        await client.query(`UPDATE ${table} SET user_id = $1 WHERE id = $2`, [linkUserId, targetId]);
+      if (targetType === 'user' && cleanLinkEmployeeId) {
+        await client.query(`UPDATE users SET employee_id = $1, updated_at = $2 WHERE id = $3`, [cleanLinkEmployeeId, now, targetId]);
+        await client.query(`UPDATE employees SET user_id = $1 WHERE id = $2`, [targetId, cleanLinkEmployeeId]);
+        resolvedIdentityId = await alignEmployeeUserIdentityPgTx(client, {
+          userId: targetId,
+          employeeId: cleanLinkEmployeeId,
+          preferredIdentityId: identityId || resolvedIdentityId,
+          now,
+        });
+      } else if (targetType === 'employee' && cleanLinkUserId) {
+        await client.query(`UPDATE employees SET user_id = $1 WHERE id = $2`, [cleanLinkUserId, targetId]);
+        await client.query(`UPDATE users SET employee_id = $1, updated_at = $2 WHERE id = $3`, [targetId, now, cleanLinkUserId]);
+        resolvedIdentityId = await alignEmployeeUserIdentityPgTx(client, {
+          userId: cleanLinkUserId,
+          employeeId: targetId,
+          preferredIdentityId: identityId || resolvedIdentityId,
+          now,
+        });
+      } else if (targetType === 'supplier' && cleanLinkUserId) {
+        await client.query(`UPDATE suppliers SET user_id = $1 WHERE id = $2`, [cleanLinkUserId, targetId]);
+      } else if ((targetType === 'customer' || targetType === 'representative') && cleanLinkUserId) {
+        await client.query(`UPDATE ${table} SET user_id = $1 WHERE id = $2`, [cleanLinkUserId, targetId]);
       }
 
       return { identityId: resolvedIdentityId };
@@ -1650,7 +2036,51 @@ export async function linkEntityToIdentityManual({ targetType, targetId, identit
     const target = (db[listKey] || []).find((x) => x.id === targetId);
     if (!target) throw new AppError(404, 'السجل المطلوب ربطه غير موجود', 'ENTITY_NOT_FOUND');
 
-    const resolvedIdentityId = attachRecordToIdentityJsonTx(db, {
+    if (targetType === 'user' && cleanLinkEmployeeId) {
+      if (target.role === 'customer') {
+        throw new AppError(400, 'لا يمكن ربط حساب العميل بملف موظف', 'INVALID_ROLE_EMPLOYEE_LINK');
+      }
+      const emp = (db.employees || []).find((e) => e.id === cleanLinkEmployeeId);
+      if (!emp) throw new AppError(404, 'سجل الموظف المحدد للربط غير موجود', 'EMPLOYEE_NOT_FOUND');
+      if ((emp.userId && emp.userId !== targetId) || (db.users || []).some((u) => u.employeeId === cleanLinkEmployeeId && u.id !== targetId)) {
+        throw new AppError(409, 'ملف الموظف المختار مربوط مسبقًا بحساب مستخدم آخر', 'EMPLOYEE_ALREADY_LINKED');
+      }
+      if (target.employeeId && target.employeeId !== cleanLinkEmployeeId) {
+        const oldEmp = (db.employees || []).find((e) => e.id === target.employeeId);
+        if (oldEmp && oldEmp.userId === targetId) oldEmp.userId = undefined;
+        if (target.identityId) {
+          splitDetachedEmployeeUserIdentityJsonTx(db, {
+            detachType: 'employee',
+            detachId: target.employeeId,
+            sharedIdentityId: target.identityId,
+            now,
+          });
+        }
+      }
+    } else if (targetType === 'employee' && cleanLinkUserId) {
+      const usr = (db.users || []).find((u) => u.id === cleanLinkUserId);
+      if (!usr) throw new AppError(404, 'حساب المستخدم المحدد للربط غير موجود', 'USER_NOT_FOUND');
+      if (usr.role === 'customer') {
+        throw new AppError(400, 'لا يمكن ربط ملف موظف بحساب عميل', 'INVALID_ROLE_EMPLOYEE_LINK');
+      }
+      if ((usr.employeeId && usr.employeeId !== targetId) || (db.employees || []).some((e) => e.userId === cleanLinkUserId && e.id !== targetId)) {
+        throw new AppError(409, 'حساب المستخدم المختار مربوط مسبقًا بملف موظف آخر', 'USER_ALREADY_LINKED_TO_EMPLOYEE');
+      }
+      if (target.userId && target.userId !== cleanLinkUserId) {
+        const oldUsr = (db.users || []).find((u) => u.id === target.userId);
+        if (oldUsr && oldUsr.employeeId === targetId) oldUsr.employeeId = undefined;
+        if (target.identityId) {
+          splitDetachedEmployeeUserIdentityJsonTx(db, {
+            detachType: 'user',
+            detachId: target.userId,
+            sharedIdentityId: target.identityId,
+            now,
+          });
+        }
+      }
+    }
+
+    let resolvedIdentityId = attachRecordToIdentityJsonTx(db, {
       entityType: targetType,
       entityId: targetId,
       fullName: target.fullName || target.name || targetId,
@@ -1658,27 +2088,33 @@ export async function linkEntityToIdentityManual({ targetType, targetId, identit
       nationalId: target.nationalId || '',
       address: target.address || '',
       explicitIdentityId: identityId || null,
-      linkedEmployeeId: linkEmployeeId || null,
-      linkedUserId: linkUserId || null,
+      linkedEmployeeId: cleanLinkEmployeeId,
+      linkedUserId: cleanLinkUserId,
       now,
     });
 
-    if (targetType === 'user' && linkEmployeeId) {
-      target.employeeId = linkEmployeeId;
-      const emp = (db.employees || []).find((e) => e.id === linkEmployeeId);
-      if (emp) {
-        emp.userId = targetId;
-        emp.identityId = resolvedIdentityId;
-      }
-    } else if (targetType === 'employee' && linkUserId) {
-      target.userId = linkUserId;
-      const usr = (db.users || []).find((u) => u.id === linkUserId);
-      if (usr) {
-        usr.employeeId = targetId;
-        usr.identityId = resolvedIdentityId;
-      }
-    } else if (linkUserId) {
-      target.userId = linkUserId;
+    if (targetType === 'user' && cleanLinkEmployeeId) {
+      target.employeeId = cleanLinkEmployeeId;
+      const emp = (db.employees || []).find((e) => e.id === cleanLinkEmployeeId);
+      if (emp) emp.userId = targetId;
+      resolvedIdentityId = alignEmployeeUserIdentityJsonTx(db, {
+        userId: targetId,
+        employeeId: cleanLinkEmployeeId,
+        preferredIdentityId: identityId || resolvedIdentityId,
+        now,
+      });
+    } else if (targetType === 'employee' && cleanLinkUserId) {
+      target.userId = cleanLinkUserId;
+      const usr = (db.users || []).find((u) => u.id === cleanLinkUserId);
+      if (usr) usr.employeeId = targetId;
+      resolvedIdentityId = alignEmployeeUserIdentityJsonTx(db, {
+        userId: cleanLinkUserId,
+        employeeId: targetId,
+        preferredIdentityId: identityId || resolvedIdentityId,
+        now,
+      });
+    } else if (cleanLinkUserId) {
+      target.userId = cleanLinkUserId;
     }
 
     return { identityId: resolvedIdentityId };

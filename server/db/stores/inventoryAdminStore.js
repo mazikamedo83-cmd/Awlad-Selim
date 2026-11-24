@@ -81,6 +81,10 @@ import {
   attachRecordToIdentityJsonTx,
   assertNoSameRoleDuplicatesPgTx,
   assertNoSameRoleDuplicatesJsonTx,
+  splitDetachedEmployeeUserIdentityPgTx,
+  splitDetachedEmployeeUserIdentityJsonTx,
+  alignEmployeeUserIdentityPgTx,
+  alignEmployeeUserIdentityJsonTx,
   resolveActorIdentityPgTx,
   resolveActorIdentityJsonTx,
   listIdentitiesOverview,
@@ -2829,12 +2833,17 @@ export async function createAdminUser(payload, actor) {
   const id = generateServerId('USR');
   const now = nowIso();
 
+  const requestedLinkedEmployeeId = String(payload.linkedEmployeeId || payload.employeeId || '').trim() || null;
+  if (targetRole === 'customer' && requestedLinkedEmployeeId) {
+    throw new AppError(400, 'لا يمكن ربط حساب عميل بملف موظف', 'INVALID_ROLE_EMPLOYEE_LINK');
+  }
+
   if (await isPgMode()) {
     const user = await withTransaction(async (client) => {
       const dup = await client.query('SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1', [username]);
       if (dup.rows[0]) throw new AppError(409, 'اسم المستخدم مسجل مسبقًا', 'DUPLICATE_USERNAME');
 
-      const linkedEmployeeId = payload.linkedEmployeeId || payload.employeeId || null;
+      const linkedEmployeeId = requestedLinkedEmployeeId;
       let linkedEmpRow = null;
       if (linkedEmployeeId) {
         const empRes = await client.query('SELECT * FROM employees WHERE id = $1 FOR UPDATE', [linkedEmployeeId]);
@@ -2843,6 +2852,13 @@ export async function createAdminUser(payload, actor) {
           throw new AppError(404, 'سجل الموظف المحدد للربط غير موجود', 'EMPLOYEE_NOT_FOUND');
         }
         if (linkedEmpRow.user_id && linkedEmpRow.user_id !== id) {
+          throw new AppError(409, 'ملف الموظف المختار مربوط مسبقًا بحساب مستخدم آخر', 'EMPLOYEE_ALREADY_LINKED');
+        }
+        const dupUserEmpRes = await client.query(
+          'SELECT id FROM users WHERE employee_id = $1 AND id <> $2 LIMIT 1',
+          [linkedEmployeeId, id]
+        );
+        if (dupUserEmpRes.rows[0]) {
           throw new AppError(409, 'ملف الموظف المختار مربوط مسبقًا بحساب مستخدم آخر', 'EMPLOYEE_ALREADY_LINKED');
         }
       }
@@ -3004,34 +3020,26 @@ export async function createAdminUser(payload, actor) {
         resolvedLinkedRepId = autoRepId;
       }
 
-      const sharedIdentityId = await attachRecordToIdentityPgTx(client, {
-        entityType: 'user',
-        entityId: id,
-        roleKey: 'user',
-        fullName,
-        phone: payload.phone || linkedEmpRow?.phone || '',
-        nationalId: linkedEmpRow?.national_id || '',
-        address: payload.address || '',
-        explicitIdentityId: payload.identityId || payload.explicitIdentityId || linkedEmpRow?.identity_id || null,
-        linkedEmployeeId: linkedEmployeeId || null,
-        isPrimary: true,
-        now,
-      });
-
+      let sharedIdentityId;
       if (linkedEmployeeId) {
-        await client.query('UPDATE employees SET user_id = $1, identity_id = $2 WHERE id = $3', [
-          id,
-          sharedIdentityId,
-          linkedEmployeeId,
-        ]);
-        await attachRecordToIdentityPgTx(client, {
-          entityType: 'employee',
-          entityId: linkedEmployeeId,
-          roleKey: 'employee',
-          fullName: linkedEmpRow?.full_name || fullName,
-          phone: linkedEmpRow?.phone || payload.phone || '',
-          nationalId: linkedEmpRow?.national_id || '',
-          explicitIdentityId: sharedIdentityId,
+        await client.query('UPDATE employees SET user_id = $1 WHERE id = $2', [id, linkedEmployeeId]);
+        sharedIdentityId = await alignEmployeeUserIdentityPgTx(client, {
+          userId: id,
+          employeeId: linkedEmployeeId,
+          preferredIdentityId: payload.identityId || payload.explicitIdentityId || null,
+          now,
+        });
+      } else {
+        sharedIdentityId = await attachRecordToIdentityPgTx(client, {
+          entityType: 'user',
+          entityId: id,
+          roleKey: 'user',
+          fullName,
+          phone: payload.phone || '',
+          nationalId: '',
+          address: payload.address || '',
+          explicitIdentityId: payload.identityId || payload.explicitIdentityId || null,
+          isPrimary: true,
           now,
         });
       }
@@ -3081,7 +3089,7 @@ export async function createAdminUser(payload, actor) {
       throw new AppError(409, 'اسم المستخدم مسجل مسبقًا', 'DUPLICATE_USERNAME');
     }
 
-    const linkedEmployeeId = payload.linkedEmployeeId || payload.employeeId || undefined;
+    const linkedEmployeeId = requestedLinkedEmployeeId || undefined;
     let linkedEmpObj = null;
     if (linkedEmployeeId) {
       linkedEmpObj = (db.employees || []).find((e) => e.id === linkedEmployeeId);
@@ -3089,6 +3097,9 @@ export async function createAdminUser(payload, actor) {
         throw new AppError(404, 'سجل الموظف المحدد للربط غير موجود', 'EMPLOYEE_NOT_FOUND');
       }
       if (linkedEmpObj.userId && linkedEmpObj.userId !== id) {
+        throw new AppError(409, 'ملف الموظف المختار مربوط مسبقًا بحساب مستخدم آخر', 'EMPLOYEE_ALREADY_LINKED');
+      }
+      if ((db.users || []).some((u) => u.id !== id && u.employeeId === linkedEmployeeId)) {
         throw new AppError(409, 'ملف الموظف المختار مربوط مسبقًا بحساب مستخدم آخر', 'EMPLOYEE_ALREADY_LINKED');
       }
     }
@@ -3207,34 +3218,29 @@ export async function createAdminUser(payload, actor) {
       resolvedLinkedRepId = autoRepId;
     }
 
-    const sharedIdentityIdJson = attachRecordToIdentityJsonTx(db, {
-      entityType: 'user',
-      entityId: id,
-      roleKey: 'user',
-      fullName,
-      phone: payload.phone || linkedEmpObj?.phone || '',
-      nationalId: linkedEmpObj?.nationalId || '',
-      address: payload.address || '',
-      explicitIdentityId: payload.identityId || payload.explicitIdentityId || linkedEmpObj?.identityId || null,
-      linkedEmployeeId: linkedEmployeeId || null,
-      isPrimary: true,
-      now,
-    });
-    newUser.identityId = sharedIdentityIdJson;
-
+    let sharedIdentityIdJson;
     if (linkedEmployeeId && linkedEmpObj) {
       linkedEmpObj.userId = id;
-      linkedEmpObj.identityId = sharedIdentityIdJson;
-      attachRecordToIdentityJsonTx(db, {
-        entityType: 'employee',
-        entityId: linkedEmployeeId,
-        roleKey: 'employee',
-        fullName: linkedEmpObj.name || fullName,
-        phone: linkedEmpObj.phone || payload.phone || '',
-        nationalId: linkedEmpObj.nationalId || '',
-        explicitIdentityId: sharedIdentityIdJson,
+      sharedIdentityIdJson = alignEmployeeUserIdentityJsonTx(db, {
+        userId: id,
+        employeeId: linkedEmployeeId,
+        preferredIdentityId: payload.identityId || payload.explicitIdentityId || null,
         now,
       });
+    } else {
+      sharedIdentityIdJson = attachRecordToIdentityJsonTx(db, {
+        entityType: 'user',
+        entityId: id,
+        roleKey: 'user',
+        fullName,
+        phone: payload.phone || '',
+        nationalId: '',
+        address: payload.address || '',
+        explicitIdentityId: payload.identityId || payload.explicitIdentityId || null,
+        isPrimary: true,
+        now,
+      });
+      newUser.identityId = sharedIdentityIdJson;
     }
     if (resolvedLinkedCustomerId) {
       attachRecordToIdentityJsonTx(db, {
@@ -3312,15 +3318,32 @@ export async function updateAdminUser(userId, updates, actor) {
       const resolvedPerms = sanitizeEffectivePermissionsForRole(effectiveRole, rawPerms);
       const nextPhoneVal = updates.phone ?? cur.phone ?? '';
       const hasEmpUpdate = updates.linkedEmployeeId !== undefined || updates.employeeId !== undefined;
-      const nextEmployeeId = hasEmpUpdate
-        ? ((updates.linkedEmployeeId ?? updates.employeeId) || null)
-        : (cur.employee_id || null);
+      const requestedEmpVal = hasEmpUpdate
+        ? (String(updates.linkedEmployeeId ?? updates.employeeId ?? '').trim() || null)
+        : null;
+      if (effectiveRole === 'customer' && requestedEmpVal) {
+        throw new AppError(400, 'لا يمكن ربط حساب عميل بملف موظف', 'INVALID_ROLE_EMPLOYEE_LINK');
+      }
+      const nextEmployeeId =
+        effectiveRole === 'customer'
+          ? null
+          : hasEmpUpdate
+          ? requestedEmpVal
+          : (cur.employee_id || null);
+      const empLinkChanged = (cur.employee_id || null) !== (nextEmployeeId || null);
       let nextEmpRow = null;
-      if (hasEmpUpdate && nextEmployeeId) {
+      if (nextEmployeeId) {
         const empRes = await client.query('SELECT * FROM employees WHERE id = $1 FOR UPDATE', [nextEmployeeId]);
         nextEmpRow = empRes.rows[0];
         if (!nextEmpRow) throw new AppError(404, 'سجل الموظف المحدد للربط غير موجود', 'EMPLOYEE_NOT_FOUND');
         if (nextEmpRow.user_id && nextEmpRow.user_id !== userId) {
+          throw new AppError(409, 'ملف الموظف المختار مربوط مسبقًا بحساب مستخدم آخر', 'EMPLOYEE_ALREADY_LINKED');
+        }
+        const dupUserEmpRes = await client.query(
+          'SELECT id FROM users WHERE employee_id = $1 AND id <> $2 LIMIT 1',
+          [nextEmployeeId, userId]
+        );
+        if (dupUserEmpRes.rows[0]) {
           throw new AppError(409, 'ملف الموظف المختار مربوط مسبقًا بحساب مستخدم آخر', 'EMPLOYEE_ALREADY_LINKED');
         }
       }
@@ -3351,14 +3374,23 @@ export async function updateAdminUser(userId, updates, actor) {
           userId,
         ]
       );
-      if (hasEmpUpdate) {
+      if (empLinkChanged) {
+        if (cur.employee_id && cur.employee_id !== nextEmployeeId) {
+          await client.query('UPDATE employees SET user_id = NULL WHERE id = $1 AND user_id = $2', [cur.employee_id, userId]);
+          await splitDetachedEmployeeUserIdentityPgTx(client, {
+            detachType: 'employee',
+            detachId: cur.employee_id,
+            sharedIdentityId: cur.identity_id,
+            now,
+          });
+        }
         await client.query('UPDATE employees SET user_id = NULL WHERE user_id = $1 AND ($2::varchar IS NULL OR id <> $2)', [
           userId,
           nextEmployeeId,
         ]);
-        if (nextEmployeeId) {
-          await client.query('UPDATE employees SET user_id = $1 WHERE id = $2', [userId, nextEmployeeId]);
-        }
+      }
+      if (nextEmployeeId) {
+        await client.query('UPDATE employees SET user_id = $1 WHERE id = $2', [userId, nextEmployeeId]);
       }
       if (nextPasswordHash) {
         await client.query(`UPDATE users SET password_hash = $1, password_algo = 'bcrypt' WHERE id = $2`, [nextPasswordHash, userId]);
@@ -3564,29 +3596,25 @@ export async function updateAdminUser(userId, updates, actor) {
         const curLinkedRep = await client.query('SELECT id FROM representatives WHERE user_id = $1 LIMIT 1', [userId]);
         if (curLinkedRep.rows[0]) resolvedLinkedRepId = curLinkedRep.rows[0].id;
       }
-      const sharedUpdIdentityId = await attachRecordToIdentityPgTx(client, {
-        entityType: 'user',
-        entityId: userId,
-        roleKey: 'user',
-        fullName: updates.fullName ?? cur.full_name,
-        phone: nextPhoneVal,
-        nationalId: nextEmpRow?.national_id || '',
-        address: updates.address ?? cur.address ?? '',
-        explicitIdentityId: updates.identityId || updates.explicitIdentityId || cur.identity_id || nextEmpRow?.identity_id || null,
-        linkedEmployeeId: nextEmployeeId || null,
-        isPrimary: true,
-        now,
-      });
+      let sharedUpdIdentityId;
       if (nextEmployeeId) {
-        await client.query('UPDATE employees SET identity_id = $1 WHERE id = $2', [sharedUpdIdentityId, nextEmployeeId]);
-        await attachRecordToIdentityPgTx(client, {
-          entityType: 'employee',
-          entityId: nextEmployeeId,
-          roleKey: 'employee',
-          fullName: nextEmpRow?.full_name || updates.fullName || cur.full_name,
-          phone: nextEmpRow?.phone || nextPhoneVal,
-          nationalId: nextEmpRow?.national_id || '',
-          explicitIdentityId: sharedUpdIdentityId,
+        sharedUpdIdentityId = await alignEmployeeUserIdentityPgTx(client, {
+          userId,
+          employeeId: nextEmployeeId,
+          preferredIdentityId: updates.identityId || updates.explicitIdentityId || null,
+          now,
+        });
+      } else {
+        sharedUpdIdentityId = await attachRecordToIdentityPgTx(client, {
+          entityType: 'user',
+          entityId: userId,
+          roleKey: 'user',
+          fullName: updates.fullName ?? cur.full_name,
+          phone: nextPhoneVal,
+          nationalId: '',
+          address: updates.address ?? cur.address ?? '',
+          explicitIdentityId: updates.identityId || updates.explicitIdentityId || cur.identity_id || null,
+          isPrimary: true,
           now,
         });
       }
@@ -3650,17 +3678,30 @@ export async function updateAdminUser(userId, updates, actor) {
       applyRolePreset,
       ...rest
     } = updates;
+    const effectiveRole = rest.role ?? cur.role;
     const hasEmpUpdate = rawLinkedEmployeeId !== undefined || rawEmployeeId !== undefined;
-    const nextEmployeeId = hasEmpUpdate ? ((rawLinkedEmployeeId ?? rawEmployeeId) || undefined) : cur.employeeId;
+    const requestedEmpVal = hasEmpUpdate ? (String(rawLinkedEmployeeId ?? rawEmployeeId ?? '').trim() || undefined) : undefined;
+    if (effectiveRole === 'customer' && requestedEmpVal) {
+      throw new AppError(400, 'لا يمكن ربط حساب عميل بملف موظف', 'INVALID_ROLE_EMPLOYEE_LINK');
+    }
+    const nextEmployeeId =
+      effectiveRole === 'customer'
+        ? undefined
+        : hasEmpUpdate
+        ? requestedEmpVal
+        : cur.employeeId;
+    const empLinkChanged = (cur.employeeId || null) !== (nextEmployeeId || null);
     let nextEmpObj = null;
-    if (hasEmpUpdate && nextEmployeeId) {
+    if (nextEmployeeId) {
       nextEmpObj = (db.employees || []).find((e) => e.id === nextEmployeeId);
       if (!nextEmpObj) throw new AppError(404, 'سجل الموظف المحدد للربط غير موجود', 'EMPLOYEE_NOT_FOUND');
       if (nextEmpObj.userId && nextEmpObj.userId !== userId) {
         throw new AppError(409, 'ملف الموظف المختار مربوط مسبقًا بحساب مستخدم آخر', 'EMPLOYEE_ALREADY_LINKED');
       }
+      if ((db.users || []).some((u) => u.id !== userId && u.employeeId === nextEmployeeId)) {
+        throw new AppError(409, 'ملف الموظف المختار مربوط مسبقًا بحساب مستخدم آخر', 'EMPLOYEE_ALREADY_LINKED');
+      }
     }
-    const effectiveRole = rest.role ?? cur.role;
     const rawPerms =
       applyRolePreset === true
         ? resolveDefaultPermissionsForRole(effectiveRole, liveExtraSettings)
@@ -3681,13 +3722,23 @@ export async function updateAdminUser(userId, updates, actor) {
       passwordHash: nextPasswordHash || cur.passwordHash,
       passwordAlgo: nextPasswordHash ? 'bcrypt' : cur.passwordAlgo,
     };
-    if (hasEmpUpdate) {
+    if (empLinkChanged) {
+      if (cur.employeeId && cur.employeeId !== nextEmployeeId) {
+        const oldEmp = (db.employees || []).find((e) => e.id === cur.employeeId);
+        if (oldEmp && oldEmp.userId === userId) oldEmp.userId = undefined;
+        splitDetachedEmployeeUserIdentityJsonTx(db, {
+          detachType: 'employee',
+          detachId: cur.employeeId,
+          sharedIdentityId: cur.identityId,
+          now,
+        });
+      }
       for (const emp of db.employees || []) {
         if (emp.userId === userId && emp.id !== nextEmployeeId) emp.userId = undefined;
       }
-      if (nextEmployeeId && nextEmpObj) {
-        nextEmpObj.userId = userId;
-      }
+    }
+    if (nextEmployeeId && nextEmpObj) {
+      nextEmpObj.userId = userId;
     }
     let resolvedLinkedCustomerId;
     if (effectiveRole === 'customer' && linkedCustomerId) {
@@ -3832,32 +3883,28 @@ export async function updateAdminUser(userId, updates, actor) {
       const existingRep = (db.representatives || []).find((rp) => rp.userId === userId);
       if (existingRep) resolvedLinkedRepId = existingRep.id;
     }
-    const sharedUpdJsonIdentityId = attachRecordToIdentityJsonTx(db, {
-      entityType: 'user',
-      entityId: userId,
-      roleKey: 'user',
-      fullName: db.users[idx].fullName,
-      phone: db.users[idx].phone || '',
-      nationalId: nextEmpObj?.nationalId || '',
-      address: db.users[idx].address || '',
-      explicitIdentityId: rawIdentityId || rawExplicitIdentityId || cur.identityId || nextEmpObj?.identityId || null,
-      linkedEmployeeId: nextEmployeeId || null,
-      isPrimary: true,
-      now,
-    });
-    db.users[idx].identityId = sharedUpdJsonIdentityId;
+    let sharedUpdJsonIdentityId;
     if (nextEmployeeId && nextEmpObj) {
-      nextEmpObj.identityId = sharedUpdJsonIdentityId;
-      attachRecordToIdentityJsonTx(db, {
-        entityType: 'employee',
-        entityId: nextEmployeeId,
-        roleKey: 'employee',
-        fullName: nextEmpObj.name || db.users[idx].fullName,
-        phone: nextEmpObj.phone || db.users[idx].phone || '',
-        nationalId: nextEmpObj.nationalId || '',
-        explicitIdentityId: sharedUpdJsonIdentityId,
+      sharedUpdJsonIdentityId = alignEmployeeUserIdentityJsonTx(db, {
+        userId,
+        employeeId: nextEmployeeId,
+        preferredIdentityId: rawIdentityId || rawExplicitIdentityId || null,
         now,
       });
+    } else {
+      sharedUpdJsonIdentityId = attachRecordToIdentityJsonTx(db, {
+        entityType: 'user',
+        entityId: userId,
+        roleKey: 'user',
+        fullName: db.users[idx].fullName,
+        phone: db.users[idx].phone || '',
+        nationalId: '',
+        address: db.users[idx].address || '',
+        explicitIdentityId: rawIdentityId || rawExplicitIdentityId || cur.identityId || null,
+        isPrimary: true,
+        now,
+      });
+      db.users[idx].identityId = sharedUpdJsonIdentityId;
     }
     if (resolvedLinkedCustomerId) {
       attachRecordToIdentityJsonTx(db, {
@@ -3911,6 +3958,8 @@ export async function deleteAdminUser(userId, actor) {
           throw new AppError(409, 'لا يمكن حذف آخر حساب مدير عام نشط في النظام', 'LAST_ADMIN');
         }
       }
+      await client.query(`DELETE FROM identity_roles WHERE linked_record_type = 'user' AND linked_record_id = $1`, [userId]);
+      await client.query('UPDATE employees SET user_id = NULL WHERE user_id = $1', [userId]);
       await client.query('DELETE FROM users WHERE id = $1', [userId]);
       return r.rows[0].username;
     });
@@ -3927,7 +3976,12 @@ export async function deleteAdminUser(userId, actor) {
     if (target.role === 'admin' && db.users.filter((u) => u.role === 'admin' && u.isActive).length <= 1) {
       throw new AppError(409, 'لا يمكن حذف آخر حساب مدير عام نشط في النظام', 'LAST_ADMIN');
     }
-    db.customers = db.customers.map((c) => (c.userId === userId ? { ...c, userId: undefined } : c));
+    db.customers = (db.customers || []).map((c) => (c.userId === userId ? { ...c, userId: undefined } : c));
+    db.employees = (db.employees || []).map((e) => (e.userId === userId ? { ...e, userId: undefined } : e));
+    db.representatives = (db.representatives || []).map((r) => (r.userId === userId ? { ...r, userId: undefined } : r));
+    db.identityRoles = (db.identityRoles || []).filter(
+      (ir) => !(ir.linkedRecordType === 'user' && ir.linkedRecordId === userId)
+    );
     db.users = db.users.filter((u) => u.id !== userId);
     return target.username;
   });
@@ -5400,7 +5454,7 @@ export async function addEmployee(payload, actor = null) {
   const status = payload.status || 'active';
   const phone = String(payload.phone || '').trim();
   const nationalId = String(payload.nationalId || '').trim();
-  const linkedUserId = payload.userId || null;
+  const linkedUserId = String(payload.userId || '').trim() || null;
   const now = nowIso();
   let resolvedIdentityId;
 
@@ -5408,6 +5462,29 @@ export async function addEmployee(payload, actor = null) {
     resolvedIdentityId = await withTransaction(async (client) => {
       const dup = await client.query('SELECT id FROM employees WHERE LOWER(code) = LOWER($1) LIMIT 1', [code]);
       if (dup.rows[0]) throw new AppError(409, 'كود الموظف مستخدم مسبقًا', 'DUPLICATE_EMPLOYEE_CODE');
+      if (linkedUserId) {
+        const uRes = await client.query(
+          'SELECT id, role, employee_id FROM users WHERE id = $1 FOR UPDATE',
+          [linkedUserId]
+        );
+        const linkedUsr = uRes.rows[0];
+        if (!linkedUsr) {
+          throw new AppError(404, 'حساب المستخدم المحدد غير موجود', 'USER_NOT_FOUND');
+        }
+        if (linkedUsr.role === 'customer') {
+          throw new AppError(400, 'لا يمكن ربط حساب عميل بملف موظف', 'INVALID_ROLE_EMPLOYEE_LINK');
+        }
+        if (linkedUsr.employee_id && linkedUsr.employee_id !== id) {
+          throw new AppError(409, 'حساب المستخدم المختار مربوط مسبقًا بملف موظف آخر', 'USER_ALREADY_LINKED_TO_EMPLOYEE');
+        }
+        const dupEmpUserRes = await client.query(
+          'SELECT id FROM employees WHERE user_id = $1 AND id <> $2 LIMIT 1',
+          [linkedUserId, id]
+        );
+        if (dupEmpUserRes.rows[0]) {
+          throw new AppError(409, 'حساب المستخدم المختار مربوط مسبقًا بملف موظف آخر', 'USER_ALREADY_LINKED_TO_EMPLOYEE');
+        }
+      }
       await assertNoSameRoleDuplicatesPgTx(client, {
         entityType: 'employee',
         phone,
@@ -5419,26 +5496,28 @@ export async function addEmployee(payload, actor = null) {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
         [id, code, name, jobTitle, payload.department || '', phone, normalizePhoneDigits(phone), nationalId, linkedUserId, hireDate, basicSalary, status, payload.notes || '']
       );
-      const empIdentityId = await attachRecordToIdentityPgTx(client, {
-        entityType: 'employee',
-        entityId: id,
-        roleKey: 'employee',
-        fullName: name,
-        phone,
-        nationalId,
-        notes: payload.notes || '',
-        explicitIdentityId: payload.identityId || null,
-        linkedUserId,
-        isPrimary: true,
-        now,
-      });
+      let empIdentityId;
       if (linkedUserId) {
-        await client.query('UPDATE users SET employee_id = $1, identity_id = COALESCE(identity_id, $2), updated_at = $3 WHERE id = $4', [
-          id,
-          empIdentityId,
+        await client.query('UPDATE users SET employee_id = $1, updated_at = $2 WHERE id = $3', [id, now, linkedUserId]);
+        empIdentityId = await alignEmployeeUserIdentityPgTx(client, {
+          userId: linkedUserId,
+          employeeId: id,
+          preferredIdentityId: payload.identityId || null,
           now,
-          linkedUserId,
-        ]);
+        });
+      } else {
+        empIdentityId = await attachRecordToIdentityPgTx(client, {
+          entityType: 'employee',
+          entityId: id,
+          roleKey: 'employee',
+          fullName: name,
+          phone,
+          nationalId,
+          notes: payload.notes || '',
+          explicitIdentityId: payload.identityId || null,
+          isPrimary: true,
+          now,
+        });
       }
       return empIdentityId;
     });
@@ -5446,6 +5525,22 @@ export async function addEmployee(payload, actor = null) {
     resolvedIdentityId = await withJsonTransaction((db) => {
       if ((db.employees || []).some((e) => String(e.code || '').toLowerCase() === code.toLowerCase())) {
         throw new AppError(409, 'كود الموظف مستخدم مسبقًا', 'DUPLICATE_EMPLOYEE_CODE');
+      }
+      let linkedUsr = null;
+      if (linkedUserId) {
+        linkedUsr = (db.users || []).find((u) => u.id === linkedUserId);
+        if (!linkedUsr) {
+          throw new AppError(404, 'حساب المستخدم المحدد غير موجود', 'USER_NOT_FOUND');
+        }
+        if (linkedUsr.role === 'customer') {
+          throw new AppError(400, 'لا يمكن ربط حساب عميل بملف موظف', 'INVALID_ROLE_EMPLOYEE_LINK');
+        }
+        if (linkedUsr.employeeId && linkedUsr.employeeId !== id) {
+          throw new AppError(409, 'حساب المستخدم المختار مربوط مسبقًا بملف موظف آخر', 'USER_ALREADY_LINKED_TO_EMPLOYEE');
+        }
+        if ((db.employees || []).some((e) => e.id !== id && e.userId === linkedUserId)) {
+          throw new AppError(409, 'حساب المستخدم المختار مربوط مسبقًا بملف موظف آخر', 'USER_ALREADY_LINKED_TO_EMPLOYEE');
+        }
       }
       assertNoSameRoleDuplicatesJsonTx(db, {
         entityType: 'employee',
@@ -5469,26 +5564,29 @@ export async function addEmployee(payload, actor = null) {
         notes: payload.notes || '',
       };
       db.employees.unshift(newEmp);
-      const empIdentityId = attachRecordToIdentityJsonTx(db, {
-        entityType: 'employee',
-        entityId: id,
-        roleKey: 'employee',
-        fullName: name,
-        phone,
-        nationalId,
-        notes: payload.notes || '',
-        explicitIdentityId: payload.identityId || null,
-        linkedUserId,
-        isPrimary: true,
-        now,
-      });
-      newEmp.identityId = empIdentityId;
-      if (linkedUserId) {
-        const usr = (db.users || []).find((u) => u.id === linkedUserId);
-        if (usr) {
-          usr.employeeId = id;
-          if (!usr.identityId) usr.identityId = empIdentityId;
-        }
+      let empIdentityId;
+      if (linkedUserId && linkedUsr) {
+        linkedUsr.employeeId = id;
+        empIdentityId = alignEmployeeUserIdentityJsonTx(db, {
+          userId: linkedUserId,
+          employeeId: id,
+          preferredIdentityId: payload.identityId || null,
+          now,
+        });
+      } else {
+        empIdentityId = attachRecordToIdentityJsonTx(db, {
+          entityType: 'employee',
+          entityId: id,
+          roleKey: 'employee',
+          fullName: name,
+          phone,
+          nationalId,
+          notes: payload.notes || '',
+          explicitIdentityId: payload.identityId || null,
+          isPrimary: true,
+          now,
+        });
+        newEmp.identityId = empIdentityId;
       }
       return empIdentityId;
     });
@@ -5544,7 +5642,49 @@ export async function updateEmployee(id, updates, actor = null) {
         nationalId: nextNationalId,
         allowPhoneOverlap: Boolean(updates.allowPhoneOverlap),
       });
-      const nextUserId = updates.userId !== undefined ? (updates.userId || null) : (cur.user_id || null);
+      const hasUserUpdate = updates.userId !== undefined;
+      const nextUserId = hasUserUpdate ? (String(updates.userId || '').trim() || null) : (cur.user_id || null);
+      const userLinkChanged = (cur.user_id || null) !== (nextUserId || null);
+      if (nextUserId) {
+        const uRes = await client.query(
+          'SELECT id, role, employee_id FROM users WHERE id = $1 FOR UPDATE',
+          [nextUserId]
+        );
+        const targetUsr = uRes.rows[0];
+        if (!targetUsr) throw new AppError(404, 'حساب المستخدم المحدد غير موجود', 'USER_NOT_FOUND');
+        if (targetUsr.role === 'customer') {
+          throw new AppError(400, 'لا يمكن ربط حساب عميل بملف موظف', 'INVALID_ROLE_EMPLOYEE_LINK');
+        }
+        if (targetUsr.employee_id && targetUsr.employee_id !== id) {
+          throw new AppError(409, 'حساب المستخدم المختار مربوط مسبقًا بملف موظف آخر', 'USER_ALREADY_LINKED_TO_EMPLOYEE');
+        }
+        const dupEmpUsr = await client.query(
+          'SELECT id FROM employees WHERE user_id = $1 AND id <> $2 LIMIT 1',
+          [nextUserId, id]
+        );
+        if (dupEmpUsr.rows[0]) {
+          throw new AppError(409, 'حساب المستخدم المختار مربوط مسبقًا بملف موظف آخر', 'USER_ALREADY_LINKED_TO_EMPLOYEE');
+        }
+      }
+      if (userLinkChanged) {
+        if (cur.user_id && cur.user_id !== nextUserId) {
+          await client.query('UPDATE users SET employee_id = NULL, updated_at = $1 WHERE id = $2 AND employee_id = $3', [
+            now,
+            cur.user_id,
+            id,
+          ]);
+          await splitDetachedEmployeeUserIdentityPgTx(client, {
+            detachType: 'user',
+            detachId: cur.user_id,
+            sharedIdentityId: cur.identity_id,
+            now,
+          });
+        }
+        await client.query(
+          'UPDATE users SET employee_id = NULL, updated_at = $1 WHERE employee_id = $2 AND ($3::varchar IS NULL OR id <> $3)',
+          [now, id, nextUserId]
+        );
+      }
       await client.query(
         `UPDATE employees SET
           code = $1, full_name = $2, job_title = $3, department = $4, phone = $5, normalized_phone = $6,
@@ -5566,25 +5706,26 @@ export async function updateEmployee(id, updates, actor = null) {
           id,
         ]
       );
-      const empIdnId = await attachRecordToIdentityPgTx(client, {
-        entityType: 'employee',
-        entityId: id,
-        roleKey: 'employee',
-        fullName: empName,
-        phone: nextPhone,
-        nationalId: nextNationalId,
-        notes: updates.notes ?? cur.notes ?? '',
-        explicitIdentityId: updates.identityId || cur.identity_id || null,
-        linkedUserId: nextUserId,
-        now,
-      });
       if (nextUserId) {
-        await client.query('UPDATE users SET employee_id = $1, identity_id = COALESCE(identity_id, $2), updated_at = $3 WHERE id = $4', [
-          id,
-          empIdnId,
+        await client.query('UPDATE users SET employee_id = $1, updated_at = $2 WHERE id = $3', [id, now, nextUserId]);
+        await alignEmployeeUserIdentityPgTx(client, {
+          userId: nextUserId,
+          employeeId: id,
+          preferredIdentityId: updates.identityId || null,
           now,
-          nextUserId,
-        ]);
+        });
+      } else {
+        await attachRecordToIdentityPgTx(client, {
+          entityType: 'employee',
+          entityId: id,
+          roleKey: 'employee',
+          fullName: empName,
+          phone: nextPhone,
+          nationalId: nextNationalId,
+          notes: updates.notes ?? cur.notes ?? '',
+          explicitIdentityId: updates.identityId || cur.identity_id || null,
+          now,
+        });
       }
     });
   } else {
@@ -5603,27 +5744,60 @@ export async function updateEmployee(id, updates, actor = null) {
         nationalId: nextNationalId,
         allowPhoneOverlap: Boolean(updates.allowPhoneOverlap),
       });
-      const nextUserId = updates.userId !== undefined ? (updates.userId || undefined) : cur.userId;
-      db.employees[idx] = { ...cur, ...updates, id, name: empName, userId: nextUserId };
-      const empIdnId = attachRecordToIdentityJsonTx(db, {
-        entityType: 'employee',
-        entityId: id,
-        roleKey: 'employee',
-        fullName: empName,
-        phone: nextPhone,
-        nationalId: nextNationalId,
-        notes: updates.notes ?? cur.notes ?? '',
-        explicitIdentityId: updates.identityId || cur.identityId || null,
-        linkedUserId: nextUserId || null,
-        now,
-      });
-      db.employees[idx].identityId = empIdnId;
+      const hasUserUpdate = updates.userId !== undefined;
+      const nextUserId = hasUserUpdate ? (String(updates.userId || '').trim() || undefined) : cur.userId;
+      const userLinkChanged = (cur.userId || null) !== (nextUserId || null);
+      let targetUsr = null;
       if (nextUserId) {
-        const usr = (db.users || []).find((u) => u.id === nextUserId);
-        if (usr) {
-          usr.employeeId = id;
-          if (!usr.identityId) usr.identityId = empIdnId;
+        targetUsr = (db.users || []).find((u) => u.id === nextUserId);
+        if (!targetUsr) throw new AppError(404, 'حساب المستخدم المحدد غير موجود', 'USER_NOT_FOUND');
+        if (targetUsr.role === 'customer') {
+          throw new AppError(400, 'لا يمكن ربط حساب عميل بملف موظف', 'INVALID_ROLE_EMPLOYEE_LINK');
         }
+        if (targetUsr.employeeId && targetUsr.employeeId !== id) {
+          throw new AppError(409, 'حساب المستخدم المختار مربوط مسبقًا بملف موظف آخر', 'USER_ALREADY_LINKED_TO_EMPLOYEE');
+        }
+        if ((db.employees || []).some((e) => e.id !== id && e.userId === nextUserId)) {
+          throw new AppError(409, 'حساب المستخدم المختار مربوط مسبقًا بملف موظف آخر', 'USER_ALREADY_LINKED_TO_EMPLOYEE');
+        }
+      }
+      if (userLinkChanged) {
+        if (cur.userId && cur.userId !== nextUserId) {
+          const oldUsr = (db.users || []).find((u) => u.id === cur.userId);
+          if (oldUsr && oldUsr.employeeId === id) oldUsr.employeeId = undefined;
+          splitDetachedEmployeeUserIdentityJsonTx(db, {
+            detachType: 'user',
+            detachId: cur.userId,
+            sharedIdentityId: cur.identityId,
+            now,
+          });
+        }
+        for (const u of db.users || []) {
+          if (u.employeeId === id && u.id !== nextUserId) u.employeeId = undefined;
+        }
+      }
+      db.employees[idx] = { ...cur, ...updates, id, name: empName, userId: nextUserId };
+      if (nextUserId && targetUsr) {
+        targetUsr.employeeId = id;
+        alignEmployeeUserIdentityJsonTx(db, {
+          userId: nextUserId,
+          employeeId: id,
+          preferredIdentityId: updates.identityId || null,
+          now,
+        });
+      } else {
+        const empIdnId = attachRecordToIdentityJsonTx(db, {
+          entityType: 'employee',
+          entityId: id,
+          roleKey: 'employee',
+          fullName: empName,
+          phone: nextPhone,
+          nationalId: nextNationalId,
+          notes: updates.notes ?? cur.notes ?? '',
+          explicitIdentityId: updates.identityId || cur.identityId || null,
+          now,
+        });
+        db.employees[idx].identityId = empIdnId;
       }
     });
   }

@@ -76,6 +76,7 @@ jobs:
           node server/tests/branchCollectionAndAuditTests.mjs
           node server/tests/storefrontAndLocationTests.mjs
           node server/tests/offlineRefreshAndDispatchTests.mjs
+          npx tsx server/tests/offlineClientFlowChecks.mts
           npx tsx server/tests/diagnosticsTests.mts
 
       - name: Build production web bundle

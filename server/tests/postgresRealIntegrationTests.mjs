@@ -129,6 +129,8 @@ try {
       'idx_rep_custody_ops_date_prod',
       'idx_users_role_norm_phone',
       'idx_users_role_norm_phone_unique',
+      'idx_users_employee_id_unique',
+      'idx_employees_user_id_unique',
       'idx_customers_norm_phone',
       'idx_reps_norm_phone',
       'idx_sync_dispatch_sender',
@@ -136,6 +138,14 @@ try {
     ]) {
       assert.ok(idxNames.has(expectedIdx), `Missing expected PG index: ${expectedIdx}`);
     }
+
+    const fkRes = await pool.query(`
+      SELECT constraint_name FROM information_schema.table_constraints
+      WHERE constraint_type = 'FOREIGN KEY' AND constraint_schema = 'public'
+    `);
+    const fkNames = new Set(fkRes.rows.map((r) => r.constraint_name));
+    assert.ok(fkNames.has('fk_users_employee_id'), 'Missing fk_users_employee_id');
+    assert.ok(fkNames.has('fk_employees_user_id'), 'Missing fk_employees_user_id');
   });
 
   const app = createApiApp();
@@ -438,7 +448,58 @@ try {
     assert.equal(Number(newCust.currentBalance), 15); // 60 - 30 - 15
   });
 
-  await test('5. Closed/unreachable PostgreSQL in strict mode returns 503 DATABASE_UNAVAILABLE without JSON fallback', async () => {
+  await test('5. Real PostgreSQL 16 enforces 1:1 Employee-User unique/FK constraints and clean null unlink/re-link', async () => {
+    const e1 = await req(baseUrl, 'POST', '/api/admin/employees', {
+      token: adminToken,
+      body: { code: 'PG-EMP-1', name: 'موظف PG1', phone: '01066660001', jobTitle: 'محاسب' },
+    });
+    assert.equal(e1.status, 201);
+    const e2 = await req(baseUrl, 'POST', '/api/admin/employees', {
+      token: adminToken,
+      body: { code: 'PG-EMP-2', name: 'موظف PG2', phone: '01066660002', jobTitle: 'بائع' },
+    });
+    assert.equal(e2.status, 201);
+
+    const u1 = await req(baseUrl, 'POST', '/api/admin/users', {
+      token: adminToken,
+      body: {
+        fullName: 'مستخدم PG1',
+        username: 'pg_1to1_u1',
+        password: 'PgUserPass!2026',
+        role: 'sales',
+        linkedEmployeeId: e1.json.employee.id,
+      },
+    });
+    assert.equal(u1.status, 201);
+
+    const dupU = await req(baseUrl, 'POST', '/api/admin/users', {
+      token: adminToken,
+      body: {
+        fullName: 'مستخدم مكرر',
+        username: 'pg_1to1_dup',
+        password: 'PgUserPass!2026',
+        role: 'sales',
+        linkedEmployeeId: e1.json.employee.id,
+      },
+    });
+    assert.equal(dupU.status, 409);
+
+    const unlinkU = await req(baseUrl, 'PUT', `/api/admin/users/${u1.json.user.id}`, {
+      token: adminToken,
+      body: { linkedEmployeeId: null },
+    });
+    assert.equal(unlinkU.status, 200);
+    assert.ok(!unlinkU.json.user.employeeId);
+
+    const relinkU = await req(baseUrl, 'PUT', `/api/admin/users/${u1.json.user.id}`, {
+      token: adminToken,
+      body: { linkedEmployeeId: e2.json.employee.id },
+    });
+    assert.equal(relinkU.status, 200);
+    assert.equal(relinkU.json.user.employeeId, e2.json.employee.id);
+  });
+
+  await test('6. Closed/unreachable PostgreSQL in strict mode returns 503 DATABASE_UNAVAILABLE without JSON fallback', async () => {
     await closePool();
     setInjectedPool({
       async query() {

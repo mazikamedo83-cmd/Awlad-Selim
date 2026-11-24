@@ -1319,3 +1319,10 @@ CREATE INDEX IF NOT EXISTS idx_sync_dispatch_sender ON sync_dispatch_batches(sen
 CREATE INDEX IF NOT EXISTS idx_sync_dispatch_rep ON sync_dispatch_batches(representative_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sync_dispatch_recipient ON sync_dispatch_batches(recipient_user_id, receipt_status);
 CREATE INDEX IF NOT EXISTS idx_sync_dispatch_status ON sync_dispatch_batches(receipt_status, created_at DESC);
+
+-- 50. فرض التكامل العلائقي 1:1 بين المستخدمين والموظفين (Strict 1:1 Users <-> Employees DB Constraints)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_employee_id_unique ON users(employee_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_employees_user_id_unique ON employees(user_id);
+ALTER TABLE users ADD CONSTRAINT fk_users_employee_id FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL;
+ALTER TABLE employees ADD CONSTRAINT fk_employees_user_id FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+

@@ -335,7 +335,7 @@ export interface DataContextType extends DatabaseState {
 
   // Employees & Payroll
   addEmployee: (employee: Omit<Employee, 'id'>) => Promise<{ success: boolean; error?: string }>;
-  updateEmployee: (id: string, updates: Partial<Employee>) => Promise<{ success: boolean; error?: string }>;
+  updateEmployee: (id: string, updates: Partial<Employee> & { userId?: string | null }) => Promise<{ success: boolean; error?: string }>;
   recordAttendance: (attendance: Omit<AttendanceRecord, 'id'>) => Promise<{ success: boolean; error?: string }>;
   addAdvanceDeduction: (item: Omit<EmployeeAdvanceDeduction, 'id' | 'createdAt' | 'isSettled'>) => Promise<{ success: boolean; error?: string }>;
   paySalary: (payroll: Omit<SalaryPayroll, 'id' | 'payrollNumber'>) => Promise<{ success: boolean; error?: string }>;
@@ -361,8 +361,8 @@ export interface DataContextType extends DatabaseState {
   permissionPresets: RoleDefaultPermissionPresets | null;
   loadPermissionPresets: () => Promise<RoleDefaultPermissionPresets | null>;
   updatePermissionPresets: (presets: Partial<RoleDefaultPermissionPresets>) => Promise<{ success: boolean; presets?: RoleDefaultPermissionPresets; error?: string }>;
-  addUser: (userData: Omit<User, 'id' | 'createdAt'> & { password?: string; linkedCustomerId?: string; linkedRepId?: string; linkedEmployeeId?: string; autoCreateCustomerProfile?: boolean; autoCreateRepProfile?: boolean; applyRolePreset?: boolean }) => Promise<{ success: boolean; user?: User; linkedCustomerId?: string; linkedRepresentativeId?: string; error?: string }>;
-  updateUser: (id: string, updates: Partial<User> & { newPassword?: string; linkedCustomerId?: string; linkedRepId?: string; linkedEmployeeId?: string; autoCreateCustomerProfile?: boolean; autoCreateRepProfile?: boolean; applyRolePreset?: boolean }) => Promise<{ success: boolean; user?: User; linkedCustomerId?: string; linkedRepresentativeId?: string; error?: string }>;
+  addUser: (userData: Omit<User, 'id' | 'createdAt'> & { password?: string; linkedCustomerId?: string; linkedRepId?: string; linkedEmployeeId?: string | null; autoCreateCustomerProfile?: boolean; autoCreateRepProfile?: boolean; applyRolePreset?: boolean }) => Promise<{ success: boolean; user?: User; linkedCustomerId?: string; linkedRepresentativeId?: string; error?: string }>;
+  updateUser: (id: string, updates: Partial<User> & { newPassword?: string; linkedCustomerId?: string; linkedRepId?: string; linkedEmployeeId?: string | null; autoCreateCustomerProfile?: boolean; autoCreateRepProfile?: boolean; applyRolePreset?: boolean }) => Promise<{ success: boolean; user?: User; linkedCustomerId?: string; linkedRepresentativeId?: string; error?: string }>;
   deleteUser: (id: string) => Promise<{ success: boolean; error?: string }>;
   updateSettings: (newSettings: Partial<SystemSettings>) => Promise<void>;
 
@@ -4409,7 +4409,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const updateEmployee = async (id: string, updates: Partial<Employee>) => {
+  const updateEmployee = async (id: string, updates: Partial<Employee> & { userId?: string | null }) => {
     try {
       await apiRequest(`/api/admin/employees/${id}`, { method: 'PUT', body: updates });
       await loadRoleScopedData();
@@ -4558,7 +4558,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       password?: string;
       linkedCustomerId?: string;
       linkedRepId?: string;
-      linkedEmployeeId?: string;
+      linkedEmployeeId?: string | null;
       autoCreateCustomerProfile?: boolean;
       autoCreateRepProfile?: boolean;
       applyRolePreset?: boolean;
@@ -4590,7 +4590,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       newPassword?: string;
       linkedCustomerId?: string;
       linkedRepId?: string;
-      linkedEmployeeId?: string;
+      linkedEmployeeId?: string | null;
       autoCreateCustomerProfile?: boolean;
       autoCreateRepProfile?: boolean;
       applyRolePreset?: boolean;

@@ -72,6 +72,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node server/tests/offlineRefreshAndDispatchTests.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx tsx server/tests/offlineClientFlowChecks.mts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npx tsx server/tests/diagnosticsTests.mts
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 

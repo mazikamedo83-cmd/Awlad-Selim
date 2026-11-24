@@ -631,6 +631,264 @@ async function runSuite(modeLabel, pgPool = null) {
         assert.equal(repairedEmp.identityId, opIdentityId);
       }
     });
+
+    let isoEmpAId;
+    let isoEmpBId;
+    let isoUserAId;
+    let isoUserFreeId;
+
+    await test(`[${modeLabel}] 8. Strict 1:1 Employee<->User uniqueness, symmetric conflict blocking, and customer-employee role guard`, async () => {
+      const eA = await req(baseUrl, 'POST', '/api/admin/employees', {
+        token: adminToken,
+        body: { code: 'EMP-1TO1-A', name: 'موظف واحد لواحد أ', phone: '01091000001', jobTitle: 'محاسب', department: 'المالية', basicSalary: 5000 },
+      });
+      assert.equal(eA.status, 201);
+      isoEmpAId = eA.json.employee.id;
+
+      const eB = await req(baseUrl, 'POST', '/api/admin/employees', {
+        token: adminToken,
+        body: { code: 'EMP-1TO1-B', name: 'موظف واحد لواحد ب', phone: '01091000002', jobTitle: 'بائع', department: 'المبيعات', basicSalary: 4500 },
+      });
+      assert.equal(eB.status, 201);
+      isoEmpBId = eB.json.employee.id;
+
+      // Customer role cannot be linked to an employee
+      const custWithEmp = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'عميل مرفوض مع موظف',
+          username: 'cust_with_emp_err',
+          password: 'Password123!',
+          phone: '01091000099',
+          role: 'customer',
+          linkedEmployeeId: isoEmpBId,
+        },
+      });
+      assert.equal(custWithEmp.status, 400);
+      assert.equal(custWithEmp.json.code, 'INVALID_ROLE_EMPLOYEE_LINK');
+
+      // Link userA -> empA
+      const uA = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'مستخدم واحد لواحد أ',
+          username: 'user_1to1_a',
+          password: 'Password123!',
+          phone: '01091000001',
+          role: 'sales',
+          linkedEmployeeId: isoEmpAId,
+        },
+      });
+      assert.equal(uA.status, 201);
+      isoUserAId = uA.json.user.id;
+      assert.equal(uA.json.user.employeeId, isoEmpAId);
+      assert.equal(uA.json.user.identityId, eA.json.employee.identityId);
+
+      // Creating a second user linked to empA -> 409 EMPLOYEE_ALREADY_LINKED
+      const uDup = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'مستخدم مكرر على نفس الموظف',
+          username: 'user_1to1_dup',
+          password: 'Password123!',
+          phone: '01091000003',
+          role: 'sales',
+          linkedEmployeeId: isoEmpAId,
+        },
+      });
+      assert.equal(uDup.status, 409);
+      assert.equal(uDup.json.code, 'EMPLOYEE_ALREADY_LINKED');
+
+      // Create unlinked userFree, then try stealing empA -> 409
+      const uFree = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'مستخدم حر',
+          username: 'user_1to1_free',
+          password: 'Password123!',
+          phone: '01091000004',
+          role: 'sales',
+        },
+      });
+      assert.equal(uFree.status, 201);
+      isoUserFreeId = uFree.json.user.id;
+
+      const stealFromUserPut = await req(baseUrl, 'PUT', `/api/admin/users/${isoUserFreeId}`, {
+        token: adminToken,
+        body: { linkedEmployeeId: isoEmpAId },
+      });
+      assert.equal(stealFromUserPut.status, 409);
+      assert.equal(stealFromUserPut.json.code, 'EMPLOYEE_ALREADY_LINKED');
+
+      // Employee-side create/update linking to already-linked userA -> 409 USER_ALREADY_LINKED_TO_EMPLOYEE
+      const empCreateSteal = await req(baseUrl, 'POST', '/api/admin/employees', {
+        token: adminToken,
+        body: { code: 'EMP-1TO1-STEAL', name: 'موظف يسرق مستخدم', phone: '01091000005', jobTitle: 'بائع', userId: isoUserAId },
+      });
+      assert.equal(empCreateSteal.status, 409);
+      assert.equal(empCreateSteal.json.code, 'USER_ALREADY_LINKED_TO_EMPLOYEE');
+
+      const empUpdateSteal = await req(baseUrl, 'PUT', `/api/admin/employees/${isoEmpBId}`, {
+        token: adminToken,
+        body: { userId: isoUserAId },
+      });
+      assert.equal(empUpdateSteal.status, 409);
+      assert.equal(empUpdateSteal.json.code, 'USER_ALREADY_LINKED_TO_EMPLOYEE');
+
+      // Employee linked to customer user -> 400 INVALID_ROLE_EMPLOYEE_LINK
+      const bootSnap = await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken });
+      const custUser = (bootSnap.json.data.users || []).find((u) => u.role === 'customer');
+      assert.ok(custUser);
+      const empCustErr = await req(baseUrl, 'PUT', `/api/admin/employees/${isoEmpBId}`, {
+        token: adminToken,
+        body: { userId: custUser.id },
+      });
+      assert.equal(empCustErr.status, 400);
+      assert.equal(empCustErr.json.code, 'INVALID_ROLE_EMPLOYEE_LINK');
+
+      // Manual identity endpoint must also reject stealing linked entity
+      const manualSteal = await req(baseUrl, 'POST', '/api/admin/identities/link', {
+        token: adminToken,
+        body: { targetType: 'employee', targetId: isoEmpBId, linkUserId: isoUserAId },
+      });
+      assert.equal(manualSteal.status, 409);
+    });
+
+    await test(`[${modeLabel}] 9. Clean null unlink splits shared identity and allows re-link without DUPLICATE_IDENTITY_ROLE`, async () => {
+      // Unlink userA from empA via explicit null
+      const unlinkFromUser = await req(baseUrl, 'PUT', `/api/admin/users/${isoUserAId}`, {
+        token: adminToken,
+        body: { linkedEmployeeId: null },
+      });
+      assert.equal(unlinkFromUser.status, 200);
+      assert.ok(!unlinkFromUser.json.user.employeeId, 'userA employeeId must be cleared after null unlink');
+
+      let bootAfterUnlink = await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken });
+      const empAAfterUnlink = bootAfterUnlink.json.data.employees.find((e) => e.id === isoEmpAId);
+      const userAAfterUnlink = bootAfterUnlink.json.data.users.find((u) => u.id === isoUserAId);
+      assert.ok(!empAAfterUnlink.userId, 'empA userId must be cleared symmetrically');
+      assert.notEqual(
+        empAAfterUnlink.identityId,
+        userAAfterUnlink.identityId,
+        'Detaching employee from user must split into distinct identities cleanly'
+      );
+
+      // Re-link userA to empB cleanly (previously caused DUPLICATE_IDENTITY_ROLE before identity split)
+      const relinkToEmpB = await req(baseUrl, 'PUT', `/api/admin/users/${isoUserAId}`, {
+        token: adminToken,
+        body: { linkedEmployeeId: isoEmpBId },
+      });
+      assert.equal(relinkToEmpB.status, 200);
+      assert.equal(relinkToEmpB.json.user.employeeId, isoEmpBId);
+
+      // Now unlink from employee side via userId: null
+      const unlinkFromEmp = await req(baseUrl, 'PUT', `/api/admin/employees/${isoEmpBId}`, {
+        token: adminToken,
+        body: { userId: null },
+      });
+      assert.equal(unlinkFromEmp.status, 200);
+
+      let bootAfterEmpUnlink = await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken });
+      const empBAfter = bootAfterEmpUnlink.json.data.employees.find((e) => e.id === isoEmpBId);
+      const userAAfterEmpUnlink = bootAfterEmpUnlink.json.data.users.find((u) => u.id === isoUserAId);
+      assert.ok(!empBAfter.userId, 'empB userId must be cleared');
+      assert.ok(!userAAfterEmpUnlink.employeeId, 'userA employeeId must be cleared when employee unlinks');
+      assert.notEqual(empBAfter.identityId, userAAfterEmpUnlink.identityId);
+
+      // Re-link empA -> userA from Employees side
+      const relinkFromEmpSide = await req(baseUrl, 'PUT', `/api/admin/employees/${isoEmpAId}`, {
+        token: adminToken,
+        body: { userId: isoUserAId },
+      });
+      assert.equal(relinkFromEmpSide.status, 200);
+      const bootFinal = await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken });
+      const empAFinal = bootFinal.json.data.employees.find((e) => e.id === isoEmpAId);
+      const userAFinal = bootFinal.json.data.users.find((u) => u.id === isoUserAId);
+      assert.equal(empAFinal.userId, isoUserAId);
+      assert.equal(userAFinal.employeeId, isoEmpAId);
+      assert.equal(empAFinal.identityId, userAFinal.identityId);
+    });
+
+    if (pgPool) {
+      await test(`[${modeLabel}] 10. Direct PG constraints block raw duplicate 1:1 links, allow multiple NULLs, and v14 preserves conflicts non-destructively`, async () => {
+        // Multiple NULLs allowed on both tables
+        await pgPool.query(
+          `INSERT INTO employees (id, code, full_name, job_title, hire_date, status) VALUES ('EMP-SQL-N1', 'SQL-N1', 'حر 1', 'موظف', '2026-11-24', 'active'), ('EMP-SQL-N2', 'SQL-N2', 'حر 2', 'موظف', '2026-11-24', 'active')`
+        );
+        await pgPool.query(
+          `INSERT INTO users (id, full_name, username, password_hash, role) VALUES ('USR-SQL-N1', 'مستخدم حر 1', 'sql_null_1', 'h', 'sales'), ('USR-SQL-N2', 'مستخدم حر 2', 'sql_null_2', 'h', 'sales')`
+        );
+
+        // Raw duplicate employee_id on users blocked by idx_users_employee_id_unique (23505)
+        await assert.rejects(
+          pgPool.query(
+            `INSERT INTO users (id, full_name, username, password_hash, role, employee_id) VALUES ('USR-SQL-DUP', 'مستخدم مكرر', 'sql_dup_emp', 'h', 'sales', $1)`,
+            [isoEmpAId]
+          ),
+          (err) => String(err?.code) === '23505' || /unique/i.test(String(err?.message || ''))
+        );
+
+        // Raw duplicate user_id on employees blocked by idx_employees_user_id_unique (23505)
+        await assert.rejects(
+          pgPool.query(
+            `INSERT INTO employees (id, code, full_name, job_title, hire_date, user_id, status) VALUES ('EMP-SQL-DUP', 'SQL-DUP', 'موظف مكرر', 'بائع', '2026-11-24', $1, 'active')`,
+            [isoUserAId]
+          ),
+          (err) => String(err?.code) === '23505' || /unique/i.test(String(err?.message || ''))
+        );
+
+        // Non-destructive v14 migration test on an isolated PG instance with legacy conflicting rows
+        const legacyPool = createPgMemPool();
+        setInjectedPool(legacyPool);
+        resetPgModeCache();
+        try {
+          const baseInit = await initializeSchema();
+          assert.equal(baseInit.success, true, baseInit.error || 'Base init for legacy test must succeed');
+
+          // Drop v14 unique indexes to simulate pre-v14 legacy state and insert duplicate/asymmetric rows
+          await legacyPool.query(`DROP INDEX IF EXISTS idx_users_employee_id_unique`);
+          await legacyPool.query(`DROP INDEX IF EXISTS idx_employees_user_id_unique`);
+          await legacyPool.query(`DELETE FROM identity_conflicts`);
+          await legacyPool.query(`DELETE FROM users`);
+          await legacyPool.query(`DELETE FROM employees`);
+
+          await legacyPool.query(`
+            INSERT INTO employees (id, code, full_name, job_title, hire_date, user_id) VALUES
+              ('E-LEG-1', 'LEG-1', 'موظف متضارب', 'بائع', '2026-11-24', NULL),
+              ('E-LEG-OK', 'LEG-OK', 'موظف سليم', 'بائع', '2026-11-24', NULL)
+          `);
+          await legacyPool.query(`
+            INSERT INTO users (id, full_name, username, password_hash, role, employee_id) VALUES
+              ('U-LEG-1', 'تضارب 1', 'leg1', 'h', 'sales', 'E-LEG-1'),
+              ('U-LEG-2', 'تضارب 2', 'leg2', 'h', 'sales', 'E-LEG-1'),
+              ('U-LEG-OK', 'سليم 1', 'legok', 'h', 'sales', 'E-LEG-OK')
+          `);
+          await legacyPool.query(`UPDATE employees SET user_id = 'U-LEG-1' WHERE id = 'E-LEG-1'`);
+
+          const initRes = await initializeSchema();
+          assert.equal(initRes.success, true, initRes.error || 'Legacy non-destructive v14 schema init must succeed');
+
+          // Zero deletions allowed!
+          const uCnt = await legacyPool.query(`SELECT COUNT(*)::int AS cnt FROM users`);
+          const eCnt = await legacyPool.query(`SELECT COUNT(*)::int AS cnt FROM employees`);
+          assert.equal(Number(uCnt.rows[0].cnt), 3);
+          assert.equal(Number(eCnt.rows[0].cnt), 2);
+
+          // Conflict must be logged into identity_conflicts
+          const conflictsRes = await legacyPool.query(
+            `SELECT * FROM identity_conflicts WHERE conflict_type = 'employee_user_link_conflict'`
+          );
+          assert.ok(conflictsRes.rows.length >= 1, 'Duplicate user->employee legacy rows must be flagged in identity_conflicts');
+
+          // Unambiguous E-LEG-OK -> U-LEG-OK backfilled safely
+          const okEmpRes = await legacyPool.query(`SELECT user_id FROM employees WHERE id = 'E-LEG-OK'`);
+          assert.equal(okEmpRes.rows[0].user_id, 'U-LEG-OK');
+        } finally {
+          setInjectedPool(pgPool);
+          resetPgModeCache();
+        }
+      });
+    }
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

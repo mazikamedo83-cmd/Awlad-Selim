@@ -163,6 +163,9 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
     setIsSavingEmp(true);
     try {
       if (editingEmp) {
+        const previouslyLinkedUser =
+          Boolean(editingEmp.userId) ||
+          users.some((u) => u.employeeId === editingEmp.id || u.id === editingEmp.userId);
         const res = await updateEmployee(editingEmp.id, {
           name: empName.trim(),
           phone: empPhone.trim(),
@@ -170,7 +173,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
           department: empDept.trim(),
           basicSalary: salaryVal,
           nationalId: empNationalId.trim() || undefined,
-          userId: empUserId || undefined,
+          userId: empUserId ? empUserId : previouslyLinkedUser ? null : undefined,
           status: empStatus,
           notes: empNotes.trim() || undefined,
         });
@@ -1136,11 +1139,16 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
             >
               <option value="">-- بدون ربط بحساب مستخدم --</option>
               {users
-                .filter(
-                  (u) =>
-                    u.role !== 'customer' &&
-                    (!u.employeeId || (editingEmp && (u.employeeId === editingEmp.id || u.id === editingEmp.userId)))
-                )
+                .filter((u) => {
+                  if (u.role === 'customer') return false;
+                  const claimedByOtherEmployee = employees.some(
+                    (e) => e.id !== editingEmp?.id && e.userId === u.id
+                  );
+                  const linkedToCurrentEditing = Boolean(
+                    editingEmp && (u.employeeId === editingEmp.id || u.id === editingEmp.userId)
+                  );
+                  return linkedToCurrentEditing || (!u.employeeId && !claimedByOtherEmployee);
+                })
                 .map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.fullName} (@{u.username}) — {u.role}

@@ -359,6 +359,19 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
     try {
       if (editingUser) {
         const currentLinkedCustomer = customers.find((c) => c.userId === editingUser.id);
+        const hadLinkedEmployee = Boolean(
+          editingUser.employeeId || employees.some((e) => e.userId === editingUser.id)
+        );
+        const nextLinkedEmployeePayload =
+          role === 'customer'
+            ? hadLinkedEmployee
+              ? null
+              : undefined
+            : linkedEmployeeId
+            ? linkedEmployeeId
+            : hadLinkedEmployee
+            ? null
+            : undefined;
         const res = await updateUser(editingUser.id, {
           fullName: fullName.trim(),
           username: username.trim(),
@@ -370,7 +383,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           mustChangePassword,
           newPassword: password.trim() || undefined,
           linkedCustomerId: role === 'customer' && linkedCustomerId ? linkedCustomerId : undefined,
-          linkedEmployeeId: role !== 'customer' && linkedEmployeeId ? linkedEmployeeId : undefined,
+          linkedEmployeeId: nextLinkedEmployeePayload,
           autoCreateCustomerProfile: role === 'customer' && !linkedCustomerId && !currentLinkedCustomer,
           autoCreateRepProfile: role === 'representative',
           applyRolePreset: !hasManualPermEdits,
@@ -1481,7 +1494,15 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
               >
                 <option value="">-- بدون ربط بموظف / اختياري --</option>
                 {employees
-                  .filter((e) => !e.userId || (editingUser && (e.userId === editingUser.id || e.id === editingUser.employeeId)))
+                  .filter((e) => {
+                    const claimedByOtherUser = users.some(
+                      (u) => u.id !== editingUser?.id && u.employeeId === e.id
+                    );
+                    const linkedToCurrentEditing = Boolean(
+                      editingUser && (e.userId === editingUser.id || e.id === editingUser.employeeId)
+                    );
+                    return linkedToCurrentEditing || (!e.userId && !claimedByOtherUser);
+                  })
                   .map((e) => (
                     <option key={e.id} value={e.id}>
                       {e.name} ({e.code}) — {e.jobTitle}

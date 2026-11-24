@@ -984,6 +984,236 @@ export async function initializeSchema(customPool = null) {
       }
     }
 
+    // Ensure v14 strict 1:1 Employee <-> User integrity (non-destructive audit, conflict logging & symmetric backfill)
+    const usersEmpRows = await currentPool.query(
+      `SELECT id, full_name, username, phone, employee_id, created_at FROM users ORDER BY created_at ASC, id ASC`
+    );
+    const empUserRows = await currentPool.query(
+      `SELECT id, full_name, code, phone, user_id, created_at FROM employees ORDER BY created_at ASC, id ASC`
+    );
+
+    for (const u of usersEmpRows.rows || []) {
+      if (u.employee_id !== null && u.employee_id !== undefined && String(u.employee_id).trim() === '') {
+        await currentPool.query(`UPDATE users SET employee_id = NULL WHERE id = $1`, [u.id]);
+        u.employee_id = null;
+      }
+    }
+    for (const e of empUserRows.rows || []) {
+      if (e.user_id !== null && e.user_id !== undefined && String(e.user_id).trim() === '') {
+        await currentPool.query(`UPDATE employees SET user_id = NULL WHERE id = $1`, [e.id]);
+        e.user_id = null;
+      }
+    }
+
+    const userRowById = new Map((usersEmpRows.rows || []).map((u) => [u.id, u]));
+    const empRowById = new Map((empUserRows.rows || []).map((e) => [e.id, e]));
+    const usersByEmpId = new Map();
+    const empsByUserId = new Map();
+
+    for (const u of usersEmpRows.rows || []) {
+      if (u.employee_id) {
+        const list = usersByEmpId.get(u.employee_id) || [];
+        list.push(u);
+        usersByEmpId.set(u.employee_id, list);
+      }
+    }
+    for (const e of empUserRows.rows || []) {
+      if (e.user_id) {
+        const list = empsByUserId.get(e.user_id) || [];
+        list.push(e);
+        empsByUserId.set(e.user_id, list);
+      }
+    }
+
+    let hasUserEmpDup = false;
+    let hasEmpUserDup = false;
+    let hasUserEmpOrphan = false;
+    let hasEmpUserOrphan = false;
+    const v14Conflicts = [];
+
+    for (const [empId, uList] of usersByEmpId.entries()) {
+      if (uList.length > 1) {
+        hasUserEmpDup = true;
+        v14Conflicts.push({
+          conflictType: 'employee_user_link_conflict',
+          severity: 'high',
+          identifierKey: `employee:${empId}:multiple_users`,
+          candidates: [
+            ...(empRowById.has(empId)
+              ? [{ recordType: 'employee', recordId: empId, name: empRowById.get(empId).full_name, phone: empRowById.get(empId).phone || '' }]
+              : []),
+            ...uList.map((u) => ({ recordType: 'user', recordId: u.id, name: u.full_name, username: u.username, phone: u.phone || '' })),
+          ],
+        });
+      }
+      if (!empRowById.has(empId)) {
+        hasUserEmpOrphan = true;
+        v14Conflicts.push({
+          conflictType: 'employee_user_link_conflict',
+          severity: 'high',
+          identifierKey: `user_orphan_employee:${empId}`,
+          candidates: uList.map((u) => ({
+            recordType: 'user',
+            recordId: u.id,
+            name: u.full_name,
+            username: u.username,
+            missingEmployeeId: empId,
+          })),
+        });
+      }
+    }
+
+    for (const [usrId, eList] of empsByUserId.entries()) {
+      if (eList.length > 1) {
+        hasEmpUserDup = true;
+        v14Conflicts.push({
+          conflictType: 'employee_user_link_conflict',
+          severity: 'high',
+          identifierKey: `user:${usrId}:multiple_employees`,
+          candidates: [
+            ...(userRowById.has(usrId)
+              ? [{ recordType: 'user', recordId: usrId, name: userRowById.get(usrId).full_name, username: userRowById.get(usrId).username }]
+              : []),
+            ...eList.map((e) => ({ recordType: 'employee', recordId: e.id, name: e.full_name, phone: e.phone || '' })),
+          ],
+        });
+      }
+      if (!userRowById.has(usrId)) {
+        hasEmpUserOrphan = true;
+        v14Conflicts.push({
+          conflictType: 'employee_user_link_conflict',
+          severity: 'high',
+          identifierKey: `employee_orphan_user:${usrId}`,
+          candidates: eList.map((e) => ({
+            recordType: 'employee',
+            recordId: e.id,
+            name: e.full_name,
+            missingUserId: usrId,
+          })),
+        });
+      }
+    }
+
+    // Detect asymmetric cross-links before symmetrical backfill
+    for (const u of usersEmpRows.rows || []) {
+      if (!u.employee_id) continue;
+      const emp = empRowById.get(u.employee_id);
+      if (emp && emp.user_id && emp.user_id !== u.id) {
+        v14Conflicts.push({
+          conflictType: 'employee_user_link_conflict',
+          severity: 'high',
+          identifierKey: `asymmetric_user_emp:${u.id}:${emp.id}`,
+          candidates: [
+            { recordType: 'user', recordId: u.id, name: u.full_name, username: u.username },
+            { recordType: 'employee', recordId: emp.id, name: emp.full_name },
+            ...(userRowById.has(emp.user_id)
+              ? [{ recordType: 'user', recordId: emp.user_id, name: userRowById.get(emp.user_id).full_name, username: userRowById.get(emp.user_id).username }]
+              : []),
+          ],
+        });
+      }
+    }
+
+    // Non-destructive symmetrical backfill ONLY for strictly unambiguous 1:1 pairs
+    for (const u of usersEmpRows.rows || []) {
+      if (!u.employee_id) continue;
+      const emp = empRowById.get(u.employee_id);
+      if (
+        emp &&
+        !emp.user_id &&
+        (usersByEmpId.get(emp.id) || []).length === 1 &&
+        (empsByUserId.get(u.id) || []).length === 0
+      ) {
+        await currentPool.query(`UPDATE employees SET user_id = $1 WHERE id = $2 AND user_id IS NULL`, [u.id, emp.id]);
+        emp.user_id = u.id;
+        empsByUserId.set(u.id, [emp]);
+      }
+    }
+    for (const e of empUserRows.rows || []) {
+      if (!e.user_id) continue;
+      const usr = userRowById.get(e.user_id);
+      if (
+        usr &&
+        !usr.employee_id &&
+        (empsByUserId.get(usr.id) || []).length === 1 &&
+        (usersByEmpId.get(e.id) || []).length === 0
+      ) {
+        await currentPool.query(`UPDATE users SET employee_id = $1 WHERE id = $2 AND employee_id IS NULL`, [e.id, usr.id]);
+        usr.employee_id = e.id;
+        usersByEmpId.set(e.id, [usr]);
+      }
+    }
+
+    // Record detected legacy conflicts into identity_conflicts without deleting any records
+    for (const cf of v14Conflicts) {
+      const existingCf = await currentPool.query(
+        `SELECT id FROM identity_conflicts WHERE conflict_type = $1 AND identifier_key = $2 AND status = 'pending_review' LIMIT 1`,
+        [cf.conflictType, cf.identifierKey]
+      );
+      if (!existingCf.rows[0]) {
+        const cfId = `IDCF_V14_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+        await currentPool.query(
+          `INSERT INTO identity_conflicts (id, conflict_type, severity, identifier_key, candidate_records, status, created_at)
+           VALUES ($1, $2, $3, $4, $5, 'pending_review', NOW())`,
+          [cfId, cf.conflictType, cf.severity, cf.identifierKey, JSON.stringify(cf.candidates)]
+        );
+      }
+      console.warn('[postgres] Detected Employee<->User 1:1 legacy link conflict:', cf.identifierKey);
+    }
+
+    // Re-evaluate post-backfill counts cleanly before creating unique indexes & foreign keys
+    const postUsersDupCheck = await currentPool.query(
+      `SELECT employee_id, COUNT(*) AS cnt FROM users WHERE employee_id IS NOT NULL GROUP BY employee_id`
+    );
+    const postEmpsDupCheck = await currentPool.query(
+      `SELECT user_id, COUNT(*) AS cnt FROM employees WHERE user_id IS NOT NULL GROUP BY user_id`
+    );
+    hasUserEmpDup = hasUserEmpDup || (postUsersDupCheck.rows || []).some((r) => Number(r.cnt || 0) > 1);
+    hasEmpUserDup = hasEmpUserDup || (postEmpsDupCheck.rows || []).some((r) => Number(r.cnt || 0) > 1);
+
+    let existingConstraintNames = new Set();
+    try {
+      const tcRes = await currentPool.query(
+        `SELECT constraint_name FROM information_schema.table_constraints WHERE table_schema = 'public'`
+      );
+      existingConstraintNames = new Set((tcRes.rows || []).map((r) => r.constraint_name));
+    } catch {
+      existingConstraintNames = new Set();
+    }
+
+    const v14Statements = [];
+    if (!hasUserEmpDup) {
+      v14Statements.push('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_employee_id_unique ON users(employee_id)');
+    } else {
+      console.warn('[postgres] Skipped idx_users_employee_id_unique until duplicate users.employee_id conflicts are resolved.');
+    }
+    if (!hasEmpUserDup) {
+      v14Statements.push('CREATE UNIQUE INDEX IF NOT EXISTS idx_employees_user_id_unique ON employees(user_id)');
+    } else {
+      console.warn('[postgres] Skipped idx_employees_user_id_unique until duplicate employees.user_id conflicts are resolved.');
+    }
+    if (!hasUserEmpOrphan && !existingConstraintNames.has('fk_users_employee_id')) {
+      v14Statements.push(
+        'ALTER TABLE users ADD CONSTRAINT fk_users_employee_id FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL'
+      );
+    }
+    if (!hasEmpUserOrphan && !existingConstraintNames.has('fk_employees_user_id')) {
+      v14Statements.push(
+        'ALTER TABLE employees ADD CONSTRAINT fk_employees_user_id FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL'
+      );
+    }
+
+    for (const stmt of v14Statements) {
+      try {
+        await currentPool.query(stmt);
+      } catch (err) {
+        if (!isIdempotentDdlError(err, stmt)) {
+          console.error('[postgres] v14 DDL statement failed:', stmt, err);
+          throw err;
+        }
+      }
+    }
+
     return { success: true, message: 'تم تطبيق هيكل الجداول والفهارس والتسلسلات في PostgreSQL بنجاح.' };
   } catch (err) {
     console.error('[postgres] initializeSchema error:', err);
