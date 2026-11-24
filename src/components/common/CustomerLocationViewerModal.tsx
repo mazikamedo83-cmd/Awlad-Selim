@@ -71,30 +71,30 @@ export const CustomerLocationViewerModal: React.FC<CustomerLocationViewerModalPr
   };
 
   return (
-    <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="bg-white dark:bg-slate-900 w-full sm:max-w-xl rounded-t-3xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="px-4 py-3.5 bg-[#0F5A33] text-white flex items-center justify-between gap-2">
+    <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-3">
+      <div className="bg-white dark:bg-slate-900 w-full sm:max-w-xl rounded-t-xl sm:rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="px-3.5 py-2.5 bg-[#0F5A33] text-white flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <MapPin className="w-5 h-5 shrink-0" />
+            <MapPin className="w-4 h-4 shrink-0" />
             <div>
-              <h3 className="text-sm font-black">{shopName || customerName}</h3>
+              <h3 className="text-xs sm:text-sm font-black">{shopName || customerName}</h3>
               <p className="text-[11px] text-emerald-100">عرض الموقع المسجل للعميل (للقراءة فقط)</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-xl bg-white/15 hover:bg-white/25 cursor-pointer"
+            className="p-1.5 rounded-lg bg-white/15 hover:bg-white/25 cursor-pointer"
             aria-label="إغلاق"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-4 space-y-3 overflow-y-auto">
+        <div className="p-3 space-y-2.5 overflow-y-auto">
           {!hasValidCoords ? (
-            <div className="p-5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-center space-y-2">
-              <AlertTriangle className="w-8 h-8 text-amber-600 mx-auto" />
+            <div className="p-3.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-center space-y-1.5">
+              <AlertTriangle className="w-6 h-6 text-amber-600 mx-auto" />
               <p className="text-xs font-black text-amber-900 dark:text-amber-100">
                 لا توجد إحداثيات جغرافية صالحة مسجلة لهذا العميل حتى الآن.
               </p>
@@ -104,7 +104,7 @@ export const CustomerLocationViewerModal: React.FC<CustomerLocationViewerModalPr
             <>
               {mapsKey && typeof navigator !== 'undefined' && navigator.onLine !== false ? (
                 <APIProvider apiKey={mapsKey} language="ar" region="EG">
-                  <div className="w-full h-64 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700">
+                  <div className="w-full h-56 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
                     <GoogleMap
                       mapId={mapId}
                       defaultCenter={{ lat, lng }}
@@ -121,12 +121,12 @@ export const CustomerLocationViewerModal: React.FC<CustomerLocationViewerModalPr
                   </div>
                 </APIProvider>
               ) : (
-                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200">
+                <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200">
                   الإحداثيات المحفوظة: <span className="awlad-tabular" dir="ltr">{coordText}</span>
                 </div>
               )}
 
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-1.5 text-xs">
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-1 text-xs">
                 {(governorate || city || area) && (
                   <p className="font-bold text-slate-700 dark:text-slate-200">
                     النطاق: {[governorate, city || area].filter(Boolean).join(' - ')}
@@ -137,7 +137,7 @@ export const CustomerLocationViewerModal: React.FC<CustomerLocationViewerModalPr
                   <span className="font-bold text-slate-500 awlad-tabular" dir="ltr">
                     {coordText}
                   </span>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       onClick={handleCopy}

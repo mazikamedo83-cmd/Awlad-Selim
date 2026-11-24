@@ -275,13 +275,13 @@ export const LoginView: React.FC = () => {
       <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 rounded-full bg-blue-600/10 blur-3xl pointer-events-none"></div>
       <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-96 h-96 rounded-full bg-sky-500/10 blur-3xl pointer-events-none"></div>
 
-      <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden relative z-10 text-right animate-in fade-in duration-300">
+      <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden relative z-10 text-right animate-in fade-in duration-300">
         {/* Header / Logo banner */}
-        <div className="bg-gradient-to-b from-blue-950 to-slate-900 p-8 text-center text-white relative">
+        <div className="bg-gradient-to-b from-blue-950 to-slate-900 p-5 text-center text-white relative">
           <button
             type="button"
             onClick={() => setShowServerModal(true)}
-            className="absolute top-4 left-4 px-2.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-blue-100 text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="absolute top-3 left-3 px-2 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-blue-100 text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
             title={activeModeLabel}
           >
             <Server className="w-3.5 h-3.5" />
@@ -291,12 +291,12 @@ export const LoginView: React.FC = () => {
           <img
             src="/awlad-selim-logo.png"
             alt="أولاد سليم AWLAD SELIM"
-            className="max-h-24 mx-auto object-contain drop-shadow-md mb-3"
+            className="max-h-16 mx-auto object-contain drop-shadow-md mb-2"
           />
-          <h2 className="text-xl font-black tracking-tight text-white">
+          <h2 className="text-lg font-black tracking-tight text-white">
             نظام أولاد سليم للمحاسبة وإدارة الأعمال
           </h2>
-          <p className="text-xs text-blue-200 mt-1 font-medium">
+          <p className="text-[11px] text-blue-200 mt-0.5 font-medium">
             {needsAdminSetup
               ? 'الإعداد الأولي: إنشاء حساب المالك والمدير العام للنظام'
               : 'بوابة تسجيل الدخول الآمن لتجارة المواد الغذائية بالجملة'}
@@ -304,10 +304,10 @@ export const LoginView: React.FC = () => {
         </div>
 
         {/* Form Body */}
-        <div className="p-6 sm:p-8 space-y-5">
+        <div className="p-4 sm:p-5 space-y-3">
           {pairingBanner && (
             <div
-              className={`p-3.5 rounded-xl border text-xs font-bold flex items-start gap-2.5 ${
+              className={`p-2.5 rounded-lg border text-xs font-bold flex items-start gap-2 ${
                 pairingBanner.type === 'success'
                   ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
                   : pairingBanner.type === 'warning'
@@ -325,20 +325,20 @@ export const LoginView: React.FC = () => {
           )}
 
           {serverMissing ? (
-            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-900 space-y-2.5">
-              <div className="font-black flex items-center gap-2">
+            <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-300 text-xs text-amber-900 space-y-2">
+              <div className="font-black flex items-center gap-1.5">
                 <Server className="w-4 h-4 text-amber-700 shrink-0" />
                 <span>الخطوة الأولى: ربط التطبيق بالسيرفر المركزي</span>
               </div>
-              <p className="leading-relaxed">
+              <p className="leading-relaxed text-[11px]">
                 امسح رمز <span className="font-mono font-bold">QR Code</span> من لوحة الإدارة أو اضغط بحث تلقائي داخل الشبكة دون كتابة IP يدوياً.
               </p>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1.5">
                 <button
                   type="button"
                   disabled={isClaimingQr}
                   onClick={() => setShowQrScanner(true)}
-                  className="px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                  className="px-2.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
                 >
                   <QrCode className="w-3.5 h-3.5" />
                   <span>{isClaimingQr ? 'جاري الربط...' : 'مسح QR أو لصق رابط دعوة'}</span>
@@ -347,7 +347,7 @@ export const LoginView: React.FC = () => {
                   type="button"
                   disabled={isDiscovering}
                   onClick={handleQuickDiscover}
-                  className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                  className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
                 >
                   {isDiscovering ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
                   <span>{isDiscovering ? 'جاري الاكتشاف...' : 'اكتشاف السيرفر تلقائياً'}</span>
@@ -355,24 +355,24 @@ export const LoginView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowServerModal(true)}
-                  className="px-3.5 py-2 rounded-xl bg-white border border-amber-300 text-amber-900 font-bold text-xs cursor-pointer"
+                  className="px-2.5 py-1.5 rounded-lg bg-white border border-amber-300 text-amber-900 font-bold text-xs cursor-pointer"
                 >
                   إعداد يدوي
                 </button>
               </div>
             </div>
           ) : (
-            <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px]">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-[11px]">
               <div className="flex items-center gap-1.5 text-slate-600 font-bold truncate">
                 <Server className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
                 <span className="truncate">{activeModeLabel}</span>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
                   disabled={isClaimingQr}
                   onClick={() => setShowQrScanner(true)}
-                  className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold flex items-center gap-1 cursor-pointer"
+                  className="px-2 py-1 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold flex items-center gap-1 cursor-pointer"
                 >
                   <QrCode className="w-3 h-3" />
                   <span>ربط بـ QR / رابط</span>
@@ -381,7 +381,7 @@ export const LoginView: React.FC = () => {
                   type="button"
                   disabled={isDiscovering}
                   onClick={handleQuickDiscover}
-                  className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold flex items-center gap-1 cursor-pointer"
+                  className="px-2 py-1 rounded bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold flex items-center gap-1 cursor-pointer"
                 >
                   {isDiscovering ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
                   <span>بحث تلقائي</span>
@@ -391,27 +391,27 @@ export const LoginView: React.FC = () => {
           )}
 
           {isDatabaseUnavailable && databaseUnavailableMessage && (
-            <div className="flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs font-bold text-red-800">
+            <div className="flex items-center gap-2 p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs font-bold text-red-800">
               <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
               <span>{databaseUnavailableMessage}</span>
             </div>
           )}
 
           {sessionExpiredMessage && (
-            <div className="flex items-center gap-2.5 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs font-bold text-amber-800">
+            <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs font-bold text-amber-800">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{sessionExpiredMessage}</span>
             </div>
           )}
 
           {needsAdminSetup && (
-            <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-xs font-bold text-blue-900">
+            <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-xs font-bold text-blue-900">
               لم يتم إعداد حساب مدير عام على هذا الخادم بعد. يرجى إنشاء حساب المالك الخاص بك الآن للبدء بأمان.
             </div>
           )}
 
           {typeof navigator !== 'undefined' && navigator.onLine === false && (
-            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-start gap-2.5">
+            <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-start gap-2">
               <AlertCircle className="w-4 h-4 shrink-0 text-amber-700 mt-0.5" />
               <span className="leading-relaxed">
                 أنت الآن في وضع العمل دون إنترنت: يُسمح بتسجيل الدخول محلياً فقط للحسابات التي سبق التحقق منها بنجاح على هذا الجهاز، وسيتم إعادة التحقق من الصلاحيات فور عودة الاتصال بالسيرفر المركزي.
@@ -420,53 +420,54 @@ export const LoginView: React.FC = () => {
           )}
 
           {infoNotice && (
-            <div className="flex items-center gap-2.5 p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-xs font-bold text-blue-900">
+            <div className="flex items-center gap-2 p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-xs font-bold text-blue-900">
               <CheckCircle2 className="w-4 h-4 shrink-0 text-blue-700" />
               <span>{infoNotice}</span>
             </div>
           )}
 
           {error && (
-            <div className="flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs font-bold text-red-700 animate-shake">
+            <div className="flex items-center gap-2 p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs font-bold text-red-700 animate-shake">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
           {!needsAdminSetup && savedAccounts.length > 0 && (
-            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
-                  <Users className="w-4 h-4 text-blue-800" />
+                  <Users className="w-3.5 h-3.5 text-blue-800" />
                   <span>الحسابات المحفوظة على الجهاز ({savedAccounts.length})</span>
                 </span>
                 <span className="text-[10px] font-bold text-slate-500">تبديل ودخول سريع آمن</span>
               </div>
-              <div className="space-y-2 max-h-52 overflow-y-auto">
+              <div className="divide-y divide-slate-200 border border-slate-200 rounded-lg bg-white max-h-44 overflow-y-auto">
                 {savedAccounts.map((acc) => {
                   const isResuming = resumingUserId === acc.userId;
                   const quickReady = acc.sessionStatus === 'active' && Boolean(acc.refreshToken || acc.accessToken);
                   return (
                     <div
                       key={acc.userId}
-                      className="p-2.5 rounded-xl bg-white border border-slate-200 flex items-center justify-between gap-2"
+                      className="px-2.5 py-2 flex items-center justify-between gap-2"
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
                         {acc.avatarPhoto ? (
                           <img
                             src={acc.avatarPhoto}
                             alt={acc.fullName}
-                            className="w-9 h-9 rounded-xl object-cover border border-slate-200 shrink-0"
+                            className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0"
                           />
                         ) : (
-                          <div className="w-9 h-9 rounded-xl bg-blue-900 text-white font-black text-xs flex items-center justify-center shrink-0">
+                          <div className="w-8 h-8 rounded-lg bg-blue-900 text-white font-black text-xs flex items-center justify-center shrink-0">
                             {(acc.fullName || acc.username || '؟').trim().charAt(0)}
                           </div>
                         )}
                         <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-black text-xs text-slate-900 truncate">{acc.fullName}</span>
-                            <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-900 text-[10px] font-bold">
+                          <div className="flex items-center gap-1.5 text-xs truncate">
+                            <span className="font-black text-slate-900 truncate">{acc.fullName}</span>
+                            <span className="text-slate-300">·</span>
+                            <span className="text-[10px] font-bold text-blue-800 shrink-0">
                               {getRoleBadgeText(acc.role)}
                             </span>
                           </div>
@@ -483,7 +484,7 @@ export const LoginView: React.FC = () => {
                           type="button"
                           disabled={Boolean(resumingUserId)}
                           onClick={() => handleResumeSavedAccount(acc)}
-                          className={`min-h-[36px] px-2.5 rounded-lg text-[11px] font-black flex items-center gap-1 cursor-pointer disabled:opacity-50 ${
+                          className={`min-h-[32px] px-2.5 rounded-lg text-[11px] font-black flex items-center gap-1 cursor-pointer disabled:opacity-50 ${
                             quickReady
                               ? 'bg-blue-900 hover:bg-blue-950 text-white'
                               : 'bg-amber-100 hover:bg-amber-200 text-amber-950'
@@ -500,7 +501,7 @@ export const LoginView: React.FC = () => {
                           type="button"
                           disabled={Boolean(resumingUserId)}
                           onClick={() => setAccountToForget(acc)}
-                          className="min-h-[36px] min-w-[36px] rounded-lg bg-red-50 hover:bg-red-100 text-red-700 flex items-center justify-center cursor-pointer"
+                          className="min-h-[32px] min-w-[32px] rounded-lg bg-red-50 hover:bg-red-100 text-red-700 flex items-center justify-center cursor-pointer"
                           title="إزالة الحساب من الجهاز"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -514,7 +515,7 @@ export const LoginView: React.FC = () => {
           )}
 
           {!needsAdminSetup && (
-            <div className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-slate-100 border border-slate-200">
+            <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200">
               <button
                 type="button"
                 onClick={() => {
@@ -522,7 +523,7 @@ export const LoginView: React.FC = () => {
                   setError(null);
                   setInfoNotice(null);
                 }}
-                className={`min-h-[42px] px-2 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`min-h-[36px] px-2 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   authMode === 'login'
                     ? 'bg-blue-900 text-white shadow-xs font-black'
                     : 'text-slate-700 hover:bg-white'
@@ -539,7 +540,7 @@ export const LoginView: React.FC = () => {
                   setPassword('');
                   setConfirmPassword('');
                 }}
-                className={`min-h-[42px] px-2 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`min-h-[36px] px-2 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   authMode === 'register_customer'
                     ? 'bg-blue-900 text-white shadow-xs font-black'
                     : 'text-slate-700 hover:bg-white'
@@ -556,7 +557,7 @@ export const LoginView: React.FC = () => {
                   setPassword('');
                   setConfirmPassword('');
                 }}
-                className={`min-h-[42px] px-2 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`min-h-[36px] px-2 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   authMode === 'register_rep'
                     ? 'bg-blue-900 text-white shadow-xs font-black'
                     : 'text-slate-700 hover:bg-white'
@@ -567,11 +568,11 @@ export const LoginView: React.FC = () => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-3">
             {needsAdminSetup && (
               <>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
                     اسم الشركة / النشاط (اختياري):
                   </label>
                   <input
@@ -579,11 +580,11 @@ export const LoginView: React.FC = () => {
                     value={companyName}
                     onChange={(e) => setCompanyName(e.target.value)}
                     placeholder="أدخل اسم الشركة أو المؤسسة"
-                    className="w-full rounded-xl border border-slate-300 py-3 px-4 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
+                    className="w-full min-h-[38px] rounded-lg border border-slate-300 py-2 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
                     الاسم الكامل للمالك / المدير:
                   </label>
                   <input
@@ -592,11 +593,11 @@ export const LoginView: React.FC = () => {
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="أدخل الاسم الكامل للمالك أو المدير العام"
-                    className="w-full rounded-xl border border-slate-300 py-3 px-4 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
+                    className="w-full min-h-[38px] rounded-lg border border-slate-300 py-2 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
                     رقم الهاتف (اختياري):
                   </label>
                   <input
@@ -604,104 +605,104 @@ export const LoginView: React.FC = () => {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="01xxxxxxxxx"
-                    className="w-full rounded-xl border border-slate-300 py-3 px-4 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
+                    className="w-full min-h-[38px] rounded-lg border border-slate-300 py-2 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
                   />
                 </div>
               </>
             )}
 
             {!needsAdminSetup && (authMode === 'register_customer' || authMode === 'register_rep') && (
-              <div className="space-y-3 p-3.5 rounded-2xl bg-blue-50/60 border border-blue-200/80">
+              <div className="space-y-2 p-3 rounded-xl bg-blue-50/60 border border-blue-200/80">
                 <p className="text-xs font-black text-blue-950">
                   {authMode === 'register_customer'
                     ? 'بيانات العميل الجديد (تُفعّل مباشرة للدخول والطلب)'
                     : 'بيانات المندوب الجديد (تُفعّل مباشرة مع مخزن سيارة خاص)'}
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">الاسم الكامل *</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">الاسم الكامل *</label>
                     <input
                       type="text"
                       required
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
                       placeholder={authMode === 'register_customer' ? 'اسم العميل أو المسؤول' : 'اسم المندوب الثلاثي'}
-                      className="w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                      className="w-full min-h-[36px] rounded-lg border border-slate-300 bg-white py-1.5 px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">رقم الهاتف *</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">رقم الهاتف *</label>
                     <input
                       type="tel"
                       required
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="01xxxxxxxxx"
-                      className="w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                      className="w-full min-h-[36px] rounded-lg border border-slate-300 bg-white py-1.5 px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
                     />
                   </div>
                   {authMode === 'register_customer' ? (
                     <>
                       <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">اسم المحل / النشاط</label>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-0.5">اسم المحل / النشاط</label>
                         <input
                           type="text"
                           value={shopName}
                           onChange={(e) => setShopName(e.target.value)}
                           placeholder="مثال: سوبر ماركت النور"
-                          className="w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                          className="w-full min-h-[36px] rounded-lg border border-slate-300 bg-white py-1.5 px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">المحافظة</label>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-0.5">المحافظة</label>
                         <input
                           type="text"
                           value={governorate}
                           onChange={(e) => setGovernorate(e.target.value)}
                           placeholder="مثال: القاهرة / الجيزة"
-                          className="w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                          className="w-full min-h-[36px] rounded-lg border border-slate-300 bg-white py-1.5 px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">المنطقة</label>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-0.5">المنطقة</label>
                         <input
                           type="text"
                           value={area}
                           onChange={(e) => setArea(e.target.value)}
                           placeholder="مثال: شبرا / المعادي"
-                          className="w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                          className="w-full min-h-[36px] rounded-lg border border-slate-300 bg-white py-1.5 px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
                         />
                       </div>
                     </>
                   ) : (
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">رقم السيارة / الخط</label>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-0.5">رقم السيارة / الخط</label>
                       <input
                         type="text"
                         value={vehicleNumber}
                         onChange={(e) => setVehicleNumber(e.target.value)}
                         placeholder="مثال: أ ب ج 1234"
-                        className="w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                        className="w-full min-h-[36px] rounded-lg border border-slate-300 bg-white py-1.5 px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
                       />
                     </div>
                   )}
                   <div className={authMode === 'register_customer' ? 'sm:col-span-2' : ''}>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">العنوان</label>
-                    <div className="flex flex-wrap gap-2">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">العنوان</label>
+                    <div className="flex flex-wrap gap-1.5">
                       <input
                         type="text"
                         value={address}
                         onChange={(e) => setAddress(e.target.value)}
                         placeholder="العنوان التفصيلي"
-                        className="flex-1 min-w-[180px] rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-[#0F5A33] outline-hidden text-right"
+                        className="flex-1 min-w-[160px] min-h-[36px] rounded-lg border border-slate-300 bg-white py-1.5 px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-[#0F5A33] outline-hidden text-right"
                       />
                       {authMode === 'register_customer' && (
                         <button
                           type="button"
                           onClick={() => setShowLocationPicker(true)}
-                          className="px-3 py-2.5 rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0"
+                          className="min-h-[36px] px-2.5 py-1.5 rounded-lg bg-[#0F5A33] hover:bg-[#0B4426] text-white text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0"
                         >
-                          <MapPin className="w-4 h-4" />
+                          <MapPin className="w-3.5 h-3.5" />
                           <span>{latitude !== undefined ? 'تعديل الموقع على الخريطة' : 'تحديد الموقع على الخريطة'}</span>
                         </button>
                       )}
@@ -717,7 +718,7 @@ export const LoginView: React.FC = () => {
             )}
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
                 اسم المستخدم (أو رقم الهاتف):
               </label>
               <div className="relative">
@@ -727,15 +728,15 @@ export const LoginView: React.FC = () => {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="أدخل اسم المستخدم"
-                  className="w-full rounded-xl border border-slate-300 py-3 pr-10 pl-4 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
+                  className="w-full min-h-[38px] rounded-lg border border-slate-300 py-2 pr-9 pl-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
                 />
-                <User className="w-4 h-4 text-slate-400 absolute right-3.5 top-3.5 pointer-events-none" />
+                <User className="w-4 h-4 text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
               </div>
             </div>
 
             <div>
-              <div className="flex justify-between items-center mb-1.5">
-                <label className="block text-xs font-bold text-slate-700">
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-[11px] font-bold text-slate-700">
                   كلمة المرور:
                 </label>
                 {!needsAdminSetup && (
@@ -757,13 +758,13 @@ export const LoginView: React.FC = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="أدخل كلمة المرور"
-                  className="w-full rounded-xl border border-slate-300 py-3 pr-10 pl-10 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
+                  className="w-full min-h-[38px] rounded-lg border border-slate-300 py-2 pr-9 pl-9 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
                 />
-                <Lock className="w-4 h-4 text-slate-400 absolute right-3.5 top-3.5 pointer-events-none" />
+                <Lock className="w-4 h-4 text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute left-3.5 top-3.5 text-slate-400 hover:text-slate-600 focus:outline-hidden"
+                  className="absolute left-3 top-2.5 text-slate-400 hover:text-slate-600 focus:outline-hidden"
                   title={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -773,7 +774,7 @@ export const LoginView: React.FC = () => {
 
             {(needsAdminSetup || authMode === 'register_customer' || authMode === 'register_rep') && (
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
                   تأكيد كلمة المرور:
                 </label>
                 <input
@@ -782,7 +783,7 @@ export const LoginView: React.FC = () => {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="أعد إدخال كلمة المرور"
-                  className="w-full rounded-xl border border-slate-300 py-3 px-4 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
+                  className="w-full min-h-[38px] rounded-lg border border-slate-300 py-2 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
                 />
               </div>
             )}
@@ -790,7 +791,7 @@ export const LoginView: React.FC = () => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3.5 px-4 bg-blue-900 hover:bg-blue-950 text-white font-bold text-sm rounded-xl shadow-lg shadow-blue-900/25 transition-all active:scale-98 disabled:opacity-60 flex items-center justify-center gap-2 cursor-pointer min-h-[46px]"
+              className="w-full py-2.5 px-4 bg-blue-900 hover:bg-blue-950 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md shadow-blue-900/20 transition-all active:scale-98 disabled:opacity-60 flex items-center justify-center gap-2 cursor-pointer min-h-[42px]"
             >
               {needsAdminSetup || authMode !== 'login' ? (
                 <UserPlus className="w-4 h-4" />
@@ -812,22 +813,22 @@ export const LoginView: React.FC = () => {
           </form>
         </div>
 
-        <div className="bg-slate-50 border-t border-slate-100 px-6 py-3 text-center text-[11px] text-slate-500 font-medium">
+        <div className="bg-slate-50 border-t border-slate-100 px-4 py-2.5 text-center text-[11px] text-slate-500 font-medium">
           مؤسسة أولاد سليم لتجارة المواد الغذائية بالجملة • جميع الحقوق محفوظة 2026
         </div>
       </div>
 
       {/* Forgot Password Modal */}
       {showForgotModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
-          <div className="w-full max-w-sm bg-white rounded-2xl p-6 text-right shadow-2xl border border-slate-200">
-            <h4 className="text-base font-bold text-slate-900 mb-2">استعادة كلمة المرور</h4>
-            <p className="text-xs text-slate-600 leading-relaxed mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/70 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-white rounded-xl p-4 text-right shadow-2xl border border-slate-200">
+            <h4 className="text-sm font-bold text-slate-900 mb-1.5">استعادة كلمة المرور</h4>
+            <p className="text-xs text-slate-600 leading-relaxed mb-3">
               لأسباب أمنية، يتم إعادة ضبط كلمات المرور حصرياً من خلال مسؤول النظام داخل إدارة المستخدمين.
             </p>
             <button
               onClick={() => setShowForgotModal(false)}
-              className="w-full py-2.5 bg-blue-900 text-white text-xs font-bold rounded-xl hover:bg-blue-950"
+              className="w-full py-2 bg-blue-900 text-white text-xs font-bold rounded-lg hover:bg-blue-950 cursor-pointer"
             >
               حسناً، فهمت
             </button>

@@ -345,15 +345,15 @@ export const StockCountView: React.FC = () => {
   }, [draftLines, onlyVarianceFilter, itemSearch]);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 shadow-xs">
         <div>
-          <h2 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
-            <ClipboardCheck className="w-5 h-5 text-blue-900" />
+          <h2 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+            <ClipboardCheck className="w-4 h-4 text-blue-900" />
             <span>جرد المخزن ومطابقة الأرصدة الفعلية</span>
           </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-[11px] text-slate-500 mt-0.5">
             إنشاء مسودة جرد ومقارنة الكميات الفعلية بالدفتري (عجز / زيادة) مع دورة اعتماد آمنة دون تأثير على المخزن قبل الموافقة
           </p>
         </div>
@@ -363,9 +363,9 @@ export const StockCountView: React.FC = () => {
             <button
               type="button"
               onClick={openNewCountModal}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl text-xs font-black shadow-md cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-lg text-xs font-black shadow-xs cursor-pointer"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-3.5 h-3.5" />
               <span>جلسة جرد مخزن جديدة</span>
             </button>
           )}
@@ -374,7 +374,7 @@ export const StockCountView: React.FC = () => {
 
       {banner && (
         <div
-          className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between gap-2 ${
+          className={`px-3 py-2 rounded-lg border text-xs font-bold flex items-center justify-between gap-2 ${
             banner.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
               : 'bg-red-50 border-red-200 text-red-900'
@@ -396,6 +396,7 @@ export const StockCountView: React.FC = () => {
         subtitle={`إجمالي الجلسات: ${filteredCounts.length}`}
         data={filteredCounts}
         rowKey={(c) => c.id}
+        compact
         searchValue={searchTerm}
         onSearchChange={setSearchTerm}
         searchPlaceholder="بحث برقم الجرد أو المستودع أو اسم الجارد..."
@@ -404,11 +405,11 @@ export const StockCountView: React.FC = () => {
         defaultPageSize={25}
         emptyTitle="لا توجد جلسات جرد مخزن مسجلة حتى الآن"
         toolbarFilters={
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             <select
               value={warehouseFilter}
               onChange={(e) => setWarehouseFilter(e.target.value)}
-              className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold"
+              className="h-8 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold"
             >
               <option value="all">كل المستودعات</option>
               {warehouses.map((w) => (
@@ -418,7 +419,7 @@ export const StockCountView: React.FC = () => {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold"
+              className="h-8 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold"
             >
               <option value="all">كل حالات الجرد</option>
               <option value="draft">مسودة</option>
@@ -561,19 +562,19 @@ export const StockCountView: React.FC = () => {
         subtitle="الكمية المحفوظة في المسودة لا تعدل رصيد المخزون إلا بعد الاعتماد النهائي"
         maxWidth="4xl"
       >
-        <div className="space-y-4 text-xs">
+        <div className="space-y-3 text-xs">
           {modalError && (
-            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">{modalError}</div>
+            <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold">{modalError}</div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
             <div>
               <label className="block font-bold mb-1">المستودع:</label>
               <select
                 value={selectedWhId}
                 disabled={!!editingCount}
                 onChange={(e) => handleWarehouseSwitch(e.target.value)}
-                className="w-full bg-white border rounded-xl p-2 font-bold disabled:bg-slate-100"
+                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold disabled:bg-slate-100"
               >
                 {warehouses.map((w) => (
                   <option key={w.id} value={w.id}>{w.name}</option>
@@ -586,7 +587,7 @@ export const StockCountView: React.FC = () => {
                 type="date"
                 value={countDate}
                 onChange={(e) => setCountDate(e.target.value)}
-                className="w-full bg-white border rounded-xl p-2 font-mono font-bold"
+                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold"
               />
             </div>
             <div>
@@ -596,7 +597,7 @@ export const StockCountView: React.FC = () => {
                 value={countNotes}
                 onChange={(e) => setCountNotes(e.target.value)}
                 placeholder="جرد ربع سنوي / جرد دوري..."
-                className="w-full bg-white border rounded-xl p-2"
+                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5"
               />
             </div>
           </div>
@@ -608,11 +609,11 @@ export const StockCountView: React.FC = () => {
                 placeholder="تصفية الأصناف بالاسم أو الكود أو الباركود..."
                 value={itemSearch}
                 onChange={(e) => setItemSearch(e.target.value)}
-                className="w-full border border-slate-300 rounded-xl py-2 pr-9 pl-3"
+                className="w-full border border-slate-300 rounded-lg py-1.5 pr-8 pl-2.5"
               />
-              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" />
             </div>
-            <label className="flex items-center gap-2 px-3 py-2 bg-slate-50 border rounded-xl cursor-pointer font-bold">
+            <label className="flex items-center gap-2 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer font-bold">
               <input
                 type="checkbox"
                 checked={onlyVarianceFilter}
@@ -623,16 +624,16 @@ export const StockCountView: React.FC = () => {
             </label>
           </div>
 
-          <div className="border border-slate-200 rounded-xl awlad-table-scroll max-h-80 overflow-y-auto">
+          <div className="border border-slate-200 rounded-lg awlad-table-scroll max-h-80 overflow-y-auto">
             <table className="w-full text-right text-[11px]">
               <thead className="bg-slate-100 text-slate-700 sticky top-0 border-b">
                 <tr>
-                  <th className="p-2.5">الكود</th>
-                  <th className="p-2.5">الصنف</th>
-                  <th className="p-2.5 text-center">الدفتري</th>
-                  <th className="p-2.5 text-center w-28">الكمية الفعلية</th>
-                  <th className="p-2.5 text-center">الفرق</th>
-                  <th className="p-2.5">سبب الفارق (اختياري)</th>
+                  <th className="p-2">الكود</th>
+                  <th className="p-2">الصنف</th>
+                  <th className="p-2 text-center">الدفتري</th>
+                  <th className="p-2 text-center w-28">الكمية الفعلية</th>
+                  <th className="p-2 text-center">الفرق</th>
+                  <th className="p-2">سبب الفارق (اختياري)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -640,12 +641,12 @@ export const StockCountView: React.FC = () => {
                   const diff = Number(line.actualQty || 0) - Number(line.systemQty || 0);
                   return (
                     <tr key={line.productId} className={diff !== 0 ? 'bg-amber-50/40' : ''}>
-                      <td className="p-2 font-mono font-bold text-blue-900">{line.productCode}</td>
-                      <td className="p-2 font-bold text-slate-900">
+                      <td className="p-1.5 font-mono font-bold text-blue-900">{line.productCode}</td>
+                      <td className="p-1.5 font-bold text-slate-900">
                         {line.productName} <span className="text-[10px] text-slate-400">({line.unit})</span>
                       </td>
-                      <td className="p-2 text-center font-mono font-bold text-slate-700">{line.systemQty}</td>
-                      <td className="p-2 text-center">
+                      <td className="p-1.5 text-center font-mono font-bold text-slate-700">{line.systemQty}</td>
+                      <td className="p-1.5 text-center">
                         <input
                           type="number"
                           min="0"
@@ -657,10 +658,10 @@ export const StockCountView: React.FC = () => {
                               prev.map((row, i) => (i === line.originalIndex ? { ...row, actualQty: val } : row))
                             );
                           }}
-                          className="w-24 border border-blue-300 rounded-lg p-1 text-center font-mono font-black bg-white"
+                          className="w-24 border border-blue-300 rounded-md p-1 text-center font-mono font-black bg-white"
                         />
                       </td>
-                      <td className="p-2 text-center font-mono font-black">
+                      <td className="p-1.5 text-center font-mono font-black">
                         {diff === 0 ? (
                           <span className="text-slate-400">مطابق (0)</span>
                         ) : diff < 0 ? (
@@ -669,7 +670,7 @@ export const StockCountView: React.FC = () => {
                           <span className="text-emerald-700">زيادة (+{diff})</span>
                         )}
                       </td>
-                      <td className="p-2">
+                      <td className="p-1.5">
                         <input
                           type="text"
                           value={line.reason}
@@ -680,7 +681,7 @@ export const StockCountView: React.FC = () => {
                             );
                           }}
                           placeholder="ملاحظة الفارق..."
-                          className="w-full border rounded-lg p-1"
+                          className="w-full border border-slate-300 rounded-md p-1"
                         />
                       </td>
                     </tr>
@@ -690,11 +691,11 @@ export const StockCountView: React.FC = () => {
             </table>
           </div>
 
-          <div className="flex flex-wrap justify-end gap-2 pt-3 border-t">
+          <div className="flex flex-wrap justify-end gap-2 pt-2.5 border-t">
             <button
               type="button"
               onClick={() => setIsCountModalOpen(false)}
-              className="px-4 py-2 border rounded-xl font-bold cursor-pointer"
+              className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-bold cursor-pointer"
             >
               إلغاء
             </button>
@@ -702,7 +703,7 @@ export const StockCountView: React.FC = () => {
               type="button"
               disabled={isSaving}
               onClick={() => handleSaveDraft(false)}
-              className="px-5 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-xl font-bold cursor-pointer"
+              className="px-4 py-1.5 bg-slate-700 hover:bg-slate-800 text-white rounded-lg font-bold cursor-pointer"
             >
               حفظ كمسودة
             </button>
@@ -710,7 +711,7 @@ export const StockCountView: React.FC = () => {
               type="button"
               disabled={isSaving}
               onClick={() => handleSaveDraft(true)}
-              className="flex items-center gap-1.5 px-6 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-black cursor-pointer"
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-lg font-black cursor-pointer"
             >
               <Send className="w-3.5 h-3.5" />
               <span>حفظ وإرسال للاعتماد</span>
@@ -728,8 +729,8 @@ export const StockCountView: React.FC = () => {
           subtitle={`${reviewCount.warehouseName} · ${reviewCount.date}`}
           maxWidth="4xl"
         >
-          <div className="space-y-4 text-xs">
-            <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 p-3 rounded-xl border">
+          <div className="space-y-3 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
               <div className="flex flex-wrap items-center gap-3">
                 <span>الحالة: <strong>{STATUS_BADGE[reviewCount.status]?.label}</strong></span>
                 <span>• القائم بالجرد: <strong>{reviewCount.counterName}</strong></span>
@@ -741,7 +742,7 @@ export const StockCountView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => handlePrintSession(reviewCount)}
-                  className="px-2.5 py-1 bg-white border rounded-lg font-bold flex items-center gap-1 cursor-pointer"
+                  className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg font-bold flex items-center gap-1 cursor-pointer"
                 >
                   <Printer className="w-3.5 h-3.5" /> طباعة
                 </button>
@@ -756,7 +757,7 @@ export const StockCountView: React.FC = () => {
             </div>
 
             {reviewError && (
-              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
+              <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 shrink-0" />
                 <span>{reviewError}</span>
               </div>
@@ -764,7 +765,7 @@ export const StockCountView: React.FC = () => {
 
             {/* Divergence reconciliation picker when stock changed mid-count */}
             {divergenceList && divergenceList.length > 0 && (
-              <div className="p-4 rounded-xl bg-amber-50 border border-amber-300 space-y-2">
+              <div className="p-3 rounded-lg bg-amber-50 border border-amber-300 space-y-2">
                 <h4 className="font-black text-amber-950">تنبيه: حدثت حركات مخزنية بعد إنشاء المسودة للأصناف التالية:</h4>
                 <ul className="list-disc mr-4 space-y-0.5 text-amber-900">
                   {divergenceList.map((d, idx) => (
@@ -773,8 +774,8 @@ export const StockCountView: React.FC = () => {
                     </li>
                   ))}
                 </ul>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
-                  <label className={`p-2.5 rounded-xl border cursor-pointer ${reconcileMode === 'apply_delta' ? 'bg-white border-blue-700' : 'bg-amber-100/40 border-amber-300'}`}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  <label className={`p-2 rounded-lg border cursor-pointer ${reconcileMode === 'apply_delta' ? 'bg-white border-blue-700' : 'bg-amber-100/40 border-amber-300'}`}>
                     <input
                       type="radio"
                       name="reconcileMode"
@@ -785,7 +786,7 @@ export const StockCountView: React.FC = () => {
                     <strong>تطبيق فارق الجرد على الرصيد الحالي</strong>
                     <span className="block text-[10px] text-slate-600 mr-5">يحافظ على حركات البيع والشراء التي تمت أثناء الجرد</span>
                   </label>
-                  <label className={`p-2.5 rounded-xl border cursor-pointer ${reconcileMode === 'set_actual' ? 'bg-white border-blue-700' : 'bg-amber-100/40 border-amber-300'}`}>
+                  <label className={`p-2 rounded-lg border cursor-pointer ${reconcileMode === 'set_actual' ? 'bg-white border-blue-700' : 'bg-amber-100/40 border-amber-300'}`}>
                     <input
                       type="radio"
                       name="reconcileMode"
@@ -801,7 +802,7 @@ export const StockCountView: React.FC = () => {
                   type="button"
                   disabled={isProcessingReview}
                   onClick={() => handleApproveReview(true)}
-                  className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-black cursor-pointer"
+                  className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-black cursor-pointer"
                 >
                   تأكيد الاعتماد بهذه الطريقة
                 </button>
@@ -882,33 +883,33 @@ export const StockCountView: React.FC = () => {
             />
 
             {reviewCount.rejectionReason && (
-              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-900">
+              <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-900">
                 <strong>سبب الرفض:</strong> {reviewCount.rejectionReason}
               </div>
             )}
 
             {showRejectBox && (
-              <div className="p-3 rounded-xl bg-red-50 border border-red-200 space-y-2">
+              <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 space-y-2">
                 <label className="block font-bold text-red-900">سبب رفض جلسة الجرد:</label>
                 <input
                   type="text"
                   value={rejectReason}
                   onChange={(e) => setRejectReason(e.target.value)}
                   placeholder="يرجى كتابة سبب الرفض..."
-                  className="w-full border border-red-300 bg-white rounded-xl p-2"
+                  className="w-full border border-red-300 bg-white rounded-lg px-2.5 py-1.5"
                 />
                 <div className="flex justify-end gap-2">
-                  <button type="button" onClick={() => setShowRejectBox(false)} className="px-3 py-1.5 border rounded-lg cursor-pointer">
+                  <button type="button" onClick={() => setShowRejectBox(false)} className="px-3 py-1 border border-slate-300 rounded-lg cursor-pointer">
                     تراجع
                   </button>
-                  <button type="button" onClick={handleRejectReview} disabled={isProcessingReview} className="px-4 py-1.5 bg-red-700 text-white rounded-lg font-bold cursor-pointer">
+                  <button type="button" onClick={handleRejectReview} disabled={isProcessingReview} className="px-3.5 py-1 bg-red-700 text-white rounded-lg font-bold cursor-pointer">
                     تأكيد الرفض
                   </button>
                 </div>
               </div>
             )}
 
-            <div className="flex flex-wrap justify-between items-center gap-2 pt-3 border-t">
+            <div className="flex flex-wrap justify-between items-center gap-2 pt-2.5 border-t">
               <div>
                 {reviewCount.status === 'submitted' && canApprove && (
                   <input
@@ -916,17 +917,17 @@ export const StockCountView: React.FC = () => {
                     value={approveNotes}
                     onChange={(e) => setApproveNotes(e.target.value)}
                     placeholder="ملاحظة الاعتماد (اختياري)..."
-                    className="border rounded-xl p-2 text-xs w-64"
+                    className="border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs w-64"
                   />
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 {reviewCount.status === 'draft' && canCreate && (
                   <button
                     type="button"
                     disabled={isProcessingReview}
                     onClick={() => handleSubmitDraftFromReview(reviewCount.id)}
-                    className="px-4 py-2 bg-blue-900 text-white rounded-xl font-bold cursor-pointer"
+                    className="px-3.5 py-1.5 bg-blue-900 text-white rounded-lg font-bold cursor-pointer"
                   >
                     إرسال للاعتماد
                   </button>
@@ -937,18 +938,18 @@ export const StockCountView: React.FC = () => {
                       type="button"
                       disabled={isProcessingReview}
                       onClick={() => setShowRejectBox(true)}
-                      className="flex items-center gap-1 px-4 py-2 bg-red-50 text-red-700 border border-red-200 rounded-xl font-bold cursor-pointer"
+                      className="flex items-center gap-1 px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg font-bold cursor-pointer"
                     >
-                      <XCircle className="w-4 h-4" />
+                      <XCircle className="w-3.5 h-3.5" />
                       <span>رفض</span>
                     </button>
                     <button
                       type="button"
                       disabled={isProcessingReview}
                       onClick={() => handleApproveReview(false)}
-                      className="flex items-center gap-1.5 px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-black shadow-md cursor-pointer"
+                      className="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-black shadow-xs cursor-pointer"
                     >
-                      <CheckCircle2 className="w-4 h-4" />
+                      <CheckCircle2 className="w-3.5 h-3.5" />
                       <span>اعتماد وتعديل أرصدة المخزن</span>
                     </button>
                   </>
@@ -956,7 +957,7 @@ export const StockCountView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setReviewCount(null)}
-                  className="px-4 py-2 border rounded-xl font-bold cursor-pointer"
+                  className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-bold cursor-pointer"
                 >
                   إغلاق
                 </button>

@@ -745,24 +745,24 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 shadow-xs">
         <div>
-          <h2 className="text-lg font-black text-slate-900 tracking-tight">إدارة فواتير المشتريات</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h2 className="text-base font-black text-slate-900 tracking-tight">إدارة فواتير المشتريات</h2>
+          <p className="text-[11px] text-slate-500 mt-0.5">
             توثيق توريدات البضائع الغذائية من المصانع والمطاحن وزيادة أرصدة المخازن آلياً
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           {repIncomingPendingCount > 0 && (
             <button
               type="button"
               onClick={() => setStatusFilter('rep_incoming')}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-black cursor-pointer hover:bg-amber-100"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-xs font-black cursor-pointer hover:bg-amber-100"
             >
-              <Send className="w-4 h-4 text-amber-700" />
+              <Send className="w-3.5 h-3.5 text-amber-700" />
               <span>وارد من المناديب ({repIncomingPendingCount})</span>
             </button>
           )}
@@ -771,9 +771,9 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               resetPurchaseModalForm();
               setIsNewModalOpen(true);
             }}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-md shadow-blue-900/20 active:scale-95 transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-xs active:scale-95 transition-all cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
             <span>فاتورة شراء جديدة</span>
           </button>
         </div>
@@ -781,7 +781,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
       {actionMessage && (
         <div
-          className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between gap-2 ${
+          className={`px-3 py-2 rounded-lg border text-xs font-bold flex items-center justify-between gap-2 ${
             actionMessage.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
               : 'bg-red-50 border-red-200 text-red-900'
@@ -799,6 +799,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
       {/* Table */}
       <UnifiedDataTable<Invoice>
+        compact
         title="سجل فواتير المشتريات"
         subtitle="فواتير الشراء المعتمدة والمسودات وفواتير المناديب الواردة"
         data={filteredPurchases}
@@ -810,8 +811,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         pdfTitle="سجل فواتير المشتريات"
         emptyTitle="لا توجد فواتير مشتريات مسجلة"
         toolbarFilters={
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <div className="min-w-[180px]">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            <div className="min-w-[170px]">
               <SearchableFilterSelect
                 id="purchase-filter-supplier"
                 value={supplierFilter}
@@ -826,10 +827,10 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 allOptionValue="all"
                 searchPlaceholder="ابحث باسم المورد أو الهاتف..."
                 allowClear
-                buttonClassName="rounded-xl min-h-[36px]"
+                buttonClassName="rounded-lg min-h-[32px]"
               />
             </div>
-            <div className="min-w-[185px]">
+            <div className="min-w-[175px]">
               <SearchableFilterSelect
                 id="purchase-filter-status"
                 value={statusFilter}
@@ -843,7 +844,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 allOptionLabel="جميع الحالات"
                 allOptionValue="all"
                 allowClear
-                buttonClassName="rounded-xl min-h-[36px]"
+                buttonClassName="rounded-lg min-h-[32px]"
               />
             </div>
           </div>
@@ -1002,18 +1003,18 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         title="إنشاء فاتورة مشتريات وتوريد جديدة"
         maxWidth="4xl"
       >
-        <div className="space-y-4 text-xs">
+        <div className="space-y-3 text-xs">
           {error && (
-            <div className="p-3 bg-red-50 text-red-700 rounded-xl font-bold">{error}</div>
+            <div className="px-3 py-2 bg-red-50 text-red-700 rounded-lg font-bold">{error}</div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-slate-50 p-2.5 rounded-lg">
             <div>
               <label className="block font-bold mb-1">المورد:</label>
               <select
                 value={selectedSupplierId}
                 onChange={(e) => setSelectedSupplierId(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold"
+                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
               >
                 {suppliers.length === 0 ? (
                   <option value="">-- لا يوجد موردين مسجلين بعد --</option>
@@ -1029,7 +1030,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               <select
                 value={selectedWarehouseId}
                 onChange={(e) => setSelectedWarehouseId(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold"
+                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
               >
                 {warehouses.map(w => (
                   <option key={w.id} value={w.id}>{w.name}</option>
@@ -1042,13 +1043,13 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 type="date"
                 value={invoiceDate}
                 onChange={(e) => setInvoiceDate(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2 font-mono font-bold"
+                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold"
               />
             </div>
           </div>
 
           {/* Add product to purchase using instant search + Inline New Product Creation */}
-          <div className="bg-blue-50/60 p-3 rounded-xl border border-blue-200 space-y-3">
+          <div className="bg-blue-50/60 p-2.5 rounded-lg border border-blue-200 space-y-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-black text-slate-800">إضافة أصناف لفاتورة الشراء:</span>
               <button
@@ -1057,7 +1058,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   setShowInlineNewProduct((prev) => !prev);
                   setError(null);
                 }}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold border transition-colors cursor-pointer ${
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold border transition-colors cursor-pointer ${
                   showInlineNewProduct
                     ? 'bg-slate-800 text-white border-slate-800'
                     : 'bg-white text-blue-900 border-blue-300 hover:bg-blue-50'
@@ -1069,7 +1070,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             </div>
 
             {!showInlineNewProduct ? (
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
                 <div className="sm:col-span-6">
                   <label className="block font-bold text-slate-700 mb-1">ابحث واختر السلعة المشتراة:</label>
                   <ProductSearchSelect
@@ -1104,7 +1105,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       }
                     }}
                     ariaLabel="كمية الشراء"
-                    inputClassName="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-center font-mono font-bold outline-hidden focus:border-blue-700"
+                    inputClassName="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-center font-mono font-bold outline-hidden focus:border-blue-700"
                   />
                 </div>
                 <div className="sm:col-span-2">
@@ -1125,22 +1126,22 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                         handleAddItem();
                       }
                     }}
-                    className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-center font-mono font-bold"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-center font-mono font-bold"
                   />
                 </div>
                 <div className="sm:col-span-2">
                   <button
                     type="button"
                     onClick={handleAddItem}
-                    className="w-full py-2.5 px-3 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-bold cursor-pointer"
+                    className="w-full py-1.5 px-3 bg-blue-900 hover:bg-blue-950 text-white rounded-lg font-bold cursor-pointer"
                   >
                     + إضافة
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="bg-white p-3.5 rounded-xl border border-blue-200 space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div className="bg-white p-2.5 rounded-lg border border-blue-200 space-y-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <div className="sm:col-span-2">
                     <label className="block font-bold text-slate-700 mb-1">اسم الصنف الجديد: *</label>
                     <input
@@ -1148,7 +1149,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       value={newProdName}
                       onChange={(e) => setNewProdName(e.target.value)}
                       placeholder="مثال: سكر الضحى 1 كجم"
-                      className="w-full border border-slate-300 rounded-xl p-2 font-bold focus:border-blue-600 outline-hidden"
+                      className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold focus:border-blue-600 outline-hidden"
                     />
                   </div>
                   <div>
@@ -1158,7 +1159,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       value={newProdBarcode}
                       onChange={(e) => setNewProdBarcode(e.target.value)}
                       placeholder="622..."
-                      className="w-full border border-slate-300 rounded-xl p-2 font-mono focus:border-blue-600 outline-hidden"
+                      className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono focus:border-blue-600 outline-hidden"
                     />
                   </div>
                   <div>
@@ -1168,7 +1169,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       value={newProdCode}
                       onChange={(e) => setNewProdCode(e.target.value)}
                       placeholder="PRD-..."
-                      className="w-full border border-slate-300 rounded-xl p-2 font-mono focus:border-blue-600 outline-hidden"
+                      className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono focus:border-blue-600 outline-hidden"
                     />
                   </div>
                   <div>
@@ -1177,7 +1178,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       type="text"
                       value={newProdCategory}
                       onChange={(e) => setNewProdCategory(e.target.value)}
-                      className="w-full border border-slate-300 rounded-xl p-2 font-semibold focus:border-blue-600 outline-hidden"
+                      className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-semibold focus:border-blue-600 outline-hidden"
                     />
                   </div>
                   <div>
@@ -1187,7 +1188,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       value={newProdBaseUnit}
                       onChange={(e) => setNewProdBaseUnit(e.target.value)}
                       placeholder="قطعة / كرتونة / كجم"
-                      className="w-full border border-slate-300 rounded-xl p-2 font-semibold focus:border-blue-600 outline-hidden"
+                      className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-semibold focus:border-blue-600 outline-hidden"
                     />
                   </div>
                   <div>
@@ -1199,7 +1200,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       placeholder="الكمية"
                       onChange={setNewProdQty}
                       ariaLabel="كمية الصنف الجديد"
-                      inputClassName="w-full bg-white border border-slate-300 rounded-xl p-2 text-center font-mono font-bold outline-hidden focus:border-blue-700"
+                      inputClassName="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-center font-mono font-bold outline-hidden focus:border-blue-700"
                     />
                   </div>
                   <div>
@@ -1214,7 +1215,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                         const raw = e.target.value;
                         setNewProdPurchasePrice(raw === '' ? '' : Number(raw));
                       }}
-                      className="w-full border border-slate-300 rounded-xl p-2 text-center font-mono font-bold"
+                      className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-center font-mono font-bold"
                     />
                   </div>
                   <div>
@@ -1229,14 +1230,14 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                         const raw = e.target.value;
                         setNewProdSellingPrice(raw === '' ? '' : Number(raw));
                       }}
-                      className="w-full border border-slate-300 rounded-xl p-2 text-center font-mono font-bold"
+                      className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-center font-mono font-bold"
                     />
                   </div>
                 </div>
 
                 {/* Live Duplicate Check Alerts */}
                 {duplicateCheckState.exactMatch && (
-                  <div className="p-2.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-950 flex flex-wrap items-center justify-between gap-2">
+                  <div className="p-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-950 flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2 font-bold">
                       <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
                       <span>
@@ -1246,7 +1247,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleUseExistingDuplicateProduct(duplicateCheckState.exactMatch!)}
-                      className="px-3 py-1 rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-bold cursor-pointer"
+                      className="px-2.5 py-1 rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-bold cursor-pointer"
                     >
                       استخدام الصنف الموجود
                     </button>
@@ -1254,7 +1255,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 )}
 
                 {!duplicateCheckState.exactMatch && duplicateCheckState.similarMatches.length > 0 && (
-                  <div className="p-2.5 rounded-xl border border-blue-200 bg-blue-50/70 text-blue-950 space-y-1.5">
+                  <div className="p-2 rounded-lg border border-blue-200 bg-blue-50/70 text-blue-950 space-y-1.5">
                     <div className="font-bold flex items-center gap-1.5">
                       <AlertTriangle className="w-3.5 h-3.5 text-blue-700" />
                       <span>توجد أصناف متشابهة بالاسم (اختر منها إن كان نفس الصنف):</span>
@@ -1278,14 +1279,14 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowInlineNewProduct(false)}
-                    className="px-3 py-2 rounded-xl border border-slate-300 font-bold text-slate-600 cursor-pointer"
+                    className="px-3 py-1.5 rounded-lg border border-slate-300 font-bold text-slate-600 cursor-pointer"
                   >
                     إلغاء
                   </button>
                   <button
                     type="button"
                     onClick={handleAddInlineNewProductItem}
-                    className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
+                    className="px-3.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
                   >
                     {duplicateCheckState.exactMatch ? 'ربط بالصنف الموجود وإضافته' : '+ إضافة الصنف للفاتورة'}
                   </button>
@@ -1295,21 +1296,21 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
           </div>
 
           {/* Items list */}
-          <div className="border rounded-xl awlad-table-scroll">
+          <div className="border rounded-lg awlad-table-scroll">
             <table className="w-full text-right">
               <thead>
                 <tr className="bg-slate-100 font-bold border-b">
-                  <th className="p-2.5">الصنف</th>
-                  <th className="p-2.5 text-center">الكمية</th>
-                  <th className="p-2.5 text-center">سعر الشراء</th>
-                  <th className="p-2.5 text-center">الإجمالي</th>
-                  <th className="p-2.5 text-center w-12">حذف</th>
+                  <th className="p-1.5">الصنف</th>
+                  <th className="p-1.5 text-center">الكمية</th>
+                  <th className="p-1.5 text-center">سعر الشراء</th>
+                  <th className="p-1.5 text-center">الإجمالي</th>
+                  <th className="p-1.5 text-center w-12">حذف</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="p-6 text-center text-slate-400">
+                    <td colSpan={5} className="p-4 text-center text-slate-400">
                       لم تتم إضافة أصناف بعد. ابحث عن صنف أعلاه أو أنشئ صنفاً جديداً لإضافته.
                     </td>
                   </tr>
@@ -1387,29 +1388,29 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
           </div>
 
           {/* Payment & Totals */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-3 rounded-xl">
-            <div className="space-y-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-2.5 rounded-lg">
+            <div className="space-y-2">
               <div>
                 <label className="block font-bold mb-1">طريقة السداد للمورد:</label>
                 <div className="grid grid-cols-3 gap-1.5 font-bold">
                   <button
                     type="button"
                     onClick={() => setPaymentType('cash')}
-                    className={`p-2 rounded-xl border ${paymentType === 'cash' ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-slate-700 border-slate-300'}`}
+                    className={`p-1.5 rounded-lg border ${paymentType === 'cash' ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-slate-700 border-slate-300'}`}
                   >
                     نقدي كامل
                   </button>
                   <button
                     type="button"
                     onClick={() => setPaymentType('credit')}
-                    className={`p-2 rounded-xl border ${paymentType === 'credit' ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-slate-700 border-slate-300'}`}
+                    className={`p-1.5 rounded-lg border ${paymentType === 'credit' ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-slate-700 border-slate-300'}`}
                   >
                     آجل بالكامل
                   </button>
                   <button
                     type="button"
                     onClick={() => setPaymentType('partial')}
-                    className={`p-2 rounded-xl border ${paymentType === 'partial' ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-slate-700 border-slate-300'}`}
+                    className={`p-1.5 rounded-lg border ${paymentType === 'partial' ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-slate-700 border-slate-300'}`}
                   >
                     دفعة + آجل
                   </button>
@@ -1422,7 +1423,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   <select
                     value={selectedCashboxId}
                     onChange={(e) => setSelectedCashboxId(e.target.value)}
-                    className="w-full bg-white border rounded-xl p-2 font-bold"
+                    className="w-full bg-white border rounded-lg px-2.5 py-1.5 font-bold"
                   >
                     {cashboxes.map(cb => (
                       <option key={cb.id} value={cb.id}>{cb.name} ({cb.currentBalance})</option>
@@ -1444,7 +1445,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       const raw = e.target.value;
                       setPaidAmount(raw === '' ? '' : Number(raw));
                     }}
-                    className="w-full bg-white border rounded-xl p-2 font-mono font-bold"
+                    className="w-full bg-white border rounded-lg px-2.5 py-1.5 font-mono font-bold"
                   />
                 </div>
               )}
@@ -1456,12 +1457,12 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="رقم بوليصة التوريد أو ملاحظات..."
-                  className="w-full bg-white border rounded-xl p-2"
+                  className="w-full bg-white border rounded-lg px-2.5 py-1.5"
                 />
               </div>
             </div>
 
-            <div className="bg-white p-3.5 rounded-xl border space-y-2 font-bold">
+            <div className="bg-white p-2.5 rounded-lg border space-y-1.5 font-bold">
               <div className="flex justify-between">
                 <span>المجموع الفرعي:</span>
                 <span>{subtotal.toLocaleString()} {settings.currency}</span>
@@ -1480,7 +1481,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   className="w-24 border rounded-lg px-2 py-1 text-center font-mono text-red-600"
                 />
               </div>
-              <div className="flex justify-between text-base font-black text-blue-950 border-t pt-1.5">
+              <div className="flex justify-between text-sm font-black text-blue-950 border-t pt-1.5">
                 <span>الإجمالي الصافي:</span>
                 <span>{grandTotal.toLocaleString()} {settings.currency}</span>
               </div>
@@ -1495,13 +1496,13 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             </div>
           </div>
 
-          <div className="bg-indigo-50/60 border border-indigo-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="bg-indigo-50/60 border border-indigo-200 rounded-lg p-2.5 flex flex-wrap items-center justify-between gap-2">
             <div className="flex-1 min-w-[200px]">
               <label className="block font-bold text-indigo-950 mb-1">المسؤول الموجه إليه عند الإرسال للإدارة (اختياري):</label>
               <select
                 value={newRecipientUserId}
                 onChange={(e) => setNewRecipientUserId(e.target.value)}
-                className="w-full bg-white border border-indigo-200 rounded-xl p-2 font-bold"
+                className="w-full bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 font-bold"
               >
                 <option value="">الإدارة العامة (جميع المسؤولين المختصين)</option>
                 {purchaseReceivers.map((r) => (
@@ -1514,40 +1515,40 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             </span>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t">
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t">
             <button
               type="button"
               onClick={() => setIsNewModalOpen(false)}
-              className="px-4 py-2 border rounded-xl font-bold cursor-pointer"
+              className="px-3.5 py-1.5 border rounded-lg font-bold cursor-pointer"
             >
               إلغاء
             </button>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5">
               <button
                 type="button"
                 disabled={isSubmitting || items.length === 0}
                 onClick={() => handleSubmitPurchase(false, true)}
-                className="flex items-center gap-1.5 px-4 py-2 bg-indigo-800 hover:bg-indigo-900 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-800 hover:bg-indigo-900 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50"
               >
-                <Send className="w-4 h-4" />
+                <Send className="w-3.5 h-3.5" />
                 <span>{isSubmitting ? 'جاري الإرسال...' : 'حفظ وإرسال للإدارة'}</span>
               </button>
               <button
                 type="button"
                 disabled={isSubmitting || items.length === 0}
                 onClick={() => handleSubmitPurchase(false, false)}
-                className="flex items-center gap-1.5 px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50"
               >
-                <Save className="w-4 h-4" />
+                <Save className="w-3.5 h-3.5" />
                 <span>{isSubmitting ? 'جاري الحفظ...' : canApprovePurchase ? 'حفظ واعتماد الفاتورة' : 'حفظ كمسودة'}</span>
               </button>
               <button
                 type="button"
                 disabled={isSubmitting || items.length === 0}
                 onClick={() => handleSubmitPurchase(true, false)}
-                className="flex items-center gap-1.5 px-5 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50"
               >
-                <Printer className="w-4 h-4" />
+                <Printer className="w-3.5 h-3.5" />
                 <span>حفظ وطباعة الفاتورة</span>
               </button>
             </div>
@@ -1559,11 +1560,11 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       {displayedActiveInvoice && (() => {
         const badge = getPurchaseStatusBadge(displayedActiveInvoice);
         return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-right max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b pb-3 mb-4">
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h3 className="text-base font-black text-slate-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-3xl bg-white rounded-xl shadow-2xl border border-slate-200 p-3.5 text-right max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b pb-2.5 mb-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm font-black text-slate-900">
                   تفاصيل فاتورة المشتريات: {displayedActiveInvoice.invoiceNumber}
                 </h3>
                 <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${badge.cls}`}>
@@ -1576,13 +1577,13 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   setIsRejectBoxOpen(false);
                   setRejectReasonText('');
                 }}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
+                className="text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
               >
                 إغلاق ✕
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs mb-4 p-3 bg-slate-50 rounded-xl">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs mb-3 p-2.5 bg-slate-50 rounded-lg">
               <div className="space-y-1">
                 <p className="text-slate-500">المورد: <strong className="text-slate-800">{displayedActiveInvoice.supplierName || 'مورد نقدي'}</strong></p>
                 <p className="text-slate-500">المستودع المستلم: <strong className="text-slate-800">{displayedActiveInvoice.warehouseName}</strong></p>
@@ -1615,7 +1616,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             </div>
 
             {displayedActiveInvoice.dispatchStatus === 'rejected' && displayedActiveInvoice.rejectionReason && (
-              <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs">
+              <div className="mb-3 p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-900 text-xs">
                 <strong className="block mb-0.5">
                   سبب الرفض ({displayedActiveInvoice.rejectedBy || 'الإدارة'}):
                 </strong>
@@ -1665,7 +1666,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               />
             </div>
 
-            <div className="mt-4 mb-4 p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
+            <div className="mt-3 mb-3 p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
               <div className="flex items-center gap-2 mb-2">
                 <History className="w-4 h-4 text-emerald-700" />
                 <h4 className="text-xs font-black text-slate-800">
@@ -1713,14 +1714,14 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             </div>
 
             {Array.isArray(displayedActiveInvoice.dispatchHistory) && displayedActiveInvoice.dispatchHistory.length > 0 && (
-              <div className="mb-4 p-3.5 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-2">
+              <div className="mb-3 p-2.5 bg-indigo-50/70 border border-indigo-200 rounded-lg space-y-1.5">
                 <div className="flex items-center gap-2">
-                  <Send className="w-4 h-4 text-indigo-700" />
+                  <Send className="w-3.5 h-3.5 text-indigo-700" />
                   <h4 className="text-xs font-black text-indigo-950">
                     سجل الإرسال والاستلام والاعتماد ({displayedActiveInvoice.dispatchHistory.length})
                   </h4>
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1">
                   {displayedActiveInvoice.dispatchHistory.map((h, idx) => (
                     <div key={`${h.at}-${idx}`} className="p-2 bg-white border border-indigo-200/70 rounded-lg text-[11px] flex items-center justify-between gap-2">
                       <div>
@@ -1746,18 +1747,18 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             )}
 
             {Array.isArray(displayedActiveInvoice.editHistory) && displayedActiveInvoice.editHistory.length > 0 && (
-              <div className="mb-4 p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2">
+              <div className="mb-3 p-2.5 bg-amber-50/70 border border-amber-200 rounded-lg space-y-1.5">
                 <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-amber-700" />
+                  <Clock className="w-3.5 h-3.5 text-amber-700" />
                   <h4 className="text-xs font-black text-amber-950">
                     سجل التعديلات السابقة ({displayedActiveInvoice.editHistory.length})
                   </h4>
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1">
                   {displayedActiveInvoice.editHistory.map((entry, idx) => (
                     <div
                       key={`${entry.editedAt}-${idx}`}
-                      className="p-2.5 bg-white border border-amber-200/80 rounded-lg text-[11px] flex flex-col sm:flex-row sm:items-center justify-between gap-1.5"
+                      className="p-2 bg-white border border-amber-200/80 rounded-lg text-[11px] flex flex-col sm:flex-row sm:items-center justify-between gap-1.5"
                     >
                       <div className="space-y-0.5">
                         <div className="font-bold text-slate-900">
@@ -1781,20 +1782,20 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             )}
 
             {displayedActiveInvoice.status === 'draft' && (canCreatePurchaseDraft || canReceivePurchase || canApprovePurchase) && (
-              <div className="mb-4 p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3 text-xs">
+              <div className="mb-3 p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-2.5 text-xs">
                 <p className="text-[11px] font-bold text-slate-600">
                   ملاحظة محاسبية: هذه الفاتورة لا تزال مسودة ولم تؤثر على أرصدة المخازن أو المورد أو الخزينة بعد. يتم الترحيل الفعلي فقط عند الضغط على «اعتماد وترحيل الفاتورة».
                 </p>
 
                 {isRejectBoxOpen && (
-                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
+                  <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg space-y-2">
                     <label className="block font-black text-rose-900">سبب رفض الفاتورة وإعادتها للمندوب:</label>
                     <input
                       type="text"
                       value={rejectReasonText}
                       onChange={(e) => setRejectReasonText(e.target.value)}
                       placeholder="اكتب سبب الرفض بوضوح..."
-                      className="w-full p-2 rounded-xl border border-rose-300 bg-white font-semibold"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-rose-300 bg-white font-semibold"
                     />
                     <div className="flex items-center justify-end gap-2">
                       <button
@@ -1823,7 +1824,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                             setActionMessage({ type: 'error', text: res.error || 'تعذر رفض الفاتورة' });
                           }
                         }}
-                        className="px-4 py-1.5 rounded-lg bg-rose-700 hover:bg-rose-800 text-white font-black disabled:opacity-50 cursor-pointer"
+                        className="px-3.5 py-1.5 rounded-lg bg-rose-700 hover:bg-rose-800 text-white font-black disabled:opacity-50 cursor-pointer"
                       >
                         {isDispatchActionBusy ? 'جاري الرفض...' : 'تأكيد الرفض'}
                       </button>
@@ -1831,7 +1832,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   </div>
                 )}
 
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
                   {canCreatePurchaseDraft && (!displayedActiveInvoice.dispatchStatus || displayedActiveInvoice.dispatchStatus === 'draft' || displayedActiveInvoice.dispatchStatus === 'rejected') && (
                     <button
                       type="button"
@@ -1841,9 +1842,9 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                         setSendModalRecipientId(displayedActiveInvoice.recipientUserId || '');
                         setSendModalNotes('');
                       }}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-800 hover:bg-indigo-900 text-white font-bold cursor-pointer disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-800 hover:bg-indigo-900 text-white font-bold cursor-pointer disabled:opacity-50"
                     >
-                      <Send className="w-4 h-4" />
+                      <Send className="w-3.5 h-3.5" />
                       <span>{displayedActiveInvoice.dispatchStatus === 'rejected' ? 'إعادة إرسال للإدارة' : 'إرسال للإدارة'}</span>
                     </button>
                   )}
@@ -1865,9 +1866,9 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                           setActionMessage({ type: 'error', text: res.error || 'تعذر تأكيد استلام الفاتورة' });
                         }
                       }}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-700 hover:bg-sky-800 text-white font-bold cursor-pointer disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-sky-700 hover:bg-sky-800 text-white font-bold cursor-pointer disabled:opacity-50"
                     >
-                      <UserCheck className="w-4 h-4" />
+                      <UserCheck className="w-3.5 h-3.5" />
                       <span>تأكيد استلام الفاتورة</span>
                     </button>
                   )}
@@ -1877,9 +1878,9 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       type="button"
                       disabled={isDispatchActionBusy}
                       onClick={() => setIsRejectBoxOpen(true)}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-300 font-bold cursor-pointer disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-300 font-bold cursor-pointer disabled:opacity-50"
                     >
-                      <XCircle className="w-4 h-4" />
+                      <XCircle className="w-3.5 h-3.5" />
                       <span>رفض مع ذكر السبب</span>
                     </button>
                   )}
@@ -1901,9 +1902,9 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                           setActionMessage({ type: 'error', text: res.error || 'تعذر اعتماد الفاتورة' });
                         }
                       }}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
                     >
-                      <CheckCircle2 className="w-4 h-4" />
+                      <CheckCircle2 className="w-3.5 h-3.5" />
                       <span>اعتماد وترحيل الفاتورة</span>
                     </button>
                   )}
@@ -1911,7 +1912,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               </div>
             )}
 
-            <div className="flex justify-between items-center pt-3 border-t text-xs">
+            <div className="flex justify-between items-center pt-2.5 border-t text-xs">
               <div className="flex items-center gap-4 text-slate-600">
                 <span>الإجمالي: <strong className="text-sm font-black text-slate-900">{displayedActiveInvoice.grandTotal.toLocaleString()} {settings.currency}</strong></span>
                 <span>المدفوع: <strong className="text-sm font-bold text-emerald-700">{displayedActiveInvoice.paidAmount.toLocaleString()}</strong></span>
@@ -1923,9 +1924,9 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   setActiveInvoice(null);
                   handlePrint(inv);
                 }}
-                className="flex items-center gap-1.5 px-4 py-2 bg-blue-900 text-white rounded-xl font-bold hover:bg-blue-950 transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-900 text-white rounded-lg font-bold hover:bg-blue-950 transition-colors cursor-pointer"
               >
-                <Printer className="w-4 h-4" />
+                <Printer className="w-3.5 h-3.5" />
                 <span>طباعة هذه الفاتورة</span>
               </button>
             </div>
@@ -1936,14 +1937,14 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
       {/* Edit Purchase Invoice Modal */}
       {editModalInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-right max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b pb-3 mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-3xl bg-white rounded-xl shadow-2xl border border-slate-200 p-3.5 text-right max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b pb-2.5 mb-3">
               <div>
-                <h3 className="text-base font-black text-slate-900">
+                <h3 className="text-sm font-black text-slate-900">
                   تعديل فاتورة المشتريات رقم: {editModalInvoice.invoiceNumber}
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-[11px] text-slate-500 mt-0.5">
                   المدفوع مسبقاً للمورد: <strong className="text-emerald-700">{editModalInvoice.paidAmount.toLocaleString()} {settings.currency}</strong>
                 </p>
               </div>
@@ -1956,20 +1957,20 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             </div>
 
             {editError && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-center gap-2">
+              <div className="mb-3 px-3 py-2 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{editError}</span>
               </div>
             )}
 
-            <form onSubmit={handleSubmitEdit} className="space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-slate-50 p-3 rounded-xl">
+            <form onSubmit={handleSubmitEdit} className="space-y-3 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 bg-slate-50 p-2.5 rounded-lg">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">المورد:</label>
                   <select
                     value={editSupplierId}
                     onChange={(e) => setEditSupplierId(e.target.value)}
-                    className="w-full p-2 rounded-xl border border-slate-300 bg-white font-bold"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
                   >
                     <option value="">مورد نقدي</option>
                     {suppliers.map((s) => (
@@ -1982,7 +1983,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   <select
                     value={editWarehouseId}
                     onChange={(e) => setEditWarehouseId(e.target.value)}
-                    className="w-full p-2 rounded-xl border border-slate-300 bg-white font-bold"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
                   >
                     {warehouses.map((w) => (
                       <option key={w.id} value={w.id}>{w.name}</option>
@@ -1996,7 +1997,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     required
                     value={editDate}
                     onChange={(e) => setEditDate(e.target.value)}
-                    className="w-full p-2 rounded-xl border border-slate-300 bg-white font-mono"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-mono"
                   />
                 </div>
                 <div>
@@ -2007,13 +2008,13 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     step="0.5"
                     value={editDiscount}
                     onChange={(e) => setEditDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
-                    className="w-full p-2 rounded-xl border border-slate-300 bg-white font-bold"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
                   />
                 </div>
               </div>
 
               {/* Add another item inside Edit Modal */}
-              <div className="bg-blue-50/60 p-3 rounded-xl border border-blue-200 grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+              <div className="bg-blue-50/60 p-2.5 rounded-lg border border-blue-200 grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
                 <div className="sm:col-span-5">
                   <label className="block font-bold text-slate-700 mb-1">إضافة صنف آخر للفاتورة:</label>
                   <ProductSearchSelect
@@ -2036,7 +2037,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     onChange={setEditAddQty}
                     placeholder="الكمية"
                     ariaLabel="كمية صنف مضاف"
-                    inputClassName="w-full p-2 rounded-xl border border-slate-300 bg-white text-center font-mono font-bold"
+                    inputClassName="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-center font-mono font-bold"
                   />
                 </div>
                 <div className="sm:col-span-3">
@@ -2048,14 +2049,14 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     placeholder="السعر"
                     value={editAddPrice}
                     onChange={(e) => setEditAddPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                    className="w-full p-2 rounded-xl border border-slate-300 bg-white text-center font-mono font-bold"
+                    className="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-center font-mono font-bold"
                   />
                 </div>
                 <div className="sm:col-span-2">
                   <button
                     type="button"
                     onClick={handleAddItemToEdit}
-                    className="w-full py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-bold cursor-pointer"
+                    className="w-full py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-bold cursor-pointer"
                   >
                     + إضافة
                   </button>
@@ -2063,16 +2064,16 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               </div>
 
               {/* Editable items table */}
-              <div className="border border-slate-200 rounded-xl overflow-hidden awlad-table-scroll">
+              <div className="border border-slate-200 rounded-lg overflow-hidden awlad-table-scroll">
                 <table className="w-full text-right text-xs">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold">
-                      <th className="p-2.5">الصنف</th>
-                      <th className="p-2.5 text-center">الوحدة</th>
-                      <th className="p-2.5 text-center w-24">الكمية</th>
-                      <th className="p-2.5 text-center w-28">سعر الشراء</th>
-                      <th className="p-2.5 text-center">الإجمالي</th>
-                      <th className="p-2.5 text-center w-12">حذف</th>
+                      <th className="p-2">الصنف</th>
+                      <th className="p-2 text-center">الوحدة</th>
+                      <th className="p-2 text-center w-24">الكمية</th>
+                      <th className="p-2 text-center w-28">سعر الشراء</th>
+                      <th className="p-2 text-center">الإجمالي</th>
+                      <th className="p-2 text-center w-12">حذف</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -2181,7 +2182,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   rows={2}
                   value={editNotes}
                   onChange={(e) => setEditNotes(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
                 />
               </div>
 
@@ -2196,7 +2197,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   value={editReason}
                   onChange={(e) => setEditReason(e.target.value)}
                   placeholder="مثال: تعديل كميات أو أسعار التوريد من المورد..."
-                  className="w-full p-2.5 rounded-xl border border-slate-300 font-semibold focus:border-blue-600 outline-hidden"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-semibold focus:border-blue-600 outline-hidden"
                 />
               </div>
 
@@ -2206,8 +2207,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 const diff = grand - editModalInvoice.grandTotal;
                 const belowPaid = grand < Number(editModalInvoice.paidAmount || 0) - 0.01;
                 return (
-                  <div className="space-y-2">
-                    <div className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-2 text-xs ${belowPaid ? 'bg-red-50 border-red-300' : 'bg-blue-50/70 border-blue-200'}`}>
+                  <div className="space-y-1.5">
+                    <div className={`p-2.5 rounded-lg border flex flex-wrap items-center justify-between gap-2 text-xs ${belowPaid ? 'bg-red-50 border-red-300' : 'bg-blue-50/70 border-blue-200'}`}>
                       <div>
                         <span className="text-slate-600 block text-[10px]">الإجمالي المعدّل:</span>
                         <strong className="text-sm font-black text-blue-950">{grand.toLocaleString()} {settings.currency}</strong>
@@ -2236,18 +2237,18 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 );
               })()}
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t">
+              <div className="flex items-center justify-end gap-2 pt-2.5 border-t">
                 <button
                   type="button"
                   onClick={() => setEditModalInvoice(null)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 font-bold hover:bg-slate-50 cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-lg border border-slate-300 text-slate-600 font-bold hover:bg-slate-50 cursor-pointer"
                 >
                   إلغاء
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmittingEdit || editItems.length === 0 || (editItems.reduce((acc, it) => acc + computeLineTotal(it.quantity, it.unitPrice, it.discount || 0), 0) - Math.max(0, Number(editDiscount || 0))) < Number(editModalInvoice.paidAmount || 0) - 0.01}
-                  className="px-5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black transition-colors disabled:opacity-50 cursor-pointer"
+                  className="px-4 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-black transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   {isSubmittingEdit ? 'جاري حفظ التعديل...' : 'حفظ وتحديث الفاتورة'}
                 </button>
@@ -2278,7 +2279,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
           maxWidth="md"
         >
           <div className="space-y-3 text-xs">
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-bold">
+            <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 font-bold">
               سيتم توجيه الفاتورة للإدارة للاستلام والمراجعة فقط دون تعديل المخزون أو حساب المورد أو الخزينة حتى الاعتماد.
             </div>
             <div>
@@ -2286,7 +2287,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               <select
                 value={sendModalRecipientId}
                 onChange={(e) => setSendModalRecipientId(e.target.value)}
-                className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
               >
                 <option value="">الإدارة العامة (جميع المسؤولين المختصين)</option>
                 {purchaseReceivers.map((r) => (
@@ -2301,7 +2302,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 value={sendModalNotes}
                 onChange={(e) => setSendModalNotes(e.target.value)}
                 placeholder="مثال: تم شراء البضاعة وبانتظار مراجعة التسعير والكميات..."
-                className="w-full p-2.5 rounded-xl border border-slate-300"
+                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
               />
             </div>
             <div className="flex justify-end gap-2 pt-2 border-t">
@@ -2309,7 +2310,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 type="button"
                 disabled={isSendingModalBusy}
                 onClick={() => setSendModalInvoice(null)}
-                className="px-4 py-2 rounded-xl border border-slate-300 font-bold cursor-pointer"
+                className="px-3.5 py-1.5 rounded-lg border border-slate-300 font-bold cursor-pointer"
               >
                 إلغاء
               </button>
@@ -2335,9 +2336,9 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     setActionMessage({ type: 'error', text: res.error || 'تعذر إرسال الفاتورة' });
                   }
                 }}
-                className="px-5 py-2 rounded-xl bg-indigo-800 hover:bg-indigo-900 text-white font-black inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                className="px-4 py-1.5 rounded-lg bg-indigo-800 hover:bg-indigo-900 text-white font-black inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
-                <Send className="w-4 h-4" />
+                <Send className="w-3.5 h-3.5" />
                 <span>{isSendingModalBusy ? 'جاري الإرسال...' : 'تأكيد الإرسال'}</span>
               </button>
             </div>

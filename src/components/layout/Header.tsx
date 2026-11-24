@@ -289,15 +289,15 @@ export const Header: React.FC<HeaderProps> = ({
     <>
       {/* Top Blue Rectangle Header */}
       <header className="sticky top-0 z-30 bg-gradient-to-l from-blue-950 via-blue-900 to-blue-950 text-white shadow-md border-b border-blue-800/80 pt-safe no-print">
-        <div className="max-w-7xl mx-auto px-2.5 sm:px-5">
-          {/* Top Row: Brand Identity + (Desktop 5 Primary Buttons) + Utility Controls */}
-          <div className="h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-3">
+        <div className="max-w-full mx-auto px-2.5 sm:px-4">
+          {/* Top Row: Brand Identity + (Desktop Primary Buttons) + Utility Controls */}
+          <div className="h-12 sm:h-13 flex items-center justify-between gap-2">
             {/* Brand Logo & Name */}
-            <div className="flex items-center gap-2.5 min-w-0 shrink-0">
+            <div className="flex items-center gap-2 min-w-0 shrink-0">
               <img
                 src="/awlad-selim-logo.png"
                 alt="AWLAD SELIM"
-                className="h-9 w-9 sm:h-10 sm:w-10 object-contain bg-white rounded-xl p-1 shadow-xs shrink-0"
+                className="h-8 w-8 object-contain bg-white rounded-lg p-0.5 shadow-xs shrink-0"
               />
               <div className="min-w-0">
                 <h1 className="text-xs sm:text-sm font-black text-white leading-tight truncate">
@@ -512,13 +512,13 @@ export const Header: React.FC<HeaderProps> = ({
                   aria-expanded={btn.controlsDrawer ? isSidebarOpen : undefined}
                   aria-controls={btn.controlsDrawer ? 'system-sections-drawer' : undefined}
                   aria-current={!btn.controlsDrawer && btn.active ? 'page' : undefined}
-                  className={`flex-1 min-h-[44px] px-2 py-1.5 rounded-lg flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 text-[11px] sm:text-xs whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                  className={`flex-1 min-h-[36px] px-2 py-1 rounded-lg flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 text-[11px] sm:text-xs whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
                     btn.active
                       ? 'bg-white text-blue-950 font-black shadow-xs'
                       : 'bg-white/10 text-blue-50 hover:bg-white/20 font-bold'
                   }`}
                 >
-                  <Icon className="w-4 h-4 shrink-0" />
+                  <Icon className="w-3.5 h-3.5 shrink-0" />
                   <span className="leading-none truncate max-w-full">{btn.label}</span>
                 </button>
               );
@@ -547,16 +547,16 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Logout Confirmation Modal */}
       {showLogoutModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs no-print">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 text-right animate-in fade-in zoom-in duration-150">
-            <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-4 border border-red-100">
-              <AlertTriangle className="w-6 h-6" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/60 backdrop-blur-xs no-print">
+          <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-2xl border border-slate-200 text-right animate-in fade-in zoom-in duration-150">
+            <div className="w-10 h-10 rounded-lg bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-2.5 border border-red-100">
+              <AlertTriangle className="w-5 h-5" />
             </div>
 
-            <h3 className="text-lg font-bold text-slate-900 text-center mb-1">
+            <h3 className="text-sm font-black text-slate-900 text-center mb-1">
               هل تريد تسجيل الخروج؟
             </h3>
-            <p className="text-xs text-slate-500 text-center mb-6 leading-relaxed">
+            <p className="text-xs text-slate-500 text-center mb-4 leading-relaxed">
               سيتم إنهاء جلستك الحالية والعودة لشاشة الدخول. لن يتم فقد أي بيانات تجارية أو فواتير محفوظة.
             </p>
 
@@ -567,14 +567,14 @@ export const Header: React.FC<HeaderProps> = ({
                   setShowLogoutModal(false);
                   logout();
                 }}
-                className="flex-1 py-2.5 px-4 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-md transition-colors cursor-pointer"
+                className="flex-1 py-2 px-3 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
               >
                 نعم، تسجيل الخروج
               </button>
               <button
                 type="button"
                 onClick={() => setShowLogoutModal(false)}
-                className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                className="flex-1 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
               >
                 إلغاء والعودة
               </button>

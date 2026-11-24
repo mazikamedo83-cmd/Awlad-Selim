@@ -606,12 +606,12 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 shadow-xs">
         <div>
-          <h2 className="text-lg font-black text-slate-900 tracking-tight">إدارة المستخدمين والصلاحيات وسجل الأمان</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h2 className="text-base font-black text-slate-900 tracking-tight">إدارة المستخدمين والصلاحيات وسجل الأمان</h2>
+          <p className="text-[11px] text-slate-500 mt-0.5">
             التحكم في حسابات الموظفين والعملاء، تحديد الصلاحيات على الخادم، ومراقبة سجل العمليات (Audit Log)
           </p>
         </div>
@@ -619,7 +619,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
         {activeTab === 'users' && (
           <button
             onClick={handleOpenAdd}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl text-xs font-black shadow-md cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-lg text-xs font-black shadow-xs cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>إضافة مستخدم جديد</span>
@@ -629,7 +629,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
 
       {statusMessage && (
         <div
-          className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between gap-2 ${
+          className={`px-3 py-2 rounded-lg border text-xs font-bold flex items-center justify-between gap-2 ${
             statusMessage.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
               : 'bg-red-50 border-red-200 text-red-900'
@@ -699,6 +699,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
       {/* Users Tab */}
       {activeTab === 'users' && (
         <UnifiedDataTable<User>
+          compact
           title="حسابات المستخدمين والصلاحيات"
           subtitle={`إجمالي الحسابات: ${users.length}`}
           data={users}
@@ -890,8 +891,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
 
       {/* Presets Tab */}
       {activeTab === 'presets' && (
-        <div className="space-y-4 text-xs">
-          <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200 text-blue-950 flex flex-wrap items-center justify-between gap-3">
+        <div className="space-y-3 text-xs">
+          <div className="px-3.5 py-2.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-950 flex flex-wrap items-center justify-between gap-3">
             <div className="space-y-0.5">
               <h3 className="text-sm font-black">القوالب التلقائية عند إنشاء أو تسجيل حساب مندوب أو عميل</h3>
               <p className="text-[11px] text-blue-800 leading-relaxed">
@@ -902,17 +903,17 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
               type="button"
               disabled={isSavingPresets}
               onClick={handleSavePresets}
-              className="min-h-[42px] px-5 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black flex items-center gap-2 shadow-sm disabled:opacity-50 cursor-pointer"
+              className="py-1.5 px-3.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-black flex items-center gap-1.5 shadow-xs disabled:opacity-50 cursor-pointer"
             >
               <Save className="w-4 h-4" />
               <span>{isSavingPresets ? 'جاري الحفظ...' : 'حفظ قوالب الصلاحيات'}</span>
             </button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {/* Representative Preset Card */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-3">
-              <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
+            <div className="bg-white rounded-lg border border-slate-200 shadow-xs p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
                 <div>
                   <h4 className="text-sm font-black text-cyan-950">«صلاحيات المندوب» الافتراضية</h4>
                   <p className="text-[11px] text-slate-500">الصلاحيات المسموحة والممنوحة تلقائياً لكل حساب مندوب جديد</p>
@@ -923,17 +924,17 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                     const base = Object.keys(DEFAULT_PERMISSIONS).reduce((a, k) => ({ ...a, [k]: false }), {} as UserPermissions);
                     setRepPresetDraft({ ...base, ...ROLE_PERMISSION_PRESETS.representative.perms, canView: true });
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center gap-1 cursor-pointer"
+                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center gap-1 cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>استعادة الافتراضي</span>
                 </button>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {REP_SAFE_PRESET_KEYS.map((item) => (
                   <label
                     key={item.key}
-                    className={`flex items-center gap-2.5 p-2.5 rounded-xl border ${
+                    className={`flex items-center gap-2 p-2 rounded-lg border ${
                       item.locked ? 'bg-slate-50 border-slate-200 opacity-85' : 'bg-white border-slate-200 hover:border-cyan-300 cursor-pointer'
                     }`}
                   >
@@ -953,14 +954,14 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                   </label>
                 ))}
               </div>
-              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 font-bold">
+              <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-900 font-bold">
                 ملاحظة أمنية: تظل صلاحيات الإدارة والمستخدمين والخزائن وأرباح الشركة والاعتماد النهائي محجوبة تماماً عن قالب المندوب على السيرفر.
               </div>
             </div>
 
             {/* Customer Preset Card */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-3">
-              <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
+            <div className="bg-white rounded-lg border border-slate-200 shadow-xs p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
                 <div>
                   <h4 className="text-sm font-black text-blue-950">«صلاحيات العميل» الافتراضية</h4>
                   <p className="text-[11px] text-slate-500">الصلاحيات الممنوحة تلقائياً لكل حساب عميل بوابة جديد</p>
@@ -971,17 +972,17 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                     const base = Object.keys(DEFAULT_PERMISSIONS).reduce((a, k) => ({ ...a, [k]: false }), {} as UserPermissions);
                     setCustomerPresetDraft({ ...base, ...ROLE_PERMISSION_PRESETS.customer.perms, canView: true });
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center gap-1 cursor-pointer"
+                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center gap-1 cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>استعادة الافتراضي</span>
                 </button>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {CUSTOMER_SAFE_PRESET_KEYS.map((item) => (
                   <label
                     key={item.key}
-                    className={`flex items-center gap-2.5 p-2.5 rounded-xl border ${
+                    className={`flex items-center gap-2 p-2 rounded-lg border ${
                       item.locked ? 'bg-slate-50 border-slate-200 opacity-85' : 'bg-white border-slate-200 hover:border-blue-300 cursor-pointer'
                     }`}
                   >
@@ -1001,7 +1002,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                   </label>
                 ))}
               </div>
-              <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-[11px] text-blue-900 font-bold">
+              <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 text-[11px] text-blue-900 font-bold">
                 ملاحظة أمنية: حساب العميل معزول بالكامل في بياناته وطلباته وفواتيره وكشف حسابه الشخصي ولا يمكنه الوصول لأي بيانات عملاء آخرين أو مالية الشركة.
               </div>
             </div>
@@ -1011,8 +1012,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
 
       {/* Unified Identities & Conflicts Tab */}
       {activeTab === 'identities' && (
-        <div className="space-y-4 text-xs">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="space-y-3 text-xs">
+          <div className="bg-white rounded-lg border border-slate-200 shadow-xs p-3 flex flex-wrap items-center justify-between gap-2.5">
             <div>
               <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
                 <GitMerge className="w-4 h-4 text-blue-900" />
@@ -1030,7 +1031,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                   setIsLoadingIdentities(true);
                   refreshIdentitiesOverview().finally(() => setIsLoadingIdentities(false));
                 }}
-                className="px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer"
+                className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isLoadingIdentities ? 'animate-spin' : ''}`} />
                 <span>تحديث</span>
@@ -1039,7 +1040,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 type="button"
                 disabled={isRunningAudit}
                 onClick={handleRunIdentityAudit}
-                className="px-4 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                className="px-3.5 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 <UserCheck className="w-4 h-4" />
                 <span>{isRunningAudit ? 'جاري الفحص الآمن...' : 'تشغيل التدقيق الآمن للهويات'}</span>
@@ -1048,7 +1049,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           </div>
 
           {/* Manual Link Form */}
-          <form onSubmit={handleManualIdentityLink} className="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 space-y-3">
+          <form onSubmit={handleManualIdentityLink} className="bg-white rounded-lg border border-slate-200 shadow-xs p-3 space-y-2.5">
             <h4 className="font-black text-slate-900 flex items-center gap-1.5">
               <Link2 className="w-4 h-4 text-emerald-700" />
               <span>ربط يدوي مؤكد بين سجل وهوية أو موظف / مستخدم</span>
@@ -1136,8 +1137,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           </form>
 
           {/* Identity Conflicts Review Section */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="p-4 border-b bg-amber-50/70 flex flex-wrap items-center justify-between gap-2">
+          <div className="bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden">
+            <div className="px-3 py-2 border-b bg-amber-50/70 flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2 font-black text-amber-950">
                 <AlertTriangle className="w-4 h-4 text-amber-600" />
                 <span>سجلات الاشتباه والتعارض ({identityConflicts.length})</span>
@@ -1148,12 +1149,12 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
             </div>
             <div className="divide-y divide-slate-100">
               {identityConflicts.length === 0 ? (
-                <div className="p-6 text-center text-slate-400 font-bold">
+                <div className="p-4 text-center text-slate-400 font-bold">
                   لا توجد أي تعارضات أو اشتباهات مسجلة حالياً.
                 </div>
               ) : (
                 identityConflicts.map((cf) => (
-                  <div key={cf.id} className="p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                  <div key={cf.id} className="p-3 flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
                     <div className="space-y-1.5 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono font-bold text-slate-600">{cf.id}</span>
@@ -1318,6 +1319,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
       {/* Audit Log Tab */}
       {activeTab === 'audit' && (
         <UnifiedDataTable
+          compact
           title="سجل تدقيق العمليات"
           subtitle={`إجمالي الأحداث المسجلة: ${auditLogs.length}`}
           data={auditLogs}
@@ -1383,15 +1385,15 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
         title={editingUser ? `تعديل وصلاحيات: ${editingUser.fullName}` : 'إضافة حساب مستخدم جديد'}
         maxWidth="4xl"
       >
-        <form onSubmit={handleSaveUser} className="space-y-4 text-xs">
+        <form onSubmit={handleSaveUser} className="space-y-3 text-xs">
           {formError && (
-            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
+            <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{formError}</span>
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-slate-50 p-2.5 rounded-lg border">
             <div>
               <label className="block font-bold mb-1">الاسم الكامل:</label>
               <input
@@ -1399,7 +1401,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="w-full bg-white border rounded-xl p-2 font-bold"
+                className="w-full bg-white border rounded-lg px-2.5 py-1.5 font-bold"
               />
             </div>
             <div>
@@ -1409,7 +1411,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full bg-white border rounded-xl p-2 font-mono font-bold"
+                className="w-full bg-white border rounded-lg px-2.5 py-1.5 font-mono font-bold"
               />
             </div>
             <div>
@@ -1420,12 +1422,12 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 placeholder={editingUser ? 'اتركه فارغاً للإبقاء عليها' : '6 أحرف على الأقل'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-white border rounded-xl p-2 font-mono"
+                className="w-full bg-white border rounded-lg px-2.5 py-1.5 font-mono"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <div>
               <label className="block font-bold mb-1">نوع الحساب / الدور:</label>
               <select
@@ -1440,7 +1442,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                     setHasManualPermEdits(false);
                   }
                 }}
-                className="w-full border rounded-xl p-2 font-bold"
+                className="w-full border rounded-lg px-2.5 py-1.5 font-bold"
               >
                 <option value="admin">مالك / مدير عام (كامل الصلاحيات)</option>
                 <option value="manager">مدير فرع</option>
@@ -1458,7 +1460,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 type="text"
                 value={jobTitle}
                 onChange={(e) => setJobTitle(e.target.value)}
-                className="w-full border rounded-xl p-2"
+                className="w-full border rounded-lg px-2.5 py-1.5"
               />
             </div>
             <div>
@@ -1467,13 +1469,13 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                className="w-full border rounded-xl p-2 font-mono"
+                className="w-full border rounded-lg px-2.5 py-1.5 font-mono"
               />
             </div>
           </div>
 
           {role !== 'customer' && (
-            <div className="p-3 rounded-xl bg-indigo-50/70 border border-indigo-200 space-y-1.5">
+            <div className="p-2.5 rounded-lg bg-indigo-50/70 border border-indigo-200 space-y-1.5">
               <label className="block font-bold text-indigo-950">ربط بسجل الموظف (HR) — لمنع تكرار الموظف وتوحيد الهوية:</label>
               <select
                 value={linkedEmployeeId}
@@ -1490,7 +1492,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                     }
                   }
                 }}
-                className="w-full bg-white border border-indigo-300 rounded-xl p-2 font-bold"
+                className="w-full bg-white border border-indigo-300 rounded-lg px-2.5 py-1.5 font-bold"
               >
                 <option value="">-- بدون ربط بموظف / اختياري --</option>
                 {employees
@@ -1513,26 +1515,26 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           )}
 
           {role === 'representative' && (
-            <div className="p-3 rounded-xl bg-cyan-50 border border-cyan-200 text-cyan-950 font-bold text-[11px] leading-relaxed">
+            <div className="p-2.5 rounded-lg bg-cyan-50 border border-cyan-200 text-cyan-950 font-bold text-[11px] leading-relaxed">
               سيتم تفعيل صلاحيات المندوب الأساسية تلقائياً (عرض وإضافة وتعديل العملاء، البيع من عهدة السيارة، إنشاء وإرسال فواتير شراء مسودة، التحويلات والمزامنة) وإنشاء ملف مندوب ومستودع سيارة 1:1 تلقائياً دون تكرار.
             </div>
           )}
 
           {role === 'customer' && (
-            <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 space-y-1.5">
+            <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200 space-y-1.5">
               <label className="block font-bold text-blue-950">ربط هذا الحساب بملف العميل مباشرة (1:1):</label>
               {editingUser && (() => {
                 const alreadyLinked = customers.find((c) => c.userId === editingUser.id);
                 if (alreadyLinked) {
                   return (
-                    <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 font-bold">
+                    <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 font-bold">
                       مربوط حالياً بملف العميل: {alreadyLinked.name}{' '}
                       {alreadyLinked.shopName ? `(${alreadyLinked.shopName})` : ''} — {alreadyLinked.code}
                     </div>
                   );
                 }
                 return (
-                  <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
+                  <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
                     تنبيه: حساب العميل غير مربوط بملف عميل حالياً — اختر عميلاً من القائمة أو احفظ لإنشاء وربط ملف عميل تلقائياً.
                   </div>
                 );
@@ -1542,7 +1544,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 <select
                   value={linkedCustomerId}
                   onChange={(e) => setLinkedCustomerId(e.target.value)}
-                  className="w-full bg-white border border-blue-300 rounded-xl p-2 font-bold"
+                  className="w-full bg-white border border-blue-300 rounded-lg px-2.5 py-1.5 font-bold"
                 >
                   <option value="">-- إنشاء وربط ملف عميل جديد تلقائياً (مستحسن) --</option>
                   {customers
@@ -1557,7 +1559,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
             </div>
           )}
 
-          <label className="flex items-center gap-2 p-2.5 rounded-xl bg-amber-50 border border-amber-200 cursor-pointer">
+          <label className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 border border-amber-200 cursor-pointer">
             <input
               type="checkbox"
               checked={mustChangePassword}
@@ -1568,7 +1570,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           </label>
 
           {/* Granular Permissions Checkboxes */}
-          <div className="space-y-2 border-t pt-3">
+          <div className="space-y-2 border-t pt-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="font-black text-slate-800 text-sm">تخصيص الصلاحيات الفردية (Granular Permissions):</h4>
               <button
@@ -1577,14 +1579,14 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                   setPermissions(buildPresetPermissions(role));
                   setHasManualPermEdits(false);
                 }}
-                className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>تطبيق القالب الافتراضي للدور</span>
               </button>
             </div>
             {(role === 'representative' || role === 'customer') && (
-              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] font-bold flex items-center gap-2">
+              <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-[11px] font-bold flex items-center gap-2">
                 <Shield className="w-4 h-4 text-amber-700 shrink-0" />
                 <span>
                   {role === 'representative'
@@ -1593,7 +1595,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 </span>
               </div>
             )}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 p-3 bg-slate-50 rounded-xl border">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-2.5 bg-slate-50 rounded-lg border">
               {[
                 { key: 'canView', label: 'صلاحية العرض والقراءة' },
                 { key: 'canAdd', label: 'صلاحية الإضافة والإنشاء' },
@@ -1655,14 +1657,14 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-3 border-t">
-            <button type="button" onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">
+          <div className="flex justify-end gap-2 pt-2.5 border-t">
+            <button type="button" onClick={() => setIsAddModalOpen(false)} className="px-3.5 py-1.5 border rounded-lg font-bold cursor-pointer">
               إلغاء
             </button>
             <button
               type="submit"
               disabled={isSaving}
-              className="px-6 py-2 bg-blue-900 text-white rounded-xl font-bold shadow-md disabled:opacity-50 cursor-pointer"
+              className="px-4 py-1.5 bg-blue-900 text-white rounded-lg font-bold shadow-xs disabled:opacity-50 cursor-pointer"
             >
               {isSaving ? 'جاري الحفظ...' : 'حفظ الحساب'}
             </button>
@@ -1678,9 +1680,9 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           title={`إعادة تعيين كلمة المرور لـ: ${resetModalUser.fullName}`}
           maxWidth="sm"
         >
-          <form onSubmit={handleResetPassword} className="space-y-4 text-xs">
+          <form onSubmit={handleResetPassword} className="space-y-3 text-xs">
             {resetError && (
-              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">
+              <div className="p-2 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold">
                 {resetError}
               </div>
             )}
@@ -1692,14 +1694,14 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 placeholder="أدخل كلمة المرور الجديدة"
                 value={resetNewPassword}
                 onChange={(e) => setResetNewPassword(e.target.value)}
-                className="w-full border rounded-xl p-2.5 font-mono"
+                className="w-full border rounded-lg px-2.5 py-1.5 font-mono"
               />
             </div>
             <div className="flex justify-end gap-2 pt-2 border-t">
-              <button type="button" onClick={() => setResetModalUser(null)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">
+              <button type="button" onClick={() => setResetModalUser(null)} className="px-3.5 py-1.5 border rounded-lg font-bold cursor-pointer">
                 إلغاء
               </button>
-              <button type="submit" disabled={isResettingPassword} className="px-6 py-2 bg-blue-900 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50">
+              <button type="submit" disabled={isResettingPassword} className="px-4 py-1.5 bg-blue-900 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50">
                 {isResettingPassword ? 'جاري الحفظ...' : 'حفظ كلمة المرور'}
               </button>
             </div>

@@ -850,9 +850,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
   };
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-3.5 max-w-5xl mx-auto">
       {/* Header */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
         <div>
           <h2 className="text-lg font-black text-slate-900 tracking-tight">إعدادات منظومة أولاد سليم الشاملة</h2>
           <p className="text-xs text-slate-500 mt-0.5">
@@ -921,8 +921,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
       {/* TAB 0: Staff Account, Password Change & Permissions Summary (Available to All Authenticated Staff) */}
       {activeTab === 'account' && (
-        <div className="space-y-5 text-xs">
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+        <div className="space-y-3.5 text-xs">
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
               <div className="flex items-center gap-3">
                 <div className="w-11 h-11 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-900">
@@ -1005,7 +1005,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 setAccountPasswordFeedback({ type: 'error', text: res.error || 'تعذر تغيير كلمة المرور.' });
               }
             }}
-            className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4"
+            className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5"
           >
             <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
               <Lock className="w-4 h-4 text-blue-900" />
@@ -1076,8 +1076,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
       {/* TAB 1: General Company & Print Settings */}
       {activeTab === 'general' && (
-        <form onSubmit={handleSaveGeneral} className="space-y-6 text-xs">
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+        <form onSubmit={handleSaveGeneral} className="space-y-3.5 text-xs">
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5">
             <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
               <Building2 className="w-4 h-4 text-blue-900" />
               <span>بيانات منشأة أولاد سليم ورأس الفواتير</span>
@@ -1169,7 +1169,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           </div>
 
           {/* Printing & Operation Settings */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5">
             <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
               <Printer className="w-4 h-4 text-blue-900" />
               <span>إعدادات الفواتير والطباعة والعمليات</span>
@@ -1304,9 +1304,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
         ];
 
         return (
-          <div className="space-y-6 text-xs">
+          <div className="space-y-3.5 text-xs">
             {/* Section Title & Live Status Banner */}
-            <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl border border-slate-800 space-y-5">
+            <div className="bg-slate-900 text-white p-4 sm:p-5 rounded-xl shadow-xl border border-slate-800 space-y-3.5">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
                   <span className="text-[10px] uppercase tracking-wider text-emerald-400 font-bold block mb-1">
@@ -1944,7 +1944,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
       {/* TAB 3: Abu Selim Product Import (Section 8) */}
       {activeTab === 'abu-selim' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-5 text-xs">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5 text-xs">
           <div className="border-b pb-3">
             <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
               <FileSpreadsheet className="w-4 h-4 text-amber-600" />
@@ -1986,7 +1986,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           )}
 
           {/* Upload Box */}
-          <div className="p-6 border-2 border-dashed border-slate-300 rounded-2xl text-center bg-slate-50/50 hover:bg-slate-50 transition-colors">
+          <div className="p-4 border-2 border-dashed border-slate-300 rounded-xl text-center bg-slate-50/50 hover:bg-slate-50 transition-colors">
             <FileSpreadsheet className="w-10 h-10 text-slate-400 mx-auto mb-2" />
             <p className="font-bold text-slate-800 mb-1">اختر ملف الأصناف (شيبسيات.txt، مشروبات.txt، tool.txt، أو ملفات CSV)</p>
             <p className="text-[11px] text-slate-500 mb-4">يتم فحص وتدقيق الأكواد المكررة تلقائياً وعرض معاينة تفصيلية قبل الاعتماد النهائي</p>
@@ -2184,8 +2184,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
       {/* TAB 5: Backup & Restore */}
       {activeTab === 'backup' && (
-        <div className="space-y-6 text-xs">
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4 text-xs">
+        <div className="space-y-3.5 text-xs">
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5 text-xs">
             <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
               <Database className="w-4 h-4 text-blue-900" />
               <span>النسخ الاحتياطي واستعادة قاعدة البيانات (Backup & Recovery)</span>
@@ -2239,9 +2239,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
       {/* Migration Log and PostgreSQL Management Tab */}
       {activeTab === 'migration' && (
-        <div className="space-y-6 text-xs animate-in fade-in duration-200">
+        <div className="space-y-3.5 text-xs animate-in fade-in duration-200">
           {/* PostgreSQL Engine & Health Banner */}
-          <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl border border-slate-800">
+          <div className="bg-slate-900 text-white p-4 sm:p-5 rounded-xl shadow-xl border border-slate-800">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <span className="text-[10px] uppercase tracking-wider text-indigo-400 font-bold block mb-1">
@@ -2570,7 +2570,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
       {/* TAB: Barcode Settings */}
       {activeTab === 'barcode' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4 text-xs">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5 text-xs">
           <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
             <Barcode className="w-4 h-4 text-blue-900" />
             <span>إعدادات طباعة ملصقات الباركود</span>
@@ -2699,7 +2699,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
       {/* TAB: Invoice Design */}
       {activeTab === 'invoice-design' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4 text-xs">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5 text-xs">
           <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
             <FileText className="w-4 h-4 text-blue-900" />
             <span>إعدادات قالب ومحتوى الفاتورة</span>
@@ -2741,7 +2741,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
       {/* TAB: Mobile Config */}
       {activeTab === 'mobile-config' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4 text-xs">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5 text-xs">
           <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
             <Smartphone className="w-4 h-4 text-emerald-700" />
             <span>إعدادات بوابة الموبايل (تطبيق العملاء وتطبيق المناديب)</span>
@@ -2779,7 +2779,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
       {/* TAB: Online Sync */}
       {activeTab === 'online-sync' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4 text-xs">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5 text-xs">
           <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
             <Wifi className="w-4 h-4 text-teal-700" />
             <span>إعدادات المزامنة الأونلاين والربط المركزي</span>
@@ -2820,7 +2820,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
       {/* TAB: Per-User Keyboard Shortcuts Management */}
       {activeTab === 'shortcuts' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-5 text-xs">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5 text-xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
             <div>
               <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
@@ -3254,7 +3254,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
       {/* TAB: Services */}
       {activeTab === 'services' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4 text-xs">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5 text-xs">
           <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
             <Wrench className="w-4 h-4 text-amber-700" />
             <span>خدمات النظام والأتمتة</span>

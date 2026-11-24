@@ -161,17 +161,17 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
       {/* Screen Backdrop */}
       <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs no-print" onClick={onClose} />
 
-      <div className="flex min-h-full items-center justify-center p-2 sm:p-4 text-right">
-        <div className="relative w-full max-w-4xl rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden no-print-wrapper">
+      <div className="flex min-h-full items-center justify-center p-2 sm:p-3 text-right">
+        <div className="relative w-full max-w-4xl rounded-xl bg-white shadow-2xl border border-slate-200 overflow-hidden no-print-wrapper">
           {/* Controls Bar (hidden during actual print) */}
-          <div className="flex flex-wrap items-center justify-between border-b border-slate-200 bg-slate-800 text-white px-6 py-3.5 no-print">
-            <div className="flex items-center gap-3">
-              <span className="font-bold text-sm">معاينة المستند والطباعة:</span>
+          <div className="flex flex-wrap items-center justify-between border-b border-slate-200 bg-slate-800 text-white px-4 py-2.5 no-print gap-2">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="font-bold text-xs">معاينة المستند والطباعة:</span>
               <div className="flex bg-slate-700 p-0.5 rounded-lg text-xs font-medium">
                 <button
                   type="button"
                   onClick={() => setPrintFormat('a4')}
-                  className={`px-3 py-1.5 rounded-md transition-all ${
+                  className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
                     printFormat === 'a4' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-300 hover:text-white'
                   }`}
                 >
@@ -180,7 +180,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                 <button
                   type="button"
                   onClick={() => setPrintFormat('thermal80')}
-                  className={`px-3 py-1.5 rounded-md transition-all ${
+                  className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
                     printFormat === 'thermal80' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-300 hover:text-white'
                   }`}
                 >
@@ -189,7 +189,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                 <button
                   type="button"
                   onClick={() => setPrintFormat('thermal58')}
-                  className={`px-3 py-1.5 rounded-md transition-all ${
+                  className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
                     printFormat === 'thermal58' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-300 hover:text-white'
                   }`}
                 >
@@ -198,35 +198,35 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
               </div>
             </div>
 
-            <div className="flex items-center gap-2 mt-2 sm:mt-0">
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={handleExportPdf}
-                className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+                className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-xs transition-all active:scale-95 cursor-pointer"
               >
-                <FileDown className="w-4 h-4" />
+                <FileDown className="w-3.5 h-3.5" />
                 <span>تصدير / حفظ PDF</span>
               </button>
               <button
                 type="button"
                 onClick={handlePrint}
-                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-4 py-2 rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-xs transition-all active:scale-95 cursor-pointer"
               >
-                <Printer className="w-4 h-4" />
+                <Printer className="w-3.5 h-3.5" />
                 <span>{isNativeCapacitor() ? 'مشاركة / حفظ المستند' : 'طباعة المستند الآن'}</span>
               </button>
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-700 hover:text-white cursor-pointer"
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-700 hover:text-white cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
           </div>
 
           {/* Printable Document Body */}
-          <div className="max-h-[80vh] overflow-y-auto p-4 sm:p-8 bg-slate-100 flex justify-center print-container">
+          <div className="max-h-[82vh] overflow-y-auto p-3 sm:p-5 bg-slate-100 flex justify-center print-container">
             {/* A4 FORMAT */}
             {printFormat === 'a4' && (
               <div className="w-[210mm] min-h-[297mm] bg-white p-8 shadow-md border border-slate-300 text-slate-900 rounded-sm text-sm print:p-0 print:border-none print:shadow-none print:w-full">

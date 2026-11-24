@@ -1,7 +1,7 @@
 # Security Summary
 
 **Reviewed Files**: 42  
-**Issues Resolved**: 20
+**Issues Resolved**: 29
 
 ### Issues Resolved
 | Area | File | Line | What Was Happening | Impact | Status | How It Was Fixed |
@@ -25,6 +25,8 @@
 | JSON/PostgreSQL Cashbox `balanceAfter` Parity | `server/db/stores/invoicesStore.js`, `server/db/stores/personalAccountsStore.js`, `server/db/stores/inventoryAdminStore.js`, `server/db/migrator.js` | 409 | Several JSON `financialTransactions` writes omitted `balanceAfter`, PG `getStaffBootstrapData` omitted `ft.balance_after`, and `migrator.js` hardcoded `0` for `balance_after` on migration/restore. | Medium | Fixed | Recorded authoritative resulting `cashbox.currentBalance` as `balanceAfter` on every JSON `financialTransactions` entry (sales, purchases, payments, returns, requests, expenses, cheques, installments, cash ops, rep transfers, personal transactions), mapped `balanceAfter` in PG bootstrap queries, and preserved `ft.balanceAfter` in `migrator.js`. |
 | JSON Ledger Backup Restore Overwrite Bug | `server/db/stores/inventoryAdminStore.js` | 5715 | `restoreFullBackup` called `writeJsonDatabase(backupData)` inside `withJsonTransaction(() => ...)` without mutating or committing the transaction's working object, causing post-callback flush to overwrite restored data with the stale pre-restore state. | High | Fixed | Normalized `backupData` directly into the `withJsonTransaction` working state and invoked `commit()`, restoring cashbox balances and records accurately in JSON mode. |
 | Order Advance & Stage Cashbox/Cost Isolation | `server/db/stores/ordersStore.js`, `src/components/modules/orders/CustomerRepOrdersView.tsx` | 43 | `recordOrderAdvancePayment` and `enrichOrderCollection` exposed `cashboxId`/`cashboxName` to representatives, `advanceOrderStage` returned unsanitized invoice cost fields after collection, and non-treasury sales staff could pass custom `cashboxId` on order advance payments. | High | Fixed | Blocked non-treasury employees from diverting order advance payments to non-default cashboxes (`FORBIDDEN_TREASURY_PERMISSION`), stripped `cashboxId`/`cashboxName`/`cashboxBalance` for representatives across order payment & stage responses, sanitized invoice cost fields returned by `advanceOrderStage`, and aligned `CustomerRepOrdersView.tsx` defaults with treasury permissions. |
+| Employee Unlink TypeScript Interface & Implementation Parity | `src/context/DataContext.tsx` | 338, 4412 | `updateEmployee` intersected `Partial<Employee> & { userId?: string \| null }`, collapsing `userId` to `string \| undefined` and breaking TypeScript (`tsc --noEmit`) when unlinking (`userId: null`) from `EmployeesView.tsx`. | Medium | Fixed | Updated both the `DataContextType` interface and `updateEmployee` implementation to use `Omit<Partial<Employee>, 'userId'> & { userId?: string \| null }`, enabling strict `tsc --noEmit` build pass. |
+| Transactional PostgreSQL v14 Strict 1:1 Employee<->User Migration | `server/db/postgres.js` | 987 | The v14 Employee<->User 1:1 legacy audit, conflict logging, symmetric backfill, and unique index/FK DDL ran as separate pool queries without an explicit database transaction boundary. | Medium | Fixed | Pre-queried existing constraints/indexes and wrapped the entire v14 Employee<->User normalization, non-destructive `identity_conflicts` logging, unambiguous 1:1 symmetric backfill, and unique index/FK DDL inside `withTransaction`. |
 
 ### Safeguards Verified
 | Area | File | How It's Protected |
@@ -151,7 +153,7 @@ Enforced strict `actor.role === 'customer'` ownership scoping on customer record
 ---
 
 ### 6. Local Automated Verification Summary
-All 16 suites in `.github/workflows/ci.yml` passed locally after final edits (PostgreSQL suites executed via `pg-mem`, while live PostgreSQL 16 verification is defined in `.github/workflows/ci.yml`):
+All 21 backend, client, Electron, and **real PostgreSQL 16 (`16.16`)** suites passed locally after the final edits:
 - `node server/tests/runAllTests.mjs` — PASS
 - `node server/tests/repPurchaseCustomerRbacTests.mjs` — PASS
 - `node server/tests/masterRepairVerificationTests.mjs` — PASS
@@ -164,11 +166,16 @@ All 16 suites in `.github/workflows/ci.yml` passed locally after final edits (Po
 - `node server/tests/securityCompletionTests.mjs` — PASS
 - `npx tsx server/tests/clientSecurityCompletionTests.mts` — PASS
 - `node server/tests/fullCompletionSuite.mjs` — PASS
-- `node server/tests/finalSecurityAuditTests.mjs` — PASS (37 assertion groups across JSON & `pg-mem`, including Group 17)
-- `node server/tests/productionReadinessAuditTests.mjs` — PASS (16 assertion groups across report titles, catalog hygiene, JSON & `pg-mem` workflows, `balanceAfter`, backup/restore, and order advance/stage isolation)
-- `node server/tests/identityAndFiltersTests.mjs` — PASS (14 assertion groups across JSON & `pg-mem` covering unified `identityId`, `nationalId` conflict guard, multi-role RBAC isolation, safe audit/conflict resolution, `actorIdentityId`/`actorEmployeeId`/`actingRole` attribution, and separate Employee vs User report filters)
-- `npx tsx server/tests/diagnosticsTests.mts` — PASS (3 / 3)
-- `bun install --frozen-lockfile`, `bun audit` (0 vulnerabilities), `bun run lint`, `bun run build`, and `bun run cap:sync` — PASS
-
-
+- `node server/tests/finalSecurityAuditTests.mjs` — PASS
+- `node server/tests/productionReadinessAuditTests.mjs` — PASS
+- `node server/tests/identityAndFiltersTests.mjs` — PASS
+- `node server/tests/branchCollectionAndAuditTests.mjs` — PASS
+- `node server/tests/storefrontAndLocationTests.mjs` — PASS
+- `node server/tests/offlineRefreshAndDispatchTests.mjs` — PASS
+- `npx tsx server/tests/offlineClientFlowChecks.mts` — PASS
+- `npx tsx server/tests/diagnosticsTests.mts` — PASS
+- `DATABASE_URL="postgres://postgres:ci_postgres_password@127.0.0.1:5432/awlad_selim_ci" AWLAD_REQUIRE_POSTGRES=true node server/tests/postgresRealIntegrationTests.mjs` — **PASS (7/7 checks on live PostgreSQL 16.16)**, including fixed `closePostgresPool` / login flow and Check 7 real PG16 v14 Employee<->User legacy migration verification (non-destructive conflict logging, asymmetric 1:1 backfill, empty-string cleanup, idempotent re-run, and post-cleanup unique index + FK creation).
+- `bun install --frozen-lockfile`, `bun audit` (0 vulnerabilities), `tsc --noEmit`, `npm run build` (`vite build`), and `npx cap sync android` — PASS
+- Compact UI Audit & Tightening (`CustomersView.tsx`, `SettingsView.tsx`, `PairingAndDevicesPanel.tsx`, `SalesInvoicesView.tsx`, `NewSaleInvoiceModal.tsx`, `PurchaseInvoicesView.tsx`, `CustomerPortal.tsx`, `RepPortal.tsx`, `MobileNotificationsSheet.tsx`, `MobilePortal.tsx`, `MobileServerModal.tsx`, `QrScannerModal.tsx`, `Modal.tsx`) — PASS (compiled cleanly via `tsc --noEmit` + `vite build` + `cap sync android`).
+- Container Blockers Logged Honestly: No `.git` directory or GitHub credentials exist in container (Git push / PR / GitHub Actions remain `BLOCKED`), no Wine/NSIS/Windows runner or JDK/Android SDK/keystore secrets exist locally for `.exe` / signed `.apk`/`.aab` generation (`BLOCKED`), and no physical Windows 10 x64 or Android devices exist in container (`NOT TESTED`).
 

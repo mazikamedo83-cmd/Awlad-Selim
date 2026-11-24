@@ -123,10 +123,10 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
   );
 
   return (
-    <div className="space-y-4 pb-4">
+    <div className="space-y-2.5 pb-3">
       {profileMsg && (
         <div
-          className={`p-3 rounded-xl border text-xs font-bold flex items-center gap-2 ${
+          className={`p-2.5 rounded-lg border text-xs font-bold flex items-center gap-2 ${
             profileMsg.type === 'success'
               ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
               : 'bg-red-50 dark:bg-red-950/50 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'
@@ -138,22 +138,20 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
       )}
 
       {/* Profile & Saved Location Card */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-2xs space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-12 h-12 rounded-2xl bg-[#0F5A33] text-white flex items-center justify-center shrink-0">
-              <UserIcon className="w-6 h-6" />
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3 shadow-2xs space-y-2.5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-lg bg-[#0F5A33] text-white flex items-center justify-center shrink-0">
+              <UserIcon className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 truncate">
+              <h3 className="text-xs sm:text-sm font-black text-slate-900 dark:text-slate-100 truncate">
                 {customer?.shopName || customer?.name || currentUser?.fullName}
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                 {customer?.code ? `${customer.code} · ` : ''}@{currentUser?.username}
+                {customer?.phone ? ` · ${customer.phone}` : ''}
               </p>
-              {customer?.phone && (
-                <p className="text-[11px] font-mono text-slate-500 mt-0.5">{customer.phone}</p>
-              )}
             </div>
           </div>
 
@@ -165,7 +163,7 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
               setEditAddress(customer?.address || '');
               setIsEditingProfile((v) => !v);
             }}
-            className="min-h-[36px] px-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0"
+            className="min-h-[32px] px-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0"
           >
             <Edit3 className="w-3.5 h-3.5" />
             <span>{t('تعديل', 'Edit')}</span>
@@ -173,10 +171,10 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
         </div>
 
         {allowPriceView && (
-          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs">
+          <div className="px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs">
             <span className="font-bold text-slate-600 dark:text-slate-300">{t('الرصيد الحالي:', 'Current Balance:')}</span>
             <strong
-              className={`text-sm font-black awlad-tabular ${
+              className={`text-xs sm:text-sm font-black awlad-tabular ${
                 (customer?.currentBalance || 0) > 0
                   ? 'text-red-700 dark:text-red-400'
                   : (customer?.currentBalance || 0) < 0
@@ -192,54 +190,54 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
         )}
 
         {/* Map Location Actions */}
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-1.5">
           <button
             type="button"
             disabled={savingProfile}
             onClick={() => setIsLocationPickerOpen(true)}
-            className="min-h-[42px] px-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-[#0F5A33] dark:text-emerald-300 text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer"
+            className="min-h-[36px] px-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-[#0F5A33] dark:text-emerald-300 text-[11px] font-black flex items-center justify-center gap-1 cursor-pointer"
           >
-            <MapPin className="w-4 h-4 shrink-0" />
-            <span>{hasSavedLocation ? t('تحديث الموقع على الخريطة', 'Update Map Location') : t('تحديد موقعي على الخريطة', 'Pick Location')}</span>
+            <MapPin className="w-3.5 h-3.5 shrink-0" />
+            <span>{hasSavedLocation ? t('تحديث الموقع', 'Update Location') : t('تحديد الموقع', 'Pick Location')}</span>
           </button>
           <button
             type="button"
             disabled={!hasSavedLocation}
             onClick={() => setIsLocationViewerOpen(true)}
-            className="min-h-[42px] px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-50 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+            className="min-h-[36px] px-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-50 text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer"
           >
-            <MapPin className="w-4 h-4 shrink-0" />
-            <span>{t('عرض الموقع المحفوظ', 'View Location')}</span>
+            <MapPin className="w-3.5 h-3.5 shrink-0" />
+            <span>{t('عرض الموقع', 'View Location')}</span>
           </button>
         </div>
 
         {isEditingProfile && (
-          <form onSubmit={handleSaveProfile} className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2 text-xs">
+          <form onSubmit={handleSaveProfile} className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5 text-xs">
             <input
               type="text"
               value={editShopName}
               onChange={(e) => setEditShopName(e.target.value)}
               placeholder="اسم المحل / النشاط"
-              className="w-full min-h-[40px] rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3"
+              className="w-full min-h-[36px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5"
             />
             <input
               type="tel"
               value={editPhone}
               onChange={(e) => setEditPhone(e.target.value)}
               placeholder="رقم الهاتف"
-              className="w-full min-h-[40px] rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 font-mono"
+              className="w-full min-h-[36px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 font-mono"
             />
             <input
               type="text"
               value={editAddress}
               onChange={(e) => setEditAddress(e.target.value)}
               placeholder="العنوان التفصيلي"
-              className="w-full min-h-[40px] rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3"
+              className="w-full min-h-[36px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5"
             />
             <button
               type="submit"
               disabled={savingProfile}
-              className="w-full min-h-[40px] rounded-xl bg-[#0F5A33] text-white font-black cursor-pointer"
+              className="w-full min-h-[36px] rounded-lg bg-[#0F5A33] text-white font-black cursor-pointer"
             >
               {savingProfile ? 'جاري الحفظ...' : 'حفظ البيانات'}
             </button>
@@ -248,70 +246,70 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
       </div>
 
       {/* Orders, Invoices, Statement, Favorites */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden shadow-2xs text-xs">
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden shadow-2xs text-xs">
         <button
           type="button"
           onClick={() => onOpenSection('orders')}
-          className="w-full min-h-[50px] px-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
+          className="w-full min-h-[42px] px-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
         >
-          <span className="flex items-center gap-2.5 font-black text-slate-800 dark:text-slate-100">
+          <span className="flex items-center gap-2 font-black text-slate-800 dark:text-slate-100">
             <ClipboardList className="w-4 h-4 text-[#0F5A33] dark:text-emerald-400" />
             <span>{t('طلباتي وتتبع الشحنات', 'My Orders & Tracking')}</span>
           </span>
           <span className="flex items-center gap-1.5 text-slate-500 font-bold awlad-tabular">
             <span>{ordersCount}</span>
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-3.5 h-3.5" />
           </span>
         </button>
 
         <button
           type="button"
           onClick={() => onOpenSection('invoices')}
-          className="w-full min-h-[50px] px-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
+          className="w-full min-h-[42px] px-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
         >
-          <span className="flex items-center gap-2.5 font-black text-slate-800 dark:text-slate-100">
+          <span className="flex items-center gap-2 font-black text-slate-800 dark:text-slate-100">
             <Receipt className="w-4 h-4 text-[#0F5A33] dark:text-emerald-400" />
             <span>{t('فواتيري المعتمدة', 'My Invoices')}</span>
           </span>
           <span className="flex items-center gap-1.5 text-slate-500 font-bold awlad-tabular">
             <span>{invoicesCount}</span>
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-3.5 h-3.5" />
           </span>
         </button>
 
         <button
           type="button"
           onClick={() => onOpenSection('statement')}
-          className="w-full min-h-[50px] px-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
+          className="w-full min-h-[42px] px-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
         >
-          <span className="flex items-center gap-2.5 font-black text-slate-800 dark:text-slate-100">
+          <span className="flex items-center gap-2 font-black text-slate-800 dark:text-slate-100">
             <Wallet className="w-4 h-4 text-[#0F5A33] dark:text-emerald-400" />
             <span>{t('كشف الحساب التفصيلي', 'Account Statement')}</span>
           </span>
-          <ChevronLeft className="w-4 h-4 text-slate-400" />
+          <ChevronLeft className="w-3.5 h-3.5 text-slate-400" />
         </button>
 
         <button
           type="button"
           onClick={() => onOpenSection('favorites')}
-          className="w-full min-h-[50px] px-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
+          className="w-full min-h-[42px] px-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
         >
-          <span className="flex items-center gap-2.5 font-black text-slate-800 dark:text-slate-100">
+          <span className="flex items-center gap-2 font-black text-slate-800 dark:text-slate-100">
             <Heart className="w-4 h-4 text-[#C81E1E]" />
             <span>{t('المنتجات المفضلة', 'Favorites')}</span>
           </span>
           <span className="flex items-center gap-1.5 text-slate-500 font-bold awlad-tabular">
             <span>{favoritesCount}</span>
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-3.5 h-3.5" />
           </span>
         </button>
       </div>
 
       {/* Theme & Language Preferences */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-3 shadow-2xs text-xs">
-        <div className="space-y-1.5">
-          <p className="font-black text-slate-700 dark:text-slate-200">{t('مظهر التطبيق', 'App Theme')}</p>
-          <div className="grid grid-cols-3 gap-2">
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-2.5 space-y-2 shadow-2xs text-xs">
+        <div className="space-y-1">
+          <p className="font-black text-[11px] text-slate-700 dark:text-slate-200">{t('مظهر التطبيق', 'App Theme')}</p>
+          <div className="grid grid-cols-3 gap-1.5">
             {(
               [
                 { key: 'light', label: t('نهاري', 'Light'), icon: Sun },
@@ -326,7 +324,7 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
                   key={opt.key}
                   type="button"
                   onClick={() => setThemePreference(opt.key)}
-                  className={`min-h-[40px] rounded-xl border font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${
+                  className={`min-h-[34px] rounded-lg border font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors ${
                     active
                       ? 'bg-[#0F5A33] text-white border-[#0F5A33]'
                       : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
@@ -340,16 +338,16 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
           </div>
         </div>
 
-        <div className="space-y-1.5 pt-1 border-t border-slate-100 dark:border-slate-800">
-          <p className="font-black text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
-            <Globe className="w-4 h-4 text-[#0F5A33] dark:text-emerald-400" />
+        <div className="space-y-1 pt-1.5 border-t border-slate-100 dark:border-slate-800">
+          <p className="font-black text-[11px] text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+            <Globe className="w-3.5 h-3.5 text-[#0F5A33] dark:text-emerald-400" />
             <span>{t('لغة الواجهة', 'Interface Language')}</span>
           </p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-1.5">
             <button
               type="button"
               onClick={() => setLanguage('ar')}
-              className={`min-h-[40px] rounded-xl border font-bold cursor-pointer ${
+              className={`min-h-[34px] rounded-lg border font-bold cursor-pointer ${
                 language === 'ar'
                   ? 'bg-[#0F5A33] text-white border-[#0F5A33]'
                   : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
@@ -360,7 +358,7 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
             <button
               type="button"
               onClick={() => setLanguage('en')}
-              className={`min-h-[40px] rounded-xl border font-bold cursor-pointer ${
+              className={`min-h-[34px] rounded-lg border font-bold cursor-pointer ${
                 language === 'en'
                   ? 'bg-[#0F5A33] text-white border-[#0F5A33]'
                   : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
@@ -373,13 +371,13 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
       </div>
 
       {/* Settings, Sync, Support & Security */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden shadow-2xs text-xs">
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden shadow-2xs text-xs">
         <button
           type="button"
           onClick={onOpenNotifications}
-          className="w-full min-h-[48px] px-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
+          className="w-full min-h-[40px] px-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
         >
-          <span className="flex items-center gap-2.5 font-bold text-slate-800 dark:text-slate-100">
+          <span className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-100">
             <Bell className="w-4 h-4 text-[#0F5A33] dark:text-emerald-400" />
             <span>{t('التنبيهات والإشعارات', 'Notifications')}</span>
           </span>
@@ -389,21 +387,21 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
         <button
           type="button"
           onClick={onOpenServerModal}
-          className="w-full min-h-[48px] px-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
+          className="w-full min-h-[40px] px-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
         >
-          <span className="flex items-center gap-2.5 font-bold text-slate-800 dark:text-slate-100">
+          <span className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-100">
             <Server className="w-4 h-4 text-[#0F5A33] dark:text-emerald-400" />
             <span>{t('السيرفر وإعدادات الاتصال', 'Server & Connection')}</span>
           </span>
-          <ChevronLeft className="w-4 h-4 text-slate-400" />
+          <ChevronLeft className="w-3.5 h-3.5 text-slate-400" />
         </button>
 
         <button
           type="button"
           onClick={onOpenSyncCenter}
-          className="w-full min-h-[48px] px-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
+          className="w-full min-h-[40px] px-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
         >
-          <span className="flex items-center gap-2.5 font-bold text-slate-800 dark:text-slate-100">
+          <span className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-100">
             <RefreshCw className="w-4 h-4 text-[#0F5A33] dark:text-emerald-400" />
             <span>{t('مركز المزامنة والعمليات المعلقة', 'Sync Center')}</span>
           </span>
@@ -416,13 +414,13 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
             setShowPwdBox((v) => !v);
             setPwdMsg(null);
           }}
-          className="w-full min-h-[48px] px-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
+          className="w-full min-h-[40px] px-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
         >
-          <span className="flex items-center gap-2.5 font-bold text-slate-800 dark:text-slate-100">
+          <span className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-100">
             <Lock className="w-4 h-4 text-[#0F5A33] dark:text-emerald-400" />
             <span>{t('تغيير كلمة المرور', 'Change Password')}</span>
           </span>
-          <ChevronLeft className={`w-4 h-4 text-slate-400 transition-transform ${showPwdBox ? '-rotate-90' : ''}`} />
+          <ChevronLeft className={`w-3.5 h-3.5 text-slate-400 transition-transform ${showPwdBox ? '-rotate-90' : ''}`} />
         </button>
 
         {showPwdBox && (
@@ -496,33 +494,33 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
         <button
           type="button"
           onClick={() => setInfoModal('privacy')}
-          className="w-full min-h-[48px] px-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
+          className="w-full min-h-[40px] px-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
         >
-          <span className="flex items-center gap-2.5 font-bold text-slate-800 dark:text-slate-100">
+          <span className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-100">
             <ShieldCheck className="w-4 h-4 text-[#0F5A33] dark:text-emerald-400" />
             <span>{t('الخصوصية والأمان', 'Privacy Policy')}</span>
           </span>
-          <ChevronLeft className="w-4 h-4 text-slate-400" />
+          <ChevronLeft className="w-3.5 h-3.5 text-slate-400" />
         </button>
 
         <button
           type="button"
           onClick={() => setInfoModal('help')}
-          className="w-full min-h-[48px] px-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
+          className="w-full min-h-[40px] px-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
         >
-          <span className="flex items-center gap-2.5 font-bold text-slate-800 dark:text-slate-100">
+          <span className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-100">
             <HelpCircle className="w-4 h-4 text-[#0F5A33] dark:text-emerald-400" />
             <span>{t('المساعدة والتواصل مع الشركة', 'Help & Contact')}</span>
           </span>
-          <ChevronLeft className="w-4 h-4 text-slate-400" />
+          <ChevronLeft className="w-3.5 h-3.5 text-slate-400" />
         </button>
 
         <button
           type="button"
           onClick={() => setInfoModal('about')}
-          className="w-full min-h-[48px] px-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
+          className="w-full min-h-[40px] px-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer"
         >
-          <span className="flex items-center gap-2.5 font-bold text-slate-800 dark:text-slate-100">
+          <span className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-100">
             <Info className="w-4 h-4 text-[#0F5A33] dark:text-emerald-400" />
             <span>{t('عن تطبيق أولاد سليم', 'About App')}</span>
           </span>
@@ -533,7 +531,7 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
       <button
         type="button"
         onClick={onLogout}
-        className="w-full min-h-[48px] rounded-2xl bg-red-50 dark:bg-red-950/40 hover:bg-red-100 border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 font-black text-xs flex items-center justify-center gap-2 cursor-pointer"
+        className="w-full min-h-[40px] rounded-xl bg-red-50 dark:bg-red-950/40 hover:bg-red-100 border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 font-black text-xs flex items-center justify-center gap-2 cursor-pointer"
       >
         <LogOut className="w-4 h-4" />
         <span>{t('تسجيل الخروج', 'Logout')}</span>
@@ -568,8 +566,8 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
 
       {infoModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-800 p-5 space-y-3 text-xs shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-xl border border-slate-200 dark:border-slate-800 p-4 space-y-2.5 text-xs shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
               <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">
                 {infoModal === 'privacy'
                   ? 'سياسة الخصوصية وأمان الحساب'
@@ -580,7 +578,7 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
               <button
                 type="button"
                 onClick={() => setInfoModal(null)}
-                className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 cursor-pointer"
+                className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>

@@ -335,7 +335,7 @@ export interface DataContextType extends DatabaseState {
 
   // Employees & Payroll
   addEmployee: (employee: Omit<Employee, 'id'>) => Promise<{ success: boolean; error?: string }>;
-  updateEmployee: (id: string, updates: Partial<Employee> & { userId?: string | null }) => Promise<{ success: boolean; error?: string }>;
+  updateEmployee: (id: string, updates: Omit<Partial<Employee>, 'userId'> & { userId?: string | null }) => Promise<{ success: boolean; error?: string }>;
   recordAttendance: (attendance: Omit<AttendanceRecord, 'id'>) => Promise<{ success: boolean; error?: string }>;
   addAdvanceDeduction: (item: Omit<EmployeeAdvanceDeduction, 'id' | 'createdAt' | 'isSettled'>) => Promise<{ success: boolean; error?: string }>;
   paySalary: (payroll: Omit<SalaryPayroll, 'id' | 'payrollNumber'>) => Promise<{ success: boolean; error?: string }>;
@@ -4409,7 +4409,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const updateEmployee = async (id: string, updates: Partial<Employee> & { userId?: string | null }) => {
+  const updateEmployee = async (id: string, updates: Omit<Partial<Employee>, 'userId'> & { userId?: string | null }) => {
     try {
       await apiRequest(`/api/admin/employees/${id}`, { method: 'PUT', body: updates });
       await loadRoleScopedData();

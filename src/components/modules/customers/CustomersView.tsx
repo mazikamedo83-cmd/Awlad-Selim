@@ -980,10 +980,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {customerBanner && (
         <div
-          className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between gap-2 ${
+          className={`px-3 py-2 rounded-lg border text-xs font-bold flex items-center justify-between gap-2 ${
             customerBanner.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
               : 'bg-red-50 border-red-200 text-red-900'
@@ -1002,15 +1002,15 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
         const linkedUser = selectedCustomer.userId ? users.find((u) => u.id === selectedCustomer.userId) : undefined;
 
         return (
-          <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="space-y-3 animate-in fade-in duration-200">
         {/* Navigation Breadcrumb Bar */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 shadow-xs">
+          <div className="flex items-center gap-2.5">
             <button
               onClick={() => setSelectedCustomerId(null)}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all active:scale-95 cursor-pointer"
             >
-              <ArrowRight className="w-4 h-4" />
+              <ArrowRight className="w-3.5 h-3.5" />
               <span>العودة لدليل العملاء</span>
             </button>
             <span className="text-slate-300">/</span>
@@ -1039,10 +1039,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
         </div>
 
         {/* Dedicated Store Profile Header Card */}
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 overflow-hidden relative">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+        <div className="bg-white rounded-lg border border-slate-200 shadow-xs p-3.5 overflow-hidden relative">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
             {/* Store Photo & Shop Details */}
-            <div className="flex items-start sm:items-center gap-5">
+            <div className="flex items-start sm:items-center gap-3">
               {/* Prominent Store Photo with Lightbox preview */}
               <div className="relative group shrink-0">
                 {(selectedCustomer.shopPhoto || selectedCustomer.photo) ? (
@@ -1055,13 +1055,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                     <img
                       src={selectedCustomer.shopPhoto || selectedCustomer.photo}
                       alt={selectedCustomer.name}
-                      className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover border-2 border-slate-200 shadow-md bg-slate-50 transition-transform group-hover:scale-105"
+                      className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg object-cover border-2 border-slate-200 shadow-xs bg-slate-50 transition-transform group-hover:scale-105"
                     />
                   </button>
                 ) : (
-                  <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-blue-900/5 border-2 border-dashed border-blue-200 flex flex-col items-center justify-center text-blue-900">
-                    <Store className="w-10 h-10 stroke-[1.5]" />
-                    <span className="text-[10px] font-bold mt-1 text-slate-400">لا توجد صورة</span>
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-blue-900/5 border-2 border-dashed border-blue-200 flex flex-col items-center justify-center text-blue-900">
+                    <Store className="w-7 h-7 stroke-[1.5]" />
+                    <span className="text-[10px] font-bold mt-0.5 text-slate-400">لا توجد صورة</span>
                   </div>
                 )}
                 <span className={`absolute -bottom-1 -right-1 px-2 py-0.5 rounded-md text-[10px] font-black border shadow-xs ${
@@ -1107,7 +1107,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 </div>
 
                 {/* Direct Call (all phones) & Google Maps Buttons */}
-                <div className="flex flex-wrap items-center gap-2 text-xs">
+                <div className="flex flex-wrap items-center gap-1.5 text-xs">
                   {(() => {
                     const allPhones: CustomerPhoneEntry[] =
                       Array.isArray(selectedCustomer.phones) && selectedCustomer.phones.length > 0
@@ -1128,7 +1128,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                         <a
                           key={ph.id || idx}
                           href={`tel:${clean}`}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-mono font-black border shadow-xs transition-all active:scale-95 cursor-pointer ${
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-mono font-black border shadow-xs transition-all active:scale-95 cursor-pointer ${
                             ph.isPrimary || idx === 0
                               ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
                               : 'bg-teal-50 hover:bg-teal-100 text-teal-800 border-teal-200'
@@ -1149,16 +1149,16 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                   <button
                     type="button"
                     onClick={() => setLocationViewerCustomer(selectedCustomer)}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#0F5A33] font-bold border border-emerald-200 shadow-xs transition-all cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#0F5A33] font-bold border border-emerald-200 shadow-xs transition-all cursor-pointer"
                     title="عرض موقع المحل المسجل على الخريطة"
                   >
-                    <MapPin className="w-4 h-4 text-[#0F5A33] shrink-0" />
+                    <MapPin className="w-3.5 h-3.5 text-[#0F5A33] shrink-0" />
                     <span className="max-w-[260px] truncate">{selectedCustomer.address || 'عرض الموقع'}</span>
                   </button>
                 </div>
 
                 {selectedCustomer.notes && (
-                  <p className="text-xs text-slate-500 bg-slate-50 p-2 rounded-xl border border-slate-100 max-w-xl">
+                  <p className="text-xs text-slate-500 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 max-w-xl">
                     <span className="font-bold text-slate-700 ml-1">ملاحظات:</span>
                     {selectedCustomer.notes}
                   </p>
@@ -1167,7 +1167,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
             </div>
 
             {/* Quick Actions in Customer Profile */}
-            <div className="flex flex-wrap items-center gap-2 self-stretch md:self-auto justify-end">
+            <div className="flex flex-wrap items-center gap-1.5 self-stretch md:self-auto justify-end">
               <button
                 onClick={() => {
                   setPaymentError(null);
@@ -1176,17 +1176,17 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                   setPaymentCustomer(selectedCustomer);
                   setPaymentAmount(selectedCustomer.currentBalance > 0 ? selectedCustomer.currentBalance : 0);
                 }}
-                className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-600/20 active:scale-95 transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-black shadow-xs active:scale-95 transition-all cursor-pointer"
               >
-                <ArrowDownLeft className="w-4 h-4" />
+                <ArrowDownLeft className="w-3.5 h-3.5" />
                 <span>تسجيل تحصيل نقدية</span>
               </button>
 
               <button
                 onClick={(e) => handleOpenEdit(selectedCustomer, e)}
-                className="flex items-center gap-2 px-3.5 py-2.5 bg-blue-900 hover:bg-blue-950 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-900/20 active:scale-95 transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-lg text-xs font-bold shadow-xs active:scale-95 transition-all cursor-pointer"
               >
-                <Edit className="w-4 h-4" />
+                <Edit className="w-3.5 h-3.5" />
                 <span>تعديل البيانات والصورة</span>
               </button>
 
@@ -1200,13 +1200,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                     setNewCustomerPassword('');
                     setLinkingCustomer(selectedCustomer);
                   }}
-                  className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold shadow-xs cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold shadow-xs cursor-pointer ${
                     selectedCustomer.userId
                       ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
                       : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
                   }`}
                 >
-                  <Link2 className="w-4 h-4" />
+                  <Link2 className="w-3.5 h-3.5" />
                   <span>{selectedCustomer.userId ? 'تغيير ربط حساب التطبيق' : 'ربط / إنشاء حساب دخول للعميل'}</span>
                 </button>
               )}
@@ -1232,14 +1232,14 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                       setIsTogglingUserStatus(false);
                     }
                   }}
-                  className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold border cursor-pointer disabled:opacity-50 ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border cursor-pointer disabled:opacity-50 ${
                     linkedUser.isActive === false
                       ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
                       : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
                   }`}
                   title={`حساب الدخول: ${linkedUser.username}`}
                 >
-                  <ShieldAlert className="w-4 h-4" />
+                  <ShieldAlert className="w-3.5 h-3.5" />
                   <span>{linkedUser.isActive === false ? 'تفعيل حساب الدخول' : 'إيقاف حساب الدخول'}</span>
                 </button>
               )}
@@ -1247,46 +1247,46 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
               <button
                 type="button"
                 onClick={handlePrintCustomerCard}
-                className="flex items-center gap-2 px-3.5 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 rounded-xl text-xs font-bold active:scale-95 transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 rounded-lg text-xs font-bold active:scale-95 transition-all cursor-pointer"
                 title="طباعة بطاقة العميل"
               >
-                <Printer className="w-4 h-4 text-indigo-700" />
+                <Printer className="w-3.5 h-3.5 text-indigo-700" />
                 <span>بطاقة العميل</span>
               </button>
 
               <button
                 type="button"
                 onClick={handlePrintStatement}
-                className="flex items-center gap-2 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold active:scale-95 transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-bold active:scale-95 transition-all cursor-pointer"
                 title="طباعة كشف الحساب"
               >
-                <Printer className="w-4 h-4 text-slate-600" />
+                <Printer className="w-3.5 h-3.5 text-slate-600" />
                 <span>طباعة</span>
               </button>
 
               <button
                 type="button"
                 onClick={handleExportStatementExcel}
-                className="flex items-center gap-2 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-emerald-800 rounded-xl text-xs font-bold active:scale-95 transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-emerald-800 rounded-lg text-xs font-bold active:scale-95 transition-all cursor-pointer"
                 title="تصدير كشف الحساب Excel"
               >
-                <Download className="w-4 h-4 text-emerald-600" />
+                <Download className="w-3.5 h-3.5 text-emerald-600" />
                 <span>Excel</span>
               </button>
 
               <button
                 type="button"
                 onClick={handleExportStatementPdf}
-                className="flex items-center gap-2 px-3.5 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 rounded-xl text-xs font-bold active:scale-95 transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 rounded-lg text-xs font-bold active:scale-95 transition-all cursor-pointer"
                 title="تصدير كشف الحساب PDF"
               >
-                <FileText className="w-4 h-4 text-blue-700" />
+                <FileText className="w-3.5 h-3.5 text-blue-700" />
                 <span>PDF</span>
               </button>
 
               <button
                 onClick={(e) => handleDeleteCustomerClick(selectedCustomer, e)}
-                className="p-2.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-xl transition-all cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all cursor-pointer"
                 title="حذف العميل وفق الصلاحيات"
               >
                 <Trash2 className="w-4 h-4" />
@@ -1294,17 +1294,17 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
             </div>
           </div>
 
-          {/* Financial KPI Summary Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-6 mt-6 border-t border-slate-100 text-xs">
+          {/* Financial KPI Summary Strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden mt-3 text-xs">
             {/* Current Balance */}
-            <div className={`p-4 rounded-2xl border ${
-              isDebtor ? 'bg-red-50/60 border-red-200' : isCreditor ? 'bg-emerald-50/60 border-emerald-200' : 'bg-slate-50 border-slate-200'
+            <div className={`px-3 py-2 ${
+              isDebtor ? 'bg-red-50/70' : isCreditor ? 'bg-emerald-50/70' : 'bg-white'
             }`}>
-              <span className="text-[11px] font-bold text-slate-600 block mb-1">
+              <span className="text-[11px] font-bold text-slate-600 block">
                 الرصيد الحالي المستحق
                 {tentativeCustomerIds.has(selectedCustomer.id) ? ' (مبدئي)' : ''}
               </span>
-              <div className={`text-xl font-black font-mono ${
+              <div className={`text-base font-black font-mono tabular-nums ${
                 isDebtor ? 'text-red-700' : isCreditor ? 'text-emerald-700' : 'text-slate-800'
               }`}>
                 {selectedCustomer.currentBalance.toLocaleString()} {settings.currency}
@@ -1316,9 +1316,9 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
             </div>
 
             {/* Total Sales Value */}
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
-              <span className="text-[11px] font-bold text-slate-600 block mb-1">إجمالي المبيعات والفواتير</span>
-              <div className="text-xl font-black font-mono text-blue-950">
+            <div className="px-3 py-2 bg-white">
+              <span className="text-[11px] font-bold text-slate-600 block">إجمالي المبيعات والفواتير</span>
+              <div className="text-base font-black font-mono tabular-nums text-blue-950">
                 {selectedCustomerInvoices.reduce((a, b) => a + b.grandTotal, 0).toLocaleString()} {settings.currency}
               </div>
               <span className="text-[10px] font-semibold text-slate-500">
@@ -1327,9 +1327,9 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
             </div>
 
             {/* Total Payments Collected */}
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
-              <span className="text-[11px] font-bold text-slate-600 block mb-1">إجمالي التحصيلات والدفعات المقدمة</span>
-              <div className="text-xl font-black font-mono text-emerald-800">
+            <div className="px-3 py-2 bg-white">
+              <span className="text-[11px] font-bold text-slate-600 block">إجمالي التحصيلات والدفعات المقدمة</span>
+              <div className="text-base font-black font-mono tabular-nums text-emerald-800">
                 {(
                   selectedCustomerPayments.reduce((a, b) => a + b.amount, 0) +
                   selectedCustomerAdvances.filter(a => a.status !== 'refunded').reduce((a, b) => a + b.amount, 0) +
@@ -1346,9 +1346,9 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
             </div>
 
             {/* Total Returns */}
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
-              <span className="text-[11px] font-bold text-slate-600 block mb-1">إجمالي المرتجعات</span>
-              <div className="text-xl font-black font-mono text-amber-800">
+            <div className="px-3 py-2 bg-white">
+              <span className="text-[11px] font-bold text-slate-600 block">إجمالي المرتجعات</span>
+              <div className="text-base font-black font-mono tabular-nums text-amber-800">
                 {selectedCustomerReturns.reduce((a, b) => a + b.grandTotal, 0).toLocaleString()} {settings.currency}
               </div>
               <span className="text-[10px] font-semibold text-slate-500">
@@ -1359,88 +1359,88 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
         </div>
 
         {/* Tab Navigation in Dedicated Profile */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-2 flex flex-wrap gap-2 text-xs">
+        <div className="bg-white rounded-lg border border-slate-200 shadow-xs p-1.5 flex flex-wrap gap-1.5 text-xs">
           <button
             onClick={() => setDetailTab('statement')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-black transition-all cursor-pointer ${
               detailTab === 'statement'
-                ? 'bg-blue-900 text-white shadow-sm'
+                ? 'bg-blue-900 text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <FileText className="w-4 h-4" />
+            <FileText className="w-3.5 h-3.5" />
             <span>كشف الحساب المالي المفصل ({chronologicalStatement.length})</span>
           </button>
 
           <button
             onClick={() => setDetailTab('invoices')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-black transition-all cursor-pointer ${
               detailTab === 'invoices'
-                ? 'bg-blue-900 text-white shadow-sm'
+                ? 'bg-blue-900 text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <ShoppingCart className="w-4 h-4" />
+            <ShoppingCart className="w-3.5 h-3.5" />
             <span>فواتير المبيعات ({selectedCustomerInvoices.length})</span>
           </button>
 
           <button
             onClick={() => setDetailTab('orders')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-black transition-all cursor-pointer ${
               detailTab === 'orders'
-                ? 'bg-blue-900 text-white shadow-sm'
+                ? 'bg-blue-900 text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <ShoppingCart className="w-4 h-4" />
+            <ShoppingCart className="w-3.5 h-3.5" />
             <span>الطلبات ({selectedCustomerOrders.length})</span>
           </button>
 
           <button
             onClick={() => setDetailTab('advances')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-black transition-all cursor-pointer ${
               detailTab === 'advances'
-                ? 'bg-blue-900 text-white shadow-sm'
+                ? 'bg-blue-900 text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <Wallet className="w-4 h-4" />
+            <Wallet className="w-3.5 h-3.5" />
             <span>الدفعات المقدمة ({selectedCustomerAdvances.length})</span>
           </button>
 
           <button
             onClick={() => setDetailTab('payments')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-black transition-all cursor-pointer ${
               detailTab === 'payments'
-                ? 'bg-blue-900 text-white shadow-sm'
+                ? 'bg-blue-900 text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <Receipt className="w-4 h-4" />
+            <Receipt className="w-3.5 h-3.5" />
             <span>سندات القبض والتحصيلات ({selectedCustomerPayments.length})</span>
           </button>
 
           <button
             onClick={() => setDetailTab('returns')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-black transition-all cursor-pointer ${
               detailTab === 'returns'
-                ? 'bg-blue-900 text-white shadow-sm'
+                ? 'bg-blue-900 text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <RotateCcw className="w-4 h-4" />
+            <RotateCcw className="w-3.5 h-3.5" />
             <span>المرتجعات ({selectedCustomerReturns.length})</span>
           </button>
 
           <button
             onClick={() => setDetailTab('prices')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-black transition-all cursor-pointer ${
               detailTab === 'prices'
-                ? 'bg-blue-900 text-white shadow-sm'
+                ? 'bg-blue-900 text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <Sparkles className="w-4 h-4" />
+            <Sparkles className="w-3.5 h-3.5" />
             <span>تاريخ أسعار المنتجات المشتراة</span>
           </button>
         </div>
@@ -2189,11 +2189,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
           </div>
         );
       })() : (
-        <div className="space-y-6">
+        <div className="space-y-3">
       {/* Conflicts warning for admins */}
       {hasPermission('canManageUsers') &&
         (conflicts.duplicatePhones.length > 0 || conflicts.unlinkedCustomerUsers.length > 0) && (
-          <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-950 space-y-2">
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950 space-y-2">
             <div className="font-black flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
               <span>تنبيه تطابق بيانات العملاء وحسابات الدخول</span>
@@ -2240,7 +2240,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                       setIsRepairingUnlinked(false);
                     }
                   }}
-                  className="px-4 py-2 rounded-xl bg-amber-700 hover:bg-amber-800 text-white font-black cursor-pointer disabled:opacity-50"
+                  className="px-3.5 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-black cursor-pointer disabled:opacity-50"
                 >
                   {isRepairingUnlinked
                     ? 'جاري الإصلاح والربط...'
@@ -2253,8 +2253,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
 
       {/* Compact Summary Banner Routing to Dedicated Orders Section */}
       {customerItemOrders.length > 0 && (
-        <section className="rounded-xl border border-blue-200 bg-blue-50/70 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex flex-wrap items-center gap-3">
+        <section className="rounded-lg border border-blue-200 bg-blue-50/70 px-3 py-2 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+          <div className="flex flex-wrap items-center gap-2.5">
             <h3 className="text-xs font-black text-blue-950">طلبات العملاء والمندوبين الواردة من الموبايل</h3>
             <span className="font-bold text-amber-800 tabular-nums">
               {customerItemOrders.filter((o) => o.status === 'pending').length} جديد
@@ -2273,7 +2273,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
             <button
               type="button"
               onClick={() => onNavigate('customer-orders')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-bold cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-bold cursor-pointer"
             >
               <ShoppingCart className="w-3.5 h-3.5" />
               <span>فتح قسم الطلبات</span>
@@ -2283,7 +2283,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
       )}
 
       {/* Top Header Strip */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white px-4 py-3 rounded-xl border border-slate-200">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 bg-white px-3.5 py-2.5 rounded-lg border border-slate-200">
         <div>
           <h2 className="text-base font-black text-slate-900">
             العملاء والأرصدة <span className="text-xs font-mono tabular-nums text-slate-500">({customers.length})</span>
@@ -2295,35 +2295,35 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
 
         <button
           onClick={handleOpenAdd}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-900 hover:bg-blue-950 text-white text-xs font-bold transition-colors cursor-pointer shrink-0"
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white text-xs font-bold transition-colors cursor-pointer shrink-0"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-3.5 h-3.5" />
           <span>إضافة عميل / محل جديد</span>
         </button>
       </div>
 
       {/* Compact Accounting Summary Strip */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
         <div className={`grid grid-cols-1 ${canViewAggregateCustomerTotals ? 'sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x sm:divide-x-reverse divide-slate-200' : ''}`}>
-          <div className="px-4 py-3">
+          <div className="px-3 py-2">
             <span className="text-[11px] font-bold text-slate-500 block">إجمالي المحلات المسجلة</span>
-            <div className="text-lg font-black text-slate-900 font-mono tabular-nums">
+            <div className="text-base font-black text-slate-900 font-mono tabular-nums">
               {customers.length} <span className="text-[11px] font-sans font-semibold text-emerald-700">({customers.filter(c => c.status === 'active').length} نشط)</span>
             </div>
           </div>
 
           {canViewAggregateCustomerTotals && (
             <>
-              <div className="px-4 py-3">
+              <div className="px-3 py-2">
                 <span className="text-[11px] font-bold text-slate-500 block">إجمالي مديونيات العملاء (لنا)</span>
-                <div className="text-lg font-black text-red-700 font-mono tabular-nums">
+                <div className="text-base font-black text-red-700 font-mono tabular-nums">
                   {totalDebts.toLocaleString()} <span className="text-[11px] text-slate-500 font-normal">{settings.currency}</span>
                 </div>
               </div>
 
-              <div className="px-4 py-3">
+              <div className="px-3 py-2">
                 <span className="text-[11px] font-bold text-slate-500 block">أرصدة العملاء الدائنة (دفعات مقدمة)</span>
-                <div className="text-lg font-black text-emerald-700 font-mono tabular-nums">
+                <div className="text-base font-black text-emerald-700 font-mono tabular-nums">
                   {totalCredits.toLocaleString()} <span className="text-[11px] text-slate-500 font-normal">{settings.currency}</span>
                 </div>
               </div>
@@ -2333,6 +2333,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
       </div>
 
       <UnifiedDataTable<Customer>
+        compact
         title="دليل العملاء والمحلات"
         subtitle="اضغط على أي صف لعرض الملف الشامل وكشف الحساب أو استخدم أدوات الاتصال والخريطة والتحصيل السريع"
         data={filteredCustomers}
@@ -2344,11 +2345,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
         pdfTitle="دليل العملاء والأرصدة"
         onRowClick={(cust) => setSelectedCustomerId(cust.id)}
         toolbarFilters={
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as any)}
-              className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-700 outline-hidden focus:border-blue-600"
+              className="h-8 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-hidden focus:border-blue-600"
             >
               <option value="all">جميع الحالات ({customers.length})</option>
               <option value="active">نشط فقط</option>
@@ -2357,7 +2358,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
             <select
               value={classificationFilter}
               onChange={(e) => setClassificationFilter(e.target.value as any)}
-              className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-700 outline-hidden focus:border-blue-600"
+              className="h-8 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-hidden focus:border-blue-600"
             >
               <option value="all">جميع التصنيفات</option>
               <option value="app_and_direct">عميل تطبيق ومبيعات مباشرة</option>
@@ -2582,22 +2583,22 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
         subtitle="يرجى إدخال صورة المحل، اسم المحل، رقم الموبايل، وعنوان المحل بالتفصيل"
         maxWidth="2xl"
       >
-        <form onSubmit={handleSaveCustomer} className="space-y-4 text-xs">
+        <form onSubmit={handleSaveCustomer} className="space-y-3 text-xs">
           {customerFormError && (
-            <div className="bg-red-50 border border-red-200 text-red-800 px-3 py-2.5 rounded-xl font-bold flex items-center gap-2">
+            <div className="bg-red-50 border border-red-200 text-red-800 px-3 py-2 rounded-lg font-bold flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
               <span>{customerFormError}</span>
             </div>
           )}
           {/* Store Photo Upload Section */}
-          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+          <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
             <label className="block font-black text-slate-900 mb-2">
               صورة المحل / المنشأة:
             </label>
 
-            <div className="flex flex-col sm:flex-row items-center gap-4">
+            <div className="flex flex-col sm:flex-row items-center gap-3">
               {/* Photo Preview */}
-              <div className="relative w-24 h-24 rounded-2xl border-2 border-slate-300 bg-white overflow-hidden flex items-center justify-center shrink-0 shadow-xs">
+              <div className="relative w-20 h-20 rounded-lg border-2 border-slate-300 bg-white overflow-hidden flex items-center justify-center shrink-0 shadow-xs">
                 {formData.photo ? (
                   <img
                     src={formData.photo}
@@ -2606,7 +2607,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                   />
                 ) : (
                   <div className="text-center text-slate-400 p-2">
-                    <Store className="w-8 h-8 mx-auto stroke-[1.5] text-slate-300" />
+                    <Store className="w-7 h-7 mx-auto stroke-[1.5] text-slate-300" />
                     <span className="text-[10px] block mt-1">لا توجد صورة</span>
                   </div>
                 )}
@@ -2628,9 +2629,9 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                   التقط صورة المحل بكاميرا الهاتف أو اختر صورة من جهازك. يتم ضغط الصورة تلقائياً وحفظها بأمان للعمل دون إنترنت (Offline).
                 </p>
 
-                <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
-                  <label className="inline-flex items-center gap-2 px-4 py-2 bg-blue-900 hover:bg-blue-950 text-white font-bold rounded-xl text-xs cursor-pointer shadow-sm active:scale-95 transition-all">
-                    <Camera className="w-4 h-4" />
+                <div className="flex flex-wrap items-center gap-1.5 justify-center sm:justify-start">
+                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-900 hover:bg-blue-950 text-white font-bold rounded-lg text-xs cursor-pointer shadow-xs active:scale-95 transition-all">
+                    <Camera className="w-3.5 h-3.5" />
                     <span>{formData.photo ? 'التقاط صورة جديدة بالكاميرا' : 'تصوير بالكاميرا'}</span>
                     <input
                       ref={fileInputRef}
@@ -2642,8 +2643,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                     />
                   </label>
 
-                  <label className="inline-flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold rounded-xl text-xs cursor-pointer shadow-2xs active:scale-95 transition-all">
-                    <Upload className="w-4 h-4" />
+                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold rounded-lg text-xs cursor-pointer shadow-2xs active:scale-95 transition-all">
+                    <Upload className="w-3.5 h-3.5" />
                     <span>اختيار من المعرض</span>
                     <input
                       ref={galleryInputRef}
@@ -2658,7 +2659,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                     <button
                       type="button"
                       onClick={handleRemovePhoto}
-                      className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-xl font-bold border border-red-200 cursor-pointer"
+                      className="px-2.5 py-1.5 text-red-600 hover:bg-red-50 rounded-lg font-bold border border-red-200 cursor-pointer"
                     >
                       حذف الصورة
                     </button>
@@ -2676,7 +2677,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
           </div>
 
           {/* Form Inputs Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <div>
               <label className="block font-bold text-slate-700 mb-1">
                 اسم تاجر الجملة / العميل: <span className="text-red-500">*</span>
@@ -2687,7 +2688,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 placeholder="مثال: الحاج طارق سليم"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold focus:border-blue-600 outline-hidden"
+                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold focus:border-blue-600 outline-hidden"
               />
             </div>
 
@@ -2700,16 +2701,16 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 placeholder="مثال: سوبرماركت البركة لتجارة التجزئة"
                 value={formData.shopName}
                 onChange={(e) => setFormData({ ...formData, shopName: e.target.value })}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold focus:border-blue-600 outline-hidden"
+                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold focus:border-blue-600 outline-hidden"
               />
             </div>
 
-            <div className="sm:col-span-2 space-y-2.5 bg-slate-50/70 p-3 rounded-2xl border border-slate-200">
+            <div className="sm:col-span-2 space-y-2 bg-slate-50/70 p-2.5 rounded-lg border border-slate-200">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
                   رقم الهاتف الرئيسي: <span className="text-red-500">*</span>
                 </label>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <input
                     type="tel"
                     required
@@ -2719,7 +2720,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                       setFormData({ ...formData, phone: e.target.value });
                       if (phoneActionNotice) setPhoneActionNotice(null);
                     }}
-                    className="flex-1 bg-white border border-slate-300 rounded-xl p-2.5 font-mono font-bold focus:border-blue-600 outline-hidden"
+                    className="flex-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold focus:border-blue-600 outline-hidden"
                   />
                   {(() => {
                     const cleanedPhone = formData.phone.replace(/[^\d+]/g, '');
@@ -2733,10 +2734,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                             text: `جاري فتح الاتصال بالرقم (${cleanedPhone}) عبر تطبيق الهاتف.`,
                           })
                         }
-                        className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold shrink-0 transition-colors"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold shrink-0 transition-colors"
                         title="اتصال هاتفي بالرقم"
                       >
-                        <Phone className="w-4 h-4 text-emerald-700" />
+                        <Phone className="w-3.5 h-3.5 text-emerald-700" />
                         <span>اتصال</span>
                       </a>
                     ) : (
@@ -2748,10 +2749,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                             text: 'يرجى إدخال رقم هاتف صحيح (7 أرقام على الأقل) لإجراء الاتصال.',
                           })
                         }
-                        className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300 font-bold shrink-0 cursor-pointer transition-colors"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300 font-bold shrink-0 cursor-pointer transition-colors"
                         title="اتصال هاتفي"
                       >
-                        <Phone className="w-4 h-4" />
+                        <Phone className="w-3.5 h-3.5" />
                         <span>اتصال</span>
                       </button>
                     );
@@ -2769,7 +2770,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
               </div>
 
               {formData.extraPhones.length > 0 && (
-                <div className="space-y-2 pt-1">
+                <div className="space-y-1.5 pt-1">
                   <label className="block font-bold text-slate-600 text-[11px]">أرقام الهاتف الإضافية:</label>
                   {formData.extraPhones.map((extra, idx) => {
                     const cleanExtra = extra.phone.replace(/[^\d+]/g, '');
@@ -2787,7 +2788,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                             }));
                           }}
                           placeholder="رقم هاتف إضافي..."
-                          className="flex-1 min-w-[130px] bg-white border border-slate-300 rounded-xl p-2 font-mono font-bold"
+                          className="flex-1 min-w-[130px] bg-white border border-slate-300 rounded-lg px-2 py-1.5 font-mono font-bold"
                         />
                         <select
                           value={extra.label}
@@ -2798,7 +2799,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                               extraPhones: prev.extraPhones.map((row, i) => (i === idx ? { ...row, label: val } : row)),
                             }));
                           }}
-                          className="bg-white border border-slate-300 rounded-xl p-2 font-semibold"
+                          className="bg-white border border-slate-300 rounded-lg px-2 py-1.5 font-semibold"
                         >
                           <option value="موبايل">موبايل</option>
                           <option value="محل">تليفون المحل</option>
@@ -2808,10 +2809,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                         {isValidExtra && (
                           <a
                             href={`tel:${cleanExtra}`}
-                            className="p-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
+                            className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100"
                             title="اتصال بهذا الرقم"
                           >
-                            <Phone className="w-4 h-4" />
+                            <Phone className="w-3.5 h-3.5" />
                           </a>
                         )}
                         <button
@@ -2828,7 +2829,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                                 .filter((row) => row.phone.trim() !== ''),
                             }));
                           }}
-                          className="px-2 py-2 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 text-[10px] font-bold hover:bg-blue-100 cursor-pointer shrink-0"
+                          className="px-2 py-1.5 rounded-lg bg-blue-50 text-blue-900 border border-blue-200 text-[10px] font-bold hover:bg-blue-100 cursor-pointer shrink-0"
                           title="تعيين هذا الرقم كرقم رئيسي"
                         >
                           تعيين رئيسي
@@ -2841,10 +2842,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                               extraPhones: prev.extraPhones.filter((_, i) => i !== idx),
                             }))
                           }
-                          className="p-2 rounded-xl bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 cursor-pointer"
+                          className="p-1.5 rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 cursor-pointer"
                           title="حذف الرقم"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     );
@@ -2863,7 +2864,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                     ],
                   }))
                 }
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-blue-50 text-blue-900 border border-blue-200 font-bold cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white hover:bg-blue-50 text-blue-900 border border-blue-200 font-bold cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>+ إضافة رقم تليفون آخر</span>
@@ -2879,7 +2880,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 placeholder="مثال: القاهرة / الجيزة / الغربية"
                 value={formData.governorate}
                 onChange={(e) => setFormData({ ...formData, governorate: e.target.value })}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-semibold focus:border-blue-600 outline-hidden"
+                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-semibold focus:border-blue-600 outline-hidden"
               />
             </div>
 
@@ -2892,7 +2893,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 placeholder="مثال: وسط البلد / العبور / طنطا"
                 value={formData.area}
                 onChange={(e) => setFormData({ ...formData, area: e.target.value })}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-semibold focus:border-blue-600 outline-hidden"
+                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-semibold focus:border-blue-600 outline-hidden"
               />
             </div>
 
@@ -2900,7 +2901,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
               <label className="block font-bold text-slate-700 mb-1">
                 الموقع الجغرافي / إحداثيات GPS (أو رابط خرائط):
               </label>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <input
                   type="text"
                   placeholder="مثال: 30.0444, 31.2357 أو رابط خرائط"
@@ -2909,37 +2910,37 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                     setFormData({ ...formData, geoCoordinates: e.target.value });
                     if (mapActionWarning) setMapActionWarning(null);
                   }}
-                  className="flex-1 bg-white border border-slate-300 rounded-xl p-2.5 font-mono text-xs focus:border-blue-600 outline-hidden"
+                  className="flex-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono text-xs focus:border-blue-600 outline-hidden"
                 />
                 <button
                   type="button"
                   onClick={() => setIsLocationPickerOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white font-bold shrink-0 cursor-pointer transition-colors"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#0F5A33] hover:bg-[#0B4426] text-white font-bold shrink-0 cursor-pointer transition-colors"
                   title="تحديد الموقع على خريطة جوجل"
                 >
-                  <MapPin className="w-4 h-4" />
+                  <MapPin className="w-3.5 h-3.5" />
                   <span>تحديد على الخريطة</span>
                 </button>
                 <button
                   type="button"
                   disabled={isLocatingGeo}
                   onClick={handleCaptureCustomerGeo}
-                  className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#0F5A33] border border-emerald-200 font-bold shrink-0 cursor-pointer disabled:opacity-50 transition-colors"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#0F5A33] border border-emerald-200 font-bold shrink-0 cursor-pointer disabled:opacity-50 transition-colors"
                   title="تحديد موقعي الحالي عبر GPS وجلب العنوان تلقائياً"
                 >
-                  <MapPin className="w-4 h-4 text-[#0F5A33]" />
+                  <MapPin className="w-3.5 h-3.5 text-[#0F5A33]" />
                   <span>{isLocatingGeo ? 'تحديد...' : 'GPS'}</span>
                 </button>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <div className="sm:col-span-2">
               <label className="block font-bold text-slate-700 mb-1">
                 عنوان المحل بالتفصيل: <span className="text-red-500">*</span>
               </label>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <input
                   type="text"
                   required
@@ -2949,15 +2950,15 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                     setFormData({ ...formData, address: e.target.value });
                     if (mapActionWarning) setMapActionWarning(null);
                   }}
-                  className="flex-1 bg-white border border-slate-300 rounded-xl p-2.5 font-semibold focus:border-blue-600 outline-hidden"
+                  className="flex-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-semibold focus:border-blue-600 outline-hidden"
                 />
                 <button
                   type="button"
                   onClick={() => setIsLocationPickerOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#0F5A33] border border-emerald-200 font-bold shrink-0 cursor-pointer transition-colors"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#0F5A33] border border-emerald-200 font-bold shrink-0 cursor-pointer transition-colors"
                   title="تحديد أو تعديل الموقع على خرائط جوجل"
                 >
-                  <MapPin className="w-4 h-4 text-[#0F5A33]" />
+                  <MapPin className="w-3.5 h-3.5 text-[#0F5A33]" />
                   <span>خريطة</span>
                 </button>
               </div>
@@ -2977,13 +2978,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 required
                 value={formData.code}
                 onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-mono font-bold text-blue-900"
+                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold text-blue-900"
               />
             </div>
           </div>
 
           {/* Allowed Representatives Assignment */}
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2">
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 space-y-1.5">
             <div className="flex items-center justify-between gap-2">
               <label className="font-black text-slate-800">
                 المناديب المسموح لهم بالتعامل مع العميل:
@@ -3010,7 +3011,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                   return (
                     <label
                       key={rep.id}
-                      className={`flex items-center gap-2 p-2 rounded-xl border cursor-pointer transition-colors ${
+                      className={`flex items-center gap-2 p-1.5 rounded-lg border cursor-pointer transition-colors ${
                         isChecked
                           ? 'bg-blue-50 border-blue-400 text-blue-950 font-bold'
                           : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
@@ -3042,7 +3043,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
           </div>
 
           {/* Opening balance and status */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             {!editingCustomer ? (
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
@@ -3059,7 +3060,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                     })
                   }
                   placeholder="0.00"
-                  className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-mono font-bold"
+                  className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold"
                 />
                 <span className="text-[10px] text-slate-500 mt-0.5 block">
                   موجب (+) = مديونية سابقة على العميل، سالب (-) = رصيد دائن مدفوع مقدماً
@@ -3071,7 +3072,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 <select
                   value={formData.status}
                   onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                  className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold outline-hidden focus:border-blue-600"
+                  className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold outline-hidden focus:border-blue-600"
                 >
                   <option value="active">نشط (مسموح بالبيع وإصدار الفواتير)</option>
                   <option value="blocked">محظور (موقوف عن التعامل مؤقتاً)</option>
@@ -3086,13 +3087,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 placeholder="ملاحظات التسليم، أوقات الفتح، مندوب المنطقة..."
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 outline-hidden focus:border-blue-600"
+                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 outline-hidden focus:border-blue-600"
               />
             </div>
           </div>
 
           {!editingCustomer && hasPermission('canManageUsers') && (
-            <div className="rounded-2xl border border-blue-200 bg-blue-50/60 p-3.5 space-y-3">
+            <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-2.5 space-y-2.5">
               <label className="flex items-center gap-2 font-black text-blue-950 cursor-pointer">
                 <input
                   type="checkbox"
@@ -3104,7 +3105,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
               </label>
 
               {createPortalLogin && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">
                       اسم الدخول (Username): <span className="text-red-500">*</span>
@@ -3114,7 +3115,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                       value={portalUsername}
                       onChange={(e) => setPortalUsername(e.target.value)}
                       placeholder="مثال: cust_ahmad"
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-mono font-bold"
+                      className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold"
                     />
                   </div>
                   <div>
@@ -3126,7 +3127,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                       value={portalPassword}
                       onChange={(e) => setPortalPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-mono"
+                      className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono"
                     />
                   </div>
                 </div>
@@ -3135,18 +3136,18 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
           )}
 
           {/* Actions */}
-          <div className="flex justify-end gap-2 pt-3 border-t">
+          <div className="flex justify-end gap-2 pt-2.5 border-t">
             <button
               type="button"
               onClick={() => setIsAddModalOpen(false)}
-              className="px-4 py-2 border border-slate-300 rounded-xl text-slate-700 font-bold hover:bg-slate-50 cursor-pointer"
+              className="px-3.5 py-1.5 border border-slate-300 rounded-lg text-slate-700 font-bold hover:bg-slate-50 cursor-pointer"
             >
               إلغاء
             </button>
             <button
               type="submit"
               disabled={isSavingCustomer || isUploadingPhoto}
-              className="px-6 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-black shadow-md cursor-pointer disabled:opacity-50"
+              className="px-4 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-lg font-black shadow-xs cursor-pointer disabled:opacity-50"
             >
               {isSavingCustomer ? 'جاري الحفظ...' : editingCustomer ? 'حفظ التعديلات' : 'تسجيل العميل في المنظومة'}
             </button>
@@ -3165,9 +3166,9 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
           subtitle={`المديونية الحالية: ${paymentCustomer.currentBalance.toLocaleString()} ${settings.currency}`}
           maxWidth="md"
         >
-          <form onSubmit={handleRecordPayment} className="space-y-4 text-xs">
+          <form onSubmit={handleRecordPayment} className="space-y-3 text-xs">
             {paymentError && (
-              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">
+              <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold">
                 {paymentError}
               </div>
             )}
@@ -3183,7 +3184,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                       setPaymentAmount(found.currentBalance > 0 ? found.currentBalance : '');
                     }
                   }}
-                  className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold outline-hidden focus:border-blue-600"
+                  className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold outline-hidden focus:border-blue-600"
                 >
                   {customers.map(c => (
                     <option key={c.id} value={c.id}>
@@ -3205,19 +3206,19 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 value={paymentAmount === '' ? '' : paymentAmount}
                 onChange={(e) => setPaymentAmount(e.target.value === '' ? '' : Number(e.target.value))}
                 placeholder="أدخل المبلغ"
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-lg font-black text-center text-emerald-800 font-mono outline-hidden focus:border-emerald-600"
+                className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-base font-black text-center text-emerald-800 font-mono outline-hidden focus:border-emerald-600"
               />
             </div>
 
             {Number(paymentAmount || 0) > 0 && (paymentCustomer.currentBalance <= 0 || Number(paymentAmount || 0) > paymentCustomer.currentBalance) && (
-              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-bold leading-relaxed">
+              <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 font-bold leading-relaxed">
                 تنبيه محاسبي: المبلغ المدخل يتجاوز المديونية القائمة للعميل — سيتم قيد الزيادة كـ "رصيد دائن للعميل / دفعة مقدمة (علينا)" ({Math.abs(paymentCustomer.currentBalance - Number(paymentAmount || 0)).toLocaleString()} {settings.currency}) دون تصفير الرصيد السالب ولن يُحتسب كإيراد مبيعات.
               </div>
             )}
 
             <div>
               <label className="block font-bold text-slate-700 mb-1">وسيلة التحصيل:</label>
-              <div className="grid grid-cols-3 gap-2 font-bold">
+              <div className="grid grid-cols-3 gap-1.5 font-bold">
                 {[
                   { id: 'cash' as const, label: 'نقدي' },
                   { id: 'bank' as const, label: 'تحويل بنكي' },
@@ -3227,7 +3228,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                     key={m.id}
                     type="button"
                     onClick={() => setPaymentMethod(m.id)}
-                    className={`p-2 rounded-xl border cursor-pointer ${
+                    className={`p-1.5 rounded-lg border cursor-pointer ${
                       paymentMethod === m.id
                         ? 'bg-blue-900 text-white border-blue-900'
                         : 'bg-white text-slate-700 border-slate-300'
@@ -3245,7 +3246,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 <select
                   value={paymentCashboxId}
                   onChange={(e) => setPaymentCashboxId(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold outline-hidden focus:border-blue-600"
+                  className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold outline-hidden focus:border-blue-600"
                 >
                   {cashboxes.map(cb => (
                     <option key={cb.id} value={cb.id}>
@@ -3255,7 +3256,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 </select>
               </div>
             ) : (
-              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
+              <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
                 يُسجَّل التحصيل على حساب العميل وعهدة/تسوية الإدارة دون اختيار خزائن الشركة.
               </div>
             )}
@@ -3267,22 +3268,22 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 value={paymentNotes}
                 onChange={(e) => setPaymentNotes(e.target.value)}
                 placeholder="سداد دفعة من الحساب / تحصيل مبيعات..."
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 outline-hidden focus:border-blue-600"
+                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 outline-hidden focus:border-blue-600"
               />
             </div>
 
-            <div className="flex justify-end gap-2 pt-3 border-t">
+            <div className="flex justify-end gap-2 pt-2.5 border-t">
               <button
                 type="button"
                 onClick={() => setPaymentCustomer(null)}
-                className="px-4 py-2 border border-slate-300 rounded-xl text-slate-700 font-bold hover:bg-slate-50 cursor-pointer"
+                className="px-3.5 py-1.5 border border-slate-300 rounded-lg text-slate-700 font-bold hover:bg-slate-50 cursor-pointer"
               >
                 إلغاء
               </button>
               <button
                 type="submit"
                 disabled={isSubmittingPayment}
-                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black shadow-md cursor-pointer disabled:opacity-50"
+                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-black shadow-xs cursor-pointer disabled:opacity-50"
               >
                 {isSubmittingPayment ? 'جاري التسجيل...' : 'تأكيد التحصيل وطباعة الإيصال'}
               </button>
@@ -3301,15 +3302,15 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
           title="تأكيد حذف / أرشفة العميل"
           maxWidth="md"
         >
-          <div className="space-y-4 text-xs">
+          <div className="space-y-3 text-xs">
             {deleteErrorMessage ? (
-              <div className="p-4 bg-red-50 text-red-900 border border-red-200 rounded-2xl space-y-2">
+              <div className="p-3 bg-red-50 text-red-900 border border-red-200 rounded-lg space-y-2">
                 <div className="flex items-center gap-2 font-black text-sm text-red-700">
-                  <ShieldAlert className="w-5 h-5 shrink-0" />
+                  <ShieldAlert className="w-4 h-4 shrink-0" />
                   <span>تنبيه أمان وحماية الحسابات</span>
                 </div>
                 <p className="leading-relaxed">{deleteErrorMessage}</p>
-                <div className="pt-2">
+                <div className="pt-1.5">
                   <button
                     onClick={async () => {
                       try {
@@ -3319,7 +3320,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                         setDeleteErrorMessage(err?.message || 'تعذر تغيير حالة العميل.');
                       }
                     }}
-                    className="w-full py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl"
+                    className="w-full py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg"
                   >
                     تغيير حالة العميل إلى "محظور" بدلاً من الحذف
                   </button>
@@ -3327,7 +3328,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="p-4 bg-amber-50 text-amber-900 rounded-2xl border border-amber-200">
+                <div className="p-3 bg-amber-50 text-amber-900 rounded-lg border border-amber-200">
                   <p className="font-bold">
                     هل أنت متأكد من حذف العميل: <span className="font-black underline">{customerToDelete.name}</span> ({customerToDelete.code})؟
                   </p>
@@ -3339,13 +3340,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 <div className="flex justify-end gap-2 pt-2 border-t">
                   <button
                     onClick={() => setCustomerToDelete(null)}
-                    className="px-4 py-2 border rounded-xl font-bold hover:bg-slate-50"
+                    className="px-3.5 py-1.5 border rounded-lg font-bold hover:bg-slate-50"
                   >
                     إلغاء
                   </button>
                   <button
                     onClick={handleConfirmDelete}
-                    className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl shadow-xs"
+                    className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white font-black rounded-lg shadow-xs"
                   >
                     تأكيد الحذف
                   </button>
@@ -3367,8 +3368,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
           subtitle={`التاريخ: ${previewInvoice.date} | العميل: ${previewInvoice.customerName}`}
           maxWidth="4xl"
         >
-          <div className="space-y-4 text-xs">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200 font-mono">
+          <div className="space-y-3 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200 font-mono">
               <div>المستودع: <strong className="font-sans">{previewInvoice.warehouseName}</strong></div>
               <div>المندوب: <strong className="font-sans">{previewInvoice.representativeName || '-'}</strong></div>
               <div>طريقة السداد: <strong className="font-sans">{previewInvoice.paymentType === 'cash' ? 'نقدي' : previewInvoice.paymentType === 'credit' ? 'آجل' : 'جزئي'}</strong></div>
@@ -3390,7 +3391,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
               ]}
             />
 
-            <div className="flex justify-between items-center bg-blue-900 text-white p-3.5 rounded-xl font-bold font-mono">
+            <div className="flex justify-between items-center bg-blue-900 text-white px-3 py-2 rounded-lg font-bold font-mono">
               <span>إجمالي الفاتورة: {previewInvoice.grandTotal.toLocaleString()} {settings.currency}</span>
               <span>المدفوع: {previewInvoice.paidAmount.toLocaleString()}</span>
               <span>المتبقي: {previewInvoice.remainingAmount.toLocaleString()}</span>
@@ -3399,7 +3400,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
             <div className="flex justify-end gap-2 pt-2 border-t">
               <button
                 onClick={() => setPreviewInvoice(null)}
-                className="px-4 py-2 border rounded-xl font-bold"
+                className="px-3.5 py-1.5 border rounded-lg font-bold"
               >
                 إغلاق
               </button>
@@ -3408,9 +3409,9 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                   handlePrintSingleInvoice(previewInvoice);
                   setPreviewInvoice(null);
                 }}
-                className="flex items-center gap-1.5 px-4 py-2 bg-blue-900 text-white rounded-xl font-bold"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-900 text-white rounded-lg font-bold"
               >
-                <Printer className="w-4 h-4" />
+                <Printer className="w-3.5 h-3.5" />
                 <span>طباعة الفاتورة</span>
               </button>
             </div>
@@ -3460,19 +3461,19 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 setIsLinking(false);
               }
             }}
-            className="space-y-4 text-xs"
+            className="space-y-3 text-xs"
           >
             {linkError && (
-              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">
+              <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold">
                 {linkError}
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-2 font-bold">
+            <div className="grid grid-cols-2 gap-1.5 font-bold">
               <button
                 type="button"
                 onClick={() => setLinkMode('create')}
-                className={`p-2 rounded-xl border cursor-pointer ${
+                className={`p-1.5 rounded-lg border cursor-pointer ${
                   linkMode === 'create' ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-slate-700 border-slate-300'
                 }`}
               >
@@ -3481,7 +3482,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
               <button
                 type="button"
                 onClick={() => setLinkMode('existing')}
-                className={`p-2 rounded-xl border cursor-pointer ${
+                className={`p-1.5 rounded-lg border cursor-pointer ${
                   linkMode === 'existing' ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-slate-700 border-slate-300'
                 }`}
               >
@@ -3490,7 +3491,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
             </div>
 
             {linkMode === 'create' ? (
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 <div>
                   <label className="block font-bold mb-1">اسم المستخدم للدخول (Username):</label>
                   <input
@@ -3499,7 +3500,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                     value={newCustomerUsername}
                     onChange={(e) => setNewCustomerUsername(e.target.value)}
                     placeholder="مثال: shop_baraka"
-                    className="w-full border rounded-xl p-2.5 font-mono font-bold"
+                    className="w-full border rounded-lg px-2.5 py-1.5 font-mono font-bold"
                   />
                 </div>
                 <div>
@@ -3511,7 +3512,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                     value={newCustomerPassword}
                     onChange={(e) => setNewCustomerPassword(e.target.value)}
                     placeholder="أدخل كلمة مرور قوية للعميل"
-                    className="w-full border rounded-xl p-2.5 font-mono"
+                    className="w-full border rounded-lg px-2.5 py-1.5 font-mono"
                   />
                 </div>
               </div>
@@ -3522,7 +3523,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                   required
                   value={existingLinkUserId}
                   onChange={(e) => setExistingLinkUserId(e.target.value)}
-                  className="w-full border rounded-xl p-2.5 font-bold bg-white"
+                  className="w-full border rounded-lg px-2.5 py-1.5 font-bold bg-white"
                 >
                   <option value="">-- اختر حساب دخول --</option>
                   {users
@@ -3540,14 +3541,14 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
               <button
                 type="button"
                 onClick={() => setLinkingCustomer(null)}
-                className="px-4 py-2 border rounded-xl font-bold cursor-pointer"
+                className="px-3.5 py-1.5 border rounded-lg font-bold cursor-pointer"
               >
                 إلغاء
               </button>
               <button
                 type="submit"
                 disabled={isLinking}
-                className="px-5 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-black disabled:opacity-50 cursor-pointer"
+                className="px-4 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-lg font-black disabled:opacity-50 cursor-pointer"
               >
                 {isLinking ? 'جاري الربط...' : 'اعتماد وربط الحساب'}
               </button>
@@ -3561,25 +3562,25 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
       {/* ========================================================= */}
       {previewShopPhoto && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/80 backdrop-blur-xs"
           onClick={() => setPreviewShopPhoto(null)}
         >
-          <div className="relative max-w-2xl w-full bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-3 border-b bg-slate-50">
+          <div className="relative max-w-2xl w-full bg-white rounded-xl overflow-hidden shadow-2xl border border-slate-200" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-3.5 py-2 border-b bg-slate-50">
               <span className="font-black text-xs text-slate-900">معاينة صورة المحل</span>
               <button
                 type="button"
                 onClick={() => setPreviewShopPhoto(null)}
-                className="px-3 py-1 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold cursor-pointer"
+                className="px-2.5 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold cursor-pointer"
               >
                 إغلاق
               </button>
             </div>
-            <div className="p-3 bg-slate-900 flex items-center justify-center">
+            <div className="p-2.5 bg-slate-900 flex items-center justify-center">
               <img
                 src={previewShopPhoto}
                 alt="صورة المحل بالحجم الكامل"
-                className="max-h-[75vh] w-auto object-contain rounded-xl"
+                className="max-h-[75vh] w-auto object-contain rounded-lg"
               />
             </div>
           </div>

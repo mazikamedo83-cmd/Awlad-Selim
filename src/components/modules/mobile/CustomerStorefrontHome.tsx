@@ -284,11 +284,11 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
     return (
       <div
         key={`${prod.id}-${activeUnit}`}
-        className="relative bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-2.5 shadow-2xs flex flex-col justify-between gap-2 transition-colors"
+        className="relative bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-2 shadow-2xs flex flex-col justify-between gap-1.5 transition-colors"
       >
         {/* Promo rectangular corner ribbon (zero pill) */}
         {promo.hasPromo && (
-          <div className="absolute top-2 right-2 z-10 bg-[#C81E1E] text-white text-[10px] font-black px-2 py-0.5 rounded-md shadow-xs">
+          <div className="absolute top-1.5 right-1.5 z-10 bg-[#C81E1E] text-white text-[10px] font-black px-1.5 py-0.5 rounded shadow-xs">
             {promo.badgeText || t('عرض عشانك', 'Offer')}
           </div>
         )}
@@ -298,13 +298,13 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
           type="button"
           onClick={() => onToggleFavorite(prod.id)}
           aria-label={isFav ? 'إزالة من المفضلة' : 'إضافة للمفضلة'}
-          className={`absolute top-2 left-2 z-10 w-8 h-8 rounded-lg flex items-center justify-center border cursor-pointer transition-colors ${
+          className={`absolute top-1.5 left-1.5 z-10 w-7 h-7 rounded-md flex items-center justify-center border cursor-pointer transition-colors ${
             isFav
               ? 'bg-red-50 dark:bg-red-950/60 border-red-200 dark:border-red-800 text-[#C81E1E]'
               : 'bg-white/90 dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 text-slate-400 hover:text-red-500'
           }`}
         >
-          <Heart className={`w-4 h-4 ${isFav ? 'fill-current' : ''}`} />
+          <Heart className={`w-3.5 h-3.5 ${isFav ? 'fill-current' : ''}`} />
         </button>
 
         {/* Square Product Image */}
@@ -314,12 +314,12 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
             setQuickQty(1);
             setQuickProduct(prod);
           }}
-          className="w-full aspect-square rounded-xl overflow-hidden bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 flex items-center justify-center cursor-pointer"
+          className="w-full aspect-square rounded-lg overflow-hidden bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 flex items-center justify-center cursor-pointer"
         >
           {thumb ? (
-            <img src={thumb} alt={prod.name} className="w-full h-full object-contain p-1.5" loading="lazy" />
+            <img src={thumb} alt={prod.name} className="w-full h-full object-contain p-1" loading="lazy" />
           ) : (
-            <Package className="w-10 h-10 text-slate-300 dark:text-slate-600" />
+            <Package className="w-8 h-8 text-slate-300 dark:text-slate-600" />
           )}
         </button>
 
@@ -334,12 +334,12 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
               }}
               className="text-right w-full cursor-pointer"
             >
-              <h3 className="text-xs font-black text-slate-900 dark:text-slate-100 line-clamp-2 leading-snug min-h-[2.1rem]">
+              <h3 className="text-xs font-black text-slate-900 dark:text-slate-100 line-clamp-2 leading-snug min-h-[2rem]">
                 {prod.name}
               </h3>
             </button>
 
-            <div className="flex items-center justify-between gap-1 mt-1">
+            <div className="flex items-center justify-between gap-1 mt-0.5">
               {units.length > 1 ? (
                 <select
                   value={activeUnit}
@@ -364,26 +364,26 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
           </div>
 
           {allowPriceView ? (
-            <div className="pt-1 flex items-baseline flex-wrap gap-1.5 awlad-tabular">
-              <strong className="text-sm font-black text-[#0F5A33] dark:text-emerald-400">
+            <div className="pt-0.5 flex items-baseline flex-wrap gap-1 awlad-tabular">
+              <strong className="text-xs sm:text-sm font-black text-[#0F5A33] dark:text-emerald-400">
                 {promo.effectivePrice.toLocaleString()} {currency}
               </strong>
               {promo.hasPromo && (
-                <span className="text-[11px] font-bold text-slate-400 line-through">
+                <span className="text-[10px] font-bold text-slate-400 line-through">
                   {promo.regularPrice.toLocaleString()}
                 </span>
               )}
             </div>
           ) : (
-            <p className="text-[10px] text-slate-400 pt-1">السعر عند الاعتماد</p>
+            <p className="text-[10px] text-slate-400 pt-0.5">السعر عند الاعتماد</p>
           )}
 
           {cartEntry ? (
-            <div className="flex items-center justify-between gap-1 bg-emerald-50 dark:bg-emerald-950/60 border border-[#0F5A33]/30 rounded-xl p-1">
+            <div className="flex items-center justify-between gap-1 bg-emerald-50 dark:bg-emerald-950/60 border border-[#0F5A33]/30 rounded-lg p-0.5">
               <button
                 type="button"
                 onClick={() => onUpdateCartItemQty(prod.id, activeUnit, 1)}
-                className="w-8 h-8 rounded-lg bg-[#0F5A33] text-white flex items-center justify-center cursor-pointer"
+                className="w-7 h-7 rounded-md bg-[#0F5A33] text-white flex items-center justify-center cursor-pointer"
                 aria-label="زيادة الكمية"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -394,7 +394,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
               <button
                 type="button"
                 onClick={() => onUpdateCartItemQty(prod.id, activeUnit, -1)}
-                className="w-8 h-8 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-center cursor-pointer"
+                className="w-7 h-7 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-center cursor-pointer"
                 aria-label="تقليل الكمية"
               >
                 <Minus className="w-3.5 h-3.5" />
@@ -408,7 +408,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                 const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                 onAddToCart(prod, activeUnit, 1, rect);
               }}
-              className="w-full min-h-[38px] rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-400 text-white text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+              className="w-full min-h-[34px] rounded-lg bg-[#0F5A33] hover:bg-[#0B4426] disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-400 text-white text-[11px] font-black flex items-center justify-center gap-1 cursor-pointer transition-colors"
             >
               <ShoppingCart className="w-3.5 h-3.5" />
               <span>{available ? t('إضافة للسلة', 'Add to cart') : t('نفد المخزون', 'Out of stock')}</span>
@@ -434,7 +434,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
   }, [storefront.sections]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {orderedSections.map((sec) => {
         if (sec.key === 'banners') {
           if (activeBanners.length === 0) return null;
@@ -442,7 +442,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
           if (!activeBanner) return null;
 
           return (
-            <section key="banners" aria-label={sec.title} className="space-y-2">
+            <section key="banners" aria-label={sec.title} className="space-y-1.5">
               <div
                 onTouchStart={(e) => {
                   touchStartXRef.current = e.touches[0]?.clientX ?? null;
@@ -462,7 +462,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                   }
                 }}
                 onClick={() => handleNavigationTarget(activeBanner.targetType, activeBanner.targetId)}
-                className="relative w-full aspect-[16/8] sm:aspect-[16/6] rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-[#0F5A33] shadow-sm cursor-pointer"
+                className="relative w-full aspect-[16/7] sm:aspect-[16/5] rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-[#0F5A33] shadow-sm cursor-pointer"
               >
                 {activeBanner.imageUrl ? (
                   <img
@@ -471,19 +471,19 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full flex flex-col justify-center px-6 bg-gradient-to-l from-[#0B4426] via-[#0F5A33] to-[#166534] text-white">
-                    <h2 className="text-lg sm:text-xl font-black">{activeBanner.title}</h2>
+                  <div className="w-full h-full flex flex-col justify-center px-4 bg-gradient-to-l from-[#0B4426] via-[#0F5A33] to-[#166534] text-white">
+                    <h2 className="text-base sm:text-lg font-black">{activeBanner.title}</h2>
                     {activeBanner.subtitle && (
-                      <p className="text-xs text-emerald-100 mt-1">{activeBanner.subtitle}</p>
+                      <p className="text-[11px] text-emerald-100 mt-0.5">{activeBanner.subtitle}</p>
                     )}
                   </div>
                 )}
 
                 {activeBanner.imageUrl && (activeBanner.title || activeBanner.subtitle) && (
-                  <div className="absolute inset-x-0 bottom-0 p-3.5 bg-gradient-to-t from-black/75 via-black/35 to-transparent text-white">
-                    {activeBanner.title && <p className="text-sm font-black">{activeBanner.title}</p>}
+                  <div className="absolute inset-x-0 bottom-0 p-2.5 bg-gradient-to-t from-black/75 via-black/35 to-transparent text-white">
+                    {activeBanner.title && <p className="text-xs sm:text-sm font-black">{activeBanner.title}</p>}
                     {activeBanner.subtitle && (
-                      <p className="text-[11px] text-white/90 line-clamp-1">{activeBanner.subtitle}</p>
+                      <p className="text-[10px] text-white/90 line-clamp-1">{activeBanner.subtitle}</p>
                     )}
                   </div>
                 )}
@@ -516,11 +516,11 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
         if (sec.key === 'shortcuts') {
           if (activeShortcuts.length === 0) return null;
           return (
-            <section key="shortcuts" aria-label="إختصاراتك" className="space-y-2">
-              <h2 className="text-sm font-black text-slate-900 dark:text-slate-100 px-0.5">
+            <section key="shortcuts" aria-label="إختصاراتك" className="space-y-1.5">
+              <h2 className="text-xs font-black text-slate-900 dark:text-slate-100 px-0.5">
                 {sec.title || t('إختصاراتك', 'Your Shortcuts')}
               </h2>
-              <div className="flex items-stretch gap-2.5 overflow-x-auto no-scrollbar pb-1">
+              <div className="flex items-stretch gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
                 {activeShortcuts.map((sc: StorefrontShortcut) => {
                   const Icon = getShortcutIcon(sc.iconKey);
                   return (
@@ -528,12 +528,12 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                       key={sc.id}
                       type="button"
                       onClick={() => handleNavigationTarget(sc.targetType, sc.targetId)}
-                      className="min-w-[84px] flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-[#0F5A33] rounded-2xl p-2.5 flex flex-col items-center justify-center gap-1.5 text-center shadow-2xs cursor-pointer transition-colors"
+                      className="min-w-[76px] flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-[#0F5A33] rounded-xl p-2 flex flex-col items-center justify-center gap-1 text-center shadow-2xs cursor-pointer transition-colors"
                     >
-                      <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-[#0F5A33] dark:text-emerald-400 flex items-center justify-center">
-                        <Icon className="w-5 h-5" />
+                      <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-[#0F5A33] dark:text-emerald-400 flex items-center justify-center">
+                        <Icon className="w-4 h-4" />
                       </div>
-                      <span className="text-[11px] font-black text-slate-800 dark:text-slate-200 whitespace-nowrap">
+                      <span className="text-[10px] font-black text-slate-800 dark:text-slate-200 whitespace-nowrap">
                         {sc.label}
                       </span>
                     </button>
@@ -547,22 +547,22 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
         if (sec.key === 'offers') {
           if (offerProductPairs.length === 0) return null;
           return (
-            <section key="offers" aria-label="عروض عشانك" className="space-y-2.5">
+            <section key="offers" aria-label="عروض عشانك" className="space-y-1.5">
               <div className="flex items-center justify-between px-0.5">
-                <h2 className="text-sm font-black text-slate-900 dark:text-slate-100">
+                <h2 className="text-xs font-black text-slate-900 dark:text-slate-100">
                   {storefront.offersSectionTitle || sec.title || t('عروض مخصصة عشانك', 'Offers For You')}
                 </h2>
                 <button
                   type="button"
                   onClick={() => onNavigateTab('offers')}
-                  className="text-xs font-black text-[#0F5A33] dark:text-emerald-400 flex items-center gap-0.5 cursor-pointer"
+                  className="text-[11px] font-black text-[#0F5A33] dark:text-emerald-400 flex items-center gap-0.5 cursor-pointer"
                 >
                   <span>{t('عرض الكل', 'View all')}</span>
-                  <ChevronLeft className="w-4 h-4" />
+                  <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                 {offerProductPairs.slice(0, 6).map(({ product, unitName }) => renderProductCard(product, unitName))}
               </div>
             </section>
@@ -572,37 +572,37 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
         if (sec.key === 'categories') {
           if (imageCategoryTiles.length === 0) return null;
           return (
-            <section key="categories" aria-label="الأقسام المصورة" className="space-y-2.5">
+            <section key="categories" aria-label="الأقسام المصورة" className="space-y-1.5">
               <div className="flex items-center justify-between px-0.5">
-                <h2 className="text-sm font-black text-slate-900 dark:text-slate-100">
+                <h2 className="text-xs font-black text-slate-900 dark:text-slate-100">
                   {storefront.categoriesSectionTitle || sec.title || t('الأقسام المصورة', 'Categories')}
                 </h2>
                 <button
                   type="button"
                   onClick={() => onNavigateTab('categories')}
-                  className="text-xs font-black text-[#0F5A33] dark:text-emerald-400 flex items-center gap-0.5 cursor-pointer"
+                  className="text-[11px] font-black text-[#0F5A33] dark:text-emerald-400 flex items-center gap-0.5 cursor-pointer"
                 >
                   <span>{t('عرض الكل', 'View all')}</span>
-                  <ChevronLeft className="w-4 h-4" />
+                  <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
               </div>
 
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
                 {imageCategoryTiles.slice(0, 9).map((tile) => (
                   <button
                     key={tile.id}
                     type="button"
                     onClick={() => onOpenCategory(tile.rawCategoryName, tile.productIds)}
-                    className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-[#0F5A33] p-2 flex flex-col items-center justify-between gap-2 text-center shadow-2xs cursor-pointer transition-colors"
+                    className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-[#0F5A33] p-1.5 flex flex-col items-center justify-between gap-1 text-center shadow-2xs cursor-pointer transition-colors"
                   >
-                    <div className="w-full aspect-square rounded-xl bg-slate-50 dark:bg-slate-800 overflow-hidden flex items-center justify-center">
+                    <div className="w-full aspect-square rounded-lg bg-slate-50 dark:bg-slate-800 overflow-hidden flex items-center justify-center">
                       {tile.imageUrl ? (
                         <img src={tile.imageUrl} alt={tile.name} className="w-full h-full object-cover" loading="lazy" />
                       ) : (
-                        <LayoutGrid className="w-7 h-7 text-[#0F5A33]/70 dark:text-emerald-400" />
+                        <LayoutGrid className="w-5 h-5 text-[#0F5A33]/70 dark:text-emerald-400" />
                       )}
                     </div>
-                    <span className="text-[11px] font-black text-slate-800 dark:text-slate-200 line-clamp-2 leading-tight">
+                    <span className="text-[10px] font-black text-slate-800 dark:text-slate-200 line-clamp-2 leading-tight">
                       {tile.name}
                     </span>
                   </button>
@@ -615,21 +615,21 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
         if (sec.key === 'featured') {
           if (featuredProducts.length === 0) return null;
           return (
-            <section key="featured" aria-label="الأصناف المميزة" className="space-y-2.5">
+            <section key="featured" aria-label="الأصناف المميزة" className="space-y-1.5">
               <div className="flex items-center justify-between px-0.5">
-                <h2 className="text-sm font-black text-slate-900 dark:text-slate-100">
+                <h2 className="text-xs font-black text-slate-900 dark:text-slate-100">
                   {storefront.featuredSectionTitle || sec.title || t('أصناف مقترحة لك', 'Featured Products')}
                 </h2>
                 <button
                   type="button"
                   onClick={() => onNavigateTab('categories')}
-                  className="text-xs font-black text-[#0F5A33] dark:text-emerald-400 flex items-center gap-0.5 cursor-pointer"
+                  className="text-[11px] font-black text-[#0F5A33] dark:text-emerald-400 flex items-center gap-0.5 cursor-pointer"
                 >
                   <span>{t('تصفح الكل', 'Browse all')}</span>
-                  <ChevronLeft className="w-4 h-4" />
+                  <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                 {featuredProducts.map((p) => renderProductCard(p))}
               </div>
             </section>
@@ -642,7 +642,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
       {/* Quick Product Detail Sheet */}
       {quickProduct && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-white dark:bg-slate-900 w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 p-4 space-y-3 shadow-2xl pb-safe">
+          <div className="bg-white dark:bg-slate-900 w-full sm:max-w-md rounded-t-2xl sm:rounded-xl border border-slate-200 dark:border-slate-800 p-3.5 space-y-2.5 shadow-2xl pb-safe">
             <div className="flex items-start justify-between gap-2">
               <div>
                 <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">{quickProduct.name}</h3>

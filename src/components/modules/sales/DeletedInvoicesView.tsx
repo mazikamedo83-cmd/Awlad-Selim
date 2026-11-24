@@ -48,21 +48,22 @@ export const DeletedInvoicesView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 flex items-center justify-between gap-3">
+    <div className="space-y-3">
+      <div className="bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 flex items-center justify-between gap-2">
         <div>
-          <h2 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
-            <Trash2 className="w-5 h-5 text-red-700" />
+          <h2 className="text-sm sm:text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+            <Trash2 className="w-4 h-4 text-red-700" />
             <span>سجل الفواتير المحذوفة والملغاة (Audit Review)</span>
           </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            مراجعة جميع فواتير البيع والشراء التي تم إلغاؤها أو حذفها منطقياً مع الاحتفاظ بكامل بياناتها وأسباب الإلغاء في الدفتر المركزي
+          <p className="text-[11px] text-slate-500">
+            مراجعة فواتير البيع والشراء الملغاة مع الاحتفاظ بكامل بياناتها وأسباب الإلغاء في الدفتر المركزي
           </p>
         </div>
       </div>
 
       <UnifiedDataTable<Invoice>
         data={deletedInvoices}
+        compact
         rowKey={(inv) => inv.id}
         searchPlaceholder="بحث برقم الفاتورة أو العميل أو السبب..."
         exportFilename="سجل-الفواتير-المحذوفة-والملغاة"
@@ -73,11 +74,11 @@ export const DeletedInvoicesView: React.FC = () => {
         }}
         emptyTitle="لا توجد فواتير محذوفة أو ملغاة مطابقة"
         toolbarFilters={
-          <div className="flex flex-wrap items-center gap-2 text-xs">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value as any)}
-              className="min-h-[36px] bg-white border border-slate-300 rounded-lg px-2.5 py-1 font-bold"
+              className="h-8 bg-white border border-slate-300 rounded-lg px-2 py-1 font-bold"
             >
               <option value="all">كل الفواتير الملغاة</option>
               <option value="sales">فواتير البيع الملغاة فقط</option>
@@ -87,13 +88,13 @@ export const DeletedInvoicesView: React.FC = () => {
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="min-h-[36px] bg-white border border-slate-300 rounded-lg px-2.5 py-1 font-mono"
+              className="h-8 bg-white border border-slate-300 rounded-lg px-2 py-1 font-mono"
             />
             <input
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="min-h-[36px] bg-white border border-slate-300 rounded-lg px-2.5 py-1 font-mono"
+              className="h-8 bg-white border border-slate-300 rounded-lg px-2 py-1 font-mono"
             />
           </div>
         }

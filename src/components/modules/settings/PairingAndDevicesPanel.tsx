@@ -327,16 +327,16 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
   const activeUsers = users.filter((u) => u.isActive);
 
   return (
-    <div className="space-y-6 text-xs">
+    <div className="space-y-3.5 text-xs">
       {error && (
-        <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold flex items-center gap-2">
+        <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold flex items-center gap-2">
           <AlertCircle className="w-4 h-4 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
       {/* 1. Direct Invite Link & QR Code Pairing Generator */}
-      <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-5">
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3">
           <div>
             <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
@@ -712,7 +712,7 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
       </div>
 
       {/* 2. Connected & Paired Device Management */}
-      <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3">
           <div>
             <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">

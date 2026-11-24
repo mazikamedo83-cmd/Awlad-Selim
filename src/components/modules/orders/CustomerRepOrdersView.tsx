@@ -157,27 +157,27 @@ export const CustomerRepOrdersView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-3">
+      <div className="bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-xl font-black text-slate-900">طلبات العملاء والمندوبين</h1>
-          <p className="text-xs text-slate-500">
+          <h1 className="text-sm sm:text-base font-black text-slate-900">طلبات العملاء والمندوبين</h1>
+          <p className="text-[11px] text-slate-500">
             مراجعة واعتماد طلبات الأصناف، إسناد مناديب التوصيل، الدفعات المقدمة، والتحويل لفواتير مبيعات
           </p>
         </div>
         <button
           type="button"
           onClick={() => triggerManualSync()}
-          className="px-4 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-xs font-bold text-slate-700 flex items-center gap-2 cursor-pointer"
+          className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-xs font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer"
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw className="w-3.5 h-3.5" />
           <span>تحديث الطلبات</span>
         </button>
       </div>
 
       {feedback && (
         <div
-          className={`p-3 rounded-xl border text-xs font-bold ${
+          className={`px-3 py-2 rounded-lg border text-xs font-bold ${
             feedback.type === 'ok'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
               : 'bg-red-50 border-red-200 text-red-800'
@@ -187,36 +187,37 @@ export const CustomerRepOrdersView: React.FC = () => {
         </div>
       )}
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="bg-white p-4 rounded-2xl border border-amber-200 shadow-xs">
-          <p className="text-xs text-amber-800 font-bold flex items-center gap-1.5">
-            <Clock className="w-4 h-4" /> طلبات جديدة
-          </p>
-          <p className="text-2xl font-black text-amber-950 mt-1 font-mono">{stats.pending}</p>
+      {/* Compact Summary Ledger Strip */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden">
+        <div className="bg-white px-3 py-2 flex items-center justify-between">
+          <span className="text-[11px] text-amber-800 font-bold flex items-center gap-1">
+            <Clock className="w-3.5 h-3.5" /> طلبات جديدة
+          </span>
+          <span className="text-base font-black text-amber-950 font-mono tabular-nums">{stats.pending}</span>
         </div>
-        <div className="bg-white p-4 rounded-2xl border border-blue-200 shadow-xs">
-          <p className="text-xs text-blue-800 font-bold flex items-center gap-1.5">
-            <ClipboardList className="w-4 h-4" /> مراجعة واعتماد
-          </p>
-          <p className="text-2xl font-black text-blue-950 mt-1 font-mono">{stats.inProgress}</p>
+        <div className="bg-white px-3 py-2 flex items-center justify-between">
+          <span className="text-[11px] text-blue-800 font-bold flex items-center gap-1">
+            <ClipboardList className="w-3.5 h-3.5" /> مراجعة واعتماد
+          </span>
+          <span className="text-base font-black text-blue-950 font-mono tabular-nums">{stats.inProgress}</span>
         </div>
-        <div className="bg-white p-4 rounded-2xl border border-indigo-200 shadow-xs">
-          <p className="text-xs text-indigo-800 font-bold flex items-center gap-1.5">
-            <Truck className="w-4 h-4" /> قيد التوصيل
-          </p>
-          <p className="text-2xl font-black text-indigo-950 mt-1 font-mono">{stats.delivery}</p>
+        <div className="bg-white px-3 py-2 flex items-center justify-between">
+          <span className="text-[11px] text-indigo-800 font-bold flex items-center gap-1">
+            <Truck className="w-3.5 h-3.5" /> قيد التوصيل
+          </span>
+          <span className="text-base font-black text-indigo-950 font-mono tabular-nums">{stats.delivery}</span>
         </div>
-        <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-xs">
-          <p className="text-xs text-emerald-800 font-bold flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4" /> مسلمة / مفوترة
-          </p>
-          <p className="text-2xl font-black text-emerald-950 mt-1 font-mono">{stats.done}</p>
+        <div className="bg-white px-3 py-2 flex items-center justify-between">
+          <span className="text-[11px] text-emerald-800 font-bold flex items-center gap-1">
+            <CheckCircle2 className="w-3.5 h-3.5" /> مسلمة / مفوترة
+          </span>
+          <span className="text-base font-black text-emerald-950 font-mono tabular-nums">{stats.done}</span>
         </div>
       </div>
 
       {/* Unified Orders Table */}
       <UnifiedDataTable<CustomerItemOrderRequest>
+        compact
         title={`سجل طلبات العملاء والمندوبين (${filteredOrders.length})`}
         data={filteredOrders}
         rowKey={(ord) => ord.id}
@@ -559,8 +560,8 @@ export const CustomerRepOrdersView: React.FC = () => {
         maxWidth="4xl"
       >
         {selectedOrder && (
-          <div className="space-y-4 text-xs">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200">
+          <div className="space-y-3 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-2.5 rounded-lg bg-slate-50 border border-slate-200">
               <div>
                 <p className="text-slate-500">العميل:</p>
                 <p className="font-bold text-slate-900">{selectedOrder.customerName}</p>
@@ -634,14 +635,14 @@ export const CustomerRepOrdersView: React.FC = () => {
             />
 
             {selectedOrder.notes && (
-              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">
+              <div className="px-2.5 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-900">
                 <strong>ملاحظات:</strong> {selectedOrder.notes}
               </div>
             )}
 
             {/* Linked Invoice Payment Summary & History */}
             {(selectedOrder.invoiceId || (selectedOrder.paymentsHistory && selectedOrder.paymentsHistory.length > 0)) && (
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-black text-slate-900">
                     ملخص سداد الفاتورة {selectedOrder.invoiceNumber ? `(${selectedOrder.invoiceNumber})` : ''}
@@ -656,16 +657,16 @@ export const CustomerRepOrdersView: React.FC = () => {
                     {selectedOrder.paymentStatus === 'paid' ? 'مسدد بالكامل' : selectedOrder.paymentStatus === 'partial' ? 'مدفوع جزئياً' : 'غير مسدد'}
                   </span>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-center bg-white p-2.5 rounded-xl border border-slate-200 tabular-nums">
-                  <div>
+                <div className="grid grid-cols-3 gap-px text-center bg-slate-200 rounded-lg overflow-hidden border border-slate-200 tabular-nums">
+                  <div className="bg-white p-2">
                     <span className="block text-[10px] text-slate-500">إجمالي الفاتورة</span>
                     <strong className="font-mono text-slate-900">{Number(selectedOrder.invoiceTotal ?? getOrderTotal(selectedOrder)).toLocaleString()} {settings.currency}</strong>
                   </div>
-                  <div>
+                  <div className="bg-white p-2">
                     <span className="block text-[10px] text-slate-500">المدفوع</span>
                     <strong className="font-mono text-emerald-700">{Number(selectedOrder.invoicePaidAmount ?? selectedOrder.advancePaidAmount ?? 0).toLocaleString()} {settings.currency}</strong>
                   </div>
-                  <div>
+                  <div className="bg-white p-2">
                     <span className="block text-[10px] text-slate-500">المتبقي</span>
                     <strong className="font-mono text-red-600">{Number(selectedOrder.invoiceRemainingAmount ?? selectedOrder.remainingAmount ?? 0).toLocaleString()} {settings.currency}</strong>
                   </div>
@@ -716,7 +717,7 @@ export const CustomerRepOrdersView: React.FC = () => {
 
             {canManageSales &&
               ['approved', 'invoiced', 'preparing', 'rep_assigned', 'out_for_delivery', 'delivered', 'collected'].includes(selectedOrder.status) && (
-                <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-200">
+                <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-200">
                   {['approved', 'invoiced'].includes(selectedOrder.status) && (
                     <button
                       type="button"
@@ -727,7 +728,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                           'تم تحديث الحالة إلى قيد التجهيز'
                         )
                       }
-                      className="px-3 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-bold cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white font-bold cursor-pointer"
                     >
                       بدء التجهيز
                     </button>
@@ -742,7 +743,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                           'تم تحديث الحالة إلى خرج للتوصيل'
                         )
                       }
-                      className="px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold cursor-pointer"
                     >
                       خروج للتوصيل
                     </button>
@@ -757,7 +758,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                           'تم تأكيد تسليم الطلب'
                         )
                       }
-                      className="px-3 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer"
                     >
                       تم التسليم
                     </button>
@@ -772,7 +773,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                         setCollectMethod('cash');
                         setCollectNotes('');
                       }}
-                      className="px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
                     >
                       تحصيل الدفعة
                     </button>
@@ -787,7 +788,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                           'تم إغلاق الطلب'
                         )
                       }
-                      className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-black text-white font-bold cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-black text-white font-bold cursor-pointer"
                     >
                       إغلاق الطلب
                     </button>
@@ -822,10 +823,10 @@ export const CustomerRepOrdersView: React.FC = () => {
             );
             if (ok) setCollectStageOrder(null);
           }}
-          className="space-y-3 text-xs"
+          className="space-y-2.5 text-xs"
         >
           <div>
-            <label className="block font-bold text-slate-700 mb-1">المبلغ المحصل ({settings.currency}):</label>
+            <label className="block font-bold text-slate-700 mb-0.5">المبلغ المحصل ({settings.currency}):</label>
             <input
               type="number"
               min={0}
@@ -834,17 +835,17 @@ export const CustomerRepOrdersView: React.FC = () => {
               placeholder="0.00"
               value={collectAmount || ''}
               onChange={(e) => setCollectAmount(e.target.value === '' ? 0 : Number(e.target.value))}
-              className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
+              className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 font-mono font-bold"
             />
           </div>
           <div className={hasTreasuryAccess ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-1 gap-2'}>
             {hasTreasuryAccess && (
               <div>
-                <label className="block font-bold text-slate-700 mb-1">الخزينة:</label>
+                <label className="block font-bold text-slate-700 mb-0.5">الخزينة:</label>
                 <select
                   value={collectCashboxId}
                   onChange={(e) => setCollectCashboxId(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                  className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 bg-white font-bold"
                 >
                   {cashboxes.map((cb) => (
                     <option key={cb.id} value={cb.id}>{cb.name}</option>
@@ -853,11 +854,11 @@ export const CustomerRepOrdersView: React.FC = () => {
               </div>
             )}
             <div>
-              <label className="block font-bold text-slate-700 mb-1">طريقة الدفع:</label>
+              <label className="block font-bold text-slate-700 mb-0.5">طريقة الدفع:</label>
               <select
                 value={collectMethod}
                 onChange={(e) => setCollectMethod(e.target.value as any)}
-                className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 bg-white font-bold"
               >
                 <option value="cash">نقدي</option>
                 <option value="bank">تحويل بنكي</option>
@@ -866,19 +867,19 @@ export const CustomerRepOrdersView: React.FC = () => {
             </div>
           </div>
           <div>
-            <label className="block font-bold text-slate-700 mb-1">ملاحظات:</label>
+            <label className="block font-bold text-slate-700 mb-0.5">ملاحظات:</label>
             <input
               type="text"
               value={collectNotes}
               onChange={(e) => setCollectNotes(e.target.value)}
-              className="w-full p-2.5 rounded-xl border border-slate-300"
+              className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300"
             />
           </div>
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => setCollectStageOrder(null)} className="px-4 py-2 rounded-xl bg-slate-100 font-bold cursor-pointer">
+          <div className="flex justify-end gap-2 pt-1">
+            <button type="button" onClick={() => setCollectStageOrder(null)} className="px-3.5 py-1.5 rounded-lg bg-slate-100 font-bold cursor-pointer">
               إلغاء
             </button>
-            <button type="submit" disabled={busy} className="px-4 py-2 rounded-xl bg-emerald-700 text-white font-bold cursor-pointer">
+            <button type="submit" disabled={busy} className="px-3.5 py-1.5 rounded-lg bg-emerald-700 text-white font-bold cursor-pointer">
               تأكيد التحصيل
             </button>
           </div>
@@ -902,7 +903,7 @@ export const CustomerRepOrdersView: React.FC = () => {
             );
             if (ok) setRejectModalOrder(null);
           }}
-          className="space-y-3 text-xs"
+          className="space-y-2.5 text-xs"
         >
           <label className="block font-bold text-slate-700">سبب الرفض:</label>
           <textarea
@@ -910,23 +911,23 @@ export const CustomerRepOrdersView: React.FC = () => {
             rows={3}
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}
-            className="w-full p-2.5 rounded-xl border border-slate-300"
+            className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300"
             placeholder="اكتب سبب الرفض ليظهر للعميل أو المندوب..."
           />
           <div className="flex justify-end gap-2">
             <button
               type="button"
               onClick={() => setRejectModalOrder(null)}
-              className="px-4 py-2 rounded-xl bg-slate-100 font-bold cursor-pointer"
+              className="px-3.5 py-1.5 rounded-lg bg-slate-100 font-bold cursor-pointer"
             >
               إلغاء
             </button>
             <button
               type="submit"
               disabled={busy}
-              className="px-4 py-2 rounded-xl bg-red-600 text-white font-bold flex items-center gap-1 cursor-pointer"
+              className="px-3.5 py-1.5 rounded-lg bg-red-600 text-white font-bold flex items-center gap-1 cursor-pointer"
             >
-              <XCircle className="w-4 h-4" /> تأكيد الرفض
+              <XCircle className="w-3.5 h-3.5" /> تأكيد الرفض
             </button>
           </div>
         </form>
@@ -949,15 +950,15 @@ export const CustomerRepOrdersView: React.FC = () => {
             );
             if (ok) setAssignModalOrder(null);
           }}
-          className="space-y-3 text-xs"
+          className="space-y-2.5 text-xs"
         >
           <div>
-            <label className="block font-bold text-slate-700 mb-1">اختر المندوب:</label>
+            <label className="block font-bold text-slate-700 mb-0.5">اختر المندوب:</label>
             <select
               required
               value={assignRepId}
               onChange={(e) => setAssignRepId(e.target.value)}
-              className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+              className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 bg-white font-bold"
             >
               <option value="">-- اختر مندوباً --</option>
               {representatives.map((r) => (
@@ -968,26 +969,26 @@ export const CustomerRepOrdersView: React.FC = () => {
             </select>
           </div>
           <div>
-            <label className="block font-bold text-slate-700 mb-1">ملاحظات التوصيل:</label>
+            <label className="block font-bold text-slate-700 mb-0.5">ملاحظات التوصيل:</label>
             <input
               type="text"
               value={assignNotes}
               onChange={(e) => setAssignNotes(e.target.value)}
-              className="w-full p-2.5 rounded-xl border border-slate-300"
+              className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300"
             />
           </div>
           <div className="flex justify-end gap-2">
             <button
               type="button"
               onClick={() => setAssignModalOrder(null)}
-              className="px-4 py-2 rounded-xl bg-slate-100 font-bold cursor-pointer"
+              className="px-3.5 py-1.5 rounded-lg bg-slate-100 font-bold cursor-pointer"
             >
               إلغاء
             </button>
             <button
               type="submit"
               disabled={busy || !assignRepId}
-              className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold cursor-pointer"
+              className="px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white font-bold cursor-pointer"
             >
               حفظ الإسناد
             </button>
@@ -1018,10 +1019,10 @@ export const CustomerRepOrdersView: React.FC = () => {
             );
             if (ok) setAdvanceModalOrder(null);
           }}
-          className="space-y-3 text-xs"
+          className="space-y-2.5 text-xs"
         >
           <div>
-            <label className="block font-bold text-slate-700 mb-1">المبلغ ({settings.currency}):</label>
+            <label className="block font-bold text-slate-700 mb-0.5">المبلغ ({settings.currency}):</label>
             <input
               type="number"
               min={0.01}
@@ -1030,17 +1031,17 @@ export const CustomerRepOrdersView: React.FC = () => {
               placeholder="0.00"
               value={advanceAmount || ''}
               onChange={(e) => setAdvanceAmount(e.target.value === '' ? 0 : Number(e.target.value))}
-              className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
+              className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 font-mono font-bold"
             />
           </div>
           <div className={hasTreasuryAccess ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-1 gap-2'}>
             {hasTreasuryAccess && (
               <div>
-                <label className="block font-bold text-slate-700 mb-1">الخزينة:</label>
+                <label className="block font-bold text-slate-700 mb-0.5">الخزينة:</label>
                 <select
                   value={advanceCashboxId}
                   onChange={(e) => setAdvanceCashboxId(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                  className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 bg-white font-bold"
                 >
                   {cashboxes.map((cb) => (
                     <option key={cb.id} value={cb.id}>
@@ -1051,11 +1052,11 @@ export const CustomerRepOrdersView: React.FC = () => {
               </div>
             )}
             <div>
-              <label className="block font-bold text-slate-700 mb-1">الطريقة:</label>
+              <label className="block font-bold text-slate-700 mb-0.5">الطريقة:</label>
               <select
                 value={advanceMethod}
                 onChange={(e) => setAdvanceMethod(e.target.value as any)}
-                className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 bg-white font-bold"
               >
                 <option value="cash">نقدي</option>
                 <option value="bank">تحويل بنكي</option>
@@ -1064,26 +1065,26 @@ export const CustomerRepOrdersView: React.FC = () => {
             </div>
           </div>
           <div>
-            <label className="block font-bold text-slate-700 mb-1">ملاحظات:</label>
+            <label className="block font-bold text-slate-700 mb-0.5">ملاحظات:</label>
             <input
               type="text"
               value={advanceNotes}
               onChange={(e) => setAdvanceNotes(e.target.value)}
-              className="w-full p-2.5 rounded-xl border border-slate-300"
+              className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300"
             />
           </div>
           <div className="flex justify-end gap-2">
             <button
               type="button"
               onClick={() => setAdvanceModalOrder(null)}
-              className="px-4 py-2 rounded-xl bg-slate-100 font-bold cursor-pointer"
+              className="px-3.5 py-1.5 rounded-lg bg-slate-100 font-bold cursor-pointer"
             >
               إلغاء
             </button>
             <button
               type="submit"
               disabled={busy || advanceAmount <= 0}
-              className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold cursor-pointer"
+              className="px-3.5 py-1.5 rounded-lg bg-emerald-600 text-white font-bold cursor-pointer"
             >
               تسجيل الدفعة
             </button>
@@ -1123,15 +1124,15 @@ export const CustomerRepOrdersView: React.FC = () => {
             );
             if (ok) setConvertModalOrder(null);
           }}
-          className="space-y-3 text-xs"
+          className="space-y-2.5 text-xs"
         >
           <div className={hasTreasuryAccess ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-1 gap-2'}>
             <div>
-              <label className="block font-bold text-slate-700 mb-1">مستودع الصرف:</label>
+              <label className="block font-bold text-slate-700 mb-0.5">مستودع الصرف:</label>
               <select
                 value={convertWarehouseId}
                 onChange={(e) => setConvertWarehouseId(e.target.value)}
-                className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 bg-white font-bold"
               >
                 {warehouses.map((w) => (
                   <option key={w.id} value={w.id}>
@@ -1142,11 +1143,11 @@ export const CustomerRepOrdersView: React.FC = () => {
             </div>
             {hasTreasuryAccess && (
               <div>
-                <label className="block font-bold text-slate-700 mb-1">الخزينة:</label>
+                <label className="block font-bold text-slate-700 mb-0.5">الخزينة:</label>
                 <select
                   value={convertCashboxId}
                   onChange={(e) => setConvertCashboxId(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                  className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 bg-white font-bold"
                 >
                   {cashboxes.map((cb) => (
                     <option key={cb.id} value={cb.id}>
@@ -1161,11 +1162,11 @@ export const CustomerRepOrdersView: React.FC = () => {
             {hasTreasuryAccess && (
               <>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">نوع الدفع:</label>
+                  <label className="block font-bold text-slate-700 mb-0.5">نوع الدفع:</label>
                   <select
                     value={convertPaymentType}
                     onChange={(e) => setConvertPaymentType(e.target.value as any)}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                    className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 bg-white font-bold"
                   >
                     <option value="cash">نقدي</option>
                     <option value="partial">جزئي</option>
@@ -1173,7 +1174,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">المدفوع عند الفاتورة:</label>
+                  <label className="block font-bold text-slate-700 mb-0.5">المدفوع عند الفاتورة:</label>
                   <input
                     type="number"
                     min={0}
@@ -1181,13 +1182,13 @@ export const CustomerRepOrdersView: React.FC = () => {
                     placeholder="0.00"
                     value={convertPaid || ''}
                     onChange={(e) => setConvertPaid(e.target.value === '' ? 0 : Number(e.target.value))}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
+                    className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 font-mono font-bold"
                   />
                 </div>
               </>
             )}
             <div>
-              <label className="block font-bold text-slate-700 mb-1">الخصم:</label>
+              <label className="block font-bold text-slate-700 mb-0.5">الخصم:</label>
               <input
                 type="number"
                 min={0}
@@ -1195,31 +1196,31 @@ export const CustomerRepOrdersView: React.FC = () => {
                 placeholder="0.00"
                 value={convertDiscount || ''}
                 onChange={(e) => setConvertDiscount(e.target.value === '' ? 0 : Number(e.target.value))}
-                className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
+                className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 font-mono font-bold"
               />
             </div>
           </div>
           <div>
-            <label className="block font-bold text-slate-700 mb-1">ملاحظات الفاتورة:</label>
+            <label className="block font-bold text-slate-700 mb-0.5">ملاحظات الفاتورة:</label>
             <input
               type="text"
               value={convertNotes}
               onChange={(e) => setConvertNotes(e.target.value)}
-              className="w-full p-2.5 rounded-xl border border-slate-300"
+              className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300"
             />
           </div>
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-1">
             <button
               type="button"
               onClick={() => setConvertModalOrder(null)}
-              className="px-4 py-2 rounded-xl bg-slate-100 font-bold cursor-pointer"
+              className="px-3.5 py-1.5 rounded-lg bg-slate-100 font-bold cursor-pointer"
             >
               إلغاء
             </button>
             <button
               type="submit"
               disabled={busy}
-              className="px-4 py-2 rounded-xl bg-blue-900 text-white font-bold cursor-pointer"
+              className="px-3.5 py-1.5 rounded-lg bg-blue-900 text-white font-bold cursor-pointer"
             >
               اعتماد وتحويل لفاتورة
             </button>

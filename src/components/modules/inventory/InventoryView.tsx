@@ -477,14 +477,14 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     };
 
     return (
-      <div className="space-y-5">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="space-y-3">
+        <div className="bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
           <div>
-            <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-              <WarehouseIcon className="w-5 h-5 text-blue-900" />
+            <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
+              <WarehouseIcon className="w-4 h-4 text-blue-900" />
               <span>إدارة المستودعات والمخازن</span>
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-[11px] text-slate-500 mt-0.5">
               إضافة وتعديل المستودعات ومتابعة إجمالي الكميات والقيمة المخزنية في كل مستودع
             </p>
           </div>
@@ -503,15 +503,15 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               setWhModalError(null);
               setIsWarehouseModalOpen(true);
             }}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl text-xs font-black shadow-md cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-lg text-xs font-black shadow-xs cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
             <span>إضافة مستودع جديد</span>
           </button>
         </div>
 
         {statusBanner && (
-          <div className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between ${
+          <div className={`px-3 py-2 rounded-lg border text-xs font-bold flex items-center justify-between ${
             statusBanner.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-red-50 border-red-200 text-red-900'
           }`}>
             <span>{statusBanner.text}</span>
@@ -524,6 +524,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           subtitle="المخازن والفروع المسجلة وإجمالي الوحدات والقيمة الشرائية"
           data={warehouses}
           rowKey={(wh) => wh.id}
+          compact
           searchPlaceholder="بحث باسم المستودع أو الكود أو الموقع..."
           searchFilter={(wh, q) =>
             `${wh.name} ${wh.code} ${wh.location || ''} ${wh.managerName || ''} ${wh.phone || ''}`.toLowerCase().includes(q)
@@ -689,11 +690,11 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           title={editingWarehouse ? `تعديل المستودع: ${editingWarehouse.name}` : 'إضافة مستودع جديد'}
           maxWidth="lg"
         >
-          <form onSubmit={handleSaveWh} className="space-y-4 text-xs">
+          <form onSubmit={handleSaveWh} className="space-y-3 text-xs">
             {whModalError && (
-              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">{whModalError}</div>
+              <div className="p-2 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold">{whModalError}</div>
             )}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
                 <label className="block font-bold mb-1">اسم المستودع: *</label>
                 <input
@@ -702,7 +703,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                   value={whForm.name}
                   onChange={(e) => setWhForm({ ...whForm, name: e.target.value })}
                   placeholder="مثال: المخزن الرئيسي - شبرا"
-                  className="w-full border border-slate-300 rounded-xl p-2.5 font-bold"
+                  className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
                 />
               </div>
               <div>
@@ -711,7 +712,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                   type="text"
                   value={whForm.code}
                   onChange={(e) => setWhForm({ ...whForm, code: e.target.value })}
-                  className="w-full border border-slate-300 rounded-xl p-2.5 font-mono font-bold"
+                  className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold"
                 />
               </div>
               <div>
@@ -720,7 +721,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                   type="text"
                   value={whForm.location}
                   onChange={(e) => setWhForm({ ...whForm, location: e.target.value })}
-                  className="w-full border border-slate-300 rounded-xl p-2.5"
+                  className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5"
                 />
               </div>
               <div>
@@ -729,7 +730,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                   type="text"
                   value={whForm.managerName}
                   onChange={(e) => setWhForm({ ...whForm, managerName: e.target.value })}
-                  className="w-full border border-slate-300 rounded-xl p-2.5"
+                  className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5"
                 />
               </div>
               <div>
@@ -738,10 +739,10 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                   type="text"
                   value={whForm.phone}
                   onChange={(e) => setWhForm({ ...whForm, phone: e.target.value })}
-                  className="w-full border border-slate-300 rounded-xl p-2.5 font-mono"
+                  className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono"
                 />
               </div>
-              <div className="flex items-center gap-2 pt-5">
+              <div className="flex items-center gap-2 pt-4">
                 <input
                   id="wh-default-check"
                   type="checkbox"
@@ -751,9 +752,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                 <label htmlFor="wh-default-check" className="font-bold cursor-pointer">مستودع افتراضي للفواتير</label>
               </div>
             </div>
-            <div className="flex justify-end gap-2 pt-3 border-t">
-              <button type="button" onClick={() => setIsWarehouseModalOpen(false)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">إلغاء</button>
-              <button type="submit" disabled={isSavingWh} className="px-6 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-black cursor-pointer disabled:opacity-50">
+            <div className="flex justify-end gap-2 pt-2.5 border-t">
+              <button type="button" onClick={() => setIsWarehouseModalOpen(false)} className="px-3.5 py-1.5 border rounded-lg font-bold cursor-pointer">إلغاء</button>
+              <button type="submit" disabled={isSavingWh} className="px-4 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-lg font-black cursor-pointer disabled:opacity-50">
                 {isSavingWh ? 'جاري الحفظ...' : 'حفظ المستودع'}
               </button>
             </div>
@@ -805,14 +806,14 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
       });
 
     return (
-      <div className="space-y-5">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="space-y-3">
+        <div className="bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
           <div>
-            <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-              <History className="w-5 h-5 text-blue-900" />
+            <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
+              <History className="w-4 h-4 text-blue-900" />
               <span>سجل حركات المخازن التفصيلي</span>
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-[11px] text-slate-500 mt-0.5">
               تتبع كل حركة دخول وخروج وتحويل وتسوية وجرد وتلف للأصناف عبر جميع المستودعات ({filteredMovements.length} حركة)
             </p>
           </div>
@@ -832,9 +833,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               ]);
               exportToExcel(`سجل_حركات_المخازن_${new Date().toISOString().split('T')[0]}`, headers, rows);
             }}
-            className="flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold hover:bg-slate-50 text-slate-700 cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-bold hover:bg-slate-50 text-slate-700 cursor-pointer"
           >
-            <Download className="w-4 h-4 text-emerald-600" />
+            <Download className="w-3.5 h-3.5 text-emerald-600" />
             <span>تصدير Excel</span>
           </button>
         </div>
@@ -844,6 +845,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           subtitle="أرصدة الدخول والخروج والتحويل والتسويات"
           data={filteredMovements}
           rowKey={(m, idx) => `${m.id || m.referenceNumber}-${idx}`}
+          compact
           searchValue={movementSearch}
           onSearchChange={setMovementSearch}
           searchPlaceholder="بحث بالصنف أو رقم المرجع أو البيان..."
@@ -851,8 +853,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           pdfTitle="سجل حركات المخازن التفصيلي"
           emptyTitle="لا توجد حركات مخزنية مطابقة للبحث"
           toolbarFilters={
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <div className="min-w-[165px]">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <div className="min-w-[160px]">
                 <SearchableFilterSelect
                   id="inv-mov-type"
                   value={movementTypeFilter}
@@ -864,10 +866,10 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                   allOptionLabel="جميع أنواع الحركات"
                   allOptionValue="all"
                   allowClear
-                  buttonClassName="rounded-xl min-h-[36px]"
+                  buttonClassName="rounded-lg min-h-[32px]"
                 />
               </div>
-              <div className="min-w-[165px]">
+              <div className="min-w-[160px]">
                 <SearchableFilterSelect
                   id="inv-mov-wh"
                   value={movementWhFilter}
@@ -880,7 +882,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                   allOptionLabel="جميع المستودعات"
                   allOptionValue="all"
                   allowClear
-                  buttonClassName="rounded-xl min-h-[36px]"
+                  buttonClassName="rounded-lg min-h-[32px]"
                 />
               </div>
             </div>
@@ -1028,21 +1030,21 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
 
   if (initialTab === 'categories') {
     return (
-      <div className="space-y-5">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="space-y-3">
+        <div className="bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
           <div>
-            <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-              <Tag className="w-5 h-5 text-blue-900" />
+            <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
+              <Tag className="w-4 h-4 text-blue-900" />
               <span>تصنيفات السلع وتغيير اسم التصنيفات الشامل</span>
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-[11px] text-slate-500 mt-0.5">
               إضافة التصنيفات وتغيير أسمائها مع التحديث التلقائي الشامل لكل المنتجات المرتبطة بها
             </p>
           </div>
         </div>
 
         {statusBanner && (
-          <div className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between ${
+          <div className={`px-3 py-2 rounded-lg border text-xs font-bold flex items-center justify-between ${
             statusBanner.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-red-50 border-red-200 text-red-900'
           }`}>
             <span>{statusBanner.text}</span>
@@ -1050,7 +1052,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           </div>
         )}
 
-        <form onSubmit={handleAddCategory} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs items-end">
+        <form onSubmit={handleAddCategory} className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs items-end">
           <div>
             <label className="block font-bold mb-1">اسم التصنيف الجديد: *</label>
             <input
@@ -1059,7 +1061,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               placeholder="مثال: البقوليات والحبوب"
               value={newCategoryName}
               onChange={(e) => setNewCategoryName(e.target.value)}
-              className="w-full border border-slate-300 rounded-xl p-2 font-bold"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
             />
           </div>
           <div>
@@ -1069,10 +1071,10 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               placeholder="ملاحظات عن المجموعة السلعية"
               value={newCategoryDesc}
               onChange={(e) => setNewCategoryDesc(e.target.value)}
-              className="w-full border border-slate-300 rounded-xl p-2"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5"
             />
           </div>
-          <button type="submit" className="px-4 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-black cursor-pointer">
+          <button type="submit" className="px-3.5 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-lg font-black cursor-pointer">
             + إضافة تصنيف جديد
           </button>
         </form>
@@ -1081,6 +1083,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           title="التصنيفات الغذائية"
           data={categoryList}
           rowKey={(cat) => cat.id}
+          compact
           searchPlaceholder="بحث باسم التصنيف..."
           searchFilter={(cat, q) => `${cat.name} ${cat.description || ''}`.toLowerCase().includes(q)}
           exportFilename="AWLAD_SELIM_Categories"
@@ -1160,7 +1163,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           subtitle="سيتم تحديث اسم التصنيف في جميع المنتجات المرتبطة به تلقائياً على الخادم"
           maxWidth="md"
         >
-          <form onSubmit={handleConfirmRenameCategory} className="space-y-4 text-xs">
+          <form onSubmit={handleConfirmRenameCategory} className="space-y-3 text-xs">
             <div>
               <label className="block font-bold mb-1">الاسم الجديد للتصنيف: *</label>
               <input
@@ -1168,14 +1171,14 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                 required
                 value={renameTargetValue}
                 onChange={(e) => setRenameTargetValue(e.target.value)}
-                className="w-full border border-slate-300 rounded-xl p-2.5 font-bold"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
               />
             </div>
             <div className="flex justify-end gap-2 pt-2 border-t">
-              <button type="button" onClick={() => setRenamingCategory(null)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">
+              <button type="button" onClick={() => setRenamingCategory(null)} className="px-3.5 py-1.5 border rounded-lg font-bold cursor-pointer">
                 إلغاء
               </button>
-              <button type="submit" disabled={isRenamingCat} className="px-5 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-black cursor-pointer disabled:opacity-50">
+              <button type="submit" disabled={isRenamingCat} className="px-4 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-lg font-black cursor-pointer disabled:opacity-50">
                 {isRenamingCat ? 'جاري التحديث...' : 'تطبيق التغيير الشامل'}
               </button>
             </div>
@@ -1187,19 +1190,19 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
 
   if (initialTab === 'units') {
     return (
-      <div className="space-y-5">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-          <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-            <Ruler className="w-5 h-5 text-blue-900" />
+      <div className="space-y-3">
+        <div className="bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 shadow-xs">
+          <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
+            <Ruler className="w-4 h-4 text-blue-900" />
             <span>دليل الوحدات ومعاملات التحويل</span>
           </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-[11px] text-slate-500 mt-0.5">
             تجهيز وحدات القياس والتعبئة القياسية (قطعة، دستة، كرتونة، شيكارة، بالة) لاستخدامها السريع في الأصناف
           </p>
         </div>
 
         {statusBanner && (
-          <div className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between ${
+          <div className={`px-3 py-2 rounded-lg border text-xs font-bold flex items-center justify-between ${
             statusBanner.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-red-50 border-red-200 text-red-900'
           }`}>
             <span>{statusBanner.text}</span>
@@ -1207,7 +1210,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           </div>
         )}
 
-        <form onSubmit={handleAddUnitItem} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 sm:grid-cols-5 gap-3 text-xs items-end">
+        <form onSubmit={handleAddUnitItem} className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs grid grid-cols-1 sm:grid-cols-5 gap-2.5 text-xs items-end">
           <div>
             <label className="block font-bold mb-1">اسم الوحدة: *</label>
             <input
@@ -1216,7 +1219,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               placeholder="مثال: كرتونة 24"
               value={newUnitName}
               onChange={(e) => setNewUnitName(e.target.value)}
-              className="w-full border border-slate-300 rounded-xl p-2 font-bold"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
             />
           </div>
           <div>
@@ -1226,7 +1229,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               placeholder="CTN24"
               value={newUnitCode}
               onChange={(e) => setNewUnitCode(e.target.value)}
-              className="w-full border border-slate-300 rounded-xl p-2 font-mono"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono"
             />
           </div>
           <div>
@@ -1238,7 +1241,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               placeholder="1"
               value={newUnitFactor}
               onChange={(e) => setNewUnitFactor(e.target.value === '' ? '' : Number(e.target.value))}
-              className="w-full border border-slate-300 rounded-xl p-2 font-mono font-bold text-center"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold text-center"
             />
           </div>
           <div>
@@ -1247,10 +1250,10 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               type="text"
               value={newUnitNotes}
               onChange={(e) => setNewUnitNotes(e.target.value)}
-              className="w-full border border-slate-300 rounded-xl p-2"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5"
             />
           </div>
-          <button type="submit" disabled={isSavingUnits} className="px-4 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-black cursor-pointer disabled:opacity-50">
+          <button type="submit" disabled={isSavingUnits} className="px-3.5 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-lg font-black cursor-pointer disabled:opacity-50">
             + إضافة وحدة
           </button>
         </form>
@@ -1341,22 +1344,22 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 shadow-xs">
         <div>
-          <h2 className="text-lg font-black text-slate-900 tracking-tight">إدارة المخازن والمنتجات الغذائية</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h2 className="text-base font-black text-slate-900 tracking-tight">إدارة المخازن والمنتجات الغذائية</h2>
+          <p className="text-[11px] text-slate-500 mt-0.5">
             متابعة أرصدة السلع، أسعار الجملة، التحويلات بين المستودعات، والجرد
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             onClick={handleExportExcel}
-            className="flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold hover:bg-slate-50 text-slate-700"
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-bold hover:bg-slate-50 text-slate-700 cursor-pointer"
           >
-            <Download className="w-4 h-4 text-emerald-600" />
+            <Download className="w-3.5 h-3.5 text-emerald-600" />
             <span>تصدير Excel</span>
           </button>
 
@@ -1365,24 +1368,24 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               setTransferProdId(products[0]?.id || '');
               setIsTransferModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-50 border border-indigo-200 text-indigo-900 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-900 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors cursor-pointer"
           >
-            <ArrowLeftRight className="w-4 h-4 text-indigo-700" />
+            <ArrowLeftRight className="w-3.5 h-3.5 text-indigo-700" />
             <span>تحويل بين المستودعات</span>
           </button>
 
           <button
             onClick={handleOpenAdd}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl text-xs font-black shadow-md shadow-blue-900/20 active:scale-95 transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-lg text-xs font-black shadow-xs active:scale-95 transition-all cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
             <span>إضافة صنف جديد</span>
           </button>
         </div>
       </div>
 
       {statusBanner && (
-        <div className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between ${
+        <div className={`px-3 py-2 rounded-lg border text-xs font-bold flex items-center justify-between ${
           statusBanner.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-red-50 border-red-200 text-red-900'
         }`}>
           <span>{statusBanner.text}</span>
@@ -1396,6 +1399,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
         subtitle={`إجمالي الأصناف المعروضة: ${filteredProducts.length} صنف`}
         data={filteredProducts}
         rowKey={(prod) => prod.id}
+        compact
         searchValue={searchTerm}
         onSearchChange={setSearchTerm}
         searchPlaceholder="بحث بالاسم أو الباركود أو الكود أو التصنيف..."
@@ -1404,8 +1408,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
         emptyTitle="لا توجد أصناف غذائية مطابقة للبحث أو لم تتم إضافة أصناف بعد"
         rowClassName={(prod) => prod.status !== 'active' ? 'opacity-60 bg-slate-50' : ''}
         toolbarFilters={
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <div className="min-w-[170px]">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            <div className="min-w-[160px]">
               <SearchableFilterSelect
                 id="inv-prod-cat"
                 value={categoryFilter}
@@ -1416,10 +1420,10 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                 allOptionLabel="جميع التصنيفات الغذائية"
                 allOptionValue="all"
                 allowClear
-                buttonClassName="rounded-xl min-h-[36px]"
+                buttonClassName="rounded-lg min-h-[32px]"
               />
             </div>
-            <div className="min-w-[165px]">
+            <div className="min-w-[155px]">
               <SearchableFilterSelect
                 id="inv-prod-wh"
                 value={warehouseFilter}
@@ -1432,7 +1436,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                 allOptionLabel="جميع المستودعات"
                 allOptionValue="all"
                 allowClear
-                buttonClassName="rounded-xl min-h-[36px]"
+                buttonClassName="rounded-lg min-h-[32px]"
               />
             </div>
           </div>
@@ -1684,16 +1688,16 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
         title={editingProduct ? 'تعديل بيانات المنتج الغذائي' : 'إضافة منتج غذائي جديد للمخزن'}
         maxWidth="4xl"
       >
-        <form onSubmit={handleSaveProduct} className="space-y-4 text-xs">
+        <form onSubmit={handleSaveProduct} className="space-y-3 text-xs">
           {productModalError && (
-            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">
+            <div className="p-2 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold">
               {productModalError}
             </div>
           )}
 
           {/* Product Name + Image Upload */}
-          <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-start">
-            <div className="sm:col-span-8 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-start">
+            <div className="sm:col-span-8 space-y-2.5">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">اسم الصنف الغذائي: *</label>
                 <input
@@ -1702,11 +1706,11 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                   placeholder="مثال: زيت عباد الشمس عافية 1 لتر"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold text-slate-900 focus:border-blue-700 outline-hidden"
+                  className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold text-slate-900 focus:border-blue-700 outline-hidden"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">كود الصنف: *</label>
                   <input
@@ -1714,7 +1718,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                     required
                     value={formData.code}
                     onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-mono font-bold"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold"
                   />
                 </div>
                 <div>
@@ -1724,7 +1728,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                     value={formData.barcode}
                     onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
                     placeholder="اتركه فارغاً أو أدخل الباركود"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-mono font-bold"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold"
                   />
                 </div>
                 <div>
@@ -1735,7 +1739,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                     list="inventory-categories-datalist"
                     value={formData.category}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
                   />
                   <datalist id="inventory-categories-datalist">
                     {categories.filter((c) => c !== 'all').map((c) => (
@@ -1746,38 +1750,38 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               </div>
             </div>
 
-            <div className="sm:col-span-4 bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 text-center">
+            <div className="sm:col-span-4 bg-slate-50 border border-slate-200 rounded-lg p-2.5 space-y-1.5 text-center">
               <label className="block font-bold text-slate-700 text-[11px]">صورة الصنف (اختياري):</label>
               {formData.image ? (
                 <div className="relative inline-block">
                   <img
                     src={formData.image}
                     alt="صورة الصنف"
-                    className="w-24 h-24 rounded-xl object-cover border border-slate-300 mx-auto"
+                    className="w-20 h-20 rounded-lg object-cover border border-slate-300 mx-auto"
                   />
                   <button
                     type="button"
                     onClick={() => setFormData((prev) => ({ ...prev, image: '' }))}
-                    className="absolute -top-2 -left-2 w-6 h-6 rounded-full bg-red-600 text-white flex items-center justify-center shadow cursor-pointer"
+                    className="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center shadow cursor-pointer"
                     title="إزالة الصورة"
                   >
-                    <X className="w-3.5 h-3.5" />
+                    <X className="w-3 h-3" />
                   </button>
                 </div>
               ) : (
-                <div className="w-24 h-24 rounded-xl border border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-slate-400 mx-auto">
-                  <ImageIcon className="w-6 h-6 mb-1" />
+                <div className="w-20 h-20 rounded-lg border border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-slate-400 mx-auto">
+                  <ImageIcon className="w-5 h-5 mb-0.5" />
                   <span className="text-[10px]">بدون صورة</span>
                 </div>
               )}
-              <label className="inline-block px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 rounded-lg font-bold cursor-pointer text-[11px]">
+              <label className="inline-block px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 rounded-lg font-bold cursor-pointer text-[11px]">
                 اختيار صورة الصنف
                 <input type="file" accept="image/*" onChange={handleProductImageUpload} className="hidden" />
               </label>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <div>
               <label className="block font-bold text-slate-700 mb-1">المقاس (اختياري عند الحاجة):</label>
               <input
@@ -1785,7 +1789,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                 placeholder="مثال: وسط، كبير، 500 جرام، 1 لتر"
                 value={formData.size || ''}
                 onChange={(e) => setFormData({ ...formData, size: e.target.value })}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold"
+                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
               />
             </div>
             <div>
@@ -1795,13 +1799,13 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                 placeholder="مثال: أحمر، شطة وليمون، جبنة متبلة"
                 value={formData.color || ''}
                 onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold"
+                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
               />
             </div>
           </div>
 
           {/* Flexible Packaging Units Configuration (Section 2) */}
-          <div className="bg-blue-50/60 p-3.5 rounded-xl border border-blue-200 space-y-2">
+          <div className="bg-blue-50/60 p-2.5 rounded-lg border border-blue-200 space-y-2">
             <div className="flex items-center justify-between">
               <label className="font-bold text-blue-950 text-xs">وحدات التعبئة الإضافية ومعامل التحويل (مثلاً: الكرتونة = 12 قطعة):</label>
               <button
@@ -1825,9 +1829,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
             {formData.units.length === 0 ? (
               <p className="text-[11px] text-slate-500 italic">لا توجد وحدات تعبئة إضافية (البيع بالوحدة الصغرى الأساسية فقط)</p>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {formData.units.map((u, idx) => (
-                  <div key={u.id} className="grid grid-cols-1 sm:grid-cols-5 gap-2 bg-white p-2 rounded-lg border border-blue-200 items-center text-xs">
+                  <div key={u.id} className="grid grid-cols-1 sm:grid-cols-5 gap-2 bg-white p-1.5 rounded-lg border border-blue-200 items-center text-xs">
                     <div>
                       <span className="block text-[10px] text-slate-500 font-bold">اسم الوحدة:</span>
                       <input
@@ -1891,7 +1895,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                         className="w-full border rounded-md p-1 font-mono font-bold text-slate-700 text-xs"
                       />
                     </div>
-                    <div className="flex items-end justify-center pt-3 sm:pt-0">
+                    <div className="flex items-end justify-center pt-2 sm:pt-0">
                       <button
                         type="button"
                         onClick={() => {
@@ -1900,7 +1904,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                             units: prev.units.filter((_, i) => i !== idx),
                           }));
                         }}
-                        className="text-red-500 hover:text-red-700 p-1 text-[11px] font-bold"
+                        className="text-red-500 hover:text-red-700 p-1 text-[11px] font-bold cursor-pointer"
                       >
                         حذف
                       </button>
@@ -1911,7 +1915,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
             )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
             <div>
               <label className="block font-bold text-slate-700 mb-1">الوحدة الصغرى الأساسية:</label>
               <input
@@ -1920,7 +1924,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                 placeholder="قطعة، كيس، كيلو، علبة"
                 value={formData.baseUnit}
                 onChange={(e) => setFormData({ ...formData, baseUnit: e.target.value })}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2 font-bold"
+                className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 font-bold"
               />
             </div>
             <div>
@@ -1932,7 +1936,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                 placeholder="0.00"
                 value={formData.purchasePrice}
                 onChange={(e) => setFormData({ ...formData, purchasePrice: e.target.value === '' ? '' : Number(e.target.value) })}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2 font-mono font-bold"
+                className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 font-mono font-bold"
               />
             </div>
             <div>
@@ -1944,7 +1948,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                 placeholder="0.00"
                 value={formData.sellingPrice}
                 onChange={(e) => setFormData({ ...formData, sellingPrice: e.target.value === '' ? '' : Number(e.target.value) })}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2 font-mono font-black text-blue-900"
+                className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 font-mono font-black text-blue-900"
               />
             </div>
             <div>
@@ -1955,17 +1959,17 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                 placeholder="0"
                 value={formData.minStockLevel}
                 onChange={(e) => setFormData({ ...formData, minStockLevel: e.target.value === '' ? '' : Number(e.target.value) })}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2 font-mono font-bold"
+                className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 font-mono font-bold"
               />
             </div>
           </div>
 
           {!editingProduct && warehouses.length > 0 && (
-            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
+            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 space-y-1.5">
               <label className="block font-bold text-slate-700">الأرصدة الافتتاحية في المستودعات:</label>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {warehouses.map((w) => (
-                  <div key={w.id} className="bg-white p-2 rounded-lg border">
+                  <div key={w.id} className="bg-white p-1.5 rounded-lg border">
                     <span className="block text-[10px] text-slate-500 font-bold truncate mb-1">{w.name}</span>
                     <input
                       type="number"
@@ -1998,22 +2002,22 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               rows={2}
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              className="w-full bg-white border border-slate-300 rounded-xl p-2.5 outline-hidden"
+              className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 outline-hidden"
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-3 border-t">
+          <div className="flex justify-end gap-2 pt-2.5 border-t">
             <button
               type="button"
               onClick={() => setIsAddModalOpen(false)}
-              className="px-4 py-2 border border-slate-300 rounded-xl text-slate-700 font-bold cursor-pointer"
+              className="px-3.5 py-1.5 border border-slate-300 rounded-lg text-slate-700 font-bold cursor-pointer"
             >
               إلغاء
             </button>
             <button
               type="submit"
               disabled={isSavingProduct}
-              className="px-6 py-2 bg-blue-900 text-white rounded-xl font-bold hover:bg-blue-950 shadow-md cursor-pointer disabled:opacity-50"
+              className="px-4 py-1.5 bg-blue-900 text-white rounded-lg font-bold hover:bg-blue-950 shadow-xs cursor-pointer disabled:opacity-50"
             >
               {isSavingProduct ? 'جاري الحفظ...' : 'حفظ المنتج'}
             </button>
@@ -2029,9 +2033,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
         subtitle="نقل كميات بضائع من مستودع لآخر مع توثيق الحركة"
         maxWidth="lg"
       >
-        <form onSubmit={handleExecuteTransfer} className="space-y-4 text-xs">
+        <form onSubmit={handleExecuteTransfer} className="space-y-3 text-xs">
           {transferModalError && (
-            <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">
+            <div className="p-2 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold">
               {transferModalError}
             </div>
           )}
@@ -2048,13 +2052,13 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2.5">
             <div>
               <label className="block font-bold text-slate-700 mb-1">من مستودع:</label>
               <select
                 value={fromWhId}
                 onChange={(e) => setFromWhId(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold"
+                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
               >
                 {warehouses.map(w => (
                   <option key={w.id} value={w.id}>{w.name}</option>
@@ -2066,7 +2070,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               <select
                 value={toWhId}
                 onChange={(e) => setToWhId(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold"
+                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
               >
                 {warehouses.map(w => (
                   <option key={w.id} value={w.id}>{w.name}</option>
@@ -2084,7 +2088,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               placeholder="أدخل الكمية"
               value={transferQty}
               onChange={(e) => setTransferQty(e.target.value === '' ? '' : Number(e.target.value))}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-mono font-black text-center text-sm"
+              className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-black text-center text-sm"
             />
           </div>
 
@@ -2095,22 +2099,22 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               value={transferNotes}
               onChange={(e) => setTransferNotes(e.target.value)}
               placeholder="تغذية فرع العبور / تجهيز سيارة التوزيع..."
-              className="w-full bg-white border border-slate-300 rounded-xl p-2.5"
+              className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5"
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-3 border-t">
+          <div className="flex justify-end gap-2 pt-2.5 border-t">
             <button
               type="button"
               onClick={() => setIsTransferModalOpen(false)}
-              className="px-4 py-2 border rounded-xl font-bold cursor-pointer"
+              className="px-3.5 py-1.5 border rounded-lg font-bold cursor-pointer"
             >
               إلغاء
             </button>
             <button
               type="submit"
               disabled={isSubmittingTransfer}
-              className="px-6 py-2 bg-indigo-900 text-white rounded-xl font-bold shadow-md hover:bg-indigo-950 cursor-pointer disabled:opacity-50"
+              className="px-4 py-1.5 bg-indigo-900 text-white rounded-lg font-bold shadow-xs hover:bg-indigo-950 cursor-pointer disabled:opacity-50"
             >
               {isSubmittingTransfer ? 'جاري التحويل...' : 'تنفيذ التحويل المخزني'}
             </button>
@@ -2126,9 +2130,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
         subtitle="تعديل الرصيد الفعلي بعد الجرد وتوثيق الفروقات"
         maxWidth="md"
       >
-        <form onSubmit={handleExecuteAdjust} className="space-y-4 text-xs">
+        <form onSubmit={handleExecuteAdjust} className="space-y-3 text-xs">
           {adjustModalError && (
-            <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">
+            <div className="p-2 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold">
               {adjustModalError}
             </div>
           )}
@@ -2157,7 +2161,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                 const prod = products.find((p) => p.id === adjustProdId);
                 if (prod) setAdjustNewQty(Number(prod.stockPerWarehouse?.[nextWh] || 0));
               }}
-              className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold"
+              className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
             >
               {warehouses.map(w => (
                 <option key={w.id} value={w.id}>{w.name}</option>
@@ -2174,7 +2178,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               placeholder="0"
               value={adjustNewQty}
               onChange={(e) => setAdjustNewQty(e.target.value === '' ? '' : Number(e.target.value))}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-mono font-black text-center text-sm"
+              className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-black text-center text-sm"
             />
           </div>
 
@@ -2186,22 +2190,22 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               placeholder="أدخل سبب التسوية (مثال: جرد دوري بالمستودع)"
               value={adjustReason}
               onChange={(e) => setAdjustReason(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded-xl p-2.5"
+              className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5"
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-3 border-t">
+          <div className="flex justify-end gap-2 pt-2.5 border-t">
             <button
               type="button"
               onClick={() => setIsAdjustModalOpen(false)}
-              className="px-4 py-2 border rounded-xl font-bold cursor-pointer"
+              className="px-3.5 py-1.5 border rounded-lg font-bold cursor-pointer"
             >
               إلغاء
             </button>
             <button
               type="submit"
               disabled={isSubmittingAdjust}
-              className="px-6 py-2 bg-blue-900 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50"
+              className="px-4 py-1.5 bg-blue-900 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50"
             >
               {isSubmittingAdjust ? 'جاري الاعتماد...' : 'اعتماد التسوية الجردية'}
             </button>
@@ -2217,9 +2221,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
         subtitle="خصم الكميات التالفة من المستودع مع توثيق الأسباب"
         maxWidth="md"
       >
-        <form onSubmit={handleExecuteDamage} className="space-y-4 text-xs">
+        <form onSubmit={handleExecuteDamage} className="space-y-3 text-xs">
           {damageModalError && (
-            <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">
+            <div className="p-2 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold">
               {damageModalError}
             </div>
           )}
@@ -2240,7 +2244,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
             <select
               value={damageWhId}
               onChange={(e) => setDamageWhId(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold"
+              className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
             >
               {warehouses.map(w => (
                 <option key={w.id} value={w.id}>{w.name}</option>
@@ -2257,7 +2261,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               placeholder="أدخل الكمية التالفة"
               value={damageQty}
               onChange={(e) => setDamageQty(e.target.value === '' ? '' : Number(e.target.value))}
-              className="w-full bg-red-50 border border-red-300 rounded-xl p-2.5 font-mono font-black text-center text-red-900 text-sm"
+              className="w-full bg-red-50 border border-red-300 rounded-lg px-2.5 py-1.5 font-mono font-black text-center text-red-900 text-sm"
             />
           </div>
 
@@ -2269,22 +2273,22 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               placeholder="أدخل سبب التلف (مثال: تلف عبوة / انتهاء صلاحية)"
               value={damageReason}
               onChange={(e) => setDamageReason(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded-xl p-2.5"
+              className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5"
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-3 border-t">
+          <div className="flex justify-end gap-2 pt-2.5 border-t">
             <button
               type="button"
               onClick={() => setIsDamageModalOpen(false)}
-              className="px-4 py-2 border rounded-xl font-bold cursor-pointer"
+              className="px-3.5 py-1.5 border rounded-lg font-bold cursor-pointer"
             >
               إلغاء
             </button>
             <button
               type="submit"
               disabled={isSubmittingDamage}
-              className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold shadow-md cursor-pointer disabled:opacity-50"
+              className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold shadow-xs cursor-pointer disabled:opacity-50"
             >
               {isSubmittingDamage ? 'جاري التسجيل...' : 'إثبات وخصم التوالف'}
             </button>

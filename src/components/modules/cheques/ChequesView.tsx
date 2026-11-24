@@ -164,12 +164,12 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
   );
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 shadow-xs">
         <div>
-          <h2 className="text-lg font-black text-slate-900 tracking-tight">إدارة الشيكات والأقساط المالية</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h2 className="text-base font-black text-slate-900 tracking-tight">إدارة الشيكات والأقساط المالية</h2>
+          <p className="text-[11px] text-slate-500 mt-0.5">
             متابعة استحقاق الشيكات البنكية، تواريخ التحصيل، وجداول أقساط العملاء
           </p>
         </div>
@@ -180,9 +180,9 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
               setChequeError(null);
               setIsAddChequeOpen(true);
             }}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-md cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-xs cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
             <span>إضافة شيك بنكي</span>
           </button>
         )}
@@ -190,7 +190,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
 
       {statusBanner && (
         <div
-          className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between gap-2 ${
+          className={`px-3 py-2 rounded-lg border text-xs font-bold flex items-center justify-between gap-2 ${
             statusBanner.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
               : 'bg-red-50 border-red-200 text-red-900'
@@ -214,7 +214,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
       <div className="flex border-b border-slate-200 text-xs font-bold gap-4">
         <button
           onClick={() => setActiveTab('cheques')}
-          className={`pb-2.5 transition-colors border-b-2 ${
+          className={`pb-2 transition-colors border-b-2 cursor-pointer ${
             activeTab === 'cheques' ? 'border-blue-900 text-blue-950' : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
@@ -222,7 +222,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
         </button>
         <button
           onClick={() => setActiveTab('installments')}
-          className={`pb-2.5 transition-colors border-b-2 ${
+          className={`pb-2 transition-colors border-b-2 cursor-pointer ${
             activeTab === 'installments' ? 'border-blue-900 text-blue-950' : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
@@ -236,6 +236,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
           title="سجل الشيكات البنكية"
           data={cheques}
           rowKey={(chq) => chq.id}
+          compact
           searchPlaceholder="بحث برقم الشيك أو البنك أو الطرف..."
           exportFilename="سجل-الشيكات-البنكية"
           pdfTitle="سجل الشيكات البنكية"
@@ -353,6 +354,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
           title="جداول متابعة الأقساط"
           data={installments}
           rowKey={(sch) => sch.id}
+          compact
           exportFilename="جداول-الأقساط"
           pdfTitle="جداول متابعة الأقساط"
           columns={[
@@ -439,9 +441,9 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
         title="إضافة شيك بنكي جديد"
         maxWidth="md"
       >
-        <form onSubmit={handleAddChequeSubmit} className="space-y-4 text-xs">
+        <form onSubmit={handleAddChequeSubmit} className="space-y-3 text-xs">
           {chequeError && (
-            <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
+            <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{chequeError}</span>
             </div>
@@ -452,40 +454,42 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
               <button
                 type="button"
                 onClick={() => setChequeType('incoming')}
-                className={`p-2 border rounded-xl font-bold ${chequeType === 'incoming' ? 'bg-blue-900 text-white' : 'bg-slate-50'}`}
+                className={`px-2.5 py-1.5 border rounded-lg font-bold cursor-pointer ${chequeType === 'incoming' ? 'bg-blue-900 text-white' : 'bg-slate-50'}`}
               >
                 شيك وارد (من عميل)
               </button>
               <button
                 type="button"
                 onClick={() => setChequeType('outgoing')}
-                className={`p-2 border rounded-xl font-bold ${chequeType === 'outgoing' ? 'bg-blue-900 text-white' : 'bg-slate-50'}`}
+                className={`px-2.5 py-1.5 border rounded-lg font-bold cursor-pointer ${chequeType === 'outgoing' ? 'bg-blue-900 text-white' : 'bg-slate-50'}`}
               >
                 شيك صادر (لمورد)
               </button>
             </div>
           </div>
 
-          <div>
-            <label className="block font-bold mb-1">رقم الشيك:</label>
-            <input
-              type="text"
-              required
-              value={chequeNum}
-              onChange={(e) => setChequeNum(e.target.value)}
-              className="w-full border rounded-xl p-2.5 font-mono font-bold"
-            />
-          </div>
+          <div className="grid grid-cols-2 gap-2.5">
+            <div>
+              <label className="block font-bold mb-1">رقم الشيك:</label>
+              <input
+                type="text"
+                required
+                value={chequeNum}
+                onChange={(e) => setChequeNum(e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold"
+              />
+            </div>
 
-          <div>
-            <label className="block font-bold mb-1">البنك:</label>
-            <input
-              type="text"
-              required
-              value={bankName}
-              onChange={(e) => setBankName(e.target.value)}
-              className="w-full border rounded-xl p-2.5 font-bold"
-            />
+            <div>
+              <label className="block font-bold mb-1">البنك:</label>
+              <input
+                type="text"
+                required
+                value={bankName}
+                onChange={(e) => setBankName(e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
+              />
+            </div>
           </div>
 
           <div>
@@ -495,11 +499,11 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
               required
               value={partyName}
               onChange={(e) => setPartyName(e.target.value)}
-              className="w-full border rounded-xl p-2.5 font-bold"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2.5">
             <div>
               <label className="block font-bold mb-1">المبلغ ({settings.currency}):</label>
               <input
@@ -509,7 +513,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
                 placeholder="0.00"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                className="w-full border rounded-xl p-2.5 font-mono font-black text-center"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-black text-center"
               />
             </div>
             <div>
@@ -519,14 +523,14 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
                 required
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                className="w-full border rounded-xl p-2.5 font-mono font-bold"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold"
               />
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t">
-            <button type="button" onClick={() => setIsAddChequeOpen(false)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">إلغاء</button>
-            <button type="submit" disabled={isSavingCheque} className="px-6 py-2 bg-blue-900 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50">
+          <div className="flex justify-end gap-2 pt-2.5 border-t">
+            <button type="button" onClick={() => setIsAddChequeOpen(false)} className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-bold cursor-pointer">إلغاء</button>
+            <button type="submit" disabled={isSavingCheque} className="px-4 py-1.5 bg-blue-900 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50">
               {isSavingCheque ? 'جاري الحفظ...' : 'حفظ الشيك'}
             </button>
           </div>
@@ -541,14 +545,14 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
           title={`تحصيل الشيك رقم ${collectingCheque.chequeNumber}`}
           maxWidth="md"
         >
-          <form onSubmit={handleConfirmCollect} className="space-y-4 text-xs">
+          <form onSubmit={handleConfirmCollect} className="space-y-3 text-xs">
             {collectError && (
-              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
+              <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{collectError}</span>
               </div>
             )}
-            <div className="p-3 bg-slate-50 rounded-xl space-y-1">
+            <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-1">
               <p>البنك: <strong>{collectingCheque.bankName}</strong></p>
               <p>المبلغ: <strong className="font-mono text-emerald-800">{collectingCheque.amount.toLocaleString()} {settings.currency}</strong></p>
             </div>
@@ -558,7 +562,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
               <select
                 value={collectCashboxId}
                 onChange={(e) => setCollectCashboxId(e.target.value)}
-                className="w-full border rounded-xl p-2.5 font-bold"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold bg-white"
               >
                 {cashboxes.map(cb => (
                   <option key={cb.id} value={cb.id}>{cb.name}</option>
@@ -566,9 +570,9 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
               </select>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2 border-t">
-              <button type="button" onClick={() => setCollectingCheque(null)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">إلغاء</button>
-              <button type="submit" disabled={isCollectingCheque} className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50">
+            <div className="flex justify-end gap-2 pt-2.5 border-t">
+              <button type="button" onClick={() => setCollectingCheque(null)} className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-bold cursor-pointer">إلغاء</button>
+              <button type="submit" disabled={isCollectingCheque} className="px-4 py-1.5 bg-emerald-600 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50">
                 {isCollectingCheque ? 'جاري التحصيل...' : 'تأكيد التحصيل'}
               </button>
             </div>
@@ -584,9 +588,9 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
           title="سداد قسط العميل"
           maxWidth="md"
         >
-          <form onSubmit={handlePayInstallmentSubmit} className="space-y-4 text-xs">
+          <form onSubmit={handlePayInstallmentSubmit} className="space-y-3 text-xs">
             {installmentError && (
-              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
+              <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{installmentError}</span>
               </div>
@@ -599,7 +603,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
                 required
                 value={payingSchedule.amount}
                 onChange={(e) => setPayingSchedule({ ...payingSchedule, amount: Number(e.target.value) })}
-                className="w-full border rounded-xl p-2.5 font-mono font-black text-center text-emerald-800"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-black text-center text-emerald-800"
               />
             </div>
 
@@ -608,7 +612,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
               <select
                 value={installmentCashboxId}
                 onChange={(e) => setInstallmentCashboxId(e.target.value)}
-                className="w-full border rounded-xl p-2.5 font-bold"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold bg-white"
               >
                 {cashboxes.map(cb => (
                   <option key={cb.id} value={cb.id}>{cb.name}</option>
@@ -616,9 +620,9 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
               </select>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2 border-t">
-              <button type="button" onClick={() => setPayingSchedule(null)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">إلغاء</button>
-              <button type="submit" disabled={isPayingInstallment} className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50">
+            <div className="flex justify-end gap-2 pt-2.5 border-t">
+              <button type="button" onClick={() => setPayingSchedule(null)} className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-bold cursor-pointer">إلغاء</button>
+              <button type="submit" disabled={isPayingInstallment} className="px-4 py-1.5 bg-emerald-600 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50">
                 {isPayingInstallment ? 'جاري التسديد...' : 'تأكيد سداد القسط'}
               </button>
             </div>

@@ -7,7 +7,7 @@ import {
   ArrowUpCircle, UserPlus, Building2, Receipt, CreditCard, FileSpreadsheet,
   Wallet, Settings, LogOut, ChevronLeft, Lock, Warehouse as WarehouseIcon,
   Barcode, X, Eye, Calculator, ClipboardCheck, Send, Clock, Edit, Upload, ExternalLink, Store, PackagePlus,
-  ArrowRight, Printer, Info, Calendar
+  ArrowRight, Printer, Info, Calendar, ChevronDown, ChevronUp, SlidersHorizontal
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
@@ -268,6 +268,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [safeDeleteModalOpen, setSafeDeleteModalOpen] = useState(false);
   const [safeDeleteSearch, setSafeDeleteSearch] = useState('');
   const [actualDrawerCash, setActualDrawerCash] = useState<string>('');
+  const [showCustomerStats, setShowCustomerStats] = useState(false);
+  const [showReportFilters, setShowReportFilters] = useState(false);
 
   // ==================== 2. PURCHASE INVOICE STATE ====================
   const [purEditingInvoiceId, setPurEditingInvoiceId] = useState<string | null>(null);
@@ -3251,7 +3253,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
   if (mobileConfig.enableRepApp === false) {
     return (
-      <div className="bg-white rounded-3xl border border-amber-200 p-8 text-center space-y-3 shadow-xs">
+      <div className="bg-white rounded-2xl border border-amber-200 p-5 text-center space-y-2.5 shadow-xs">
         <ShieldAlert className="w-12 h-12 text-amber-600 mx-auto" />
         <h3 className="text-base font-black text-slate-900">بوابة المناديب متوقفة مؤقتاً</h3>
         <p className="text-xs text-slate-600">
@@ -3559,25 +3561,23 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
       {/* ==================== TAB 1: HOME (4x3 Brand Store Tile Grid) ==================== */}
       {activeTab === 'home' && (
-        <div className="space-y-4">
-          <div className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3">
-            <div className="flex items-center justify-between gap-3">
+        <div className="space-y-2.5">
+          <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs space-y-2">
+            <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
-                <p className="text-[11px] text-slate-500">مرحباً، مندوب المبيعات</p>
-                <h2 className="text-base font-black text-slate-900 truncate">
+                <p className="text-[10px] text-slate-500">مرحباً، مندوب المبيعات</p>
+                <h2 className="text-sm font-black text-slate-900 truncate">
                   {rep?.name || currentUser?.fullName}
                 </h2>
-                <p className="text-[11px] text-slate-500 mt-0.5 truncate">
+                <p className="text-[11px] text-slate-500 truncate">
                   {vanWarehouse?.name || 'سيارة المندوب'} {rep?.vehicleNumber ? `· ${rep.vehicleNumber}` : ''}
                 </p>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <div className="text-left px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200">
-                  <span className="text-[10px] text-emerald-700 block">العهدة النقدية</span>
-                  <strong className="text-sm font-black font-mono tabular-nums text-emerald-800">
-                    {(rep?.currentBalance || 0).toLocaleString()} {data.settings.currency}
-                  </strong>
-                </div>
+              <div className="shrink-0 text-left px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200">
+                <span className="text-[10px] text-emerald-700 block">العهدة النقدية</span>
+                <strong className="text-xs sm:text-sm font-black font-mono tabular-nums text-emerald-800">
+                  {(rep?.currentBalance || 0).toLocaleString()} {data.settings.currency}
+                </strong>
               </div>
             </div>
 
@@ -3586,12 +3586,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               activeAssignedOrders.length > 0 ||
               draftsReadyToConfirm.length > 0 ||
               data.pendingSyncCount > 0) && (
-              <div className="pt-2 border-t border-slate-100 space-y-2 text-xs">
-                <div className="flex items-center gap-1.5 font-black text-blue-950">
-                  <ClipboardCheck className="w-4 h-4 text-blue-800 shrink-0" />
+              <div className="pt-2 border-t border-slate-100 space-y-1.5 text-xs">
+                <div className="flex items-center gap-1.5 font-black text-blue-950 text-[11px]">
+                  <ClipboardCheck className="w-3.5 h-3.5 text-blue-800 shrink-0" />
                   <span>المهام اليومية المعلقة</span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                   {pendingCustodyDispatches.length > 0 && (
                     <button
                       type="button"
@@ -3599,50 +3599,50 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         setCustodySubTab('items');
                         onTabChange('custody');
                       }}
-                      className="p-2.5 rounded-xl bg-cyan-50 border border-cyan-200 text-cyan-950 flex items-center justify-between gap-2 font-bold cursor-pointer hover:bg-cyan-100"
+                      className="px-2.5 py-1.5 rounded-lg bg-cyan-50 border border-cyan-200 text-cyan-950 flex items-center justify-between gap-2 text-[11px] font-bold cursor-pointer hover:bg-cyan-100"
                     >
                       <span>عهد بضاعة مرسلة بانتظار تأكيد الاستلام ({pendingCustodyDispatches.length})</span>
-                      <ChevronLeft className="w-4 h-4 shrink-0" />
+                      <ChevronLeft className="w-3.5 h-3.5 shrink-0" />
                     </button>
                   )}
                   {pendingCashReceipts.length > 0 && (
                     <button
                       type="button"
                       onClick={() => onTabChange('cash')}
-                      className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-950 flex items-center justify-between gap-2 font-bold cursor-pointer hover:bg-emerald-100"
+                      className="px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-950 flex items-center justify-between gap-2 text-[11px] font-bold cursor-pointer hover:bg-emerald-100"
                     >
                       <span>عهد نقدية واردة من الإدارة ({pendingCashReceipts.length})</span>
-                      <ChevronLeft className="w-4 h-4 shrink-0" />
+                      <ChevronLeft className="w-3.5 h-3.5 shrink-0" />
                     </button>
                   )}
                   {activeAssignedOrders.length > 0 && (
                     <button
                       type="button"
                       onClick={() => onTabChange('orders')}
-                      className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-950 flex items-center justify-between gap-2 font-bold cursor-pointer hover:bg-indigo-100"
+                      className="px-2.5 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-950 flex items-center justify-between gap-2 text-[11px] font-bold cursor-pointer hover:bg-indigo-100"
                     >
                       <span>طلبات توصيل جارية معينة لك ({activeAssignedOrders.length})</span>
-                      <ChevronLeft className="w-4 h-4 shrink-0" />
+                      <ChevronLeft className="w-3.5 h-3.5 shrink-0" />
                     </button>
                   )}
                   {draftsReadyToConfirm.length > 0 && (
                     <button
                       type="button"
                       onClick={() => onTabChange('invoices')}
-                      className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-950 flex items-center justify-between gap-2 font-bold cursor-pointer hover:bg-blue-100"
+                      className="px-2.5 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-950 flex items-center justify-between gap-2 text-[11px] font-bold cursor-pointer hover:bg-blue-100"
                     >
                       <span>مسودات فواتير جاهزة للاعتماد ({draftsReadyToConfirm.length})</span>
-                      <ChevronLeft className="w-4 h-4 shrink-0" />
+                      <ChevronLeft className="w-3.5 h-3.5 shrink-0" />
                     </button>
                   )}
                   {data.pendingSyncCount > 0 && (
                     <button
                       type="button"
                       onClick={() => onTabChange('refresh')}
-                      className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-950 flex items-center justify-between gap-2 font-bold cursor-pointer hover:bg-amber-100"
+                      className="px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-950 flex items-center justify-between gap-2 text-[11px] font-bold cursor-pointer hover:bg-amber-100"
                     >
                       <span>عمليات محلية بانتظار الإرسال عبر REFRESH ({data.pendingSyncCount})</span>
-                      <ChevronLeft className="w-4 h-4 shrink-0" />
+                      <ChevronLeft className="w-3.5 h-3.5 shrink-0" />
                     </button>
                   )}
                 </div>
@@ -3651,15 +3651,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           </div>
 
           {/* Quick Customers, Purchases, Suppliers & Reports Access Strip */}
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
             <button
               type="button"
               onClick={() => onTabChange('customers')}
-              className="bg-white rounded-2xl border border-slate-200 hover:border-blue-300 shadow-2xs p-3 flex items-center gap-2.5 text-right cursor-pointer"
+              className="bg-white rounded-xl border border-slate-200 hover:border-blue-300 px-2.5 py-2 flex items-center gap-2 text-right cursor-pointer"
             >
-              <CustomersGroupIcon className="w-9 h-9 shrink-0" />
+              <CustomersGroupIcon className="w-7 h-7 shrink-0" />
               <div className="min-w-0">
-                <span className="block text-xs font-black text-slate-900 truncate">العملاء والحسابات</span>
+                <span className="block text-[11px] font-black text-slate-900 truncate">العملاء والحسابات</span>
                 <span className="block text-[10px] text-slate-500 font-semibold truncate">
                   {data.customers.length} عميل · متابعة وكشوف
                 </span>
@@ -3668,13 +3668,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <button
               type="button"
               onClick={() => onTabChange('rep-reports')}
-              className="bg-white rounded-2xl border border-blue-200 hover:border-blue-400 shadow-2xs p-3 flex items-center gap-2.5 text-right cursor-pointer"
+              className="bg-white rounded-xl border border-blue-200 hover:border-blue-400 px-2.5 py-2 flex items-center gap-2 text-right cursor-pointer"
             >
-              <FileSpreadsheet className="w-9 h-9 text-blue-900 shrink-0" />
+              <FileSpreadsheet className="w-7 h-7 text-blue-900 shrink-0" />
               <div className="min-w-0">
-                <span className="block text-xs font-black text-blue-950 truncate">تقارير المندوب</span>
+                <span className="block text-[11px] font-black text-blue-950 truncate">تقارير المندوب</span>
                 <span className="block text-[10px] text-slate-500 font-semibold truncate">
-                  المبيعات، التحصيلات، والحسابات
+                  المبيعات والتحصيلات
                 </span>
               </div>
             </button>
@@ -3683,24 +3683,24 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 <button
                   type="button"
                   onClick={() => onTabChange('purchases-list')}
-                  className="bg-white rounded-2xl border border-slate-200 hover:border-blue-300 shadow-2xs p-3 flex items-center gap-2.5 text-right cursor-pointer"
+                  className="bg-white rounded-xl border border-slate-200 hover:border-blue-300 px-2.5 py-2 flex items-center gap-2 text-right cursor-pointer"
                 >
-                  <PurchaseInvoiceIcon className="w-9 h-9 shrink-0" />
+                  <PurchaseInvoiceIcon className="w-7 h-7 shrink-0" />
                   <div className="min-w-0">
-                    <span className="block text-xs font-black text-slate-900 truncate">فواتير الشراء</span>
+                    <span className="block text-[11px] font-black text-slate-900 truncate">فواتير الشراء</span>
                     <span className="block text-[10px] text-slate-500 font-semibold truncate">
-                      {myPurchases.length} فاتورة · سداد ومتابعة
+                      {myPurchases.length} فاتورة · سداد
                     </span>
                   </div>
                 </button>
                 <button
                   type="button"
                   onClick={() => onTabChange('suppliers')}
-                  className="bg-white rounded-2xl border border-slate-200 hover:border-indigo-300 shadow-2xs p-3 flex items-center gap-2.5 text-right cursor-pointer"
+                  className="bg-white rounded-xl border border-slate-200 hover:border-indigo-300 px-2.5 py-2 flex items-center gap-2 text-right cursor-pointer"
                 >
-                  <Building2 className="w-9 h-9 text-indigo-800 shrink-0" />
+                  <Building2 className="w-7 h-7 text-indigo-800 shrink-0" />
                   <div className="min-w-0">
-                    <span className="block text-xs font-black text-slate-900 truncate">الموردون وكشوفهم</span>
+                    <span className="block text-[11px] font-black text-slate-900 truncate">الموردون وكشوفهم</span>
                     <span className="block text-[10px] text-slate-500 font-semibold truncate">
                       {data.suppliers.length} مورد · كشف الحساب
                     </span>
@@ -3711,7 +3711,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           </div>
 
           {/* 4x3 Operation Tile Grid */}
-          <div className="grid grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
             {homeTiles.map((tile) => {
               return (
                 <button
@@ -3727,22 +3727,22 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     }
                     onTabChange(tile.key);
                   }}
-                  className={`relative min-h-[104px] p-3 rounded-2xl border flex flex-col items-center justify-center gap-2 text-center transition-all active:scale-97 cursor-pointer shadow-xs ${
+                  className={`relative min-h-[82px] p-2.5 rounded-xl border flex flex-col items-center justify-center gap-1.5 text-center transition-all active:scale-97 cursor-pointer shadow-2xs ${
                     tile.allowed
                       ? tile.tone
                       : 'bg-slate-100 text-slate-400 border-slate-200 opacity-70'
                   }`}
                 >
                   {!tile.allowed && (
-                    <Lock className="w-3.5 h-3.5 absolute top-2 left-2 text-slate-400" />
+                    <Lock className="w-3.5 h-3.5 absolute top-1.5 left-1.5 text-slate-400" />
                   )}
                   {tile.badgeCount && tile.badgeCount > 0 ? (
-                    <span className="absolute top-1.5 left-1.5 min-w-[20px] h-[20px] px-1 rounded bg-amber-500 text-slate-950 text-[10px] font-black font-mono tabular-nums flex items-center justify-center">
+                    <span className="absolute top-1.5 left-1.5 min-w-[18px] h-[18px] px-1 rounded bg-amber-500 text-slate-950 text-[10px] font-black font-mono tabular-nums flex items-center justify-center">
                       {tile.badgeCount}
                     </span>
                   ) : null}
                   <div className="flex items-center justify-center">{tile.iconNode}</div>
-                  <span className="text-xs font-black leading-tight">{tile.label}</span>
+                  <span className="text-[11px] font-black leading-tight">{tile.label}</span>
                 </button>
               );
             })}
@@ -3752,23 +3752,22 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
       {/* ==================== TAB 2: CASH (النقدية) ==================== */}
       {activeTab === 'cash' && (
-        <div className="space-y-4 text-xs">
-          <div className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3">
-            <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
-              <Wallet className="w-4 h-4 text-emerald-700" />
-              <span>إدارة النقدية والعهدة المالية</span>
-            </h3>
-
-            <div className="grid grid-cols-1 gap-2.5">
-              <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200">
-                <span className="text-[11px] text-emerald-700 block">رصيد عهدة المندوب</span>
-                <strong className="text-base font-black font-mono tabular-nums text-emerald-900">
+        <div className="space-y-2.5 text-xs">
+          <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
+                <Wallet className="w-4 h-4 text-emerald-700" />
+                <span>إدارة النقدية والعهدة المالية</span>
+              </h3>
+              <div className="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center gap-2">
+                <span className="text-[10px] text-emerald-700">رصيد العهدة:</span>
+                <strong className="text-xs font-black font-mono tabular-nums text-emerald-900">
                   {(rep?.currentBalance || 0).toLocaleString()} {data.settings.currency}
                 </strong>
               </div>
             </div>
 
-            <div className={`grid gap-2 ${isRepRoleAccount ? 'grid-cols-2' : 'grid-cols-3'}`}>
+            <div className={`grid gap-1.5 ${isRepRoleAccount ? 'grid-cols-2' : 'grid-cols-3'}`}>
               <button
                 type="button"
                 disabled={!(canCashOps || canSales)}
@@ -3776,7 +3775,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   setDepMode('customer_collection');
                   onTabChange('cash-deposit');
                 }}
-                className="min-h-[44px] rounded-xl bg-emerald-700 text-white font-black cursor-pointer disabled:opacity-45"
+                className="min-h-[36px] rounded-lg bg-emerald-700 text-white font-black cursor-pointer disabled:opacity-45"
               >
                 {isRepRoleAccount ? 'تحصيل من عميل' : 'إيداع نقدي'}
               </button>
@@ -3785,7 +3784,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   type="button"
                   disabled={!canCashOps}
                   onClick={() => onTabChange('cash-withdrawal')}
-                  className="min-h-[44px] rounded-xl bg-amber-600 text-white font-black cursor-pointer disabled:opacity-45"
+                  className="min-h-[36px] rounded-lg bg-amber-600 text-white font-black cursor-pointer disabled:opacity-45"
                 >
                   سحب نقدي
                 </button>
@@ -3797,7 +3796,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   setCustodySubTab('cash');
                   onTabChange('custody-transfer');
                 }}
-                className="min-h-[44px] rounded-xl bg-blue-900 text-white font-black cursor-pointer disabled:opacity-45"
+                className="min-h-[36px] rounded-lg bg-blue-900 text-white font-black cursor-pointer disabled:opacity-45"
               >
                 توريد عهدة للفرع
               </button>
@@ -3805,35 +3804,35 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           </div>
 
           {/* Cash Drawer Reconciliation Card */}
-          <div className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3">
-            <h4 className="font-black text-slate-900 flex items-center gap-2">
+          <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs space-y-2">
+            <h4 className="font-black text-slate-900 flex items-center gap-1.5">
               <Calculator className="w-4 h-4 text-blue-900" />
               <span>تقفيل ومطابقة الدرج النقدي اليوم ({todayStr})</span>
             </h4>
-            <div className="grid grid-cols-3 gap-2 text-center tabular-nums">
-              <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200">
+            <div className="grid grid-cols-3 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden text-center tabular-nums">
+              <div className="p-2 bg-blue-50/70">
                 <span className="text-[10px] text-blue-800 block">مبيعات اليوم المحصلة</span>
-                <strong className="font-mono text-sm text-blue-950">
+                <strong className="font-mono text-xs text-blue-950">
                   {cashDrawerSummary.todayRepSalesCash.toLocaleString()}
                 </strong>
               </div>
-              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
+              <div className="p-2 bg-emerald-50/70">
                 <span className="text-[10px] text-emerald-800 block">تحصيلات / إيداعات</span>
-                <strong className="font-mono text-sm text-emerald-900">
+                <strong className="font-mono text-xs text-emerald-900">
                   {cashDrawerSummary.todayCashCollections.toLocaleString()}
                 </strong>
               </div>
-              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200">
+              <div className="p-2 bg-amber-50/70">
                 <span className="text-[10px] text-amber-800 block">توريدات للفرع اليوم</span>
-                <strong className="font-mono text-sm text-amber-900">
+                <strong className="font-mono text-xs text-amber-900">
                   {cashDrawerSummary.todayRepRemittances.toLocaleString()}
                 </strong>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-end">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-end">
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
                   الجرد الفعلي للنقدية بالدرج ({data.settings.currency}):
                 </label>
                 <input
@@ -3843,11 +3842,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   value={actualDrawerCash}
                   onChange={(e) => setActualDrawerCash(e.target.value)}
                   placeholder="أدخل النقدية المعدودة فعلياً..."
-                  className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-mono font-bold text-center"
+                  className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-mono font-bold text-center"
                 />
               </div>
               <div
-                className={`min-h-[42px] px-3 py-2 rounded-xl border flex items-center justify-between font-bold tabular-nums ${
+                className={`min-h-[36px] px-2.5 py-1.5 rounded-lg border flex items-center justify-between font-bold tabular-nums ${
                   cashDrawerSummary.variance === null
                     ? 'bg-slate-50 border-slate-200 text-slate-600'
                     : Math.abs(cashDrawerSummary.variance) < 0.01
@@ -3932,7 +3931,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     <button
                       type="button"
                       onClick={() => handleConfirmOwnerCash(t.id)}
-                      className="min-h-[34px] px-3 rounded-lg bg-emerald-700 text-white font-black cursor-pointer whitespace-nowrap"
+                      className="min-h-[32px] px-2.5 rounded-lg bg-emerald-700 text-white font-black cursor-pointer whitespace-nowrap"
                     >
                       تأكيد استلام العهدة النقدية
                     </button>
@@ -3947,7 +3946,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
       {/* ==================== TAB 3: MORE (المزيد) ==================== */}
       {activeTab === 'more' && (
-        <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-xs divide-y divide-slate-100 text-xs">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs divide-y divide-slate-100 text-xs">
           {[
             { key: 'rep-reports' as RepTabKey, label: 'تقارير المندوب الشاملة', Icon: FileSpreadsheet, allowed: true },
             { key: 'purchases-list' as RepTabKey, label: 'فواتير الشراء', Icon: PurchaseInvoicesListIcon, allowed: canCreatePurchase },
@@ -3968,10 +3967,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 type="button"
                 disabled={!item.allowed}
                 onClick={() => onTabChange(item.key)}
-                className="w-full min-h-[54px] px-4 py-3 flex items-center justify-between gap-2 text-right font-bold text-slate-800 hover:bg-slate-50 disabled:opacity-45 cursor-pointer"
+                className="w-full min-h-[42px] px-3 py-2 flex items-center justify-between gap-2 text-right font-bold text-slate-800 hover:bg-slate-50 disabled:opacity-45 cursor-pointer"
               >
-                <div className="flex items-center gap-3">
-                  <ItemIcon className="w-6 h-6 shrink-0" />
+                <div className="flex items-center gap-2.5">
+                  <ItemIcon className="w-5 h-5 shrink-0" />
                   <span>{item.label}</span>
                 </div>
                 {item.allowed ? (
@@ -3987,10 +3986,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <button
               type="button"
               onClick={onOpenServerModal}
-              className="w-full min-h-[54px] px-4 py-3 flex items-center justify-between gap-2 text-right font-bold text-slate-800 hover:bg-slate-50 cursor-pointer"
+              className="w-full min-h-[42px] px-3 py-2 flex items-center justify-between gap-2 text-right font-bold text-slate-800 hover:bg-slate-50 cursor-pointer"
             >
-              <div className="flex items-center gap-3">
-                <SettingsTwinGearsIcon className="w-6 h-6 shrink-0" />
+              <div className="flex items-center gap-2.5">
+                <SettingsTwinGearsIcon className="w-5 h-5 shrink-0" />
                 <span>الإعدادات والربط المركزي</span>
               </div>
               <ChevronLeft className="w-4 h-4 text-slate-400" />
@@ -4001,10 +4000,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <button
               type="button"
               onClick={onLogout}
-              className="w-full min-h-[54px] px-4 py-3 flex items-center justify-between gap-2 text-right font-black text-red-700 hover:bg-red-50 cursor-pointer"
+              className="w-full min-h-[42px] px-3 py-2 flex items-center justify-between gap-2 text-right font-black text-red-700 hover:bg-red-50 cursor-pointer"
             >
-              <div className="flex items-center gap-3">
-                <LogoutDoorIcon className="w-6 h-6 shrink-0" />
+              <div className="flex items-center gap-2.5">
+                <LogoutDoorIcon className="w-5 h-5 shrink-0" />
                 <span>تسجيل الخروج</span>
               </div>
               <ChevronLeft className="w-4 h-4 text-red-400" />
@@ -4016,172 +4015,154 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       {/* ==================== REFRESH SCREEN ==================== */}
       {activeTab === 'refresh' && <RefreshSyncScreen onBack={() => onTabChange('home')} />}
 
-      {/* ==================== ALLOWED CUSTOMERS LIST (4 Action Buttons, 6 Live KPIs, Filters & Safe Delete) ==================== */}
+      {/* ==================== ALLOWED CUSTOMERS LIST (Compact Actions, Collapsible KPI Strip & Table) ==================== */}
       {activeTab === 'customers' && (
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           {/* Header Action Bar */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-3">
+          <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2.5">
-                <CustomersGroupIcon className="w-9 h-9 shrink-0" />
+              <div className="flex items-center gap-2">
+                <CustomersGroupIcon className="w-7 h-7 shrink-0" />
                 <div>
-                  <h3 className="text-sm font-black text-slate-900">العملاء والمحلات والحسابات</h3>
-                  <p className="text-[11px] text-slate-500">عرض المحلات، المبالغ المتبقية، الإحصائيات وكشف الحساب التفصيلي</p>
+                  <h3 className="text-xs sm:text-sm font-black text-slate-900">العملاء والمحلات والحسابات</h3>
+                  <p className="text-[11px] text-slate-500">عرض المحلات، المبالغ المتبقية وكشف الحساب التفصيلي</p>
                 </div>
               </div>
-            </div>
-
-            {/* 4 Quick Action Buttons */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
-              {canAddCustomer && (
-                <button
-                  type="button"
-                  onClick={() => onTabChange('new-customer')}
-                  className="min-h-[44px] px-3 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black inline-flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <CustomerAddIcon className="w-5 h-5 shrink-0" />
-                  <span>إضافة عميل جديد</span>
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setCustomerFilterMode('current')}
-                className={`min-h-[44px] px-3 rounded-xl border font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer ${
-                  customerFilterMode === 'current'
-                    ? 'bg-emerald-700 text-white border-emerald-700 font-black'
-                    : 'bg-emerald-50 text-emerald-900 border-emerald-200 hover:bg-emerald-100'
-                }`}
-              >
-                <Users className="w-4 h-4 shrink-0" />
-                <span>عرض العملاء الحاليين</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setCustomerFilterMode('debtors');
-                  setCustomerSortMode('debt_desc');
-                }}
-                className={`min-h-[44px] px-3 rounded-xl border font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer ${
-                  customerFilterMode === 'debtors'
-                    ? 'bg-rose-700 text-white border-rose-700 font-black'
-                    : 'bg-rose-50 text-rose-900 border-rose-200 hover:bg-rose-100'
-                }`}
-              >
-                <Wallet className="w-4 h-4 shrink-0" />
-                <span>المبالغ المتبقية عند العملاء</span>
-              </button>
-              {canDeleteCustomer && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSafeDeleteSearch('');
-                    setSafeDeleteModalOpen(true);
-                  }}
-                  className="min-h-[44px] px-3 rounded-xl bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Trash2 className="w-4 h-4 shrink-0" />
-                  <span>حذف العميل الآمن</span>
-                </button>
-              )}
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                {canViewCustomerAggregateTotals && (
+                  <button
+                    type="button"
+                    onClick={() => setShowCustomerStats((p) => !p)}
+                    className="min-h-[32px] px-2.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>المؤشرات ({repCustomersStats.total})</span>
+                    {showCustomerStats ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                )}
+                {canAddCustomer && (
+                  <button
+                    type="button"
+                    onClick={() => onTabChange('new-customer')}
+                    className="min-h-[32px] px-2.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-black inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <CustomerAddIcon className="w-4 h-4 shrink-0" />
+                    <span>عميل جديد</span>
+                  </button>
+                )}
+                {canDeleteCustomer && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSafeDeleteSearch('');
+                      setSafeDeleteModalOpen(true);
+                    }}
+                    className="min-h-[32px] px-2.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 font-bold inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                    <span>حذف آمن</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {canViewCustomerAggregateTotals ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs tabular-nums">
-                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                  <span className="text-[10px] text-slate-500 block">إجمالي العملاء</span>
-                  <strong className="text-base font-black text-slate-900">{repCustomersStats.total}</strong>
-                  <span className="block text-[10px] text-slate-500">المطابق الآن: {filteredCustomers.length}</span>
+              showCustomerStats && (
+                <div className="grid grid-cols-3 lg:grid-cols-6 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden text-xs tabular-nums">
+                  <div className="p-2 bg-slate-50">
+                    <span className="text-[10px] text-slate-500 block">إجمالي العملاء</span>
+                    <strong className="text-sm font-black text-slate-900">{repCustomersStats.total}</strong>
+                    <span className="block text-[10px] text-slate-500">المطابق: {filteredCustomers.length}</span>
+                  </div>
+                  <div className="p-2 bg-amber-50/70">
+                    <span className="text-[10px] text-amber-800 block">عملاء مدينون</span>
+                    <strong className="text-sm font-black text-amber-900">{repCustomersStats.debtorsCount}</strong>
+                    <span className="block text-[10px] text-amber-700">أرصدة مستحقة</span>
+                  </div>
+                  <div className="p-2 bg-teal-50/70">
+                    <span className="text-[10px] text-teal-800 block">أرصدة دائنة</span>
+                    <strong className="text-sm font-black text-teal-900">{repCustomersStats.creditsCount}</strong>
+                    <span className="block text-[10px] text-teal-700">دافعي مقدمات</span>
+                  </div>
+                  <div className="p-2 bg-rose-50/70">
+                    <span className="text-[10px] text-rose-700 block">المستحق (لنا)</span>
+                    <strong className="text-xs font-black font-mono text-rose-800">
+                      {repCustomersStats.totalDue.toLocaleString()} {data.settings.currency}
+                    </strong>
+                    <span className="block text-[10px] text-rose-700 font-bold">مديونيات</span>
+                  </div>
+                  <div className="p-2 bg-emerald-50/70">
+                    <span className="text-[10px] text-emerald-700 block">الدائن (علينا)</span>
+                    <strong className="text-xs font-black font-mono text-emerald-800">
+                      {repCustomersStats.totalCredit.toLocaleString()} {data.settings.currency}
+                    </strong>
+                    <span className="block text-[10px] text-emerald-700 font-bold">مقدمات مالية</span>
+                  </div>
+                  <div className="p-2 bg-blue-50/70">
+                    <span className="text-[10px] text-blue-800 block">نسبة المدينين</span>
+                    <strong className="text-sm font-black font-mono text-blue-950">{repCustomersStats.debtorPct}%</strong>
+                    <span className="block text-[10px] text-blue-700">من الإجمالي</span>
+                  </div>
                 </div>
-                <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200">
-                  <span className="text-[10px] text-amber-800 block">عدد العملاء المدينين</span>
-                  <strong className="text-base font-black text-amber-900">{repCustomersStats.debtorsCount}</strong>
-                  <span className="block text-[10px] text-amber-700">ذوي أرصدة مستحقة</span>
-                </div>
-                <div className="p-2.5 rounded-xl bg-teal-50 border border-teal-200">
-                  <span className="text-[10px] text-teal-800 block">ذوو الأرصدة الدائنة</span>
-                  <strong className="text-base font-black text-teal-900">{repCustomersStats.creditsCount}</strong>
-                  <span className="block text-[10px] text-teal-700">دافعي مقدمات</span>
-                </div>
-                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200">
-                  <span className="text-[10px] text-rose-700 block">المستحق على العملاء (لنا)</span>
-                  <strong className="text-sm font-black font-mono text-rose-800">
-                    {repCustomersStats.totalDue.toLocaleString()} {data.settings.currency}
-                  </strong>
-                  <span className="block text-[10px] text-rose-700 font-bold">مديونيات غير محصلة</span>
-                </div>
-                <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
-                  <span className="text-[10px] text-emerald-700 block">الأرصدة الدائنة (علينا)</span>
-                  <strong className="text-sm font-black font-mono text-emerald-800">
-                    {repCustomersStats.totalCredit.toLocaleString()} {data.settings.currency}
-                  </strong>
-                  <span className="block text-[10px] text-emerald-700 font-bold">مقدمات مالية للعملاء</span>
-                </div>
-                <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200">
-                  <span className="text-[10px] text-blue-800 block">نسبة العملاء المدينين</span>
-                  <strong className="text-base font-black font-mono text-blue-950">{repCustomersStats.debtorPct}%</strong>
-                  <span className="block text-[10px] text-blue-700">من إجمالي العملاء</span>
-                </div>
-              </div>
+              )
             ) : (
-              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2 text-[11px] font-bold text-slate-700">
-                <span>عدد العملاء المتاحين للعمل: <strong className="font-mono text-slate-900">{repCustomersStats.total}</strong> (المطابق: {filteredCustomers.length})</span>
-                <span className="text-slate-500">تظهر مديونية كل عميل وكشف حسابه الفردي داخل بطاقته فقط.</span>
+              <div className="px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between gap-2 text-[11px] font-bold text-slate-700">
+                <span>عدد العملاء: <strong className="font-mono text-slate-900">{repCustomersStats.total}</strong> (المطابق: {filteredCustomers.length})</span>
+                <span className="text-slate-500">تظهر مديونية كل عميل داخل بطاقته.</span>
               </div>
             )}
 
-            {/* Search, Filter Buttons & Sort */}
-            <div className="flex flex-col sm:flex-row gap-2">
-              <div className="relative flex-1">
+            {/* Search, Filter Chips & Sort */}
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 items-center">
+              <div className="relative sm:col-span-5">
                 <input
                   type="text"
                   value={customerSearch}
                   onChange={(e) => setCustomerSearch(e.target.value)}
-                  placeholder="ابحث باسم العميل أو المحل أو الكود أو المنطقة أو الهاتف..."
-                  className="w-full rounded-xl border border-slate-300 py-2.5 pr-10 pl-3 text-xs font-semibold outline-hidden focus:border-blue-600"
+                  placeholder="ابحث بالاسم أو المحل أو الكود أو الهاتف..."
+                  className="w-full min-h-[36px] rounded-lg border border-slate-300 py-1.5 pr-8 pl-2.5 text-xs font-semibold outline-hidden focus:border-blue-600"
                 />
-                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5" />
               </div>
               <select
                 value={customerSortMode}
                 onChange={(e) => setCustomerSortMode(e.target.value as any)}
-                className="min-h-[42px] rounded-xl border border-slate-300 px-3 text-xs font-bold bg-white"
+                className="sm:col-span-3 min-h-[36px] rounded-lg border border-slate-300 px-2.5 text-xs font-bold bg-white"
               >
                 <option value="debt_desc">ترتيب: الأعلى مديونية</option>
                 <option value="credit_desc">ترتيب: الأعلى رصيداً دائناً</option>
                 <option value="name">ترتيب: أبجدياً</option>
               </select>
-            </div>
-
-            <div className="flex flex-wrap gap-1.5 text-[11px] font-bold">
-              {[
-                { id: 'all', label: `الكل (${repCustomersStats.total})` },
-                { id: 'current', label: 'العملاء الحاليين' },
-                {
-                  id: 'debtors',
-                  label: canViewCustomerAggregateTotals
-                    ? `المبالغ المتبقية (${repCustomersStats.debtorsCount})`
-                    : 'عملاء عليهم رصيد',
-                },
-                {
-                  id: 'credits',
-                  label: canViewCustomerAggregateTotals
-                    ? `أرصدة دائنة (${repCustomersStats.creditsCount})`
-                    : 'أرصدة دائنة',
-                },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setCustomerFilterMode(tab.id as any)}
-                  className={`min-h-[36px] px-3 rounded-xl border transition-colors cursor-pointer ${
-                    customerFilterMode === tab.id
-                      ? 'bg-blue-900 text-white border-blue-900 font-black'
-                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
+              <div className="sm:col-span-4 flex flex-wrap gap-1 text-[11px] font-bold">
+                {[
+                  { id: 'all', label: `الكل (${repCustomersStats.total})` },
+                  { id: 'current', label: 'الحاليين' },
+                  {
+                    id: 'debtors',
+                    label: canViewCustomerAggregateTotals
+                      ? `متبقي (${repCustomersStats.debtorsCount})`
+                      : 'عليهم رصيد',
+                  },
+                  {
+                    id: 'credits',
+                    label: canViewCustomerAggregateTotals
+                      ? `دائنة (${repCustomersStats.creditsCount})`
+                      : 'دائنة',
+                  },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setCustomerFilterMode(tab.id as any)}
+                    className={`min-h-[32px] px-2 rounded-lg border transition-colors cursor-pointer ${
+                      customerFilterMode === tab.id
+                        ? 'bg-blue-900 text-white border-blue-900 font-black'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -4401,11 +4382,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
       {/* ==================== NEW SALES INVOICE (with Van Custody Guard) ==================== */}
       {activeTab === 'new-invoice' && (
-        <div className="space-y-4">
-          <div className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs">
-            <h3 className="text-sm font-black text-slate-900">إنشاء فاتورة مبيعات (مقيد بمخزون عهدة السيارة)</h3>
+        <div className="space-y-2.5">
+          <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs space-y-2.5 text-xs">
+            <h3 className="text-xs sm:text-sm font-black text-slate-900">إنشاء فاتورة مبيعات (مقيد بمخزون عهدة السيارة)</h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
                 <SearchableFilterSelect
                   id="rep-sale-customer"
@@ -4423,15 +4404,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   allOptionValue=""
                   searchPlaceholder="ابحث باسم العميل أو المحل أو الهاتف..."
                   allowClear
-                  buttonClassName="min-h-[44px] rounded-xl"
+                  buttonClassName="min-h-[36px] rounded-lg"
                 />
               </div>
               <div>
-                <label className="block font-bold text-slate-700 mb-1">مستودع الصرف (السيارة):</label>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">مستودع الصرف (السيارة):</label>
                 <select
                   value={effectiveVanId}
                   onChange={(e) => setInvWarehouseId(e.target.value)}
-                  className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
+                  className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold bg-white"
                 >
                   {data.warehouses.map((w) => (
                     <option key={w.id} value={w.id}>
@@ -4442,13 +4423,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               </div>
             </div>
 
-            <div className="p-3 rounded-2xl bg-blue-50/60 border border-blue-200 space-y-2.5">
+            <div className="p-2.5 rounded-lg bg-blue-50/60 border border-blue-200 space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <label className="font-bold text-slate-800">بحث / باركود وإضافة صنف ({filteredInvoiceProducts.length}):</label>
                 <button
                   type="button"
                   onClick={() => setInvOnlyVanStock((prev) => !prev)}
-                  className={`min-h-[34px] px-2.5 rounded-xl border text-[11px] font-bold cursor-pointer ${
+                  className={`min-h-[30px] px-2.5 rounded-lg border text-[11px] font-bold cursor-pointer ${
                     invOnlyVanStock
                       ? 'bg-emerald-700 text-white border-emerald-800'
                       : 'bg-white text-slate-700 border-slate-300'
@@ -4470,15 +4451,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               />
 
               {selectedProduct && invCustomerId && (
-                <div className="p-2.5 rounded-xl bg-white border border-blue-200 space-y-1.5">
-                  <div className="flex items-center gap-1.5 font-bold text-blue-950">
-                    <History className="w-4 h-4 shrink-0" />
+                <div className="p-2 rounded-lg bg-white border border-blue-200 space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-blue-950 text-[11px]">
+                    <History className="w-3.5 h-3.5 shrink-0" />
                     <span>
                       آخر 3 أسعار بيع فعلية لهذا العميل ({selectedInvoiceCustomer?.shopName || selectedInvoiceCustomer?.name || ''}) للصنف ({selectedProduct.name}) — من الأقدم للأحدث:
                     </span>
                   </div>
                   {selectedProdLastPrices.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-1.5">
                       {selectedProdLastPrices.map((entry, idx) => {
                         const priceVal = Number(entry.price || 0);
                         const priceDate = entry.date || '';
@@ -4500,7 +4481,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             type="button"
                             onClick={() => setInvPrice(normalizedPerSelectedUnit ?? priceVal)}
                             title="انقر لتطبيق هذا السعر يدوياً"
-                            className="min-h-[40px] px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-950 text-right cursor-pointer"
+                            className="min-h-[34px] px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-950 text-right cursor-pointer"
                           >
                             <span className="font-mono font-bold text-[11px] block">
                               {priceVal} {data.settings.currency}
@@ -4523,13 +4504,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               )}
 
               {selectedProduct && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">الوحدة</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">الوحدة</label>
                     <select
                       value={invUnitName}
                       onChange={(e) => handleUnitChange(e.target.value)}
-                      className="w-full min-h-[42px] rounded-xl border border-slate-300 px-2 bg-white font-bold"
+                      className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2 bg-white font-bold"
                     >
                       {selectedProduct.units.map((u) => (
                         <option key={u.id} value={u.name}>
@@ -4540,18 +4521,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">الكمية</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">الكمية</label>
                     <QuantityInput
                       allowDecimals
                       min={0.001}
                       value={invQty}
                       onChange={setInvQty}
                       ariaLabel="كمية الصنف"
-                      inputClassName="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                      inputClassName="w-full min-h-[36px] rounded-lg border border-slate-300 text-center font-mono font-bold bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">السعر</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">السعر</label>
                     <input
                       type="number"
                       step="0.5"
@@ -4559,11 +4540,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       value={invPrice}
                       onChange={(e) => setInvPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                       placeholder="0.00"
-                      className="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                      className="w-full min-h-[36px] rounded-lg border border-slate-300 text-center font-mono font-bold bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">خصم البند</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">خصم البند</label>
                     <input
                       type="number"
                       step="0.5"
@@ -4571,7 +4552,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       value={invLineDiscount}
                       onChange={(e) => setInvLineDiscount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                       placeholder="0"
-                      className="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                      className="w-full min-h-[36px] rounded-lg border border-slate-300 text-center font-mono font-bold bg-white"
                     />
                   </div>
                 </div>
@@ -4581,7 +4562,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 <button
                   type="button"
                   onClick={handleAddInvoiceItem}
-                  className="w-full min-h-[44px] rounded-xl bg-blue-900 text-white font-black flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="w-full min-h-[38px] rounded-lg bg-blue-900 text-white font-black flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   <span>إضافة الصنف للفاتورة</span>
@@ -4660,12 +4641,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             )}
 
             {shortageItems.length > 0 && (
-              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 space-y-2 text-xs text-amber-950">
-                <div className="flex items-center gap-2 font-black">
+              <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-300 space-y-1 text-xs text-amber-950">
+                <div className="flex items-center gap-1.5 font-black">
                   <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
                   <span>عجز في مخزون سيارتك لعدد ({shortageItems.length}) أصناف — لا يمكن الاعتماد المباشر</span>
                 </div>
-                <div className="space-y-1 text-[11px]">
+                <div className="space-y-0.5 text-[11px]">
                   {shortageItems.map((sh) => (
                     <div key={sh.productId} className="flex items-center justify-between font-mono">
                       <span className="font-sans font-bold">{sh.productName}</span>
@@ -4679,8 +4660,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             )}
 
             {invItems.length > 0 && (
-              <div className="space-y-3 pt-2 border-t border-slate-100">
-                <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <div className="grid grid-cols-3 gap-1.5">
                   {[
                     { key: 'cash' as const, label: 'نقدي' },
                     { key: 'credit' as const, label: 'آجل' },
@@ -4690,7 +4671,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       key={pt.key}
                       type="button"
                       onClick={() => setInvPaymentType(pt.key)}
-                      className={`min-h-[42px] rounded-xl border font-bold cursor-pointer ${
+                      className={`min-h-[36px] rounded-lg border font-bold cursor-pointer ${
                         invPaymentType === pt.key
                           ? 'bg-blue-900 text-white border-blue-900'
                           : 'bg-slate-50 text-slate-700 border-slate-300'
@@ -4703,7 +4684,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
                 {invPaymentType === 'partial' && (
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">المدفوع نقداً الآن</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">المدفوع نقداً الآن</label>
                     <input
                       type="number"
                       min={0}
@@ -4711,18 +4692,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       value={invPaidAmount}
                       onChange={(e) => setInvPaidAmount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                       placeholder="0.00"
-                      className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-mono font-bold"
+                      className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-mono font-bold"
                     />
                   </div>
                 )}
 
                 {!isRepRoleAccount && canCashOps && invPaymentType !== 'credit' && (
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">الخزينة</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">الخزينة</label>
                     <select
                       value={invCashboxId}
                       onChange={(e) => setInvCashboxId(e.target.value)}
-                      className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 bg-white font-bold"
+                      className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 bg-white font-bold"
                     >
                       {data.cashboxes.map((cb) => (
                         <option key={cb.id} value={cb.id}>
@@ -4738,38 +4719,38 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   value={invNotes}
                   onChange={(e) => setInvNotes(e.target.value)}
                   placeholder="ملاحظات الفاتورة (اختياري)..."
-                  className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+                  className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5"
                 />
 
-                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5 tabular-nums">
-                  <div className="flex items-center justify-between font-black text-sm text-blue-950">
+                <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1 tabular-nums">
+                  <div className="flex items-center justify-between font-black text-xs sm:text-sm text-blue-950">
                     <span>إجمالي الفاتورة:</span>
                     <span className="font-mono">
                       {invGrandTotal.toLocaleString()} {data.settings.currency}
                     </span>
                   </div>
                   {selectedInvoiceCustomer && (
-                    <div className="pt-1.5 border-t border-slate-200 grid grid-cols-2 gap-1.5 text-[11px] text-slate-700">
+                    <div className="pt-1 border-t border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-1 text-[11px] text-slate-700">
                       <div>
-                        رصيد العميل قبل الفاتورة:{' '}
+                        قبل الفاتورة:{' '}
                         <strong className="font-mono">
                           {selectedInvoiceCustomer.currentBalance.toLocaleString()}
                         </strong>
                       </div>
                       <div>
-                        المدفوع الآن:{' '}
+                        المدفوع:{' '}
                         <strong className="font-mono text-emerald-700">
                           {effectiveInvPaid.toLocaleString()}
                         </strong>
                       </div>
                       <div>
-                        المتبقي المضاف للحساب:{' '}
+                        المتبقي:{' '}
                         <strong className="font-mono text-amber-800">
                           {Math.max(0, invGrandTotal - effectiveInvPaid).toLocaleString()}
                         </strong>
                       </div>
                       <div>
-                        الرصيد بعد الفاتورة:{' '}
+                        بعد الفاتورة:{' '}
                         <strong className="font-mono text-blue-950">
                           {(
                             Number(selectedInvoiceCustomer.currentBalance || 0) +
@@ -4783,12 +4764,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 </div>
 
                 {shortageItems.length > 0 ? (
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <button
                       type="button"
                       disabled={isSubmittingInvoice}
                       onClick={() => handleCreateInvoice('draft_with_transfer')}
-                      className="w-full min-h-[48px] rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-black cursor-pointer disabled:opacity-50"
+                      className="w-full min-h-[42px] rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black cursor-pointer disabled:opacity-50"
                     >
                       {isSubmittingInvoice ? 'جاري الحفظ...' : 'حفظ كمسودة وإرسال طلب تحويل للعجز'}
                     </button>
@@ -4796,7 +4777,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       type="button"
                       disabled={isSubmittingInvoice}
                       onClick={() => handleCreateInvoice('draft')}
-                      className="w-full min-h-[44px] rounded-2xl bg-slate-200 text-slate-800 font-bold cursor-pointer"
+                      className="w-full min-h-[38px] rounded-lg bg-slate-200 text-slate-800 font-bold cursor-pointer"
                     >
                       حفظ كمسودة فقط
                     </button>
@@ -4807,7 +4788,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       type="button"
                       disabled={isSubmittingInvoice}
                       onClick={() => handleCreateInvoice('draft')}
-                      className="min-h-[48px] rounded-2xl bg-slate-200 text-slate-800 font-bold cursor-pointer"
+                      className="min-h-[42px] rounded-xl bg-slate-200 text-slate-800 font-bold cursor-pointer"
                     >
                       حفظ كمسودة
                     </button>
@@ -4815,7 +4796,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       type="button"
                       disabled={isSubmittingInvoice}
                       onClick={() => handleCreateInvoice('confirmed')}
-                      className="min-h-[48px] rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
+                      className="min-h-[42px] rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
                     >
                       {isSubmittingInvoice ? 'جاري الإصدار...' : 'اعتماد وإصدار'}
                     </button>
@@ -4829,17 +4810,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
       {/* ==================== NEW PURCHASE INVOICE ==================== */}
       {activeTab === 'new-purchase' && (
-        <form onSubmit={handleOpenPurchaseReview} className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs">
+        <form onSubmit={handleOpenPurchaseReview} className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs space-y-2.5 text-xs">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div>
-              <h3 className="text-sm font-black text-slate-900">
+              <h3 className="text-xs sm:text-sm font-black text-slate-900">
                 {purEditingInvoiceId ? 'تعديل فاتورة مشتريات قبل الإرسال' : 'إنشاء فاتورة مشتريات جديدة'}
               </h3>
               <p className="text-[11px] text-slate-500">
                 لا يتم تعديل المخزن أو حسابات المورد حتى استلام الإدارة واعتمادها للفاتورة
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               {purEditingInvoiceId && (
                 <button
                   type="button"
@@ -4850,7 +4831,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     setPurNotes('');
                     onTabChange('purchases-list');
                   }}
-                  className="min-h-[40px] px-3 rounded-xl bg-slate-100 text-slate-700 font-bold cursor-pointer"
+                  className="min-h-[34px] px-2.5 rounded-lg bg-slate-100 text-slate-700 font-bold cursor-pointer"
                 >
                   إلغاء التعديل
                 </button>
@@ -4858,16 +4839,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <button
                 type="button"
                 onClick={() => onTabChange('new-supplier')}
-                className="min-h-[40px] px-3 rounded-xl bg-emerald-50 text-[#0F5A33] border border-emerald-200 font-bold cursor-pointer"
+                className="min-h-[34px] px-2.5 rounded-lg bg-emerald-50 text-[#0F5A33] border border-emerald-200 font-bold cursor-pointer"
               >
                 + مورد جديد
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-              <label className="block font-bold text-slate-700 mb-1">المورد:</label>
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">المورد:</label>
               <SearchableFilterSelect
                 id="rep-purchase-supplier"
                 value={purSupplierId}
@@ -4882,15 +4863,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 allOptionValue=""
                 searchPlaceholder="ابحث باسم المورد أو الهاتف..."
                 allowClear
-                buttonClassName="min-h-[44px] rounded-xl"
+                buttonClassName="min-h-[36px] rounded-lg"
               />
             </div>
             <div>
-              <label className="block font-bold text-slate-700 mb-1">مخزن الاستلام:</label>
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">مخزن الاستلام:</label>
               <select
                 value={purWarehouseId}
                 onChange={(e) => setPurWarehouseId(e.target.value)}
-                className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
+                className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold bg-white"
               >
                 {data.warehouses.map((w) => (
                   <option key={w.id} value={w.id}>
@@ -4901,7 +4882,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </div>
           </div>
 
-          <div className="p-3 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-2.5">
+          <div className="p-2.5 rounded-lg bg-indigo-50/70 border border-indigo-200 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-black text-indigo-950">إضافة أصناف لفاتورة الشراء:</span>
               <button
@@ -4910,13 +4891,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   setShowPurInlineNewProduct((prev) => !prev);
                   setFeedback(null);
                 }}
-                className={`min-h-[38px] inline-flex items-center gap-1.5 px-3 rounded-xl font-bold border transition-colors cursor-pointer ${
+                className={`min-h-[32px] inline-flex items-center gap-1.5 px-2.5 rounded-lg font-bold border transition-colors cursor-pointer ${
                   showPurInlineNewProduct
                     ? 'bg-slate-800 text-white border-slate-800'
                     : 'bg-white text-indigo-900 border-indigo-300 hover:bg-indigo-100/60'
                 }`}
               >
-                <PackagePlus className="w-4 h-4 shrink-0" />
+                <PackagePlus className="w-3.5 h-3.5 shrink-0" />
                 <span>{showPurInlineNewProduct ? 'إغلاق إنشاء الصنف الجديد' : 'إنشاء صنف جديد داخل الفاتورة'}</span>
               </button>
             </div>
@@ -4934,11 +4915,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   onSelect={(prod) => handleSelectPurProduct(prod.id)}
                 />
                 {purProductId && (
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-3 gap-1.5">
                     <select
                       value={purUnitName}
                       onChange={(e) => handleSelectPurUnit(e.target.value)}
-                      className="min-h-[42px] rounded-xl border border-slate-300 px-2 text-center font-bold bg-white"
+                      className="min-h-[36px] rounded-lg border border-slate-300 px-2 text-center font-bold bg-white"
                       aria-label="وحدة الشراء"
                     >
                       {purUnitOptions.map((u) => (
@@ -4954,7 +4935,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       onChange={setPurQty}
                       placeholder="الكمية"
                       ariaLabel="كمية الشراء"
-                      inputClassName="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                      inputClassName="w-full min-h-[36px] rounded-lg border border-slate-300 text-center font-mono font-bold bg-white"
                     />
                     <input
                       type="number"
@@ -4963,7 +4944,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       placeholder="سعر الشراء"
                       value={purPrice}
                       onChange={(e) => setPurPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                      className="min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                      className="min-h-[36px] rounded-lg border border-slate-300 text-center font-mono font-bold bg-white"
                     />
                   </div>
                 )}
@@ -4971,72 +4952,72 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   <button
                     type="button"
                     onClick={handleAddPurItem}
-                    className="w-full min-h-[44px] rounded-xl bg-indigo-900 text-white font-black cursor-pointer"
+                    className="w-full min-h-[38px] rounded-lg bg-indigo-900 text-white font-black cursor-pointer"
                   >
                     إضافة الصنف لفاتورة الشراء
                   </button>
                 )}
               </>
             ) : (
-              <div className="bg-white p-3 rounded-2xl border border-indigo-200 space-y-2.5">
-                <div className="flex items-center gap-2 text-emerald-900 font-black">
-                  <ProductAddIcon className="w-5 h-5 shrink-0" />
+              <div className="bg-white p-2.5 rounded-lg border border-indigo-200 space-y-2">
+                <div className="flex items-center gap-1.5 text-emerald-900 font-black">
+                  <ProductAddIcon className="w-4 h-4 shrink-0" />
                   <span>بيانات الصنف الجديد (لا يضاف للمخزن إلا بعد اعتماد الإدارة)</span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">اسم الصنف الجديد: *</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">اسم الصنف الجديد: *</label>
                     <input
                       type="text"
                       value={newPurProdName}
                       onChange={(e) => setNewPurProdName(e.target.value)}
                       placeholder="مثال: شاي العروسة 250 جم"
-                      className="w-full min-h-[42px] border border-slate-300 rounded-xl px-3 font-bold bg-white"
+                      className="w-full min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-bold bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">الباركود (اختياري):</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">الباركود (اختياري):</label>
                     <input
                       type="text"
                       value={newPurProdBarcode}
                       onChange={(e) => setNewPurProdBarcode(e.target.value)}
                       placeholder="622..."
-                      className="w-full min-h-[42px] border border-slate-300 rounded-xl px-3 font-mono bg-white"
+                      className="w-full min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-mono bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">الكود (اختياري):</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">الكود (اختياري):</label>
                     <input
                       type="text"
                       value={newPurProdCode}
                       onChange={(e) => setNewPurProdCode(e.target.value)}
                       placeholder="PRD-..."
-                      className="w-full min-h-[42px] border border-slate-300 rounded-xl px-3 font-mono bg-white"
+                      className="w-full min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-mono bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">التصنيف:</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">التصنيف:</label>
                     <input
                       type="text"
                       value={newPurProdCategory}
                       onChange={(e) => setNewPurProdCategory(e.target.value)}
                       placeholder="التصنيف (اختياري)"
-                      className="w-full min-h-[42px] border border-slate-300 rounded-xl px-3 font-semibold bg-white"
+                      className="w-full min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-semibold bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">الوحدة الأساسية:</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">الوحدة الأساسية:</label>
                     <input
                       type="text"
                       value={newPurProdBaseUnit}
                       onChange={(e) => setNewPurProdBaseUnit(e.target.value)}
                       placeholder="قطعة / كرتونة / كجم"
-                      className="w-full min-h-[42px] border border-slate-300 rounded-xl px-3 font-semibold bg-white"
+                      className="w-full min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-semibold bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">الكمية المشتراة: *</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">الكمية المشتراة: *</label>
                     <QuantityInput
                       allowDecimals
                       min={0.001}
@@ -5044,11 +5025,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       onChange={setNewPurProdQty}
                       placeholder="الكمية"
                       ariaLabel="كمية الصنف الجديد"
-                      inputClassName="w-full min-h-[42px] bg-white border border-slate-300 rounded-xl text-center font-mono font-bold"
+                      inputClassName="w-full min-h-[36px] bg-white border border-slate-300 rounded-lg text-center font-mono font-bold"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">سعر الشراء: *</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">سعر الشراء: *</label>
                     <input
                       type="number"
                       step="0.5"
@@ -5056,11 +5037,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       placeholder="سعر الشراء"
                       value={newPurProdBuyPrice}
                       onChange={(e) => setNewPurProdBuyPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                      className="w-full min-h-[42px] border border-slate-300 rounded-xl text-center font-mono font-bold bg-white"
+                      className="w-full min-h-[36px] border border-slate-300 rounded-lg text-center font-mono font-bold bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">سعر البيع المقترح:</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">سعر البيع المقترح:</label>
                     <input
                       type="number"
                       step="0.5"
@@ -5068,14 +5049,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       placeholder="سعر البيع"
                       value={newPurProdSellPrice}
                       onChange={(e) => setNewPurProdSellPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                      className="w-full min-h-[42px] border border-slate-300 rounded-xl text-center font-mono font-bold bg-white"
+                      className="w-full min-h-[36px] border border-slate-300 rounded-lg text-center font-mono font-bold bg-white"
                     />
                   </div>
                 </div>
 
                 {purDuplicateCheckState.exactMatch && (
-                  <div className="p-2.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-950 flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 font-bold">
+                  <div className="p-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-950 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 font-bold">
                       <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
                       <span>
                         هذا الصنف مسجل مسبقاً ({purDuplicateCheckState.exactMatch.name} — {purDuplicateCheckState.exactMatch.code})! لن يُنشأ صنف مكرر.
@@ -5084,7 +5065,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     <button
                       type="button"
                       onClick={() => handleUseExistingPurDuplicateProduct(purDuplicateCheckState.exactMatch!)}
-                      className="min-h-[36px] px-3 rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-bold cursor-pointer"
+                      className="min-h-[32px] px-2.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-bold cursor-pointer"
                     >
                       استخدام الصنف الموجود
                     </button>
@@ -5092,18 +5073,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 )}
 
                 {!purDuplicateCheckState.exactMatch && purDuplicateCheckState.similarMatches.length > 0 && (
-                  <div className="p-2.5 rounded-xl border border-blue-200 bg-blue-50/70 text-blue-950 space-y-1.5">
+                  <div className="p-2 rounded-lg border border-blue-200 bg-blue-50/70 text-blue-950 space-y-1">
                     <div className="font-bold flex items-center gap-1.5">
                       <AlertTriangle className="w-3.5 h-3.5 text-blue-700 shrink-0" />
                       <span>توجد أصناف متشابهة بالاسم (اضغط للاختيار إن كان نفس الصنف):</span>
                     </div>
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap gap-1">
                       {purDuplicateCheckState.similarMatches.map((sim) => (
                         <button
                           key={sim.id}
                           type="button"
                           onClick={() => handleUseExistingPurDuplicateProduct(sim)}
-                          className="min-h-[36px] px-2.5 rounded-lg bg-white border border-blue-300 hover:bg-blue-100 text-blue-900 font-bold text-[11px] cursor-pointer"
+                          className="min-h-[32px] px-2 rounded-lg bg-white border border-blue-300 hover:bg-blue-100 text-blue-900 font-bold text-[11px] cursor-pointer"
                         >
                           {sim.name} ({sim.baseUnit})
                           {Number(sim.purchasePrice || 0) > 0 ? ` — ${sim.purchasePrice} ${data.settings.currency}` : ''}
@@ -5113,18 +5094,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   </div>
                 )}
 
-                <div className="flex items-center justify-end gap-2">
+                <div className="flex items-center justify-end gap-1.5">
                   <button
                     type="button"
                     onClick={() => setShowPurInlineNewProduct(false)}
-                    className="min-h-[40px] px-3 rounded-xl border border-slate-300 font-bold text-slate-600 cursor-pointer"
+                    className="min-h-[34px] px-3 rounded-lg border border-slate-300 font-bold text-slate-600 cursor-pointer"
                   >
                     إلغاء
                   </button>
                   <button
                     type="button"
                     onClick={handleAddPurInlineNewProduct}
-                    className="min-h-[40px] px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
+                    className="min-h-[34px] px-3.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
                   >
                     {purDuplicateCheckState.exactMatch ? 'ربط بالصنف الموجود وإضافته' : '+ إضافة الصنف للفاتورة'}
                   </button>
@@ -5197,7 +5178,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             />
           )}
 
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-1.5">
             {[
               { key: 'cash' as const, label: 'نقدي' },
               { key: 'credit' as const, label: 'آجل' },
@@ -5207,7 +5188,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 key={pt.key}
                 type="button"
                 onClick={() => setPurPaymentType(pt.key)}
-                className={`min-h-[42px] rounded-xl border font-bold cursor-pointer ${
+                className={`min-h-[36px] rounded-lg border font-bold cursor-pointer ${
                   purPaymentType === pt.key
                     ? 'bg-indigo-900 text-white border-indigo-900'
                     : 'bg-slate-50 text-slate-700 border-slate-300'
@@ -5226,7 +5207,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               value={purPaidAmount}
               onChange={(e) => setPurPaidAmount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
               placeholder="المدفوع للمورد الآن"
-              className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-mono font-bold"
+              className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-mono font-bold"
             />
           )}
 
@@ -5234,7 +5215,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <select
               value={purCashboxId}
               onChange={(e) => setPurCashboxId(e.target.value)}
-              className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 bg-white font-bold"
+              className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 bg-white font-bold"
             >
               {data.cashboxes.map((cb) => (
                 <option key={cb.id} value={cb.id}>
@@ -5244,7 +5225,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </select>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             <input
               type="number"
               min={0}
@@ -5253,18 +5234,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               value={purDiscount || ''}
               onChange={(e) => setPurDiscount(Math.max(0, Number(e.target.value)))}
               placeholder={`الخصم (${data.settings.currency}) - اختياري`}
-              className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-mono font-bold"
+              className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-mono font-bold"
             />
             <input
               type="text"
               value={purNotes}
               onChange={(e) => setPurNotes(e.target.value)}
               placeholder="ملاحظات فاتورة الشراء..."
-              className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+              className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5"
             />
           </div>
 
-          <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between font-black">
+          <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between font-black">
             <span>صافي إجمالي فاتورة الشراء:</span>
             <strong className="font-mono text-indigo-950">
               {purTotal.toLocaleString()} {data.settings.currency}
@@ -5274,7 +5255,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           <button
             type="submit"
             disabled={isSubmittingPurchase || purItems.length === 0}
-            className="w-full min-h-[48px] rounded-2xl bg-indigo-900 hover:bg-indigo-950 text-white font-black disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+            className="w-full min-h-[42px] rounded-xl bg-indigo-900 hover:bg-indigo-950 text-white font-black disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5"
           >
             <Eye className="w-4 h-4" />
             <span>{isSubmittingPurchase ? 'جاري المعالجة...' : 'مراجعة وإرسال الفاتورة'}</span>
@@ -5284,13 +5265,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
       {/* ==================== SALES RETURN ==================== */}
       {activeTab === 'sales-return' && (
-        <form onSubmit={handleSubmitSalesReturn} className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs">
-          <h3 className="text-sm font-black text-rose-900">تسجيل مرتجع مبيعات</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <form onSubmit={handleSubmitSalesReturn} className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs space-y-2.5 text-xs">
+          <h3 className="text-xs sm:text-sm font-black text-rose-900">تسجيل مرتجع مبيعات</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <select
               value={sRetCustomerId}
               onChange={(e) => setSRetCustomerId(e.target.value)}
-              className="min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
+              className="min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold bg-white"
             >
               <option value="">-- اختر العميل --</option>
               {data.customers.map((c) => (
@@ -5307,7 +5288,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   setSRetCustomerId(matchedInv.customerId);
                 }
               }}
-              className="min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
+              className="min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold bg-white"
             >
               <option value="">
                 {isRepRoleAccount || !canCashOps
@@ -5322,7 +5303,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </select>
           </div>
 
-          <div className="p-3 rounded-2xl bg-rose-50/70 border border-rose-200 space-y-2">
+          <div className="p-2.5 rounded-lg bg-rose-50/70 border border-rose-200 space-y-2">
             <select
               value={sRetProductId}
               onChange={(e) => {
@@ -5330,7 +5311,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 const p = activeProducts.find((x) => x.id === e.target.value);
                 if (p) setSRetPrice(p.sellingPrice);
               }}
-              className="w-full min-h-[44px] rounded-xl border border-rose-300 px-3 font-bold bg-white"
+              className="w-full min-h-[36px] rounded-lg border border-rose-300 px-2.5 font-bold bg-white"
             >
               <option value="">-- اختر الصنف المرتجع --</option>
               {activeProducts.map((p) => (
@@ -5338,14 +5319,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               ))}
             </select>
             {sRetProductId && (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-1.5">
                 <QuantityInput
                   allowDecimals
                   min={0.001}
                   value={sRetQty}
                   onChange={setSRetQty}
                   ariaLabel="كمية المرتجع"
-                  inputClassName="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                  inputClassName="w-full min-h-[36px] rounded-lg border border-slate-300 text-center font-mono font-bold bg-white"
                 />
                 <input
                   type="number"
@@ -5354,7 +5335,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   value={sRetPrice}
                   onChange={(e) => setSRetPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                   placeholder="السعر"
-                  className="min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                  className="min-h-[36px] rounded-lg border border-slate-300 text-center font-mono font-bold bg-white"
                 />
               </div>
             )}
@@ -5382,7 +5363,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   setSRetQty('');
                   setSRetPrice('');
                 }}
-                className="w-full min-h-[44px] rounded-xl bg-rose-700 text-white font-black cursor-pointer"
+                className="w-full min-h-[38px] rounded-lg bg-rose-700 text-white font-black cursor-pointer"
               >
                 إضافة لمرتجع البيع
               </button>
@@ -5436,11 +5417,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             />
           )}
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-1.5">
             <select
               value={sRetSettlement}
               onChange={(e) => setSRetSettlement(e.target.value as 'account' | 'cash')}
-              className="min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
+              className="min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold bg-white"
             >
               <option value="account">خصم من رصيد العميل</option>
               <option value="cash">
@@ -5452,7 +5433,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <select
               value={sRetWarehouseId}
               onChange={(e) => setSRetWarehouseId(e.target.value)}
-              className="min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
+              className="min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold bg-white"
             >
               {data.warehouses.map((w) => (
                 <option key={w.id} value={w.id}>{w.name}</option>
@@ -5464,14 +5445,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <select
               value={sRetCashboxId}
               onChange={(e) => setSRetCashboxId(e.target.value)}
-              className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
+              className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold bg-white"
             >
               {data.cashboxes.map((cb) => (
                 <option key={cb.id} value={cb.id}>{cb.name}</option>
               ))}
             </select>
           ) : (
-            <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
+            <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
               يُرسل هذا المرتجع النقدي كطلب مراجعة للخزينة والإدارة دون اختيار خزينة، ولا يتأثر رصيد أي خزينة حتى الاعتماد الرسمي.
             </div>
           ))}
@@ -5486,13 +5467,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 ? 'سبب طلب مرتجع المبيعات النقدي (إلزامي)...'
                 : 'سبب المرتجع...'
             }
-            className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+            className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5"
           />
 
           <button
             type="submit"
             disabled={isSubmittingSRet || sRetItems.length === 0}
-            className="w-full min-h-[48px] rounded-2xl bg-rose-700 hover:bg-rose-800 text-white font-black disabled:opacity-50 cursor-pointer"
+            className="w-full min-h-[42px] rounded-xl bg-rose-700 hover:bg-rose-800 text-white font-black disabled:opacity-50 cursor-pointer"
           >
             {isSubmittingSRet
               ? 'جاري التسجيل...'
@@ -5505,9 +5486,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
       {/* ==================== PURCHASE RETURN / REQUEST ==================== */}
       {activeTab === 'purchase-return' && (
-        <form onSubmit={handleSubmitPurchaseReturn} className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs">
+        <form onSubmit={handleSubmitPurchaseReturn} className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs space-y-2.5 text-xs">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="text-sm font-black text-orange-900">
+            <h3 className="text-xs sm:text-sm font-black text-orange-900">
               {isRepRoleAccount || !canPurchases ? 'طلب مرتجع مشتريات (يعتمد من الإدارة)' : 'تسجيل مرتجع مشتريات'}
             </h3>
             <button
@@ -5520,12 +5501,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           </div>
 
           {(isRepRoleAccount || !canPurchases) && (
-            <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-950 font-bold text-[11px]">
+            <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-950 font-bold text-[11px]">
               المندوب يرفع طلب مرتجع مرتبط بفاتورة شراء معتمدة خاصة به؛ ولا يتم تعديل المخزون أو رصيد المورد أو الخزينة إلا بعد مراجعة واعتماد الإدارة.
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <select
               value={pRetSupplierId}
               onChange={(e) => {
@@ -5539,7 +5520,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   }
                 }
               }}
-              className="min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
+              className="min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold bg-white"
             >
               <option value="">-- اختر المورد --</option>
               {data.suppliers.map((s) => (
@@ -5559,7 +5540,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   if (inv.warehouseId) setPRetWarehouseId(inv.warehouseId);
                 }
               }}
-              className="min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
+              className="min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold bg-white"
             >
               <option value="">
                 {isRepRoleAccount || !canPurchases ? '-- اختر فاتورة الشراء المعتمدة (إلزامي) --' : '-- ربط بفاتورة شراء (اختياري) --'}
@@ -5574,10 +5555,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </select>
           </div>
 
-          <div className="p-3 rounded-2xl bg-orange-50/70 border border-orange-200 space-y-2">
+          <div className="p-2.5 rounded-lg bg-orange-50/70 border border-orange-200 space-y-2">
             {isRepRoleAccount || !canPurchases ? (
               !selectedPRetOrigInvoice ? (
-                <p className="text-[11px] font-bold text-orange-900 py-2 text-center">
+                <p className="text-[11px] font-bold text-orange-900 py-1.5 text-center">
                   اختر أولاً فاتورة شراء معتمدة خاصة بك لعرض الأصناف القابلة للإرجاع منها.
                 </p>
               ) : (
@@ -5593,7 +5574,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         setPRetPrice(Number(matched.unitPrice || 0));
                       }
                     }}
-                    className="w-full min-h-[44px] rounded-xl border border-orange-300 px-3 font-bold bg-white"
+                    className="w-full min-h-[36px] rounded-lg border border-orange-300 px-2.5 font-bold bg-white"
                   >
                     <option value="">-- اختر الصنف من بنود الفاتورة --</option>
                     {pRetReturnableOptions.map((line) => (
@@ -5611,7 +5592,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     if (!selectedLine) return null;
                     return (
                       <>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-2 gap-1.5">
                           <div>
                             <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
                               الكمية (الحد الأقصى: {selectedLine.maxReturnableQty})
@@ -5623,7 +5604,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                               value={pRetQty}
                               onChange={setPRetQty}
                               ariaLabel="كمية طلب مرتجع الشراء"
-                              inputClassName="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                              inputClassName="w-full min-h-[36px] rounded-lg border border-slate-300 text-center font-mono font-bold bg-white"
                             />
                           </div>
                           <div>
@@ -5635,7 +5616,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                               value={pRetPrice}
                               onChange={(e) => setPRetPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                               placeholder="السعر"
-                              className="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                              className="w-full min-h-[36px] rounded-lg border border-slate-300 text-center font-mono font-bold bg-white"
                             />
                           </div>
                         </div>
@@ -5668,7 +5649,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             setPRetQty('');
                             setPRetPrice('');
                           }}
-                          className="w-full min-h-[44px] rounded-xl bg-orange-700 text-white font-black cursor-pointer"
+                          className="w-full min-h-[38px] rounded-lg bg-orange-700 text-white font-black cursor-pointer"
                         >
                           إضافة لطلب مرتجع الشراء
                         </button>
@@ -5686,7 +5667,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     const p = activeProducts.find((x) => x.id === e.target.value);
                     if (p) setPRetPrice(p.purchasePrice > 0 ? p.purchasePrice : '');
                   }}
-                  className="w-full min-h-[44px] rounded-xl border border-orange-300 px-3 font-bold bg-white"
+                  className="w-full min-h-[36px] rounded-lg border border-orange-300 px-2.5 font-bold bg-white"
                 >
                   <option value="">-- اختر الصنف المرتجع للمورد --</option>
                   {activeProducts.map((p) => (
@@ -5694,14 +5675,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   ))}
                 </select>
                 {pRetProductId && (
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 gap-1.5">
                     <QuantityInput
                       allowDecimals
                       min={0.001}
                       value={pRetQty}
                       onChange={setPRetQty}
                       ariaLabel="كمية مرتجع الشراء"
-                      inputClassName="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                      inputClassName="w-full min-h-[36px] rounded-lg border border-slate-300 text-center font-mono font-bold bg-white"
                     />
                     <input
                       type="number"
@@ -5710,7 +5691,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       value={pRetPrice}
                       onChange={(e) => setPRetPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                       placeholder="السعر"
-                      className="min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                      className="min-h-[36px] rounded-lg border border-slate-300 text-center font-mono font-bold bg-white"
                     />
                   </div>
                 )}
@@ -5738,7 +5719,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       setPRetQty('');
                       setPRetPrice('');
                     }}
-                    className="w-full min-h-[44px] rounded-xl bg-orange-700 text-white font-black cursor-pointer"
+                    className="w-full min-h-[38px] rounded-lg bg-orange-700 text-white font-black cursor-pointer"
                   >
                     إضافة لمرتجع الشراء
                   </button>
@@ -5794,11 +5775,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             />
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             <select
               value={pRetSettlement}
               onChange={(e) => setPRetSettlement(e.target.value as 'account' | 'cash')}
-              className="min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
+              className="min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold bg-white"
             >
               <option value="account">خصم من رصيد المورد</option>
               <option value="cash">استرداد نقدي</option>
@@ -5807,7 +5788,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <select
                 value={pRetWarehouseId}
                 onChange={(e) => setPRetWarehouseId(e.target.value)}
-                className="min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
+                className="min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold bg-white"
               >
                 {data.warehouses.map((w) => (
                   <option key={w.id} value={w.id}>{w.name}</option>
@@ -5817,14 +5798,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <select
                 value={pRetCashboxId}
                 onChange={(e) => setPRetCashboxId(e.target.value)}
-                className="min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
+                className="min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold bg-white"
               >
                 {data.cashboxes.map((cb) => (
                   <option key={cb.id} value={cb.id}>{cb.name}</option>
                 ))}
               </select>
             ) : (
-              <div className="min-h-[42px] rounded-xl border border-slate-200 px-3 flex items-center text-[11px] font-bold text-slate-600 bg-slate-50">
+              <div className="min-h-[36px] rounded-lg border border-slate-200 px-2.5 flex items-center text-[11px] font-bold text-slate-600 bg-slate-50">
                 {pRetSettlement === 'cash'
                   ? `تُحدد الخزينة من الإدارة عند الاعتماد · المخزن: ${selectedPRetOrigInvoice?.warehouseName || 'حسب الفاتورة'}`
                   : `المخزن: ${selectedPRetOrigInvoice?.warehouseName || 'حسب الفاتورة الأصلية'}`}
@@ -5842,7 +5823,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 ? 'سبب طلب مرتجع الشراء (إلزامي)...'
                 : 'سبب مرتجع الشراء...'
             }
-            className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+            className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5"
           />
 
           <button
@@ -5852,7 +5833,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               pRetItems.length === 0 ||
               ((isRepRoleAccount || !canPurchases) && (!selectedPRetOrigInvoice || !pRetReason.trim()))
             }
-            className="w-full min-h-[48px] rounded-2xl bg-orange-700 hover:bg-orange-800 text-white font-black disabled:opacity-50 cursor-pointer"
+            className="w-full min-h-[42px] rounded-xl bg-orange-700 hover:bg-orange-800 text-white font-black disabled:opacity-50 cursor-pointer"
           >
             {isSubmittingPRet
               ? 'جاري الإرسال...'
@@ -5884,35 +5865,35 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         const currency = data.settings.currency || 'ج.م';
 
         return (
-          <form onSubmit={handleSubmitCashDeposit} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs text-xs">
+          <form onSubmit={handleSubmitCashDeposit} className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs text-xs">
             {/* Emerald Collection Header */}
-            <div className="bg-[#0F5A33] text-white px-4 py-3 flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <h3 className="text-sm font-black">
+            <div className="bg-[#0F5A33] text-white px-3 py-2 flex items-center justify-between gap-2">
+              <div className="min-w-0 flex items-center gap-2">
+                <h3 className="text-[13px] font-black shrink-0">
                   {depMode === 'cashbox_deposit' && !isRepRoleAccount ? 'إيداع مباشر بالخزينة' : 'تحصيل من العميل'}
                 </h3>
                 {depCustomer && depMode === 'customer_collection' && (
-                  <p className="text-[11px] text-emerald-100 truncate mt-0.5">
-                    {depCustomer.shopName || depCustomer.name}
-                  </p>
+                  <span className="text-[11px] text-emerald-100 truncate">
+                    · {depCustomer.shopName || depCustomer.name}
+                  </span>
                 )}
               </div>
               <button
                 type="button"
                 onClick={() => onTabChange('customers')}
-                className="min-h-[36px] px-3 rounded-lg bg-white/15 hover:bg-white/25 text-white font-bold cursor-pointer shrink-0"
+                className="min-h-[30px] px-2.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold cursor-pointer shrink-0"
               >
                 إلغاء
               </button>
             </div>
 
-            <div className="p-4 space-y-3.5">
+            <div className="p-3 space-y-2.5">
               {!isRepRoleAccount && (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-1.5">
                   <button
                     type="button"
                     onClick={() => setDepMode('customer_collection')}
-                    className={`min-h-[44px] rounded-xl font-bold border cursor-pointer ${
+                    className={`min-h-[36px] rounded-lg font-bold border cursor-pointer ${
                       depMode === 'customer_collection'
                         ? 'bg-[#0F5A33] text-white border-[#0F5A33]'
                         : 'bg-slate-50 text-slate-700 border-slate-300'
@@ -5924,7 +5905,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     type="button"
                     disabled={!canCashOps}
                     onClick={() => setDepMode('cashbox_deposit')}
-                    className={`min-h-[44px] rounded-xl font-bold border cursor-pointer disabled:opacity-45 ${
+                    className={`min-h-[36px] rounded-lg font-bold border cursor-pointer disabled:opacity-45 ${
                       depMode === 'cashbox_deposit'
                         ? 'bg-[#0F5A33] text-white border-[#0F5A33]'
                         : 'bg-slate-50 text-slate-700 border-slate-300'
@@ -5938,14 +5919,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               {(depMode === 'customer_collection' || isRepRoleAccount) && (
                 <>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">العميل</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">العميل</label>
                     <select
                       value={depCustomerId}
                       onChange={(e) => {
                         setDepCustomerId(e.target.value);
                         setDepInvoiceId('');
                       }}
-                      className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
+                      className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold bg-white"
                     >
                       <option value="">-- اختر العميل --</option>
                       {data.customers.map((c) => (
@@ -5956,24 +5937,24 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     </select>
                   </div>
 
-                  {/* WA0005 3-Line Balance Summary Box */}
+                  {/* WA0005 3-Col Hairline Balance Summary Strip */}
                   {depCustomer && (
-                    <div className="rounded-2xl border border-slate-200 bg-[#f5f7fb] p-3.5 space-y-2 tabular-nums">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-bold text-slate-600">عليه حالياً</span>
-                        <strong className="font-mono text-sm font-black text-slate-900">
+                    <div className="grid grid-cols-3 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden tabular-nums">
+                      <div className="bg-slate-50 px-2 py-1.5 text-center">
+                        <span className="block text-[10px] font-bold text-slate-500">عليه حالياً</span>
+                        <strong className="font-mono text-xs font-black text-slate-900">
                           {currentDueTotal.toLocaleString()} {currency}
                         </strong>
                       </div>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-bold text-slate-600">هيدفع دلوقتي</span>
-                        <strong className="font-mono text-sm font-black text-emerald-700">
+                      <div className="bg-white px-2 py-1.5 text-center">
+                        <span className="block text-[10px] font-bold text-slate-500">هيدفع دلوقتي</span>
+                        <strong className="font-mono text-xs font-black text-emerald-700">
                           {payNow.toLocaleString()} {currency}
                         </strong>
                       </div>
-                      <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-200">
-                        <span className="font-bold text-slate-700">هيتبقى عليه</span>
-                        <strong className={`font-mono text-sm font-black ${remainingAfterPay > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+                      <div className="bg-slate-50 px-2 py-1.5 text-center">
+                        <span className="block text-[10px] font-bold text-slate-500">هيتبقى عليه</span>
+                        <strong className={`font-mono text-xs font-black ${remainingAfterPay > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
                           {remainingAfterPay.toLocaleString()} {currency}
                         </strong>
                       </div>
@@ -5982,11 +5963,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
                   {depCustomer && openCustomerInvoices.length > 0 && (
                     <div>
-                      <label className="block font-bold text-slate-700 mb-1">سداد فاتورة محددة (اختياري)</label>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-0.5">سداد فاتورة محددة (اختياري)</label>
                       <select
                         value={depInvoiceId}
                         onChange={(e) => setDepInvoiceId(e.target.value)}
-                        className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
+                        className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold bg-white"
                       >
                         <option value="">توزيع تلقائي (الأقدم أولاً FIFO)</option>
                         {openCustomerInvoices.map((inv) => (
@@ -6001,14 +5982,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               )}
 
               {/* Amount Input + Quick Fill "ادفع المبلغ كله" */}
-              <div className="space-y-2">
+              <div className="space-y-1">
                 <div className="flex items-center justify-between gap-2">
-                  <label className="font-bold text-slate-700">المبلغ المدفوع ({currency})</label>
+                  <label className="text-[11px] font-bold text-slate-700">المبلغ المدفوع ({currency})</label>
                   {(depMode === 'customer_collection' || isRepRoleAccount) && targetDueForQuickFill > 0 && (
                     <button
                       type="button"
                       onClick={() => setDepAmount(targetDueForQuickFill)}
-                      className="min-h-[34px] px-3 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-black cursor-pointer"
+                      className="min-h-[28px] px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-black cursor-pointer"
                     >
                       ادفع المبلغ كله ({targetDueForQuickFill.toLocaleString()})
                     </button>
@@ -6028,26 +6009,26 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     }
                   }}
                   placeholder={`أدخل المبلغ (${currency})`}
-                  className="w-full min-h-[48px] rounded-xl border border-slate-300 px-3 font-mono text-base font-black text-center text-emerald-800 bg-white tabular-nums"
+                  className="w-full min-h-[40px] rounded-lg border border-slate-300 px-3 font-mono text-sm font-black text-center text-emerald-800 bg-white tabular-nums"
                 />
               </div>
 
-              <div className={`grid gap-2 ${!isRepRoleAccount ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2'}`}>
+              <div className={`grid gap-2 ${!isRepRoleAccount ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2'}`}>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">التاريخ</label>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">التاريخ</label>
                   <input
                     type="date"
                     value={depDate}
                     onChange={(e) => setDepDate(e.target.value)}
-                    className="w-full min-h-[44px] rounded-xl border border-slate-300 px-2.5 font-mono font-bold bg-white"
+                    className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2 font-mono font-bold bg-white"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">طريقة السداد</label>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">طريقة السداد</label>
                   <select
                     value={depMethod}
                     onChange={(e) => setDepMethod(e.target.value as any)}
-                    className="w-full min-h-[44px] rounded-xl border border-slate-300 px-2.5 font-bold bg-white"
+                    className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2 font-bold bg-white"
                   >
                     <option value="cash">نقدي</option>
                     <option value="bank">تحويل بنكي</option>
@@ -6055,12 +6036,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   </select>
                 </div>
                 {!isRepRoleAccount && (
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">الخزينة</label>
+                  <div className="col-span-2 sm:col-span-1">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">الخزينة</label>
                     <select
                       value={depCashboxId}
                       onChange={(e) => setDepCashboxId(e.target.value)}
-                      className="w-full min-h-[44px] rounded-xl border border-slate-300 px-2.5 font-bold bg-white"
+                      className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2 font-bold bg-white"
                     >
                       {data.cashboxes.map((cb) => (
                         <option key={cb.id} value={cb.id}>{cb.name}</option>
@@ -6071,28 +6052,28 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">ملاحظات (اختياري)</label>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">ملاحظات (اختياري)</label>
                 <input
                   type="text"
                   value={depNotes}
                   onChange={(e) => setDepNotes(e.target.value)}
                   placeholder="ملاحظات (اختياري) - تظهر في إيصال الدفع"
-                  className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 bg-white"
+                  className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 bg-white"
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-2 pt-1">
+              <div className="grid grid-cols-3 gap-2 pt-0.5">
                 <button
                   type="button"
                   onClick={() => onTabChange('customers')}
-                  className="min-h-[48px] rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black cursor-pointer"
+                  className="min-h-[40px] rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-black cursor-pointer"
                 >
                   إلغاء
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmittingDeposit || Number(depAmount || 0) <= 0}
-                  className="col-span-2 min-h-[48px] rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white font-black cursor-pointer disabled:opacity-50"
+                  className="col-span-2 min-h-[40px] rounded-lg bg-[#0F5A33] hover:bg-[#0B4426] text-white font-black cursor-pointer disabled:opacity-50"
                 >
                   {isSubmittingDeposit ? 'جاري التسجيل...' : 'دفع وتأكيد التحصيل'}
                 </button>
@@ -6105,68 +6086,70 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       {/* ==================== CASH WITHDRAWAL ==================== */}
       {activeTab === 'cash-withdrawal' && (
         isRepRoleAccount || !canCashOps ? (
-          <div className="bg-white rounded-3xl border border-red-200 p-6 text-center space-y-3 text-xs">
-            <ShieldAlert className="w-8 h-8 text-red-600 mx-auto" />
+          <div className="bg-white rounded-xl border border-red-200 p-3 text-center space-y-2 text-xs">
+            <ShieldAlert className="w-7 h-7 text-red-600 mx-auto" />
             <p className="font-black text-red-800">غير مصرح لحساب المندوب بتنفيذ سحب أو مصروف مباشر من الخزائن.</p>
             <button
               type="button"
               onClick={() => onTabChange('home')}
-              className="px-4 py-2 rounded-xl bg-slate-100 font-bold text-slate-800 cursor-pointer"
+              className="px-3 py-1.5 rounded-lg bg-slate-100 font-bold text-slate-800 cursor-pointer"
             >
               العودة للرئيسية
             </button>
           </div>
         ) : (
-          <form onSubmit={handleSubmitCashWithdrawal} className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs">
-            <h3 className="text-sm font-black text-amber-900">سحب نقدي / تسجيل مصروف</h3>
-            <select
-              value={wdCashboxId}
-              onChange={(e) => setWdCashboxId(e.target.value)}
-              className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
-            >
-              {data.cashboxes.map((cb) => (
-                <option key={cb.id} value={cb.id}>
-                  {cb.name}
-                  {typeof cb.currentBalance === 'number' && !cb.balanceHidden
-                    ? ` (رصيد: ${cb.currentBalance.toLocaleString()})`
-                    : ''}
-                </option>
-              ))}
-            </select>
-            <input
-              type="text"
-              value={wdCategory}
-              onChange={(e) => setWdCategory(e.target.value)}
-              placeholder="البند / التصنيف (مثال: بنزين / مصروف تشغيل)"
-              className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold"
-            />
-            <input
-              type="text"
-              value={wdBeneficiary}
-              onChange={(e) => setWdBeneficiary(e.target.value)}
-              placeholder="المستفيد (اختياري)"
-              className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
-            />
-            <input
-              type="number"
-              min={1}
-              step="0.01"
-              value={wdAmount || ''}
-              onChange={(e) => setWdAmount(Math.max(0, Number(e.target.value)))}
-              placeholder={`مبلغ السحب (${data.settings.currency})`}
-              className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-mono font-black text-center text-red-700"
-            />
+          <form onSubmit={handleSubmitCashWithdrawal} className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs space-y-2 text-xs">
+            <h3 className="text-[13px] font-black text-amber-900">سحب نقدي / تسجيل مصروف</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <select
+                value={wdCashboxId}
+                onChange={(e) => setWdCashboxId(e.target.value)}
+                className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold bg-white"
+              >
+                {data.cashboxes.map((cb) => (
+                  <option key={cb.id} value={cb.id}>
+                    {cb.name}
+                    {typeof cb.currentBalance === 'number' && !cb.balanceHidden
+                      ? ` (رصيد: ${cb.currentBalance.toLocaleString()})`
+                      : ''}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                value={wdCategory}
+                onChange={(e) => setWdCategory(e.target.value)}
+                placeholder="البند / التصنيف (مثال: بنزين / مصروف تشغيل)"
+                className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold"
+              />
+              <input
+                type="text"
+                value={wdBeneficiary}
+                onChange={(e) => setWdBeneficiary(e.target.value)}
+                placeholder="المستفيد (اختياري)"
+                className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5"
+              />
+              <input
+                type="number"
+                min={1}
+                step="0.01"
+                value={wdAmount || ''}
+                onChange={(e) => setWdAmount(Math.max(0, Number(e.target.value)))}
+                placeholder={`مبلغ السحب (${data.settings.currency})`}
+                className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-mono font-black text-center text-red-700"
+              />
+            </div>
             <input
               type="text"
               value={wdNotes}
               onChange={(e) => setWdNotes(e.target.value)}
               placeholder="بيان السحب / المصروف..."
-              className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+              className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5"
             />
             <button
               type="submit"
               disabled={isSubmittingWithdrawal}
-              className="w-full min-h-[48px] rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-black cursor-pointer disabled:opacity-50"
+              className="w-full min-h-[40px] rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-black cursor-pointer disabled:opacity-50"
             >
               {isSubmittingWithdrawal ? 'جاري التسجيل...' : 'تأكيد السحب النقدي'}
             </button>
@@ -6184,56 +6167,56 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           setCustMapNotice
         );
         return (
-          <form onSubmit={handleSaveNewCustomer} className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3.5 text-xs">
-            <h3 className="text-sm font-black text-slate-900">إضافة عميل / محل جديد</h3>
+          <form onSubmit={handleSaveNewCustomer} className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs space-y-2.5 text-xs">
+            <h3 className="text-[13px] font-black text-slate-900">إضافة عميل / محل جديد</h3>
 
             {/* 1. Shop Name & 2. Customer Name */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">اسم المحل</label>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">اسم المحل</label>
                 <input
                   type="text"
                   value={newCustShop}
                   onChange={(e) => setNewCustShop(e.target.value)}
                   placeholder="مثال: سوبرماركت النور"
-                  className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold"
+                  className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold"
                 />
               </div>
               <div>
-                <label className="block font-bold text-slate-700 mb-1">اسم العميل / صاحب المحل *</label>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">اسم العميل / صاحب المحل *</label>
                 <input
                   type="text"
                   required
                   value={newCustName}
                   onChange={(e) => setNewCustName(e.target.value)}
                   placeholder="الاسم الكامل للعميل أو صاحب المحل"
-                  className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold"
+                  className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold"
                 />
               </div>
             </div>
 
             {/* 3. Shop Photo (Camera + Gallery + Preview + Replace/Delete) */}
-            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
-              <label className="block font-black text-slate-800">صورة المحل / الواجهة</label>
-              <div className="flex items-center gap-3">
-                <div className="w-20 h-20 rounded-2xl border-2 border-slate-300 bg-white overflow-hidden flex items-center justify-center shrink-0">
-                  {newCustShopPhoto ? (
-                    <button
-                      type="button"
-                      onClick={() => setPreviewShopPhoto(newCustShopPhoto)}
-                      className="w-full h-full cursor-pointer"
-                      title="عرض الصورة"
-                    >
-                      <img src={newCustShopPhoto} alt="صورة المحل" className="w-full h-full object-cover" />
-                    </button>
-                  ) : (
-                    <Store className="w-7 h-7 text-slate-300" />
-                  )}
-                </div>
-                <div className="flex-1 flex flex-wrap gap-2">
-                  <label className="min-h-[40px] px-3 rounded-xl bg-blue-900 text-white font-bold inline-flex items-center gap-1.5 cursor-pointer">
-                    <Camera className="w-4 h-4" />
-                    <span>{newCustShopPhoto ? 'التقاط صورة جديدة' : 'التقاط بالكاميرا'}</span>
+            <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 flex items-center gap-2.5">
+              <div className="w-14 h-14 rounded-lg border border-slate-300 bg-white overflow-hidden flex items-center justify-center shrink-0">
+                {newCustShopPhoto ? (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewShopPhoto(newCustShopPhoto)}
+                    className="w-full h-full cursor-pointer"
+                    title="عرض الصورة"
+                  >
+                    <img src={newCustShopPhoto} alt="صورة المحل" className="w-full h-full object-cover" />
+                  </button>
+                ) : (
+                  <Store className="w-5 h-5 text-slate-300" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0 space-y-1">
+                <span className="block text-[11px] font-black text-slate-800">صورة المحل / الواجهة</span>
+                <div className="flex flex-wrap gap-1.5">
+                  <label className="min-h-[32px] px-2.5 rounded-lg bg-blue-900 text-white text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer">
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>{newCustShopPhoto ? 'تغيير بالكاميرا' : 'التقاط بالكاميرا'}</span>
                     <input
                       ref={custCameraInputRef}
                       type="file"
@@ -6243,8 +6226,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       className="hidden"
                     />
                   </label>
-                  <label className="min-h-[40px] px-3 rounded-xl bg-white text-slate-800 border border-slate-300 font-bold inline-flex items-center gap-1.5 cursor-pointer">
-                    <Upload className="w-4 h-4" />
+                  <label className="min-h-[32px] px-2.5 rounded-lg bg-white text-slate-800 border border-slate-300 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer">
+                    <Upload className="w-3.5 h-3.5" />
                     <span>من المعرض</span>
                     <input
                       ref={custGalleryInputRef}
@@ -6262,19 +6245,19 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         if (custCameraInputRef.current) custCameraInputRef.current.value = '';
                         if (custGalleryInputRef.current) custGalleryInputRef.current.value = '';
                       }}
-                      className="min-h-[40px] px-3 rounded-xl bg-red-50 text-red-700 border border-red-200 font-bold cursor-pointer"
+                      className="min-h-[32px] px-2.5 rounded-lg bg-red-50 text-red-700 border border-red-200 text-[11px] font-bold cursor-pointer"
                     >
-                      حذف الصورة
+                      حذف
                     </button>
                   )}
                 </div>
+                {isUploadingCustPhoto && <p className="text-[10px] font-bold text-blue-900">جاري ضغط وتجهيز الصورة...</p>}
               </div>
-              {isUploadingCustPhoto && <p className="text-[11px] font-bold text-blue-900">جاري ضغط وتجهيز الصورة...</p>}
             </div>
 
             {/* 4. Address + adjacent GPS Icon Button + Maps Preview */}
             <div>
-              <label className="block font-bold text-slate-700 mb-1">عنوان المحل الرئيسي</label>
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">عنوان المحل الرئيسي</label>
               <div className="flex items-center gap-1.5">
                 <input
                   type="text"
@@ -6284,65 +6267,65 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     if (custMapNotice) setCustMapNotice(null);
                   }}
                   placeholder="الشارع، المنطقة، علامة مميزة..."
-                  className="flex-1 min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold"
+                  className="flex-1 min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold"
                 />
                 <button
                   type="button"
                   onClick={() => setLocationPickerTarget('new')}
-                  className="min-h-[44px] px-3 rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer"
+                  className="min-h-[36px] px-2.5 rounded-lg bg-[#0F5A33] hover:bg-[#0B4426] text-white text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer"
                   title="تحديد موقع العميل على خريطة جوجل"
                 >
-                  <MapPin className="w-4 h-4" />
+                  <MapPin className="w-3.5 h-3.5" />
                   <span>خريطة</span>
                 </button>
                 <button
                   type="button"
                   disabled={isLocatingCust}
                   onClick={handleCaptureCustLocation}
-                  className="min-h-[44px] px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#0F5A33] border border-emerald-200 font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer disabled:opacity-50"
+                  className="min-h-[36px] px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#0F5A33] border border-emerald-200 text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer disabled:opacity-50"
                   title="تحديد الموقع الحالي GPS وجلب العنوان تلقائياً"
                 >
-                  <MapPin className="w-4 h-4" />
+                  <MapPin className="w-3.5 h-3.5" />
                   <span>{isLocatingCust ? 'تحديد...' : 'GPS'}</span>
                 </button>
               </div>
               {newCustGeo && (
-                <p className="text-[10px] font-mono text-emerald-700 mt-1" dir="ltr">
+                <p className="text-[10px] font-mono text-emerald-700 mt-0.5" dir="ltr">
                   GPS: {newCustGeo}
                 </p>
               )}
-              {custMapNotice && <p className="text-[11px] font-bold text-red-600 mt-1">{custMapNotice}</p>}
+              {custMapNotice && <p className="text-[11px] font-bold text-red-600 mt-0.5">{custMapNotice}</p>}
             </div>
 
             {/* 5. Governorate & Area */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">المحافظة</label>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">المحافظة</label>
                 <input
                   type="text"
                   value={newCustGovernorate}
                   onChange={(e) => setNewCustGovernorate(e.target.value)}
-                  placeholder="مثال: القاهرة / الجيزة / الغربية"
-                  className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-semibold"
+                  placeholder="مثال: القاهرة / الجيزة"
+                  className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-semibold"
                 />
               </div>
               <div>
-                <label className="block font-bold text-slate-700 mb-1">المنطقة / خط السير</label>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">المنطقة / خط السير</label>
                 <input
                   type="text"
                   value={newCustArea}
                   onChange={(e) => setNewCustArea(e.target.value)}
                   placeholder="المنطقة / الحي / خط السير"
-                  className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-semibold"
+                  className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-semibold"
                 />
               </div>
             </div>
 
             {/* 6. Primary Phone + 7. Unlimited Additional Phones */}
-            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+            <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">رقم التليفون الرئيسي *</label>
-                <div className="flex items-center gap-2">
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">رقم التليفون الرئيسي *</label>
+                <div className="flex items-center gap-1.5">
                   <input
                     type="tel"
                     required
@@ -6352,7 +6335,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       if (custPhoneNotice) setCustPhoneNotice(null);
                     }}
                     placeholder="01012345678"
-                    className="flex-1 min-h-[44px] rounded-xl border border-slate-300 px-3 font-mono font-bold bg-white"
+                    className="flex-1 min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-mono font-bold bg-white"
                   />
                   {helper.isPhoneValid ? (
                     <a
@@ -6360,10 +6343,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       onClick={() =>
                         setCustPhoneNotice({ type: 'info', text: `جاري الاتصال بالرقم (${helper.cleanedPhone}).` })
                       }
-                      className="min-h-[44px] px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold inline-flex items-center gap-1.5 shrink-0"
+                      className="min-h-[36px] px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-bold inline-flex items-center gap-1 shrink-0"
                       title="اتصال هاتفي مباشر"
                     >
-                      <Phone className="w-4 h-4" />
+                      <Phone className="w-3.5 h-3.5" />
                       <span>اتصال</span>
                     </a>
                   ) : (
@@ -6372,28 +6355,28 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       onClick={() =>
                         setCustPhoneNotice({ type: 'error', text: 'يرجى إدخال رقم هاتف صحيح (7 أرقام على الأقل) أولاً.' })
                       }
-                      className="min-h-[44px] px-3 rounded-xl bg-slate-100 text-slate-600 border border-slate-300 font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer"
+                      className="min-h-[36px] px-2.5 rounded-lg bg-slate-100 text-slate-600 border border-slate-300 text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer"
                     >
-                      <Phone className="w-4 h-4" />
+                      <Phone className="w-3.5 h-3.5" />
                       <span>اتصال</span>
                     </button>
                   )}
                 </div>
                 {custPhoneNotice && (
-                  <p className={`text-[11px] font-bold mt-1 ${custPhoneNotice.type === 'error' ? 'text-red-600' : 'text-emerald-700'}`}>
+                  <p className={`text-[10px] font-bold mt-0.5 ${custPhoneNotice.type === 'error' ? 'text-red-600' : 'text-emerald-700'}`}>
                     {custPhoneNotice.text}
                   </p>
                 )}
               </div>
 
               {newCustExtraPhones.length > 0 && (
-                <div className="space-y-2">
-                  <label className="block font-bold text-slate-600 text-[11px]">أرقام تليفون إضافية:</label>
+                <div className="space-y-1.5">
+                  <label className="block font-bold text-slate-600 text-[10px]">أرقام تليفون إضافية:</label>
                   {newCustExtraPhones.map((extra, idx) => {
                     const cleanEx = extra.phone.replace(/[^\d+]/g, '');
                     const validEx = cleanEx.replace(/\D/g, '').length >= 7;
                     return (
-                      <div key={extra.id || idx} className="flex flex-wrap sm:flex-nowrap items-center gap-1.5">
+                      <div key={extra.id || idx} className="flex flex-wrap sm:flex-nowrap items-center gap-1">
                         <input
                           type="tel"
                           value={extra.phone}
@@ -6402,7 +6385,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             setNewCustExtraPhones((prev) => prev.map((row, i) => (i === idx ? { ...row, phone: v } : row)));
                           }}
                           placeholder="رقم إضافي..."
-                          className="flex-1 min-w-[120px] min-h-[40px] rounded-xl border border-slate-300 px-3 font-mono font-bold bg-white"
+                          className="flex-1 min-w-[110px] min-h-[34px] rounded-lg border border-slate-300 px-2 font-mono font-bold bg-white"
                         />
                         <select
                           value={extra.label}
@@ -6410,7 +6393,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             const v = e.target.value;
                             setNewCustExtraPhones((prev) => prev.map((row, i) => (i === idx ? { ...row, label: v } : row)));
                           }}
-                          className="min-h-[40px] rounded-xl border border-slate-300 px-2 font-bold bg-white"
+                          className="min-h-[34px] rounded-lg border border-slate-300 px-1.5 font-bold bg-white"
                         >
                           <option value="موبايل">موبايل</option>
                           <option value="محل">تليفون المحل</option>
@@ -6420,10 +6403,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         {validEx && (
                           <a
                             href={`tel:${cleanEx}`}
-                            className="min-h-[40px] px-2.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center"
+                            className="min-h-[34px] px-2 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center"
                             title="اتصال"
                           >
-                            <Phone className="w-4 h-4" />
+                            <Phone className="w-3.5 h-3.5" />
                           </a>
                         )}
                         <button
@@ -6439,16 +6422,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                                 .filter((row) => row.phone.trim() !== '')
                             );
                           }}
-                          className="min-h-[40px] px-2.5 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 text-[10px] font-bold cursor-pointer shrink-0"
+                          className="min-h-[34px] px-2 rounded-lg bg-blue-50 text-blue-900 border border-blue-200 text-[10px] font-bold cursor-pointer shrink-0"
                         >
                           رئيسي
                         </button>
                         <button
                           type="button"
                           onClick={() => setNewCustExtraPhones((prev) => prev.filter((_, i) => i !== idx))}
-                          className="min-h-[40px] px-2.5 rounded-xl bg-red-50 text-red-600 border border-red-200 cursor-pointer"
+                          className="min-h-[34px] px-2 rounded-lg bg-red-50 text-red-600 border border-red-200 cursor-pointer"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     );
@@ -6464,28 +6447,28 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     { id: `ph-${Date.now()}-${prev.length}`, phone: '', label: 'موبايل' },
                   ])
                 }
-                className="min-h-[38px] px-3 rounded-xl bg-white hover:bg-blue-50 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                className="min-h-[32px] px-2.5 rounded-lg bg-white hover:bg-blue-50 text-blue-900 border border-blue-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
               >
-                <Plus className="w-4 h-4" />
-                <span>+ إضافة رقم تليفون آخر</span>
+                <Plus className="w-3.5 h-3.5" />
+                <span>إضافة رقم تليفون آخر</span>
               </button>
             </div>
 
             {/* 8. Notes & 9. Opening Balance (optional) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <input
                 type="text"
                 value={newCustNotes}
                 onChange={(e) => setNewCustNotes(e.target.value)}
                 placeholder="ملاحظات عن المحل أو المواعيد (اختياري)"
-                className="min-h-[42px] rounded-xl border border-slate-300 px-3"
+                className="min-h-[36px] rounded-lg border border-slate-300 px-2.5"
               />
               <input
                 type="number"
                 value={newCustOpening || ''}
                 onChange={(e) => setNewCustOpening(Number(e.target.value))}
                 placeholder={`رصيد افتتاحي (${data.settings.currency}) - اختياري`}
-                className="min-h-[42px] rounded-xl border border-slate-300 px-3 font-mono font-bold"
+                className="min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-mono font-bold"
               />
             </div>
 
@@ -6493,7 +6476,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <button
               type="submit"
               disabled={isSavingCustomer || isUploadingCustPhoto}
-              className="w-full min-h-[48px] rounded-2xl bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
+              className="w-full min-h-[40px] rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
             >
               {isSavingCustomer ? 'جاري الحفظ...' : 'حفظ العميل الجديد'}
             </button>
@@ -6506,28 +6489,28 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         const cleanedSupPhone = newSupPhone.replace(/[^\d+]/g, '');
         const supPhoneValid = cleanedSupPhone.replace(/\D/g, '').length >= 7;
         return (
-          <form onSubmit={handleSaveNewSupplier} className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs">
-            <h3 className="text-sm font-black text-[#0F5A33]">إضافة مورد جديد</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <form onSubmit={handleSaveNewSupplier} className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs space-y-2.5 text-xs">
+            <h3 className="text-[13px] font-black text-[#0F5A33]">إضافة مورد جديد</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <input
                 type="text"
                 required
                 value={newSupName}
                 onChange={(e) => setNewSupName(e.target.value)}
                 placeholder="اسم المورد *"
-                className="min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold"
+                className="min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold"
               />
               <input
                 type="text"
                 value={newSupCompany}
                 onChange={(e) => setNewSupCompany(e.target.value)}
                 placeholder="اسم الشركة / المصنع"
-                className="min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold"
+                className="min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold"
               />
             </div>
 
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <input
                   type="tel"
                   required
@@ -6537,14 +6520,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     if (supPhoneNotice) setSupPhoneNotice(null);
                   }}
                   placeholder="رقم الهاتف *"
-                  className="flex-1 min-h-[44px] rounded-xl border border-slate-300 px-3 font-mono font-bold"
+                  className="flex-1 min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-mono font-bold"
                 />
                 {supPhoneValid ? (
                   <a
                     href={`tel:${cleanedSupPhone}`}
-                    className="min-h-[44px] px-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold inline-flex items-center gap-1.5"
+                    className="min-h-[36px] px-2.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold inline-flex items-center gap-1"
                   >
-                    <Phone className="w-4 h-4" />
+                    <Phone className="w-3.5 h-3.5" />
                     <span>اتصال</span>
                   </a>
                 ) : (
@@ -6553,39 +6536,39 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     onClick={() =>
                       setSupPhoneNotice({ type: 'error', text: 'يرجى إدخال رقم هاتف المورد (7 أرقام على الأقل).' })
                     }
-                    className="min-h-[44px] px-3 rounded-xl bg-slate-100 text-slate-600 border border-slate-300 font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                    className="min-h-[36px] px-2.5 rounded-lg bg-slate-100 text-slate-600 border border-slate-300 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
                   >
-                    <Phone className="w-4 h-4" />
+                    <Phone className="w-3.5 h-3.5" />
                     <span>اتصال</span>
                   </button>
                 )}
               </div>
               {supPhoneNotice && (
-                <p className="text-[11px] font-bold text-red-600 mt-1">{supPhoneNotice.text}</p>
+                <p className="text-[10px] font-bold text-red-600 mt-0.5">{supPhoneNotice.text}</p>
               )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <input
                 type="text"
                 value={newSupAddress}
                 onChange={(e) => setNewSupAddress(e.target.value)}
                 placeholder="عنوان المورد"
-                className="min-h-[42px] rounded-xl border border-slate-300 px-3"
+                className="min-h-[36px] rounded-lg border border-slate-300 px-2.5"
               />
               <input
                 type="number"
                 value={newSupOpening || ''}
                 onChange={(e) => setNewSupOpening(Number(e.target.value))}
                 placeholder={`رصيد افتتاحي (${data.settings.currency})`}
-                className="min-h-[42px] rounded-xl border border-slate-300 px-3 font-mono font-bold"
+                className="min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-mono font-bold"
               />
             </div>
 
             <button
               type="submit"
               disabled={isSavingSupplier}
-              className="w-full min-h-[48px] rounded-2xl bg-[#0F5A33] hover:bg-[#0B4426] text-white font-black cursor-pointer disabled:opacity-50"
+              className="w-full min-h-[40px] rounded-lg bg-[#0F5A33] hover:bg-[#0B4426] text-white font-black cursor-pointer disabled:opacity-50"
             >
               {isSavingSupplier ? 'جاري الحفظ...' : 'حفظ المورد الجديد'}
             </button>
@@ -6595,12 +6578,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
       {/* ==================== CHEQUES & INSTALLMENTS ==================== */}
       {activeTab === 'cheques-installments' && (
-        <div className="space-y-4 text-xs">
-          <div className="grid grid-cols-2 gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-200">
+        <div className="space-y-2.5 text-xs">
+          <div className="grid grid-cols-2 gap-1 bg-white p-1 rounded-xl border border-slate-200">
             <button
               type="button"
               onClick={() => setChqTab('cheques')}
-              className={`min-h-[42px] rounded-xl font-black cursor-pointer ${
+              className={`min-h-[34px] rounded-lg font-black cursor-pointer ${
                 chqTab === 'cheques' ? 'bg-teal-700 text-white' : 'text-slate-700'
               }`}
             >
@@ -6609,7 +6592,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <button
               type="button"
               onClick={() => setChqTab('installments')}
-              className={`min-h-[42px] rounded-xl font-black cursor-pointer ${
+              className={`min-h-[34px] rounded-lg font-black cursor-pointer ${
                 chqTab === 'installments' ? 'bg-teal-700 text-white' : 'text-slate-700'
               }`}
             >
@@ -6618,14 +6601,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           </div>
 
           {chqTab === 'cheques' && (
-            <div className="space-y-3">
-              <form onSubmit={handleAddCheque} className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-2.5">
-                <h4 className="font-black text-slate-900">تسجيل شيك جديد</h4>
-                <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-2.5">
+              <form onSubmit={handleAddCheque} className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs space-y-2">
+                <h4 className="text-[13px] font-black text-slate-900">تسجيل شيك جديد</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   <select
                     value={chqType}
                     onChange={(e) => setChqType(e.target.value as 'incoming' | 'outgoing')}
-                    className="min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
+                    className="min-h-[36px] rounded-lg border border-slate-300 px-2 font-bold bg-white"
                   >
                     <option value="incoming">شيك وارد (تحصيل)</option>
                     <option value="outgoing">شيك صادر (سداد)</option>
@@ -6635,45 +6618,41 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     value={chqNumber}
                     onChange={(e) => setChqNumber(e.target.value)}
                     placeholder="رقم الشيك"
-                    className="min-h-[42px] rounded-xl border border-slate-300 px-3 font-mono font-bold"
+                    className="min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-mono font-bold"
                   />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
                   <input
                     type="text"
                     value={chqPartyName}
                     onChange={(e) => setChqPartyName(e.target.value)}
                     placeholder="اسم العميل / المورد"
-                    className="min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold"
+                    className="min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold col-span-2 sm:col-span-1"
                   />
                   <input
                     type="text"
                     value={chqBank}
                     onChange={(e) => setChqBank(e.target.value)}
                     placeholder="اسم البنك"
-                    className="min-h-[42px] rounded-xl border border-slate-300 px-3"
+                    className="min-h-[36px] rounded-lg border border-slate-300 px-2.5"
                   />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
                   <input
                     type="number"
                     min={1}
                     value={chqAmount || ''}
                     onChange={(e) => setChqAmount(Number(e.target.value))}
                     placeholder="المبلغ"
-                    className="min-h-[42px] rounded-xl border border-slate-300 px-3 font-mono font-bold"
+                    className="min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-mono font-bold"
                   />
                   <input
                     type="date"
                     value={chqDueDate}
                     onChange={(e) => setChqDueDate(e.target.value)}
-                    className="min-h-[42px] rounded-xl border border-slate-300 px-3 font-mono"
+                    className="min-h-[36px] rounded-lg border border-slate-300 px-2 font-mono"
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={isSavingCheque}
-                  className="w-full min-h-[44px] rounded-xl bg-teal-700 text-white font-black cursor-pointer"
+                  className="w-full min-h-[38px] rounded-lg bg-teal-700 text-white font-black cursor-pointer"
                 >
                   {isSavingCheque ? 'جاري التسجيل...' : 'حفظ الشيك'}
                 </button>
@@ -6715,7 +6694,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           )}
 
           {chqTab === 'installments' && (
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               <UnifiedDataTable
                 compact
                 title={`جداول الأقساط (${data.installments.length})`}
@@ -6742,7 +6721,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       const nextDue = (sched.items || []).filter((it) => it.status !== 'paid').slice(0, 2);
                       if (nextDue.length === 0) return <span className="text-emerald-700 font-bold">مسدد بالكامل</span>;
                       return (
-                        <div className="flex flex-wrap gap-1.5">
+                        <div className="flex flex-wrap gap-1">
                           {nextDue.map((it) => {
                             const key = `${sched.id}:${it.id}`;
                             return (
@@ -6756,7 +6735,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                                   setPayingInstKey(null);
                                   setFeedback({ type: 'success', text: 'تم تحصيل القسط وتحديث الجدول.' });
                                 }}
-                                className="min-h-[32px] px-2.5 rounded-lg bg-emerald-700 text-white font-bold cursor-pointer whitespace-nowrap"
+                                className="min-h-[30px] px-2 rounded-lg bg-emerald-700 text-white text-[11px] font-bold cursor-pointer whitespace-nowrap"
                               >
                                 {payingInstKey === key
                                   ? 'جاري التحصيل...'
@@ -6777,16 +6756,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
       {/* ==================== PRICE QUOTES (عرض سعر - Zero Stock/Balance Impact) ==================== */}
       {activeTab === 'new-quote' && (
-        <div className="space-y-4 text-xs">
-          <form onSubmit={handleCreateQuote} className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3">
+        <div className="space-y-2.5 text-xs">
+          <form onSubmit={handleCreateQuote} className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs space-y-2">
             <div>
-              <h3 className="text-sm font-black text-blue-950">إنشاء عرض سعر (بدون خصم مخزني أو قيد مالي)</h3>
-              <p className="text-[11px] text-slate-500">يمكن تحويل عرض السعر لاحقاً لفاتورة مبيعات معتمدة بضغطة واحدة.</p>
+              <h3 className="text-[13px] font-black text-blue-950">إنشاء عرض سعر (بدون خصم مخزني أو قيد مالي)</h3>
+              <p className="text-[10px] text-slate-500">يمكن تحويل عرض السعر لاحقاً لفاتورة مبيعات معتمدة بضغطة واحدة.</p>
             </div>
             <select
               value={quoteCustomerId}
               onChange={(e) => setQuoteCustomerId(e.target.value)}
-              className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
+              className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold bg-white"
             >
               <option value="">-- اختر العميل (أو عميل عام) --</option>
               {data.customers.map((c) => (
@@ -6794,11 +6773,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               ))}
             </select>
 
-            <div className="p-3 rounded-2xl bg-blue-50/70 border border-blue-200 space-y-2">
+            <div className="p-2 rounded-lg bg-blue-50/70 border border-blue-200 space-y-1.5">
               <select
                 value={quoteProductId}
                 onChange={(e) => handleSelectQuoteProduct(e.target.value)}
-                className="w-full min-h-[44px] rounded-xl border border-blue-300 px-3 font-bold bg-white"
+                className="w-full min-h-[36px] rounded-lg border border-blue-300 px-2.5 font-bold bg-white"
               >
                 <option value="">-- اختر الصنف لعرض السعر --</option>
                 {activeProducts.map((p) => (
@@ -6806,14 +6785,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 ))}
               </select>
               {quoteProductId && (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-1.5">
                   <QuantityInput
                     allowDecimals
                     min={0.001}
                     value={quoteQty}
                     onChange={setQuoteQty}
                     ariaLabel="كمية عرض السعر"
-                    inputClassName="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                    inputClassName="w-full min-h-[36px] rounded-lg border border-slate-300 text-center font-mono font-bold bg-white"
                   />
                   <input
                     type="number"
@@ -6822,18 +6801,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     value={quotePrice}
                     onChange={(e) => setQuotePrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                     placeholder="السعر"
-                    className="min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                    className="min-h-[36px] rounded-lg border border-slate-300 text-center font-mono font-bold bg-white"
                   />
+                  <button
+                    type="button"
+                    onClick={handleAddQuoteItem}
+                    className="min-h-[36px] rounded-lg bg-blue-900 text-white font-black cursor-pointer"
+                  >
+                    إضافة
+                  </button>
                 </div>
-              )}
-              {quoteProductId && (
-                <button
-                  type="button"
-                  onClick={handleAddQuoteItem}
-                  className="w-full min-h-[44px] rounded-xl bg-blue-900 text-white font-black cursor-pointer"
-                >
-                  إضافة للعرض
-                </button>
               )}
             </div>
 
@@ -6859,13 +6836,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               value={quoteNotes}
               onChange={(e) => setQuoteNotes(e.target.value)}
               placeholder="صلاحية العرض وملاحظات..."
-              className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+              className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5"
             />
 
             <button
               type="submit"
               disabled={isSubmittingQuote || quoteItems.length === 0}
-              className="w-full min-h-[48px] rounded-2xl bg-blue-900 hover:bg-blue-950 text-white font-black disabled:opacity-50 cursor-pointer"
+              className="w-full min-h-[40px] rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-black disabled:opacity-50 cursor-pointer"
             >
               {isSubmittingQuote ? 'جاري الحفظ...' : `حفظ عرض السعر (${quoteTotal.toLocaleString()} ${data.settings.currency})`}
             </button>
@@ -6899,21 +6876,21 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   render: (q) => {
                     const isConverted = myInvoices.some((inv) => inv.convertedFromQuoteId === q.id);
                     return (
-                      <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
+                      <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                         <button
                           type="button"
                           disabled={isConverted || convertingQuoteId === q.id}
                           onClick={() => handleConvertQuote(q.id)}
-                          className="min-h-[34px] px-2.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-black disabled:opacity-50 cursor-pointer"
+                          className="min-h-[30px] px-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-black disabled:opacity-50 cursor-pointer"
                         >
-                          {isConverted ? 'تم التحويل لفاتورة' : convertingQuoteId === q.id ? 'جاري التحويل...' : 'تحويل لفاتورة بيع'}
+                          {isConverted ? 'تم التحويل' : convertingQuoteId === q.id ? 'جاري التحويل...' : 'تحويل لفاتورة'}
                         </button>
                         <button
                           type="button"
                           onClick={() => exportInvoiceDocument(q)}
-                          className="min-h-[34px] px-2.5 rounded-lg bg-blue-900 text-white font-bold inline-flex items-center gap-1 cursor-pointer"
+                          className="min-h-[30px] px-2 rounded-lg bg-blue-900 text-white text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
                         >
-                          <FileDown className="w-3.5 h-3.5" />
+                          <FileDown className="w-3 h-3" />
                           <span>PDF</span>
                         </button>
                       </div>
@@ -7047,22 +7024,22 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           return getPurchaseDispatchMeta(inv).key === purListFilter;
         });
         return (
-        <div className="space-y-3 text-xs">
+        <div className="space-y-2.5 text-xs">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <h3 className="text-sm font-black text-slate-900">فواتير الشراء ({filteredPurchases.length})</h3>
+            <h3 className="text-[13px] font-black text-slate-900">فواتير الشراء ({filteredPurchases.length})</h3>
             <button
               type="button"
               onClick={() => {
                 setPurEditingInvoiceId(null);
                 onTabChange('new-purchase');
               }}
-              className="min-h-[40px] px-3 rounded-xl bg-indigo-900 text-white font-bold cursor-pointer"
+              className="min-h-[34px] px-2.5 rounded-lg bg-indigo-900 text-white font-bold cursor-pointer"
             >
               + فاتورة شراء
             </button>
           </div>
 
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1">
             {[
               { id: 'all' as const, label: 'الكل' },
               { id: 'draft' as const, label: 'مسودة' },
@@ -7075,7 +7052,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 key={tab.id}
                 type="button"
                 onClick={() => setPurListFilter(tab.id)}
-                className={`px-3 py-1.5 rounded-xl font-bold border cursor-pointer ${
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${
                   purListFilter === tab.id
                     ? 'bg-indigo-900 text-white border-indigo-900'
                     : 'bg-white text-slate-700 border-slate-200'
@@ -7245,20 +7222,20 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       })()}
 
       {activeTab === 'sales-returns-list' && (
-        <div className="space-y-4 text-xs">
+        <div className="space-y-2.5 text-xs">
           <div className="flex items-center justify-between gap-2">
-            <div>
-              <h3 className="text-sm font-black text-rose-950">
+            <div className="min-w-0">
+              <h3 className="text-[13px] font-black text-rose-950">
                 طلبات ومرتجعات البيع ({mySalesReturnRequests.length} طلب · {mySalesReturns.length} معتمد)
               </h3>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[10px] text-slate-500">
                 طلبات المرتجع النقدي تخضع لمراجعة الإدارة والخزينة قبل صرف أي مبالغ أو تعديل الأرصدة.
               </p>
             </div>
             <button
               type="button"
               onClick={() => onTabChange('sales-return')}
-              className="min-h-[40px] px-3 rounded-xl bg-rose-700 text-white font-bold cursor-pointer shrink-0"
+              className="min-h-[34px] px-2.5 rounded-lg bg-rose-700 text-white font-bold cursor-pointer shrink-0"
             >
               + مرتجع بيع
             </button>
@@ -7359,13 +7336,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       )}
 
       {activeTab === 'purchase-returns-list' && (
-        <div className="space-y-4 text-xs">
+        <div className="space-y-2.5 text-xs">
           <div className="flex items-center justify-between gap-2">
-            <div>
-              <h3 className="text-sm font-black text-orange-950">
+            <div className="min-w-0">
+              <h3 className="text-[13px] font-black text-orange-950">
                 طلبات ومرتجعات الشراء ({myPurchaseReturnRequests.length} طلب · {myPurchaseReturns.length} معتمد)
               </h3>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[10px] text-slate-500">
                 طلبات مرتجع الشراء تخضع لمراجعة واعتماد الإدارة قبل تعديل المخزون أو حساب المورد.
               </p>
             </div>
@@ -7373,7 +7350,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <button
                 type="button"
                 onClick={() => onTabChange('purchase-return')}
-                className="min-h-[40px] px-3 rounded-xl bg-orange-700 text-white font-bold cursor-pointer shrink-0"
+                className="min-h-[34px] px-2.5 rounded-lg bg-orange-700 text-white font-bold cursor-pointer shrink-0"
               >
                 {isRepRoleAccount ? '+ طلب مرتجع شراء' : '+ مرتجع شراء'}
               </button>
@@ -7484,8 +7461,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
       {/* ==================== CUSTODY & TRANSFERS ==================== */}
       {(activeTab === 'custody' || activeTab === 'custody-transfer') && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-5 gap-1 bg-white p-1.5 rounded-2xl border border-slate-200 text-[11px]">
+        <div className="space-y-2.5">
+          <div className="grid grid-cols-5 gap-1 bg-white p-1 rounded-xl border border-slate-200 text-[11px]">
             {[
               { key: 'van' as const, label: 'السيارة' },
               { key: 'items' as const, label: `تحويل (${myItemTransfers.length})` },
@@ -7497,7 +7474,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 key={st.key}
                 type="button"
                 onClick={() => setCustodySubTab(st.key)}
-                className={`min-h-[42px] rounded-xl font-bold px-1 cursor-pointer truncate ${
+                className={`min-h-[34px] rounded-lg font-bold px-1 cursor-pointer truncate ${
                   custodySubTab === st.key ? 'bg-blue-900 text-white' : 'text-slate-600'
                 }`}
               >
@@ -7507,41 +7484,41 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           </div>
 
           {custodySubTab === 'van' && (
-            <div className="space-y-3 text-xs">
+            <div className="space-y-2.5 text-xs">
               {custodyStatement && (
-                <div className="bg-slate-900 text-white rounded-2xl p-4 space-y-3 shadow-xs tabular-nums">
+                <div className="bg-slate-900 text-white rounded-xl p-2.5 space-y-2 shadow-xs tabular-nums">
                   <div className="flex items-center justify-between">
-                    <h4 className="font-black text-sm">كشف عهدة السيارة التراكمي</h4>
+                    <h4 className="font-black text-xs">كشف عهدة السيارة التراكمي</h4>
                     <button
                       type="button"
                       onClick={loadCustodyStatement}
                       disabled={isLoadingCustodyStmt}
-                      className="px-2.5 py-1 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold flex items-center gap-1 cursor-pointer"
+                      className="px-2 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
                     >
-                      <RefreshCw className={`w-3.5 h-3.5 ${isLoadingCustodyStmt ? 'animate-spin' : ''}`} />
+                      <RefreshCw className={`w-3 h-3 ${isLoadingCustodyStmt ? 'animate-spin' : ''}`} />
                       <span>تحديث</span>
                     </button>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
-                    <div className="p-2 rounded-xl bg-white/10">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-slate-700 border border-slate-700 rounded-lg overflow-hidden text-center">
+                    <div className="px-2 py-1.5 bg-slate-800">
                       <span className="text-[10px] text-slate-300 block">إجمالي المستلم</span>
-                      <strong className="font-mono text-sm">{custodyStatement.totals.totalReceivedQty}</strong>
+                      <strong className="font-mono text-xs">{custodyStatement.totals.totalReceivedQty}</strong>
                     </div>
-                    <div className="p-2 rounded-xl bg-white/10">
+                    <div className="px-2 py-1.5 bg-slate-800">
                       <span className="text-[10px] text-slate-300 block">المسلم للعملاء</span>
-                      <strong className="font-mono text-sm text-sky-300">{custodyStatement.totals.totalDeliveredQty}</strong>
+                      <strong className="font-mono text-xs text-sky-300">{custodyStatement.totals.totalDeliveredQty}</strong>
                     </div>
-                    <div className="p-2 rounded-xl bg-white/10">
+                    <div className="px-2 py-1.5 bg-slate-800">
                       <span className="text-[10px] text-slate-300 block">المرتجع للمخزن</span>
-                      <strong className="font-mono text-sm text-amber-300">{custodyStatement.totals.totalReturnedQty}</strong>
+                      <strong className="font-mono text-xs text-amber-300">{custodyStatement.totals.totalReturnedQty}</strong>
                     </div>
-                    <div className="p-2 rounded-xl bg-emerald-800/70">
+                    <div className="px-2 py-1.5 bg-emerald-900">
                       <span className="text-[10px] text-emerald-200 block">المتبقي الفعلي</span>
-                      <strong className="font-mono text-sm">{custodyStatement.totals.totalRemainingCustodyQty}</strong>
+                      <strong className="font-mono text-xs">{custodyStatement.totals.totalRemainingCustodyQty}</strong>
                     </div>
-                    <div className="p-2 rounded-xl bg-blue-800/70 col-span-2 sm:col-span-1">
+                    <div className="px-2 py-1.5 bg-blue-900 col-span-2 sm:col-span-1">
                       <span className="text-[10px] text-blue-200 block">القيمة بالتكلفة</span>
-                      <strong className="font-mono text-sm">
+                      <strong className="font-mono text-xs">
                         {custodyStatement.totals.totalCustodyCostValue.toLocaleString()} {data.settings.currency}
                       </strong>
                     </div>
@@ -7607,50 +7584,52 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           {custodySubTab === 'deliver' && (
             <form
               onSubmit={handleRecordPartialCustodyDelivery}
-              className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs"
+              className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs space-y-2 text-xs"
             >
-              <h4 className="font-black text-slate-900">تسليم جزئي من عهدة السيارة إلى عميل</h4>
-              <select
-                value={delivCustomerId}
-                onChange={(e) => setDelivCustomerId(e.target.value)}
-                className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 bg-white font-bold"
-              >
-                <option value="">-- اختر العميل المستلم (اختياري) --</option>
-                {data.customers.map((c) => (
-                  <option key={c.id} value={c.id}>{c.shopName || c.name}</option>
-                ))}
-              </select>
-              <select
-                value={delivProdId}
-                onChange={(e) => setDelivProdId(e.target.value)}
-                className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 bg-white font-bold"
-              >
-                <option value="">-- اختر الصنف من العهدة --</option>
-                {activeProducts.filter((p) => (p.stockPerWarehouse?.[effectiveVanId] || 0) > 0).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} (متاح: {p.stockPerWarehouse?.[effectiveVanId] || 0} {p.baseUnit})
-                  </option>
-                ))}
-              </select>
-              <QuantityInput
-                allowDecimals
-                min={0.001}
-                value={delivQty}
-                onChange={setDelivQty}
-                ariaLabel="الكمية المسلمة"
-                inputClassName="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
-              />
-              <input
-                type="text"
-                value={delivNotes}
-                onChange={(e) => setDelivNotes(e.target.value)}
-                placeholder="ملاحظات التسليم..."
-                className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
-              />
+              <h4 className="text-[13px] font-black text-slate-900">تسليم جزئي من عهدة السيارة إلى عميل</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <select
+                  value={delivCustomerId}
+                  onChange={(e) => setDelivCustomerId(e.target.value)}
+                  className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 bg-white font-bold"
+                >
+                  <option value="">-- اختر العميل المستلم (اختياري) --</option>
+                  {data.customers.map((c) => (
+                    <option key={c.id} value={c.id}>{c.shopName || c.name}</option>
+                  ))}
+                </select>
+                <select
+                  value={delivProdId}
+                  onChange={(e) => setDelivProdId(e.target.value)}
+                  className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 bg-white font-bold"
+                >
+                  <option value="">-- اختر الصنف من العهدة --</option>
+                  {activeProducts.filter((p) => (p.stockPerWarehouse?.[effectiveVanId] || 0) > 0).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} (متاح: {p.stockPerWarehouse?.[effectiveVanId] || 0} {p.baseUnit})
+                    </option>
+                  ))}
+                </select>
+                <QuantityInput
+                  allowDecimals
+                  min={0.001}
+                  value={delivQty}
+                  onChange={setDelivQty}
+                  ariaLabel="الكمية المسلمة"
+                  inputClassName="w-full min-h-[36px] rounded-lg border border-slate-300 text-center font-mono font-bold bg-white"
+                />
+                <input
+                  type="text"
+                  value={delivNotes}
+                  onChange={(e) => setDelivNotes(e.target.value)}
+                  placeholder="ملاحظات التسليم..."
+                  className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5"
+                />
+              </div>
               <button
                 type="submit"
                 disabled={isSendingTransfer}
-                className="w-full min-h-[46px] rounded-xl bg-emerald-700 text-white font-black cursor-pointer disabled:opacity-50"
+                className="w-full min-h-[40px] rounded-lg bg-emerald-700 text-white font-black cursor-pointer disabled:opacity-50"
               >
                 {isSendingTransfer ? 'جاري التسجيل...' : 'تأكيد تسليم العهدة'}
               </button>
@@ -7660,9 +7639,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           {custodySubTab === 'return' && (
             <form
               onSubmit={handleRecordCustodyReturn}
-              className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs"
+              className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs space-y-2 text-xs"
             >
-              <h4 className="font-black text-slate-900">إرجاع بضاعة من عهدة السيارة إلى المخزن</h4>
+              <h4 className="text-[13px] font-black text-slate-900">إرجاع بضاعة من عهدة السيارة إلى المخزن</h4>
               <select
                 value={retCustodyProdId}
                 onChange={(e) => {
@@ -7671,7 +7650,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   const prod = activeProducts.find((p) => p.id === pId);
                   setRetCustodyUnit(prod?.baseUnit || '');
                 }}
-                className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 bg-white font-bold"
+                className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 bg-white font-bold"
               >
                 <option value="">-- اختر الصنف المرتجع من السيارة --</option>
                 {activeProducts
@@ -7691,7 +7670,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       value={retCustodyUnit || retProd?.baseUnit || ''}
                       onChange={(e) => setRetCustodyUnit(e.target.value)}
                       disabled={!retProd}
-                      className="min-h-[42px] rounded-xl border border-slate-300 px-2 bg-white font-bold disabled:opacity-50"
+                      className="min-h-[36px] rounded-lg border border-slate-300 px-2 bg-white font-bold disabled:opacity-50"
                     >
                       {retProd ? (
                         <>
@@ -7712,38 +7691,40 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       value={retCustodyQty}
                       onChange={setRetCustodyQty}
                       ariaLabel="الكمية المرتجعة للمخزن"
-                      inputClassName="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                      inputClassName="w-full min-h-[36px] rounded-lg border border-slate-300 text-center font-mono font-bold bg-white"
                     />
                   </div>
                 );
               })()}
 
-              <select
-                value={retCustodyTargetWhId}
-                onChange={(e) => setRetCustodyTargetWhId(e.target.value)}
-                className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 bg-white font-bold"
-              >
-                {data.warehouses
-                  .filter((w) => w.id !== effectiveVanId)
-                  .map((w) => (
-                    <option key={w.id} value={w.id}>
-                      إرجاع إلى: {w.name}
-                    </option>
-                  ))}
-              </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <select
+                  value={retCustodyTargetWhId}
+                  onChange={(e) => setRetCustodyTargetWhId(e.target.value)}
+                  className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 bg-white font-bold"
+                >
+                  {data.warehouses
+                    .filter((w) => w.id !== effectiveVanId)
+                    .map((w) => (
+                      <option key={w.id} value={w.id}>
+                        إرجاع إلى: {w.name}
+                      </option>
+                    ))}
+                </select>
 
-              <input
-                type="text"
-                value={retCustodyNotes}
-                onChange={(e) => setRetCustodyNotes(e.target.value)}
-                placeholder="سبب الإرجاع أو ملاحظات..."
-                className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
-              />
+                <input
+                  type="text"
+                  value={retCustodyNotes}
+                  onChange={(e) => setRetCustodyNotes(e.target.value)}
+                  placeholder="سبب الإرجاع أو ملاحظات..."
+                  className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5"
+                />
+              </div>
 
               <button
                 type="submit"
                 disabled={isSendingTransfer || !retCustodyProdId}
-                className="w-full min-h-[46px] rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black cursor-pointer disabled:opacity-50"
+                className="w-full min-h-[40px] rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-black cursor-pointer disabled:opacity-50"
               >
                 {isSendingTransfer ? 'جاري تسجيل الإرجاع...' : 'تأكيد إرجاع البضاعة للمخزن'}
               </button>
@@ -7751,17 +7732,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           )}
 
           {custodySubTab === 'items' && (
-            <div className="space-y-3 text-xs">
+            <div className="space-y-2.5 text-xs">
               <form
                 onSubmit={handleSendDirectItemTransfer}
-                className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3"
+                className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs space-y-2"
               >
-                <h4 className="font-black text-slate-900">طلب تحويل أصناف من المخزن الرئيسي إلى السيارة</h4>
-                <div className="flex gap-2">
+                <h4 className="text-[13px] font-black text-slate-900">طلب تحويل أصناف من المخزن الرئيسي إلى السيارة</h4>
+                <div className="flex gap-1.5">
                   <select
                     value={reqProdId}
                     onChange={(e) => setReqProdId(e.target.value)}
-                    className="flex-1 min-h-[42px] rounded-xl border border-slate-300 px-2.5 bg-white font-bold"
+                    className="flex-1 min-h-[36px] rounded-lg border border-slate-300 px-2 bg-white font-bold"
                   >
                     <option value="">-- اختر الصنف --</option>
                     {activeProducts.map((p) => (
@@ -7776,7 +7757,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     value={reqQty}
                     onChange={setReqQty}
                     ariaLabel="كمية التحويل المطلوبة"
-                    inputClassName="w-20 min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                    inputClassName="w-16 min-h-[36px] rounded-lg border border-slate-300 text-center font-mono font-bold bg-white"
                   />
                   <button
                     type="button"
@@ -7799,7 +7780,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       setReqProdId('');
                       setReqQty('');
                     }}
-                    className="min-h-[42px] px-3.5 rounded-xl bg-blue-900 text-white font-bold cursor-pointer"
+                    className="min-h-[36px] px-3 rounded-lg bg-blue-900 text-white font-bold cursor-pointer"
                   >
                     إضافة
                   </button>
@@ -7843,7 +7824,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 <button
                   type="submit"
                   disabled={isSendingTransfer || reqItems.length === 0}
-                  className="w-full min-h-[44px] rounded-xl bg-emerald-700 text-white font-black disabled:opacity-50 cursor-pointer"
+                  className="w-full min-h-[38px] rounded-lg bg-emerald-700 text-white font-black disabled:opacity-50 cursor-pointer"
                 >
                   {isSendingTransfer ? 'جاري الإرسال...' : 'إرسال طلب التحويل للإدارة'}
                 </button>
@@ -7912,25 +7893,25 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           )}
 
           {custodySubTab === 'cash' && (
-            <div className="space-y-3 text-xs">
+            <div className="space-y-2.5 text-xs">
               <form
                 onSubmit={handleSendCashToOwner}
-                className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3"
+                className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs space-y-2"
               >
-                <h4 className="font-black text-slate-900">توريد نقدية من المندوب إلى خزينة الفرع</h4>
-                <div className="flex gap-2">
+                <h4 className="text-[13px] font-black text-slate-900">توريد نقدية من المندوب إلى خزينة الفرع</h4>
+                <div className="flex gap-1.5">
                   <input
                     type="number"
                     min={1}
                     value={cashAmount || ''}
                     onChange={(e) => setCashAmount(Number(e.target.value))}
                     placeholder={`المبلغ (${data.settings.currency})`}
-                    className="flex-1 min-h-[44px] rounded-xl border border-slate-300 px-3 font-mono font-bold"
+                    className="flex-1 min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-mono font-bold"
                   />
                   <button
                     type="submit"
                     disabled={isSendingTransfer || cashAmount <= 0}
-                    className="min-h-[44px] px-4 rounded-xl bg-blue-900 text-white font-black disabled:opacity-50 cursor-pointer"
+                    className="min-h-[36px] px-3 rounded-lg bg-blue-900 text-white font-black disabled:opacity-50 cursor-pointer"
                   >
                     إرسال التوريد
                   </button>
@@ -7940,7 +7921,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   value={cashNotes}
                   onChange={(e) => setCashNotes(e.target.value)}
                   placeholder="ملاحظات التوريد (اختياري)..."
-                  className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+                  className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5"
                 />
               </form>
 
@@ -8008,10 +7989,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
       {/* ==================== ORDERS & ASSIGNED DELIVERIES ==================== */}
       {activeTab === 'orders' && (
-        <div className="space-y-4 text-xs">
-          <div className="bg-white rounded-3xl border border-indigo-200 p-4 shadow-xs space-y-3">
+        <div className="space-y-2.5 text-xs">
+          <div className="bg-white rounded-xl border border-indigo-200 p-2.5 shadow-xs space-y-2">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-black text-indigo-950 flex items-center gap-2">
+              <h3 className="text-[13px] font-black text-indigo-950 flex items-center gap-1.5">
                 <Truck className="w-4 h-4 text-indigo-700" />
                 <span>طلبات التسليم المعينة لك ({assignedDeliveryOrders.length})</span>
               </h3>
@@ -8078,7 +8059,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       {ord.customerPhone && (
                         <a
                           href={`tel:${ord.customerPhone}`}
-                          className="min-h-[32px] px-2.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold inline-flex items-center gap-1"
+                          className="min-h-[30px] px-2 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold inline-flex items-center gap-1"
                         >
                           <Phone className="w-3 h-3" />
                           <span>اتصال</span>
@@ -8095,7 +8076,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                               geoCoordinates: ord.geoCoordinates,
                             })
                           }
-                          className="min-h-[32px] px-2.5 rounded-lg bg-emerald-50 text-[#0F5A33] border border-emerald-200 font-bold inline-flex items-center gap-1 cursor-pointer"
+                          className="min-h-[30px] px-2 rounded-lg bg-emerald-50 text-[#0F5A33] border border-emerald-200 font-bold inline-flex items-center gap-1 cursor-pointer"
                         >
                           <MapPin className="w-3 h-3 text-[#0F5A33]" />
                           <span>الموقع</span>
@@ -8106,7 +8087,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           type="button"
                           disabled={isUpdatingDelivery}
                           onClick={() => handleStartDelivery(ord)}
-                          className="min-h-[32px] px-2.5 rounded-lg bg-[#0F5A33] hover:bg-[#0B4426] text-white font-black cursor-pointer disabled:opacity-50"
+                          className="min-h-[30px] px-2 rounded-lg bg-[#0F5A33] hover:bg-[#0B4426] text-white font-black cursor-pointer disabled:opacity-50"
                         >
                           بدء التوصيل
                         </button>
@@ -8116,7 +8097,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           type="button"
                           disabled={isUpdatingDelivery}
                           onClick={() => handleOpenDeliverModal(ord)}
-                          className="min-h-[32px] px-2.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
+                          className="min-h-[30px] px-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
                         >
                           تم التسليم
                         </button>
@@ -8130,13 +8111,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
           <form
             onSubmit={handleSubmitRepOrder}
-            className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3"
+            className="bg-white rounded-xl border border-slate-200 p-3 shadow-xs space-y-2"
           >
-            <h3 className="text-sm font-black text-slate-900">إرسال طلب شراء للإدارة</h3>
+            <h3 className="text-[13px] font-black text-slate-900">إرسال طلب شراء للإدارة</h3>
             <select
               value={ordCustomerId}
               onChange={(e) => setOrdCustomerId(e.target.value)}
-              className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
+              className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold bg-white"
             >
               <option value="">-- اختر العميل --</option>
               {data.customers.map((c) => (
@@ -8146,11 +8127,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               ))}
             </select>
 
-            <div className="p-3 rounded-2xl bg-blue-50/60 border border-blue-200 space-y-2.5">
+            <div className="p-2 rounded-lg bg-blue-50/60 border border-blue-200 space-y-1.5">
               <select
                 value={ordProductId}
                 onChange={(e) => handleSelectOrderProduct(e.target.value)}
-                className="w-full min-h-[44px] rounded-xl border border-blue-300 px-3 font-bold bg-white"
+                className="w-full min-h-[36px] rounded-lg border border-blue-300 px-2.5 font-bold bg-white"
               >
                 <option value="">-- اختر الصنف للطلب --</option>
                 {activeProducts.map((p) => (
@@ -8159,11 +8140,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               </select>
 
               {selectedOrderProduct && (
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-4 gap-1.5">
                   <select
                     value={ordUnitName}
                     onChange={(e) => handleOrderUnitChange(e.target.value)}
-                    className="w-full min-h-[42px] rounded-xl border border-slate-300 px-2 bg-white font-bold"
+                    className="w-full min-h-[36px] rounded-lg border border-slate-300 px-1.5 bg-white font-bold"
                   >
                     {selectedOrderProduct.units.map((u) => (
                       <option key={u.id} value={u.name}>{u.name}</option>
@@ -8176,7 +8157,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     value={ordQty}
                     onChange={setOrdQty}
                     ariaLabel="كمية الصنف في الطلب"
-                    inputClassName="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                    inputClassName="w-full min-h-[36px] rounded-lg border border-slate-300 text-center font-mono font-bold bg-white"
                   />
                   <input
                     type="number"
@@ -8185,20 +8166,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     value={ordPrice || ''}
                     onChange={(e) => setOrdPrice(Math.max(0, Number(e.target.value)))}
                     placeholder="السعر"
-                    className="w-full min-h-[42px] rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                    className="w-full min-h-[36px] rounded-lg border border-slate-300 text-center font-mono font-bold bg-white"
                   />
+                  <button
+                    type="button"
+                    onClick={handleAddOrderItem}
+                    className="min-h-[36px] rounded-lg bg-blue-900 text-white font-black flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>إضافة</span>
+                  </button>
                 </div>
-              )}
-
-              {selectedOrderProduct && (
-                <button
-                  type="button"
-                  onClick={handleAddOrderItem}
-                  className="w-full min-h-[44px] rounded-xl bg-blue-900 text-white font-black flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>إضافة الصنف للطلب</span>
-                </button>
               )}
             </div>
 
@@ -8237,13 +8215,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               value={ordNotes}
               onChange={(e) => setOrdNotes(e.target.value)}
               placeholder="ملاحظات الطلب..."
-              className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+              className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5"
             />
 
             <button
               type="submit"
               disabled={isSubmittingOrder || !ordItems.length}
-              className="w-full min-h-[46px] rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black disabled:opacity-50 cursor-pointer"
+              className="w-full min-h-[40px] rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-black disabled:opacity-50 cursor-pointer"
             >
               {isSubmittingOrder ? 'جاري الإرسال...' : 'إرسال الطلب للإدارة'}
             </button>
@@ -8274,47 +8252,47 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       {/* ==================== SUPPLIERS LIST & STATEMENT (FOR PERMITTED REPS) ==================== */}
       {activeTab === 'suppliers' && (
         !canCreatePurchase ? (
-          <div className="bg-white rounded-3xl border border-red-200 p-6 text-center space-y-3 text-xs">
-            <ShieldAlert className="w-8 h-8 text-red-600 mx-auto" />
+          <div className="bg-white rounded-xl border border-red-200 p-3 text-center space-y-2 text-xs">
+            <ShieldAlert className="w-7 h-7 text-red-600 mx-auto" />
             <p className="font-black text-red-800">صلاحيات حسابك لا تسمح بعرض الموردين أو كشوف حساباتهم.</p>
             <button
               type="button"
               onClick={() => onTabChange('home')}
-              className="px-4 py-2 rounded-xl bg-slate-100 font-bold text-slate-800 cursor-pointer"
+              className="px-3 py-1.5 rounded-lg bg-slate-100 font-bold text-slate-800 cursor-pointer"
             >
               العودة للرئيسية
             </button>
           </div>
         ) : (
-          <div className="space-y-3 text-xs">
-            <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-3">
+          <div className="space-y-2.5 text-xs">
+            <div className="bg-white rounded-xl border border-slate-200 p-2.5 shadow-xs space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2.5">
-                  <Building2 className="w-7 h-7 text-indigo-800 shrink-0" />
-                  <div>
-                    <h3 className="text-sm font-black text-slate-900">الموردون وكشوف الحسابات ({data.suppliers.length})</h3>
-                    <p className="text-[11px] text-slate-500">
-                      يعرض الرصيد المالي العام للمورد على مستوى الشركة، وكشف الحساب يعرض فواتيرك ومرتجعاتك فقط.
+                <div className="flex items-center gap-2 min-w-0">
+                  <Building2 className="w-5 h-5 text-indigo-800 shrink-0" />
+                  <div className="min-w-0">
+                    <h3 className="text-[13px] font-black text-slate-900">الموردون وكشوف الحسابات ({data.suppliers.length})</h3>
+                    <p className="text-[10px] text-slate-500 truncate">
+                      الرصيد المالي عام للشركة، وكشف الحساب يعرض فواتيرك ومرتجعاتك فقط.
                     </p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => onTabChange('new-supplier')}
-                  className="min-h-[38px] px-3 rounded-xl bg-indigo-900 text-white font-bold cursor-pointer"
+                  className="min-h-[32px] px-2.5 rounded-lg bg-indigo-900 text-white font-bold cursor-pointer"
                 >
                   + مورد جديد
                 </button>
               </div>
 
               <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5" />
                 <input
                   type="text"
                   value={supSearch}
                   onChange={(e) => setSupSearch(e.target.value)}
                   placeholder="ابحث باسم المورد أو الشركة أو الكود أو التليفون..."
-                  className="w-full min-h-[42px] rounded-xl border border-slate-300 pr-9 pl-3 font-semibold"
+                  className="w-full min-h-[34px] rounded-lg border border-slate-300 pr-8 pl-2.5 font-semibold"
                 />
               </div>
             </div>
@@ -8410,41 +8388,38 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
       {/* ==================== DEDICATED REP REPORTS (تقارير المندوب) ==================== */}
       {activeTab === 'rep-reports' && (
-        <div className="space-y-3 text-xs">
-          <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-3">
+        <div className="space-y-2.5 text-xs">
+          <div className="bg-white rounded-xl border border-slate-200 p-2.5 shadow-xs space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2.5">
-                <FileSpreadsheet className="w-7 h-7 text-blue-900 shrink-0" />
-                <div>
-                  <h3 className="text-sm font-black text-slate-900">تقارير المندوب التفصيلية</h3>
-                  <p className="text-[11px] text-slate-500">
-                    متابعة المبيعات، المشتريات المصرحة، المرتجعات، التحصيلات وأرصدة الحسابات
+              <div className="flex items-center gap-2 min-w-0">
+                <FileSpreadsheet className="w-5 h-5 text-blue-900 shrink-0" />
+                <div className="min-w-0">
+                  <h3 className="text-[13px] font-black text-slate-900">تقارير المندوب التفصيلية</h3>
+                  <p className="text-[10px] text-slate-500 truncate">
+                    {repReportData?.scope?.accountBalanceNote ||
+                      'الأرصدة عامة للشركة، وإحصائيات الفواتير والتحصيلات تخص هذا المندوب فقط.'}
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => {
-                    setRptDateFrom('');
-                    setRptDateTo('');
-                    setRptPartyKey('all');
-                    setRptProductId('');
-                    setRptInvoiceNumber('');
-                    setRptOpType('all');
-                    setRptPaymentStatus('all');
-                    setRptInvoiceStatus('all');
-                    setRptPage(1);
-                  }}
-                  className="min-h-[36px] px-2.5 rounded-xl bg-slate-100 text-slate-700 font-bold cursor-pointer"
+                  onClick={() => setShowReportFilters((v) => !v)}
+                  className={`min-h-[32px] px-2.5 rounded-lg border font-bold inline-flex items-center gap-1 cursor-pointer ${
+                    showReportFilters
+                      ? 'bg-blue-900 text-white border-blue-900'
+                      : 'bg-slate-50 text-slate-700 border-slate-200'
+                  }`}
                 >
-                  ضبط الفلاتر
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  <span>فلاتر</span>
+                  {showReportFilters ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                 </button>
                 <button
                   type="button"
                   disabled={isLoadingRepReport}
                   onClick={loadRepSummaryReport}
-                  className="min-h-[36px] px-3 rounded-xl bg-blue-900 text-white font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                  className="min-h-[32px] px-2.5 rounded-lg bg-blue-900 text-white font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isLoadingRepReport ? 'animate-spin' : ''}`} />
                   <span>تحديث</span>
@@ -8452,271 +8427,268 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               </div>
             </div>
 
-            <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-950 font-bold text-[11px]">
-              {repReportData?.scope?.accountBalanceNote ||
-                'الأرصدة الظاهرة للعملاء والموردين تمثل الرصيد المالي العام على مستوى الشركة بالكامل، بينما إحصائيات وفواتير وتحصيلات التقرير تمثل عمليات هذا المندوب فقط.'}
-            </div>
-
             {repReportIsOfflineFallback && (
-              <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
+              <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
                 يتم العرض حالياً من البيانات المحفوظة محلياً (وضع عدم الاتصال أو تعذر الوصول للخادم).
               </div>
             )}
             {repReportError && (
-              <div className="p-2 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold text-[11px]">
+              <div className="p-2 rounded-lg bg-red-50 border border-red-200 text-red-700 font-bold text-[11px]">
                 {repReportError}
               </div>
             )}
 
-            {/* Filters Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">من تاريخ</label>
-                <input
-                  type="date"
-                  value={rptDateFrom}
-                  onChange={(e) => {
-                    setRptDateFrom(e.target.value);
-                    setRptPage(1);
-                  }}
-                  className="w-full min-h-[38px] rounded-xl border border-slate-300 px-2 font-mono bg-white"
-                />
+            {/* Collapsible Compact Filters Grid */}
+            {showReportFilters && (
+              <div className="pt-2 border-t border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">من تاريخ</label>
+                  <input
+                    type="date"
+                    value={rptDateFrom}
+                    onChange={(e) => {
+                      setRptDateFrom(e.target.value);
+                      setRptPage(1);
+                    }}
+                    className="w-full min-h-[34px] rounded-lg border border-slate-300 px-2 font-mono bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">إلى تاريخ</label>
+                  <input
+                    type="date"
+                    value={rptDateTo}
+                    onChange={(e) => {
+                      setRptDateTo(e.target.value);
+                      setRptPage(1);
+                    }}
+                    className="w-full min-h-[34px] rounded-lg border border-slate-300 px-2 font-mono bg-white"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">رقم المستند</label>
+                  <input
+                    type="text"
+                    value={rptInvoiceNumber}
+                    onChange={(e) => {
+                      setRptInvoiceNumber(e.target.value);
+                      setRptPage(1);
+                    }}
+                    placeholder="رقم الفاتورة..."
+                    className="w-full min-h-[34px] rounded-lg border border-slate-300 px-2 font-mono bg-white"
+                  />
+                </div>
+                <div>
+                  <SearchableFilterSelect
+                    id="rep-rpt-optype"
+                    label="نوع العملية"
+                    value={rptOpType}
+                    onChange={(val) => {
+                      setRptOpType((val as any) || 'all');
+                      setRptPage(1);
+                    }}
+                    options={[
+                      { value: 'sales', label: 'فواتير البيع' },
+                      ...(canCreatePurchase ? [{ value: 'purchase', label: 'فواتير الشراء' }] : []),
+                      { value: 'sales_return', label: 'مرتجعات البيع' },
+                      ...(canCreatePurchase
+                        ? [
+                            { value: 'purchase_return', label: 'مرتجعات الشراء' },
+                            { value: 'purchase_return_request', label: 'طلبات مرتجع الشراء' },
+                          ]
+                        : []),
+                    ]}
+                    allOptionLabel="جميع العمليات"
+                    allOptionValue="all"
+                    buttonClassName="min-h-[34px] rounded-lg"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <SearchableFilterSelect
+                    id="rep-rpt-party"
+                    label={canCreatePurchase ? 'العميل / المورد' : 'العميل'}
+                    value={rptPartyKey}
+                    onChange={(val) => {
+                      setRptPartyKey(val);
+                      setRptPage(1);
+                    }}
+                    options={[
+                      ...data.customers.map<SearchableFilterOption>((c) => ({
+                        value: `customer:${c.id}`,
+                        label: c.shopName || c.name,
+                        subtitle: c.phone || c.name,
+                        badge: 'عميل',
+                        groupLabel: 'العملاء',
+                        searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''}`,
+                      })),
+                      ...(canCreatePurchase
+                        ? data.suppliers.map<SearchableFilterOption>((s) => ({
+                            value: `supplier:${s.id}`,
+                            label: s.name,
+                            subtitle: s.phone || s.companyName,
+                            badge: 'مورد',
+                            groupLabel: 'الموردون',
+                            searchText: `${s.name} ${s.companyName || ''} ${s.phone || ''}`,
+                          }))
+                        : []),
+                    ]}
+                    allOptionLabel={canCreatePurchase ? 'كل العملاء والموردين' : 'كل العملاء'}
+                    allOptionValue="all"
+                    searchPlaceholder="ابحث باسم العميل أو المحل أو المورد..."
+                    allowClear
+                    buttonClassName="min-h-[34px] rounded-lg"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <SearchableFilterSelect
+                    id="rep-rpt-product"
+                    label="الصنف"
+                    value={rptProductId || 'all'}
+                    onChange={(val) => {
+                      setRptProductId(val === 'all' ? '' : val);
+                      setRptPage(1);
+                    }}
+                    options={activeProducts.map<SearchableFilterOption>((p) => ({
+                      value: p.id,
+                      label: p.name,
+                      subtitle: [p.code, p.barcode].filter(Boolean).join(' • '),
+                      badge: p.code || undefined,
+                      searchText: `${p.code || ''} ${p.barcode || ''} ${p.category || ''}`,
+                    }))}
+                    allOptionLabel="كل الأصناف"
+                    allOptionValue="all"
+                    searchPlaceholder="ابحث باسم الصنف أو الكود أو الباركود..."
+                    allowClear
+                    buttonClassName="min-h-[34px] rounded-lg"
+                  />
+                </div>
+                <div>
+                  <SearchableFilterSelect
+                    id="rep-rpt-payment-status"
+                    label="حالة السداد"
+                    value={rptPaymentStatus}
+                    onChange={(val) => {
+                      setRptPaymentStatus((val as any) || 'all');
+                      setRptPage(1);
+                    }}
+                    options={[
+                      { value: 'paid', label: 'مسددة بالكامل' },
+                      { value: 'partial', label: 'مسددة جزئياً' },
+                      { value: 'credit', label: 'آجل بالكامل' },
+                    ]}
+                    allOptionLabel="الكل"
+                    allOptionValue="all"
+                    buttonClassName="min-h-[34px] rounded-lg"
+                  />
+                </div>
+                <div>
+                  <SearchableFilterSelect
+                    id="rep-rpt-invoice-status"
+                    label="حالة الفاتورة"
+                    value={rptInvoiceStatus}
+                    onChange={(val) => {
+                      setRptInvoiceStatus((val as any) || 'all');
+                      setRptPage(1);
+                    }}
+                    options={[
+                      { value: 'confirmed', label: 'معتمدة' },
+                      { value: 'draft', label: 'مسودة / بانتظار المراجعة' },
+                      { value: 'cancelled', label: 'ملغاة' },
+                    ]}
+                    allOptionLabel="الكل"
+                    allOptionValue="all"
+                    buttonClassName="min-h-[34px] rounded-lg"
+                  />
+                </div>
+                <div className="col-span-2 flex items-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRptDateFrom('');
+                      setRptDateTo('');
+                      setRptPartyKey('all');
+                      setRptProductId('');
+                      setRptInvoiceNumber('');
+                      setRptOpType('all');
+                      setRptPaymentStatus('all');
+                      setRptInvoiceStatus('all');
+                      setRptPage(1);
+                    }}
+                    className="w-full min-h-[34px] px-2.5 rounded-lg border border-slate-300 bg-white hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 text-slate-700 font-bold text-[11px] flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>إعادة ضبط الفلاتر</span>
+                  </button>
+                </div>
               </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">إلى تاريخ</label>
-                <input
-                  type="date"
-                  value={rptDateTo}
-                  onChange={(e) => {
-                    setRptDateTo(e.target.value);
-                    setRptPage(1);
-                  }}
-                  className="w-full min-h-[38px] rounded-xl border border-slate-300 px-2 font-mono bg-white"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">رقم الفاتورة / المستند</label>
-                <input
-                  type="text"
-                  value={rptInvoiceNumber}
-                  onChange={(e) => {
-                    setRptInvoiceNumber(e.target.value);
-                    setRptPage(1);
-                  }}
-                  placeholder="بحث برقم الفاتورة..."
-                  className="w-full min-h-[38px] rounded-xl border border-slate-300 px-2 font-mono bg-white"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <SearchableFilterSelect
-                  id="rep-rpt-party"
-                  label={canCreatePurchase ? 'العميل / المورد' : 'العميل'}
-                  value={rptPartyKey}
-                  onChange={(val) => {
-                    setRptPartyKey(val);
-                    setRptPage(1);
-                  }}
-                  options={[
-                    ...data.customers.map<SearchableFilterOption>((c) => ({
-                      value: `customer:${c.id}`,
-                      label: c.shopName || c.name,
-                      subtitle: c.phone || c.name,
-                      badge: 'عميل',
-                      groupLabel: 'العملاء',
-                      searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''}`,
-                    })),
-                    ...(canCreatePurchase
-                      ? data.suppliers.map<SearchableFilterOption>((s) => ({
-                          value: `supplier:${s.id}`,
-                          label: s.name,
-                          subtitle: s.phone || s.companyName,
-                          badge: 'مورد',
-                          groupLabel: 'الموردون',
-                          searchText: `${s.name} ${s.companyName || ''} ${s.phone || ''}`,
-                        }))
-                      : []),
-                  ]}
-                  allOptionLabel={canCreatePurchase ? 'كل العملاء والموردين' : 'كل العملاء'}
-                  allOptionValue="all"
-                  searchPlaceholder="ابحث باسم العميل أو المحل أو المورد..."
-                  allowClear
-                  buttonClassName="min-h-[38px] rounded-xl"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <SearchableFilterSelect
-                  id="rep-rpt-product"
-                  label="الصنف"
-                  value={rptProductId || 'all'}
-                  onChange={(val) => {
-                    setRptProductId(val === 'all' ? '' : val);
-                    setRptPage(1);
-                  }}
-                  options={activeProducts.map<SearchableFilterOption>((p) => ({
-                    value: p.id,
-                    label: p.name,
-                    subtitle: [p.code, p.barcode].filter(Boolean).join(' • '),
-                    badge: p.code || undefined,
-                    searchText: `${p.code || ''} ${p.barcode || ''} ${p.category || ''}`,
-                  }))}
-                  allOptionLabel="كل الأصناف"
-                  allOptionValue="all"
-                  searchPlaceholder="ابحث باسم الصنف أو الكود أو الباركود..."
-                  allowClear
-                  buttonClassName="min-h-[38px] rounded-xl"
-                />
-              </div>
-              <div>
-                <SearchableFilterSelect
-                  id="rep-rpt-optype"
-                  label="نوع العملية"
-                  value={rptOpType}
-                  onChange={(val) => {
-                    setRptOpType((val as any) || 'all');
-                    setRptPage(1);
-                  }}
-                  options={[
-                    { value: 'sales', label: 'فواتير البيع' },
-                    ...(canCreatePurchase ? [{ value: 'purchase', label: 'فواتير الشراء' }] : []),
-                    { value: 'sales_return', label: 'مرتجعات البيع' },
-                    ...(canCreatePurchase
-                      ? [
-                          { value: 'purchase_return', label: 'مرتجعات الشراء' },
-                          { value: 'purchase_return_request', label: 'طلبات مرتجع الشراء' },
-                        ]
-                      : []),
-                  ]}
-                  allOptionLabel="جميع العمليات"
-                  allOptionValue="all"
-                  buttonClassName="min-h-[38px] rounded-xl"
-                />
-              </div>
-              <div>
-                <SearchableFilterSelect
-                  id="rep-rpt-payment-status"
-                  label="حالة السداد"
-                  value={rptPaymentStatus}
-                  onChange={(val) => {
-                    setRptPaymentStatus((val as any) || 'all');
-                    setRptPage(1);
-                  }}
-                  options={[
-                    { value: 'paid', label: 'مسددة بالكامل' },
-                    { value: 'partial', label: 'مسددة جزئياً' },
-                    { value: 'credit', label: 'آجل بالكامل' },
-                  ]}
-                  allOptionLabel="الكل"
-                  allOptionValue="all"
-                  buttonClassName="min-h-[38px] rounded-xl"
-                />
-              </div>
-              <div>
-                <SearchableFilterSelect
-                  id="rep-rpt-invoice-status"
-                  label="حالة الفاتورة"
-                  value={rptInvoiceStatus}
-                  onChange={(val) => {
-                    setRptInvoiceStatus((val as any) || 'all');
-                    setRptPage(1);
-                  }}
-                  options={[
-                    { value: 'confirmed', label: 'معتمدة' },
-                    { value: 'draft', label: 'مسودة / بانتظار المراجعة' },
-                    { value: 'cancelled', label: 'ملغاة' },
-                  ]}
-                  allOptionLabel="الكل"
-                  allOptionValue="all"
-                  buttonClassName="min-h-[38px] rounded-xl"
-                />
-              </div>
-              <div className="flex items-end">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRptDateFrom('');
-                    setRptDateTo('');
-                    setRptPartyKey('all');
-                    setRptProductId('');
-                    setRptInvoiceNumber('');
-                    setRptOpType('all');
-                    setRptPaymentStatus('all');
-                    setRptInvoiceStatus('all');
-                    setRptPage(1);
-                  }}
-                  className="w-full min-h-[38px] px-3 rounded-xl border border-slate-300 bg-white hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>إعادة ضبط الفلاتر</span>
-                </button>
-              </div>
-            </div>
+            )}
           </div>
 
           {repReportData && (
             <>
-              {/* KPI Summary Cards (Zero Profit / Zero Cost / Zero Cashbox Balances) */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 tabular-nums">
-                <div className="bg-white rounded-2xl border border-blue-200 p-3">
+              {/* Hairline-Divided KPI Ledger Strip (Zero Profit / Zero Cost / Zero Cashbox Balances) */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden tabular-nums">
+                <div className="bg-white px-2.5 py-1.5">
                   <span className="text-[10px] text-slate-500 block">مبيعات المندوب ({repReportData.summary.salesCount})</span>
-                  <strong className="font-mono text-sm text-blue-950">
+                  <strong className="font-mono text-xs text-blue-950">
                     {repReportData.summary.salesTotal.toLocaleString()} {data.settings.currency}
                   </strong>
                 </div>
-                <div className="bg-white rounded-2xl border border-rose-200 p-3">
+                <div className="bg-white px-2.5 py-1.5">
                   <span className="text-[10px] text-slate-500 block">مرتجعات البيع ({repReportData.summary.salesReturnsCount})</span>
-                  <strong className="font-mono text-sm text-rose-800">
+                  <strong className="font-mono text-xs text-rose-800">
                     {repReportData.summary.salesReturnsTotal.toLocaleString()} {data.settings.currency}
                   </strong>
                 </div>
-                <div className="bg-white rounded-2xl border border-emerald-200 p-3">
+                <div className="bg-white px-2.5 py-1.5">
                   <span className="text-[10px] text-slate-500 block">صافي البيع</span>
-                  <strong className="font-mono text-sm text-emerald-800">
+                  <strong className="font-mono text-xs text-emerald-800">
                     {repReportData.summary.netSalesTotal.toLocaleString()} {data.settings.currency}
                   </strong>
                 </div>
-                <div className="bg-white rounded-2xl border border-emerald-200 p-3">
-                  <span className="text-[10px] text-slate-500 block">المحصل بالفواتير / التحصيلات ({repReportData.summary.collectionsCount})</span>
-                  <strong className="font-mono text-sm text-emerald-900">
+                <div className="bg-white px-2.5 py-1.5">
+                  <span className="text-[10px] text-slate-500 block">المحصل ({repReportData.summary.collectionsCount})</span>
+                  <strong className="font-mono text-xs text-emerald-900">
                     {repReportData.summary.collectionsTotal.toLocaleString()} {data.settings.currency}
                   </strong>
                 </div>
-                <div className="bg-white rounded-2xl border border-amber-200 p-3">
-                  <span className="text-[10px] text-slate-500 block">الآجل المتبقي على الفواتير</span>
-                  <strong className="font-mono text-sm text-amber-800">
+                <div className="bg-white px-2.5 py-1.5">
+                  <span className="text-[10px] text-slate-500 block">الآجل المتبقي</span>
+                  <strong className="font-mono text-xs text-amber-800">
                     {repReportData.summary.salesRemaining.toLocaleString()} {data.settings.currency}
                   </strong>
                 </div>
                 {!isRepRoleAccount && typeof repReportData.summary.totalCustomerReceivables === 'number' && (
-                  <div className="bg-white rounded-2xl border border-slate-200 p-3">
-                    <span className="text-[10px] text-slate-500 block">أرصدة العملاء (عام الشركة)</span>
-                    <strong className="font-mono text-sm text-slate-900">
+                  <div className="bg-white px-2.5 py-1.5">
+                    <span className="text-[10px] text-slate-500 block">أرصدة العملاء (عام)</span>
+                    <strong className="font-mono text-xs text-slate-900">
                       {repReportData.summary.totalCustomerReceivables.toLocaleString()} {data.settings.currency}
                     </strong>
                   </div>
                 )}
                 {canCreatePurchase && (
                   <>
-                    <div className="bg-white rounded-2xl border border-indigo-200 p-3">
+                    <div className="bg-white px-2.5 py-1.5">
                       <span className="text-[10px] text-slate-500 block">مشتريات المندوب ({repReportData.summary.purchasesCount})</span>
-                      <strong className="font-mono text-sm text-indigo-950">
+                      <strong className="font-mono text-xs text-indigo-950">
                         {repReportData.summary.purchasesTotal.toLocaleString()} {data.settings.currency}
                       </strong>
                     </div>
-                    <div className="bg-white rounded-2xl border border-emerald-200 p-3">
+                    <div className="bg-white px-2.5 py-1.5">
                       <span className="text-[10px] text-slate-500 block">المدفوع للمشتريات</span>
-                      <strong className="font-mono text-sm text-emerald-800">
+                      <strong className="font-mono text-xs text-emerald-800">
                         {repReportData.summary.purchasesPaid.toLocaleString()} {data.settings.currency}
                       </strong>
                     </div>
-                    <div className="bg-white rounded-2xl border border-orange-200 p-3">
-                      <span className="text-[10px] text-slate-500 block">المتبقي على المشتريات</span>
-                      <strong className="font-mono text-sm text-orange-800">
+                    <div className="bg-white px-2.5 py-1.5">
+                      <span className="text-[10px] text-slate-500 block">متبقي المشتريات</span>
+                      <strong className="font-mono text-xs text-orange-800">
                         {repReportData.summary.purchasesRemaining.toLocaleString()} {data.settings.currency}
                       </strong>
                     </div>
-                    <div className="bg-white rounded-2xl border border-amber-200 p-3">
+                    <div className="bg-white px-2.5 py-1.5">
                       <span className="text-[10px] text-slate-500 block">طلبات مرتجع شراء</span>
-                      <strong className="font-mono text-sm text-amber-900">
+                      <strong className="font-mono text-xs text-amber-900">
                         {repReportData.summary.purchaseReturnRequestsCount ?? 0} ({repReportData.summary.pendingPurchaseReturnRequestsCount ?? 0} قيد المراجعة)
                       </strong>
                     </div>
@@ -8725,7 +8697,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               </div>
 
               {/* Sub-view Switcher */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-200">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 bg-white p-1 rounded-xl border border-slate-200">
                 {[
                   { id: 'summary' as const, label: 'أرصدة العملاء والموردين' },
                   { id: 'invoices' as const, label: `الفواتير (${repReportData.invoices.length})` },
@@ -8736,7 +8708,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     key={tab.id}
                     type="button"
                     onClick={() => setRptSubView(tab.id)}
-                    className={`min-h-[38px] rounded-xl font-black cursor-pointer ${
+                    className={`min-h-[32px] rounded-lg text-[11px] font-black cursor-pointer ${
                       rptSubView === tab.id ? 'bg-blue-900 text-white' : 'text-slate-700 hover:bg-slate-50'
                     }`}
                   >
@@ -9159,7 +9131,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
               {/* Pagination Controls */}
               {repReportData.pagination && (repReportData.pagination.totalPages > 1 || repReportData.pagination.totalRows > 25) && (
-                <div className="bg-white rounded-2xl border border-slate-200 p-2.5 flex flex-wrap items-center justify-between gap-2">
+                <div className="bg-white rounded-lg border border-slate-200 px-2.5 py-1.5 flex flex-wrap items-center justify-between gap-1.5">
                   <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700">
                     <span>صفحة</span>
                     <span className="font-mono text-blue-950">{repReportData.pagination.page}</span>
@@ -9167,14 +9139,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     <span className="font-mono text-blue-950">{repReportData.pagination.totalPages}</span>
                     <span className="text-slate-400">({repReportData.pagination.totalRows} سجل)</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1">
                     <select
                       value={rptPageSize}
                       onChange={(e) => {
                         setRptPageSize(Number(e.target.value));
                         setRptPage(1);
                       }}
-                      className="min-h-[34px] rounded-xl border border-slate-300 px-2 text-[11px] font-bold bg-white"
+                      className="min-h-[30px] rounded-lg border border-slate-300 px-2 text-[11px] font-bold bg-white"
                     >
                       <option value={25}>25 / صفحة</option>
                       <option value={50}>50 / صفحة</option>
@@ -9184,7 +9156,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       type="button"
                       disabled={!repReportData.pagination.hasPrevPage || isLoadingRepReport}
                       onClick={() => setRptPage((p) => Math.max(1, p - 1))}
-                      className="min-h-[34px] px-3 rounded-xl bg-slate-100 text-slate-800 font-bold disabled:opacity-45 cursor-pointer"
+                      className="min-h-[30px] px-2.5 rounded-lg bg-slate-100 text-slate-800 font-bold disabled:opacity-45 cursor-pointer"
                     >
                       السابق
                     </button>
@@ -9192,7 +9164,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       type="button"
                       disabled={!repReportData.pagination.hasNextPage || isLoadingRepReport}
                       onClick={() => setRptPage((p) => p + 1)}
-                      className="min-h-[34px] px-3 rounded-xl bg-blue-900 text-white font-bold disabled:opacity-45 cursor-pointer"
+                      className="min-h-[30px] px-2.5 rounded-lg bg-blue-900 text-white font-bold disabled:opacity-45 cursor-pointer"
                     >
                       التالي
                     </button>
@@ -9209,26 +9181,26 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
           <form
             onSubmit={handleConfirmDelivered}
-            className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 space-y-3 text-xs pb-safe max-h-[85vh] overflow-y-auto"
+            className="w-full max-w-lg bg-white rounded-t-xl sm:rounded-xl p-3.5 shadow-2xl border border-slate-200 space-y-2 text-xs pb-safe max-h-[85vh] overflow-y-auto"
           >
-            <div className="flex items-center justify-between border-b pb-3">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
               <div>
-                <h4 className="font-black text-sm text-slate-900">
+                <h4 className="font-black text-[13px] text-slate-900">
                   تأكيد تسليم الطلب {deliveringOrder.requestNumber}
                 </h4>
-                <p className="text-slate-500">{deliveringOrder.customerName}</p>
+                <p className="text-[11px] text-slate-500">{deliveringOrder.customerName}</p>
               </div>
               <button
                 type="button"
                 onClick={() => setDeliveringOrder(null)}
-                className="min-h-[38px] px-3 rounded-xl bg-slate-100 font-bold text-slate-700 cursor-pointer"
+                className="min-h-[30px] px-2.5 rounded-lg bg-slate-100 font-bold text-slate-700 cursor-pointer"
               >
                 إغلاق
               </button>
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
                 المبلغ المحصل عند التسليم ({data.settings.currency}):
               </label>
               <input
@@ -9238,17 +9210,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 value={deliveryCollectedAmount || ''}
                 onChange={(e) => setDeliveryCollectedAmount(Math.max(0, Number(e.target.value)))}
                 placeholder="المبلغ المحصل"
-                className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-mono font-black text-center text-emerald-800"
+                className="w-full min-h-[38px] rounded-lg border border-slate-300 px-2.5 font-mono font-black text-center text-emerald-800"
               />
             </div>
 
             {deliveryCollectedAmount > 0 && (
-              <div className={`grid gap-2 ${!isRepRoleAccount && canCashOps ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              <div className={`grid gap-1.5 ${!isRepRoleAccount && canCashOps ? 'grid-cols-2' : 'grid-cols-1'}`}>
                 {!isRepRoleAccount && canCashOps && (
                   <select
                     value={deliveryCashboxId}
                     onChange={(e) => setDeliveryCashboxId(e.target.value)}
-                    className="min-h-[42px] rounded-xl border border-slate-300 px-2 bg-white font-bold"
+                    className="min-h-[36px] rounded-lg border border-slate-300 px-2 bg-white font-bold"
                   >
                     {data.cashboxes.map((cb) => (
                       <option key={cb.id} value={cb.id}>{cb.name}</option>
@@ -9258,7 +9230,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 <select
                   value={deliveryMethod}
                   onChange={(e) => setDeliveryMethod(e.target.value as any)}
-                  className="min-h-[42px] rounded-xl border border-slate-300 px-2 bg-white font-bold"
+                  className="min-h-[36px] rounded-lg border border-slate-300 px-2 bg-white font-bold"
                 >
                   <option value="cash">نقدي</option>
                   <option value="bank">تحويل بنكي</option>
@@ -9272,11 +9244,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               value={deliveryNotes}
               onChange={(e) => setDeliveryNotes(e.target.value)}
               placeholder="ملاحظات التسليم..."
-              className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+              className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5"
             />
 
-            <label className="min-h-[42px] px-3 rounded-xl border border-blue-200 bg-blue-50 text-blue-900 font-bold inline-flex items-center gap-2 cursor-pointer">
-              <Camera className="w-4 h-4" />
+            <label className="min-h-[34px] px-2.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-900 font-bold inline-flex items-center gap-1.5 cursor-pointer">
+              <Camera className="w-3.5 h-3.5" />
               <span>{deliveryProof ? 'تم التقاط الصورة (اضغط للتغيير)' : 'التقاط إثبات تسليم (اختياري)'}</span>
               <input
                 type="file"
@@ -9299,7 +9271,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <button
               type="submit"
               disabled={isUpdatingDelivery}
-              className="w-full min-h-[46px] rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black disabled:opacity-50 cursor-pointer"
+              className="w-full min-h-[40px] rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-black disabled:opacity-50 cursor-pointer"
             >
               {isUpdatingDelivery ? 'جاري التسجيل...' : 'اعتماد تسليم الطلب'}
             </button>
@@ -9409,54 +9381,54 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
         return (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
-            <div className="w-full max-w-2xl bg-[#f5f7fb] rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl border border-slate-200 max-h-[92vh] flex flex-col text-xs pb-safe">
+            <div className="w-full max-w-2xl bg-[#f5f7fb] rounded-t-xl sm:rounded-xl overflow-hidden shadow-2xl border border-slate-200 max-h-[92vh] flex flex-col text-xs pb-safe">
               {/* Emerald Header Bar */}
-              <div className="bg-[#0F5A33] text-white px-4 py-3 flex items-center justify-between gap-2 shrink-0">
+              <div className="bg-[#0F5A33] text-white px-3 py-2 flex items-center justify-between gap-2 shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
                   <button
                     type="button"
                     onClick={() => setSelectedCustomerDetail(null)}
-                    className="min-h-[38px] min-w-[38px] rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center text-white cursor-pointer shrink-0"
+                    className="min-h-[32px] min-w-[32px] rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center text-white cursor-pointer shrink-0"
                     aria-label="رجوع"
                   >
                     <ArrowRight className="w-4 h-4" />
                   </button>
                   <div className="min-w-0">
-                    <h4 className="font-black text-sm truncate">
+                    <h4 className="font-black text-[13px] truncate">
                       {customerDetailSubTab === 'statement' ? 'عرض تفصيلي لحساب الآجل' : (c.shopName || c.name)}
                     </h4>
-                    <p className="text-[11px] text-emerald-100 truncate">
+                    <p className="text-[10px] text-emerald-100 truncate">
                       {c.shopName || c.name} · {c.code}
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="flex items-center gap-1 shrink-0">
                   <button
                     type="button"
                     onClick={() => setCustomerDetailSubTab(customerDetailSubTab === 'statement' ? 'overview' : 'statement')}
-                    className="min-h-[38px] min-w-[38px] rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center text-white cursor-pointer"
+                    className="min-h-[32px] min-w-[32px] rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center text-white cursor-pointer"
                     title={customerDetailSubTab === 'statement' ? 'معلومات العميل' : 'كشف الحساب'}
                   >
-                    <Info className="w-4 h-4" />
+                    <Info className="w-3.5 h-3.5" />
                   </button>
                   <button
                     type="button"
                     onClick={handlePrintCustomerStatementPdf}
-                    className="min-h-[38px] px-3 rounded-xl bg-white text-[#0F5A33] font-black inline-flex items-center gap-1 cursor-pointer"
+                    className="min-h-[32px] px-2.5 rounded-lg bg-white text-[#0F5A33] font-black inline-flex items-center gap-1 cursor-pointer"
                   >
-                    <Printer className="w-4 h-4" />
+                    <Printer className="w-3.5 h-3.5" />
                     <span>طباعة</span>
                   </button>
                 </div>
               </div>
 
               {/* Detail Modal Sub-Tabs */}
-              <div className="px-4 pt-3 pb-2 bg-white border-b border-slate-200 shrink-0">
-                <div className="grid grid-cols-2 gap-1.5 bg-slate-100 p-1 rounded-xl">
+              <div className="px-3 py-1.5 bg-white border-b border-slate-200 shrink-0">
+                <div className="grid grid-cols-2 gap-1 bg-slate-100 p-0.5 rounded-lg">
                   <button
                     type="button"
                     onClick={() => setCustomerDetailSubTab('overview')}
-                    className={`min-h-[40px] rounded-lg font-black cursor-pointer ${
+                    className={`min-h-[32px] rounded-md font-black cursor-pointer ${
                       customerDetailSubTab === 'overview' ? 'bg-[#0F5A33] text-white shadow-xs' : 'text-slate-700'
                     }`}
                   >
@@ -9465,7 +9437,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   <button
                     type="button"
                     onClick={() => setCustomerDetailSubTab('statement')}
-                    className={`min-h-[40px] rounded-lg font-black cursor-pointer ${
+                    className={`min-h-[32px] rounded-md font-black cursor-pointer ${
                       customerDetailSubTab === 'statement' ? 'bg-[#0F5A33] text-white shadow-xs' : 'text-slate-700'
                     }`}
                   >
@@ -9474,10 +9446,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
                 {customerDetailSubTab === 'overview' && (
                   <>
-                    <div className="bg-white rounded-2xl border border-slate-200 p-3.5 flex items-start gap-3">
+                    <div className="bg-white rounded-lg border border-slate-200 p-2.5 flex items-start gap-2.5">
                       {(c.shopPhoto || c.photo) ? (
                         <button
                           type="button"
@@ -9488,17 +9460,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           <img
                             src={c.shopPhoto || c.photo}
                             alt={c.shopName || c.name}
-                            className="w-14 h-14 rounded-xl object-cover border border-slate-200"
+                            className="w-11 h-11 rounded-lg object-cover border border-slate-200"
                           />
                         </button>
                       ) : (
-                        <div className="w-14 h-14 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-[#0F5A33] shrink-0">
-                          <Store className="w-6 h-6" />
+                        <div className="w-11 h-11 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center text-[#0F5A33] shrink-0">
+                          <Store className="w-5 h-5" />
                         </div>
                       )}
                       <div className="min-w-0">
-                        <h4 className="font-black text-sm text-slate-900">{c.shopName || c.name}</h4>
-                        <p className="text-slate-500">
+                        <h4 className="font-black text-[13px] text-slate-900">{c.shopName || c.name}</h4>
+                        <p className="text-[11px] text-slate-500">
                           {c.name} · {c.code}
                           {c.governorate ? ` · ${c.governorate}` : ''}
                           {c.area ? ` · ${c.area}` : ''}
@@ -9512,8 +9484,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-center tabular-nums">
-                      <div className="p-2.5 rounded-xl bg-white border border-slate-200">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden text-center tabular-nums">
+                      <div className="px-2 py-1.5 bg-white">
                         <span className="text-[10px] text-slate-500 block">
                           {c.currentBalance < -0.009
                             ? 'رصيد دائن للعميل (علينا)'
@@ -9522,26 +9494,26 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             : 'الحساب متوازن'}
                         </span>
                         <strong
-                          className={`font-mono text-sm ${
+                          className={`font-mono text-xs ${
                             c.currentBalance > 0.009 ? 'text-red-700' : 'text-emerald-700'
                           }`}
                         >
                           {Math.abs(c.currentBalance).toLocaleString()} {data.settings.currency}
                         </strong>
                       </div>
-                      <div className="p-2.5 rounded-xl bg-white border border-slate-200">
+                      <div className="px-2 py-1.5 bg-white">
                         <span className="text-[10px] text-blue-800 block">إجمالي الفواتير</span>
-                        <strong className="font-mono text-sm text-blue-950">
+                        <strong className="font-mono text-xs text-blue-950">
                           {(stmtSummary?.totalSales ?? custInvoices.reduce((s, i) => s + Number(i.grandTotal || 0), 0)).toLocaleString()} {data.settings.currency}
                         </strong>
                       </div>
-                      <div className="p-2.5 rounded-xl bg-white border border-slate-200">
+                      <div className="px-2 py-1.5 bg-white">
                         <span className="text-[10px] text-emerald-800 block">إجمالي المحصل</span>
-                        <strong className="font-mono text-sm text-emerald-950">
+                        <strong className="font-mono text-xs text-emerald-950">
                           {(stmtSummary?.totalPaid ?? stmtSummary?.totalCredit ?? 0).toLocaleString()} {data.settings.currency}
                         </strong>
                       </div>
-                      <div className="p-2.5 rounded-xl bg-white border border-slate-200">
+                      <div className="px-2 py-1.5 bg-white">
                         <span className="text-[10px] text-slate-500 block">آخر فاتورة</span>
                         <strong className="font-mono text-[11px] text-blue-950">
                           {stmtSummary?.lastInvoiceDate
@@ -9551,7 +9523,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             : 'لا يوجد'}
                         </strong>
                       </div>
-                      <div className="p-2.5 rounded-xl bg-white border border-slate-200 col-span-1 sm:col-span-2">
+                      <div className="px-2 py-1.5 bg-white col-span-1 sm:col-span-2">
                         <span className="text-[10px] text-slate-500 block">آخر تحصيل / سداد</span>
                         <strong className="font-mono text-[11px] text-emerald-900">
                           {stmtSummary?.lastPaymentDate
@@ -9563,7 +9535,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-1.5">
                       {allPhones.map((ph, idx) => {
                         const rawPhone = String(ph.phone || ph.number || '').trim();
                         const clean = rawPhone.replace(/[^\d+]/g, '');
@@ -9572,13 +9544,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           <a
                             key={ph.id || idx}
                             href={`tel:${clean}`}
-                            className={`min-h-[42px] px-3 rounded-xl font-mono font-bold inline-flex items-center gap-1.5 border ${
+                            className={`min-h-[34px] px-2.5 rounded-lg font-mono font-bold inline-flex items-center gap-1 border ${
                               ph.isPrimary || idx === 0
                                 ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                                 : 'bg-teal-50 text-teal-800 border-teal-200'
                             }`}
                           >
-                            <Phone className="w-4 h-4" />
+                            <Phone className="w-3.5 h-3.5" />
                             <span>{rawPhone}</span>
                             {ph.label && <span className="font-sans text-[10px]">({ph.label})</span>}
                           </a>
@@ -9600,9 +9572,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                               longitude: c.longitude,
                             })
                           }
-                          className="min-h-[42px] px-3 rounded-xl bg-emerald-50 text-[#0F5A33] border border-emerald-200 font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                          className="min-h-[34px] px-2.5 rounded-lg bg-emerald-50 text-[#0F5A33] border border-emerald-200 font-bold inline-flex items-center gap-1 cursor-pointer"
                         >
-                          <MapPin className="w-4 h-4 text-[#0F5A33]" />
+                          <MapPin className="w-3.5 h-3.5 text-[#0F5A33]" />
                           <span>عرض الموقع على الخريطة</span>
                         </button>
                       )}
@@ -9653,10 +9625,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 )}
 
                 {customerDetailSubTab === 'statement' && (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {/* Customer Switcher + Date Range Filter Strip */}
-                    <div className="bg-white rounded-2xl border border-slate-200 p-3 space-y-2">
-                      <div className="flex items-center gap-2">
+                    <div className="bg-white rounded-lg border border-slate-200 p-2 space-y-1.5">
+                      <div className="flex items-center gap-1.5">
                         <select
                           value={c.id}
                           onChange={(e) => {
@@ -9666,7 +9638,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                               setCustomerDetailSubTab('statement');
                             }
                           }}
-                          className="flex-1 min-h-[40px] rounded-xl border border-slate-300 px-2.5 font-bold bg-slate-50"
+                          className="flex-1 min-h-[34px] rounded-lg border border-slate-300 px-2 font-bold bg-slate-50"
                         >
                           {data.customers.map((x) => (
                             <option key={x.id} value={x.id}>
@@ -9682,40 +9654,40 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                               if (res) setCustomerDetailStatement(res);
                             }).finally(() => setIsLoadingCustomerStatement(false));
                           }}
-                          className="min-h-[40px] min-w-[40px] rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700 cursor-pointer"
+                          className="min-h-[34px] min-w-[34px] rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700 cursor-pointer"
                           title="تحديث كشف الحساب"
                         >
-                          <RefreshCw className={`w-4 h-4 ${isLoadingCustomerStatement ? 'animate-spin' : ''}`} />
+                          <RefreshCw className={`w-3.5 h-3.5 ${isLoadingCustomerStatement ? 'animate-spin' : ''}`} />
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                         <input
                           type="date"
                           value={stmtDateFrom}
                           onChange={(e) => setStmtDateFrom(e.target.value)}
                           title="من تاريخ"
-                          className="min-h-[38px] rounded-xl border border-slate-300 px-2 font-mono text-[11px] bg-slate-50"
+                          className="min-h-[32px] rounded-lg border border-slate-300 px-2 font-mono text-[11px] bg-slate-50"
                         />
                         <input
                           type="date"
                           value={stmtDateTo}
                           onChange={(e) => setStmtDateTo(e.target.value)}
                           title="إلى تاريخ"
-                          className="min-h-[38px] rounded-xl border border-slate-300 px-2 font-mono text-[11px] bg-slate-50"
+                          className="min-h-[32px] rounded-lg border border-slate-300 px-2 font-mono text-[11px] bg-slate-50"
                         />
                         <input
                           type="text"
                           value={stmtSearch}
                           onChange={(e) => setStmtSearch(e.target.value)}
                           placeholder="بحث برقم المستند أو العملية..."
-                          className="col-span-2 sm:col-span-1 min-h-[38px] rounded-xl border border-slate-300 px-2.5 text-[11px] bg-slate-50"
+                          className="col-span-2 sm:col-span-1 min-h-[32px] rounded-lg border border-slate-300 px-2 text-[11px] bg-slate-50"
                         />
                       </div>
                     </div>
 
                     {/* WA0004 3-Button Action & Remaining Bar */}
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-3 gap-1.5">
                       <button
                         type="button"
                         onClick={() => {
@@ -9726,13 +9698,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           setSelectedCustomerDetail(null);
                           onTabChange('cash-deposit');
                         }}
-                        className="min-h-[48px] rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white font-black cursor-pointer"
+                        className="min-h-[38px] rounded-lg bg-[#0F5A33] hover:bg-[#0B4426] text-white font-black cursor-pointer"
                       >
                         دفع
                       </button>
-                      <div className="min-h-[48px] rounded-xl bg-white border border-slate-200 px-2 py-1 flex flex-col items-center justify-center text-center tabular-nums">
-                        <span className="text-[10px] text-slate-500 font-bold">اجمالي المتبقي</span>
-                        <strong className={`font-mono text-sm font-black ${totalRemainingVal > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+                      <div className="min-h-[38px] rounded-lg bg-white border border-slate-200 px-2 py-0.5 flex flex-col items-center justify-center text-center tabular-nums">
+                        <span className="text-[9px] text-slate-500 font-bold">اجمالي المتبقي</span>
+                        <strong className={`font-mono text-xs font-black ${totalRemainingVal > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
                           {totalRemainingVal.toLocaleString()} {data.settings.currency}
                         </strong>
                       </div>
@@ -9745,21 +9717,21 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             setCustomerDetailSubTab('overview');
                           }
                         }}
-                        className="min-h-[48px] rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-black cursor-pointer"
+                        className="min-h-[38px] rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 font-black cursor-pointer"
                       >
                         تصحيح
                       </button>
                     </div>
 
                     {customerDetailStatement?.scope?.isRepScoped && (
-                      <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-950 font-bold text-[11px]">
-                        رصيد حساب العميل يمثل الرصيد العام على مستوى الشركة، بينما الفواتير والمرتجعات والدفعات المعروضة أدناه تخص عملياتك معه فقط.
+                      <div className="px-2.5 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-950 font-bold text-[10px]">
+                        رصيد حساب العميل عام للشركة، والفواتير والمرتجعات والدفعات أدناه تخص عملياتك معه فقط.
                       </div>
                     )}
 
                     {/* WA0004 5-Column Tabular Ledger Table */}
                     {isLoadingCustomerStatement ? (
-                      <p className="text-center py-8 text-slate-500 font-bold">جاري تحميل كشف الحساب التفصيلي...</p>
+                      <p className="text-center py-6 text-slate-500 font-bold">جاري تحميل كشف الحساب التفصيلي...</p>
                     ) : (
                       <UnifiedDataTable
                         compact
@@ -9834,21 +9806,21 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       />
                     )}
 
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-2 gap-1.5">
                       <button
                         type="button"
                         onClick={handleShareCsvStatement}
-                        className="min-h-[42px] rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black flex items-center justify-center gap-1.5 cursor-pointer"
+                        className="min-h-[36px] rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-black flex items-center justify-center gap-1.5 cursor-pointer"
                       >
-                        <Share2 className="w-4 h-4" />
+                        <Share2 className="w-3.5 h-3.5" />
                         <span>مشاركة / CSV</span>
                       </button>
                       <button
                         type="button"
                         onClick={handlePrintCustomerStatementPdf}
-                        className="min-h-[42px] rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white font-black flex items-center justify-center gap-1.5 cursor-pointer"
+                        className="min-h-[36px] rounded-lg bg-[#0F5A33] hover:bg-[#0B4426] text-white font-black flex items-center justify-center gap-1.5 cursor-pointer"
                       >
-                        <Printer className="w-4 h-4" />
+                        <Printer className="w-3.5 h-3.5" />
                         <span>طباعة</span>
                       </button>
                     </div>
@@ -9856,7 +9828,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 )}
 
                 {statementPreviewDoc && (
-                  <div className="p-3 rounded-2xl bg-blue-50 border border-blue-200 space-y-2">
+                  <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200 space-y-1.5">
                     <div className="flex items-center justify-between">
                       <strong className="text-blue-950 font-black">
                         تفاصيل المستند: {statementPreviewDoc.title}
@@ -9864,7 +9836,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       <button
                         type="button"
                         onClick={() => setStatementPreviewDoc(null)}
-                        className="px-2.5 py-1 rounded-lg bg-white text-slate-700 font-bold cursor-pointer"
+                        className="px-2 py-0.5 rounded bg-white text-slate-700 font-bold cursor-pointer"
                       >
                         إغلاق
                       </button>
@@ -9875,7 +9847,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           <span>التاريخ: {previewInvoiceObj.date}</span>
                           <span>الإجمالي: {previewInvoiceObj.grandTotal.toLocaleString()} {data.settings.currency}</span>
                         </div>
-                        <div className="divide-y divide-blue-200/70 bg-white rounded-xl p-2">
+                        <div className="divide-y divide-blue-200/70 bg-white rounded-lg p-2">
                           {(previewInvoiceObj.items || []).map((it, idx) => (
                             <div key={idx} className="py-1 flex justify-between">
                               <span>{it.productName} ({it.quantity} {it.unit})</span>
@@ -9885,7 +9857,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         </div>
                       </div>
                     ) : previewPaymentObj ? (
-                      <div className="bg-white rounded-xl p-2.5 space-y-1 text-[11px]">
+                      <div className="bg-white rounded-lg p-2 space-y-1 text-[11px]">
                         <div className="flex justify-between">
                           <span>التاريخ:</span>
                           <strong className="font-mono">{previewPaymentObj.date}</strong>
@@ -9907,7 +9879,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-2 pt-1">
+                <div className="grid grid-cols-2 gap-1.5 pt-0.5">
                   <button
                     type="button"
                     onClick={() => {
@@ -9915,7 +9887,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       setSelectedCustomerDetail(null);
                       onTabChange('new-invoice');
                     }}
-                    className="min-h-[44px] rounded-xl bg-[#0F5A33] text-white font-black cursor-pointer"
+                    className="min-h-[38px] rounded-lg bg-[#0F5A33] text-white font-black cursor-pointer"
                   >
                     + فاتورة جديدة
                   </button>
@@ -9929,19 +9901,19 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       setSelectedCustomerDetail(null);
                       onTabChange('cash-deposit');
                     }}
-                    className="min-h-[44px] rounded-xl bg-emerald-700 text-white font-black cursor-pointer"
+                    className="min-h-[38px] rounded-lg bg-emerald-700 text-white font-black cursor-pointer"
                   >
                     + تحصيل دفعة
                   </button>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-1.5">
                   {canEditCustomer && (
                     <button
                       type="button"
                       onClick={() => openEditCustomerSheet(c)}
-                      className="min-h-[42px] flex-1 rounded-xl bg-white hover:bg-slate-100 text-slate-900 border border-slate-300 font-bold inline-flex items-center justify-center gap-2 cursor-pointer"
+                      className="min-h-[36px] flex-1 rounded-lg bg-white hover:bg-slate-100 text-slate-900 border border-slate-300 font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer"
                     >
-                      <Edit className="w-4 h-4" />
+                      <Edit className="w-3.5 h-3.5" />
                       <span>تعديل بيانات العميل</span>
                     </button>
                   )}
@@ -9949,9 +9921,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     <button
                       type="button"
                       onClick={() => setDeleteCustomerTarget(c)}
-                      className="min-h-[42px] px-4 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                      className="min-h-[36px] px-3 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold inline-flex items-center justify-center gap-1 cursor-pointer"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-3.5 h-3.5" />
                       <span>حذف</span>
                     </button>
                   )}
@@ -9964,20 +9936,20 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
       {/* Unsaved Invoice Leave Guard Modal */}
       {pendingLeaveTab && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-          <div className="w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl border border-slate-200 space-y-3 text-xs">
-            <div className="flex items-center gap-2 font-black text-sm text-amber-800">
-              <AlertTriangle className="w-5 h-5 shrink-0" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/60 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-white rounded-xl p-3.5 shadow-2xl border border-slate-200 space-y-2.5 text-xs">
+            <div className="flex items-center gap-2 font-black text-[13px] text-amber-800">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
               <span>توجد أصناف غير محفوظة في الفاتورة</span>
             </div>
             <p className="text-slate-600 leading-relaxed">
               لديك ({invItems.length}) أصناف في الفاتورة الحالية ولم يتم حفظها أو اعتمادها بعد. هل تريد المغادرة مع الاحتفاظ بها أم البقاء لإكمال الفاتورة؟
             </p>
-            <div className="grid grid-cols-2 gap-2 pt-1">
+            <div className="grid grid-cols-2 gap-1.5 pt-0.5">
               <button
                 type="button"
                 onClick={() => setPendingLeaveTab(null)}
-                className="min-h-[44px] rounded-xl bg-blue-900 text-white font-black cursor-pointer"
+                className="min-h-[36px] rounded-lg bg-blue-900 text-white font-black cursor-pointer"
               >
                 البقاء في الفاتورة
               </button>
@@ -9988,7 +9960,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   setPendingLeaveTab(null);
                   onTabChange(target);
                 }}
-                className="min-h-[44px] rounded-xl bg-slate-100 text-slate-800 font-bold cursor-pointer"
+                className="min-h-[36px] rounded-lg bg-slate-100 text-slate-800 font-bold cursor-pointer"
               >
                 الانتقال (مع حفظ المسودة)
               </button>
@@ -10000,18 +9972,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       {/* Invoice Detail Sheet */}
       {selectedInvoice && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
-          <div className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 max-h-[82vh] flex flex-col gap-3 text-xs pb-safe">
-            <div className="flex items-center justify-between border-b pb-3">
+          <div className="w-full max-w-lg bg-white rounded-t-xl sm:rounded-xl p-3.5 shadow-2xl border border-slate-200 max-h-[82vh] flex flex-col gap-2.5 text-xs pb-safe">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
               <div>
-                <h4 className="font-black text-sm text-slate-900">
+                <h4 className="font-black text-[13px] text-slate-900">
                   {selectedInvoice.invoiceNumber} — {selectedInvoice.customerName}
                 </h4>
-                <p className="text-slate-500 font-mono">{selectedInvoice.date}</p>
+                <p className="text-[11px] text-slate-500 font-mono">{selectedInvoice.date}</p>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedInvoice(null)}
-                className="min-h-[40px] px-3 rounded-xl bg-slate-100 font-bold text-slate-700 cursor-pointer"
+                className="min-h-[30px] px-2.5 rounded-lg bg-slate-100 font-bold text-slate-700 cursor-pointer"
               >
                 إغلاق
               </button>
@@ -10033,9 +10005,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <button
               type="button"
               onClick={() => exportInvoiceDocument(selectedInvoice)}
-              className="min-h-[46px] rounded-xl bg-blue-900 text-white font-black flex items-center justify-center gap-2 cursor-pointer"
+              className="min-h-[38px] rounded-lg bg-blue-900 text-white font-black flex items-center justify-center gap-1.5 cursor-pointer"
             >
-              {isNative ? <Share2 className="w-4 h-4" /> : <FileDown className="w-4 h-4" />}
+              {isNative ? <Share2 className="w-3.5 h-3.5" /> : <FileDown className="w-3.5 h-3.5" />}
               <span>{isNative ? 'مشاركة / حفظ الفاتورة' : 'طباعة / PDF'}</span>
             </button>
           </div>
@@ -10045,21 +10017,20 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       {/* Purchase Invoice Review & Dispatch Modal */}
       {purReviewOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
-          <div className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 max-h-[88vh] overflow-y-auto space-y-3 text-xs pb-safe">
-            <div className="flex items-center justify-between border-b pb-3">
-              <h4 className="font-black text-base text-slate-900">معاينة ومراجعة فاتورة الشراء قبل الإرسال</h4>
+          <div className="w-full max-w-lg bg-white rounded-t-xl sm:rounded-xl p-3.5 shadow-2xl border border-slate-200 max-h-[88vh] overflow-y-auto space-y-2.5 text-xs pb-safe">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+              <h4 className="font-black text-[13px] text-slate-900">معاينة ومراجعة فاتورة الشراء قبل الإرسال</h4>
               <button
                 type="button"
                 onClick={() => setPurReviewOpen(false)}
-                className="min-h-[36px] px-3 rounded-xl bg-slate-100 font-bold text-slate-700 cursor-pointer"
+                className="min-h-[30px] px-2.5 rounded-lg bg-slate-100 font-bold text-slate-700 cursor-pointer"
               >
                 تعديل
               </button>
             </div>
 
-            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-              <p>المورد: <strong>{data.suppliers.find((s) => s.id === purSupplierId)?.name || 'مورد'}</strong></p>
-              <p>المستودع المقترح: <strong>{data.warehouses.find((w) => w.id === (purWarehouseId || mainWarehouse?.id))?.name || 'المخزن الرئيسي'}</strong></p>
+            <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 space-y-0.5 text-[11px]">
+              <p>المورد: <strong>{data.suppliers.find((s) => s.id === purSupplierId)?.name || 'مورد'}</strong> · المستودع: <strong>{data.warehouses.find((w) => w.id === (purWarehouseId || mainWarehouse?.id))?.name || 'المخزن الرئيسي'}</strong></p>
               <p>عدد الأصناف: <strong>{purItems.length}</strong> · طريقة السداد: <strong>{purPaymentType === 'cash' ? 'نقدي' : purPaymentType === 'credit' ? 'آجل' : 'جزئي'}</strong></p>
             </div>
 
@@ -10075,12 +10046,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   key: 'productName',
                   header: 'الصنف',
                   render: (it) => (
-                    <div className="flex items-center gap-1.5 flex-wrap">
+                    <div className="flex items-center gap-1 flex-wrap">
                       <span className="font-bold text-slate-800">{it.productName}</span>
                       {it.newProduct && (
-                        <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold">
-                          صنف جديد
-                        </span>
+                        <span className="text-emerald-800 text-[10px] font-bold">· جديد</span>
                       )}
                     </div>
                   ),
@@ -10091,7 +10060,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               ]}
             />
 
-            <div className="p-3 rounded-2xl bg-indigo-50 border border-indigo-200 space-y-1">
+            <div className="p-2 rounded-lg bg-indigo-50 border border-indigo-200 space-y-0.5">
               <div className="flex justify-between">
                 <span>الإجمالي الفرعي:</span>
                 <strong className="font-mono">{purSubtotal.toLocaleString()} {data.settings.currency}</strong>
@@ -10102,18 +10071,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   <strong className="font-mono">-{Number(purDiscount).toLocaleString()} {data.settings.currency}</strong>
                 </div>
               )}
-              <div className="flex justify-between font-black text-indigo-950 text-sm pt-1 border-t border-indigo-200">
+              <div className="flex justify-between font-black text-indigo-950 text-[13px] pt-1 border-t border-indigo-200">
                 <span>صافي الإجمالي:</span>
                 <strong className="font-mono">{purTotal.toLocaleString()} {data.settings.currency}</strong>
               </div>
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">المستلم الموجه إليه (اختياري عند الإرسال للإدارة):</label>
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">المستلم الموجه إليه (اختياري):</label>
               <select
                 value={purRecipientUserId}
                 onChange={(e) => setPurRecipientUserId(e.target.value)}
-                className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 bg-white font-bold"
+                className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 bg-white font-bold"
               >
                 <option value="">الإدارة العامة (جميع المسؤولين المختصين)</option>
                 {(data.purchaseReceivers || []).map((r) => (
@@ -10122,16 +10091,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               </select>
             </div>
 
-            <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
+            <div className="px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[10px]">
               لن يتغير رصيد المخزن أو المورد أو الخزينة إلا بعد استلام الفاتورة واعتمادها من الإدارة.
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+            <div className="grid grid-cols-2 gap-1.5 pt-0.5">
               <button
                 type="button"
                 disabled={isSubmittingPurchase}
                 onClick={() => handleSubmitPurchaseInvoice(false)}
-                className="min-h-[46px] rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-900 font-black cursor-pointer disabled:opacity-50"
+                className="min-h-[38px] rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-900 font-black cursor-pointer disabled:opacity-50"
               >
                 {isSubmittingPurchase ? 'جاري الحفظ...' : 'حفظ كمسودة'}
               </button>
@@ -10139,9 +10108,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 type="button"
                 disabled={isSubmittingPurchase}
                 onClick={() => handleSubmitPurchaseInvoice(true)}
-                className="min-h-[46px] rounded-xl bg-indigo-900 hover:bg-indigo-950 text-white font-black inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                className="min-h-[38px] rounded-lg bg-indigo-900 hover:bg-indigo-950 text-white font-black inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
-                <Send className="w-4 h-4" />
+                <Send className="w-3.5 h-3.5" />
                 <span>{isSubmittingPurchase ? 'جاري الإرسال...' : 'حفظ وإرسال للإدارة'}</span>
               </button>
             </div>
@@ -10151,17 +10120,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
       {/* Quick Send Draft Purchase Modal */}
       {sendingPurchaseTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-          <div className="w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl border border-slate-200 space-y-3 text-xs">
-            <h4 className="font-black text-sm text-slate-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/60 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-white rounded-xl p-3.5 shadow-2xl border border-slate-200 space-y-2.5 text-xs">
+            <h4 className="font-black text-[13px] text-slate-900">
               إرسال فاتورة الشراء ({sendingPurchaseTarget.invoiceNumber}) للإدارة
             </h4>
             <div>
-              <label className="block font-bold text-slate-700 mb-1">توجيه إلى:</label>
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">توجيه إلى:</label>
               <select
                 value={sendingRecipientUserId}
                 onChange={(e) => setSendingRecipientUserId(e.target.value)}
-                className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 bg-white font-bold"
+                className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 bg-white font-bold"
               >
                 <option value="">الإدارة العامة (جميع المسؤولين المختصين)</option>
                 {(data.purchaseReceivers || []).map((r) => (
@@ -10169,11 +10138,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 ))}
               </select>
             </div>
-            <div className="grid grid-cols-2 gap-2 pt-1">
+            <div className="grid grid-cols-2 gap-1.5 pt-0.5">
               <button
                 type="button"
                 onClick={() => setSendingPurchaseTarget(null)}
-                className="min-h-[42px] rounded-xl bg-slate-100 text-slate-700 font-bold cursor-pointer"
+                className="min-h-[36px] rounded-lg bg-slate-100 text-slate-700 font-bold cursor-pointer"
               >
                 إلغاء
               </button>
@@ -10200,7 +10169,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     setFeedback({ type: 'error', text: res.error || 'تعذر إرسال الفاتورة' });
                   }
                 }}
-                className="min-h-[42px] rounded-xl bg-indigo-900 text-white font-black cursor-pointer disabled:opacity-50"
+                className="min-h-[36px] rounded-lg bg-indigo-900 text-white font-black cursor-pointer disabled:opacity-50"
               >
                 {isSendingPurchase ? 'جاري الإرسال...' : 'تأكيد الإرسال'}
               </button>
@@ -10211,26 +10180,26 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
       {/* Purchase Dispatch History Modal */}
       {historyPurchaseTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-          <div className="w-full max-w-md bg-white rounded-3xl p-5 shadow-2xl border border-slate-200 space-y-3 text-xs max-h-[82vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b pb-2.5">
-              <h4 className="font-black text-sm text-slate-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/60 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-white rounded-xl p-3.5 shadow-2xl border border-slate-200 space-y-2.5 text-xs max-h-[82vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+              <h4 className="font-black text-[13px] text-slate-900">
                 سجل الإرسال والاستلام — {historyPurchaseTarget.invoiceNumber}
               </h4>
               <button
                 type="button"
                 onClick={() => setHistoryPurchaseTarget(null)}
-                className="px-3 py-1 rounded-xl bg-slate-100 font-bold text-slate-700 cursor-pointer"
+                className="px-2.5 py-1 rounded-lg bg-slate-100 font-bold text-slate-700 cursor-pointer"
               >
                 إغلاق
               </button>
             </div>
             {(!historyPurchaseTarget.dispatchHistory || historyPurchaseTarget.dispatchHistory.length === 0) ? (
-              <p className="text-slate-400 text-center py-6">لا توجد حركات إرسال مسجلة بعد.</p>
+              <p className="text-slate-400 text-center py-4">لا توجد حركات إرسال مسجلة بعد.</p>
             ) : (
-              <div className="space-y-2">
+              <div className="divide-y divide-slate-200 border border-slate-200 rounded-lg overflow-hidden">
                 {historyPurchaseTarget.dispatchHistory.map((h, idx) => (
-                  <div key={`${h.at}-${idx}`} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start justify-between gap-2">
+                  <div key={`${h.at}-${idx}`} className="p-2 bg-white flex items-start justify-between gap-2">
                     <div>
                       <strong className="text-slate-900">
                         {h.action === 'created' ? 'إنشاء المسودة' :
@@ -10258,22 +10227,22 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       {/* Shop Photo Lightbox Modal */}
       {previewShopPhoto && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/80 backdrop-blur-xs"
           onClick={() => setPreviewShopPhoto(null)}
         >
-          <div className="w-full max-w-lg bg-white rounded-3xl overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-3 border-b bg-slate-50 text-xs">
+          <div className="w-full max-w-lg bg-white rounded-xl overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-3 py-2 border-b bg-slate-50 text-xs">
               <strong className="text-slate-900">معاينة صورة المحل</strong>
               <button
                 type="button"
                 onClick={() => setPreviewShopPhoto(null)}
-                className="px-3 py-1 rounded-xl bg-slate-200 font-bold text-slate-800 cursor-pointer"
+                className="px-2.5 py-1 rounded-lg bg-slate-200 font-bold text-slate-800 cursor-pointer"
               >
                 إغلاق
               </button>
             </div>
-            <div className="p-3 bg-slate-900 flex items-center justify-center">
-              <img src={previewShopPhoto} alt="صورة المحل" className="max-h-[75vh] w-auto object-contain rounded-xl" />
+            <div className="p-2.5 bg-slate-900 flex items-center justify-center">
+              <img src={previewShopPhoto} alt="صورة المحل" className="max-h-[75vh] w-auto object-contain rounded-lg" />
             </div>
           </div>
         </div>
@@ -10286,31 +10255,29 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         const canSendOrEdit = pur.status === 'draft' && (meta.key === 'draft' || meta.key === 'rejected');
         return (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
-            <div className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 max-h-[88vh] flex flex-col gap-3 text-xs pb-safe">
-              <div className="flex items-start justify-between gap-2 border-b pb-3">
+            <div className="w-full max-w-lg bg-white rounded-t-xl sm:rounded-xl p-3.5 shadow-2xl border border-slate-200 max-h-[88vh] flex flex-col gap-2.5 text-xs pb-safe">
+              <div className="flex items-start justify-between gap-2 border-b border-slate-200 pb-2">
                 <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="font-black text-base text-slate-900 font-mono">{pur.invoiceNumber}</h4>
-                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${meta.badgeClass}`}>
-                      {meta.label}
-                    </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h4 className="font-black text-sm text-slate-900 font-mono">{pur.invoiceNumber}</h4>
+                    <span className="text-[11px] font-bold text-slate-600">· {meta.label}</span>
                   </div>
-                  <p className="text-slate-600 mt-0.5">
+                  <p className="text-[11px] text-slate-600 mt-0.5">
                     {pur.supplierName || 'مورد'} · {pur.date} · {pur.warehouseName || 'المخزن الرئيسي'}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setSelectedPurchaseDetail(null)}
-                  className="min-h-[38px] px-3 rounded-xl bg-slate-100 font-bold text-slate-700 cursor-pointer shrink-0"
+                  className="min-h-[30px] px-2.5 rounded-lg bg-slate-100 font-bold text-slate-700 cursor-pointer shrink-0"
                 >
                   إغلاق
                 </button>
               </div>
 
-              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+              <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 space-y-0.5 text-[11px]">
                 <p>
-                  طريقة السداد: <strong>{pur.paymentType === 'cash' ? 'نقدي' : pur.paymentType === 'credit' ? 'آجل' : 'جزئي'}</strong>
+                  السداد: <strong>{pur.paymentType === 'cash' ? 'نقدي' : pur.paymentType === 'credit' ? 'آجل' : 'جزئي'}</strong>
                   {pur.paidAmount > 0 ? ` · مدفوع: ${pur.paidAmount.toLocaleString()} ${data.settings.currency}` : ''}
                 </p>
                 {pur.sentAt && (
@@ -10367,8 +10334,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 ]}
               />
 
-              <div className="p-3 rounded-2xl bg-indigo-50 border border-indigo-200 space-y-1 text-indigo-950 tabular-nums">
-                <div className="flex items-center justify-between font-black text-sm">
+              <div className="p-2 rounded-lg bg-indigo-50 border border-indigo-200 space-y-0.5 text-indigo-950 tabular-nums">
+                <div className="flex items-center justify-between font-black text-[13px]">
                   <span>صافي الإجمالي:</span>
                   <strong className="font-mono">
                     {pur.grandTotal.toLocaleString()} {data.settings.currency}
@@ -10384,7 +10351,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 {canCreatePurchase &&
                   pur.status === 'confirmed' &&
                   Number(pur.remainingAmount || 0) > 0.009 &&
@@ -10403,9 +10370,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         setSelectedPurchaseDetail(null);
                         openPurchasePaymentModal(pur);
                       }}
-                      className="min-h-[42px] px-4 rounded-xl bg-emerald-700 text-white font-black inline-flex items-center gap-1.5 cursor-pointer"
+                      className="min-h-[34px] px-3 rounded-lg bg-emerald-700 text-white font-black inline-flex items-center gap-1 cursor-pointer"
                     >
-                      <CreditCard className="w-4 h-4" />
+                      <CreditCard className="w-3.5 h-3.5" />
                       <span>تسجيل دفعة سداد</span>
                     </button>
                   )}
@@ -10418,9 +10385,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         setSendingPurchaseTarget(pur);
                         setSendingRecipientUserId(pur.recipientUserId || '');
                       }}
-                      className="min-h-[42px] px-4 rounded-xl bg-indigo-900 text-white font-black inline-flex items-center gap-1.5 cursor-pointer"
+                      className="min-h-[34px] px-3 rounded-lg bg-indigo-900 text-white font-black inline-flex items-center gap-1 cursor-pointer"
                     >
-                      <Send className="w-4 h-4" />
+                      <Send className="w-3.5 h-3.5" />
                       <span>إرسال للإدارة</span>
                     </button>
                     <button
@@ -10429,9 +10396,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         setSelectedPurchaseDetail(null);
                         handleStartEditPurchase(pur);
                       }}
-                      className="min-h-[42px] px-4 rounded-xl bg-amber-50 text-amber-900 border border-amber-200 font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                      className="min-h-[34px] px-3 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 font-bold inline-flex items-center gap-1 cursor-pointer"
                     >
-                      <Edit className="w-4 h-4" />
+                      <Edit className="w-3.5 h-3.5" />
                       <span>تعديل</span>
                     </button>
                   </>
@@ -10442,15 +10409,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     setSelectedPurchaseDetail(null);
                     setHistoryPurchaseTarget(pur);
                   }}
-                  className="min-h-[42px] px-3 rounded-xl bg-slate-100 text-slate-800 font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                  className="min-h-[34px] px-2.5 rounded-lg bg-slate-100 text-slate-800 font-bold inline-flex items-center gap-1 cursor-pointer"
                 >
-                  <History className="w-4 h-4" />
+                  <History className="w-3.5 h-3.5" />
                   <span>سجل الحالات</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => exportInvoiceDocument(pur)}
-                  className="min-h-[42px] px-3 rounded-xl bg-slate-100 text-slate-800 font-bold cursor-pointer"
+                  className="min-h-[34px] px-2.5 rounded-lg bg-slate-100 text-slate-800 font-bold cursor-pointer"
                 >
                   طباعة / PDF
                 </button>
@@ -10473,65 +10440,65 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/65 backdrop-blur-xs">
             <form
               onSubmit={handleSaveEditedCustomer}
-              className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto space-y-3.5 text-xs pb-safe"
+              className="w-full max-w-lg bg-white rounded-t-xl sm:rounded-xl p-3.5 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto space-y-2.5 text-xs pb-safe"
             >
-              <div className="flex items-center justify-between border-b pb-3">
-                <h4 className="font-black text-base text-slate-900">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                <h4 className="font-black text-[13px] text-slate-900">
                   تعديل بيانات العميل — {editingCustomerTarget.shopName || editingCustomerTarget.name}
                 </h4>
                 <button
                   type="button"
                   onClick={() => setEditingCustomerTarget(null)}
-                  className="min-h-[38px] px-3 rounded-xl bg-slate-100 font-bold text-slate-700 cursor-pointer"
+                  className="min-h-[30px] px-2.5 rounded-lg bg-slate-100 font-bold text-slate-700 cursor-pointer"
                 >
                   إغلاق
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">اسم المحل</label>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">اسم المحل</label>
                   <input
                     type="text"
                     value={editCustShop}
                     onChange={(e) => setEditCustShop(e.target.value)}
                     placeholder="اسم المحل أو النشاط"
-                    className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold"
+                    className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">اسم العميل / صاحب المحل *</label>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">اسم العميل / صاحب المحل *</label>
                   <input
                     type="text"
                     required
                     value={editCustName}
                     onChange={(e) => setEditCustName(e.target.value)}
                     placeholder="الاسم الكامل"
-                    className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-bold"
+                    className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold"
                   />
                 </div>
               </div>
 
-              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
-                <label className="block font-black text-slate-800">صورة المحل</label>
-                <div className="flex items-center gap-3">
-                  <div className="w-20 h-20 rounded-2xl border-2 border-slate-300 bg-white overflow-hidden flex items-center justify-center shrink-0">
-                    {editCustShopPhoto ? (
-                      <button
-                        type="button"
-                        onClick={() => setPreviewShopPhoto(editCustShopPhoto)}
-                        className="w-full h-full cursor-pointer"
-                      >
-                        <img src={editCustShopPhoto} alt="صورة المحل" className="w-full h-full object-cover" />
-                      </button>
-                    ) : (
-                      <Store className="w-7 h-7 text-slate-300" />
-                    )}
-                  </div>
-                  <div className="flex-1 flex flex-wrap gap-2">
-                    <label className="min-h-[40px] px-3 rounded-xl bg-blue-900 text-white font-bold inline-flex items-center gap-1.5 cursor-pointer">
-                      <Camera className="w-4 h-4" />
-                      <span>{editCustShopPhoto ? 'التقاط صورة جديدة' : 'التقاط بالكاميرا'}</span>
+              <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 flex items-center gap-2.5">
+                <div className="w-14 h-14 rounded-lg border border-slate-300 bg-white overflow-hidden flex items-center justify-center shrink-0">
+                  {editCustShopPhoto ? (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewShopPhoto(editCustShopPhoto)}
+                      className="w-full h-full cursor-pointer"
+                    >
+                      <img src={editCustShopPhoto} alt="صورة المحل" className="w-full h-full object-cover" />
+                    </button>
+                  ) : (
+                    <Store className="w-5 h-5 text-slate-300" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0 space-y-1">
+                  <span className="block text-[11px] font-black text-slate-800">صورة المحل</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    <label className="min-h-[32px] px-2.5 rounded-lg bg-blue-900 text-white text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer">
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>{editCustShopPhoto ? 'تغيير بالكاميرا' : 'التقاط بالكاميرا'}</span>
                       <input
                         ref={editCustCameraInputRef}
                         type="file"
@@ -10541,8 +10508,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         className="hidden"
                       />
                     </label>
-                    <label className="min-h-[40px] px-3 rounded-xl bg-white text-slate-800 border border-slate-300 font-bold inline-flex items-center gap-1.5 cursor-pointer">
-                      <Upload className="w-4 h-4" />
+                    <label className="min-h-[32px] px-2.5 rounded-lg bg-white text-slate-800 border border-slate-300 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer">
+                      <Upload className="w-3.5 h-3.5" />
                       <span>من المعرض</span>
                       <input
                         ref={editCustGalleryInputRef}
@@ -10562,18 +10529,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           if (editCustCameraInputRef.current) editCustCameraInputRef.current.value = '';
                           if (editCustGalleryInputRef.current) editCustGalleryInputRef.current.value = '';
                         }}
-                        className="min-h-[40px] px-3 rounded-xl bg-red-50 text-red-700 border border-red-200 font-bold cursor-pointer"
+                        className="min-h-[32px] px-2.5 rounded-lg bg-red-50 text-red-700 border border-red-200 text-[11px] font-bold cursor-pointer"
                       >
-                        حذف الصورة
+                        حذف
                       </button>
                     )}
                   </div>
+                  {isUploadingEditCustPhoto && <p className="text-[10px] font-bold text-blue-900">جاري ضغط وتجهيز الصورة...</p>}
                 </div>
-                {isUploadingEditCustPhoto && <p className="text-[11px] font-bold text-blue-900">جاري ضغط وتجهيز الصورة...</p>}
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">عنوان المحل الرئيسي</label>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">عنوان المحل الرئيسي</label>
                 <div className="flex items-center gap-1.5">
                   <input
                     type="text"
@@ -10583,63 +10550,63 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       if (editCustMapNotice) setEditCustMapNotice(null);
                     }}
                     placeholder="الشارع، المنطقة، علامة مميزة..."
-                    className="flex-1 min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold"
+                    className="flex-1 min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-bold"
                   />
                   <button
                     type="button"
                     onClick={() => setLocationPickerTarget('edit')}
-                    className="min-h-[44px] px-3 rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer"
+                    className="min-h-[36px] px-2.5 rounded-lg bg-[#0F5A33] hover:bg-[#0B4426] text-white text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer"
                     title="تحديد موقع العميل على خريطة جوجل"
                   >
-                    <MapPin className="w-4 h-4" />
+                    <MapPin className="w-3.5 h-3.5" />
                     <span>خريطة</span>
                   </button>
                   <button
                     type="button"
                     disabled={isLocatingEditCust}
                     onClick={handleCaptureEditCustLocation}
-                    className="min-h-[44px] px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#0F5A33] border border-emerald-200 font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer disabled:opacity-50"
+                    className="min-h-[36px] px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#0F5A33] border border-emerald-200 text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer disabled:opacity-50"
                     title="تحديد الموقع الحالي GPS وجلب العنوان تلقائياً"
                   >
-                    <MapPin className="w-4 h-4" />
+                    <MapPin className="w-3.5 h-3.5" />
                     <span>{isLocatingEditCust ? 'تحديد...' : 'GPS'}</span>
                   </button>
                 </div>
                 {editCustGeo && (
-                  <p className="text-[10px] font-mono text-emerald-700 mt-1" dir="ltr">
+                  <p className="text-[10px] font-mono text-emerald-700 mt-0.5" dir="ltr">
                     GPS: {editCustGeo}
                   </p>
                 )}
-                {editCustMapNotice && <p className="text-[11px] font-bold text-red-600 mt-1">{editCustMapNotice}</p>}
+                {editCustMapNotice && <p className="text-[11px] font-bold text-red-600 mt-0.5">{editCustMapNotice}</p>}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">المحافظة</label>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">المحافظة</label>
                   <input
                     type="text"
                     value={editCustGovernorate}
                     onChange={(e) => setEditCustGovernorate(e.target.value)}
                     placeholder="المحافظة"
-                    className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-semibold"
+                    className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-semibold"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">المنطقة / خط السير</label>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">المنطقة / خط السير</label>
                   <input
                     type="text"
                     value={editCustArea}
                     onChange={(e) => setEditCustArea(e.target.value)}
                     placeholder="المنطقة / خط السير"
-                    className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3 font-semibold"
+                    className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-semibold"
                   />
                 </div>
               </div>
 
-              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">رقم التليفون الرئيسي *</label>
-                  <div className="flex items-center gap-2">
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">رقم التليفون الرئيسي *</label>
+                  <div className="flex items-center gap-1.5">
                     <input
                       type="tel"
                       required
@@ -10649,14 +10616,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         if (editCustPhoneNotice) setEditCustPhoneNotice(null);
                       }}
                       placeholder="01012345678"
-                      className="flex-1 min-h-[44px] rounded-xl border border-slate-300 px-3 font-mono font-bold bg-white"
+                      className="flex-1 min-h-[36px] rounded-lg border border-slate-300 px-2.5 font-mono font-bold bg-white"
                     />
                     {editPhoneValid ? (
                       <a
                         href={`tel:${cleanedEditPhone}`}
-                        className="min-h-[44px] px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold inline-flex items-center gap-1.5 shrink-0"
+                        className="min-h-[36px] px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-bold inline-flex items-center gap-1 shrink-0"
                       >
-                        <Phone className="w-4 h-4" />
+                        <Phone className="w-3.5 h-3.5" />
                         <span>اتصال</span>
                       </a>
                     ) : (
@@ -10665,26 +10632,26 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         onClick={() =>
                           setEditCustPhoneNotice({ type: 'error', text: 'يرجى إدخال رقم هاتف صحيح (7 أرقام على الأقل) أولاً.' })
                         }
-                        className="min-h-[44px] px-3 rounded-xl bg-slate-100 text-slate-600 border border-slate-300 font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer"
+                        className="min-h-[36px] px-2.5 rounded-lg bg-slate-100 text-slate-600 border border-slate-300 text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer"
                       >
-                        <Phone className="w-4 h-4" />
+                        <Phone className="w-3.5 h-3.5" />
                         <span>اتصال</span>
                       </button>
                     )}
                   </div>
                   {editCustPhoneNotice && (
-                    <p className="text-[11px] font-bold text-red-600 mt-1">{editCustPhoneNotice.text}</p>
+                    <p className="text-[10px] font-bold text-red-600 mt-0.5">{editCustPhoneNotice.text}</p>
                   )}
                 </div>
 
                 {editCustExtraPhones.length > 0 && (
-                  <div className="space-y-2">
-                    <label className="block font-bold text-slate-600 text-[11px]">أرقام تليفون إضافية:</label>
+                  <div className="space-y-1.5">
+                    <label className="block font-bold text-slate-600 text-[10px]">أرقام تليفون إضافية:</label>
                     {editCustExtraPhones.map((extra, idx) => {
                       const cleanEx = extra.phone.replace(/[^\d+]/g, '');
                       const validEx = cleanEx.replace(/\D/g, '').length >= 7;
                       return (
-                        <div key={extra.id || idx} className="flex flex-wrap sm:flex-nowrap items-center gap-1.5">
+                        <div key={extra.id || idx} className="flex flex-wrap sm:flex-nowrap items-center gap-1">
                           <input
                             type="tel"
                             value={extra.phone}
@@ -10693,7 +10660,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                               setEditCustExtraPhones((prev) => prev.map((row, i) => (i === idx ? { ...row, phone: v } : row)));
                             }}
                             placeholder="رقم إضافي..."
-                            className="flex-1 min-w-[120px] min-h-[40px] rounded-xl border border-slate-300 px-3 font-mono font-bold bg-white"
+                            className="flex-1 min-w-[110px] min-h-[34px] rounded-lg border border-slate-300 px-2 font-mono font-bold bg-white"
                           />
                           <select
                             value={extra.label}
@@ -10701,7 +10668,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                               const v = e.target.value;
                               setEditCustExtraPhones((prev) => prev.map((row, i) => (i === idx ? { ...row, label: v } : row)));
                             }}
-                            className="min-h-[40px] rounded-xl border border-slate-300 px-2 font-bold bg-white"
+                            className="min-h-[34px] rounded-lg border border-slate-300 px-1.5 font-bold bg-white"
                           >
                             <option value="موبايل">موبايل</option>
                             <option value="محل">تليفون المحل</option>
@@ -10711,9 +10678,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           {validEx && (
                             <a
                               href={`tel:${cleanEx}`}
-                              className="min-h-[40px] px-2.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center"
+                              className="min-h-[34px] px-2 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center"
                             >
-                              <Phone className="w-4 h-4" />
+                              <Phone className="w-3.5 h-3.5" />
                             </a>
                           )}
                           <button
@@ -10729,16 +10696,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                                   .filter((row) => row.phone.trim() !== '')
                               );
                             }}
-                            className="min-h-[40px] px-2.5 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 text-[10px] font-bold cursor-pointer shrink-0"
+                            className="min-h-[34px] px-2 rounded-lg bg-blue-50 text-blue-900 border border-blue-200 text-[10px] font-bold cursor-pointer shrink-0"
                           >
                             رئيسي
                           </button>
                           <button
                             type="button"
                             onClick={() => setEditCustExtraPhones((prev) => prev.filter((_, i) => i !== idx))}
-                            className="min-h-[40px] px-2.5 rounded-xl bg-red-50 text-red-600 border border-red-200 cursor-pointer"
+                            className="min-h-[34px] px-2 rounded-lg bg-red-50 text-red-600 border border-red-200 cursor-pointer"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       );
@@ -10754,28 +10721,28 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       { id: `ph-${Date.now()}-${prev.length}`, phone: '', label: 'موبايل' },
                     ])
                   }
-                  className="min-h-[38px] px-3 rounded-xl bg-white hover:bg-blue-50 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                  className="min-h-[32px] px-2.5 rounded-lg bg-white hover:bg-blue-50 text-blue-900 border border-blue-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>+ إضافة رقم تليفون آخر</span>
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>إضافة رقم تليفون آخر</span>
                 </button>
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">ملاحظات</label>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">ملاحظات</label>
                 <input
                   type="text"
                   value={editCustNotes}
                   onChange={(e) => setEditCustNotes(e.target.value)}
                   placeholder="ملاحظات عن المحل أو المواعيد (اختياري)"
-                  className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+                  className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={isSavingEditCustomer || isUploadingEditCustPhoto}
-                className="w-full min-h-[48px] rounded-2xl bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
+                className="w-full min-h-[40px] rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
               >
                 {isSavingEditCustomer ? 'جاري حفظ التعديلات...' : 'حفظ التعديلات'}
               </button>
@@ -10786,18 +10753,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
       {safeDeleteModalOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/65 backdrop-blur-xs">
-          <div className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 max-h-[88vh] flex flex-col gap-3 text-xs pb-safe">
-            <div className="flex items-center justify-between border-b pb-3">
+          <div className="w-full max-w-lg bg-white rounded-t-xl sm:rounded-xl p-3.5 shadow-2xl border border-slate-200 max-h-[88vh] flex flex-col gap-2.5 text-xs pb-safe">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
               <div>
-                <h4 className="font-black text-base text-red-900">حذف العميل الآمن</h4>
-                <p className="text-[11px] text-slate-500">
+                <h4 className="font-black text-[13px] text-red-900">حذف العميل الآمن</h4>
+                <p className="text-[10px] text-slate-500">
                   يسمح النظام بالحذف فقط للعملاء ذوي الرصيد الصفرى بدون فواتير أو حركات مالية مرتبطة.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setSafeDeleteModalOpen(false)}
-                className="min-h-[38px] px-3 rounded-xl bg-slate-100 font-bold text-slate-700 cursor-pointer"
+                className="min-h-[30px] px-2.5 rounded-lg bg-slate-100 font-bold text-slate-700 cursor-pointer shrink-0"
               >
                 إغلاق
               </button>
@@ -10809,9 +10776,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 value={safeDeleteSearch}
                 onChange={(e) => setSafeDeleteSearch(e.target.value)}
                 placeholder="ابحث باسم العميل أو المحل أو الكود..."
-                className="w-full min-h-[42px] rounded-xl border border-slate-300 pr-9 pl-3 font-semibold outline-hidden focus:border-red-500"
+                className="w-full min-h-[34px] rounded-lg border border-slate-300 pr-8 pl-2.5 font-semibold outline-hidden focus:border-red-500"
               />
-              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5" />
             </div>
 
             <UnifiedDataTable<Customer>
@@ -10869,13 +10836,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           setSafeDeleteModalOpen(false);
                           setDeleteCustomerTarget(c);
                         }}
-                        className={`min-h-[34px] px-2.5 rounded-lg font-bold inline-flex items-center gap-1 cursor-pointer ${
+                        className={`min-h-[30px] px-2 rounded-lg font-bold inline-flex items-center gap-1 cursor-pointer ${
                           hasBalance
                             ? 'bg-amber-50 text-amber-800 border border-amber-200'
                             : 'bg-red-600 hover:bg-red-700 text-white'
                         }`}
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-3 h-3" />
                         <span>{hasBalance ? 'فحص والحذف' : 'حذف'}</span>
                       </button>
                     );
@@ -10900,11 +10867,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             : 'الحساب متوازن';
         return (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
-            <div className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 max-h-[88vh] overflow-y-auto space-y-3 text-xs pb-safe">
-              <div className="flex items-start justify-between gap-2 border-b pb-3">
+            <div className="w-full max-w-lg bg-white rounded-t-xl sm:rounded-xl p-3.5 shadow-2xl border border-slate-200 max-h-[88vh] overflow-y-auto space-y-2.5 text-xs pb-safe">
+              <div className="flex items-start justify-between gap-2 border-b border-slate-200 pb-2">
                 <div>
-                  <h4 className="font-black text-base text-slate-900">كشف حساب المورد — {sup.name}</h4>
-                  <p className="text-[11px] text-slate-500">
+                  <h4 className="font-black text-sm text-slate-900">كشف حساب المورد — {sup.name}</h4>
+                  <p className="text-[10px] text-slate-500">
                     {sup.companyName ? `${sup.companyName} · ` : ''}
                     {sup.code}
                     {sup.phone ? ` · ${sup.phone}` : ''}
@@ -10913,38 +10880,38 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 <button
                   type="button"
                   onClick={() => setSelectedSupplierDetail(null)}
-                  className="min-h-[38px] px-3 rounded-xl bg-slate-100 font-bold text-slate-700 cursor-pointer"
+                  className="min-h-[30px] px-2.5 rounded-lg bg-slate-100 font-bold text-slate-700 cursor-pointer shrink-0"
                 >
                   إغلاق
                 </button>
               </div>
 
-              <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-950 font-bold text-[11px]">
-                رصيد حساب المورد يمثل الرصيد العام على مستوى الشركة، بينما الحركات المعروضة أدناه تخص فواتيرك ومرتجعاتك ودفعاتك فقط.
+              <div className="px-2.5 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-950 font-bold text-[10px]">
+                رصيد حساب المورد عام للشركة، والحركات أدناه تخص فواتيرك ومرتجعاتك ودفعاتك فقط.
               </div>
 
               {isLoadingSupplierStmt ? (
-                <div className="p-6 text-center text-slate-500 font-bold">جاري تحميل كشف حساب المورد...</div>
+                <div className="p-3 text-center text-slate-500 font-bold">جاري تحميل كشف حساب المورد...</div>
               ) : supStmtError ? (
-                <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold">{supStmtError}</div>
+                <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 font-bold">{supStmtError}</div>
               ) : (
                 <>
-                  <div className="grid grid-cols-3 gap-2 text-center tabular-nums">
-                    <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-200">
+                  <div className="grid grid-cols-3 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden text-center tabular-nums">
+                    <div className="px-2 py-1.5 bg-white">
                       <span className="text-[10px] text-indigo-800 block">مشترياتك</span>
-                      <strong className="font-mono text-sm text-indigo-950">
+                      <strong className="font-mono text-xs text-indigo-950">
                         {Number(stmt?.summary?.totalPurchases || 0).toLocaleString()}
                       </strong>
                     </div>
-                    <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
+                    <div className="px-2 py-1.5 bg-white">
                       <span className="text-[10px] text-emerald-800 block">سداد/مرتجعك</span>
-                      <strong className="font-mono text-sm text-emerald-800">
+                      <strong className="font-mono text-xs text-emerald-800">
                         {Number(stmt?.summary?.totalDebit || 0).toLocaleString()}
                       </strong>
                     </div>
-                    <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200">
+                    <div className="px-2 py-1.5 bg-white">
                       <span className="text-[10px] text-rose-800 block">{dirText}</span>
-                      <strong className="font-mono text-sm text-rose-900">
+                      <strong className="font-mono text-xs text-rose-900">
                         {Math.abs(bal).toLocaleString()}
                       </strong>
                     </div>
@@ -11002,14 +10969,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
           <form
             onSubmit={handleSubmitPurchasePayment}
-            className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-200 space-y-3 text-xs pb-safe"
+            className="w-full max-w-md bg-white rounded-t-xl sm:rounded-xl p-3.5 shadow-2xl border border-slate-200 space-y-2.5 text-xs pb-safe"
           >
-            <div className="flex items-center justify-between border-b pb-3">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
               <div>
-                <h4 className="font-black text-sm text-slate-900">
+                <h4 className="font-black text-[13px] text-slate-900">
                   تسجيل دفعة سداد — {payingPurchaseTarget.invoiceNumber}
                 </h4>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[10px] text-slate-500">
                   {payingPurchaseTarget.supplierName} · المتبقي:{' '}
                   {Math.max(0, Number(payingPurchaseTarget.remainingAmount || 0)).toLocaleString()} {data.settings.currency}
                 </p>
@@ -11017,14 +10984,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <button
                 type="button"
                 onClick={() => setPayingPurchaseTarget(null)}
-                className="min-h-[36px] px-3 rounded-xl bg-slate-100 font-bold text-slate-700 cursor-pointer"
+                className="min-h-[30px] px-2.5 rounded-lg bg-slate-100 font-bold text-slate-700 cursor-pointer shrink-0"
               >
                 إغلاق
               </button>
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
                 مبلغ السداد ({data.settings.currency}) *
               </label>
               <input
@@ -11035,17 +11002,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 step="0.01"
                 value={purPayAmount || ''}
                 onChange={(e) => setPurPayAmount(Math.max(0, Number(e.target.value)))}
-                className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-mono font-black text-center text-emerald-800"
+                className="w-full min-h-[38px] rounded-lg border border-slate-300 px-2.5 font-mono font-black text-center text-emerald-800"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">طريقة السداد</label>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">طريقة السداد</label>
                 <select
                   value={purPayMethod}
                   onChange={(e) => setPurPayMethod(e.target.value as any)}
-                  className="w-full min-h-[42px] rounded-xl border border-slate-300 px-2 bg-white font-bold"
+                  className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2 bg-white font-bold"
                 >
                   <option value="cash">نقدي</option>
                   <option value="bank">تحويل بنكي</option>
@@ -11053,12 +11020,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 </select>
               </div>
               <div>
-                <label className="block font-bold text-slate-700 mb-1">التاريخ</label>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">التاريخ</label>
                 <input
                   type="date"
                   value={purPayDate}
                   onChange={(e) => setPurPayDate(e.target.value)}
-                  className="w-full min-h-[42px] rounded-xl border border-slate-300 px-2 font-mono bg-white"
+                  className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2 font-mono bg-white"
                 />
               </div>
             </div>
@@ -11068,13 +11035,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               value={purPayNotes}
               onChange={(e) => setPurPayNotes(e.target.value)}
               placeholder="ملاحظات السداد (اختياري)..."
-              className="w-full min-h-[42px] rounded-xl border border-slate-300 px-3"
+              className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5"
             />
 
             <button
               type="submit"
               disabled={isSubmittingPurPayment}
-              className="w-full min-h-[46px] rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
+              className="w-full min-h-[40px] rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
             >
               {isSubmittingPurPayment ? 'جاري التسجيل...' : 'تأكيد تسجيل دفعة السداد'}
             </button>

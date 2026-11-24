@@ -847,20 +847,20 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
   }, [inspectedBatch]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2.5">
       {/* Top Header Strip */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-11 h-11 rounded-xl bg-blue-950 text-white flex items-center justify-center shrink-0">
-            <RefreshCw className={`w-5 h-5 ${isSending || isReceiving ? 'animate-spin' : ''}`} />
+      <div className="bg-white rounded-lg border border-slate-200 px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-lg bg-blue-950 text-white flex items-center justify-center shrink-0">
+            <RefreshCw className={`w-4 h-4 ${isSending || isReceiving ? 'animate-spin' : ''}`} />
           </div>
           <div className="min-w-0">
-            <h2 className="text-base font-black text-slate-900">
+            <h2 className="text-sm font-black text-slate-900">
               REFRESH · مركز إرسال واستلام المندوبين
             </h2>
-            <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600 mt-0.5">
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
               <span className={`inline-flex items-center gap-1 font-bold ${isOnline ? 'text-emerald-800' : 'text-red-700'}`}>
-                {isOnline ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
+                {isOnline ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
                 {isOnline ? 'متصل بالسيرفر المركزي' : 'وضع العمل بدون إنترنت'}
               </span>
               <span aria-hidden="true">·</span>
@@ -885,21 +885,21 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <button
             type="button"
             disabled={isReceiving}
             onClick={handleReceiveSyncNow}
-            className="min-h-[40px] px-3.5 py-2 rounded-lg bg-blue-900 hover:bg-blue-950 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
+            className="min-h-[34px] px-3 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
           >
-            <ArrowDownToLine className="w-4 h-4" />
+            <ArrowDownToLine className="w-3.5 h-3.5" />
             <span>{isReceiving ? 'جاري التحديث...' : 'تحديث واستلام من السيرفر'}</span>
           </button>
           {onBack && (
             <button
               type="button"
               onClick={onBack}
-              className="min-h-[40px] px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold cursor-pointer whitespace-nowrap"
+              className="min-h-[34px] px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold cursor-pointer whitespace-nowrap"
             >
               رجوع
             </button>
@@ -909,7 +909,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
 
       {actionMsg && (
         <div
-          className={`p-3.5 rounded-xl border text-xs font-bold flex items-center gap-2 ${
+          className={`p-2.5 rounded-lg border text-xs font-bold flex items-center gap-2 ${
             actionMsg.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
               : 'bg-red-50 border-red-200 text-red-900'
@@ -924,31 +924,31 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
         </div>
       )}
 
-      {/* KPI Summary Strip */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="bg-white rounded-xl border border-slate-200 p-3.5">
+      {/* Compact Hairline KPI Summary Strip */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden">
+        <div className="bg-white px-3 py-2">
           <div className="text-[11px] font-bold text-slate-500">
             {isRepUser ? 'العمليات المعلقة للإرسال' : 'دفعات في انتظار الاستلام'}
           </div>
-          <div className="text-xl font-black text-blue-950 font-mono tabular-nums mt-1">
+          <div className="text-sm font-black text-blue-950 font-mono tabular-nums mt-0.5">
             {isRepUser ? unsentQueueOps.length : kpiStats.waiting}
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-3.5">
+        <div className="bg-white px-3 py-2">
           <div className="text-[11px] font-bold text-slate-500">دفعات تم استلامها اليوم</div>
-          <div className="text-xl font-black text-emerald-800 font-mono tabular-nums mt-1">
+          <div className="text-sm font-black text-emerald-800 font-mono tabular-nums mt-0.5">
             {kpiStats.confirmedToday}
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-3.5">
+        <div className="bg-white px-3 py-2">
           <div className="text-[11px] font-bold text-slate-500">دفعات فشل أو تعذر استلامها</div>
-          <div className="text-xl font-black text-red-700 font-mono tabular-nums mt-1">
+          <div className="text-sm font-black text-red-700 font-mono tabular-nums mt-0.5">
             {kpiStats.failed}
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-3.5">
+        <div className="bg-white px-3 py-2">
           <div className="text-[11px] font-bold text-slate-500">إجمالي التحصيلات المستلمة</div>
-          <div className="text-xl font-black text-slate-900 font-mono tabular-nums mt-1">
+          <div className="text-sm font-black text-slate-900 font-mono tabular-nums mt-0.5">
             {kpiStats.totalCash.toLocaleString()} {data.settings.currency}
           </div>
         </div>
@@ -956,9 +956,9 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
 
       {/* REP DISPATCH BUILDER PANEL */}
       {(isRepUser || unsentQueueOps.length > 0 || failedDraftBatches.length > 0) && (
-        <div className="space-y-4">
+        <div className="space-y-2.5">
           {failedDraftBatches.length > 0 && (
-            <div className="bg-red-50 rounded-xl border border-red-200 p-4 space-y-2">
+            <div className="bg-red-50 rounded-lg border border-red-200 p-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-black text-red-900">
                   توجد دفعات فشل إرسالها وتحتاج إعادة محاولة ({failedDraftBatches.length})
@@ -1147,87 +1147,87 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       {inspectedBatch &&
         typeof document !== 'undefined' &&
         ReactDOM.createPortal(
-          <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/60 backdrop-blur-[2px] p-3 sm:p-5">
+          <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/60 backdrop-blur-[2px] p-2.5 sm:p-4">
             <div
               dir="rtl"
-              className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden"
+              className="bg-white rounded-xl border border-slate-200 shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden"
             >
               {/* Modal Header */}
-              <div className="px-5 py-4 bg-blue-950 text-white flex items-center justify-between gap-3 shrink-0">
+              <div className="px-4 py-2.5 bg-blue-950 text-white flex items-center justify-between gap-2 shrink-0">
                 <div>
-                  <h3 className="text-sm sm:text-base font-black">
+                  <h3 className="text-sm font-black">
                     مراجعة دفعة الإرسال · <span className="font-mono">{inspectedBatch.batchNumber}</span>
                   </h3>
-                  <p className="text-[11px] text-blue-200 mt-0.5">
+                  <p className="text-[11px] text-blue-200">
                     المرسل: {inspectedBatch.senderName} · المستلم المحدد: {inspectedBatch.recipientName} · أرسلت في: {formatDateTimeAr(inspectedBatch.sentAt || inspectedBatch.createdAt)}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setInspectedBatch(null)}
-                  className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+                  className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white cursor-pointer"
                   aria-label="إغلاق"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
 
               {/* Modal Body */}
-              <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-                {/* Summary Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
-                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                    <div className="text-[11px] text-slate-500">حالة الإرسال</div>
-                    <div className="font-black text-slate-900 mt-1">{inspectedBatch.sendStatus}</div>
+              <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
+                {/* Compact Hairline Summary Strip */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden text-xs">
+                  <div className="px-2.5 py-2 bg-white">
+                    <div className="text-[10px] text-slate-500">حالة الإرسال</div>
+                    <div className="font-black text-slate-900">{inspectedBatch.sendStatus}</div>
                   </div>
-                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                    <div className="text-[11px] text-slate-500">حالة الاستلام</div>
-                    <div className="font-black text-blue-950 mt-1">{inspectedBatch.receiptStatus}</div>
+                  <div className="px-2.5 py-2 bg-white">
+                    <div className="text-[10px] text-slate-500">حالة الاستلام</div>
+                    <div className="font-black text-blue-950">{inspectedBatch.receiptStatus}</div>
                   </div>
-                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                    <div className="text-[11px] text-slate-500">إجمالي المبيعات بالدفعة</div>
-                    <div className="font-mono font-black text-slate-900 tabular-nums mt-1">
+                  <div className="px-2.5 py-2 bg-white">
+                    <div className="text-[10px] text-slate-500">إجمالي المبيعات بالدفعة</div>
+                    <div className="font-mono font-black text-slate-900 tabular-nums">
                       {Number(inspectedBatch.totalSalesAmount || 0).toLocaleString()} {data.settings.currency}
                     </div>
                   </div>
-                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                    <div className="text-[11px] text-slate-500">إجمالي التحصيلات النقدية</div>
-                    <div className="font-mono font-black text-emerald-800 tabular-nums mt-1">
+                  <div className="px-2.5 py-2 bg-white">
+                    <div className="text-[10px] text-slate-500">إجمالي التحصيلات النقدية</div>
+                    <div className="font-mono font-black text-emerald-800 tabular-nums">
                       {Number(inspectedBatch.totalCashAmount || 0).toLocaleString()} {data.settings.currency}
                     </div>
                   </div>
                 </div>
 
                 {/* Operational Counts Breakdown */}
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center text-xs">
-                  <div className="p-2 rounded-lg border border-slate-200 bg-white">
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden text-center text-xs">
+                  <div className="px-2 py-1.5 bg-white">
                     <div className="text-[10px] text-slate-500">فواتير بيع</div>
                     <div className="font-mono font-black tabular-nums">{inspectedBatch.salesCount || 0}</div>
                   </div>
-                  <div className="p-2 rounded-lg border border-slate-200 bg-white">
+                  <div className="px-2 py-1.5 bg-white">
                     <div className="text-[10px] text-slate-500">تحصيلات</div>
                     <div className="font-mono font-black tabular-nums">{inspectedBatch.collectionsCount || 0}</div>
                   </div>
-                  <div className="p-2 rounded-lg border border-slate-200 bg-white">
+                  <div className="px-2 py-1.5 bg-white">
                     <div className="text-[10px] text-slate-500">مرتجعات</div>
                     <div className="font-mono font-black tabular-nums">{inspectedBatch.returnsCount || 0}</div>
                   </div>
-                  <div className="p-2 rounded-lg border border-slate-200 bg-white">
+                  <div className="px-2 py-1.5 bg-white">
                     <div className="text-[10px] text-slate-500">فواتير شراء</div>
                     <div className="font-mono font-black tabular-nums">{inspectedBatch.purchasesCount || 0}</div>
                   </div>
-                  <div className="p-2 rounded-lg border border-slate-200 bg-white">
+                  <div className="px-2 py-1.5 bg-white">
                     <div className="text-[10px] text-slate-500">عملاء جدد</div>
                     <div className="font-mono font-black tabular-nums">{inspectedBatch.customersCount || 0}</div>
                   </div>
-                  <div className="p-2 rounded-lg border border-slate-200 bg-white">
+                  <div className="px-2 py-1.5 bg-white">
                     <div className="text-[10px] text-slate-500">عمليات عهدة</div>
                     <div className="font-mono font-black tabular-nums">{inspectedBatch.custodyOpsCount || 0}</div>
                   </div>
                 </div>
 
                 {(inspectedBatch.notes || inspectedBatch.receiptNotes || inspectedBatch.errorMessage || inspectedBatch.receivedByName) && (
-                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1.5">
+                  <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs space-y-1">
                     {inspectedBatch.notes && (
                       <div>
                         <span className="font-bold text-slate-600">ملاحظات المرسل: </span>

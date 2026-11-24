@@ -198,17 +198,17 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
       subtitle="مراقبة العمليات المسجلة بدون إنترنت ومعالجة تعارضات السيرفر المركزي"
       maxWidth="4xl"
     >
-      <div className="space-y-4 text-xs">
+      <div className="space-y-2.5 text-xs">
         {/* Connection Status Summary */}
-        <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl border border-slate-200 bg-slate-50">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50">
+          <div className="flex items-center gap-2.5">
             {networkStatus === 'disconnected' ? (
-              <div className="p-2.5 rounded-xl bg-rose-100 text-rose-700">
-                <WifiOff className="w-5 h-5" />
+              <div className="p-2 rounded-lg bg-rose-100 text-rose-700">
+                <WifiOff className="w-4 h-4" />
               </div>
             ) : (
-              <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-700">
-                <Wifi className="w-5 h-5" />
+              <div className="p-2 rounded-lg bg-emerald-100 text-emerald-700">
+                <Wifi className="w-4 h-4" />
               </div>
             )}
             <div>
@@ -223,7 +223,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
                   ? 'قاعدة البيانات غير متاحة مؤقتاً أو تعذرت المزامنة'
                   : 'توجد عمليات معلقة أو تعارضات'}
               </p>
-              <p className="text-[11px] text-slate-500 mt-0.5">
+              <p className="text-[11px] text-slate-500">
                 آخر مزامنة ناجحة:{' '}
                 {lastServerSyncAt ? new Date(lastServerSyncAt).toLocaleString('ar-EG') : 'لم تتم بعد'}
               </p>
@@ -234,16 +234,16 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
             type="button"
             disabled={isSyncing}
             onClick={() => triggerManualSync()}
-            className="min-h-[40px] px-4 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-bold flex items-center gap-2 disabled:opacity-60 cursor-pointer"
+            className="min-h-[34px] px-3 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-bold flex items-center gap-1.5 disabled:opacity-60 cursor-pointer"
           >
-            <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
             <span>{isSyncing ? 'جاري المزامنة...' : 'مزامنة الآن'}</span>
           </button>
         </div>
 
         {/* Pre-Upgrade / Pre-Uninstall Readiness & Safe Transfer */}
         <div
-          className={`p-3 rounded-2xl border flex flex-wrap items-center justify-between gap-2.5 ${
+          className={`p-2.5 rounded-lg border flex flex-wrap items-center justify-between gap-2 ${
             hasUnsyncedData
               ? 'bg-amber-50 border-amber-300 text-amber-950'
               : 'bg-emerald-50 border-emerald-200 text-emerald-950'
@@ -275,7 +275,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
                 type="button"
                 disabled={busyTransfer}
                 onClick={handleExportPendingOperations}
-                className="min-h-[36px] px-3 rounded-xl bg-amber-700 hover:bg-amber-800 text-white font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                className="min-h-[32px] px-2.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>تصدير المعلق</span>
@@ -285,7 +285,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
               type="button"
               disabled={busyTransfer}
               onClick={() => importInputRef.current?.click()}
-              className="min-h-[36px] px-3 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              className="min-h-[32px] px-2.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
               <Upload className="w-3.5 h-3.5" />
               <span>استيراد نسخة معلقة</span>
@@ -301,14 +301,14 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
         </div>
 
         {lastError && (
-          <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 font-bold">
+          <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 font-bold">
             {lastError}
           </div>
         )}
 
         {actionMessage && (
           <div
-            className={`p-3 rounded-xl border font-bold ${
+            className={`p-2.5 rounded-lg border font-bold ${
               actionMessage.type === 'ok'
                 ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                 : 'bg-red-50 border-red-200 text-red-800'
@@ -318,28 +318,28 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
           </div>
         )}
 
-        {/* Counters */}
-        <div className="grid grid-cols-3 gap-2.5">
-          <div className="p-3 rounded-xl border border-amber-200 bg-amber-50/70 text-center">
-            <p className="text-[11px] text-amber-800 font-bold">معلقة بالانتظار</p>
-            <p className="text-lg font-black text-amber-950 font-mono">{pendingSyncCount}</p>
+        {/* Counters Strip */}
+        <div className="grid grid-cols-3 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden">
+          <div className="bg-amber-50/70 px-3 py-1.5 text-center">
+            <p className="text-[10px] text-amber-800 font-bold">معلقة بالانتظار</p>
+            <p className="text-sm font-black text-amber-950 font-mono tabular-nums">{pendingSyncCount}</p>
           </div>
-          <div className="p-3 rounded-xl border border-red-200 bg-red-50/70 text-center">
-            <p className="text-[11px] text-red-800 font-bold">فشل إعادة الإرسال</p>
-            <p className="text-lg font-black text-red-950 font-mono">{failedSyncCount}</p>
+          <div className="bg-red-50/70 px-3 py-1.5 text-center">
+            <p className="text-[10px] text-red-800 font-bold">فشل إعادة الإرسال</p>
+            <p className="text-sm font-black text-red-950 font-mono tabular-nums">{failedSyncCount}</p>
           </div>
-          <div className="p-3 rounded-xl border border-orange-200 bg-orange-50/70 text-center">
-            <p className="text-[11px] text-orange-800 font-bold">تعارضات للمراجعة</p>
-            <p className="text-lg font-black text-orange-950 font-mono">{conflictsCount}</p>
+          <div className="bg-orange-50/70 px-3 py-1.5 text-center">
+            <p className="text-[10px] text-orange-800 font-bold">تعارضات للمراجعة</p>
+            <p className="text-sm font-black text-orange-950 font-mono tabular-nums">{conflictsCount}</p>
           </div>
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex gap-2 border-b border-slate-200 pb-2">
+        <div className="flex gap-1.5 border-b border-slate-200 pb-2">
           <button
             type="button"
             onClick={() => setActiveTab('queue')}
-            className={`px-4 py-2 rounded-xl font-bold transition-colors cursor-pointer ${
+            className={`min-h-[32px] px-3 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
               activeTab === 'queue'
                 ? 'bg-blue-900 text-white'
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
@@ -350,7 +350,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
           <button
             type="button"
             onClick={() => setActiveTab('conflicts')}
-            className={`px-4 py-2 rounded-xl font-bold transition-colors cursor-pointer ${
+            className={`min-h-[32px] px-3 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
               activeTab === 'conflicts'
                 ? 'bg-orange-600 text-white'
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
@@ -363,12 +363,12 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
         {/* Tab Content */}
         {activeTab === 'queue' ? (
           syncQueue.length === 0 ? (
-            <div className="py-10 text-center text-slate-500 space-y-2">
-              <Server className="w-10 h-10 text-slate-300 mx-auto" />
+            <div className="py-6 text-center text-slate-500 space-y-1.5">
+              <Server className="w-8 h-8 text-slate-300 mx-auto" />
               <p className="font-bold">لا توجد عمليات محلية معلقة حالياً.</p>
             </div>
           ) : (
-            <div className="space-y-2 max-h-[45vh] overflow-y-auto pr-1">
+            <div className="border border-slate-200 rounded-lg bg-white divide-y divide-slate-200 max-h-[45vh] overflow-y-auto">
               {[...syncQueue]
                 .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
                 .map((op) => {
@@ -377,9 +377,9 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
                   return (
                     <div
                       key={op.operationId}
-                      className="p-3 rounded-xl border border-slate-200 bg-white flex flex-wrap items-center justify-between gap-2"
+                      className="px-3 py-2 flex flex-wrap items-center justify-between gap-2 hover:bg-slate-50"
                     >
-                      <div className="space-y-1 min-w-0 flex-1">
+                      <div className="space-y-0.5 min-w-0 flex-1">
                         <p className="font-black text-slate-900 truncate">{op.summaryAr}</p>
                         <p className="text-[11px] text-slate-500 font-mono">
                           {op.operationType} · {new Date(op.createdAt).toLocaleString('ar-EG')} · محاولات: {op.attempts}
@@ -389,9 +389,9 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
                         )}
                       </div>
                       <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-bold ${badge.cls}`}
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[11px] font-bold shrink-0 ${badge.cls}`}
                       >
-                        <BadgeIcon className="w-3.5 h-3.5" />
+                        <BadgeIcon className="w-3 h-3" />
                         <span>{badge.label}</span>
                       </span>
                     </div>
@@ -400,18 +400,18 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
             </div>
           )
         ) : syncConflicts.length === 0 ? (
-          <div className="py-10 text-center text-slate-500 space-y-2">
-            <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
+          <div className="py-6 text-center text-slate-500 space-y-1.5">
+            <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
             <p className="font-bold">لا توجد تعارضات مزامنة مسجلة.</p>
           </div>
         ) : (
-          <div className="space-y-3 max-h-[45vh] overflow-y-auto pr-1">
+          <div className="space-y-2 max-h-[45vh] overflow-y-auto pr-0.5">
             {[...unresolvedConflicts, ...resolvedConflicts].map((cf) => {
               const isOpenConflict = cf.status === 'needs_review';
               return (
                 <div
                   key={cf.id}
-                  className={`p-3.5 rounded-2xl border space-y-2.5 ${
+                  className={`p-2.5 rounded-lg border space-y-2 ${
                     isOpenConflict ? 'border-orange-300 bg-orange-50/40' : 'border-slate-200 bg-slate-50'
                   }`}
                 >
@@ -422,7 +422,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
                         {cf.operationType} · {cf.userName || 'مستخدم'} · {new Date(cf.createdAt).toLocaleString('ar-EG')}
                       </p>
                     </div>
-                    <span className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-bold text-slate-700">
+                    <span className="text-[11px] font-bold text-slate-700">
                       {isOpenConflict ? 'يحتاج قرار' : cf.status}
                     </span>
                   </div>
@@ -436,14 +436,14 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
                           setNotesByConflict((prev) => ({ ...prev, [cf.id]: e.target.value }))
                         }
                         placeholder="ملاحظة قرار المعالجة (اختياري)..."
-                        className="w-full p-2 rounded-xl border border-slate-300 bg-white text-xs"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs"
                       />
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-1.5">
                         <button
                           type="button"
                           disabled={resolvingId === cf.id}
                           onClick={() => handleResolve(cf.id, 'keep_server')}
-                          className="px-3 py-1.5 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-bold cursor-pointer disabled:opacity-50"
+                          className="min-h-[30px] px-2.5 py-1 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-bold cursor-pointer disabled:opacity-50"
                         >
                           اعتماد نسخة السيرفر
                         </button>
@@ -451,7 +451,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
                           type="button"
                           disabled={resolvingId === cf.id}
                           onClick={() => handleResolve(cf.id, 'apply_local')}
-                          className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold cursor-pointer disabled:opacity-50"
+                          className="min-h-[30px] px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold cursor-pointer disabled:opacity-50"
                         >
                           تطبيق التعديل المحلي
                         </button>
@@ -459,7 +459,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
                           type="button"
                           disabled={resolvingId === cf.id}
                           onClick={() => handleResolve(cf.id, 'dismiss')}
-                          className="px-3 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold cursor-pointer disabled:opacity-50"
+                          className="min-h-[30px] px-2.5 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold cursor-pointer disabled:opacity-50"
                         >
                           تجاهل
                         </button>

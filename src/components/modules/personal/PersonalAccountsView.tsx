@@ -310,34 +310,34 @@ export const PersonalAccountsView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 shadow-xs">
         <div>
-          <h2 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
-            <UserCheck className="w-5 h-5 text-blue-900" />
+          <h2 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+            <UserCheck className="w-4 h-4 text-blue-900" />
             <span>الحسابات الشخصية لأصحاب النشاط (الملاك)</span>
           </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-[11px] text-slate-500 mt-0.5">
             دفتر خاص ومعزول تماماً عن حسابات العملاء والموردين وإيرادات ومصروفات التشغيل والمخزون
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
             onClick={handleExportExcel}
-            className="flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold hover:bg-slate-50 text-slate-700 cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-bold hover:bg-slate-50 text-slate-700 cursor-pointer"
           >
-            <Download className="w-4 h-4 text-emerald-600" />
+            <Download className="w-3.5 h-3.5 text-emerald-600" />
             <span>Excel</span>
           </button>
           <button
             type="button"
             onClick={handleExportPdf}
-            className="flex items-center gap-1.5 px-3 py-2 border border-blue-200 bg-blue-50 rounded-xl text-xs font-bold hover:bg-blue-100 text-blue-900 cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 border border-blue-200 bg-blue-50 rounded-lg text-xs font-bold hover:bg-blue-100 text-blue-900 cursor-pointer"
           >
-            <FileDown className="w-4 h-4" />
+            <FileDown className="w-3.5 h-3.5" />
             <span>تصدير PDF</span>
           </button>
           {canCreateTx && (
@@ -345,18 +345,18 @@ export const PersonalAccountsView: React.FC = () => {
               <button
                 type="button"
                 onClick={openNewAccountModal}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold cursor-pointer"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-3.5 h-3.5" />
                 <span>حساب مالك جديد</span>
               </button>
               <button
                 type="button"
                 onClick={() => openNewTxModal()}
                 disabled={ownerAccounts.length === 0}
-                className="flex items-center gap-1.5 px-4 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl text-xs font-black shadow-md disabled:opacity-50 cursor-pointer"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-lg text-xs font-black shadow-xs disabled:opacity-50 cursor-pointer"
               >
-                <Wallet className="w-4 h-4" />
+                <Wallet className="w-3.5 h-3.5" />
                 <span>تسجيل حركة شخصية</span>
               </button>
             </>
@@ -366,7 +366,7 @@ export const PersonalAccountsView: React.FC = () => {
 
       {banner && (
         <div
-          className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between gap-2 ${
+          className={`px-3 py-2 rounded-lg border text-xs font-bold flex items-center justify-between gap-2 ${
             banner.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
               : 'bg-red-50 border-red-200 text-red-900'
@@ -382,28 +382,28 @@ export const PersonalAccountsView: React.FC = () => {
         </div>
       )}
 
-      {/* KPI Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <span className="text-xs font-bold text-slate-500 block">عدد حسابات الملاك</span>
-          <strong className="text-xl font-black text-blue-950 font-mono mt-1 block">{ownerAccounts.length}</strong>
+      {/* Compact KPI Summary Strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden shadow-xs">
+        <div className="bg-white px-3 py-2">
+          <span className="text-[11px] font-bold text-slate-500 block">عدد حسابات الملاك</span>
+          <strong className="text-base font-black text-blue-950 font-mono tabular-nums">{ownerAccounts.length}</strong>
         </div>
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <span className="text-xs font-bold text-slate-500 block">إجمالي الإيداعات والافتتاحي</span>
-          <strong className="text-xl font-black text-emerald-700 font-mono mt-1 block">
-            {totals.totalDeposits.toLocaleString()} <span className="text-xs">{settings.currency}</span>
+        <div className="bg-white px-3 py-2">
+          <span className="text-[11px] font-bold text-slate-500 block">إجمالي الإيداعات والافتتاحي</span>
+          <strong className="text-base font-black text-emerald-700 font-mono tabular-nums">
+            {totals.totalDeposits.toLocaleString()} <span className="text-[11px]">{settings.currency}</span>
           </strong>
         </div>
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <span className="text-xs font-bold text-slate-500 block">إجمالي المسحوبات والمصروفات</span>
-          <strong className="text-xl font-black text-rose-700 font-mono mt-1 block">
-            {totals.totalWithdrawals.toLocaleString()} <span className="text-xs">{settings.currency}</span>
+        <div className="bg-white px-3 py-2">
+          <span className="text-[11px] font-bold text-slate-500 block">إجمالي المسحوبات والمصروفات</span>
+          <strong className="text-base font-black text-rose-700 font-mono tabular-nums">
+            {totals.totalWithdrawals.toLocaleString()} <span className="text-[11px]">{settings.currency}</span>
           </strong>
         </div>
-        <div className="bg-blue-950 text-white p-4 rounded-2xl shadow-md">
-          <span className="text-xs font-bold text-blue-200 block">صافي أرصدة الملاك الحالية</span>
-          <strong className="text-xl font-black font-mono mt-1 block">
-            {totals.totalBalance.toLocaleString()} <span className="text-xs">{settings.currency}</span>
+        <div className="bg-blue-950 text-white px-3 py-2">
+          <span className="text-[11px] font-bold text-blue-200 block">صافي أرصدة الملاك الحالية</span>
+          <strong className="text-base font-black font-mono tabular-nums">
+            {totals.totalBalance.toLocaleString()} <span className="text-[11px]">{settings.currency}</span>
           </strong>
         </div>
       </div>
@@ -513,6 +513,7 @@ export const PersonalAccountsView: React.FC = () => {
         title="سجل الحركات الشخصية للملاك"
         data={filteredTransactions}
         rowKey={(tx) => tx.id}
+        compact
         searchValue={searchTerm}
         onSearchChange={setSearchTerm}
         searchPlaceholder="بحث برقم القيد أو السبب..."
@@ -520,11 +521,11 @@ export const PersonalAccountsView: React.FC = () => {
         pdfTitle="كشف الحسابات الشخصية لأصحاب النشاط"
         emptyTitle="لا توجد حركات شخصية مطابقة للبحث"
         toolbarFilters={
-          <div className="flex flex-wrap items-center gap-2 text-xs">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
             <select
               value={selectedAccountId}
               onChange={(e) => setSelectedAccountId(e.target.value)}
-              className="min-h-[36px] bg-white border border-slate-300 rounded-lg px-2.5 py-1 font-bold"
+              className="h-8 bg-white border border-slate-300 rounded-lg px-2 py-1 font-bold"
             >
               <option value="all">كل حسابات الملاك</option>
               {ownerAccounts.map((a) => (
@@ -534,7 +535,7 @@ export const PersonalAccountsView: React.FC = () => {
             <select
               value={txTypeFilter}
               onChange={(e) => setTxTypeFilter(e.target.value)}
-              className="min-h-[36px] bg-white border border-slate-300 rounded-lg px-2.5 py-1 font-bold"
+              className="h-8 bg-white border border-slate-300 rounded-lg px-2 py-1 font-bold"
             >
               <option value="all">كل أنواع الحركات</option>
               <option value="personal_deposit">إيداع شخصي</option>
@@ -547,13 +548,13 @@ export const PersonalAccountsView: React.FC = () => {
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="min-h-[36px] bg-white border border-slate-300 rounded-lg px-2.5 py-1 font-mono"
+              className="h-8 bg-white border border-slate-300 rounded-lg px-2 py-1 font-mono"
             />
             <input
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="min-h-[36px] bg-white border border-slate-300 rounded-lg px-2.5 py-1 font-mono"
+              className="h-8 bg-white border border-slate-300 rounded-lg px-2 py-1 font-mono"
             />
           </div>
         }
@@ -681,9 +682,9 @@ export const PersonalAccountsView: React.FC = () => {
         title={editingAccount ? 'تعديل حساب مالك شخصي' : 'إنشاء حساب شخصي جديد للمالك'}
         maxWidth="md"
       >
-        <form onSubmit={handleSaveAccount} className="space-y-3 text-xs">
+        <form onSubmit={handleSaveAccount} className="space-y-2.5 text-xs">
           {accError && (
-            <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">{accError}</div>
+            <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold">{accError}</div>
           )}
           <div>
             <label className="block font-bold mb-1">اسم المالك / الشريك:</label>
@@ -693,7 +694,7 @@ export const PersonalAccountsView: React.FC = () => {
               value={accOwnerName}
               onChange={(e) => setAccOwnerName(e.target.value)}
               placeholder="مثال: الحاج سليم / أ. أحمد سليم"
-              className="w-full border rounded-xl p-2.5 font-bold"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
             />
           </div>
           <div>
@@ -704,7 +705,7 @@ export const PersonalAccountsView: React.FC = () => {
               value={accName}
               onChange={(e) => setAccName(e.target.value)}
               placeholder="مثال: الحساب الجاري الشخصي"
-              className="w-full border rounded-xl p-2.5 font-bold"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
             />
           </div>
           {!editingAccount ? (
@@ -716,7 +717,7 @@ export const PersonalAccountsView: React.FC = () => {
                 placeholder="0.00"
                 value={accOpening}
                 onChange={(e) => setAccOpening(e.target.value === '' ? '' : Number(e.target.value))}
-                className="w-full border rounded-xl p-2.5 font-mono font-bold"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold"
               />
             </div>
           ) : (
@@ -725,7 +726,7 @@ export const PersonalAccountsView: React.FC = () => {
               <select
                 value={accStatus}
                 onChange={(e) => setAccStatus(e.target.value as any)}
-                className="w-full border rounded-xl p-2.5 font-bold"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold bg-white"
               >
                 <option value="active">نشط</option>
                 <option value="suspended">موقوف</option>
@@ -738,14 +739,14 @@ export const PersonalAccountsView: React.FC = () => {
               rows={2}
               value={accDesc}
               onChange={(e) => setAccDesc(e.target.value)}
-              className="w-full border rounded-xl p-2"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5"
             />
           </div>
-          <div className="flex justify-end gap-2 pt-3 border-t">
-            <button type="button" onClick={() => setIsAccountModalOpen(false)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">
+          <div className="flex justify-end gap-2 pt-2.5 border-t">
+            <button type="button" onClick={() => setIsAccountModalOpen(false)} className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-bold cursor-pointer">
               إلغاء
             </button>
-            <button type="submit" disabled={isSavingAcc} className="px-5 py-2 bg-blue-900 text-white rounded-xl font-bold cursor-pointer">
+            <button type="submit" disabled={isSavingAcc} className="px-4 py-1.5 bg-blue-900 text-white rounded-lg font-bold cursor-pointer">
               {isSavingAcc ? 'جاري الحفظ...' : 'حفظ الحساب'}
             </button>
           </div>
@@ -760,9 +761,9 @@ export const PersonalAccountsView: React.FC = () => {
         subtitle="هذه العملية معزولة تماماً عن المبيعات والمصروفات التشغيلية للنشاط"
         maxWidth="md"
       >
-        <form onSubmit={handleSaveTx} className="space-y-3 text-xs">
+        <form onSubmit={handleSaveTx} className="space-y-2.5 text-xs">
           {txError && (
-            <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">{txError}</div>
+            <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold">{txError}</div>
           )}
           <div>
             <label className="block font-bold mb-1">الحساب الشخصي:</label>
@@ -770,7 +771,7 @@ export const PersonalAccountsView: React.FC = () => {
               value={txAccountId}
               onChange={(e) => setTxAccountId(e.target.value)}
               required
-              className="w-full border rounded-xl p-2.5 font-bold"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold bg-white"
             >
               {ownerAccounts.map((a) => (
                 <option key={a.id} value={a.id}>
@@ -780,13 +781,13 @@ export const PersonalAccountsView: React.FC = () => {
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2.5">
             <div>
               <label className="block font-bold mb-1">نوع الحركة:</label>
               <select
                 value={txType}
                 onChange={(e) => setTxType(e.target.value as any)}
-                className="w-full border rounded-xl p-2.5 font-bold"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold bg-white"
               >
                 <option value="personal_deposit">إيداع شخصي (+)</option>
                 <option value="personal_withdrawal">سحب شخصي (-)</option>
@@ -801,7 +802,7 @@ export const PersonalAccountsView: React.FC = () => {
                 required
                 value={txDate}
                 onChange={(e) => setTxDate(e.target.value)}
-                className="w-full border rounded-xl p-2.5 font-mono"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono"
               />
             </div>
           </div>
@@ -816,7 +817,7 @@ export const PersonalAccountsView: React.FC = () => {
               required
               value={txAmount || ''}
               onChange={(e) => setTxAmount(Number(e.target.value))}
-              className="w-full border border-blue-300 bg-blue-50 rounded-xl p-2.5 font-mono font-black text-center text-base"
+              className="w-full border border-blue-300 bg-blue-50 rounded-lg px-2.5 py-1.5 font-mono font-black text-center text-sm"
             />
           </div>
 
@@ -826,7 +827,7 @@ export const PersonalAccountsView: React.FC = () => {
               <select
                 value={txCashboxId}
                 onChange={(e) => setTxCashboxId(e.target.value)}
-                className="w-full border rounded-xl p-2.5 font-bold"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold bg-white"
               >
                 <option value="">-- بدون ربط بخزينة النشاط (قيد شخصي خارجي مستقل) --</option>
                 {cashboxes.map((c) => (
@@ -848,7 +849,7 @@ export const PersonalAccountsView: React.FC = () => {
               value={txReason}
               onChange={(e) => setTxReason(e.target.value)}
               placeholder="مثال: مصروفات عائلية / سداد التزام شخصي / تمويل من المالك"
-              className="w-full border rounded-xl p-2.5 font-bold"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
             />
           </div>
 
@@ -858,15 +859,15 @@ export const PersonalAccountsView: React.FC = () => {
               rows={2}
               value={txNotes}
               onChange={(e) => setTxNotes(e.target.value)}
-              className="w-full border rounded-xl p-2"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5"
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-3 border-t">
-            <button type="button" onClick={() => setIsTxModalOpen(false)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">
+          <div className="flex justify-end gap-2 pt-2.5 border-t">
+            <button type="button" onClick={() => setIsTxModalOpen(false)} className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-bold cursor-pointer">
               إلغاء
             </button>
-            <button type="submit" disabled={isSavingTx} className="px-6 py-2 bg-blue-900 text-white rounded-xl font-black cursor-pointer">
+            <button type="submit" disabled={isSavingTx} className="px-4 py-1.5 bg-blue-900 text-white rounded-lg font-black cursor-pointer">
               {isSavingTx ? 'جاري التسجيل...' : 'حفظ القيد الشخصي'}
             </button>
           </div>
@@ -881,11 +882,11 @@ export const PersonalAccountsView: React.FC = () => {
           title={`تعديل الحركة الشخصية (${editingTx.txNumber})`}
           maxWidth="md"
         >
-          <form onSubmit={handleSaveEditTx} className="space-y-3 text-xs">
+          <form onSubmit={handleSaveEditTx} className="space-y-2.5 text-xs">
             {editError && (
-              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">{editError}</div>
+              <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold">{editError}</div>
             )}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2.5">
               <div>
                 <label className="block font-bold mb-1">المبلغ:</label>
                 <input
@@ -895,7 +896,7 @@ export const PersonalAccountsView: React.FC = () => {
                   placeholder="0.00"
                   value={editAmount || ''}
                   onChange={(e) => setEditAmount(e.target.value === '' ? 0 : Number(e.target.value))}
-                  className="w-full border rounded-xl p-2.5 font-mono font-bold"
+                  className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold"
                 />
               </div>
               <div>
@@ -905,7 +906,7 @@ export const PersonalAccountsView: React.FC = () => {
                   required
                   value={editDate}
                   onChange={(e) => setEditDate(e.target.value)}
-                  className="w-full border rounded-xl p-2.5 font-mono"
+                  className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono"
                 />
               </div>
             </div>
@@ -917,7 +918,7 @@ export const PersonalAccountsView: React.FC = () => {
                 value={editReason}
                 onChange={(e) => setEditReason(e.target.value)}
                 placeholder="اكتب سبب التعديل بالتفصيل..."
-                className="w-full border border-amber-300 rounded-xl p-2.5 font-bold"
+                className="w-full border border-amber-300 rounded-lg px-2.5 py-1.5 font-bold"
               />
             </div>
             <div>
@@ -926,14 +927,14 @@ export const PersonalAccountsView: React.FC = () => {
                 rows={2}
                 value={editNotes}
                 onChange={(e) => setEditNotes(e.target.value)}
-                className="w-full border rounded-xl p-2"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5"
               />
             </div>
-            <div className="flex justify-end gap-2 pt-3 border-t">
-              <button type="button" onClick={() => setEditingTx(null)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">
+            <div className="flex justify-end gap-2 pt-2.5 border-t">
+              <button type="button" onClick={() => setEditingTx(null)} className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-bold cursor-pointer">
                 إلغاء
               </button>
-              <button type="submit" disabled={isSavingEdit} className="px-5 py-2 bg-amber-600 text-white rounded-xl font-black cursor-pointer">
+              <button type="submit" disabled={isSavingEdit} className="px-4 py-1.5 bg-amber-600 text-white rounded-lg font-black cursor-pointer">
                 {isSavingEdit ? 'جاري التعديل...' : 'حفظ التعديل وتحديث الرصيد'}
               </button>
             </div>

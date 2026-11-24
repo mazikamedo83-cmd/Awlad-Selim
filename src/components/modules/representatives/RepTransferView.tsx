@@ -776,17 +776,17 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       {/* Top Header Card */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 shadow-xs">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-black text-slate-900 tracking-tight">إدارة المندوبين والتحويلات والعهد</h2>
-            <span className="bg-blue-50 text-blue-800 text-[11px] font-bold px-2 py-0.5 rounded border border-blue-200">
+            <h2 className="text-base font-black text-slate-900 tracking-tight">إدارة المندوبين والتحويلات والعهد</h2>
+            <span className="bg-blue-50 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded border border-blue-200">
               ربط الفواتير والتحصيل
             </span>
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-[11px] text-slate-500 mt-0.5">
             متابعة عهدة البضاعة في سيارات المناديب، التحويلات النقدية بالنصف، وطلبات تحويل الأصناف المرتبطة بالفواتير
           </p>
         </div>
@@ -795,7 +795,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           {activeTab === 'cash-transfers' && (
             <button
               onClick={() => setIsNewCashModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-900 hover:bg-blue-950 text-white text-xs font-black rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-900 hover:bg-blue-950 text-white text-xs font-black rounded-lg shadow-xs transition-all active:scale-95 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>طلب تحويل مالي جديد (نصف)</span>
@@ -805,7 +805,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           {activeTab === 'item-transfers' && (
             <button
               onClick={() => setIsNewItemReqModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-black rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-black rounded-lg shadow-xs transition-all active:scale-95 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>طلب تحويل أصناف وعهدة (+)</span>
@@ -826,7 +826,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 setCreateRepAccount(true);
                 setIsAddRepModalOpen(true);
               }}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-900 hover:bg-blue-950 text-white text-xs font-black rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-900 hover:bg-blue-950 text-white text-xs font-black rounded-lg shadow-xs transition-all active:scale-95 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>إضافة مندوب جديد</span>
@@ -837,7 +837,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
 
       {statusBanner && (
         <div
-          className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between gap-2 ${
+          className={`px-3 py-2 rounded-lg border text-xs font-bold flex items-center justify-between gap-2 ${
             statusBanner.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
               : 'bg-red-50 border-red-200 text-red-900'
@@ -851,24 +851,24 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       )}
 
       {/* Tabs Switcher */}
-      <div className="flex items-center gap-1.5 p-1.5 bg-slate-200/80 rounded-2xl overflow-x-auto text-xs font-bold no-print">
+      <div className="flex items-center gap-1 p-1 bg-slate-200/80 rounded-lg overflow-x-auto text-xs font-bold no-print">
         <button
           onClick={() => setActiveTab('cash-transfers')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'cash-transfers' ? 'bg-white text-blue-950 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <CashTransferIcon className="w-5 h-5 shrink-0" />
+          <CashTransferIcon className="w-4 h-4 shrink-0" />
           <span>التحويل المالي والنقدي (طلب تحويل بالنصف)</span>
         </button>
 
         <button
           onClick={() => setActiveTab('item-transfers')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'item-transfers' ? 'bg-white text-blue-950 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <StockTransfersIcon className="w-5 h-5 shrink-0" />
+          <StockTransfersIcon className="w-4 h-4 shrink-0" />
           <span>طلبات تحويل الأصناف والعهد (مرتبطة بالفاتورة)</span>
           {repItemTransfers.filter(r => r.status === 'pending').length > 0 && (
             <span className="bg-amber-600 text-white px-1.5 py-0.5 rounded text-[10px] tabular-nums">
@@ -879,21 +879,21 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
 
         <button
           onClick={() => setActiveTab('reps-list')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'reps-list' ? 'bg-white text-blue-950 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <RepsFleetIcon className="w-5 h-5 shrink-0" />
+          <RepsFleetIcon className="w-4 h-4 shrink-0" />
           <span>دليل المناديب ومتابعة العهد ({representatives.length})</span>
         </button>
 
         <button
           onClick={() => setActiveTab('rep-custody-statement')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'rep-custody-statement' ? 'bg-white text-blue-950 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <AccountsLedgerIcon className="w-5 h-5 shrink-0" />
+          <AccountsLedgerIcon className="w-4 h-4 shrink-0" />
           <span>كشف حساب وعهدة المندوب</span>
         </button>
       </div>
@@ -901,6 +901,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       {/* TAB 1: Cash Transfers (Two-way) */}
       {activeTab === 'cash-transfers' && (
         <UnifiedDataTable<RepTransfer>
+          compact
           title="طلبات التحويل النقدية والعهد المالية"
           subtitle="التحويلات المتبادلة بين المناديب والخزائن (توريد تحصيلات أو صرف عهدة)"
           data={filteredTransfers}
@@ -915,12 +916,12 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
             t.cashboxName.toLowerCase().includes(q)
           }
           toolbarFilters={
-            <div className="flex items-center gap-2 text-xs">
+            <div className="flex items-center gap-1.5 text-xs">
               <span className="text-slate-500 font-bold">الحالة:</span>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="p-2 border border-slate-300 rounded-xl bg-white font-bold"
+                className="h-8 px-2 py-1 border border-slate-300 rounded-lg bg-white font-bold text-xs"
               >
                 <option value="all">جميع الحالات</option>
                 <option value="awaiting_receipt">في انتظار تأكيد الاستلام</option>
@@ -1059,12 +1060,12 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
 
       {/* TAB 2: Item Transfer Requests Linked to Invoice (Section 16) */}
       {activeTab === 'item-transfers' && (
-        <div className="space-y-4">
-          <div className="bg-emerald-50/70 border border-emerald-200 p-4 rounded-2xl text-xs text-emerald-950 flex items-start gap-3">
-            <Truck className="w-5 h-5 text-emerald-700 shrink-0 mt-0.5" />
+        <div className="space-y-3">
+          <div className="bg-emerald-50/70 border border-emerald-200 px-3 py-2 rounded-lg text-xs text-emerald-950 flex items-start gap-2.5">
+            <Truck className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
             <div>
-              <h4 className="font-black text-sm">دورة عمل طلبات تحويل أصناف وعهدة المندوب المعتمدة (Section 16):</h4>
-              <p className="mt-1 leading-relaxed text-emerald-900 text-[11px]">
+              <h4 className="font-black text-xs">دورة عمل طلبات تحويل أصناف وعهدة المندوب المعتمدة (Section 16):</h4>
+              <p className="mt-0.5 leading-relaxed text-emerald-900 text-[11px]">
                 عند إصدار المندوب فاتورة مبيعات لعميل جملة ويوجد عجز في كميات السيارة، يتم إنشاء طلب تحويل أصناف مرتبط برقم الفاتورة الأصلية.
                 <strong> لا يتم خصم المخزن الرئيسي إلا بعد مراجعة الإدارة والموافقة والتنفيذ الفعلي للتحويل.</strong>
               </p>
@@ -1072,6 +1073,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           </div>
 
           <UnifiedDataTable<RepItemTransferRequest>
+            compact
             title="طلبات تحويل الأصناف وعهدة السيارات"
             subtitle="طلبات سحب البضاعة من المخزن الرئيسي إلى سيارات المناديب وتأكيد الاستلام"
             data={filteredItemTransfers}
@@ -1203,6 +1205,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       {/* TAB 3: Representatives Directory & Custody Balances */}
       {activeTab === 'reps-list' && (
         <UnifiedDataTable<Representative>
+          compact
           title="دليل المناديب ومتابعة العهد المالية"
           subtitle="قائمة مندوبي التوزيع الميدانيين وأرصدة العهد النقدية الحالية"
           data={representatives}
@@ -1320,17 +1323,17 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
 
       {/* TAB 4: Rep Custody & Account Statement */}
       {activeTab === 'rep-custody-statement' && (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {/* Controls Strip */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-end justify-between gap-3 text-xs">
-            <div className="flex flex-wrap items-end gap-3">
+          <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs flex flex-wrap items-end justify-between gap-2.5 text-xs">
+            <div className="flex flex-wrap items-end gap-2">
               <div>
-                <label className="block font-bold text-slate-600 mb-1">المندوب:</label>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">المندوب:</label>
                 <select
                   value={custodyRepId}
                   disabled={isRepUser}
                   onChange={(e) => setCustodyRepId(e.target.value)}
-                  className="p-2 rounded-xl border border-slate-300 bg-slate-50 font-bold min-w-[200px]"
+                  className="h-8 px-2 py-1 rounded-lg border border-slate-300 bg-slate-50 font-bold text-xs min-w-[180px]"
                 >
                   {representatives.map((r) => (
                     <option key={r.id} value={r.id}>{r.name}</option>
@@ -1338,35 +1341,35 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 </select>
               </div>
               <div>
-                <label className="block font-bold text-slate-600 mb-1">من تاريخ:</label>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">من تاريخ:</label>
                 <input
                   type="date"
                   value={custodyDateFrom}
                   onChange={(e) => setCustodyDateFrom(e.target.value)}
-                  className="p-2 rounded-xl border border-slate-300 font-mono bg-slate-50"
+                  className="h-8 px-2 py-1 rounded-lg border border-slate-300 font-mono text-xs bg-slate-50"
                 />
               </div>
               <div>
-                <label className="block font-bold text-slate-600 mb-1">إلى تاريخ:</label>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">إلى تاريخ:</label>
                 <input
                   type="date"
                   value={custodyDateTo}
                   onChange={(e) => setCustodyDateTo(e.target.value)}
-                  className="p-2 rounded-xl border border-slate-300 font-mono bg-slate-50"
+                  className="h-8 px-2 py-1 rounded-lg border border-slate-300 font-mono text-xs bg-slate-50"
                 />
               </div>
               <button
                 type="button"
                 onClick={() => loadCustodyStatement(custodyRepId)}
                 disabled={isCustodyLoading}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-bold cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-bold cursor-pointer disabled:opacity-50"
               >
-                <RefreshCw className={`w-4 h-4 ${isCustodyLoading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-3.5 h-3.5 ${isCustodyLoading ? 'animate-spin' : ''}`} />
                 <span>تحديث الكشف</span>
               </button>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => {
@@ -1378,9 +1381,9 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   setCustodyOpNotes('');
                   setCustodyActionModal('deliver');
                 }}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
               >
-                <PackageCheck className="w-4 h-4" />
+                <PackageCheck className="w-3.5 h-3.5" />
                 <span>تسليم جزئي للعميل</span>
               </button>
               <button
@@ -1393,9 +1396,9 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   setCustodyOpNotes('');
                   setCustodyActionModal('return');
                 }}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold cursor-pointer"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold cursor-pointer"
               >
-                <RotateCcw className="w-4 h-4" />
+                <RotateCcw className="w-3.5 h-3.5" />
                 <span>إرجاع للمخزن الرئيسي</span>
               </button>
               {(currentUser?.role === 'admin' || hasPermission('canApprove') || hasPermission('canManageReps')) && (
@@ -1409,9 +1412,9 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     setCustodyOpNotes('');
                     setCustodyActionModal('adjust');
                   }}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-black text-white font-bold cursor-pointer"
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-black text-white font-bold cursor-pointer"
                 >
-                  <AlertTriangle className="w-4 h-4" />
+                  <AlertTriangle className="w-3.5 h-3.5" />
                   <span>تسوية / تالف / عجز</span>
                 </button>
               )}
@@ -1419,94 +1422,94 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 type="button"
                 onClick={handleExportCustodyExcel}
                 disabled={!custodyStatement}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-700 cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-700 cursor-pointer disabled:opacity-50"
               >
-                <Download className="w-4 h-4 text-emerald-600" />
+                <Download className="w-3.5 h-3.5 text-emerald-600" />
                 <span>Excel</span>
               </button>
               <button
                 type="button"
                 onClick={handlePrintCustodyStatement}
                 disabled={!custodyStatement}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-700 cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-700 cursor-pointer disabled:opacity-50"
               >
-                <Printer className="w-4 h-4 text-blue-900" />
+                <Printer className="w-3.5 h-3.5 text-blue-900" />
                 <span>طباعة</span>
               </button>
             </div>
           </div>
 
           {custodyError && (
-            <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-xl text-xs font-bold">
+            <div className="px-3 py-2 bg-red-50 border border-red-200 text-red-800 rounded-lg text-xs font-bold">
               {custodyError}
             </div>
           )}
 
           {custodyStatement && (
             <>
-              {/* Financial Summary Cards */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-                <div className="bg-white p-4 rounded-2xl border border-blue-200 shadow-xs">
-                  <span className="text-slate-500 font-bold flex items-center gap-1">
-                    <Wallet className="w-4 h-4 text-blue-800" /> رصيد العهدة النقدية الحالية
+              {/* Financial Summary Strip */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden text-xs">
+                <div className="bg-white px-3 py-2">
+                  <span className="text-[11px] text-slate-500 font-bold flex items-center gap-1">
+                    <Wallet className="w-3.5 h-3.5 text-blue-800" /> رصيد العهدة النقدية الحالية
                   </span>
-                  <p className="text-xl font-black text-blue-950 font-mono tabular-nums mt-1">
+                  <p className="text-base font-black text-blue-950 font-mono tabular-nums mt-0.5">
                     {custodyStatement.financialSummary.currentCashCustodyBalance.toLocaleString()} {settings.currency}
                   </p>
                 </div>
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-                  <span className="text-slate-500 font-bold">إجمالي مبيعات المندوب</span>
-                  <p className="text-xl font-black text-slate-900 font-mono tabular-nums mt-1">
+                <div className="bg-white px-3 py-2">
+                  <span className="text-[11px] text-slate-500 font-bold">إجمالي مبيعات المندوب</span>
+                  <p className="text-base font-black text-slate-900 font-mono tabular-nums mt-0.5">
                     {custodyStatement.financialSummary.totalSalesAmount.toLocaleString()} {settings.currency}
                   </p>
                 </div>
-                <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-xs">
-                  <span className="text-emerald-700 font-bold">المحصّل من الفواتير</span>
-                  <p className="text-xl font-black text-emerald-700 font-mono tabular-nums mt-1">
+                <div className="bg-white px-3 py-2">
+                  <span className="text-[11px] text-emerald-700 font-bold">المحصّل من الفواتير</span>
+                  <p className="text-base font-black text-emerald-700 font-mono tabular-nums mt-0.5">
                     {custodyStatement.financialSummary.totalSalesPaidAmount.toLocaleString()} {settings.currency}
                   </p>
                 </div>
-                <div className="bg-white p-4 rounded-2xl border border-amber-200 shadow-xs">
-                  <span className="text-amber-700 font-bold">المتبقي بالآجل عند العملاء</span>
-                  <p className="text-xl font-black text-amber-800 font-mono tabular-nums mt-1">
+                <div className="bg-white px-3 py-2">
+                  <span className="text-[11px] text-amber-700 font-bold">المتبقي بالآجل عند العملاء</span>
+                  <p className="text-base font-black text-amber-800 font-mono tabular-nums mt-0.5">
                     {custodyStatement.financialSummary.totalSalesRemainingAmount.toLocaleString()} {settings.currency}
                   </p>
                 </div>
               </div>
 
               {/* Item Custody Totals Strip */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 bg-slate-900 text-white p-3.5 rounded-2xl text-center text-[11px] tabular-nums">
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 bg-slate-900 text-white p-2.5 rounded-lg text-center text-[11px] tabular-nums">
                 <div>
                   <span className="text-slate-400 block">المستلم فعلياً</span>
-                  <strong className="text-sm font-mono">{custodyStatement.totals.totalReceivedQty}</strong>
+                  <strong className="text-xs font-mono">{custodyStatement.totals.totalReceivedQty}</strong>
                 </div>
                 <div>
                   <span className="text-amber-300 block">بانتظار الاستلام</span>
-                  <strong className="text-sm font-mono">{custodyStatement.totals.totalPendingReceiveQty}</strong>
+                  <strong className="text-xs font-mono">{custodyStatement.totals.totalPendingReceiveQty}</strong>
                 </div>
                 <div>
                   <span className="text-emerald-300 block">مسلم للعملاء</span>
-                  <strong className="text-sm font-mono">{custodyStatement.totals.totalDeliveredQty}</strong>
+                  <strong className="text-xs font-mono">{custodyStatement.totals.totalDeliveredQty}</strong>
                 </div>
                 <div>
                   <span className="text-sky-300 block">مرتجع للمخزن</span>
-                  <strong className="text-sm font-mono">{custodyStatement.totals.totalReturnedQty}</strong>
+                  <strong className="text-xs font-mono">{custodyStatement.totals.totalReturnedQty}</strong>
                 </div>
                 <div>
                   <span className="text-rose-300 block">تسويات / تالف</span>
-                  <strong className="text-sm font-mono">{custodyStatement.totals.totalReductionsQty}</strong>
+                  <strong className="text-xs font-mono">{custodyStatement.totals.totalReductionsQty}</strong>
                 </div>
                 <div>
                   <span className="text-blue-300 block">المتبقي بالعهدة</span>
-                  <strong className="text-sm font-mono text-white">{custodyStatement.totals.totalRemainingCustodyQty}</strong>
+                  <strong className="text-xs font-mono text-white">{custodyStatement.totals.totalRemainingCustodyQty}</strong>
                 </div>
                 <div>
                   <span className="text-slate-300 block">رصيد السيارة الفعلي</span>
-                  <strong className="text-sm font-mono">{custodyStatement.totals.totalVanPhysicalQty}</strong>
+                  <strong className="text-xs font-mono">{custodyStatement.totals.totalVanPhysicalQty}</strong>
                 </div>
                 <div>
                   <span className="text-emerald-200 block">قيمة العهدة بالتكلفة</span>
-                  <strong className="text-sm font-mono">{custodyStatement.totals.totalCustodyCostValue.toLocaleString()}</strong>
+                  <strong className="text-xs font-mono">{custodyStatement.totals.totalCustodyCostValue.toLocaleString()}</strong>
                 </div>
               </div>
 
@@ -1666,9 +1669,9 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           onClose={() => setIsNewCashModalOpen(false)}
           title="طلب تحويل مالي بالنصف (توريد تحصيلات أو صرف عهدة)"
         >
-          <form onSubmit={handleSubmitCashTransfer} className="space-y-4 text-xs">
+          <form onSubmit={handleSubmitCashTransfer} className="space-y-3 text-xs">
             {error && (
-              <div className="p-3 bg-red-50 text-red-700 rounded-xl flex items-center gap-2 border border-red-200">
+              <div className="px-3 py-2 bg-red-50 text-red-700 rounded-lg flex items-center gap-2 border border-red-200">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{error}</span>
               </div>
@@ -1680,7 +1683,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 <button
                   type="button"
                   onClick={() => setDirection('rep_to_owner')}
-                  className={`p-2.5 rounded-xl border text-center font-bold cursor-pointer transition-all ${
+                  className={`px-2.5 py-1.5 rounded-lg border text-center font-bold cursor-pointer transition-all ${
                     direction === 'rep_to_owner' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-slate-50 text-slate-700'
                   }`}
                 >
@@ -1689,7 +1692,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 <button
                   type="button"
                   onClick={() => setDirection('owner_to_rep')}
-                  className={`p-2.5 rounded-xl border text-center font-bold cursor-pointer transition-all ${
+                  className={`px-2.5 py-1.5 rounded-lg border text-center font-bold cursor-pointer transition-all ${
                     direction === 'owner_to_rep' ? 'bg-blue-900 text-white shadow-xs' : 'bg-slate-50 text-slate-700'
                   }`}
                 >
@@ -1703,7 +1706,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               <select
                 value={selectedRepId}
                 onChange={(e) => setSelectedRepId(e.target.value)}
-                className="w-full p-2.5 rounded-xl border border-slate-300 bg-white"
+                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
               >
                 {representatives.map(r => (
                   <option key={r.id} value={r.id}>{r.name} (رصيد عهدته: {r.currentBalance} {settings.currency})</option>
@@ -1711,7 +1714,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               </select>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2.5">
               <div>
                 <label className="block font-bold mb-1">المبلغ المحول ({settings.currency}):</label>
                 <input
@@ -1721,7 +1724,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   placeholder="0.00"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300 font-bold text-sm"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-bold text-sm"
                 />
               </div>
 
@@ -1730,7 +1733,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 <select
                   value={selectedCashboxId}
                   onChange={(e) => setSelectedCashboxId(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
                 >
                   {cashboxes.map(c => (
                     <option key={c.id} value={c.id}>
@@ -1748,22 +1751,22 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="تفاصيل التوريد أو سبب الصرف..."
-                className="w-full p-2.5 rounded-xl border border-slate-300"
+                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
               />
             </div>
 
-            <div className="flex justify-end gap-2 pt-3 border-t">
+            <div className="flex justify-end gap-2 pt-2.5 border-t">
               <button
                 type="button"
                 onClick={() => setIsNewCashModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 font-bold cursor-pointer"
+                className="px-3.5 py-1.5 rounded-lg border border-slate-300 text-slate-600 font-bold cursor-pointer"
               >
                 إلغاء
               </button>
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
+                className="px-4 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
               >
                 {isSubmitting ? 'جاري الإرسال...' : 'إرسال طلب التحويل'}
               </button>
@@ -1779,9 +1782,9 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           onClose={() => setIsNewItemReqModalOpen(false)}
           title="طلب تحويل أصناف وعهدة مخزنية (مرتبط بفاتورة مبيعات)"
         >
-          <form onSubmit={handleSubmitItemTransferRequest} className="space-y-4 text-xs">
+          <form onSubmit={handleSubmitItemTransferRequest} className="space-y-3 text-xs">
             {itemReqError && (
-              <div className="p-3 bg-red-50 text-red-700 rounded-xl flex items-center gap-2 border border-red-200">
+              <div className="px-3 py-2 bg-red-50 text-red-700 rounded-lg flex items-center gap-2 border border-red-200">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{itemReqError}</span>
               </div>
@@ -1793,7 +1796,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 <button
                   type="button"
                   onClick={() => setItemReqTransferMode('transfer')}
-                  className={`p-2 rounded-xl border font-bold cursor-pointer ${
+                  className={`px-2.5 py-1.5 rounded-lg border font-bold cursor-pointer ${
                     itemReqTransferMode === 'transfer' ? 'bg-blue-900 text-white border-blue-900' : 'bg-slate-50 text-slate-700 border-slate-300'
                   }`}
                 >
@@ -1802,7 +1805,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 <button
                   type="button"
                   onClick={() => setItemReqTransferMode('custody_dispatch')}
-                  className={`p-2 rounded-xl border font-bold cursor-pointer ${
+                  className={`px-2.5 py-1.5 rounded-lg border font-bold cursor-pointer ${
                     itemReqTransferMode === 'custody_dispatch' ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-slate-50 text-slate-700 border-slate-300'
                   }`}
                 >
@@ -1814,13 +1817,13 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2.5">
               <div>
                 <label className="block font-bold mb-1">المندوب:</label>
                 <select
                   value={itemReqRepId}
                   onChange={(e) => setItemReqRepId(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
                 >
                   {representatives.map(r => (
                     <option key={r.id} value={r.id}>{r.name}</option>
@@ -1833,7 +1836,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 <select
                   value={itemReqInvoiceId}
                   onChange={(e) => setItemReqInvoiceId(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
                 >
                   <option value="">-- بدون ربط بفاتورة (تحويل عهدة مباشر) --</option>
                   {invoices.filter(i => i.type === 'sales').map(inv => (
@@ -1845,13 +1848,13 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2.5">
               <div>
                 <label className="block font-bold mb-1">المستودع المصدر (المقر الرئيسي):</label>
                 <select
                   value={itemReqSourceWhId}
                   onChange={(e) => setItemReqSourceWhId(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
                 >
                   {warehouses.map(w => (
                     <option key={w.id} value={w.id}>{w.name}</option>
@@ -1864,7 +1867,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 <select
                   value={itemReqTargetWhId}
                   onChange={(e) => setItemReqTargetWhId(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
                 >
                   {warehouses.map(w => (
                     <option key={w.id} value={w.id}>{w.name}</option>
@@ -1874,7 +1877,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
             </div>
 
             {/* Item Selector Box */}
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
               <span className="font-bold text-slate-800 block">إضافة أصناف للطلب (بحث فوري):</span>
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                 <div className="flex-1">
@@ -1902,13 +1905,13 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                       handleAddItemToReq();
                     }
                   }}
-                  className="w-24 p-2.5 rounded-xl border border-slate-300 text-center font-bold bg-white"
+                  className="w-24 px-2.5 py-1.5 rounded-lg border border-slate-300 text-center font-bold bg-white"
                   placeholder="الكمية"
                 />
                 <button
                   type="button"
                   onClick={handleAddItemToReq}
-                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold cursor-pointer"
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold cursor-pointer"
                 >
                   إضافة +
                 </button>
@@ -1954,22 +1957,22 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 value={itemReqNotes}
                 onChange={(e) => setItemReqNotes(e.target.value)}
                 placeholder="أسباب طلب العهدة أو مواعيد التسليم..."
-                className="w-full p-2.5 rounded-xl border border-slate-300"
+                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
               />
             </div>
 
-            <div className="flex justify-end gap-2 pt-3 border-t">
+            <div className="flex justify-end gap-2 pt-2.5 border-t">
               <button
                 type="button"
                 onClick={() => setIsNewItemReqModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 font-bold cursor-pointer"
+                className="px-3.5 py-1.5 rounded-lg border border-slate-300 text-slate-600 font-bold cursor-pointer"
               >
                 إلغاء
               </button>
               <button
                 type="submit"
                 disabled={isSubmittingItemReq || selectedItemsForReq.length === 0}
-                className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
+                className="px-4 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
               >
                 {isSubmittingItemReq ? 'جاري الإرسال...' : 'إرسال طلب التحويل للإدارة'}
               </button>
@@ -1985,8 +1988,8 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           onClose={() => setActiveItemReqDetail(null)}
           title={`تفاصيل طلب تحويل أصناف رقم: ${activeItemReqDetail.requestNumber}`}
         >
-          <div className="space-y-4 text-xs">
-            <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl">
+          <div className="space-y-3 text-xs">
+            <div className="grid grid-cols-2 gap-2.5 p-2.5 bg-slate-50 rounded-lg border border-slate-200">
               <div>
                 <p className="text-slate-500">المندوب: <strong className="text-slate-800">{activeItemReqDetail.representativeName}</strong></p>
                 <p className="text-slate-500">المستودع المصدر: <strong className="text-slate-800">{activeItemReqDetail.sourceWarehouseName}</strong></p>
@@ -2019,7 +2022,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               <p className="text-slate-600 italic">ملاحظات: {activeItemReqDetail.notes}</p>
             )}
 
-            <div className="flex justify-between items-center pt-3 border-t">
+            <div className="flex justify-between items-center pt-2.5 border-t">
               <div>{getItemReqStatusBadge(activeItemReqDetail.status)}</div>
 
               <div className="flex items-center gap-2">
@@ -2028,14 +2031,14 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     <button
                       type="button"
                       onClick={() => handleRejectItemTransfer(activeItemReqDetail)}
-                      className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-800 font-bold rounded-xl cursor-pointer"
+                      className="px-3.5 py-1.5 bg-red-100 hover:bg-red-200 text-red-800 font-bold rounded-lg cursor-pointer"
                     >
                       رفض الطلب
                     </button>
                     <button
                       type="button"
                       onClick={() => handleExecuteItemTransfer(activeItemReqDetail)}
-                      className="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-black rounded-xl shadow-md cursor-pointer"
+                      className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-black rounded-lg shadow-xs cursor-pointer"
                     >
                       اعتماد وصرف من المخزن الرئيسي
                     </button>
@@ -2045,7 +2048,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   <button
                     type="button"
                     onClick={() => handleConfirmCustodyReceipt(activeItemReqDetail)}
-                    className="px-5 py-2 bg-blue-900 hover:bg-blue-950 text-white font-black rounded-xl shadow-md cursor-pointer"
+                    className="px-4 py-1.5 bg-blue-900 hover:bg-blue-950 text-white font-black rounded-lg shadow-xs cursor-pointer"
                   >
                     تأكيد استلام المندوب
                   </button>
@@ -2053,7 +2056,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 <button
                   type="button"
                   onClick={() => setActiveItemReqDetail(null)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
+                  className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg cursor-pointer"
                 >
                   إغلاق
                 </button>
@@ -2084,7 +2087,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 required
                 value={custodyOpProductId}
                 onChange={(e) => setCustodyOpProductId(e.target.value)}
-                className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
               >
                 <option value="">-- اختر الصنف --</option>
                 {products.map((p) => (
@@ -2102,7 +2105,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   <select
                     value={custodyOpCustomerId}
                     onChange={(e) => setCustodyOpCustomerId(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
                   >
                     <option value="">-- عميل نقدي / إدخال يدوي --</option>
                     {customers.map((c) => (
@@ -2117,7 +2120,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     value={custodyOpCustomerName}
                     onChange={(e) => setCustodyOpCustomerName(e.target.value)}
                     placeholder="اسم العميل المستلم..."
-                    className="w-full p-2.5 rounded-xl border border-slate-300"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
                   />
                 </div>
               </div>
@@ -2129,7 +2132,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 <select
                   value={custodyOpTargetWhId}
                   onChange={(e) => setCustodyOpTargetWhId(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
                 >
                   {warehouses.map((w) => (
                     <option key={w.id} value={w.id}>{w.name}</option>
@@ -2144,7 +2147,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 <select
                   value={custodyOpType}
                   onChange={(e) => setCustodyOpType(e.target.value as any)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
                 >
                   <option value="custody_damaged">تالف عهدة</option>
                   <option value="custody_shortage">عجز عهدة</option>
@@ -2164,7 +2167,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   placeholder="أدخل الكمية"
                   value={custodyOpQty}
                   onChange={(e) => setCustodyOpQty(e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
-                  className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono font-bold"
                 />
               </div>
               <div>
@@ -2174,7 +2177,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   required
                   value={custodyOpDate}
                   onChange={(e) => setCustodyOpDate(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300 font-mono"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono"
                 />
               </div>
             </div>
@@ -2185,7 +2188,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 type="text"
                 value={custodyOpNotes}
                 onChange={(e) => setCustodyOpNotes(e.target.value)}
-                className="w-full p-2.5 rounded-xl border border-slate-300"
+                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
               />
             </div>
 
@@ -2193,14 +2196,14 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               <button
                 type="button"
                 onClick={() => setCustodyActionModal(null)}
-                className="px-4 py-2 rounded-xl border border-slate-300 font-bold cursor-pointer"
+                className="px-3.5 py-1.5 rounded-lg border border-slate-300 font-bold cursor-pointer"
               >
                 إلغاء
               </button>
               <button
                 type="submit"
                 disabled={isSubmittingCustodyOp || !custodyOpProductId || Number(custodyOpQty || 0) <= 0}
-                className="px-5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
+                className="px-4 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
               >
                 {isSubmittingCustodyOp ? 'جاري التنفيذ...' : 'حفظ وتنفيذ'}
               </button>
@@ -2216,9 +2219,9 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           onClose={() => !isSavingRep && setIsAddRepModalOpen(false)}
           title={editingRep ? 'تعديل بيانات المندوب' : 'إضافة مندوب مبيعات جديد'}
         >
-          <form onSubmit={handleSaveRep} className="space-y-4 text-xs">
+          <form onSubmit={handleSaveRep} className="space-y-3 text-xs">
             {repFormError && (
-              <div className="p-3 bg-red-50 text-red-700 rounded-xl flex items-center gap-2 border border-red-200 font-bold">
+              <div className="px-3 py-2 bg-red-50 text-red-700 rounded-lg flex items-center gap-2 border border-red-200 font-bold">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{repFormError}</span>
               </div>
@@ -2231,11 +2234,11 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 value={repName}
                 onChange={(e) => setRepName(e.target.value)}
                 placeholder="اسم المندوب ثلاثي..."
-                className="w-full p-2.5 rounded-xl border border-slate-300"
+                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2.5">
               <div>
                 <label className="block font-bold mb-1">رقم الهاتف:</label>
                 <input
@@ -2244,7 +2247,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   value={repPhone}
                   onChange={(e) => setRepPhone(e.target.value)}
                   placeholder="010XXXXXXXX"
-                  className="w-full p-2.5 rounded-xl border border-slate-300 font-mono"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono"
                 />
               </div>
 
@@ -2255,7 +2258,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   value={repVehicle}
                   onChange={(e) => setRepVehicle(e.target.value)}
                   placeholder="مثال: سيارة توزيع 4 (أ ب ج 123)"
-                  className="w-full p-2.5 rounded-xl border border-slate-300"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
                 />
               </div>
             </div>
@@ -2269,13 +2272,13 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     placeholder="0.00"
                     value={repOpening}
                     onChange={(e) => setRepOpening(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 font-mono"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono"
                   />
                 </div>
 
                 {(currentUser?.role === 'admin' || hasPermission('canManageUsers')) && (
-                  <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-3">
-                    <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                  <div className="p-2.5 rounded-lg bg-indigo-50/70 border border-indigo-200 space-y-2.5">
+                    <label className="flex items-start gap-2 cursor-pointer select-none">
                       <input
                         type="checkbox"
                         checked={createRepAccount}
@@ -2293,7 +2296,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     </label>
 
                     {createRepAccount && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
                         <div>
                           <label className="block font-bold text-slate-700 mb-1">اسم المستخدم للدخول: *</label>
                           <input
@@ -2303,7 +2306,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                             onChange={(e) => setRepUsername(e.target.value)}
                             placeholder="مثال: rep_ahmed"
                             dir="ltr"
-                            className="w-full p-2.5 rounded-xl border border-indigo-200 bg-white font-mono"
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-white font-mono"
                           />
                         </div>
                         <div>
@@ -2315,7 +2318,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                             onChange={(e) => setRepPassword(e.target.value)}
                             placeholder="4 أحرف على الأقل..."
                             dir="ltr"
-                            className="w-full p-2.5 rounded-xl border border-indigo-200 bg-white font-mono"
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-indigo-200 bg-white font-mono"
                           />
                         </div>
                       </div>
@@ -2325,19 +2328,19 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               </>
             )}
 
-            <div className="flex justify-end gap-2 pt-3 border-t">
+            <div className="flex justify-end gap-2 pt-2.5 border-t">
               <button
                 type="button"
                 disabled={isSavingRep}
                 onClick={() => setIsAddRepModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 font-bold cursor-pointer disabled:opacity-50"
+                className="px-3.5 py-1.5 rounded-lg border border-slate-300 text-slate-600 font-bold cursor-pointer disabled:opacity-50"
               >
                 إلغاء
               </button>
               <button
                 type="submit"
                 disabled={isSavingRep}
-                className="px-5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
+                className="px-4 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
               >
                 {isSavingRep ? 'جاري الحفظ...' : editingRep ? 'تحديث المندوب' : 'حفظ المندوب الجديد'}
               </button>
@@ -2353,8 +2356,8 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           onClose={() => setActiveTransferForAudit(null)}
           title={`سجل المراجعة والتأكيد الثنائي للتحويل: ${activeTransferForAudit.transferNumber}`}
         >
-          <div className="space-y-4 text-xs">
-            <div className="p-3 bg-slate-50 rounded-xl border flex items-center justify-between">
+          <div className="space-y-3 text-xs">
+            <div className="p-2.5 bg-slate-50 rounded-lg border flex items-center justify-between">
               <div>
                 <span className="block text-slate-500">المبلغ المحول:</span>
                 <span className="text-sm font-black text-blue-950 font-mono">
@@ -2364,14 +2367,14 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               <div>{getStatusBadge(activeTransferForAudit.status)}</div>
             </div>
 
-            <div className="space-y-3 relative before:absolute before:top-2 before:bottom-2 before:right-3.5 before:w-0.5 before:bg-slate-200">
+            <div className="space-y-2.5 relative before:absolute before:top-2 before:bottom-2 before:right-3.5 before:w-0.5 before:bg-slate-200">
               {activeTransferForAudit.auditTrail.map((log, idx) => (
-                <div key={idx} className="relative flex items-start gap-3 mr-1">
+                <div key={idx} className="relative flex items-start gap-2.5 mr-1">
                   <div className="w-6 h-6 rounded-full bg-blue-900 text-white flex items-center justify-center font-bold text-[10px] shrink-0 z-10">
                     {idx + 1}
                   </div>
-                  <div className="flex-1 bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
-                    <div className="flex justify-between items-center mb-1">
+                  <div className="flex-1 bg-white p-2.5 rounded-lg border border-slate-200 shadow-xs">
+                    <div className="flex justify-between items-center mb-0.5">
                       <span className="font-bold text-slate-900">{log.action}</span>
                       <span className="text-[10px] text-slate-400 font-mono">
                         {new Date(log.timestamp).toLocaleString('ar-EG')}
@@ -2388,10 +2391,10 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               ))}
             </div>
 
-            <div className="flex justify-end pt-3 border-t">
+            <div className="flex justify-end pt-2.5 border-t">
               <button
                 onClick={() => setActiveTransferForAudit(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
+                className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg cursor-pointer"
               >
                 إغلاق
               </button>

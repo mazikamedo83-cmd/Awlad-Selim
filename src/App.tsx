@@ -380,7 +380,7 @@ const MainAppContent: React.FC = () => {
     pairingBanner ? (
       <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[70] w-[calc(100%-1.5rem)] max-w-lg px-2 pointer-events-none">
         <div
-          className={`pointer-events-auto p-3.5 rounded-2xl border shadow-xl text-xs font-bold flex items-start justify-between gap-2.5 ${
+          className={`pointer-events-auto px-3 py-2.5 rounded-xl border shadow-lg text-xs font-bold flex items-start justify-between gap-2 ${
             pairingBanner.type === 'success'
               ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
               : pairingBanner.type === 'warning'
@@ -448,13 +448,13 @@ const MainAppContent: React.FC = () => {
   const renderActivePage = () => {
     if (!isPageAllowed) {
       return (
-        <div className="bg-white rounded-2xl border border-red-200 p-10 text-center space-y-3 shadow-xs">
-          <ShieldAlert className="w-12 h-12 text-red-500 mx-auto" />
-          <h3 className="text-base font-black text-slate-900">غير مصرح لك بالوصول إلى هذه الشاشة</h3>
+        <div className="bg-white rounded-lg border border-red-200 p-4 text-center space-y-2 shadow-xs">
+          <ShieldAlert className="w-8 h-8 text-red-500 mx-auto" />
+          <h3 className="text-sm font-black text-slate-900">غير مصرح لك بالوصول إلى هذه الشاشة</h3>
           <p className="text-xs text-slate-500">هذه الصلاحية مقيدة لحسابك. يرجى مراجعة المدير العام عند الحاجة.</p>
           <button
             onClick={() => setCurrentPage('dashboard')}
-            className="px-5 py-2 rounded-xl bg-blue-900 text-white text-xs font-bold"
+            className="px-4 py-1.5 rounded-lg bg-blue-900 text-white text-xs font-bold cursor-pointer"
           >
             العودة إلى الرئيسية
           </button>
@@ -647,7 +647,7 @@ const MainAppContent: React.FC = () => {
 
   const renderDbOrSyncAlert = () =>
     isDatabaseUnavailable || (networkStatus === 'error' && lastError) ? (
-      <div className="mb-4 p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-800 text-xs font-bold flex flex-wrap items-center justify-between gap-2 shadow-xs">
+      <div className="mb-2.5 p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-800 text-xs font-bold flex flex-wrap items-center justify-between gap-2 shadow-xs">
         <div className="flex items-center gap-2">
           <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
           <span>
@@ -663,7 +663,7 @@ const MainAppContent: React.FC = () => {
             refreshAuthContext().catch(() => {});
             triggerSync(false);
           }}
-          className="px-3 py-1.5 rounded-xl bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors cursor-pointer"
+          className="px-2.5 py-1 rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors cursor-pointer"
         >
           {isSyncing ? 'جاري الفحص...' : 'إعادة المحاولة'}
         </button>
@@ -720,8 +720,8 @@ const MainAppContent: React.FC = () => {
             <main
               className={`flex-1 w-full mx-auto min-w-0 ${
                 currentPage === 'reports' || currentPage === 'item-movement-report'
-                  ? 'max-w-full px-2 sm:px-3 lg:px-4 py-2 sm:py-2.5'
-                  : 'max-w-7xl p-3 sm:p-4 lg:p-6'
+                  ? 'max-w-full px-2 sm:px-3 py-2'
+                  : 'max-w-full p-2.5 sm:p-3 lg:p-4'
               }`}
             >
               {renderDbOrSyncAlert()}

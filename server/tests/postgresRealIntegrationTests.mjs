@@ -27,7 +27,7 @@ process.env.BOOTSTRAP_ADMIN_SECRET = process.env.BOOTSTRAP_ADMIN_SECRET || 'Real
 const {
   initializeSchema,
   getPool,
-  closePool,
+  closePostgresPool,
   isStrictPostgresMode,
   setInjectedPool,
 } = await import('../db/postgres.js');
@@ -192,9 +192,15 @@ try {
     const losers = [b1, b2].filter((r) => r.status !== 201);
     assert.equal(winners.length, 1, 'Exactly 1 concurrent bootstrap-admin must succeed');
     assert.equal(losers.length, 1, 'Second concurrent bootstrap-admin must be blocked');
-    adminToken = winners[0].json.accessToken;
     adminUser = winners[0].json.user;
     adminUserId = adminUser.id;
+
+    const loginAdmin = await req(baseUrl, 'POST', '/api/auth/login', {
+      body: { username: adminUser.username, password: 'PgAdminPassword!2026' },
+    });
+    assert.equal(loginAdmin.status, 200, 'Admin login after bootstrap must succeed');
+    adminToken = loginAdmin.json.accessToken;
+    assert.ok(adminToken, 'Admin accessToken must be present after login');
 
     // Concurrent customer registration with identical normalized phone -> max 1 succeeds
     const [reg1, reg2] = await Promise.all([
@@ -500,7 +506,7 @@ try {
   });
 
   await test('6. Closed/unreachable PostgreSQL in strict mode returns 503 DATABASE_UNAVAILABLE without JSON fallback', async () => {
-    await closePool();
+    await closePostgresPool();
     setInjectedPool({
       async query() {
         throw Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:5432'), { code: 'ECONNREFUSED' });
@@ -515,12 +521,103 @@ try {
     assert.equal(failRes.json?.code, 'DATABASE_UNAVAILABLE');
   });
 
+  await test('7. Real PostgreSQL 16 v14 legacy Employee<->User migration preserves data, logs conflicts, backfills 1:1 pairs, and runs idempotently', async () => {
+    setInjectedPool(null);
+    resetPgModeCache();
+    const { Pool } = (await import('pg')).default;
+    const baseCfgUrl = new URL(process.env.DATABASE_URL || process.env.PG_CONNECTION_STRING);
+    const legacyDbName = `awlad_v14_legacy_${Date.now()}`;
+    const adminPg = new Pool({ connectionString: baseCfgUrl.toString() });
+
+    let legacyPool = null;
+    try {
+      await adminPg.query(`CREATE DATABASE "${legacyDbName}"`);
+      const legacyUrl = new URL(baseCfgUrl.toString());
+      legacyUrl.pathname = `/${legacyDbName}`;
+      legacyPool = new Pool({ connectionString: legacyUrl.toString() });
+
+      // Initialize full schema first, then drop v14 indexes/FKs to simulate pre-v14 legacy tables
+      const preInit = await initializeSchema(legacyPool);
+      assert.equal(preInit.success, true);
+
+      await legacyPool.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS fk_users_employee_id`);
+      await legacyPool.query(`ALTER TABLE employees DROP CONSTRAINT IF EXISTS fk_employees_user_id`);
+      await legacyPool.query(`DROP INDEX IF EXISTS idx_users_employee_id_unique`);
+      await legacyPool.query(`DROP INDEX IF EXISTS idx_employees_user_id_unique`);
+
+      // Seed unambiguous 1:1 asymmetric legacy pairs + duplicate/orphan/empty-string legacy rows
+      await legacyPool.query(
+        `INSERT INTO employees (id, code, full_name, job_title, hire_date, user_id) VALUES
+         ('EMP-LEG-A', 'E-A', 'موظف أ', 'مندوب', '2026-01-01', NULL),
+         ('EMP-LEG-B', 'E-B', 'موظف ب', 'مندوب', '2026-01-01', 'USR-LEG-B'),
+         ('EMP-LEG-C', 'E-C', 'موظف ج', 'مندوب', '2026-01-01', NULL),
+         ('EMP-LEG-E', 'E-E', 'موظف هـ', 'مندوب', '2026-01-01', '')`
+      );
+      await legacyPool.query(
+        `INSERT INTO users (id, full_name, username, password_hash, role, employee_id) VALUES
+         ('USR-LEG-A', 'مستخدم أ', 'leg_u_a', 'hash', 'sales', 'EMP-LEG-A'),
+         ('USR-LEG-B', 'مستخدم ب', 'leg_u_b', 'hash', 'sales', NULL),
+         ('USR-LEG-C1', 'مستخدم ج1', 'leg_u_c1', 'hash', 'sales', 'EMP-LEG-C'),
+         ('USR-LEG-C2', 'مستخدم ج2', 'leg_u_c2', 'hash', 'sales', 'EMP-LEG-C'),
+         ('USR-LEG-ORP', 'مستخدم يتيم', 'leg_u_orp', 'hash', 'sales', 'EMP-MISSING-999'),
+         ('USR-LEG-EMP', 'مستخدم فراغ', 'leg_u_emp', 'hash', 'sales', '')`
+      );
+
+      // Run v14 migration inside transaction on real PostgreSQL 16
+      const mig1 = await initializeSchema(legacyPool);
+      assert.equal(mig1.success, true, mig1.error || 'v14 legacy migration failed');
+
+      // Verify empty strings cleaned, unambiguous 1:1 pairs backfilled, zero records deleted
+      const empARes = await legacyPool.query(`SELECT user_id FROM employees WHERE id = 'EMP-LEG-A'`);
+      assert.equal(empARes.rows[0].user_id, 'USR-LEG-A');
+      const usrBRes = await legacyPool.query(`SELECT employee_id FROM users WHERE id = 'USR-LEG-B'`);
+      assert.equal(usrBRes.rows[0].employee_id, 'EMP-LEG-B');
+      const empERes = await legacyPool.query(`SELECT user_id FROM employees WHERE id = 'EMP-LEG-E'`);
+      assert.equal(empERes.rows[0].user_id, null);
+      const usrEmpRes = await legacyPool.query(`SELECT employee_id FROM users WHERE id = 'USR-LEG-EMP'`);
+      assert.equal(usrEmpRes.rows[0].employee_id, null);
+
+      const conflictsRes = await legacyPool.query(
+        `SELECT identifier_key FROM identity_conflicts WHERE conflict_type = 'employee_user_link_conflict' AND status = 'pending_review'`
+      );
+      const conflictKeys = new Set(conflictsRes.rows.map((r) => r.identifier_key));
+      assert.ok(conflictKeys.has('employee:EMP-LEG-C:multiple_users'));
+      assert.ok(conflictKeys.has('user_orphan_employee:EMP-MISSING-999'));
+
+      // Re-run migration idempotently -> zero errors and zero duplicate conflict rows
+      const mig2 = await initializeSchema(legacyPool);
+      assert.equal(mig2.success, true, mig2.error || 'Idempotent v14 re-run failed');
+      const conflictsAfterRerun = await legacyPool.query(
+        `SELECT COUNT(*) AS cnt FROM identity_conflicts WHERE identifier_key = 'employee:EMP-LEG-C:multiple_users'`
+      );
+      assert.equal(Number(conflictsAfterRerun.rows[0].cnt), 1);
+
+      // Resolve legacy duplicate & orphan links non-destructively, then re-run to enforce unique index + FK
+      await legacyPool.query(`UPDATE users SET employee_id = NULL WHERE id IN ('USR-LEG-C2', 'USR-LEG-ORP')`);
+      const mig3 = await initializeSchema(legacyPool);
+      assert.equal(mig3.success, true, mig3.error || 'Post-cleanup v14 migration failed');
+
+      const idxRes = await legacyPool.query(
+        `SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('idx_users_employee_id_unique', 'idx_employees_user_id_unique')`
+      );
+      assert.equal(idxRes.rows.length, 2, 'Both 1:1 unique indexes must exist after resolving legacy conflicts');
+      const fkRes = await legacyPool.query(
+        `SELECT constraint_name FROM information_schema.table_constraints WHERE constraint_type = 'FOREIGN KEY' AND table_schema = 'public' AND constraint_name IN ('fk_users_employee_id', 'fk_employees_user_id')`
+      );
+      assert.equal(fkRes.rows.length, 2, 'Both 1:1 foreign keys must exist after resolving legacy conflicts');
+    } finally {
+      if (legacyPool) await legacyPool.end().catch(() => {});
+      await adminPg.query(`DROP DATABASE IF EXISTS "${legacyDbName}" WITH (FORCE)`).catch(() => {});
+      await adminPg.end().catch(() => {});
+    }
+  });
+
   console.log(`\n[SUCCESS] Real PostgreSQL 16 integration suite passed (${passed} checks).\n`);
 } finally {
   if (server) {
     await new Promise((resolve) => server.close(resolve));
   }
   setInjectedPool(null);
-  await closePool().catch(() => {});
+  await closePostgresPool().catch(() => {});
   fs.rmSync(tempDataDir, { recursive: true, force: true });
 }

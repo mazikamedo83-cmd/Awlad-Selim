@@ -375,16 +375,16 @@ export const SuppliersView: React.FC = () => {
   }, [statementSupplier, invoices, invoiceReturns, financialTransactions]);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-        <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0">
-            <SuppliersTruckIcon className="w-9 h-9" />
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 shadow-xs">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0">
+            <SuppliersTruckIcon className="w-6 h-6" />
           </div>
           <div>
-            <h2 className="text-lg font-black text-slate-900 tracking-tight">دليل الموردين والمطاحن</h2>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <h2 className="text-base font-black text-slate-900 tracking-tight">دليل الموردين والمطاحن</h2>
+            <p className="text-[11px] text-slate-500 mt-0.5">
               إدارة حسابات ومستحقات شركات ومصانع الأغذية وسداد الدفعات النقدية
             </p>
           </div>
@@ -392,16 +392,16 @@ export const SuppliersView: React.FC = () => {
 
         <button
           onClick={handleOpenAdd}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-md shadow-blue-900/20 active:scale-95 transition-all cursor-pointer"
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-xs active:scale-95 transition-all cursor-pointer"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-3.5 h-3.5" />
           <span>إضافة مورد جديد</span>
         </button>
       </div>
 
       {statusBanner && (
         <div
-          className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between gap-2 ${
+          className={`px-3 py-2 rounded-lg border text-xs font-bold flex items-center justify-between gap-2 ${
             statusBanner.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
               : 'bg-red-50 border-red-200 text-red-900'
@@ -427,6 +427,7 @@ export const SuppliersView: React.FC = () => {
         subtitle="بحث، فرز، كشوف حسابات، وتسوية الدفعات المقدمة"
         data={filteredSuppliers}
         rowKey={(s) => s.id}
+        compact
         searchValue={searchTerm}
         onSearchChange={setSearchTerm}
         searchPlaceholder="بحث باسم المورد أو الكود أو رقم الهاتف أو العنوان..."
@@ -600,12 +601,12 @@ export const SuppliersView: React.FC = () => {
           }
           maxWidth="4xl"
         >
-          <div className="space-y-4 text-xs">
-            <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
-              <div className="flex items-center gap-3">
+          <div className="space-y-3 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2.5 p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="flex items-center gap-2.5">
                 <a
                   href={`tel:${statementSupplier.phone}`}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-800 rounded-lg font-mono font-bold border border-emerald-200 hover:bg-emerald-100"
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-800 rounded-lg font-mono font-bold border border-emerald-200 hover:bg-emerald-100"
                 >
                   <Phone className="w-3.5 h-3.5 text-emerald-600" />
                   <span>{statementSupplier.phone}</span>
@@ -628,7 +629,7 @@ export const SuppliersView: React.FC = () => {
                     });
                     setIsPrintModalOpen(true);
                   }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-700 font-bold hover:bg-slate-50"
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-slate-700 font-bold hover:bg-slate-50 cursor-pointer"
                 >
                   <Printer className="w-3.5 h-3.5 text-blue-900" />
                   <span>طباعة كشف الحساب</span>
@@ -741,7 +742,7 @@ export const SuppliersView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setStatementSupplier(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl"
+                className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-lg cursor-pointer"
               >
                 إغلاق
               </button>
@@ -757,9 +758,9 @@ export const SuppliersView: React.FC = () => {
         title={editingSupplier ? 'تعديل بيانات المورد' : 'إضافة مورد جديد'}
         maxWidth="md"
       >
-        <form onSubmit={handleSaveSupplier} className="space-y-4 text-xs">
+        <form onSubmit={handleSaveSupplier} className="space-y-3 text-xs">
           {supplierFormError && (
-            <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
+            <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{supplierFormError}</span>
             </div>
@@ -771,7 +772,7 @@ export const SuppliersView: React.FC = () => {
               required
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full border rounded-xl p-2.5 font-bold"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
             />
           </div>
           <div>
@@ -781,7 +782,7 @@ export const SuppliersView: React.FC = () => {
               required
               value={formData.phone}
               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              className="w-full border rounded-xl p-2.5 font-mono"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono"
             />
           </div>
           <div>
@@ -790,7 +791,7 @@ export const SuppliersView: React.FC = () => {
               type="text"
               value={formData.address}
               onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              className="w-full border rounded-xl p-2.5"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5"
             />
           </div>
           {!editingSupplier && (
@@ -801,13 +802,13 @@ export const SuppliersView: React.FC = () => {
                 placeholder="0.00"
                 value={formData.openingBalance}
                 onChange={(e) => setFormData({ ...formData, openingBalance: e.target.value === '' ? '' : Number(e.target.value) })}
-                className="w-full border rounded-xl p-2.5 font-mono font-bold"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold"
               />
             </div>
           )}
-          <div className="flex justify-end gap-2 pt-2 border-t">
-            <button type="button" onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">إلغاء</button>
-            <button type="submit" disabled={isSavingSupplier} className="px-6 py-2 bg-blue-900 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50">
+          <div className="flex justify-end gap-2 pt-2.5 border-t">
+            <button type="button" onClick={() => setIsAddModalOpen(false)} className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-bold cursor-pointer">إلغاء</button>
+            <button type="submit" disabled={isSavingSupplier} className="px-4 py-1.5 bg-blue-900 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50">
               {isSavingSupplier ? 'جاري الحفظ...' : 'حفظ المورد'}
             </button>
           </div>
@@ -829,9 +830,9 @@ export const SuppliersView: React.FC = () => {
           }
           maxWidth="md"
         >
-          <form onSubmit={handleRecordPayment} className="space-y-4 text-xs">
+          <form onSubmit={handleRecordPayment} className="space-y-3 text-xs">
             {paymentError && (
-              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
+              <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{paymentError}</span>
               </div>
@@ -845,7 +846,7 @@ export const SuppliersView: React.FC = () => {
                 required
                 value={paymentAmount || ''}
                 onChange={(e) => setPaymentAmount(Number(e.target.value))}
-                className="w-full border rounded-xl p-2.5 text-center text-purple-900 font-mono font-black text-sm"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-center text-purple-900 font-mono font-black text-sm"
               />
             </div>
 
@@ -855,7 +856,7 @@ export const SuppliersView: React.FC = () => {
               if (overpayment <= 0.009) return null;
               return (
                 <div
-                  className={`p-3 rounded-xl border font-bold leading-relaxed space-y-1 ${
+                  className={`p-2.5 rounded-lg border font-bold leading-relaxed space-y-1 ${
                     canApproveOverpayment
                       ? 'bg-amber-50 border-amber-200 text-amber-950'
                       : 'bg-red-50 border-red-200 text-red-900'
@@ -886,7 +887,7 @@ export const SuppliersView: React.FC = () => {
               <select
                 value={paymentCashboxId}
                 onChange={(e) => setPaymentCashboxId(e.target.value)}
-                className="w-full border rounded-xl p-2.5 font-bold"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold bg-white"
               >
                 {cashboxes.map(cb => (
                   <option key={cb.id} value={cb.id}>
@@ -902,11 +903,11 @@ export const SuppliersView: React.FC = () => {
                 value={paymentNotes}
                 onChange={(e) => setPaymentNotes(e.target.value)}
                 placeholder="سداد دفعة من حساب المورد..."
-                className="w-full border rounded-xl p-2.5"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5"
               />
             </div>
-            <div className="flex justify-end gap-2 pt-2 border-t">
-              <button type="button" onClick={() => setPaymentSupplier(null)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">إلغاء</button>
+            <div className="flex justify-end gap-2 pt-2.5 border-t">
+              <button type="button" onClick={() => setPaymentSupplier(null)} className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-bold cursor-pointer">إلغاء</button>
               <button
                 type="submit"
                 disabled={
@@ -914,7 +915,7 @@ export const SuppliersView: React.FC = () => {
                   (paymentAmount - Math.max(0, Number(paymentSupplier.currentBalance || 0)) > 0.009 &&
                     !canApproveOverpayment)
                 }
-                className="px-6 py-2 bg-purple-600 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50"
+                className="px-4 py-1.5 bg-purple-600 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50"
               >
                 {isSubmittingPayment ? 'جاري الصرف...' : 'تأكيد الصرف'}
               </button>
@@ -959,10 +960,10 @@ export const SuppliersView: React.FC = () => {
               setSettleError(null);
               setIsConfirmingSettle(true);
             }}
-            className="space-y-4 text-xs"
+            className="space-y-3 text-xs"
           >
             {settleError && (
-              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
+              <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{settleError}</span>
               </div>
@@ -980,7 +981,7 @@ export const SuppliersView: React.FC = () => {
                     setSettleAmount(Math.min(availableAdvance, Number(found.remainingAmount || 0)));
                   }
                 }}
-                className="w-full border rounded-xl p-2.5 font-bold"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold bg-white"
               >
                 {getSupplierAdvanceInfo(settleSupplier).openInvoices.map((inv) => (
                   <option key={inv.id} value={inv.id}>
@@ -1000,7 +1001,7 @@ export const SuppliersView: React.FC = () => {
                 required
                 value={settleAmount || ''}
                 onChange={(e) => setSettleAmount(Number(e.target.value))}
-                className="w-full border rounded-xl p-2.5 text-center font-mono font-black text-emerald-800 text-sm"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-center font-mono font-black text-emerald-800 text-sm"
               />
             </div>
             <div>
@@ -1009,21 +1010,21 @@ export const SuppliersView: React.FC = () => {
                 type="text"
                 value={settleNotes}
                 onChange={(e) => setSettleNotes(e.target.value)}
-                className="w-full border rounded-xl p-2.5"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5"
               />
             </div>
-            <div className="flex justify-end gap-2 pt-2 border-t">
+            <div className="flex justify-end gap-2 pt-2.5 border-t">
               <button
                 type="button"
                 onClick={() => setSettleSupplier(null)}
-                className="px-4 py-2 border rounded-xl font-bold cursor-pointer"
+                className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-bold cursor-pointer"
               >
                 إلغاء
               </button>
               <button
                 type="submit"
                 disabled={isSettlingAdvance}
-                className="px-6 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50"
+                className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50"
               >
                 تنفيذ التسوية
               </button>

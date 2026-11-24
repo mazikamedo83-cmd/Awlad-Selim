@@ -502,22 +502,22 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 shadow-xs">
         <div>
-          <h2 className="text-lg font-black text-slate-900 tracking-tight">إدارة فواتير المبيعات وعروض الأسعار</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h2 className="text-base font-black text-slate-900 tracking-tight">إدارة فواتير المبيعات وعروض الأسعار</h2>
+          <p className="text-[11px] text-slate-500 mt-0.5">
             عرض وتوليد وطباعة فواتير المبيعات ومراجعة فواتير المناديب وإصدار عروض الأسعار وتحويلها 1:1
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl text-xs font-bold">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-lg text-xs font-bold">
             <button
               type="button"
               onClick={() => setActiveTab('invoices')}
-              className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+              className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
                 activeTab === 'invoices' ? 'bg-blue-900 text-white shadow-xs' : 'text-slate-700 hover:text-slate-900'
               }`}
             >
@@ -526,7 +526,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('quotes')}
-              className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+              className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
                 activeTab === 'quotes' ? 'bg-blue-900 text-white shadow-xs' : 'text-slate-700 hover:text-slate-900'
               }`}
             >
@@ -537,9 +537,9 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
           <button
             type="button"
             onClick={handleExportExcel}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
           >
-            <Download className="w-4 h-4 text-emerald-600" />
+            <Download className="w-3.5 h-3.5 text-emerald-600" />
             <span>تصدير Excel</span>
           </button>
 
@@ -556,18 +556,18 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
               setQuoteError(null);
               setIsNewQuoteOpen(true);
             }}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-black text-white text-xs font-bold transition-all cursor-pointer"
           >
-            <FileText className="w-4 h-4" />
+            <FileText className="w-3.5 h-3.5" />
             <span>عرض سعر جديد</span>
           </button>
 
           <button
             type="button"
             onClick={() => setIsNewModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-md shadow-blue-900/20 transition-all active:scale-95 cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-xs transition-all active:scale-95 cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
             <span>فاتورة بيع جديدة</span>
           </button>
         </div>
@@ -576,7 +576,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
       {/* Feedback Banner */}
       {actionMessage && (
         <div
-          className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between gap-2 ${
+          className={`px-3 py-2 rounded-lg border text-xs font-bold flex items-center justify-between gap-2 ${
             actionMessage.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
               : 'bg-red-50 border-red-200 text-red-900'
@@ -596,6 +596,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
           subtitle="الفواتير المعتمدة والمسودات والمراجعة الإدارية"
           data={filteredInvoices}
           rowKey={(inv) => inv.id}
+          compact
           searchValue={searchTerm}
           onSearchChange={setSearchTerm}
           searchPlaceholder="بحث برقم الفاتورة أو العميل أو المندوب..."
@@ -603,8 +604,8 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
           pdfTitle="سجل فواتير المبيعات"
           emptyTitle="لا توجد فواتير مبيعات مطابقة لمعايير البحث الحالية"
           toolbarFilters={
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <div className="min-w-[175px]">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <div className="min-w-[165px]">
                 <SearchableFilterSelect
                   id="sales-filter-customer"
                   value={selectedCustomerFilter}
@@ -619,10 +620,10 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   allOptionValue=""
                   searchPlaceholder="ابحث باسم العميل أو المحل أو الهاتف..."
                   allowClear
-                  buttonClassName="rounded-xl min-h-[36px]"
+                  buttonClassName="rounded-lg min-h-[32px]"
                 />
               </div>
-              <div className="min-w-[140px]">
+              <div className="min-w-[130px]">
                 <SearchableFilterSelect
                   id="sales-filter-status"
                   value={statusFilter}
@@ -635,10 +636,10 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   allOptionLabel="جميع الحالات"
                   allOptionValue="all"
                   allowClear
-                  buttonClassName="rounded-xl min-h-[36px]"
+                  buttonClassName="rounded-lg min-h-[32px]"
                 />
               </div>
-              <div className="min-w-[155px]">
+              <div className="min-w-[145px]">
                 <SearchableFilterSelect
                   id="sales-filter-review"
                   value={reviewFilter}
@@ -650,21 +651,21 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   allOptionLabel="حالة المراجعة"
                   allOptionValue="all"
                   allowClear
-                  buttonClassName="rounded-xl min-h-[36px]"
+                  buttonClassName="rounded-lg min-h-[32px]"
                 />
               </div>
               <input
                 type="date"
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
-                className="bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-mono font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
+                className="bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 h-8 text-xs font-mono font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
                 title="من تاريخ"
               />
               <input
                 type="date"
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
-                className="bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-mono font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
+                className="bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 h-8 text-xs font-mono font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
                 title="إلى تاريخ"
               />
             </div>
@@ -899,6 +900,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
           subtitle="عروض الأسعار لا تخصم من المخزون ولا تُقيد مالياً حتى يتم تحويلها لفاتورة بيع معتمدة"
           data={filteredQuotes}
           rowKey={(q) => q.id}
+          compact
           searchValue={searchTerm}
           onSearchChange={setSearchTerm}
           searchPlaceholder="بحث برقم العرض أو العميل..."
@@ -909,14 +911,14 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
             <button
               type="button"
               onClick={() => setIsNewQuoteOpen(true)}
-              className="px-3 py-1.5 rounded-xl bg-blue-900 text-white text-xs font-bold cursor-pointer"
+              className="px-2.5 py-1 rounded-lg bg-blue-900 text-white text-xs font-bold cursor-pointer"
             >
               + إنشاء عرض سعر
             </button>
           }
           toolbarFilters={
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <div className="min-w-[175px]">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <div className="min-w-[165px]">
                 <SearchableFilterSelect
                   id="quotes-filter-customer"
                   value={selectedCustomerFilter}
@@ -930,21 +932,21 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   allOptionLabel="جميع العملاء"
                   allOptionValue=""
                   allowClear
-                  buttonClassName="rounded-xl min-h-[36px]"
+                  buttonClassName="rounded-lg min-h-[32px]"
                 />
               </div>
               <input
                 type="date"
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
-                className="bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-mono font-semibold"
+                className="bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 h-8 text-xs font-mono font-semibold"
                 title="من تاريخ"
               />
               <input
                 type="date"
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
-                className="bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-mono font-semibold"
+                className="bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 h-8 text-xs font-mono font-semibold"
                 title="إلى تاريخ"
               />
             </div>
@@ -1139,21 +1141,21 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
 
       {/* View Detail Modal */}
       {activeInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-right max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b pb-3 mb-4">
-              <h3 className="text-base font-black text-slate-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-3xl bg-white rounded-xl shadow-2xl border border-slate-200 p-3.5 text-right max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b pb-2.5 mb-3">
+              <h3 className="text-sm font-black text-slate-900">
                 تفاصيل الفاتورة: {activeInvoice.invoiceNumber}
               </h3>
               <button
                 onClick={() => setActiveInvoice(null)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold"
+                className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
               >
                 إغلاق ✕
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs mb-4 p-3 bg-slate-50 rounded-xl">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs mb-3 p-2.5 bg-slate-50 rounded-lg border border-slate-200">
               <div>
                 <p className="text-slate-500">العميل: <strong className="text-slate-800">{activeInvoice.customerName}</strong></p>
                 <p className="text-slate-500">المستودع: <strong className="text-slate-800">{activeInvoice.warehouseName}</strong></p>
@@ -1177,7 +1179,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
               </div>
             </div>
 
-            <div className="mb-4">
+            <div className="mb-3">
               <UnifiedDataTable<InvoiceItem>
                 title="أصناف الفاتورة"
                 data={activeInvoice.items}
@@ -1220,10 +1222,10 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
             </div>
 
             {/* Payments History on this Invoice */}
-            <div className="mt-4 mb-4 p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
-              <div className="flex items-center justify-between mb-2.5">
-                <div className="flex items-center gap-2">
-                  <History className="w-4 h-4 text-emerald-700" />
+            <div className="mt-3 mb-3 p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5">
+                  <History className="w-3.5 h-3.5 text-emerald-700" />
                   <h4 className="text-xs font-black text-slate-800">
                     سجل الدفعات المسددة على هذه الفاتورة ({activeInvoice.payments?.length || (activeInvoice.paidAmount > 0 ? 1 : 0)})
                   </h4>
@@ -1296,18 +1298,18 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
             </div>
 
             {Array.isArray(activeInvoice.editHistory) && activeInvoice.editHistory.length > 0 && (
-              <div className="mb-4 p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2">
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-amber-700" />
+              <div className="mb-3 p-2.5 bg-amber-50/70 border border-amber-200 rounded-lg space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-amber-700" />
                   <h4 className="text-xs font-black text-amber-950">
                     سجل التعديلات السابقة ({activeInvoice.editHistory.length})
                   </h4>
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1">
                   {activeInvoice.editHistory.map((entry, idx) => (
                     <div
                       key={`${entry.editedAt}-${idx}`}
-                      className="p-2.5 bg-white border border-amber-200/80 rounded-lg text-[11px] flex flex-col sm:flex-row sm:items-center justify-between gap-1.5"
+                      className="p-2 bg-white border border-amber-200/80 rounded-lg text-[11px] flex flex-col sm:flex-row sm:items-center justify-between gap-1.5"
                     >
                       <div className="space-y-0.5">
                         <div className="font-bold text-slate-900">
@@ -1330,8 +1332,8 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
               </div>
             )}
 
-            <div className="flex justify-between items-center pt-3 border-t text-xs">
-              <div className="flex items-center gap-4 text-slate-600">
+            <div className="flex justify-between items-center pt-2.5 border-t text-xs">
+              <div className="flex items-center gap-3 text-slate-600">
                 <span>الإجمالي: <strong className="text-sm font-black text-slate-900">{activeInvoice.grandTotal.toLocaleString()} {settings.currency}</strong></span>
                 <span>المدفوع: <strong className="text-sm font-bold text-emerald-700">{activeInvoice.paidAmount.toLocaleString()}</strong></span>
                 <span>المتبقي: <strong className="text-sm font-bold text-red-600">{activeInvoice.remainingAmount.toLocaleString()}</strong></span>
@@ -1342,9 +1344,9 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   setActiveInvoice(null);
                   handlePrint(inv);
                 }}
-                className="flex items-center gap-1.5 px-4 py-2 bg-blue-900 text-white rounded-xl font-bold hover:bg-blue-950 transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-900 text-white rounded-lg font-bold hover:bg-blue-950 transition-colors cursor-pointer"
               >
-                <Printer className="w-4 h-4" />
+                <Printer className="w-3.5 h-3.5" />
                 <span>طباعة هذه الفاتورة</span>
               </button>
             </div>
@@ -1354,14 +1356,14 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
 
       {/* Record Subsequent Payment Modal */}
       {paymentModalInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-right animate-in fade-in duration-200">
-            <div className="flex items-center justify-between border-b pb-3 mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl border border-slate-200 p-3.5 text-right animate-in fade-in duration-200">
+            <div className="flex items-center justify-between border-b pb-2.5 mb-3">
               <div>
-                <h3 className="text-base font-black text-slate-900">
+                <h3 className="text-sm font-black text-slate-900">
                   تسجيل دفعة على الفاتورة: {paymentModalInvoice.invoiceNumber}
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-[11px] text-slate-500 mt-0.5">
                   العميل: <strong className="text-slate-800">{paymentModalInvoice.customerName || 'نقدي عام'}</strong>
                 </p>
               </div>
@@ -1374,29 +1376,29 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
             </div>
 
             {paymentError && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-center gap-2">
+              <div className="mb-3 p-2.5 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{paymentError}</span>
               </div>
             )}
 
             {/* Summary strip */}
-            <div className="grid grid-cols-3 gap-2.5 p-3 bg-slate-50 rounded-xl text-center text-xs mb-4 border border-slate-200">
-              <div>
+            <div className="grid grid-cols-3 gap-px bg-slate-200 rounded-lg overflow-hidden text-center text-xs mb-3 border border-slate-200">
+              <div className="bg-slate-50 px-2 py-1.5">
                 <span className="block text-[10px] text-slate-500">إجمالي الفاتورة</span>
-                <span className="font-bold text-slate-800">{paymentModalInvoice.grandTotal.toLocaleString()} {settings.currency}</span>
+                <span className="font-bold text-slate-800 tabular-nums">{paymentModalInvoice.grandTotal.toLocaleString()} {settings.currency}</span>
               </div>
-              <div>
+              <div className="bg-slate-50 px-2 py-1.5">
                 <span className="block text-[10px] text-slate-500">المدفوع سابقاً</span>
-                <span className="font-bold text-emerald-700">{paymentModalInvoice.paidAmount.toLocaleString()}</span>
+                <span className="font-bold text-emerald-700 tabular-nums">{paymentModalInvoice.paidAmount.toLocaleString()}</span>
               </div>
-              <div>
+              <div className="bg-slate-50 px-2 py-1.5">
                 <span className="block text-[10px] text-slate-500">المتبقي المطلوب</span>
-                <span className="font-black text-red-600">{paymentModalInvoice.remainingAmount.toLocaleString()} {settings.currency}</span>
+                <span className="font-black text-red-600 tabular-nums">{paymentModalInvoice.remainingAmount.toLocaleString()} {settings.currency}</span>
               </div>
             </div>
 
-            <form onSubmit={handleSubmitPayment} className="space-y-4 text-xs">
+            <form onSubmit={handleSubmitPayment} className="space-y-2.5 text-xs">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">قيمة الدفعة الجديدة ({settings.currency}):</label>
                 <input
@@ -1407,17 +1409,17 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   placeholder="0.00"
                   value={paymentAmount || ''}
                   onChange={(e) => setPaymentAmount(e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300 font-bold text-sm text-emerald-800 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 outline-hidden"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-bold text-sm text-emerald-800 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 outline-hidden"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">الخزينة / الحساب المستلم:</label>
                   <select
                     value={paymentCashboxId}
                     onChange={(e) => setPaymentCashboxId(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
                   >
                     {cashboxes.map(c => (
                       <option key={c.id} value={c.id}>
@@ -1432,7 +1434,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   <select
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value as any)}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
                   >
                     <option value="cash">نقداً (كاش)</option>
                     <option value="bank">تحويل بنكي</option>
@@ -1441,39 +1443,41 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                 </div>
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">تاريخ الدفعة:</label>
-                <input
-                  type="date"
-                  value={paymentDate}
-                  onChange={(e) => setPaymentDate(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300 font-mono"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">تاريخ الدفعة:</label>
+                  <input
+                    type="date"
+                    value={paymentDate}
+                    onChange={(e) => setPaymentDate(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">ملاحظات / رقم الإيصال:</label>
+                  <input
+                    type="text"
+                    placeholder="ملاحظات أو رقم التحويل..."
+                    value={paymentNotes}
+                    onChange={(e) => setPaymentNotes(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">ملاحظات / رقم الإيصال:</label>
-                <input
-                  type="text"
-                  placeholder="ملاحظات أو رقم التحويل..."
-                  value={paymentNotes}
-                  onChange={(e) => setPaymentNotes(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t">
+              <div className="flex items-center justify-end gap-2 pt-2.5 border-t">
                 <button
                   type="button"
                   onClick={() => setPaymentModalInvoice(null)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 font-bold hover:bg-slate-50 cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-lg border border-slate-300 text-slate-600 font-bold hover:bg-slate-50 cursor-pointer"
                 >
                   إلغاء
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmittingPayment || paymentAmount <= 0}
-                  className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black transition-colors disabled:opacity-50 cursor-pointer"
+                  className="px-4 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-black transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   {isSubmittingPayment ? 'جاري الحفظ...' : 'تأكيد وقبض الدفعة'}
                 </button>
@@ -1485,14 +1489,14 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
 
       {/* Edit Invoice Modal */}
       {editModalInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-right max-h-[90vh] overflow-y-auto animate-in fade-in duration-200">
-            <div className="flex items-center justify-between border-b pb-3 mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-2xl bg-white rounded-xl shadow-2xl border border-slate-200 p-3.5 text-right max-h-[90vh] overflow-y-auto animate-in fade-in duration-200">
+            <div className="flex items-center justify-between border-b pb-2.5 mb-3">
               <div>
-                <h3 className="text-base font-black text-slate-900">
+                <h3 className="text-sm font-black text-slate-900">
                   تعديل الفاتورة رقم: {editModalInvoice.invoiceNumber}
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-[11px] text-slate-500 mt-0.5">
                   العميل: <strong className="text-slate-800">{editModalInvoice.customerName}</strong> | المستودع: <strong className="text-slate-800">{editModalInvoice.warehouseName}</strong>
                 </p>
               </div>
@@ -1505,14 +1509,14 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
             </div>
 
             {editError && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-center gap-2">
+              <div className="mb-3 p-2.5 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{editError}</span>
               </div>
             )}
 
-            <form onSubmit={handleSubmitEdit} className="space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleSubmitEdit} className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">تاريخ الفاتورة:</label>
                   <input
@@ -1520,7 +1524,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     required
                     value={editDate}
                     onChange={(e) => setEditDate(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 font-mono"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono"
                   />
                 </div>
                 <div>
@@ -1531,31 +1535,31 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     placeholder="0"
                     value={editDiscount || ''}
                     onChange={(e) => setEditDiscount(e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 font-bold"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-bold"
                   />
                 </div>
               </div>
 
               {/* Items Table for Editing Quantities & Prices */}
               <div>
-                <label className="block font-bold text-slate-700 mb-1.5">أصناف الفاتورة (تعديل الكميات والأسعار):</label>
-                <div className="border border-slate-200 rounded-xl overflow-hidden awlad-table-scroll">
+                <label className="block font-bold text-slate-700 mb-1">أصناف الفاتورة (تعديل الكميات والأسعار):</label>
+                <div className="border border-slate-200 rounded-lg overflow-hidden awlad-table-scroll">
                   <table className="w-full text-right text-xs">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold">
-                        <th className="p-2.5">الصنف</th>
-                        <th className="p-2.5 text-center">الوحدة</th>
-                        <th className="p-2.5 text-center w-24">الكمية</th>
-                        <th className="p-2.5 text-center w-28">السعر</th>
-                        <th className="p-2.5 text-center">الإجمالي</th>
+                        <th className="p-2">الصنف</th>
+                        <th className="p-2 text-center">الوحدة</th>
+                        <th className="p-2 text-center w-24">الكمية</th>
+                        <th className="p-2 text-center w-28">السعر</th>
+                        <th className="p-2 text-center">الإجمالي</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {editItems.map((item, idx) => (
                         <tr key={idx}>
-                          <td className="p-2.5 font-bold text-slate-800">{item.productName}</td>
-                          <td className="p-2.5 text-center text-slate-600">{item.unit}</td>
-                          <td className="p-2.5 text-center">
+                          <td className="p-2 font-bold text-slate-800">{item.productName}</td>
+                          <td className="p-2 text-center text-slate-600">{item.unit}</td>
+                          <td className="p-2 text-center">
                             <QuantityInput
                               allowDecimals
                               min={0.001}
@@ -1574,10 +1578,10 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                                 );
                               }}
                               ariaLabel={`كمية ${item.productName}`}
-                              inputClassName="w-20 p-1.5 rounded-lg border border-slate-300 text-center font-bold font-mono outline-hidden focus:border-blue-700"
+                              inputClassName="w-20 p-1 rounded-md border border-slate-300 text-center font-bold font-mono outline-hidden focus:border-blue-700"
                             />
                           </td>
-                          <td className="p-2.5 text-center">
+                          <td className="p-2 text-center">
                             <input
                               type="number"
                               min={0}
@@ -1587,10 +1591,10 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                                 const newPrice = parseFloat(e.target.value) || 0;
                                 setEditItems(prev => prev.map((it, i) => i === idx ? { ...it, unitPrice: newPrice, total: (it.quantity * newPrice) - (it.discount || 0) } : it));
                               }}
-                              className="w-24 p-1.5 rounded-lg border border-slate-300 text-center font-bold"
+                              className="w-24 p-1 rounded-md border border-slate-300 text-center font-bold"
                             />
                           </td>
-                          <td className="p-2.5 text-center font-black text-blue-900">
+                          <td className="p-2 text-center font-black text-blue-900 tabular-nums">
                             {((item.quantity * item.unitPrice) - (item.discount || 0)).toLocaleString()} {settings.currency}
                           </td>
                         </tr>
@@ -1606,7 +1610,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   rows={2}
                   value={editNotes}
                   onChange={(e) => setEditNotes(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
                 />
               </div>
 
@@ -1620,7 +1624,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   value={editReason}
                   onChange={(e) => setEditReason(e.target.value)}
                   placeholder="مثال: تصحيح كمية الصنف أو تعديل السعر المتفق عليه..."
-                  className="w-full p-2.5 rounded-xl border border-slate-300 font-semibold focus:border-blue-600 outline-hidden"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-semibold focus:border-blue-600 outline-hidden"
                 />
               </div>
 
@@ -1630,7 +1634,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                 const grand = Math.max(0, subtotal - editDiscount);
                 const diff = grand - editModalInvoice.grandTotal;
                 return (
-                  <div className="p-3 bg-blue-50/70 rounded-xl border border-blue-200 flex items-center justify-between text-xs">
+                  <div className="p-2.5 bg-blue-50/70 rounded-lg border border-blue-200 flex items-center justify-between text-xs">
                     <div>
                       <span className="text-slate-600 block text-[10px]">الإجمالي المحسوب الجديد:</span>
                       <strong className="text-sm font-black text-blue-950">{grand.toLocaleString()} {settings.currency}</strong>
@@ -1645,18 +1649,18 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                 );
               })()}
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t">
+              <div className="flex items-center justify-end gap-2 pt-2.5 border-t">
                 <button
                   type="button"
                   onClick={() => setEditModalInvoice(null)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 font-bold hover:bg-slate-50 cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-lg border border-slate-300 text-slate-600 font-bold hover:bg-slate-50 cursor-pointer"
                 >
                   إلغاء
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmittingEdit}
-                  className="px-5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black transition-colors disabled:opacity-50 cursor-pointer"
+                  className="px-4 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-black transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   {isSubmittingEdit ? 'جاري حفظ التعديل...' : 'حفظ وتحديث الفاتورة'}
                 </button>
@@ -1668,20 +1672,20 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
 
       {/* Confirm Rep Invoice Review Modal */}
       {reviewTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-right">
-            <div className="flex items-center justify-between border-b pb-3 mb-4">
-              <h3 className="text-base font-black text-slate-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-white rounded-xl shadow-2xl border border-slate-200 p-3.5 text-right">
+            <div className="flex items-center justify-between border-b pb-2.5 mb-3">
+              <h3 className="text-sm font-black text-slate-900">
                 تأكيد مراجعة فاتورة المندوب ({reviewTarget.invoiceNumber})
               </h3>
               <button type="button" onClick={() => setReviewTarget(null)} className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer">
                 ✕
               </button>
             </div>
-            <p className="text-xs text-slate-600 mb-3">
+            <p className="text-xs text-slate-600 mb-2.5">
               هذه الفاتورة نُفذت وقُيدت بالفعل في المخزون والحسابات من تطبيق المندوب ({reviewTarget.representativeName || reviewTarget.createdBy}). تأكيد المراجعة يحدّث حالة المراجعة فقط دون تكرار أي قيد.
             </p>
-            <form onSubmit={handleSubmitReview} className="space-y-3 text-xs">
+            <form onSubmit={handleSubmitReview} className="space-y-2.5 text-xs">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">ملاحظات المراجعة (اختياري):</label>
                 <textarea
@@ -1689,17 +1693,17 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   value={reviewNotesInput}
                   onChange={(e) => setReviewNotesInput(e.target.value)}
                   placeholder="ملاحظة الإدارة على الفاتورة..."
-                  className="w-full p-2.5 rounded-xl border border-slate-300"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
                 />
               </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setReviewTarget(null)} className="px-4 py-2 rounded-xl border border-slate-300 font-bold cursor-pointer">
+              <div className="flex justify-end gap-2 pt-2 border-t">
+                <button type="button" onClick={() => setReviewTarget(null)} className="px-3.5 py-1.5 rounded-lg border border-slate-300 font-bold cursor-pointer">
                   إلغاء
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmittingReview}
-                  className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
+                  className="px-4 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
                 >
                   {isSubmittingReview ? 'جاري التأكيد...' : 'اعتماد المراجعة'}
                 </button>
@@ -1711,12 +1715,12 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
 
       {/* New Quote Modal */}
       {isNewQuoteOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-right max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b pb-3 mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-3xl bg-white rounded-xl shadow-2xl border border-slate-200 p-3.5 text-right max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b pb-2.5 mb-3">
               <div>
-                <h3 className="text-base font-black text-slate-900">إنشاء عرض سعر جديد</h3>
-                <p className="text-xs text-slate-500">لا يخصم من المخزون ولا يُقيد مالياً إلا بعد التحويل لفاتورة بيع</p>
+                <h3 className="text-sm font-black text-slate-900">إنشاء عرض سعر جديد</h3>
+                <p className="text-[11px] text-slate-500">لا يخصم من المخزون ولا يُقيد مالياً إلا بعد التحويل لفاتورة بيع</p>
               </div>
               <button type="button" onClick={() => setIsNewQuoteOpen(false)} className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer">
                 ✕
@@ -1724,19 +1728,19 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
             </div>
 
             {quoteError && (
-              <div className="mb-3 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-bold">
+              <div className="mb-2.5 p-2.5 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs font-bold">
                 {quoteError}
               </div>
             )}
 
-            <form onSubmit={handleSubmitQuote} className="space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <form onSubmit={handleSubmitQuote} className="space-y-3 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">العميل:</label>
                   <select
                     value={quoteCustomerId}
                     onChange={(e) => setQuoteCustomerId(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
                   >
                     <option value="">-- عميل عام / نقدي --</option>
                     {customers.map((c) => (
@@ -1749,7 +1753,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   <select
                     value={quoteWarehouseId}
                     onChange={(e) => setQuoteWarehouseId(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
                   >
                     {warehouses.map((w) => (
                       <option key={w.id} value={w.id}>{w.name}</option>
@@ -1762,12 +1766,12 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     type="date"
                     value={quoteDate}
                     onChange={(e) => setQuoteDate(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 font-mono"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono"
                   />
                 </div>
               </div>
 
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+              <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-1.5">
                 <label className="block font-bold text-slate-700">إضافة أصناف لعرض السعر:</label>
                 <div className="flex flex-col sm:flex-row gap-2">
                   <div className="flex-1">
@@ -1791,35 +1795,35 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                       value={quoteQty}
                       onChange={setQuoteQty}
                       ariaLabel="الكمية"
-                      inputClassName="w-full p-2.5 rounded-xl border border-slate-300 text-center font-mono font-bold bg-white"
+                      inputClassName="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-center font-mono font-bold bg-white"
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="border border-slate-200 rounded-xl overflow-hidden awlad-table-scroll">
+              <div className="border border-slate-200 rounded-lg overflow-hidden awlad-table-scroll">
                 <table className="w-full text-right text-xs">
                   <thead>
                     <tr className="bg-slate-100 font-bold text-slate-700 border-b">
-                      <th className="p-2.5">الصنف</th>
-                      <th className="p-2.5 text-center">الوحدة</th>
-                      <th className="p-2.5 text-center">الكمية</th>
-                      <th className="p-2.5 text-center">السعر</th>
-                      <th className="p-2.5 text-center">الإجمالي</th>
-                      <th className="p-2.5 text-center">حذف</th>
+                      <th className="p-2">الصنف</th>
+                      <th className="p-2 text-center">الوحدة</th>
+                      <th className="p-2 text-center">الكمية</th>
+                      <th className="p-2 text-center">السعر</th>
+                      <th className="p-2 text-center">الإجمالي</th>
+                      <th className="p-2 text-center">حذف</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {quoteItems.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="p-5 text-center text-slate-400">لم تُضف أصناف بعد</td>
+                        <td colSpan={6} className="p-4 text-center text-slate-400">لم تُضف أصناف بعد</td>
                       </tr>
                     ) : (
                       quoteItems.map((it, idx) => (
                         <tr key={`${it.productId}-${idx}`}>
-                          <td className="p-2.5 font-bold">{it.productName}</td>
-                          <td className="p-2.5 text-center">{it.unit}</td>
-                          <td className="p-2.5 text-center">
+                          <td className="p-2 font-bold">{it.productName}</td>
+                          <td className="p-2 text-center">{it.unit}</td>
+                          <td className="p-2 text-center">
                             <QuantityInput
                               allowDecimals
                               min={0.001}
@@ -1832,10 +1836,10 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                                 )
                               }
                               ariaLabel={`كمية ${it.productName}`}
-                              inputClassName="w-20 p-1 rounded-lg border border-slate-300 text-center font-mono font-bold"
+                              inputClassName="w-20 p-1 rounded-md border border-slate-300 text-center font-mono font-bold"
                             />
                           </td>
-                          <td className="p-2.5 text-center">
+                          <td className="p-2 text-center">
                             <input
                               type="number"
                               min={0}
@@ -1847,15 +1851,15 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                                   prev.map((row, i) =>
                                     i === idx ? { ...row, unitPrice: price, total: computeLineTotal(row.quantity, price, row.discount || 0) } : row
                                   )
-                                )
+                                );
                               }}
-                              className="w-24 p-1 rounded-lg border border-slate-300 text-center font-mono font-bold"
+                              className="w-24 p-1 rounded-md border border-slate-300 text-center font-mono font-bold"
                             />
                           </td>
-                          <td className="p-2.5 text-center font-black text-blue-900 tabular-nums">
+                          <td className="p-2 text-center font-black text-blue-900 tabular-nums">
                             {it.total.toLocaleString()} {settings.currency}
                           </td>
-                          <td className="p-2.5 text-center">
+                          <td className="p-2 text-center">
                             <button
                               type="button"
                               onClick={() => setQuoteItems((prev) => prev.filter((_, i) => i !== idx))}
@@ -1871,13 +1875,13 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                 </table>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">المندوب (اختياري):</label>
                   <select
                     value={quoteRepId}
                     onChange={(e) => setQuoteRepId(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
                   >
                     <option value="">-- بدون مندوب --</option>
                     {representatives.map((r) => (
@@ -1894,7 +1898,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     placeholder="0.00"
                     value={quoteDiscountTotal}
                     onChange={(e) => setQuoteDiscountTotal(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono font-bold"
                   />
                 </div>
                 <div>
@@ -1904,23 +1908,23 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     value={quoteNotes}
                     onChange={(e) => setQuoteNotes(e.target.value)}
                     placeholder="مدة الصلاحية أو شروط السداد..."
-                    className="w-full p-2.5 rounded-xl border border-slate-300"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-3 border-t">
+              <div className="flex items-center justify-between pt-2.5 border-t">
                 <div className="text-sm font-black text-blue-950 tabular-nums">
                   الصافي المقترح: {Math.max(0, quoteItems.reduce((s, it) => s + it.total, 0) - Number(quoteDiscountTotal || 0)).toLocaleString()} {settings.currency}
                 </div>
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => setIsNewQuoteOpen(false)} className="px-4 py-2 rounded-xl border border-slate-300 font-bold cursor-pointer">
+                  <button type="button" onClick={() => setIsNewQuoteOpen(false)} className="px-3.5 py-1.5 rounded-lg border border-slate-300 font-bold cursor-pointer">
                     إلغاء
                   </button>
                   <button
                     type="submit"
                     disabled={isSubmittingQuote || quoteItems.length === 0}
-                    className="px-5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
+                    className="px-4 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
                   >
                     {isSubmittingQuote ? 'جاري الحفظ...' : 'حفظ عرض السعر'}
                   </button>
@@ -1933,24 +1937,24 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
 
       {/* Convert Quote to Sales Invoice Modal */}
       {convertQuoteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 text-right">
-            <div className="flex items-center justify-between border-b pb-3 mb-4">
-              <h3 className="text-base font-black text-slate-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl border border-slate-200 p-3.5 text-right">
+            <div className="flex items-center justify-between border-b pb-2.5 mb-3">
+              <h3 className="text-sm font-black text-slate-900">
                 تحويل عرض السعر {convertQuoteTarget.invoiceNumber} إلى فاتورة بيع
               </h3>
               <button type="button" onClick={() => setConvertQuoteTarget(null)} className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer">
                 ✕
               </button>
             </div>
-            <form onSubmit={handleSubmitConvertQuote} className="space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleSubmitConvertQuote} className="space-y-2.5 text-xs">
+              <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">مستودع الصرف:</label>
                   <select
                     value={convertWarehouseId}
                     onChange={(e) => setConvertWarehouseId(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
                   >
                     {warehouses.map((w) => (
                       <option key={w.id} value={w.id}>{w.name}</option>
@@ -1962,7 +1966,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   <select
                     value={convertCashboxId}
                     onChange={(e) => setConvertCashboxId(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
                   >
                     {cashboxes.map((cb) => (
                       <option key={cb.id} value={cb.id}>{cb.name}</option>
@@ -1984,7 +1988,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                         setConvertPaidAtInvoice('');
                       }
                     }}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
                   >
                     <option value="cash">نقدي</option>
                     <option value="partial">جزئي</option>
@@ -2000,7 +2004,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     placeholder="0.00"
                     value={convertPaidAtInvoice}
                     onChange={(e) => setConvertPaidAtInvoice(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono font-bold"
                   />
                 </div>
                 <div>
@@ -2012,7 +2016,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     placeholder="0.00"
                     value={convertDiscountTotal}
                     onChange={(e) => setConvertDiscountTotal(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono font-bold"
                   />
                 </div>
               </div>
@@ -2022,17 +2026,17 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   type="text"
                   value={convertNotes}
                   onChange={(e) => setConvertNotes(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
                 />
               </div>
-              <div className="flex justify-end gap-2 pt-3 border-t">
-                <button type="button" onClick={() => setConvertQuoteTarget(null)} className="px-4 py-2 rounded-xl border border-slate-300 font-bold cursor-pointer">
+              <div className="flex justify-end gap-2 pt-2.5 border-t">
+                <button type="button" onClick={() => setConvertQuoteTarget(null)} className="px-3.5 py-1.5 rounded-lg border border-slate-300 font-bold cursor-pointer">
                   إلغاء
                 </button>
                 <button
                   type="submit"
                   disabled={isConvertingQuote}
-                  className="px-5 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
+                  className="px-4 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
                 >
                   {isConvertingQuote ? 'جاري التحويل...' : 'تأكيد التحويل لفاتورة بيع'}
                 </button>

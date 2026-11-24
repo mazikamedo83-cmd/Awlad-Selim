@@ -263,17 +263,17 @@ export const MobilePortal: React.FC = () => {
       ];
 
   return (
-    <div className="min-h-screen bg-[#f5f7f6] dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans antialiased pb-24 pb-safe">
+    <div className="min-h-screen bg-[#f5f7f6] dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans antialiased pb-16 pb-safe">
       {/* Slim Emerald Mobile App Header (#0F5A33) */}
       <header className="sticky top-0 z-30 bg-[#0F5A33] text-white shadow-sm border-b border-[#0B4426] pt-safe">
-        <div className="max-w-5xl mx-auto px-3 sm:px-5">
-          <div className="h-13 flex items-center justify-between gap-2">
+        <div className="max-w-5xl mx-auto px-3 sm:px-4">
+          <div className="h-12 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               {!hideSectionsNav && (
                 <button
                   type="button"
                   onClick={() => setIsDrawerOpen((prev) => !prev)}
-                  className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer shrink-0"
+                  className="min-h-[34px] min-w-[34px] flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white cursor-pointer shrink-0"
                   title="أقسام البوابة"
                   aria-label="أقسام البوابة"
                 >
@@ -283,10 +283,10 @@ export const MobilePortal: React.FC = () => {
               <img
                 src="/awlad-selim-logo.png"
                 alt="AWLAD SELIM"
-                className="h-8 w-8 object-contain bg-white rounded-lg p-0.5 shrink-0"
+                className="h-7 w-7 object-contain bg-white rounded-md p-0.5 shrink-0"
               />
               <div className="min-w-0">
-                <h1 className="text-sm font-black truncate leading-tight">أولاد سليم</h1>
+                <h1 className="text-xs sm:text-sm font-black truncate leading-tight">أولاد سليم</h1>
                 <p className="text-[10px] text-emerald-100 truncate">
                   {isRep ? 'بوابة المندوب' : 'متجر العملاء'} · {currentUser?.fullName}
                 </p>
@@ -297,7 +297,7 @@ export const MobilePortal: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsSyncCenterOpen(true)}
-                className={`relative min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl text-white cursor-pointer ${
+                className={`relative min-h-[34px] min-w-[34px] flex items-center justify-center rounded-lg text-white cursor-pointer ${
                   data.conflictsCount > 0
                     ? 'bg-orange-600 hover:bg-orange-700'
                     : data.pendingSyncCount > 0
@@ -309,7 +309,7 @@ export const MobilePortal: React.FC = () => {
               >
                 <CloudOff className="w-4 h-4" />
                 {syncBadgeCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 rounded bg-slate-900 text-white text-[10px] font-black flex items-center justify-center tabular-nums">
+                  <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded bg-slate-900 text-white text-[9px] font-black flex items-center justify-center tabular-nums">
                     {syncBadgeCount}
                   </span>
                 )}
@@ -321,13 +321,13 @@ export const MobilePortal: React.FC = () => {
                   setIsNotificationsOpen(true);
                   data.markNotificationsRead();
                 }}
-                className="relative min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+                className="relative min-h-[34px] min-w-[34px] flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white cursor-pointer"
                 title="الإشعارات"
                 aria-label="الإشعارات"
               >
                 <Bell className="w-4 h-4" />
                 {data.unreadNotificationCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 rounded bg-red-600 text-white text-[10px] font-black flex items-center justify-center tabular-nums">
+                  <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded bg-red-600 text-white text-[9px] font-black flex items-center justify-center tabular-nums">
                     {data.unreadNotificationCount}
                   </span>
                 )}
@@ -336,7 +336,7 @@ export const MobilePortal: React.FC = () => {
               <button
                 type="button"
                 onClick={() => data.triggerManualSync()}
-                className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+                className="min-h-[34px] min-w-[34px] flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white cursor-pointer"
                 title="تحديث ومزامنة"
                 aria-label="تحديث ومزامنة"
               >
@@ -346,7 +346,7 @@ export const MobilePortal: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsSettingsModalOpen(true)}
-                className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+                className="min-h-[34px] min-w-[34px] flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white cursor-pointer"
                 title="الإعدادات"
                 aria-label="الإعدادات"
               >
@@ -356,7 +356,7 @@ export const MobilePortal: React.FC = () => {
               <button
                 type="button"
                 onClick={logout}
-                className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl bg-red-600/90 hover:bg-red-700 text-white cursor-pointer"
+                className="min-h-[34px] min-w-[34px] flex items-center justify-center rounded-lg bg-red-600/90 hover:bg-red-700 text-white cursor-pointer"
                 title="تسجيل الخروج"
                 aria-label="تسجيل الخروج"
               >
@@ -367,7 +367,7 @@ export const MobilePortal: React.FC = () => {
         </div>
       </header>
 
-      {/* Soft-Gradient Sliding Sections Drawer (Windows/Web only) */}
+      {/* Compact Sliding Sections Drawer (Windows/Web only) */}
       {!hideSectionsNav && isDrawerOpen && (
         <div
           className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-[2px] transition-opacity"
@@ -379,19 +379,19 @@ export const MobilePortal: React.FC = () => {
       <aside
         aria-label="قائمة أقسام البوابة"
         aria-hidden={!isDrawerOpen}
-        className={`fixed top-0 bottom-0 right-0 z-50 w-[82vw] max-w-[320px] bg-gradient-to-b from-white via-sky-50/60 to-indigo-50/75 text-slate-800 border-l border-blue-200/80 shadow-2xl transition-transform duration-300 ease-out flex flex-col pt-safe pb-safe ${
+        className={`fixed top-0 bottom-0 right-0 z-50 w-[80vw] max-w-[290px] bg-white text-slate-800 border-l border-slate-200 shadow-2xl transition-transform duration-200 ease-out flex flex-col pt-safe pb-safe ${
           isDrawerOpen ? 'translate-x-0 pointer-events-auto' : 'translate-x-full pointer-events-none'
         }`}
       >
-        <div className="h-16 flex items-center justify-between px-4 bg-gradient-to-l from-blue-950 via-blue-900 to-indigo-900 text-white border-b border-blue-800/60 shrink-0">
-          <div className="flex items-center gap-2.5 min-w-0">
+        <div className="h-12 flex items-center justify-between px-3 bg-blue-950 text-white border-b border-blue-900 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
             <img
               src="/awlad-selim-logo.png"
               alt="AWLAD SELIM"
-              className="h-9 w-9 object-contain bg-white rounded-xl p-1 shrink-0"
+              className="h-7 w-7 object-contain bg-white rounded-md p-0.5 shrink-0"
             />
             <div className="min-w-0">
-              <span className="block text-sm font-black truncate">أقسام البوابة</span>
+              <span className="block text-xs font-black truncate">أقسام البوابة</span>
               <span className="block text-[10px] text-blue-200 truncate">
                 {isRep ? 'بوابة المندوب' : 'بوابة العميل'} · {currentUser?.fullName}
               </span>
@@ -400,14 +400,14 @@ export const MobilePortal: React.FC = () => {
           <button
             type="button"
             onClick={() => setIsDrawerOpen(false)}
-            className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-white/15 hover:bg-white/25 text-white cursor-pointer shrink-0"
+            className="min-h-[32px] min-w-[32px] flex items-center justify-center rounded-lg bg-white/15 hover:bg-white/25 text-white cursor-pointer shrink-0"
             aria-label="إغلاق القائمة الجانبية"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3.5 space-y-2">
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {allPortalDestinations.map((item) => {
             const Icon = item.icon;
             return (
@@ -418,17 +418,17 @@ export const MobilePortal: React.FC = () => {
                   item.onSelect();
                   setIsDrawerOpen(false);
                 }}
-                className={`w-full min-h-[46px] px-3.5 py-2.5 rounded-2xl flex items-center justify-between gap-2 text-xs border transition-all cursor-pointer ${
+                className={`w-full min-h-[38px] px-2.5 py-1.5 rounded-lg flex items-center justify-between gap-2 text-xs border transition-colors cursor-pointer ${
                   item.active
-                    ? 'bg-gradient-to-l from-blue-600 to-indigo-600 text-white border-blue-600 font-black shadow-sm'
-                    : 'bg-white/90 text-slate-800 border-blue-100 hover:bg-blue-50/70 font-bold'
+                    ? 'bg-blue-900 text-white border-blue-900 font-black'
+                    : 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50 font-bold'
                 }`}
               >
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2 min-w-0">
                   <Icon className="w-4 h-4 shrink-0" />
-                  <span>{item.label}</span>
+                  <span className="truncate">{item.label}</span>
                 </div>
-                <ChevronLeft className={`w-4 h-4 shrink-0 ${item.active ? 'text-blue-100' : 'text-slate-400'}`} />
+                <ChevronLeft className={`w-3.5 h-3.5 shrink-0 ${item.active ? 'text-blue-200' : 'text-slate-400'}`} />
               </button>
             );
           })}
@@ -436,15 +436,15 @@ export const MobilePortal: React.FC = () => {
       </aside>
       )}
 
-      <main className="max-w-5xl mx-auto p-3.5 space-y-3.5">
+      <main className="max-w-5xl mx-auto p-2.5 sm:p-3 space-y-2.5">
         {linkWarning && (
-          <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900">
+          <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900">
             {linkWarning}
           </div>
         )}
 
         {(isDatabaseUnavailable || (data.networkStatus === 'error' && data.lastError)) && (
-          <div className="p-3 rounded-2xl bg-red-50 border border-red-200 text-xs font-bold text-red-800 flex items-center justify-between gap-2">
+          <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-xs font-bold text-red-800 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
               <span>
@@ -460,7 +460,7 @@ export const MobilePortal: React.FC = () => {
                 refreshAuthContext().catch(() => {});
                 data.triggerManualSync();
               }}
-              className="px-3 py-1.5 rounded-xl bg-red-600 text-white text-[11px] font-bold shrink-0 disabled:opacity-50 cursor-pointer"
+              className="px-2.5 py-1 rounded-lg bg-red-600 text-white text-[11px] font-bold shrink-0 disabled:opacity-50 cursor-pointer"
             >
               {data.isSyncing ? 'جاري الفحص...' : 'إعادة المحاولة'}
             </button>
@@ -468,7 +468,7 @@ export const MobilePortal: React.FC = () => {
         )}
 
         {!isDatabaseUnavailable && (isOfflineSession || permissionsMayBeStale) && (
-          <div className="p-3 rounded-2xl bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-center gap-2">
+          <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-center gap-2">
             <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0" />
             <span>
               وضع الدخول المحلي الموثق — يتم تطبيق آخر صلاحيات موثقة من السيرفر وقد تتحدث فور عودة الاتصال.
@@ -479,7 +479,7 @@ export const MobilePortal: React.FC = () => {
         {!isDatabaseUnavailable &&
           data.networkStatus !== 'error' &&
           (data.isUsingOfflineCache || data.networkStatus === 'disconnected') && (
-            <div className="p-3 rounded-2xl bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-center justify-between gap-2">
+            <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <WifiOff className="w-4 h-4 text-amber-700 shrink-0" />
                 <span>
@@ -490,7 +490,7 @@ export const MobilePortal: React.FC = () => {
               <button
                 type="button"
                 onClick={() => data.triggerManualSync()}
-                className="px-3 py-1.5 rounded-xl bg-amber-600 text-white text-[11px] font-bold shrink-0 cursor-pointer"
+                className="px-2.5 py-1 rounded-lg bg-amber-600 text-white text-[11px] font-bold shrink-0 cursor-pointer"
               >
                 إعادة المحاولة
               </button>
@@ -498,7 +498,7 @@ export const MobilePortal: React.FC = () => {
           )}
 
         {(data.pendingSyncCount > 0 || data.conflictsCount > 0) && (
-          <div className="p-3 rounded-2xl bg-blue-50 border border-blue-200 text-xs font-bold text-blue-900 flex items-center justify-between gap-2">
+          <div className="px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-xs font-bold text-blue-900 flex items-center justify-between gap-2">
             <span>
               {data.conflictsCount > 0
                 ? `توجد (${data.conflictsCount}) تعارضات مزامنة تحتاج مراجعة و(${data.pendingSyncCount}) عمليات محلية بانتظار الاعتماد المركزي.`
@@ -508,14 +508,14 @@ export const MobilePortal: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsSyncCenterOpen(true)}
-                className="px-2.5 py-1.5 rounded-xl bg-white border border-blue-300 text-blue-900 text-[11px] font-bold cursor-pointer"
+                className="px-2 py-1 rounded-lg bg-white border border-blue-300 text-blue-900 text-[11px] font-bold cursor-pointer"
               >
                 مركز المزامنة
               </button>
               <button
                 type="button"
                 onClick={() => data.triggerManualSync()}
-                className="px-3 py-1.5 rounded-xl bg-blue-900 text-white text-[11px] font-bold cursor-pointer"
+                className="px-2.5 py-1 rounded-lg bg-blue-900 text-white text-[11px] font-bold cursor-pointer"
               >
                 مزامنة الآن
               </button>
@@ -561,19 +561,19 @@ export const MobilePortal: React.FC = () => {
                 type="button"
                 onClick={item.onSelect}
                 aria-current={item.active ? 'page' : undefined}
-                className={`relative min-h-[54px] py-1.5 px-1 flex flex-col items-center justify-center gap-0.5 transition-colors cursor-pointer ${
+                className={`relative min-h-[48px] py-1 px-1 flex flex-col items-center justify-center gap-0.5 transition-colors cursor-pointer ${
                   item.active
                     ? 'text-[#0F5A33] dark:text-emerald-400 font-black'
                     : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 font-bold'
                 }`}
               >
                 {item.active && (
-                  <span className="absolute top-0 inset-x-3 h-[3px] rounded-b bg-[#0F5A33] dark:bg-emerald-400" />
+                  <span className="absolute top-0 inset-x-3 h-[2.5px] rounded-b bg-[#0F5A33] dark:bg-emerald-400" />
                 )}
                 <div className="relative">
-                  <Icon className="w-5 h-5 shrink-0" />
+                  <Icon className="w-4 h-4 shrink-0" />
                   {item.badge > 0 && (
-                    <span className="absolute -top-1.5 -left-2 min-w-[16px] h-[16px] px-1 rounded bg-[#0F5A33] text-white text-[9px] font-black flex items-center justify-center tabular-nums">
+                    <span className="absolute -top-1.5 -left-2 min-w-[15px] h-[15px] px-1 rounded bg-[#0F5A33] text-white text-[9px] font-black flex items-center justify-center tabular-nums">
                       {item.badge}
                     </span>
                   )}
@@ -586,20 +586,20 @@ export const MobilePortal: React.FC = () => {
       </nav>
 
       {pendingRepTab && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-          <div className="w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl border border-slate-200 space-y-3 text-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/60 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-white rounded-xl p-3.5 shadow-2xl border border-slate-200 space-y-2.5 text-xs">
             <div className="flex items-center gap-2 font-black text-sm text-amber-800">
-              <AlertCircle className="w-5 h-5 shrink-0" />
+              <AlertCircle className="w-4 h-4 shrink-0" />
               <span>توجد أصناف غير محفوظة في الفاتورة</span>
             </div>
             <p className="text-slate-600 leading-relaxed">
               توجد أصناف مضافة في شاشة فاتورة البيع لم تُحفظ بعد. هل تود البقاء لإكمال الفاتورة أم الانتقال مع الاحتفاظ بالبيانات مؤقتاً؟
             </p>
-            <div className="grid grid-cols-2 gap-2 pt-1">
+            <div className="grid grid-cols-2 gap-2 pt-0.5">
               <button
                 type="button"
                 onClick={() => setPendingRepTab(null)}
-                className="min-h-[44px] rounded-xl bg-blue-900 text-white font-black cursor-pointer"
+                className="min-h-[38px] rounded-lg bg-blue-900 text-white font-black cursor-pointer"
               >
                 البقاء في الفاتورة
               </button>
@@ -610,7 +610,7 @@ export const MobilePortal: React.FC = () => {
                   setPendingRepTab(null);
                   setRepTab(target);
                 }}
-                className="min-h-[44px] rounded-xl bg-slate-100 text-slate-800 font-bold cursor-pointer"
+                className="min-h-[38px] rounded-lg bg-slate-100 text-slate-800 font-bold cursor-pointer"
               >
                 الانتقال مؤقتاً
               </button>
@@ -645,12 +645,12 @@ export const MobilePortal: React.FC = () => {
       />
 
       {isSettingsModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-          <div className="w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl border border-slate-200 space-y-3 text-xs">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/60 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-white rounded-xl p-3.5 shadow-2xl border border-slate-200 space-y-2.5 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-800 flex items-center justify-center">
-                  <Settings className="w-5 h-5" />
+                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-800 flex items-center justify-center">
+                  <Settings className="w-4 h-4" />
                 </div>
                 <div>
                   <h3 className="font-black text-sm text-slate-900">إعدادات التطبيق والحساب</h3>
@@ -662,51 +662,52 @@ export const MobilePortal: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsSettingsModalOpen(false)}
-                className="min-h-[36px] min-w-[36px] rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700 cursor-pointer"
+                className="min-h-[32px] min-w-[32px] rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700 cursor-pointer"
                 aria-label="إغلاق"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-2 max-h-[68vh] overflow-y-auto pr-0.5">
+            <div className="space-y-1.5 max-h-[72vh] overflow-y-auto pr-0.5">
               {/* Scoped Permissions Summary */}
-              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5">
-                <div className="flex items-center gap-1.5 font-black text-slate-800">
-                  <ShieldCheck className="w-4 h-4 text-emerald-700 shrink-0" />
-                  <span>حالة الحساب والصلاحيات</span>
+              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-black text-slate-800">
+                    <ShieldCheck className="w-4 h-4 text-emerald-700 shrink-0" />
+                    <span>حالة الحساب والصلاحيات</span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    @{currentUser?.username} · {isRep ? 'مندوب' : 'عميل'}
+                  </span>
                 </div>
-                <p className="text-[11px] text-slate-600 font-mono">
-                  @{currentUser?.username} · {isRep ? 'مندوب مبيعات' : 'عميل مسجل'}
-                </p>
-                <div className="flex flex-wrap gap-1 pt-0.5">
+                <p className="text-[11px] text-slate-700 font-bold leading-relaxed">
                   {Object.entries(currentUser?.permissions || {})
                     .filter(([, ok]) => Boolean(ok))
                     .slice(0, 8)
-                    .map(([k]) => (
-                      <span key={k} className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-900 border border-blue-200 text-[10px] font-bold">
-                        {k === 'canManageSales'
-                          ? 'المبيعات'
-                          : k === 'canCreatePurchase'
-                          ? 'فواتير الشراء'
-                          : k === 'canManageTransfers'
-                          ? 'العهد والتحويل'
-                          : k === 'canView'
-                          ? 'العرض'
-                          : k === 'canAdd'
-                          ? 'الإضافة'
-                          : k === 'canEdit'
-                          ? 'التعديل'
-                          : k === 'canPrint'
-                          ? 'الطباعة'
-                          : k === 'canSend'
-                          ? 'الإرسال'
-                          : k === 'canReceive'
-                          ? 'الاستلام'
-                          : k}
-                      </span>
-                    ))}
-                </div>
+                    .map(([k]) =>
+                      k === 'canManageSales'
+                        ? 'المبيعات'
+                        : k === 'canCreatePurchase'
+                        ? 'فواتير الشراء'
+                        : k === 'canManageTransfers'
+                        ? 'العهد والتحويل'
+                        : k === 'canView'
+                        ? 'العرض'
+                        : k === 'canAdd'
+                        ? 'الإضافة'
+                        : k === 'canEdit'
+                        ? 'التعديل'
+                        : k === 'canPrint'
+                        ? 'الطباعة'
+                        : k === 'canSend'
+                        ? 'الإرسال'
+                        : k === 'canReceive'
+                        ? 'الاستلام'
+                        : k
+                    )
+                    .join(' · ') || 'صلاحيات العرض الأساسية'}
+                </p>
               </div>
 
               {/* Change Password Inline Accordion */}
@@ -716,7 +717,7 @@ export const MobilePortal: React.FC = () => {
                   setShowPasswordBox((prev) => !prev);
                   setPwdFeedback(null);
                 }}
-                className="w-full min-h-[44px] px-3.5 rounded-2xl bg-slate-50 hover:bg-blue-50 border border-slate-200 flex items-center justify-between font-bold text-slate-800 cursor-pointer"
+                className="w-full min-h-[38px] px-3 rounded-lg bg-slate-50 hover:bg-blue-50 border border-slate-200 flex items-center justify-between font-bold text-slate-800 cursor-pointer"
               >
                 <span className="flex items-center gap-2">
                   <Lock className="w-4 h-4 text-indigo-700" />
@@ -750,7 +751,7 @@ export const MobilePortal: React.FC = () => {
                       setPwdFeedback({ type: 'error', text: res.error || 'تعذر تغيير كلمة المرور.' });
                     }
                   }}
-                  className="p-3 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-2"
+                  className="p-2.5 rounded-lg bg-indigo-50/70 border border-indigo-200 space-y-1.5"
                 >
                   {pwdFeedback && (
                     <p className={`text-[11px] font-bold ${pwdFeedback.type === 'success' ? 'text-emerald-800' : 'text-red-700'}`}>
@@ -763,7 +764,7 @@ export const MobilePortal: React.FC = () => {
                     value={currPwd}
                     onChange={(e) => setCurrPwd(e.target.value)}
                     placeholder="كلمة المرور الحالية"
-                    className="w-full min-h-[40px] rounded-xl border border-slate-300 px-3 bg-white font-mono"
+                    className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 bg-white font-mono"
                   />
                   <input
                     type="password"
@@ -772,7 +773,7 @@ export const MobilePortal: React.FC = () => {
                     value={newPwd}
                     onChange={(e) => setNewPwd(e.target.value)}
                     placeholder="كلمة المرور الجديدة"
-                    className="w-full min-h-[40px] rounded-xl border border-slate-300 px-3 bg-white font-mono"
+                    className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 bg-white font-mono"
                   />
                   <input
                     type="password"
@@ -781,12 +782,12 @@ export const MobilePortal: React.FC = () => {
                     value={confirmPwd}
                     onChange={(e) => setConfirmPwd(e.target.value)}
                     placeholder="تأكيد كلمة المرور الجديدة"
-                    className="w-full min-h-[40px] rounded-xl border border-slate-300 px-3 bg-white font-mono"
+                    className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 bg-white font-mono"
                   />
                   <button
                     type="submit"
                     disabled={isSavingPwd}
-                    className="w-full min-h-[40px] rounded-xl bg-indigo-900 text-white font-black cursor-pointer disabled:opacity-50"
+                    className="w-full min-h-[36px] rounded-lg bg-indigo-900 text-white font-black cursor-pointer disabled:opacity-50"
                   >
                     {isSavingPwd ? 'جاري التحديث...' : 'حفظ كلمة المرور'}
                   </button>
@@ -799,7 +800,7 @@ export const MobilePortal: React.FC = () => {
                   setIsSettingsModalOpen(false);
                   setIsServerModalOpen(true);
                 }}
-                className="w-full min-h-[44px] px-3.5 rounded-2xl bg-slate-50 hover:bg-blue-50 border border-slate-200 flex items-center justify-between font-bold text-slate-800 cursor-pointer"
+                className="w-full min-h-[38px] px-3 rounded-lg bg-slate-50 hover:bg-blue-50 border border-slate-200 flex items-center justify-between font-bold text-slate-800 cursor-pointer"
               >
                 <span className="flex items-center gap-2">
                   <Server className="w-4 h-4 text-blue-700" />
@@ -814,13 +815,13 @@ export const MobilePortal: React.FC = () => {
                   setIsSettingsModalOpen(false);
                   setIsSyncCenterOpen(true);
                 }}
-                className="w-full min-h-[44px] px-3.5 rounded-2xl bg-slate-50 hover:bg-blue-50 border border-slate-200 flex items-center justify-between font-bold text-slate-800 cursor-pointer"
+                className="w-full min-h-[38px] px-3 rounded-lg bg-slate-50 hover:bg-blue-50 border border-slate-200 flex items-center justify-between font-bold text-slate-800 cursor-pointer"
               >
                 <span className="flex items-center gap-2">
                   <CloudOff className="w-4 h-4 text-amber-600" />
                   <span>مركز المزامنة والعمليات المعلقة</span>
                 </span>
-                <span className="px-2 py-0.5 rounded-lg bg-slate-200 text-slate-800 text-[10px] font-black">
+                <span className="font-mono font-black text-slate-800 tabular-nums">
                   {syncBadgeCount}
                 </span>
               </button>
@@ -831,7 +832,7 @@ export const MobilePortal: React.FC = () => {
                   setIsSettingsModalOpen(false);
                   data.triggerManualSync();
                 }}
-                className="w-full min-h-[44px] px-3.5 rounded-2xl bg-blue-900 hover:bg-blue-950 text-white flex items-center justify-center gap-2 font-black cursor-pointer"
+                className="w-full min-h-[38px] px-3 rounded-lg bg-blue-900 hover:bg-blue-950 text-white flex items-center justify-center gap-2 font-black cursor-pointer"
               >
                 <RefreshCw className={`w-4 h-4 ${data.networkStatus === 'synchronizing' ? 'animate-spin' : ''}`} />
                 <span>مزامنة البيانات الآن</span>
@@ -843,7 +844,7 @@ export const MobilePortal: React.FC = () => {
                   setIsSettingsModalOpen(false);
                   logout();
                 }}
-                className="w-full min-h-[44px] px-3.5 rounded-2xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 flex items-center justify-center gap-2 font-black cursor-pointer"
+                className="w-full min-h-[38px] px-3 rounded-lg bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 flex items-center justify-center gap-2 font-black cursor-pointer"
               >
                 <LogOut className="w-4 h-4" />
                 <span>تسجيل الخروج من الحساب</span>

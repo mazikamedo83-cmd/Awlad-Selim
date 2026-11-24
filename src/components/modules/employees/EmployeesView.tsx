@@ -403,24 +403,24 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 shadow-xs">
         <div>
-          <h2 className="text-lg font-black text-slate-900 tracking-tight">إدارة شؤون الموظفين والرواتب</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h2 className="text-base font-black text-slate-900 tracking-tight">إدارة شؤون الموظفين والرواتب</h2>
+          <p className="text-[11px] text-slate-500 mt-0.5">
             سجلات الموظفين، الحضور والانصراف، السلف، الخصومات، ومسير الرواتب الشهري
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5">
           <button
             type="button"
             onClick={() => {
               setAdvanceError(null);
               setIsAdvanceModalOpen(true);
             }}
-            className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold cursor-pointer"
+            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold cursor-pointer"
           >
             + سلفة / خصم / مكافأة
           </button>
@@ -430,14 +430,14 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
               setPayrollError(null);
               setIsPayrollModalOpen(true);
             }}
-            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold cursor-pointer"
+            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold cursor-pointer"
           >
             صرف راتب موظف
           </button>
           <button
             type="button"
             onClick={openAddEmployeeModal}
-            className="px-4 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl text-xs font-black shadow-md cursor-pointer"
+            className="px-3.5 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-lg text-xs font-black shadow-xs cursor-pointer"
           >
             + إضافة موظف
           </button>
@@ -446,7 +446,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
 
       {actionMessage && (
         <div
-          className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between gap-2 ${
+          className={`px-3 py-2 rounded-lg border text-xs font-bold flex items-center justify-between gap-2 ${
             actionMessage.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
               : 'bg-red-50 border-red-200 text-red-900'
@@ -470,7 +470,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
       <div className="flex flex-wrap border-b border-slate-200 text-xs font-bold gap-4">
         <button
           onClick={() => setActiveTab('employees')}
-          className={`pb-2.5 transition-colors border-b-2 cursor-pointer ${
+          className={`pb-2 transition-colors border-b-2 cursor-pointer ${
             activeTab === 'employees' ? 'border-blue-900 text-blue-950' : 'border-transparent text-slate-500'
           }`}
         >
@@ -478,7 +478,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
         </button>
         <button
           onClick={() => setActiveTab('attendance')}
-          className={`pb-2.5 transition-colors border-b-2 cursor-pointer ${
+          className={`pb-2 transition-colors border-b-2 cursor-pointer ${
             activeTab === 'attendance' ? 'border-blue-900 text-blue-950' : 'border-transparent text-slate-500'
           }`}
         >
@@ -486,7 +486,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
         </button>
         <button
           onClick={() => setActiveTab('advances')}
-          className={`pb-2.5 transition-colors border-b-2 cursor-pointer ${
+          className={`pb-2 transition-colors border-b-2 cursor-pointer ${
             activeTab === 'advances' ? 'border-blue-900 text-blue-950' : 'border-transparent text-slate-500'
           }`}
         >
@@ -494,7 +494,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
         </button>
         <button
           onClick={() => setActiveTab('payrolls')}
-          className={`pb-2.5 transition-colors border-b-2 cursor-pointer ${
+          className={`pb-2 transition-colors border-b-2 cursor-pointer ${
             activeTab === 'payrolls' ? 'border-blue-900 text-blue-950' : 'border-transparent text-slate-500'
           }`}
         >
@@ -508,6 +508,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
           title={`سجل الموظفين (${employees.length})`}
           data={employees}
           rowKey={(emp) => emp.id}
+          compact
           searchPlaceholder="بحث باسم الموظف أو الكود أو المسمى الوظيفي أو الهاتف..."
           exportFilename="AWLAD_SELIM_Employees"
           pdfTitle="قائمة الموظفين والكادر الوظيفي"
@@ -685,19 +686,19 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
 
       {/* Attendance Tab */}
       {activeTab === 'attendance' && (
-        <div className="space-y-4">
-          <form onSubmit={handleAttendanceFormSubmit} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-xs space-y-3">
-            <h3 className="font-black text-slate-900 text-sm flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-blue-900" />
+        <div className="space-y-3">
+          <form onSubmit={handleAttendanceFormSubmit} className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-xs text-xs space-y-2.5">
+            <h3 className="font-black text-slate-900 text-xs flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-blue-900" />
               <span>تسجيل حركة حضور / انصراف</span>
             </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-6 gap-3 items-end">
+            <div className="grid grid-cols-1 sm:grid-cols-6 gap-2 items-end">
               <div className="sm:col-span-2">
                 <label className="block font-bold mb-1">الموظف:</label>
                 <select
                   value={attEmpId}
                   onChange={(e) => setAttEmpId(e.target.value)}
-                  className="w-full border rounded-xl p-2 font-bold bg-slate-50"
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 font-bold bg-slate-50"
                 >
                   {employees.length === 0 ? (
                     <option value="">-- لا يوجد موظفون --</option>
@@ -716,7 +717,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                   type="date"
                   value={attDate}
                   onChange={(e) => setAttDate(e.target.value)}
-                  className="w-full border rounded-xl p-2 font-mono font-bold"
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 font-mono font-bold"
                 />
               </div>
               <div>
@@ -724,7 +725,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                 <select
                   value={attStatus}
                   onChange={(e) => setAttStatus(e.target.value as any)}
-                  className="w-full border rounded-xl p-2 font-bold"
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 font-bold"
                 >
                   <option value="present">حاضر</option>
                   <option value="late">متأخر</option>
@@ -739,20 +740,20 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                   value={attCheckIn}
                   onChange={(e) => setAttCheckIn(e.target.value)}
                   disabled={attStatus === 'absent' || attStatus === 'leave'}
-                  className="w-full border rounded-xl p-2 font-mono disabled:bg-slate-100"
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 font-mono disabled:bg-slate-100"
                 />
               </div>
               <div>
                 <button
                   type="submit"
                   disabled={isSavingAtt || employees.length === 0}
-                  className="w-full py-2 px-4 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-black cursor-pointer disabled:opacity-50"
+                  className="w-full py-1.5 px-3 bg-blue-900 hover:bg-blue-950 text-white rounded-lg font-black cursor-pointer disabled:opacity-50"
                 >
                   {isSavingAtt ? 'جاري الحفظ...' : 'تسجيل الحركة'}
                 </button>
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
               <div>
                 <label className="block font-bold mb-1">وقت الانصراف:</label>
                 <input
@@ -760,7 +761,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                   value={attCheckOut}
                   onChange={(e) => setAttCheckOut(e.target.value)}
                   disabled={attStatus === 'absent' || attStatus === 'leave'}
-                  className="w-full border rounded-xl p-2 font-mono disabled:bg-slate-100"
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 font-mono disabled:bg-slate-100"
                 />
               </div>
               <div className="sm:col-span-3">
@@ -770,7 +771,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                   value={attNotes}
                   onChange={(e) => setAttNotes(e.target.value)}
                   placeholder="ملاحظة إضافية حول التأخير أو الإذن..."
-                  className="w-full border rounded-xl p-2"
+                  className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5"
                 />
               </div>
             </div>
@@ -851,6 +852,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
           title={`سجل السلف والخصومات والمكافآت (${advancesDeductions.length})`}
           data={advancesDeductions}
           rowKey={(a) => a.id}
+          compact
           searchPlaceholder="بحث باسم الموظف أو البيان أو التاريخ..."
           exportFilename="AWLAD_SELIM_Advances"
           pdfTitle="سجل السلف والخصومات والمكافآت"
@@ -935,6 +937,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
           title={`مسيرات الرواتب المصروفة (${payrolls.length})`}
           data={payrolls}
           rowKey={(p) => p.id}
+          compact
           searchPlaceholder="بحث برقم المسير أو اسم الموظف..."
           exportFilename="AWLAD_SELIM_Payrolls"
           pdfTitle="مسيرات الرواتب المصروفة"
@@ -1042,9 +1045,9 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
         title={editingEmp ? `تعديل بيانات الموظف: ${editingEmp.name}` : 'إضافة موظف جديد'}
         maxWidth="md"
       >
-        <form onSubmit={handleEmployeeSubmit} className="space-y-4 text-xs">
+        <form onSubmit={handleEmployeeSubmit} className="space-y-2.5 text-xs">
           {empError && (
-            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">{empError}</div>
+            <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold">{empError}</div>
           )}
 
           <div>
@@ -1054,10 +1057,10 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
               required
               value={empName}
               onChange={(e) => setEmpName(e.target.value)}
-              className="w-full border rounded-xl p-2.5 font-bold"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2.5">
             <div>
               <label className="block font-bold mb-1">رقم الهاتف:</label>
               <input
@@ -1065,7 +1068,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                 required
                 value={empPhone}
                 onChange={(e) => setEmpPhone(e.target.value)}
-                className="w-full border rounded-xl p-2.5 font-mono"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono"
               />
             </div>
             <div>
@@ -1074,11 +1077,11 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                 type="text"
                 value={empNationalId}
                 onChange={(e) => setEmpNationalId(e.target.value)}
-                className="w-full border rounded-xl p-2.5 font-mono"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono"
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2.5">
             <div>
               <label className="block font-bold mb-1">المسمى الوظيفي:</label>
               <input
@@ -1087,7 +1090,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                 placeholder="أدخل المسمى الوظيفي"
                 value={empJob}
                 onChange={(e) => setEmpJob(e.target.value)}
-                className="w-full border rounded-xl p-2.5"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5"
               />
             </div>
             <div>
@@ -1098,11 +1101,11 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                 placeholder="أدخل القسم"
                 value={empDept}
                 onChange={(e) => setEmpDept(e.target.value)}
-                className="w-full border rounded-xl p-2.5"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5"
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2.5">
             <div>
               <label className="block font-bold mb-1">الراتب الأساسي ({settings.currency}):</label>
               <input
@@ -1112,7 +1115,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                 placeholder="0.00"
                 value={empSalary}
                 onChange={(e) => setEmpSalary(e.target.value === '' ? '' : Number(e.target.value))}
-                className="w-full border rounded-xl p-2.5 font-mono font-bold"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold"
               />
             </div>
             <div>
@@ -1120,7 +1123,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
               <select
                 value={empStatus}
                 onChange={(e) => setEmpStatus(e.target.value as 'active' | 'suspended')}
-                className="w-full border rounded-xl p-2.5 font-bold"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold bg-white"
               >
                 <option value="active">نشط (على رأس العمل)</option>
                 <option value="suspended">موقوف</option>
@@ -1135,7 +1138,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
             <select
               value={empUserId}
               onChange={(e) => setEmpUserId(e.target.value)}
-              className="w-full border rounded-xl p-2.5 font-bold bg-slate-50"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold bg-slate-50"
             >
               <option value="">-- بدون ربط بحساب مستخدم --</option>
               {users
@@ -1162,17 +1165,17 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
               type="text"
               value={empNotes}
               onChange={(e) => setEmpNotes(e.target.value)}
-              className="w-full border rounded-xl p-2.5"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5"
             />
           </div>
-          <div className="flex justify-end gap-2 pt-2 border-t">
-            <button type="button" onClick={() => setIsEmpModalOpen(false)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">
+          <div className="flex justify-end gap-2 pt-2.5 border-t">
+            <button type="button" onClick={() => setIsEmpModalOpen(false)} className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-bold cursor-pointer">
               إلغاء
             </button>
             <button
               type="submit"
               disabled={isSavingEmp}
-              className="px-6 py-2 bg-blue-900 text-white rounded-xl font-bold disabled:opacity-50 cursor-pointer"
+              className="px-4 py-1.5 bg-blue-900 text-white rounded-lg font-bold disabled:opacity-50 cursor-pointer"
             >
               {isSavingEmp ? 'جاري الحفظ...' : editingEmp ? 'حفظ التعديلات' : 'حفظ الموظف'}
             </button>
@@ -1187,9 +1190,9 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
         title="تسجيل سلفة أو خصم أو مكافأة"
         maxWidth="md"
       >
-        <form onSubmit={handleAddAdvanceSubmit} className="space-y-4 text-xs">
+        <form onSubmit={handleAddAdvanceSubmit} className="space-y-2.5 text-xs">
           {advanceError && (
-            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">{advanceError}</div>
+            <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold">{advanceError}</div>
           )}
 
           <div>
@@ -1197,7 +1200,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
             <select
               value={selectedEmpId}
               onChange={(e) => setSelectedEmpId(e.target.value)}
-              className="w-full border rounded-xl p-2.5 font-bold"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold bg-white"
             >
               {activeEmployees.length === 0 ? (
                 <option value="">-- لا يوجد موظفون نشطون مسجلون بعد --</option>
@@ -1209,33 +1212,35 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
             </select>
           </div>
 
-          <div>
-            <label className="block font-bold mb-1">نوع العملية:</label>
-            <select
-              value={advanceType}
-              onChange={(e) => {
-                const nextType = e.target.value as 'advance' | 'deduction' | 'bonus';
-                setAdvanceType(nextType);
-              }}
-              className="w-full border rounded-xl p-2.5 font-bold"
-            >
-              <option value="advance">سلفة نقدية (تخصم من الراتب وتصرف من الخزينة)</option>
-              <option value="deduction">خصم جزاء أو غياب</option>
-              <option value="bonus">مكافأة أو حافز إضافي</option>
-            </select>
-          </div>
+          <div className="grid grid-cols-2 gap-2.5">
+            <div>
+              <label className="block font-bold mb-1">نوع العملية:</label>
+              <select
+                value={advanceType}
+                onChange={(e) => {
+                  const nextType = e.target.value as 'advance' | 'deduction' | 'bonus';
+                  setAdvanceType(nextType);
+                }}
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold bg-white"
+              >
+                <option value="advance">سلفة نقدية (تخصم وتصرف)</option>
+                <option value="deduction">خصم جزاء أو غياب</option>
+                <option value="bonus">مكافأة أو حافز إضافي</option>
+              </select>
+            </div>
 
-          <div>
-            <label className="block font-bold mb-1">المبلغ ({settings.currency}):</label>
-            <input
-              type="number"
-              min="1"
-              required
-              placeholder="0.00"
-              value={advanceAmount}
-              onChange={(e) => setAdvanceAmount(e.target.value === '' ? '' : Number(e.target.value))}
-              className="w-full border rounded-xl p-2.5 font-mono font-black text-center text-sm"
-            />
+            <div>
+              <label className="block font-bold mb-1">المبلغ ({settings.currency}):</label>
+              <input
+                type="number"
+                min="1"
+                required
+                placeholder="0.00"
+                value={advanceAmount}
+                onChange={(e) => setAdvanceAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-black text-center text-sm"
+              />
+            </div>
           </div>
 
           {advanceType === 'advance' && (
@@ -1244,7 +1249,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
               <select
                 value={advanceCashboxId}
                 onChange={(e) => setAdvanceCashboxId(e.target.value)}
-                className="w-full border rounded-xl p-2.5 font-bold"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold bg-white"
               >
                 {cashboxes.map(c => (
                   <option key={c.id} value={c.id}>
@@ -1262,18 +1267,18 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
               required
               value={advanceReason}
               onChange={(e) => setAdvanceReason(e.target.value)}
-              className="w-full border rounded-xl p-2.5"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5"
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t">
-            <button type="button" onClick={() => setIsAdvanceModalOpen(false)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">
+          <div className="flex justify-end gap-2 pt-2.5 border-t">
+            <button type="button" onClick={() => setIsAdvanceModalOpen(false)} className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-bold cursor-pointer">
               إلغاء
             </button>
             <button
               type="submit"
               disabled={isSavingAdvance || activeEmployees.length === 0}
-              className="px-6 py-2 bg-blue-900 text-white rounded-xl font-bold disabled:opacity-50 cursor-pointer"
+              className="px-4 py-1.5 bg-blue-900 text-white rounded-lg font-bold disabled:opacity-50 cursor-pointer"
             >
               {isSavingAdvance ? 'جاري التسجيل...' : 'تسجيل'}
             </button>
@@ -1288,9 +1293,9 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
         title="صرف مسير راتب موظف"
         maxWidth="md"
       >
-        <form onSubmit={handlePaySalarySubmit} className="space-y-4 text-xs">
+        <form onSubmit={handlePaySalarySubmit} className="space-y-2.5 text-xs">
           {payrollError && (
-            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">{payrollError}</div>
+            <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold">{payrollError}</div>
           )}
 
           <div>
@@ -1298,7 +1303,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
             <select
               value={payrollEmpId}
               onChange={(e) => setPayrollEmpId(e.target.value)}
-              className="w-full border rounded-xl p-2.5 font-bold"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold bg-white"
             >
               {activeEmployees.length === 0 ? (
                 <option value="">-- لا يوجد موظفون نشطون مسجلون بعد --</option>
@@ -1310,7 +1315,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2.5">
             <div>
               <label className="block font-bold mb-1">الشهر:</label>
               <input
@@ -1319,7 +1324,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                 max={12}
                 value={payrollMonth}
                 onChange={(e) => setPayrollMonth(Math.min(12, Math.max(1, Number(e.target.value))))}
-                className="w-full border rounded-xl p-2.5 font-mono font-bold text-center"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold text-center"
               />
             </div>
             <div>
@@ -1330,13 +1335,13 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                 max={2100}
                 value={payrollYear}
                 onChange={(e) => setPayrollYear(Number(e.target.value))}
-                className="w-full border rounded-xl p-2.5 font-mono font-bold text-center"
+                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold text-center"
               />
             </div>
           </div>
 
           {payrollPreview && (
-            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
               <div className="flex justify-between">
                 <span className="text-slate-600">الراتب الأساسي:</span>
                 <strong className="font-mono">{payrollPreview.emp.basicSalary.toLocaleString()} {settings.currency}</strong>
@@ -1353,7 +1358,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                 <span>مكافآت وحوافز:</span>
                 <strong className="font-mono">+{payrollPreview.empBon.toLocaleString()}</strong>
               </div>
-              <div className="flex justify-between text-sm font-black text-blue-950 border-t border-slate-200 pt-1.5">
+              <div className="flex justify-between text-sm font-black text-blue-950 border-t border-slate-200 pt-1">
                 <span>صافي الراتب المستحق للصرف:</span>
                 <strong className="font-mono">{payrollPreview.netSalary.toLocaleString()} {settings.currency}</strong>
               </div>
@@ -1370,7 +1375,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
             <select
               value={payrollCashboxId}
               onChange={(e) => setPayrollCashboxId(e.target.value)}
-              className="w-full border rounded-xl p-2.5 font-bold"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold bg-white"
             >
               {cashboxes.map(c => (
                 <option key={c.id} value={c.id}>
@@ -1387,18 +1392,18 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
               value={payrollNotes}
               onChange={(e) => setPayrollNotes(e.target.value)}
               placeholder={`صرف راتب شهر ${payrollMonth}/${payrollYear}`}
-              className="w-full border rounded-xl p-2.5"
+              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5"
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t">
-            <button type="button" onClick={() => setIsPayrollModalOpen(false)} className="px-4 py-2 border rounded-xl font-bold cursor-pointer">
+          <div className="flex justify-end gap-2 pt-2.5 border-t">
+            <button type="button" onClick={() => setIsPayrollModalOpen(false)} className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-bold cursor-pointer">
               إلغاء
             </button>
             <button
               type="submit"
               disabled={isSavingPayroll || !payrollPreview || payrollPreview.alreadyPaid}
-              className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-bold disabled:opacity-50 cursor-pointer"
+              className="px-4 py-1.5 bg-emerald-600 text-white rounded-lg font-bold disabled:opacity-50 cursor-pointer"
             >
               {isSavingPayroll ? 'جاري الصرف...' : 'اعتماد وصرف الراتب'}
             </button>

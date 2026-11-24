@@ -427,15 +427,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
         }`}
       >
         {/* Drawer Header Strip (Soft Royal Blue to Indigo Gradient) */}
-        <div className="h-16 flex items-center justify-between px-4 bg-gradient-to-l from-blue-950 via-blue-900 to-indigo-900 text-white border-b border-blue-800/60 shrink-0 shadow-xs">
-          <div className="flex items-center gap-3 min-w-0">
+        <div className="h-13 flex items-center justify-between px-3 bg-gradient-to-l from-blue-950 via-blue-900 to-indigo-900 text-white border-b border-blue-800/60 shrink-0 shadow-xs">
+          <div className="flex items-center gap-2 min-w-0">
             <img
               src="/awlad-selim-logo.png"
               alt="أولاد سليم"
-              className="h-10 w-10 object-contain bg-white rounded-xl p-1 shrink-0 shadow-xs"
+              className="h-8 w-8 object-contain bg-white rounded-lg p-0.5 shrink-0 shadow-xs"
             />
             <div className="text-right min-w-0">
-              <span className="block font-black text-sm text-white tracking-wide truncate">
+              <span className="block font-black text-xs text-white tracking-wide truncate">
                 أقسام النظام
               </span>
               <span className="block text-[10px] text-blue-200 font-semibold truncate">
@@ -447,29 +447,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl bg-white/15 hover:bg-white/25 text-white transition-colors cursor-pointer shrink-0"
+            className="min-h-[34px] min-w-[34px] flex items-center justify-center rounded-lg bg-white/15 hover:bg-white/25 text-white transition-colors cursor-pointer shrink-0"
             aria-label="إغلاق قائمة الأقسام"
             title="إغلاق القائمة"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Scrollable Sections Container */}
-        <div className="flex-1 overflow-y-auto overscroll-contain p-3.5 space-y-2.5">
+        <div className="flex-1 overflow-y-auto overscroll-contain p-2.5 space-y-1.5">
           {/* Quick Link: الرئيسية */}
           <button
             type="button"
             onClick={() => handleItemClick('dashboard')}
-            className={`w-full min-h-[44px] flex items-center justify-between px-3.5 py-2.5 rounded-2xl font-bold text-xs border transition-all cursor-pointer ${
+            className={`w-full min-h-[38px] flex items-center justify-between px-3 py-1.5 rounded-lg font-bold text-xs border transition-all cursor-pointer ${
               currentPage === 'dashboard'
-                ? 'bg-gradient-to-l from-blue-700 via-blue-600 to-indigo-600 text-white border-blue-600 shadow-md shadow-blue-600/20 font-black'
-                : 'bg-white/90 text-slate-800 border-blue-100 hover:bg-gradient-to-l hover:from-blue-50 hover:to-sky-50 hover:text-blue-950 shadow-2xs'
+                ? 'bg-blue-900 text-white border-blue-900 font-black'
+                : 'bg-white text-slate-800 border-slate-200 hover:bg-blue-50 hover:text-blue-950'
             }`}
           >
-            <div className="flex items-center gap-2.5">
-              <span className="w-7 h-7 rounded-xl bg-white border border-blue-100 flex items-center justify-center shrink-0">
-                <DashboardHomeIcon className="w-5 h-5" />
+            <div className="flex items-center gap-2">
+              <span className="w-6 h-6 rounded-md bg-white border border-blue-100 flex items-center justify-center shrink-0">
+                <DashboardHomeIcon className="w-4 h-4" />
               </span>
               <span>لوحة التحكم الرئيسية</span>
             </div>
@@ -482,12 +482,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           {/* Quick Cash Operations (Direct Execution, Permission-Gated) */}
           {checkPerm('canManageCashboxes') && onOpenCashOp && (
-            <div className="rounded-2xl bg-gradient-to-br from-emerald-50/90 via-white to-sky-50/80 border border-emerald-200/70 p-3 space-y-2 shadow-2xs">
+            <div className="rounded-lg bg-emerald-50/70 border border-emerald-200/80 p-2 space-y-1.5">
               <p className="text-[11px] font-black text-emerald-950 flex items-center gap-1.5">
                 <Wallet className="w-3.5 h-3.5 text-emerald-700" />
                 <span>العمليات النقدية السريعة</span>
               </p>
-              <div className="grid grid-cols-2 gap-1.5 text-[11px] font-bold">
+              <div className="grid grid-cols-2 gap-1 text-[11px] font-bold">
                 <button
                   type="button"
                   onClick={() => {

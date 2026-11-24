@@ -71,21 +71,21 @@ export const QrCodeDisplay: React.FC<QrCodeDisplayProps> = ({
   if (!value) return null;
 
   return (
-    <div className="flex flex-col items-center gap-3 p-4 rounded-2xl bg-white border border-slate-200 shadow-xs text-center">
+    <div className="flex flex-col items-center gap-2 p-3 rounded-lg bg-white border border-slate-200 shadow-xs text-center">
       {title && <div className="text-xs font-black text-slate-900">{title}</div>}
       {error ? (
-        <div className="text-xs text-red-600 font-bold py-6">{error}</div>
+        <div className="text-xs text-red-600 font-bold py-4">{error}</div>
       ) : dataUrl ? (
-        <div className="p-2 rounded-xl bg-white border border-slate-200">
+        <div className="p-1.5 rounded-lg bg-white border border-slate-200">
           <img
             src={dataUrl}
             alt={title || 'QR Code'}
-            className="w-48 h-48 sm:w-52 sm:h-52 object-contain"
+            className="w-44 h-44 sm:w-48 sm:h-48 object-contain"
           />
         </div>
       ) : (
-        <div className="w-48 h-48 flex items-center justify-center bg-slate-50 rounded-xl border border-slate-200">
-          <Loader2 className="w-6 h-6 text-slate-400 animate-spin" />
+        <div className="w-44 h-44 flex items-center justify-center bg-slate-50 rounded-lg border border-slate-200">
+          <Loader2 className="w-5 h-5 text-slate-400 animate-spin" />
         </div>
       )}
       {subtitle && (
@@ -96,7 +96,7 @@ export const QrCodeDisplay: React.FC<QrCodeDisplayProps> = ({
           type="button"
           onClick={handleDownloadOrShare}
           disabled={saving}
-          className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-50"
+          className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
         >
           {isNativeCapacitor() ? <Share2 className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />}
           <span>{saving ? 'جاري التجهيز...' : isNativeCapacitor() ? 'مشاركة / حفظ صورة QR' : 'تنزيل صورة QR (PNG)'}</span>

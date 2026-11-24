@@ -431,12 +431,12 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 shadow-xs">
         <div>
-          <h2 className="text-lg font-black text-slate-900 tracking-tight">إدارة مرتجعات المبيعات والمشتريات</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h2 className="text-sm sm:text-base font-black text-slate-900 tracking-tight">إدارة مرتجعات المبيعات والمشتريات</h2>
+          <p className="text-[11px] text-slate-500">
             ربط المرتجعات بالفاتورة الأصلية والتحقق من عدم تجاوز الكميات وتعديل المخازن والأرصدة
           </p>
         </div>
@@ -447,15 +447,16 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
             setReturnQuantities({});
             setIsNewModalOpen(true);
           }}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-md shadow-blue-900/20 active:scale-95 transition-all cursor-pointer"
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-xs active:scale-95 transition-all cursor-pointer"
         >
-          <RotateCcw className="w-4 h-4" />
+          <RotateCcw className="w-3.5 h-3.5" />
           <span>إنشاء سند مرتجع جديد</span>
         </button>
       </div>
 
       {/* Unified Returns Table */}
       <UnifiedDataTable<InvoiceReturn>
+        compact
         title={`سجل مرتجعات المبيعات والمشتريات (${filteredReturns.length})`}
         data={filteredReturns}
         rowKey={(ret) => ret.id}
@@ -592,17 +593,17 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
 
       {/* Sales Return Requests Approval Queue (for Admin / Sales / Treasury Managers) */}
       {canManageSalesReturnRequests && returnTypeFilter !== 'purchase_return' && (
-        <div className="bg-white rounded-2xl border border-amber-200 shadow-xs p-5 space-y-4 text-xs">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-800 shrink-0">
-                <Clock className="w-5 h-5" />
+        <div className="bg-white rounded-lg border border-amber-200 shadow-xs p-3 space-y-2.5 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-800 shrink-0">
+                <Clock className="w-4 h-4" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-black text-slate-900">طلبات مرتجع المبيعات من المناديب</h3>
+                  <h3 className="text-xs sm:text-sm font-black text-slate-900">طلبات مرتجع المبيعات من المناديب</h3>
                   {pendingSrReqCount > 0 && (
-                    <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-mono font-black text-[11px]">
+                    <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 font-mono font-black text-[10px]">
                       {pendingSrReqCount} بانتظار الاعتماد
                     </span>
                   )}
@@ -613,7 +614,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1">
               {[
                 { id: 'pending' as const, label: `معلق (${pendingSrReqCount})` },
                 { id: 'approved' as const, label: 'معتمد' },
@@ -624,7 +625,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                   key={st.id}
                   type="button"
                   onClick={() => setSalesReqStatusFilter(st.id)}
-                  className={`px-3 py-1.5 rounded-xl font-bold border cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-lg font-bold border cursor-pointer ${
                     salesReqStatusFilter === st.id
                       ? 'bg-amber-900 text-white border-amber-900'
                       : 'bg-slate-50 text-slate-700 border-slate-200'
@@ -789,17 +790,17 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
 
       {/* Purchase Return Requests Approval Queue (for Admin / Purchase Managers) */}
       {canManagePurchaseReturnRequests && returnTypeFilter !== 'sales_return' && (
-        <div className="bg-white rounded-2xl border border-indigo-200 shadow-xs p-5 space-y-4 text-xs">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-800 shrink-0">
-                <Clock className="w-5 h-5" />
+        <div className="bg-white rounded-lg border border-indigo-200 shadow-xs p-3 space-y-2.5 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-800 shrink-0">
+                <Clock className="w-4 h-4" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-black text-slate-900">طلبات مرتجع المشتريات من المناديب</h3>
+                  <h3 className="text-xs sm:text-sm font-black text-slate-900">طلبات مرتجع المشتريات من المناديب</h3>
                   {pendingPrReqCount > 0 && (
-                    <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-300 font-mono font-black text-[11px] tabular-nums">
+                    <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-300 font-mono font-black text-[10px] tabular-nums">
                       {pendingPrReqCount} بانتظار المراجعة
                     </span>
                   )}
@@ -810,7 +811,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1">
               {[
                 { id: 'pending' as const, label: `معلق (${pendingPrReqCount})` },
                 { id: 'approved' as const, label: 'معتمد' },
@@ -821,7 +822,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                   key={st.id}
                   type="button"
                   onClick={() => setRequestStatusFilter(st.id)}
-                  className={`px-3 py-1.5 rounded-xl font-bold border cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-lg font-bold border cursor-pointer ${
                     requestStatusFilter === st.id
                       ? 'bg-indigo-900 text-white border-indigo-900'
                       : 'bg-slate-50 text-slate-700 border-slate-200'
@@ -835,7 +836,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
 
           {requestBanner && (
             <div
-              className={`p-3 rounded-xl border font-bold flex items-center justify-between gap-2 ${
+              className={`px-3 py-2 rounded-lg border font-bold flex items-center justify-between gap-2 ${
                 requestBanner.type === 'success'
                   ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
                   : 'bg-red-50 border-red-200 text-red-900'
@@ -1006,23 +1007,23 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
         title="إنشاء سند مرتجع مرتبط بفاتورة"
         maxWidth="4xl"
       >
-        <form onSubmit={handleSubmitReturn} className="space-y-4 text-xs">
+        <form onSubmit={handleSubmitReturn} className="space-y-3 text-xs">
           {error && (
-            <div className="p-3 bg-red-50 text-red-700 rounded-xl font-bold">{error}</div>
+            <div className="px-3 py-2 bg-red-50 text-red-700 rounded-lg font-bold">{error}</div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <div>
-              <label className="block font-bold mb-1">نوع المرتجع:</label>
-              <div className="grid grid-cols-2 gap-2">
+              <label className="block font-bold mb-0.5">نوع المرتجع:</label>
+              <div className="grid grid-cols-2 gap-1.5">
                 <button
                   type="button"
                   onClick={() => {
                     setReturnType('sales_return');
                     setSelectedInvoiceId('');
                   }}
-                  className={`p-2 rounded-xl font-bold border transition-all ${
-                    returnType === 'sales_return' ? 'bg-blue-900 text-white' : 'bg-slate-50'
+                  className={`py-1.5 px-2 rounded-lg font-bold border transition-all cursor-pointer ${
+                    returnType === 'sales_return' ? 'bg-blue-900 text-white border-blue-900' : 'bg-slate-50 border-slate-300'
                   }`}
                 >
                   مرتجع مبيعات من عميل
@@ -1034,8 +1035,8 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                       setReturnType('purchase_return');
                       setSelectedInvoiceId('');
                     }}
-                    className={`p-2 rounded-xl font-bold border transition-all ${
-                      returnType === 'purchase_return' ? 'bg-blue-900 text-white' : 'bg-slate-50'
+                    className={`py-1.5 px-2 rounded-lg font-bold border transition-all cursor-pointer ${
+                      returnType === 'purchase_return' ? 'bg-blue-900 text-white border-blue-900' : 'bg-slate-50 border-slate-300'
                     }`}
                   >
                     مرتجع مشتريات لمورد
@@ -1045,22 +1046,22 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
             </div>
 
             <div>
-              <label className="block font-bold mb-1">تاريخ المرتجع:</label>
+              <label className="block font-bold mb-0.5">تاريخ المرتجع:</label>
               <input
                 type="date"
                 value={returnDate}
                 onChange={(e) => setReturnDate(e.target.value)}
-                className="w-full border rounded-xl p-2 font-mono font-bold"
+                className="w-full border border-slate-300 rounded-lg py-1.5 px-2.5 font-mono font-bold"
               />
             </div>
           </div>
 
           <div>
-            <label className="block font-bold mb-1">اختر الفاتورة الأصلية المراد الإرجاع منها:</label>
+            <label className="block font-bold mb-0.5">اختر الفاتورة الأصلية المراد الإرجاع منها:</label>
             <select
               value={selectedInvoiceId}
               onChange={(e) => handleSelectInvoice(e.target.value)}
-              className="w-full border rounded-xl p-2.5 font-bold bg-white"
+              className="w-full border border-slate-300 rounded-lg py-1.5 px-2.5 font-bold bg-white"
             >
               <option value="">-- اختر الفاتورة الأصلية --</option>
               {availableInvoices.map(inv => (
@@ -1073,32 +1074,32 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
 
           {/* Item Quantities Return Form */}
           {selectedInvoice && (
-            <div className="border rounded-xl p-3 bg-slate-50 space-y-2 awlad-table-scroll">
+            <div className="border border-slate-200 rounded-lg p-2.5 bg-slate-50 space-y-2 awlad-table-scroll">
               <h4 className="font-bold text-slate-800">الأصناف المتوفرة بالفاتورة الأصلية للإرجاع:</h4>
-              <table className="w-full text-right text-xs bg-white rounded-lg border">
+              <table className="w-full text-right text-xs bg-white rounded-lg border border-slate-200">
                 <thead>
-                  <tr className="bg-slate-100 border-b">
-                    <th className="p-2">الصنف</th>
-                    <th className="p-2 text-center">الوحدة</th>
-                    <th className="p-2 text-center">الكمية الأصلية</th>
-                    <th className="p-2 text-center">السعر</th>
-                    <th className="p-2 text-center w-28">الكمية المرتجعة</th>
+                  <tr className="bg-slate-100 border-b border-slate-200">
+                    <th className="p-1.5">الصنف</th>
+                    <th className="p-1.5 text-center">الوحدة</th>
+                    <th className="p-1.5 text-center">الكمية الأصلية</th>
+                    <th className="p-1.5 text-center">السعر</th>
+                    <th className="p-1.5 text-center w-24">الكمية المرتجعة</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y">
+                <tbody className="divide-y divide-slate-100">
                   {selectedInvoice.items.map(it => {
                     const alreadyRet = selectedInvoice.returnedQuantityByItem?.[it.productId] || 0;
                     const maxAllowed = it.quantity - alreadyRet;
 
                     return (
                       <tr key={it.productId}>
-                        <td className="p-2 font-bold">{it.productName}</td>
-                        <td className="p-2 text-center">{it.unit}</td>
-                        <td className="p-2 text-center font-bold">
+                        <td className="p-1.5 font-bold">{it.productName}</td>
+                        <td className="p-1.5 text-center">{it.unit}</td>
+                        <td className="p-1.5 text-center font-bold">
                           {it.quantity} {alreadyRet > 0 && <span className="text-red-600 text-[10px] block">تم إرجاع {alreadyRet} سابقاً</span>}
                         </td>
-                        <td className="p-2 text-center">{it.unitPrice}</td>
-                        <td className="p-2 text-center">
+                        <td className="p-1.5 text-center font-mono">{it.unitPrice}</td>
+                        <td className="p-1.5 text-center">
                           <QuantityInput
                             allowDecimals
                             min={0}
@@ -1111,7 +1112,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                               }))
                             }
                             ariaLabel={`كمية المرتجع ${it.productName}`}
-                            inputClassName="w-20 border rounded-lg p-1 text-center font-mono font-bold outline-hidden focus:border-blue-700"
+                            inputClassName="w-20 border border-slate-300 rounded-lg p-1 text-center font-mono font-bold outline-hidden focus:border-blue-700"
                           />
                         </td>
                       </tr>
@@ -1120,7 +1121,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 </tbody>
               </table>
 
-              <div className="flex justify-between items-center pt-2">
+              <div className="flex justify-between items-center pt-1">
                 <span className="font-bold text-slate-700">إجمالي قيمة المرتجع المحتسب:</span>
                 <span className="text-sm font-black text-blue-900 font-mono">
                   {calculatedGrandTotal.toFixed(2)} {settings.currency}
@@ -1130,13 +1131,13 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
           )}
 
           {/* Refund method */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
             <div>
-              <label className="block font-bold mb-1">طريقة التسوية المالية:</label>
+              <label className="block font-bold mb-0.5">طريقة التسوية المالية:</label>
               <select
                 value={canUseTreasuryCashRefund || (isRepRole && returnType === 'sales_return') ? refundType : 'balance'}
                 onChange={(e) => setRefundType(e.target.value as 'balance' | 'cash')}
-                className="w-full bg-white border rounded-xl p-2 font-bold"
+                className="w-full bg-white border border-slate-300 rounded-lg py-1.5 px-2.5 font-bold"
               >
                 <option value="balance">تعديل وخصم من رصيد الحساب الآجل</option>
                 {(canUseTreasuryCashRefund || (isRepRole && returnType === 'sales_return')) && (
@@ -1148,11 +1149,11 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
             </div>
             {canUseTreasuryCashRefund && refundType === 'cash' ? (
               <div>
-                <label className="block font-bold mb-1">الخزينة المسدد منها:</label>
+                <label className="block font-bold mb-0.5">الخزينة المسدد منها:</label>
                 <select
                   value={refundCashboxId}
                   onChange={(e) => setRefundCashboxId(e.target.value)}
-                  className="w-full bg-white border rounded-xl p-2 font-bold"
+                  className="w-full bg-white border border-slate-300 rounded-lg py-1.5 px-2.5 font-bold"
                 >
                   {cashboxes.map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
@@ -1160,30 +1161,30 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 </select>
               </div>
             ) : isRepRole && refundType === 'cash' ? (
-              <div className="flex items-center p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
+              <div className="flex items-center px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
                 يُرسل هذا المرتجع كطلب مراجعة للخزينة والإدارة، ولا يتم صرف أو خصم أي مبلغ من أي خزينة إلا بعد الاعتماد.
               </div>
             ) : !canUseTreasuryCashRefund ? (
-              <div className="flex items-center p-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 font-bold text-[11px]">
+              <div className="flex items-center px-2.5 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-600 font-bold text-[11px]">
                 الرد النقدي من الخزينة متاح لصلاحية إدارة الخزائن والحسابات فقط.
               </div>
             ) : null}
           </div>
 
           <div>
-            <label className="block font-bold mb-1">سبب المرتجع:</label>
+            <label className="block font-bold mb-0.5">سبب المرتجع:</label>
             <input
               type="text"
               required
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              className="w-full border rounded-xl p-2.5"
+              className="w-full border border-slate-300 rounded-lg py-1.5 px-2.5"
             />
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t">
-            <button type="button" onClick={() => setIsNewModalOpen(false)} className="px-4 py-2 border rounded-xl font-bold">إلغاء</button>
-            <button type="submit" disabled={isSubmitting || calculatedGrandTotal === 0} className="px-6 py-2 bg-blue-900 text-white rounded-xl font-bold hover:bg-blue-950">
+            <button type="button" onClick={() => setIsNewModalOpen(false)} className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-bold cursor-pointer">إلغاء</button>
+            <button type="submit" disabled={isSubmitting || calculatedGrandTotal === 0} className="px-4 py-1.5 bg-blue-900 text-white rounded-lg font-bold hover:bg-blue-950 cursor-pointer disabled:opacity-50">
               اعتماد المرتجع وتعديل المخزن
             </button>
           </div>
@@ -1199,11 +1200,11 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
         maxWidth="md"
       >
         {approvingReq && (
-          <form onSubmit={handleConfirmApproveReq} className="space-y-4 text-xs">
+          <form onSubmit={handleConfirmApproveReq} className="space-y-3 text-xs">
             {approveError && (
-              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">{approveError}</div>
+              <div className="px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold">{approveError}</div>
             )}
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+            <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
               <div className="flex justify-between">
                 <span className="text-slate-500">المورد:</span>
                 <strong className="text-slate-900">{approvingReq.supplierName}</strong>
@@ -1221,11 +1222,11 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
             </div>
 
             <div>
-              <label className="block font-bold mb-1">طريقة التسوية المالية:</label>
+              <label className="block font-bold mb-0.5">طريقة التسوية المالية:</label>
               <select
                 value={canUseTreasuryCashRefund ? approveRefundType : 'balance'}
                 onChange={(e) => setApproveRefundType(e.target.value as 'balance' | 'cash')}
-                className="w-full border rounded-xl p-2.5 font-bold bg-white"
+                className="w-full border border-slate-300 rounded-lg py-1.5 px-2.5 font-bold bg-white"
               >
                 <option value="balance">تعديل وخصم من رصيد حساب المورد</option>
                 {canUseTreasuryCashRefund && (
@@ -1236,11 +1237,11 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
 
             {canUseTreasuryCashRefund && approveRefundType === 'cash' && (
               <div>
-                <label className="block font-bold mb-1">الخزينة المستلمة للاسترداد النقدي:</label>
+                <label className="block font-bold mb-0.5">الخزينة المستلمة للاسترداد النقدي:</label>
                 <select
                   value={approveCashboxId}
                   onChange={(e) => setApproveCashboxId(e.target.value)}
-                  className="w-full border rounded-xl p-2.5 font-bold bg-white"
+                  className="w-full border border-slate-300 rounded-lg py-1.5 px-2.5 font-bold bg-white"
                 >
                   {cashboxes.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
@@ -1250,12 +1251,12 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
             )}
 
             <div>
-              <label className="block font-bold mb-1">ملاحظات الاعتماد (اختياري):</label>
+              <label className="block font-bold mb-0.5">ملاحظات الاعتماد (اختياري):</label>
               <input
                 type="text"
                 value={approveNotes}
                 onChange={(e) => setApproveNotes(e.target.value)}
-                className="w-full border rounded-xl p-2.5"
+                className="w-full border border-slate-300 rounded-lg py-1.5 px-2.5"
               />
             </div>
 
@@ -1264,14 +1265,14 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 type="button"
                 disabled={isProcessingReq}
                 onClick={() => setApprovingReq(null)}
-                className="px-4 py-2 border rounded-xl font-bold cursor-pointer"
+                className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-bold cursor-pointer"
               >
                 إلغاء
               </button>
               <button
                 type="submit"
                 disabled={isProcessingReq}
-                className="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-black cursor-pointer disabled:opacity-50"
+                className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-black cursor-pointer disabled:opacity-50"
               >
                 {isProcessingReq ? 'جاري الاعتماد...' : 'تأكيد الاعتماد والترحيل'}
               </button>
@@ -1288,19 +1289,19 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
         maxWidth="md"
       >
         {rejectingReq && (
-          <form onSubmit={handleConfirmRejectReq} className="space-y-4 text-xs">
+          <form onSubmit={handleConfirmRejectReq} className="space-y-3 text-xs">
             {rejectError && (
-              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">{rejectError}</div>
+              <div className="px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold">{rejectError}</div>
             )}
             <div>
-              <label className="block font-bold mb-1">سبب الرفض (إلزامي):</label>
+              <label className="block font-bold mb-0.5">سبب الرفض (إلزامي):</label>
               <textarea
                 rows={3}
                 required
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
                 placeholder="اكتب سبب رفض طلب مرتجع المشتريات ليظهر للمندوب..."
-                className="w-full border rounded-xl p-2.5"
+                className="w-full border border-slate-300 rounded-lg py-1.5 px-2.5"
               />
             </div>
             <div className="flex justify-end gap-2 pt-2 border-t">
@@ -1308,14 +1309,14 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 type="button"
                 disabled={isProcessingReq}
                 onClick={() => setRejectingReq(null)}
-                className="px-4 py-2 border rounded-xl font-bold cursor-pointer"
+                className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-bold cursor-pointer"
               >
                 إلغاء
               </button>
               <button
                 type="submit"
                 disabled={isProcessingReq}
-                className="px-5 py-2 bg-red-700 hover:bg-red-800 text-white rounded-xl font-black cursor-pointer disabled:opacity-50"
+                className="px-4 py-1.5 bg-red-700 hover:bg-red-800 text-white rounded-lg font-black cursor-pointer disabled:opacity-50"
               >
                 {isProcessingReq ? 'جاري الرفض...' : 'تأكيد رفض الطلب'}
               </button>
@@ -1333,11 +1334,11 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
         maxWidth="md"
       >
         {approvingSalesReq && (
-          <form onSubmit={handleConfirmApproveSalesReq} className="space-y-4 text-xs">
+          <form onSubmit={handleConfirmApproveSalesReq} className="space-y-3 text-xs">
             {approveSalesError && (
-              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">{approveSalesError}</div>
+              <div className="px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold">{approveSalesError}</div>
             )}
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+            <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
               <div className="flex justify-between">
                 <span className="text-slate-500">العميل:</span>
                 <strong className="text-slate-900">{approvingSalesReq.customerName}</strong>
@@ -1355,11 +1356,11 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
             </div>
 
             <div>
-              <label className="block font-bold mb-1">طريقة التسوية المالية المعتمدة:</label>
+              <label className="block font-bold mb-0.5">طريقة التسوية المالية المعتمدة:</label>
               <select
                 value={canUseTreasuryCashRefund ? approveSalesRefundType : 'balance'}
                 onChange={(e) => setApproveSalesRefundType(e.target.value as 'cash' | 'balance')}
-                className="w-full border rounded-xl p-2.5 font-bold bg-white"
+                className="w-full border border-slate-300 rounded-lg py-1.5 px-2.5 font-bold bg-white"
               >
                 <option value="balance">تعديل وخصم من رصيد حساب العميل</option>
                 {canUseTreasuryCashRefund && (
@@ -1370,11 +1371,11 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
 
             {canUseTreasuryCashRefund && approveSalesRefundType === 'cash' && (
               <div>
-                <label className="block font-bold mb-1">الخزينة المصروف منها:</label>
+                <label className="block font-bold mb-0.5">الخزينة المصروف منها:</label>
                 <select
                   value={approveSalesCashboxId}
                   onChange={(e) => setApproveSalesCashboxId(e.target.value)}
-                  className="w-full border rounded-xl p-2.5 font-bold bg-white"
+                  className="w-full border border-slate-300 rounded-lg py-1.5 px-2.5 font-bold bg-white"
                 >
                   {cashboxes.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
@@ -1384,12 +1385,12 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
             )}
 
             <div>
-              <label className="block font-bold mb-1">ملاحظات الاعتماد (اختياري):</label>
+              <label className="block font-bold mb-0.5">ملاحظات الاعتماد (اختياري):</label>
               <input
                 type="text"
                 value={approveSalesNotes}
                 onChange={(e) => setApproveSalesNotes(e.target.value)}
-                className="w-full border rounded-xl p-2.5"
+                className="w-full border border-slate-300 rounded-lg py-1.5 px-2.5"
               />
             </div>
 
@@ -1398,14 +1399,14 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 type="button"
                 disabled={isProcessingSalesReq}
                 onClick={() => setApprovingSalesReq(null)}
-                className="px-4 py-2 border rounded-xl font-bold cursor-pointer"
+                className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-bold cursor-pointer"
               >
                 إلغاء
               </button>
               <button
                 type="submit"
                 disabled={isProcessingSalesReq}
-                className="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-black cursor-pointer disabled:opacity-50"
+                className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-black cursor-pointer disabled:opacity-50"
               >
                 {isProcessingSalesReq ? 'جاري الاعتماد...' : 'تأكيد الاعتماد والترحيل'}
               </button>
@@ -1422,19 +1423,19 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
         maxWidth="md"
       >
         {rejectingSalesReq && (
-          <form onSubmit={handleConfirmRejectSalesReq} className="space-y-4 text-xs">
+          <form onSubmit={handleConfirmRejectSalesReq} className="space-y-3 text-xs">
             {rejectSalesError && (
-              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold">{rejectSalesError}</div>
+              <div className="px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold">{rejectSalesError}</div>
             )}
             <div>
-              <label className="block font-bold mb-1">سبب الرفض (إلزامي):</label>
+              <label className="block font-bold mb-0.5">سبب الرفض (إلزامي):</label>
               <textarea
                 rows={3}
                 required
                 value={rejectSalesReason}
                 onChange={(e) => setRejectSalesReason(e.target.value)}
                 placeholder="اكتب سبب رفض طلب مرتجع المبيعات ليظهر للمندوب..."
-                className="w-full border rounded-xl p-2.5"
+                className="w-full border border-slate-300 rounded-lg py-1.5 px-2.5"
               />
             </div>
             <div className="flex justify-end gap-2 pt-2 border-t">
@@ -1442,14 +1443,14 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 type="button"
                 disabled={isProcessingSalesReq}
                 onClick={() => setRejectingSalesReq(null)}
-                className="px-4 py-2 border rounded-xl font-bold cursor-pointer"
+                className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-bold cursor-pointer"
               >
                 إلغاء
               </button>
               <button
                 type="submit"
                 disabled={isProcessingSalesReq}
-                className="px-5 py-2 bg-red-700 hover:bg-red-800 text-white rounded-xl font-black cursor-pointer disabled:opacity-50"
+                className="px-4 py-1.5 bg-red-700 hover:bg-red-800 text-white rounded-lg font-black cursor-pointer disabled:opacity-50"
               >
                 {isProcessingSalesReq ? 'جاري الرفض...' : 'تأكيد رفض الطلب'}
               </button>
