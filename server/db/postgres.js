@@ -909,6 +909,25 @@ export async function initializeSchema(customPool = null) {
       }
     }
 
+    // Ensure v12 structured customer geolocation & storefront favorites columns exist safely
+    const v12Statements = [
+      "ALTER TABLE customers ADD COLUMN IF NOT EXISTS latitude NUMERIC(10, 7)",
+      "ALTER TABLE customers ADD COLUMN IF NOT EXISTS longitude NUMERIC(10, 7)",
+      "ALTER TABLE customers ADD COLUMN IF NOT EXISTS city TEXT DEFAULT ''",
+      "ALTER TABLE customers ADD COLUMN IF NOT EXISTS location_captured_at TIMESTAMPTZ",
+      "ALTER TABLE customers ADD COLUMN IF NOT EXISTS favorite_product_ids JSONB NOT NULL DEFAULT '[]'::jsonb",
+    ];
+    for (const stmt of v12Statements) {
+      try {
+        await currentPool.query(stmt);
+      } catch (err) {
+        if (!isIdempotentDdlError(err, stmt)) {
+          console.error('[postgres] v12 DDL statement failed:', stmt, err);
+          throw err;
+        }
+      }
+    }
+
     return { success: true, message: 'تم تطبيق هيكل الجداول والفهارس والتسلسلات في PostgreSQL بنجاح.' };
   } catch (err) {
     console.error('[postgres] initializeSchema error:', err);

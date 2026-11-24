@@ -92,6 +92,7 @@ export type NavItemKey =
   | 'mobile-settings'
   | 'online-sync-settings'
   | 'shortcuts-settings'
+  | 'storefront-manager'
   | 'services-settings'
   | 'diagnostics-settings';
 
@@ -330,6 +331,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           { key: 'barcode-settings', label: 'إعدادات الباركود' },
           { key: 'printers-settings', label: 'الطابعات المتعددة' },
           { key: 'invoice-settings', label: 'تصميم وإعدادات الفاتورة' },
+          { key: 'storefront-manager', label: 'إدارة واجهة المتجر والعروض' },
           { key: 'mobile-settings', label: 'إعدادات تطبيق الهاتف' },
           { key: 'online-sync-settings', label: 'مزامنة أونلاين' },
           { key: 'services-settings', label: 'الخدمات والتنبيهات' },

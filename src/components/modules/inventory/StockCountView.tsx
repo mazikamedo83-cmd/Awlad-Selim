@@ -466,7 +466,7 @@ export const StockCountView: React.FC = () => {
                       </td>
                       <td className="p-3.5 font-semibold">{c.counterName}</td>
                       <td className="p-3.5 text-center">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${badge.cls}`}>
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${badge.cls}`}>
                           {badge.label}
                         </span>
                       </td>

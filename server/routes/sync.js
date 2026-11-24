@@ -22,6 +22,7 @@ import { recordAuditLog } from '../db/stores/authStore.js';
 import {
   createCustomer,
   updateCustomer,
+  updateOwnCustomerProfile,
   getCustomerById,
   recordCustomerPayment,
   getRepresentativeByUserId,
@@ -30,6 +31,12 @@ import {
   getCustomerStatementData,
   getSystemSettingsSafe,
 } from '../db/stores/catalogStore.js';
+import {
+  getPublishedStorefront,
+  getCustomerFavorites,
+  setCustomerFavorites,
+  toggleCustomerFavorite,
+} from '../db/stores/storefrontStore.js';
 import {
   createSalesInvoice,
   createPurchaseInvoice,
@@ -586,6 +593,35 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
     return updateCustomer(customerId, payload, user);
   }
 
+  if (opType === 'update_own_profile') {
+    if (user.role !== 'customer') {
+      throw new AppError(403, 'تعديل الملف الشخصي عبر هذه العملية متاح للعملاء فقط', 'CUSTOMER_ONLY');
+    }
+    const cust = authContext.customerProfile;
+    if (!cust) {
+      throw new AppError(404, authContext.linkWarning || 'حسابك غير مربوط بملف عميل', 'CUSTOMER_PROFILE_REQUIRED');
+    }
+    return updateOwnCustomerProfile(user.id, cust.id, payload, user);
+  }
+
+  if (opType === 'update_customer_favorites') {
+    if (user.role !== 'customer') {
+      throw new AppError(403, 'تحديث المفضلة متاح للعملاء فقط', 'CUSTOMER_ONLY');
+    }
+    const cust = authContext.customerProfile;
+    if (!cust) {
+      throw new AppError(404, authContext.linkWarning || 'حسابك غير مربوط بملف عميل', 'CUSTOMER_PROFILE_REQUIRED');
+    }
+    if (payload.productId && payload.action === 'toggle') {
+      return toggleCustomerFavorite(cust.id, payload.productId);
+    }
+    const favoriteProductIds = await setCustomerFavorites(
+      cust.id,
+      payload.favoriteProductIds || payload.productIds || []
+    );
+    return { favoriteProductIds };
+  }
+
   throw new AppError(400, `نوع عملية المزامنة غير مدعوم (${opType})`, 'UNSUPPORTED_SYNC_OPERATION');
 }
 
@@ -620,12 +656,14 @@ router.get(
           }
         : null;
 
-      const [products, categories, customerItemOrders, statement, syncConflicts] = await Promise.all([
+      const [products, categories, customerItemOrders, statement, syncConflicts, publishedStorefront, customerFavorites] = await Promise.all([
         listProducts({ forCustomer: true, allowCustomerPriceView: allowPriceView }),
         listCategories(),
         listOrders(req.auth),
         cust ? getCustomerStatementData(cust.id, { allowPriceView }) : Promise.resolve(null),
         listUserScopedConflicts(user),
+        getPublishedStorefront(),
+        cust ? getCustomerFavorites(cust.id) : Promise.resolve([]),
       ]);
 
       return res.json({
@@ -635,6 +673,8 @@ router.get(
         user: sanitizeUser(user),
         customerProfile: sanitizedCustomer,
         mobileConfig: settings.mobileConfig,
+        publishedStorefront,
+        customerFavorites,
         products,
         categories,
         customerItemOrders,

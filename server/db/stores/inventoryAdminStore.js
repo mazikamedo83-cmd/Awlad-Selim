@@ -75,6 +75,7 @@ import { listOrders } from './ordersStore.js';
 import { listPersonalAccountsData } from './personalAccountsStore.js';
 import { listStockCounts } from './stockCountsStore.js';
 import { listStockTransferRequests } from './stockTransfersStore.js';
+import { getPublishedStorefront } from './storefrontStore.js';
 import {
   attachRecordToIdentityPgTx,
   attachRecordToIdentityJsonTx,
@@ -323,13 +324,14 @@ export async function getStaffBootstrapData(actor) {
           extraSettings: enrichedExtra,
         };
 
-    const [personalData, stockCountsList, stockTransferRequestsList, identityOverview] = await Promise.all([
+    const [personalData, stockCountsList, stockTransferRequestsList, identityOverview, publishedStorefront] = await Promise.all([
       canViewPersonal ? listPersonalAccountsData() : Promise.resolve({ accounts: [], transactions: [] }),
       isRep ? Promise.resolve([]) : listStockCounts(),
       isRep ? Promise.resolve([]) : listStockTransferRequests(),
       isAdminOrUserMgr
         ? listIdentitiesOverview()
         : Promise.resolve({ identities: [], identityRoles: [], conflicts: [] }),
+      getPublishedStorefront(),
     ]);
 
     const allowedCustIdSet = isRep ? new Set(custs.map((c) => c.id)) : null;
@@ -730,6 +732,7 @@ export async function getStaffBootstrapData(actor) {
       identities: identityOverview.identities || [],
       identityRoles: identityOverview.identityRoles || [],
       identityConflicts: identityOverview.conflicts || [],
+      publishedStorefront,
       settings,
       auditLogs: audits,
     };
@@ -882,6 +885,7 @@ export async function getStaffBootstrapData(actor) {
     identities: identityOverviewJson.identities || [],
     identityRoles: identityOverviewJson.identityRoles || [],
     identityConflicts: identityOverviewJson.conflicts || [],
+    publishedStorefront: await getPublishedStorefront(),
     settings: {
       ...(db.settings || {}),
       extraSettings: {

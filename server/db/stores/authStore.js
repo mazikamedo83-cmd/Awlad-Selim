@@ -23,6 +23,7 @@ import {
   sanitizeUser,
   normalizePhoneDigits,
   buildPhoneLookupVariants,
+  resolveCustomerGeoInput,
 } from '../../utils/errors.js';
 import {
   isPgMode,
@@ -1010,7 +1011,16 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
   const governorate = String(payload.governorate || '').trim();
   const area = String(payload.area || '').trim();
   const vehicleNumber = String(payload.vehicleNumber || '').trim();
-  const geoCoordinates = String(payload.geoCoordinates || '').trim();
+  const parsedGeo = role === 'customer'
+    ? resolveCustomerGeoInput({
+        geoCoordinates: payload.geoCoordinates,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        city: payload.city || area,
+        locationCapturedAt: payload.locationCapturedAt,
+      })
+    : { geoCoordinates: undefined, latitude: undefined, longitude: undefined, city: undefined, locationCapturedAt: undefined };
+  const geoCoordinates = parsedGeo.geoCoordinates || '';
   const safeShopPhoto = role === 'customer' ? sanitizeRegisterPhoto(payload.shopPhoto ?? payload.photo) : undefined;
   const regPhones = role === 'customer'
     ? normalizeCustomerPhonesList(Array.isArray(payload.phones) ? payload.phones : [], phone, '')
@@ -1211,8 +1221,12 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
             const target = lockedUnlinkedCustomer;
             const mergedPhones = normalizeCustomerPhonesList(target.phones, phone || target.phone || '', target.secondary_phone || '');
             const mergedPrimary = mergedPhones.find((p) => p.isPrimary)?.number || target.phone || phone || '';
+            const nextLat = parsedGeo.latitude ?? target.latitude ?? null;
+            const nextLng = parsedGeo.longitude ?? target.longitude ?? null;
+            const nextCity = parsedGeo.city || target.city || '';
+            const nextCapturedAt = parsedGeo.locationCapturedAt || target.location_captured_at || null;
             await client.query(
-              `UPDATE customers SET user_id = $1, normalized_phone = $2, shop_name = $3, shop_photo = $4, photo = $4, address = $5, governorate = $6, area = $7, geo_coordinates = $8, phones = $9, updated_at = $10 WHERE id = $11`,
+              `UPDATE customers SET user_id = $1, normalized_phone = $2, shop_name = $3, shop_photo = $4, photo = $4, address = $5, governorate = $6, area = $7, city = $8, geo_coordinates = $9, latitude = $10, longitude = $11, location_captured_at = $12, phones = $13, updated_at = $14 WHERE id = $15`,
               [
                 userId,
                 normalizeRegPhone(mergedPrimary) || normPhone,
@@ -1221,7 +1235,11 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
                 address || target.address || '',
                 governorate || target.governorate || '',
                 area || target.area || null,
+                nextCity,
                 geoCoordinates || target.geo_coordinates || null,
+                nextLat,
+                nextLng,
+                nextCapturedAt,
                 JSON.stringify(mergedPhones),
                 now,
                 target.id,
@@ -1236,8 +1254,8 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
             const primaryRegPhone = initialPhones.find((p) => p.isPrimary)?.number || initialPhones[0]?.number || phone;
             const secondaryRegPhone = initialPhones.find((p) => !p.isPrimary && p.number !== primaryRegPhone)?.number || null;
             await client.query(
-              `INSERT INTO customers (id, code, user_id, name, phone, normalized_phone, secondary_phone, phones, shop_name, shop_photo, photo, address, shop_address, governorate, area, geo_coordinates, opening_balance, current_balance, notes, status, created_at, updated_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,$11,$12,$13,$14,0,0,'عميل مسجل ذاتيًا عبر التطبيق','active',$15,$15)`,
+              `INSERT INTO customers (id, code, user_id, name, phone, normalized_phone, secondary_phone, phones, shop_name, shop_photo, photo, address, shop_address, governorate, area, city, geo_coordinates, latitude, longitude, location_captured_at, opening_balance, current_balance, notes, status, created_at, updated_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,$11,$12,$13,$14,$15,$16,$17,$18,0,0,'عميل مسجل ذاتيًا عبر التطبيق','active',$19,$19)`,
               [
                 custId,
                 custCode,
@@ -1252,7 +1270,11 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
                 address,
                 governorate,
                 area || null,
+                parsedGeo.city || '',
                 geoCoordinates || null,
+                parsedGeo.latitude ?? null,
+                parsedGeo.longitude ?? null,
+                parsedGeo.locationCapturedAt || null,
                 now,
               ]
             );
@@ -1581,7 +1603,11 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
         if (address) target.address = address;
         if (governorate) target.governorate = governorate;
         if (area) target.area = area;
+        if (parsedGeo.city) target.city = parsedGeo.city;
         if (geoCoordinates) target.geoCoordinates = geoCoordinates;
+        if (parsedGeo.latitude !== undefined) target.latitude = parsedGeo.latitude;
+        if (parsedGeo.longitude !== undefined) target.longitude = parsedGeo.longitude;
+        if (parsedGeo.locationCapturedAt) target.locationCapturedAt = parsedGeo.locationCapturedAt;
         target.phones = normalizeCustomerPhonesList(target.phones, phone || target.phone || '', target.secondaryPhone || '');
         target.updatedAt = now;
         customerProfile = target;
@@ -1605,7 +1631,12 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
           address,
           governorate: governorate || undefined,
           area: area || undefined,
+          city: parsedGeo.city || undefined,
           geoCoordinates: geoCoordinates || undefined,
+          latitude: parsedGeo.latitude,
+          longitude: parsedGeo.longitude,
+          locationCapturedAt: parsedGeo.locationCapturedAt,
+          favoriteProductIds: [],
           openingBalance: 0,
           currentBalance: 0,
           priceHistory: {},

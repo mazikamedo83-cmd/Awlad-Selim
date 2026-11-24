@@ -518,6 +518,10 @@ interface AuthContextType {
     shopName?: string;
     governorate?: string;
     area?: string;
+    city?: string;
+    latitude?: number | null;
+    longitude?: number | null;
+    locationCapturedAt?: string | null;
     shopPhoto?: string;
     phones?: CustomerPhoneEntry[];
     vehicleNumber?: string;
@@ -1017,6 +1021,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     shopName?: string;
     governorate?: string;
     area?: string;
+    city?: string;
+    latitude?: number | null;
+    longitude?: number | null;
+    locationCapturedAt?: string | null;
     shopPhoto?: string;
     phones?: CustomerPhoneEntry[];
     vehicleNumber?: string;

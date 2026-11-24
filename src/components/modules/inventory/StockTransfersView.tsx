@@ -844,7 +844,7 @@ export const StockTransfersView: React.FC = () => {
                           <td className="p-3.5 text-center font-mono font-bold">{tr.items.length}</td>
                           <td className="p-3.5">{tr.createdBy}</td>
                           <td className="p-3.5 text-center">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${badge.cls}`}>
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${badge.cls}`}>
                               {badge.label}
                             </span>
                           </td>
@@ -937,7 +937,7 @@ export const StockTransfersView: React.FC = () => {
                         <td className="p-3.5 font-semibold">{r.targetWarehouseName}</td>
                         <td className="p-3.5 text-center font-mono font-bold">{r.items.length}</td>
                         <td className="p-3.5 text-center">
-                          <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 text-[10px] font-bold">
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 text-[10px] font-bold">
                             {r.status}
                           </span>
                         </td>

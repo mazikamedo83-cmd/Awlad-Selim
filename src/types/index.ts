@@ -91,6 +91,7 @@ export type ShortcutActionId =
   | 'nav:backup'
   | 'nav:migration'
   | 'nav:shortcuts-settings'
+  | 'nav:storefront-manager'
   | 'action:save_invoice'
   | 'action:print_document'
   | 'action:focus_product_search'
@@ -277,7 +278,12 @@ export interface Customer {
   clearShopPhoto?: boolean;
   governorate?: string;    // المحافظة
   area?: string;           // المنطقة
+  city?: string;           // المدينة
   geoCoordinates?: string; // الموقع الجغرافي / إحداثيات GPS أو رابط خرائط
+  latitude?: number;
+  longitude?: number;
+  locationCapturedAt?: string;
+  favoriteProductIds?: string[];
   address: string;
   photo?: string;
   notes?: string;
@@ -905,6 +911,92 @@ export interface ExtraSettingsConfig {
   };
   connectionConfig?: ConnectionProfilesConfig;
   roleDefaultPermissions?: RoleDefaultPermissionPresets;
+  storefrontDraft?: StorefrontConfig;
+  storefrontPublished?: StorefrontConfig;
+}
+
+export type ThemePreference = 'light' | 'dark' | 'system';
+export type LanguagePreference = 'ar' | 'en';
+export type StorefrontTargetType = 'product' | 'category' | 'offers' | 'internal_page' | 'none';
+
+export interface StorefrontBanner {
+  id: string;
+  title: string;
+  subtitle?: string;
+  imageUrl: string;
+  targetType: StorefrontTargetType;
+  targetId?: string;
+  sortOrder: number;
+  isActive: boolean;
+  startsAt?: string;
+  endsAt?: string;
+}
+
+export interface StorefrontShortcut {
+  id: string;
+  label: string;
+  iconKey: string;
+  targetType: StorefrontTargetType;
+  targetId?: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export interface StorefrontOffer {
+  id: string;
+  title: string;
+  productId: string;
+  unit?: string;
+  promoPrice: number;
+  badgeText?: string;
+  startsAt?: string;
+  endsAt?: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export interface StorefrontImageCategorySetting {
+  categoryId: string;
+  displayName?: string;
+  imageUrl?: string;
+  sortOrder: number;
+  isVisible: boolean;
+}
+
+export interface StorefrontDisplayCategory {
+  id: string;
+  name: string;
+  imageUrl?: string;
+  productIds: string[];
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export interface StorefrontSectionConfig {
+  key: 'banners' | 'shortcuts' | 'offers' | 'categories' | 'featured' | string;
+  title: string;
+  isVisible: boolean;
+  sortOrder: number;
+}
+
+export interface StorefrontConfig {
+  version: number;
+  status: 'draft' | 'published';
+  updatedAt?: string;
+  updatedBy?: string;
+  publishedAt?: string;
+  publishedBy?: string;
+  offersSectionTitle?: string;
+  categoriesSectionTitle?: string;
+  featuredSectionTitle?: string;
+  banners: StorefrontBanner[];
+  shortcuts: StorefrontShortcut[];
+  offers: StorefrontOffer[];
+  imageCategorySettings: StorefrontImageCategorySetting[];
+  displayCategories: StorefrontDisplayCategory[];
+  featuredProductIds: string[];
+  hiddenProductIds: string[];
+  sections: StorefrontSectionConfig[];
 }
 
 export interface RoleDefaultPermissionPresets {
@@ -1687,6 +1779,8 @@ export type SyncOperationType =
   | 'execute_cash_operation'
   | 'create_customer'
   | 'update_customer'
+  | 'update_own_profile'
+  | 'update_customer_favorites'
   | 'create_supplier'
   | 'confirm_custody_receipt'
   | 'record_custody_delivery'

@@ -7,12 +7,14 @@ interface QrScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onDetected: (rawText: string) => void;
+  mode?: 'qr' | 'barcode';
 }
 
 export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   isOpen,
   onClose,
   onDetected,
+  mode = 'qr',
 }) => {
   const [tab, setTab] = useState<'camera' | 'paste'>('camera');
   const [manualInput, setManualInput] = useState('');
@@ -100,7 +102,12 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
         await video.play().catch(() => {});
 
         const BarcodeDet = (window as any).BarcodeDetector
-          ? new (window as any).BarcodeDetector({ formats: ['qr_code'] })
+          ? new (window as any).BarcodeDetector({
+              formats:
+                mode === 'barcode'
+                  ? ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'qr_code']
+                  : ['qr_code'],
+            })
           : null;
 
         const scanFrame = async () => {
@@ -212,10 +219,16 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div className="flex items-center gap-2">
             <Camera className="w-5 h-5 text-emerald-700" />
-            <div>
-              <h3 className="text-sm font-black text-slate-900">مسح رمز QR أو إدخال رابط الربط</h3>
-              <p className="text-[11px] text-slate-500">وجّه الكاميرا نحو رمز QR الظاهر على شاشة الإدارة</p>
-            </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-900">
+                  {mode === 'barcode' ? 'مسح باركود الصنف أو إدخال الكود' : 'مسح رمز QR أو إدخال رابط الربط'}
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  {mode === 'barcode'
+                    ? 'وجّه الكاميرا نحو باركود المنتج للبحث الفوري'
+                    : 'وجّه الكاميرا نحو رمز QR الظاهر على شاشة الإدارة'}
+                </p>
+              </div>
           </div>
           <button
             type="button"
@@ -249,7 +262,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
               }`}
             >
               <Link2 className="w-3.5 h-3.5" />
-              <span>لصق رابط الدعوة</span>
+              <span>{mode === 'barcode' ? 'إدخال رقم الباركود' : 'لصق رابط الدعوة'}</span>
             </button>
           </div>
 
@@ -315,14 +328,16 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
             <form onSubmit={handleManualSubmit} className="space-y-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  الصق رابط الدعوة المرسل من الإدارة (WhatsApp أو رابط مباشر):
+                  {mode === 'barcode'
+                    ? 'اكتب رقم الباركود أو كود الصنف:'
+                    : 'الصق رابط الدعوة المرسل من الإدارة (WhatsApp أو رابط مباشر):'}
                 </label>
                 <textarea
-                  rows={3}
+                  rows={mode === 'barcode' ? 2 : 3}
                   dir="ltr"
                   value={manualInput}
                   onChange={(e) => setManualInput(e.target.value)}
-                  placeholder="https://example.trycloudflare.com/pair/xxxxxx أو awladselim://pair?..."
+                  placeholder={mode === 'barcode' ? '6221000000000' : 'https://example.trycloudflare.com/pair/xxxxxx أو awladselim://pair?...'}
                   className="w-full rounded-xl border border-slate-300 p-3 text-xs font-mono text-left focus:border-emerald-600 outline-hidden"
                 />
               </div>
@@ -332,7 +347,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
                 className="w-full min-h-[44px] rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>تطبيق الربط تلقائياً</span>
+                <span>{mode === 'barcode' ? 'بحث بالباركود' : 'تطبيق الربط تلقائياً'}</span>
               </button>
             </form>
           )}

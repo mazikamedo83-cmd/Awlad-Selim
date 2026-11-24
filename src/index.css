@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 @import "./styles/design-system.css";
 
 @theme {
@@ -14,11 +15,13 @@
     direction: rtl;
   }
 
+  html.dark {
+    color-scheme: dark;
+  }
+
   body {
     font-family: var(--awlad-font-sans);
-    direction: rtl;
-    text-align: right;
-    background-color: #f8fafc;
+    background-color: var(--awlad-surface-page);
     color: var(--awlad-text-body);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -49,12 +52,54 @@
 ::-webkit-scrollbar-track {
   background: #f1f5f9;
 }
+html.dark ::-webkit-scrollbar-track {
+  background: #0f172a;
+}
 ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 4px;
 }
+html.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+/* Subtle horizontal scrollbar hiding for shortcut strips */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Reduced-motion-safe fly-to-cart visual feedback */
+@keyframes awladCartDotFly {
+  0% {
+    opacity: 0.95;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  70% {
+    opacity: 0.85;
+    transform: translate(var(--fly-dx, 0px), var(--fly-dy, 0px)) scale(0.55);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--fly-dx, 0px), var(--fly-dy, 0px)) scale(0.2);
+  }
+}
+
+.awlad-fly-dot {
+  animation: awladCartDotFly 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .awlad-fly-dot {
+    animation: none !important;
+    display: none !important;
+  }
 }
 
 /* Print specific styles */

@@ -527,7 +527,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                           {emp.code}
                         </span>
                         <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
                             emp.status === 'active'
                               ? 'bg-emerald-100 text-emerald-800'
                               : 'bg-red-100 text-red-800'
@@ -536,12 +536,12 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                           {emp.status === 'active' ? 'نشط' : 'موقوف'}
                         </span>
                         {linkedUsr && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-800">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-800">
                             مستخدم: @{linkedUsr.username}
                           </span>
                         )}
                         {linkedRep && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-800">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-cyan-50 text-cyan-800">
                             مندوب ميداني
                           </span>
                         )}
@@ -738,7 +738,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                       <td className="p-3 font-bold text-slate-900">{rec.employeeName}</td>
                       <td className="p-3">
                         <span
-                          className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                          className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
                             rec.status === 'present'
                               ? 'bg-emerald-100 text-emerald-800'
                               : rec.status === 'late'
@@ -797,19 +797,19 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                     <td className="p-3 font-bold text-slate-900">{a.employeeName}</td>
                     <td className="p-3">
                       {a.type === 'advance' ? (
-                        <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px]">سلفة</span>
+                        <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold text-[10px]">سلفة</span>
                       ) : a.type === 'deduction' ? (
-                        <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-800 font-bold text-[10px]">خصم جزاء</span>
+                        <span className="px-2 py-0.5 rounded-md bg-red-100 text-red-800 font-bold text-[10px]">خصم جزاء</span>
                       ) : (
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">مكافأة</span>
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px]">مكافأة</span>
                       )}
                     </td>
                     <td className="p-3 text-center font-mono font-bold">{a.amount.toLocaleString()} {settings.currency}</td>
                     <td className="p-3">
                       {a.isSettled ? (
-                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold">تمت التسوية</span>
+                        <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px] font-bold">تمت التسوية</span>
                       ) : (
-                        <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 text-[10px] font-bold">قائمة للخصم بالمسير</span>
+                        <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 text-[10px] font-bold">قائمة للخصم بالمسير</span>
                       )}
                     </td>
                     <td className="p-3 text-slate-600">{a.reason}</td>

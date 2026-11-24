@@ -38,6 +38,9 @@ import { RefreshSyncScreen } from './RefreshSyncScreen';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
 import { SearchableFilterSelect, type SearchableFilterOption } from '../../common/SearchableFilterSelect';
+import { CustomerLocationPickerModal, PickedCustomerLocation } from '../../common/CustomerLocationPickerModal';
+import { CustomerLocationViewerModal } from '../../common/CustomerLocationViewerModal';
+import { isZeroZeroLocation } from '../../../utils/storefront';
 import {
   SalesInvoiceIcon,
   SalesInvoicesListIcon,
@@ -383,8 +386,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [newCustExtraPhones, setNewCustExtraPhones] = useState<Array<{ id: string; phone: string; label: string }>>([]);
   const [newCustGovernorate, setNewCustGovernorate] = useState('');
   const [newCustArea, setNewCustArea] = useState('');
+  const [newCustCity, setNewCustCity] = useState('');
   const [newCustAddress, setNewCustAddress] = useState('');
   const [newCustGeo, setNewCustGeo] = useState('');
+  const [newCustLat, setNewCustLat] = useState<number | undefined>(undefined);
+  const [newCustLng, setNewCustLng] = useState<number | undefined>(undefined);
+  const [newCustLocAt, setNewCustLocAt] = useState<string | undefined>(undefined);
   const [newCustShopPhoto, setNewCustShopPhoto] = useState('');
   const [newCustNotes, setNewCustNotes] = useState('');
   const [newCustOpening, setNewCustOpening] = useState<number | ''>('');
@@ -403,8 +410,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [editCustExtraPhones, setEditCustExtraPhones] = useState<Array<{ id: string; phone: string; label: string }>>([]);
   const [editCustGovernorate, setEditCustGovernorate] = useState('');
   const [editCustArea, setEditCustArea] = useState('');
+  const [editCustCity, setEditCustCity] = useState('');
   const [editCustAddress, setEditCustAddress] = useState('');
   const [editCustGeo, setEditCustGeo] = useState('');
+  const [editCustLat, setEditCustLat] = useState<number | undefined>(undefined);
+  const [editCustLng, setEditCustLng] = useState<number | undefined>(undefined);
+  const [editCustLocAt, setEditCustLocAt] = useState<string | undefined>(undefined);
   const [editCustShopPhoto, setEditCustShopPhoto] = useState('');
   const [editCustPhotoChanged, setEditCustPhotoChanged] = useState(false);
   const [editCustClearPhoto, setEditCustClearPhoto] = useState(false);
@@ -416,6 +427,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [isSavingEditCustomer, setIsSavingEditCustomer] = useState(false);
   const editCustCameraInputRef = useRef<HTMLInputElement | null>(null);
   const editCustGalleryInputRef = useRef<HTMLInputElement | null>(null);
+  const [locationPickerTarget, setLocationPickerTarget] = useState<'new' | 'edit' | null>(null);
+  const [locationViewerData, setLocationViewerData] = useState<{
+    customerName: string;
+    shopName?: string;
+    address?: string;
+    city?: string;
+    area?: string;
+    governorate?: string;
+    geoCoordinates?: string;
+    latitude?: number;
+    longitude?: number;
+  } | null>(null);
 
   const [newSupName, setNewSupName] = useState('');
   const [newSupCompany, setNewSupCompany] = useState('');
@@ -2263,6 +2286,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       ...extraClean,
     ];
 
+    const parsedNewGeo = parseLatLngCoords(newCustGeo || '');
+    const resolvedNewLat = newCustLat ?? parsedNewGeo?.lat;
+    const resolvedNewLng = newCustLng ?? parsedNewGeo?.lng;
+    if (isZeroZeroLocation(resolvedNewLat, resolvedNewLng)) {
+      setFeedback({ type: 'error', text: 'إحداثيات (0, 0) غير صالحة — يرجى تحديد موقع حقيقي على الخريطة.' });
+      return;
+    }
+
     setIsSavingCustomer(true);
     setFeedback(null);
     try {
@@ -2276,7 +2307,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         governorate: newCustGovernorate.trim() || undefined,
         address: newCustAddress.trim() || newCustArea.trim() || '-',
         area: newCustArea.trim() || undefined,
+        city: newCustCity.trim() || newCustArea.trim() || undefined,
         geoCoordinates: newCustGeo.trim() || undefined,
+        latitude: resolvedNewLat,
+        longitude: resolvedNewLng,
+        locationCapturedAt: newCustLocAt,
         photo: newCustShopPhoto || undefined,
         shopPhoto: newCustShopPhoto || undefined,
         notes: newCustNotes.trim() || undefined,
@@ -2290,8 +2325,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setNewCustExtraPhones([]);
       setNewCustGovernorate('');
       setNewCustArea('');
+      setNewCustCity('');
       setNewCustAddress('');
       setNewCustGeo('');
+      setNewCustLat(undefined);
+      setNewCustLng(undefined);
+      setNewCustLocAt(undefined);
       setNewCustShopPhoto('');
       setNewCustNotes('');
       setNewCustOpening('');
@@ -2341,8 +2380,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     setEditCustExtraPhones(extras);
     setEditCustGovernorate(c.governorate || '');
     setEditCustArea(c.area || '');
+    setEditCustCity(c.city || '');
     setEditCustAddress(c.address || '');
     setEditCustGeo(c.geoCoordinates || '');
+    setEditCustLat(c.latitude);
+    setEditCustLng(c.longitude);
+    setEditCustLocAt(c.locationCapturedAt);
     setEditCustShopPhoto(c.shopPhoto || c.photo || '');
     setEditCustPhotoChanged(false);
     setEditCustClearPhoto(false);
@@ -2420,6 +2463,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       ...extraClean,
     ];
 
+    const parsedEditGeo = parseLatLngCoords(editCustGeo || '');
+    const resolvedEditLat = editCustLat ?? parsedEditGeo?.lat;
+    const resolvedEditLng = editCustLng ?? parsedEditGeo?.lng;
+    if (isZeroZeroLocation(resolvedEditLat, resolvedEditLng)) {
+      setFeedback({ type: 'error', text: 'إحداثيات (0, 0) غير صالحة — يرجى تحديد موقع حقيقي على الخريطة.' });
+      return;
+    }
+
     const updatesPayload: Partial<Customer> = {
       name: editCustName.trim(),
       shopName: editCustShop.trim() || editCustName.trim(),
@@ -2428,8 +2479,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       phones: consolidatedPhones,
       governorate: editCustGovernorate.trim() || '',
       area: editCustArea.trim() || undefined,
+      city: editCustCity.trim() || editCustArea.trim() || undefined,
       address: editCustAddress.trim() || editCustArea.trim() || '-',
       geoCoordinates: editCustGeo.trim() || undefined,
+      latitude: resolvedEditLat,
+      longitude: resolvedEditLng,
+      locationCapturedAt: editCustLocAt,
       notes: editCustNotes.trim() || '',
       ...(editCustClearPhoto
         ? { clearShopPhoto: true }
@@ -3428,7 +3483,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           <button
             type="button"
             onClick={() => guardedTabChange('home')}
-            className="min-h-[38px] px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-[#2d1b69] font-black inline-flex items-center gap-1.5 cursor-pointer"
+            className="min-h-[38px] px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-[#0F5A33] font-black inline-flex items-center gap-1.5 cursor-pointer"
           >
             <ArrowRight className="w-4 h-4" />
             <span>الرئيسية</span>
@@ -4197,15 +4252,26 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         </button>
                       )}
                       {hasValidMap && (
-                        <a
-                          href={mapsHref}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="min-h-[40px] px-2.5 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1"
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setLocationViewerData({
+                              customerName: c.name,
+                              shopName: c.shopName,
+                              address: c.address,
+                              city: c.city,
+                              area: c.area,
+                              governorate: c.governorate,
+                              geoCoordinates: c.geoCoordinates,
+                              latitude: c.latitude,
+                              longitude: c.longitude,
+                            })
+                          }
+                          className="min-h-[40px] px-2.5 rounded-xl bg-emerald-50 text-[#0F5A33] border border-emerald-200 font-bold inline-flex items-center gap-1 cursor-pointer"
                         >
-                          <MapPin className="w-3.5 h-3.5 text-red-600" />
+                          <MapPin className="w-3.5 h-3.5 text-[#0F5A33]" />
                           <span>الموقع</span>
-                        </a>
+                        </button>
                       )}
                       <button
                         type="button"
@@ -4238,7 +4304,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           setInvCustomerId(c.id);
                           onTabChange('new-invoice');
                         }}
-                        className="min-h-[40px] flex-1 px-3 rounded-xl bg-[#2d1b69] hover:bg-[#231454] text-white font-bold cursor-pointer"
+                        className="min-h-[40px] flex-1 px-3 rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white font-bold cursor-pointer"
                       >
                         فاتورة
                       </button>
@@ -4695,7 +4761,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <button
                 type="button"
                 onClick={() => onTabChange('new-supplier')}
-                className="min-h-[40px] px-3 rounded-xl bg-purple-50 text-purple-900 border border-purple-200 font-bold cursor-pointer"
+                className="min-h-[40px] px-3 rounded-xl bg-emerald-50 text-[#0F5A33] border border-emerald-200 font-bold cursor-pointer"
               >
                 + مورد جديد
               </button>
@@ -5635,14 +5701,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
         return (
           <form onSubmit={handleSubmitCashDeposit} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs text-xs">
-            {/* WA0005 Purple Collection Header */}
-            <div className="bg-[#2d1b69] text-white px-4 py-3 flex items-center justify-between gap-2">
+            {/* Emerald Collection Header */}
+            <div className="bg-[#0F5A33] text-white px-4 py-3 flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <h3 className="text-sm font-black">
                   {depMode === 'cashbox_deposit' && !isRepRoleAccount ? 'إيداع مباشر بالخزينة' : 'تحصيل من العميل'}
                 </h3>
                 {depCustomer && depMode === 'customer_collection' && (
-                  <p className="text-[11px] text-purple-200 truncate mt-0.5">
+                  <p className="text-[11px] text-emerald-100 truncate mt-0.5">
                     {depCustomer.shopName || depCustomer.name}
                   </p>
                 )}
@@ -5664,7 +5730,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     onClick={() => setDepMode('customer_collection')}
                     className={`min-h-[44px] rounded-xl font-bold border cursor-pointer ${
                       depMode === 'customer_collection'
-                        ? 'bg-[#2d1b69] text-white border-[#2d1b69]'
+                        ? 'bg-[#0F5A33] text-white border-[#0F5A33]'
                         : 'bg-slate-50 text-slate-700 border-slate-300'
                     }`}
                   >
@@ -5676,7 +5742,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     onClick={() => setDepMode('cashbox_deposit')}
                     className={`min-h-[44px] rounded-xl font-bold border cursor-pointer disabled:opacity-45 ${
                       depMode === 'cashbox_deposit'
-                        ? 'bg-[#2d1b69] text-white border-[#2d1b69]'
+                        ? 'bg-[#0F5A33] text-white border-[#0F5A33]'
                         : 'bg-slate-50 text-slate-700 border-slate-300'
                     }`}
                   >
@@ -5842,7 +5908,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 <button
                   type="submit"
                   disabled={isSubmittingDeposit || Number(depAmount || 0) <= 0}
-                  className="col-span-2 min-h-[48px] rounded-xl bg-[#2d1b69] hover:bg-[#231454] text-white font-black cursor-pointer disabled:opacity-50"
+                  className="col-span-2 min-h-[48px] rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white font-black cursor-pointer disabled:opacity-50"
                 >
                   {isSubmittingDeposit ? 'جاري التسجيل...' : 'دفع وتأكيد التحصيل'}
                 </button>
@@ -6038,25 +6104,23 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 />
                 <button
                   type="button"
+                  onClick={() => setLocationPickerTarget('new')}
+                  className="min-h-[44px] px-3 rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer"
+                  title="تحديد موقع العميل على خريطة جوجل"
+                >
+                  <MapPin className="w-4 h-4" />
+                  <span>خريطة</span>
+                </button>
+                <button
+                  type="button"
                   disabled={isLocatingCust}
                   onClick={handleCaptureCustLocation}
-                  className="min-h-[44px] px-3 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer disabled:opacity-50"
+                  className="min-h-[44px] px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#0F5A33] border border-emerald-200 font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer disabled:opacity-50"
                   title="تحديد الموقع الحالي GPS وجلب العنوان تلقائياً"
                 >
                   <MapPin className="w-4 h-4" />
                   <span>{isLocatingCust ? 'تحديد...' : 'GPS'}</span>
                 </button>
-                {helper.mapQuery && (
-                  <a
-                    href={helper.mapsHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="min-h-[44px] px-3 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1 shrink-0"
-                    title="فتح على خرائط Google"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
-                )}
               </div>
               {newCustGeo && (
                 <p className="text-[10px] font-mono text-emerald-700 mt-1" dir="ltr">
@@ -6259,7 +6323,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         const supPhoneValid = cleanedSupPhone.replace(/\D/g, '').length >= 7;
         return (
           <form onSubmit={handleSaveNewSupplier} className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs">
-            <h3 className="text-sm font-black text-purple-950">إضافة مورد جديد</h3>
+            <h3 className="text-sm font-black text-[#0F5A33]">إضافة مورد جديد</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input
                 type="text"
@@ -6337,7 +6401,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <button
               type="submit"
               disabled={isSavingSupplier}
-              className="w-full min-h-[48px] rounded-2xl bg-purple-900 hover:bg-purple-950 text-white font-black cursor-pointer disabled:opacity-50"
+              className="w-full min-h-[48px] rounded-2xl bg-[#0F5A33] hover:bg-[#0B4426] text-white font-black cursor-pointer disabled:opacity-50"
             >
               {isSavingSupplier ? 'جاري الحفظ...' : 'حفظ المورد الجديد'}
             </button>
@@ -6800,7 +6864,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-mono font-black text-indigo-950">{inv.invoiceNumber}</span>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${meta.badgeClass}`}>
+                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${meta.badgeClass}`}>
                         {meta.label}
                       </span>
                     </div>
@@ -6935,7 +6999,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-mono font-black text-rose-900">{req.requestNumber}</span>
                         <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
                             req.status === 'approved'
                               ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                               : req.status === 'rejected'
@@ -6950,7 +7014,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             : 'قيد مراجعة الخزينة/الإدارة'}
                         </span>
                         {req.syncStatus === 'pending' && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700">
                             بانتظار المزامنة
                           </span>
                         )}
@@ -7036,7 +7100,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-mono font-black text-orange-900">{req.requestNumber}</span>
                         <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
                             req.status === 'approved'
                               ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                               : req.status === 'rejected'
@@ -7051,7 +7115,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             : 'قيد مراجعة الإدارة'}
                         </span>
                         {req.syncStatus === 'pending' && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700">
                             بانتظار المزامنة
                           </span>
                         )}
@@ -7611,22 +7675,28 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           </a>
                         )}
                         {(ord.deliveryAddress || ord.geoCoordinates) && (
-                          <a
-                            href={`https://www.google.com/maps/search/?api=1&query=${mapQ}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="min-h-[42px] px-3 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1.5"
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setLocationViewerData({
+                                customerName: ord.customerName,
+                                shopName: ord.shopName,
+                                address: ord.deliveryAddress,
+                                geoCoordinates: ord.geoCoordinates,
+                              })
+                            }
+                            className="min-h-[42px] px-3 rounded-xl bg-emerald-50 text-[#0F5A33] border border-emerald-200 font-bold inline-flex items-center gap-1.5 cursor-pointer"
                           >
-                            <MapPin className="w-3.5 h-3.5 text-red-600" />
-                            <span>خريطة</span>
-                          </a>
+                            <MapPin className="w-3.5 h-3.5 text-[#0F5A33]" />
+                            <span>عرض الموقع</span>
+                          </button>
                         )}
                         {(ord.status === 'rep_assigned' || ord.status === 'preparing' || ord.status === 'invoiced') && (
                           <button
                             type="button"
                             disabled={isUpdatingDelivery}
                             onClick={() => handleStartDelivery(ord)}
-                            className="flex-1 min-h-[42px] px-3 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-black cursor-pointer disabled:opacity-50"
+                            className="flex-1 min-h-[42px] px-3 rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white font-black cursor-pointer disabled:opacity-50"
                           >
                             بدء التوصيل
                           </button>
@@ -8374,7 +8444,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             <div>
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="font-mono font-black text-blue-950">{row.invoiceNumber}</span>
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
                                   row.type === 'purchase'
                                     ? 'bg-indigo-50 text-indigo-900'
                                     : row.type === 'quote'
@@ -8383,7 +8453,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                                 }`}>
                                   {row.type === 'purchase' ? 'فاتورة شراء' : row.type === 'quote' ? 'عرض سعر' : 'فاتورة بيع'}
                                 </span>
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
                                   row.paymentStatus === 'paid'
                                     ? 'bg-emerald-50 text-emerald-800'
                                     : row.paymentStatus === 'partial'
@@ -8829,8 +8899,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         return (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
             <div className="w-full max-w-2xl bg-[#f5f7fb] rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl border border-slate-200 max-h-[92vh] flex flex-col text-xs pb-safe">
-              {/* WA0004 Purple Header Bar */}
-              <div className="bg-[#2d1b69] text-white px-4 py-3 flex items-center justify-between gap-2 shrink-0">
+              {/* Emerald Header Bar */}
+              <div className="bg-[#0F5A33] text-white px-4 py-3 flex items-center justify-between gap-2 shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
                   <button
                     type="button"
@@ -8844,7 +8914,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     <h4 className="font-black text-sm truncate">
                       {customerDetailSubTab === 'statement' ? 'عرض تفصيلي لحساب الآجل' : (c.shopName || c.name)}
                     </h4>
-                    <p className="text-[11px] text-purple-200 truncate">
+                    <p className="text-[11px] text-emerald-100 truncate">
                       {c.shopName || c.name} · {c.code}
                     </p>
                   </div>
@@ -8861,7 +8931,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   <button
                     type="button"
                     onClick={handlePrintCustomerStatementPdf}
-                    className="min-h-[38px] px-3 rounded-xl bg-white text-[#2d1b69] font-black inline-flex items-center gap-1 cursor-pointer"
+                    className="min-h-[38px] px-3 rounded-xl bg-white text-[#0F5A33] font-black inline-flex items-center gap-1 cursor-pointer"
                   >
                     <Printer className="w-4 h-4" />
                     <span>طباعة</span>
@@ -8876,7 +8946,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     type="button"
                     onClick={() => setCustomerDetailSubTab('overview')}
                     className={`min-h-[40px] rounded-lg font-black cursor-pointer ${
-                      customerDetailSubTab === 'overview' ? 'bg-[#2d1b69] text-white shadow-xs' : 'text-slate-700'
+                      customerDetailSubTab === 'overview' ? 'bg-[#0F5A33] text-white shadow-xs' : 'text-slate-700'
                     }`}
                   >
                     ملف العميل والملخص
@@ -8885,7 +8955,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     type="button"
                     onClick={() => setCustomerDetailSubTab('statement')}
                     className={`min-h-[40px] rounded-lg font-black cursor-pointer ${
-                      customerDetailSubTab === 'statement' ? 'bg-[#2d1b69] text-white shadow-xs' : 'text-slate-700'
+                      customerDetailSubTab === 'statement' ? 'bg-[#0F5A33] text-white shadow-xs' : 'text-slate-700'
                     }`}
                   >
                     كشف الحساب التفصيلي
@@ -8911,7 +8981,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           />
                         </button>
                       ) : (
-                        <div className="w-14 h-14 rounded-xl bg-purple-50 border border-purple-200 flex items-center justify-center text-[#2d1b69] shrink-0">
+                        <div className="w-14 h-14 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-[#0F5A33] shrink-0">
                           <Store className="w-6 h-6" />
                         </div>
                       )}
@@ -9004,32 +9074,28 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         );
                       })}
                       {hasValidMap && (
-                        <a
-                          href={mapsHref}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="min-h-[42px] px-3 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1.5"
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setLocationViewerData({
+                              customerName: c.name,
+                              shopName: c.shopName,
+                              address: c.address,
+                              city: c.city,
+                              area: c.area,
+                              governorate: c.governorate,
+                              geoCoordinates: c.geoCoordinates,
+                              latitude: c.latitude,
+                              longitude: c.longitude,
+                            })
+                          }
+                          className="min-h-[42px] px-3 rounded-xl bg-emerald-50 text-[#0F5A33] border border-emerald-200 font-bold inline-flex items-center gap-1.5 cursor-pointer"
                         >
-                          <MapPin className="w-4 h-4 text-red-600" />
-                          <span>فتح في الخرائط</span>
-                        </a>
+                          <MapPin className="w-4 h-4 text-[#0F5A33]" />
+                          <span>عرض الموقع على الخريطة</span>
+                        </button>
                       )}
                     </div>
-
-                    {parsedMap && (() => {
-                      const delta = 0.005;
-                      const bbox = `${parsedMap.lng - delta},${parsedMap.lat - delta},${parsedMap.lng + delta},${parsedMap.lat + delta}`;
-                      return (
-                        <div className="rounded-2xl overflow-hidden border border-slate-200 bg-white">
-                          <iframe
-                            title="معاينة موقع العميل"
-                            src={`https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${parsedMap.lat},${parsedMap.lng}`}
-                            className="w-full h-36 border-0"
-                            loading="lazy"
-                          />
-                        </div>
-                      );
-                    })()}
 
                     <div className="bg-white space-y-1.5 border border-slate-200 rounded-2xl p-3">
                       <span className="font-black text-slate-800 block mb-1">آخر فواتير العميل ({custInvoices.length})</span>
@@ -9144,7 +9210,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           setSelectedCustomerDetail(null);
                           onTabChange('cash-deposit');
                         }}
-                        className="min-h-[48px] rounded-xl bg-[#2d1b69] hover:bg-[#231454] text-white font-black cursor-pointer"
+                        className="min-h-[48px] rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white font-black cursor-pointer"
                       >
                         دفع
                       </button>
@@ -9210,7 +9276,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                                           });
                                         }
                                       }}
-                                      className={clickable ? 'hover:bg-purple-50/70 cursor-pointer' : ''}
+                                      className={clickable ? 'hover:bg-emerald-50/70 cursor-pointer' : ''}
                                     >
                                       <td className="py-2.5 px-2 font-bold text-slate-900">
                                         <span className="block truncate max-w-[110px]">{entry.label}</span>
@@ -9252,7 +9318,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       <button
                         type="button"
                         onClick={handlePrintCustomerStatementPdf}
-                        className="min-h-[42px] rounded-xl bg-[#2d1b69] hover:bg-[#231454] text-white font-black flex items-center justify-center gap-1.5 cursor-pointer"
+                        className="min-h-[42px] rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white font-black flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <Printer className="w-4 h-4" />
                         <span>طباعة</span>
@@ -9321,7 +9387,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       setSelectedCustomerDetail(null);
                       onTabChange('new-invoice');
                     }}
-                    className="min-h-[44px] rounded-xl bg-[#2d1b69] text-white font-black cursor-pointer"
+                    className="min-h-[44px] rounded-xl bg-[#0F5A33] text-white font-black cursor-pointer"
                   >
                     + فاتورة جديدة
                   </button>
@@ -9686,7 +9752,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <h4 className="font-black text-base text-slate-900 font-mono">{pur.invoiceNumber}</h4>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${meta.badgeClass}`}>
+                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${meta.badgeClass}`}>
                       {meta.label}
                     </span>
                   </div>
@@ -9965,24 +10031,23 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   />
                   <button
                     type="button"
+                    onClick={() => setLocationPickerTarget('edit')}
+                    className="min-h-[44px] px-3 rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer"
+                    title="تحديد موقع العميل على خريطة جوجل"
+                  >
+                    <MapPin className="w-4 h-4" />
+                    <span>خريطة</span>
+                  </button>
+                  <button
+                    type="button"
                     disabled={isLocatingEditCust}
                     onClick={handleCaptureEditCustLocation}
-                    className="min-h-[44px] px-3 rounded-xl bg-blue-900 hover:bg-blue-950 text-white font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer disabled:opacity-50"
+                    className="min-h-[44px] px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#0F5A33] border border-emerald-200 font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer disabled:opacity-50"
                     title="تحديد الموقع الحالي GPS وجلب العنوان تلقائياً"
                   >
                     <MapPin className="w-4 h-4" />
                     <span>{isLocatingEditCust ? 'تحديد...' : 'GPS'}</span>
                   </button>
-                  {mapQ && (
-                    <a
-                      href={mapsHref}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="min-h-[44px] px-3 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1 shrink-0"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
-                  )}
                 </div>
                 {editCustGeo && (
                   <p className="text-[10px] font-mono text-emerald-700 mt-1" dir="ltr">
@@ -10428,6 +10493,55 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           </form>
         </div>
       )}
+
+      <CustomerLocationPickerModal
+        isOpen={Boolean(locationPickerTarget)}
+        onClose={() => setLocationPickerTarget(null)}
+        initialLat={locationPickerTarget === 'edit' ? editCustLat : newCustLat}
+        initialLng={locationPickerTarget === 'edit' ? editCustLng : newCustLng}
+        initialGeoCoordinates={locationPickerTarget === 'edit' ? editCustGeo : newCustGeo}
+        initialAddress={locationPickerTarget === 'edit' ? editCustAddress : newCustAddress}
+        initialCity={locationPickerTarget === 'edit' ? editCustCity : newCustCity}
+        initialArea={locationPickerTarget === 'edit' ? editCustArea : newCustArea}
+        initialGovernorate={locationPickerTarget === 'edit' ? editCustGovernorate : newCustGovernorate}
+        onConfirm={(picked: PickedCustomerLocation) => {
+          if (locationPickerTarget === 'edit') {
+            setEditCustGeo(picked.geoCoordinates);
+            setEditCustLat(picked.latitude);
+            setEditCustLng(picked.longitude);
+            setEditCustLocAt(picked.locationCapturedAt);
+            if (picked.address) setEditCustAddress(picked.address);
+            if (picked.city) setEditCustCity(picked.city);
+            if (picked.area) setEditCustArea(picked.area);
+            if (picked.governorate) setEditCustGovernorate(picked.governorate);
+            setEditCustMapNotice(null);
+          } else {
+            setNewCustGeo(picked.geoCoordinates);
+            setNewCustLat(picked.latitude);
+            setNewCustLng(picked.longitude);
+            setNewCustLocAt(picked.locationCapturedAt);
+            if (picked.address) setNewCustAddress(picked.address);
+            if (picked.city) setNewCustCity(picked.city);
+            if (picked.area) setNewCustArea(picked.area);
+            if (picked.governorate) setNewCustGovernorate(picked.governorate);
+            setCustMapNotice(null);
+          }
+        }}
+      />
+
+      <CustomerLocationViewerModal
+        isOpen={Boolean(locationViewerData)}
+        onClose={() => setLocationViewerData(null)}
+        customerName={locationViewerData?.customerName || ''}
+        shopName={locationViewerData?.shopName}
+        address={locationViewerData?.address}
+        city={locationViewerData?.city}
+        area={locationViewerData?.area}
+        governorate={locationViewerData?.governorate}
+        geoCoordinates={locationViewerData?.geoCoordinates}
+        latitude={locationViewerData?.latitude}
+        longitude={locationViewerData?.longitude}
+      />
 
       <ConfirmDialog
         isOpen={Boolean(deleteCustomerTarget)}

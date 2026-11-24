@@ -262,9 +262,9 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
                   <td className="p-3 font-mono font-bold text-blue-900">{chq.chequeNumber}</td>
                   <td className="p-3">
                     {chq.type === 'incoming' ? (
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 font-bold text-[10px]">شيك وارد (لنا)</span>
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 font-bold text-[10px]">شيك وارد (لنا)</span>
                     ) : (
-                      <span className="px-2 py-0.5 rounded-full bg-purple-50 text-purple-800 font-bold text-[10px]">شيك صادر (علينا)</span>
+                      <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 font-bold text-[10px]">شيك صادر (علينا)</span>
                     )}
                   </td>
                   <td className="p-3 font-semibold">{chq.bankName}</td>
@@ -275,13 +275,13 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
                   </td>
                   <td className="p-3">
                     {chq.status === 'collected' ? (
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">تم التحصيل</span>
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px]">تم التحصيل</span>
                     ) : chq.status === 'pending' ? (
-                      <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px]">برسم التحصيل</span>
+                      <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold text-[10px]">برسم التحصيل</span>
                     ) : chq.status === 'rejected' ? (
-                      <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-800 font-bold text-[10px]">مرفوض</span>
+                      <span className="px-2 py-0.5 rounded-md bg-red-100 text-red-800 font-bold text-[10px]">مرفوض</span>
                     ) : (
-                      <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 font-bold text-[10px]">جديد</span>
+                      <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 font-bold text-[10px]">جديد</span>
                     )}
                   </td>
                   <td className="p-3 text-center">
@@ -354,11 +354,11 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
                         <td className="p-2 text-center font-bold text-emerald-700">{it.paidAmount.toLocaleString()}</td>
                         <td className="p-2">
                           {it.status === 'paid' ? (
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">مسدد بالكامل</span>
+                            <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold">مسدد بالكامل</span>
                           ) : isOverdue ? (
-                            <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-800 text-[10px] font-bold animate-pulse">متأخر عن الموعد</span>
+                            <span className="px-2 py-0.5 rounded-md bg-red-100 text-red-800 text-[10px] font-bold">متأخر عن الموعد</span>
                           ) : (
-                            <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold">في الانتظار</span>
+                            <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-bold">في الانتظار</span>
                           )}
                         </td>
                         <td className="p-2 text-center">

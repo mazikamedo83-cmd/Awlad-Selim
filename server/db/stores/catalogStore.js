@@ -84,18 +84,93 @@ export function sanitizeGeoCoordinates(raw) {
   return trimmed;
 }
 
+export function isZeroZeroCoords(lat, lng) {
+  return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001;
+}
+
+export function resolveCustomerGeoInput(input = {}, fallback = {}) {
+  const hasExplicitLatLng = input.latitude !== undefined || input.longitude !== undefined;
+  const hasGeoStr = input.geoCoordinates !== undefined;
+
+  let lat = input.latitude !== undefined && input.latitude !== null && input.latitude !== ''
+    ? Number(input.latitude)
+    : undefined;
+  let lng = input.longitude !== undefined && input.longitude !== null && input.longitude !== ''
+    ? Number(input.longitude)
+    : undefined;
+  let geoStr = hasGeoStr ? sanitizeGeoCoordinates(input.geoCoordinates) : fallback.geoCoordinates;
+
+  if (hasExplicitLatLng) {
+    if (lat === undefined && lng === undefined) {
+      // cleared explicitly
+      geoStr = hasGeoStr ? geoStr : undefined;
+    } else if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      throw new AppError(400, 'إحداثيات خط العرض أو خط الطول غير صالحة', 'INVALID_GEO_COORDINATES');
+    } else if (isZeroZeroCoords(lat, lng)) {
+      throw new AppError(400, 'إحداثيات (0, 0) غير صالحة؛ يرجى تحديد موقع حقيقي على الخريطة', 'ZERO_ZERO_COORDINATES');
+    } else {
+      lat = Number(lat.toFixed(6));
+      lng = Number(lng.toFixed(6));
+      geoStr = hasGeoStr && geoStr ? geoStr : `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    }
+  } else if (hasGeoStr && geoStr) {
+    const m = geoStr.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (m) {
+      const parsedLat = Number(m[1]);
+      const parsedLng = Number(m[2]);
+      if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLng) || parsedLat < -90 || parsedLat > 90 || parsedLng < -180 || parsedLng > 180) {
+        throw new AppError(400, 'إحداثيات الموقع الجغرافي غير صالحة', 'INVALID_GEO_COORDINATES');
+      }
+      if (isZeroZeroCoords(parsedLat, parsedLng)) {
+        throw new AppError(400, 'إحداثيات (0, 0) غير صالحة؛ يرجى تحديد موقع حقيقي على الخريطة', 'ZERO_ZERO_COORDINATES');
+      }
+      lat = Number(parsedLat.toFixed(6));
+      lng = Number(parsedLng.toFixed(6));
+    }
+  } else if (!hasExplicitLatLng && !hasGeoStr) {
+    lat = fallback.latitude;
+    lng = fallback.longitude;
+    geoStr = fallback.geoCoordinates;
+  }
+
+  const nextCity =
+    input.city !== undefined
+      ? (String(input.city || '').trim() || undefined)
+      : (fallback.city || undefined);
+  const nextCapturedAt =
+    lat !== undefined && lng !== undefined
+      ? (input.locationCapturedAt ? String(input.locationCapturedAt).trim() : (fallback.locationCapturedAt || nowIso()))
+      : (input.clearLocation ? undefined : fallback.locationCapturedAt);
+
+  return {
+    geoCoordinates: geoStr,
+    latitude: lat,
+    longitude: lng,
+    city: nextCity,
+    locationCapturedAt: nextCapturedAt,
+  };
+}
+
 export function normalizeCustomerRecordShape(c) {
   if (!c) return null;
   const phones = normalizeCustomerPhonesList(c.phones, c.phone || '', c.secondaryPhone || '');
   const primaryPhone = phones.find((p) => p.isPrimary)?.number || phones[0]?.number || c.phone || '';
   const secondaryEntry = phones.find((p) => !p.isPrimary && p.number !== primaryPhone) || phones[1];
   const resolvedPhoto = c.shopPhoto || c.photo || undefined;
+  const latNum = c.latitude !== undefined && c.latitude !== null ? Number(c.latitude) : undefined;
+  const lngNum = c.longitude !== undefined && c.longitude !== null ? Number(c.longitude) : undefined;
+  const validCoords = latNum !== undefined && lngNum !== undefined && !isZeroZeroCoords(latNum, lngNum);
   return {
     ...c,
     phone: primaryPhone,
     secondaryPhone: secondaryEntry?.number || c.secondaryPhone || undefined,
     phones,
     governorate: c.governorate || undefined,
+    city: c.city || undefined,
+    latitude: validCoords ? latNum : undefined,
+    longitude: validCoords ? lngNum : undefined,
+    locationCapturedAt: c.locationCapturedAt || undefined,
+    favoriteProductIds: Array.isArray(c.favoriteProductIds) ? c.favoriteProductIds.map(String).filter(Boolean) : [],
     shopPhoto: resolvedPhoto,
     photo: resolvedPhoto,
   };
@@ -242,7 +317,8 @@ export async function createCustomer(payload, actor) {
   const secondaryPhone = secondaryEntry?.number || (payload.secondaryPhone ? String(payload.secondaryPhone).trim() : null);
 
   const safePhoto = sanitizeSafeImageUrl(payload.shopPhoto ?? payload.photo);
-  const safeGeo = sanitizeGeoCoordinates(payload.geoCoordinates);
+  const resolvedGeo = resolveCustomerGeoInput(payload, {});
+  const safeGeo = resolvedGeo.geoCoordinates;
   const governorate = payload.governorate ? String(payload.governorate).trim() : '';
 
   let repAlloc = normalizeAllowedRepIds(payload.assignedRepId, payload.allowedRepIds);
@@ -263,8 +339,8 @@ export async function createCustomer(payload, actor) {
         }
       }
       await client.query(
-        `INSERT INTO customers (id, code, user_id, assigned_rep_id, allowed_rep_ids, name, phone, normalized_phone, secondary_phone, phones, shop_name, shop_photo, photo, address, governorate, area, geo_coordinates, opening_balance, current_balance, price_history, notes, status, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
+        `INSERT INTO customers (id, code, user_id, assigned_rep_id, allowed_rep_ids, name, phone, normalized_phone, secondary_phone, phones, shop_name, shop_photo, photo, address, governorate, area, city, geo_coordinates, latitude, longitude, location_captured_at, opening_balance, current_balance, price_history, notes, status, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)`,
         [
           id,
           code,
@@ -282,7 +358,11 @@ export async function createCustomer(payload, actor) {
           payload.address || '',
           governorate,
           payload.area || null,
+          resolvedGeo.city || '',
           safeGeo || null,
+          resolvedGeo.latitude ?? null,
+          resolvedGeo.longitude ?? null,
+          resolvedGeo.locationCapturedAt || null,
           openingBalance,
           currentBalance,
           JSON.stringify(payload.priceHistory || {}),
@@ -362,7 +442,12 @@ export async function createCustomer(payload, actor) {
       address: payload.address || '',
       governorate: governorate || undefined,
       area: payload.area || undefined,
+      city: resolvedGeo.city,
       geoCoordinates: safeGeo,
+      latitude: resolvedGeo.latitude,
+      longitude: resolvedGeo.longitude,
+      locationCapturedAt: resolvedGeo.locationCapturedAt,
+      favoriteProductIds: [],
       openingBalance,
       currentBalance,
       priceHistory: payload.priceHistory || {},
@@ -458,9 +543,19 @@ function resolveUpdatedCustomerPhonesAndPhoto(cur, updates) {
     nextPhoto = cur.shopPhoto || cur.photo || undefined;
   }
 
-  const nextGeo = updates.geoCoordinates !== undefined ? sanitizeGeoCoordinates(updates.geoCoordinates) : cur.geoCoordinates;
+  const resolvedGeo = resolveCustomerGeoInput(updates, cur);
 
-  return { nextPhones, nextPrimary, nextSecondary, nextPhoto, nextGeo };
+  return {
+    nextPhones,
+    nextPrimary,
+    nextSecondary,
+    nextPhoto,
+    nextGeo: resolvedGeo.geoCoordinates,
+    nextLat: resolvedGeo.latitude,
+    nextLng: resolvedGeo.longitude,
+    nextCity: resolvedGeo.city,
+    nextLocationCapturedAt: resolvedGeo.locationCapturedAt,
+  };
 }
 
 export async function updateCustomer(customerId, updates, actor) {
@@ -499,14 +594,14 @@ export async function updateCustomer(customerId, updates, actor) {
               )
             : normalizeAllowedRepIds(cur.assignedRepId, cur.allowedRepIds));
 
-      const { nextPhones, nextPrimary, nextSecondary, nextPhoto, nextGeo } = resolveUpdatedCustomerPhonesAndPhoto(cur, updates);
+      const { nextPhones, nextPrimary, nextSecondary, nextPhoto, nextGeo, nextLat, nextLng, nextCity, nextLocationCapturedAt } = resolveUpdatedCustomerPhonesAndPhoto(cur, updates);
 
       await client.query(
         `UPDATE customers SET
           name = $1, phone = $2, normalized_phone = $3, secondary_phone = $4, phones = $5, shop_name = $6, shop_photo = $7, photo = $8,
-          address = $9, governorate = $10, area = $11, geo_coordinates = $12, notes = $13, status = $14, user_id = $15,
-          assigned_rep_id = $16, allowed_rep_ids = $17, version = COALESCE(version, 1) + 1, updated_at = $18
-         WHERE id = $19`,
+          address = $9, governorate = $10, area = $11, city = $12, geo_coordinates = $13, latitude = $14, longitude = $15, location_captured_at = $16, notes = $17, status = $18, user_id = $19,
+          assigned_rep_id = $20, allowed_rep_ids = $21, version = COALESCE(version, 1) + 1, updated_at = $22
+         WHERE id = $23`,
         [
           updates.name ?? cur.name,
           nextPrimary,
@@ -519,7 +614,11 @@ export async function updateCustomer(customerId, updates, actor) {
           updates.address ?? cur.address,
           updates.governorate !== undefined ? (updates.governorate || '') : (cur.governorate || ''),
           updates.area ?? cur.area ?? null,
+          nextCity || '',
           nextGeo ?? null,
+          nextLat ?? null,
+          nextLng ?? null,
+          nextLocationCapturedAt || null,
           updates.notes ?? cur.notes ?? '',
           isRepActor ? cur.status : (updates.status ?? cur.status),
           nextUserId,
@@ -572,7 +671,7 @@ export async function updateCustomer(customerId, updates, actor) {
               updates.allowedRepIds !== undefined ? updates.allowedRepIds : cur.allowedRepIds
             )
           : normalizeAllowedRepIds(cur.assignedRepId, cur.allowedRepIds));
-    const { nextPhones, nextPrimary, nextSecondary, nextPhoto, nextGeo } = resolveUpdatedCustomerPhonesAndPhoto(cur, updates);
+    const { nextPhones, nextPrimary, nextSecondary, nextPhoto, nextGeo, nextLat, nextLng, nextCity, nextLocationCapturedAt } = resolveUpdatedCustomerPhonesAndPhoto(cur, updates);
     const { clearShopPhoto: _ignoreClear, ...cleanUpdates } = updates;
     const merged = normalizeCustomerRecordShape({
       ...cur,
@@ -587,6 +686,10 @@ export async function updateCustomer(customerId, updates, actor) {
       shopPhoto: nextPhoto,
       photo: nextPhoto,
       geoCoordinates: nextGeo,
+      latitude: nextLat,
+      longitude: nextLng,
+      city: nextCity,
+      locationCapturedAt: nextLocationCapturedAt,
       governorate: updates.governorate !== undefined ? (updates.governorate || undefined) : cur.governorate,
       assignedRepId: repAlloc.assignedRepId,
       allowedRepIds: repAlloc.allowedRepIds,
@@ -656,7 +759,11 @@ export async function updateOwnCustomerProfile(userId, customerId, updates = {},
   if (updates.address !== undefined) allowedUpdates.address = String(updates.address || '').trim();
   if (updates.governorate !== undefined) allowedUpdates.governorate = String(updates.governorate || '').trim();
   if (updates.area !== undefined) allowedUpdates.area = String(updates.area || '').trim() || undefined;
+  if (updates.city !== undefined) allowedUpdates.city = String(updates.city || '').trim() || undefined;
   if (updates.geoCoordinates !== undefined) allowedUpdates.geoCoordinates = updates.geoCoordinates;
+  if (updates.latitude !== undefined) allowedUpdates.latitude = updates.latitude;
+  if (updates.longitude !== undefined) allowedUpdates.longitude = updates.longitude;
+  if (updates.locationCapturedAt !== undefined) allowedUpdates.locationCapturedAt = updates.locationCapturedAt;
   if (updates.shopPhoto !== undefined) allowedUpdates.shopPhoto = updates.shopPhoto;
   if (updates.photo !== undefined) allowedUpdates.photo = updates.photo;
   if (updates.clearShopPhoto !== undefined) allowedUpdates.clearShopPhoto = Boolean(updates.clearShopPhoto);
@@ -673,7 +780,7 @@ export async function updateOwnCustomerProfile(userId, customerId, updates = {},
         throw new AppError(404, 'ملف العميل غير موجود أو غير مربوط بحسابك', 'CUSTOMER_NOT_FOUND');
       }
       const cur = mapPgCustomerRow(existing.rows[0]);
-      const { nextPhones, nextPrimary, nextSecondary, nextPhoto, nextGeo } = resolveUpdatedCustomerPhonesAndPhoto(
+      const { nextPhones, nextPrimary, nextSecondary, nextPhoto, nextGeo, nextLat, nextLng, nextCity, nextLocationCapturedAt } = resolveUpdatedCustomerPhonesAndPhoto(
         cur,
         allowedUpdates
       );
@@ -683,9 +790,9 @@ export async function updateOwnCustomerProfile(userId, customerId, updates = {},
       await client.query(
         `UPDATE customers SET
           name = $1, phone = $2, normalized_phone = $3, secondary_phone = $4, phones = $5, shop_name = $6, shop_photo = $7, photo = $8,
-          address = $9, governorate = $10, area = $11, geo_coordinates = $12,
-          version = COALESCE(version, 1) + 1, updated_at = $13
-         WHERE id = $14`,
+          address = $9, governorate = $10, area = $11, city = $12, geo_coordinates = $13, latitude = $14, longitude = $15, location_captured_at = $16,
+          version = COALESCE(version, 1) + 1, updated_at = $17
+         WHERE id = $18`,
         [
           nextName,
           nextPrimary,
@@ -698,7 +805,11 @@ export async function updateOwnCustomerProfile(userId, customerId, updates = {},
           nextAddress,
           allowedUpdates.governorate !== undefined ? (allowedUpdates.governorate || '') : (cur.governorate || ''),
           allowedUpdates.area !== undefined ? (allowedUpdates.area || null) : (cur.area ?? null),
+          nextCity || '',
           nextGeo ?? null,
+          nextLat ?? null,
+          nextLng ?? null,
+          nextLocationCapturedAt || null,
           now,
           customerId,
         ]
@@ -740,7 +851,7 @@ export async function updateOwnCustomerProfile(userId, customerId, updates = {},
       throw new AppError(404, 'ملف العميل غير موجود أو غير مربوط بحسابك', 'CUSTOMER_NOT_FOUND');
     }
     const cur = normalizeCustomerRecordShape(db.customers[idx]);
-    const { nextPhones, nextPrimary, nextSecondary, nextPhoto, nextGeo } = resolveUpdatedCustomerPhonesAndPhoto(
+    const { nextPhones, nextPrimary, nextSecondary, nextPhoto, nextGeo, nextLat, nextLng, nextCity, nextLocationCapturedAt } = resolveUpdatedCustomerPhonesAndPhoto(
       cur,
       allowedUpdates
     );
@@ -759,6 +870,10 @@ export async function updateOwnCustomerProfile(userId, customerId, updates = {},
       shopPhoto: nextPhoto,
       photo: nextPhoto,
       geoCoordinates: nextGeo,
+      latitude: nextLat,
+      longitude: nextLng,
+      city: nextCity,
+      locationCapturedAt: nextLocationCapturedAt,
       governorate:
         allowedUpdates.governorate !== undefined ? (allowedUpdates.governorate || undefined) : cur.governorate,
       version: Number(cur.version || 1) + 1,

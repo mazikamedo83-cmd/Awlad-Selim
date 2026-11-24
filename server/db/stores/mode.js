@@ -554,6 +554,15 @@ export function mapPgCustomerRow(r) {
   const secondaryEntry = phones.find((p) => !p.isPrimary && p.number !== primaryPhone) || phones[1];
   const resolvedPhoto = r.shop_photo || r.photo || undefined;
 
+  const latNum = r.latitude !== null && r.latitude !== undefined ? Number(r.latitude) : undefined;
+  const lngNum = r.longitude !== null && r.longitude !== undefined ? Number(r.longitude) : undefined;
+  const hasValidLatLng =
+    latNum !== undefined &&
+    lngNum !== undefined &&
+    Number.isFinite(latNum) &&
+    Number.isFinite(lngNum) &&
+    !(Math.abs(latNum) < 0.0001 && Math.abs(lngNum) < 0.0001);
+
   return {
     id: r.id,
     code: r.code,
@@ -571,7 +580,12 @@ export function mapPgCustomerRow(r) {
     address: r.address || r.shop_address || '',
     governorate: r.governorate || undefined,
     area: r.area || undefined,
+    city: r.city || undefined,
     geoCoordinates: r.geo_coordinates || r.map_location || undefined,
+    latitude: hasValidLatLng ? latNum : undefined,
+    longitude: hasValidLatLng ? lngNum : undefined,
+    locationCapturedAt: r.location_captured_at ? isoTimestamp(r.location_captured_at) : undefined,
+    favoriteProductIds: Array.isArray(r.favorite_product_ids) ? r.favorite_product_ids.map(String).filter(Boolean) : [],
     openingBalance: Number(r.opening_balance || 0),
     currentBalance: Number(r.current_balance || 0),
     priceHistory: r.price_history || {},

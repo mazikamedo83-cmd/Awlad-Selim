@@ -76,6 +76,7 @@ jobs:
           node server/tests/productionReadinessAuditTests.mjs
           node server/tests/identityAndFiltersTests.mjs
           node server/tests/branchCollectionAndAuditTests.mjs
+          node server/tests/storefrontAndLocationTests.mjs
           npx tsx server/tests/diagnosticsTests.mts
 
       - name: Verify schema, concurrent bootstrap/register & store roundtrip against real PostgreSQL 16

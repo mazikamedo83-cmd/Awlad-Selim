@@ -18,6 +18,9 @@ import { exportToExcel } from '../../common/ExcelExporter';
 import { exportTableToPdf } from '../../common/PdfExporter';
 import { compressImageFileToDataUrl } from '../../../utils/image';
 import { CustomersGroupIcon } from '../../common/AppIcons';
+import { CustomerLocationPickerModal, PickedCustomerLocation } from '../../common/CustomerLocationPickerModal';
+import { CustomerLocationViewerModal } from '../../common/CustomerLocationViewerModal';
+import { isZeroZeroLocation } from '../../../utils/storefront';
 import type { NavItemKey } from '../../layout/Sidebar';
 
 interface CustomersViewProps {
@@ -56,7 +59,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
 
   // Payment modal state
   const [paymentCustomer, setPaymentCustomer] = useState<Customer | null>(null);
-  const [paymentAmount, setPaymentAmount] = useState<number>(0);
+  const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
   const [paymentCashboxId, setPaymentCashboxId] = useState<string>(cashboxes[0]?.id || '');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank' | 'cheque'>('cash');
   const [paymentNotes, setPaymentNotes] = useState<string>('');
@@ -68,6 +71,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
   const [phoneActionNotice, setPhoneActionNotice] = useState<{ type: 'info' | 'error'; text: string } | null>(null);
   const [mapActionWarning, setMapActionWarning] = useState<string | null>(null);
   const [isLocatingGeo, setIsLocatingGeo] = useState(false);
+  const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false);
+  const [locationViewerCustomer, setLocationViewerCustomer] = useState<Customer | null>(null);
   const [customerFormError, setCustomerFormError] = useState<string | null>(null);
 
   // Invoice view modal
@@ -122,7 +127,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
     extraPhones: Array<{ id: string; phone: string; label: string }>;
     governorate: string;
     area: string;
+    city: string;
     geoCoordinates: string;
+    latitude?: number;
+    longitude?: number;
+    locationCapturedAt?: string;
     address: string;
     photo: string;
     clearShopPhoto: boolean;
@@ -138,7 +147,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
     extraPhones: [],
     governorate: '',
     area: '',
+    city: '',
     geoCoordinates: '',
+    latitude: undefined,
+    longitude: undefined,
+    locationCapturedAt: undefined,
     address: '',
     photo: '',
     clearShopPhoto: false,
@@ -438,7 +451,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
       extraPhones: [],
       governorate: '',
       area: '',
+      city: '',
       geoCoordinates: '',
+      latitude: undefined,
+      longitude: undefined,
+      locationCapturedAt: undefined,
       address: '',
       photo: '',
       clearShopPhoto: false,
@@ -499,7 +516,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
       extraPhones: extras,
       governorate: c.governorate || '',
       area: c.area || '',
+      city: c.city || '',
       geoCoordinates: c.geoCoordinates || '',
+      latitude: c.latitude,
+      longitude: c.longitude,
+      locationCapturedAt: c.locationCapturedAt,
       address: c.address,
       photo: c.shopPhoto || c.photo || '',
       clearShopPhoto: false,
@@ -529,7 +550,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
     setPaymentError(null);
     setPaymentMethod('cash');
     setPaymentCustomer(target);
-    setPaymentAmount(target.currentBalance > 0 ? target.currentBalance : 0);
+    setPaymentAmount(target.currentBalance > 0 ? target.currentBalance : '');
     setPaymentNotes('');
   };
 
@@ -655,6 +676,15 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
         ...cleanExtras,
       ];
 
+      const parsedGeo = parseLatLngCoords(formData.geoCoordinates || '');
+      const resolvedLat = formData.latitude ?? parsedGeo?.lat;
+      const resolvedLng = formData.longitude ?? parsedGeo?.lng;
+      if (isZeroZeroLocation(resolvedLat, resolvedLng)) {
+        setCustomerFormError('إحداثيات الموقع (0, 0) غير صالحة — يرجى تحديد موقع حقيقي على الخريطة أو مسح الإحداثيات.');
+        setIsSavingCustomer(false);
+        return;
+      }
+
       if (editingCustomer) {
         await updateCustomer(editingCustomer.id, {
           name: formData.name.trim(),
@@ -664,7 +694,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
           phones: consolidatedPhones,
           governorate: formData.governorate.trim() || undefined,
           area: formData.area.trim() || undefined,
+          city: formData.city.trim() || undefined,
           geoCoordinates: formData.geoCoordinates.trim() || undefined,
+          latitude: resolvedLat,
+          longitude: resolvedLng,
+          locationCapturedAt: formData.locationCapturedAt,
           address: formData.address.trim(),
           ...(formData.photo
             ? { photo: formData.photo, shopPhoto: formData.photo }
@@ -687,7 +721,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
           phones: consolidatedPhones,
           governorate: formData.governorate.trim() || undefined,
           area: formData.area.trim() || undefined,
+          city: formData.city.trim() || undefined,
           geoCoordinates: formData.geoCoordinates.trim() || undefined,
+          latitude: resolvedLat,
+          longitude: resolvedLng,
+          locationCapturedAt: formData.locationCapturedAt,
           address: formData.address.trim(),
           photo: formData.photo || undefined,
           shopPhoto: formData.photo || undefined,
@@ -757,10 +795,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
     e.preventDefault();
     if (!paymentCustomer || isSubmittingPayment) return;
     setPaymentError(null);
-    if (!paymentAmount || paymentAmount <= 0) {
+    if (!paymentAmount || Number(paymentAmount) <= 0) {
       setPaymentError('يرجى إدخال مبلغ تحصيل صحيح أكبر من صفر');
       return;
     }
+    const numericPayAmt = Number(paymentAmount);
     if (!isRepRole && !paymentCashboxId) {
       setPaymentError('يرجى اختيار الخزينة المودع بها المبلغ');
       return;
@@ -772,14 +811,14 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
       const defaultNote = `تحصيل (${methodLabel}) من الحساب`;
       const res = await recordCustomerPayment(
         paymentCustomer.id,
-        paymentAmount,
+        numericPayAmt,
         isRepRole ? '' : paymentCashboxId,
         paymentNotes.trim() || defaultNote,
         paymentMethod
       );
 
       if (res.success) {
-        const nextBalance = paymentCustomer.currentBalance - paymentAmount;
+        const nextBalance = paymentCustomer.currentBalance - numericPayAmt;
         setPrintData({
           title: `سند قبض (${methodLabel}) من عميل`,
           docNumber: `REC-${Date.now().toString().slice(-6)}`,
@@ -788,8 +827,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
           partyName: paymentCustomer.name,
           partyPhone: paymentCustomer.phone,
           partyAddress: paymentCustomer.address,
-          grandTotal: paymentAmount,
-          paidAmount: paymentAmount,
+          grandTotal: numericPayAmt,
+          paidAmount: numericPayAmt,
           previousBalance: paymentCustomer.currentBalance,
           currentBalance: nextBalance,
           notes:
@@ -800,10 +839,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
         setIsPrintModalOpen(true);
         setPaymentError(null);
         setPaymentCustomer(null);
-        setPaymentAmount(0);
+        setPaymentAmount('');
         setPaymentNotes('');
         setPaymentMethod('cash');
-        setCustomerBanner({ type: 'success', text: `تم تحصيل مبلغ ${paymentAmount.toLocaleString()} ${settings.currency} من العميل (${paymentCustomer.name}) بنجاح.` });
+        setCustomerBanner({ type: 'success', text: `تم تحصيل مبلغ ${numericPayAmt.toLocaleString()} ${settings.currency} من العميل (${paymentCustomer.name}) بنجاح.` });
       } else {
         setPaymentError(res.error || 'تعذر تسجيل الدفعة');
       }
@@ -1106,40 +1145,17 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                     });
                   })()}
 
-                  {/* Google Maps Location Button */}
-                  <a
-                    href={selectedCustomer.geoCoordinates?.trim() 
-                      ? (selectedCustomer.geoCoordinates.startsWith('http') 
-                          ? selectedCustomer.geoCoordinates 
-                          : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedCustomer.geoCoordinates)}`)
-                      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedCustomer.address)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 font-semibold border border-blue-200 shadow-xs transition-all active:scale-95 cursor-pointer"
-                    title="فتح موقع المحل على خرائط Google Maps"
+                  {/* Read-Only Google Maps Location Viewer Button */}
+                  <button
+                    type="button"
+                    onClick={() => setLocationViewerCustomer(selectedCustomer)}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#0F5A33] font-bold border border-emerald-200 shadow-xs transition-all cursor-pointer"
+                    title="عرض موقع المحل المسجل على الخريطة"
                   >
-                    <MapPin className="w-4 h-4 text-red-600 shrink-0" />
-                    <span className="max-w-[280px] truncate">{selectedCustomer.address || selectedCustomer.geoCoordinates || 'موقع الخريطة'}</span>
-                    <ExternalLink className="w-3.5 h-3.5 text-blue-700" />
-                  </a>
+                    <MapPin className="w-4 h-4 text-[#0F5A33] shrink-0" />
+                    <span className="max-w-[260px] truncate">{selectedCustomer.address || 'عرض الموقع'}</span>
+                  </button>
                 </div>
-
-                {(() => {
-                  const parsed = parseLatLngCoords(selectedCustomer.geoCoordinates || '');
-                  if (!parsed) return null;
-                  const delta = 0.005;
-                  const bbox = `${parsed.lng - delta},${parsed.lat - delta},${parsed.lng + delta},${parsed.lat + delta}`;
-                  return (
-                    <div className="mt-2 rounded-2xl overflow-hidden border border-slate-200 max-w-md bg-slate-50">
-                      <iframe
-                        title="معاينة موقع المحل على الخريطة"
-                        src={`https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${parsed.lat},${parsed.lng}`}
-                        className="w-full h-36 border-0"
-                        loading="lazy"
-                      />
-                    </div>
-                  );
-                })()}
 
                 {selectedCustomer.notes && (
                   <p className="text-xs text-slate-500 bg-slate-50 p-2 rounded-xl border border-slate-100 max-w-xl">
@@ -2229,24 +2245,20 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                     <span className="text-[10px] text-slate-400 font-medium">موبايل</span>
                   </div>
 
-                  {/* Google Maps Location Button */}
+                  {/* Read-Only Customer Location Viewer Button */}
                   <div className="flex items-center justify-between">
-                    <a
-                      href={cust.geoCoordinates?.trim()
-                        ? (cust.geoCoordinates.startsWith('http')
-                            ? cust.geoCoordinates
-                            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cust.geoCoordinates)}`)
-                        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cust.address)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 font-medium border border-blue-200 shadow-2xs transition-all active:scale-95 cursor-pointer max-w-[210px] truncate"
-                      title="فتح موقع المحل على خرائط Google Maps"
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setLocationViewerCustomer(cust);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#0F5A33] font-bold border border-emerald-200 shadow-2xs transition-all cursor-pointer max-w-[210px] truncate"
+                      title="عرض الموقع المسجل على الخريطة"
                     >
-                      <MapPin className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                      <span className="truncate">{cust.address || cust.geoCoordinates || 'موقع الخريطة'}</span>
-                      <ExternalLink className="w-3 h-3 text-blue-700 shrink-0" />
-                    </a>
+                      <MapPin className="w-3.5 h-3.5 text-[#0F5A33] shrink-0" />
+                      <span className="truncate">{cust.address || 'عرض الموقع'}</span>
+                    </button>
                     <span className="text-[10px] text-slate-400 font-medium">خرائط</span>
                   </div>
                 </div>
@@ -2277,7 +2289,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                       setPaymentMethod('cash');
                       setPaymentNotes('');
                       setPaymentCustomer(cust);
-                      setPaymentAmount(cust.currentBalance > 0 ? cust.currentBalance : 0);
+                      setPaymentAmount(cust.currentBalance > 0 ? cust.currentBalance : '');
                     }}
                     className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-xs active:scale-95 transition-all cursor-pointer"
                   >
@@ -2372,22 +2384,16 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                         <span>{cust.phone}</span>
                       </a>
                     </td>
-                    <td className="p-3">
-                      <a
-                        href={cust.geoCoordinates?.trim()
-                          ? (cust.geoCoordinates.startsWith('http')
-                              ? cust.geoCoordinates
-                              : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cust.geoCoordinates)}`)
-                          : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cust.address)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-900 font-medium border border-blue-200 max-w-[180px] truncate"
-                        title="فتح خرائط Google"
+                    <td className="p-3" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => setLocationViewerCustomer(cust)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#0F5A33] font-bold border border-emerald-200 max-w-[180px] truncate cursor-pointer"
+                        title="عرض الموقع المسجل"
                       >
-                        <MapPin className="w-3 h-3 text-red-600 shrink-0" />
-                        <span className="truncate">{cust.address || cust.geoCoordinates || 'موقع الخريطة'}</span>
-                      </a>
+                        <MapPin className="w-3 h-3 text-[#0F5A33] shrink-0" />
+                        <span className="truncate">{cust.address || 'عرض الموقع'}</span>
+                      </button>
                     </td>
                     <td className="p-3 text-center font-mono font-black">
                       <span className={cust.currentBalance > 0 ? 'text-red-700' : cust.currentBalance < 0 ? 'text-emerald-700' : 'text-slate-800'}>
@@ -2790,13 +2796,22 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 />
                 <button
                   type="button"
+                  onClick={() => setIsLocationPickerOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white font-bold shrink-0 cursor-pointer transition-colors"
+                  title="تحديد الموقع على خريطة جوجل"
+                >
+                  <MapPin className="w-4 h-4" />
+                  <span>تحديد على الخريطة</span>
+                </button>
+                <button
+                  type="button"
                   disabled={isLocatingGeo}
                   onClick={handleCaptureCustomerGeo}
-                  className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 font-bold shrink-0 cursor-pointer disabled:opacity-50 transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#0F5A33] border border-emerald-200 font-bold shrink-0 cursor-pointer disabled:opacity-50 transition-colors"
                   title="تحديد موقعي الحالي عبر GPS وجلب العنوان تلقائياً"
                 >
-                  <MapPin className="w-4 h-4 text-blue-700" />
-                  <span>{isLocatingGeo ? 'تحديد...' : 'موقعي GPS'}</span>
+                  <MapPin className="w-4 h-4 text-[#0F5A33]" />
+                  <span>{isLocatingGeo ? 'تحديد...' : 'GPS'}</span>
                 </button>
               </div>
             </div>
@@ -2819,37 +2834,15 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                   }}
                   className="flex-1 bg-white border border-slate-300 rounded-xl p-2.5 font-semibold focus:border-blue-600 outline-hidden"
                 />
-                {(() => {
-                  const rawGeo = (formData.geoCoordinates || '').trim();
-                  const addressQuery = [formData.address.trim(), formData.area.trim()].filter(Boolean).join(', ');
-                  const hasTarget = Boolean(rawGeo || addressQuery);
-                  const mapsUrl = rawGeo.startsWith('http://') || rawGeo.startsWith('https://')
-                    ? rawGeo
-                    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(rawGeo || addressQuery)}`;
-                  return hasTarget ? (
-                    <a
-                      href={mapsUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => setMapActionWarning(null)}
-                      className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 font-bold shrink-0 transition-colors"
-                      title="عرض الموقع على خرائط جوجل"
-                    >
-                      <MapPin className="w-4 h-4 text-blue-700" />
-                      <span>خريطة</span>
-                    </a>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setMapActionWarning('يرجى إدخال عنوان المحل أو إحداثيات GPS أولاً لفتحه على الخريطة.')}
-                      className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300 font-bold shrink-0 cursor-pointer transition-colors"
-                      title="فتح الموقع على الخرائط"
-                    >
-                      <MapPin className="w-4 h-4" />
-                      <span>خريطة</span>
-                    </button>
-                  );
-                })()}
+                <button
+                  type="button"
+                  onClick={() => setIsLocationPickerOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#0F5A33] border border-emerald-200 font-bold shrink-0 cursor-pointer transition-colors"
+                  title="تحديد أو تعديل الموقع على خرائط جوجل"
+                >
+                  <MapPin className="w-4 h-4 text-[#0F5A33]" />
+                  <span>خريطة</span>
+                </button>
               </div>
               {mapActionWarning ? (
                 <span className="text-[11px] font-bold text-red-600 mt-1 block">{mapActionWarning}</span>
@@ -3070,7 +3063,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                     const found = customers.find(c => c.id === e.target.value);
                     if (found) {
                       setPaymentCustomer(found);
-                      setPaymentAmount(found.currentBalance > 0 ? found.currentBalance : 0);
+                      setPaymentAmount(found.currentBalance > 0 ? found.currentBalance : '');
                     }
                   }}
                   className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold outline-hidden focus:border-blue-600"
@@ -3092,15 +3085,16 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 min="1"
                 step="0.01"
                 required
-                value={paymentAmount || ''}
-                onChange={(e) => setPaymentAmount(Number(e.target.value))}
+                value={paymentAmount === '' ? '' : paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                placeholder="أدخل المبلغ"
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-lg font-black text-center text-emerald-800 font-mono outline-hidden focus:border-emerald-600"
               />
             </div>
 
-            {paymentAmount > 0 && (paymentCustomer.currentBalance <= 0 || paymentAmount > paymentCustomer.currentBalance) && (
+            {Number(paymentAmount || 0) > 0 && (paymentCustomer.currentBalance <= 0 || Number(paymentAmount || 0) > paymentCustomer.currentBalance) && (
               <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-bold leading-relaxed">
-                تنبيه محاسبي: المبلغ المدخل يتجاوز المديونية القائمة للعميل — سيتم قيد الزيادة كـ "رصيد دائن للعميل / دفعة مقدمة (علينا)" ({Math.abs(paymentCustomer.currentBalance - paymentAmount).toLocaleString()} {settings.currency}) دون تصفير الرصيد السالب ولن يُحتسب كإيراد مبيعات.
+                تنبيه محاسبي: المبلغ المدخل يتجاوز المديونية القائمة للعميل — سيتم قيد الزيادة كـ "رصيد دائن للعميل / دفعة مقدمة (علينا)" ({Math.abs(paymentCustomer.currentBalance - Number(paymentAmount || 0)).toLocaleString()} {settings.currency}) دون تصفير الرصيد السالب ولن يُحتسب كإيراد مبيعات.
               </div>
             )}
 
@@ -3484,6 +3478,49 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
           </div>
         </div>
       )}
+
+      {/* ========================================================= */}
+      {/* GOOGLE MAPS PICKER & VIEWER MODALS                        */}
+      {/* ========================================================= */}
+      <CustomerLocationPickerModal
+        isOpen={isLocationPickerOpen}
+        onClose={() => setIsLocationPickerOpen(false)}
+        initialLat={formData.latitude}
+        initialLng={formData.longitude}
+        initialGeoCoordinates={formData.geoCoordinates}
+        initialAddress={formData.address}
+        initialCity={formData.city}
+        initialArea={formData.area}
+        initialGovernorate={formData.governorate}
+        onConfirm={(picked: PickedCustomerLocation) => {
+          setFormData((prev) => ({
+            ...prev,
+            geoCoordinates: picked.geoCoordinates,
+            latitude: picked.latitude,
+            longitude: picked.longitude,
+            locationCapturedAt: picked.locationCapturedAt,
+            address: picked.address || prev.address,
+            area: picked.area || prev.area,
+            city: picked.city || prev.city,
+            governorate: picked.governorate || prev.governorate,
+          }));
+          setMapActionWarning(null);
+        }}
+      />
+
+      <CustomerLocationViewerModal
+        isOpen={Boolean(locationViewerCustomer)}
+        onClose={() => setLocationViewerCustomer(null)}
+        customerName={locationViewerCustomer?.name || ''}
+        shopName={locationViewerCustomer?.shopName}
+        address={locationViewerCustomer?.address}
+        city={locationViewerCustomer?.city}
+        area={locationViewerCustomer?.area}
+        governorate={locationViewerCustomer?.governorate}
+        geoCoordinates={locationViewerCustomer?.geoCoordinates}
+        latitude={locationViewerCustomer?.latitude}
+        longitude={locationViewerCustomer?.longitude}
+      />
 
       {/* ========================================================= */}
       {/* PRINT DOCUMENT MODAL (Statement, Receipt, Invoice)        */}

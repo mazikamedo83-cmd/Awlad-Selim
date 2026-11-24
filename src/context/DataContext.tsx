@@ -20,7 +20,16 @@ import {
   runIdentityAuditApi,
   linkEntityToIdentityApi,
   resolveIdentityConflictApi,
+  fetchAdminStorefrontApi,
+  saveStorefrontDraftApi,
+  publishStorefrontApi,
+  toggleCustomerFavoriteApi,
 } from '../services/api';
+import {
+  DEFAULT_STOREFRONT_CONFIG,
+  resolveActiveStorefrontOffer,
+  ResolvedProductPromo,
+} from '../utils/storefront';
 import { syncConnectionConfigFromServer } from '../services/discovery';
 import { notifyLocal, subscribeAppForeground, subscribeNetworkStatus } from '../services/native';
 import { localDb } from '../services/localDb';
@@ -82,6 +91,7 @@ import {
   IdentityRoleLink,
   IdentityConflict,
   IdentityEntityType,
+  StorefrontConfig,
 } from '../types';
 import { useAuth } from './AuthContext';
 
@@ -386,6 +396,17 @@ export interface DataContextType extends DatabaseState {
   approveStockTransferRequest: (id: string, notes?: string) => Promise<{ success: boolean; transfer?: StockTransferRequest; error?: string }>;
   rejectStockTransferRequest: (id: string, reason: string) => Promise<{ success: boolean; transfer?: StockTransferRequest; error?: string }>;
   executeStockTransferRequest: (id: string) => Promise<{ success: boolean; transfer?: StockTransferRequest; error?: string }>;
+
+  // Storefront CMS & Customer Favorites
+  publishedStorefront: StorefrontConfig;
+  storefrontDraft: StorefrontConfig | null;
+  storefrontPublishedAdmin: StorefrontConfig | null;
+  customerFavorites: string[];
+  refreshStorefrontAdmin: () => Promise<{ success: boolean; draft?: StorefrontConfig; published?: StorefrontConfig; error?: string }>;
+  saveStorefrontDraft: (config: Partial<StorefrontConfig>) => Promise<{ success: boolean; draft?: StorefrontConfig; error?: string }>;
+  publishStorefront: (config?: Partial<StorefrontConfig>) => Promise<{ success: boolean; draft?: StorefrontConfig; published?: StorefrontConfig; error?: string }>;
+  toggleCustomerFavorite: (productId: string) => Promise<{ success: boolean; favoriteProductIds: string[]; isFavorite: boolean; queuedOffline?: boolean; error?: string }>;
+  resolveActiveOfferForProduct: (product: Product, unitName?: string) => ResolvedProductPromo;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -1268,6 +1289,32 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
           createdAt: op.createdAt,
         });
       }
+    } else if (op.operationType === 'update_own_profile') {
+      const targetId = p.customerId || op.entityId;
+      const cust = customers.find((c) => !targetId || c.id === targetId);
+      if (cust) {
+        Object.assign(cust, {
+          name: p.name ?? cust.name,
+          shopName: p.shopName ?? cust.shopName,
+          phone: p.phone ?? cust.phone,
+          secondaryPhone: p.secondaryPhone ?? cust.secondaryPhone,
+          phones: p.phones ?? cust.phones,
+          governorate: p.governorate ?? cust.governorate,
+          area: p.area ?? cust.area,
+          city: p.city ?? cust.city,
+          address: p.address ?? cust.address,
+          geoCoordinates: p.geoCoordinates ?? cust.geoCoordinates,
+          latitude: p.latitude !== undefined ? p.latitude : cust.latitude,
+          longitude: p.longitude !== undefined ? p.longitude : cust.longitude,
+          locationCapturedAt: p.locationCapturedAt !== undefined ? p.locationCapturedAt : cust.locationCapturedAt,
+          syncStatus: op.status,
+        });
+      }
+    } else if (op.operationType === 'update_customer_favorites') {
+      const ids = Array.isArray(p.favoriteProductIds) ? p.favoriteProductIds.map(String) : null;
+      if (ids && customers[0]) {
+        customers[0].favoriteProductIds = ids;
+      }
     }
   }
 
@@ -1313,6 +1360,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
   const [lastSendSummary, setLastSendSummary] = useState<SyncRefreshSummary | null>(null);
   const [lastReceiveSummary, setLastReceiveSummary] = useState<SyncRefreshSummary | null>(null);
+  const [publishedStorefront, setPublishedStorefront] = useState<StorefrontConfig>(DEFAULT_STOREFRONT_CONFIG);
+  const [storefrontDraft, setStorefrontDraft] = useState<StorefrontConfig | null>(null);
+  const [storefrontPublishedAdmin, setStorefrontPublishedAdmin] = useState<StorefrontConfig | null>(null);
+  const [customerFavorites, setCustomerFavorites] = useState<string[]>([]);
 
   const hydratedUserRef = useRef<string | null>(null);
   const isDbUnavailableRef = useRef<boolean>(false);
@@ -1469,6 +1520,31 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ...effectiveState,
         migrationLogs: pullData.migrationLogs || prev.migrationLogs || [],
       }));
+      const nextStorefront: StorefrontConfig =
+        pullData.publishedStorefront ||
+        pullData.settings?.extraSettings?.storefrontPublished ||
+        DEFAULT_STOREFRONT_CONFIG;
+      setPublishedStorefront(nextStorefront);
+
+      const favFromQueue = [...currentQueue]
+        .reverse()
+        .find((q) => q.status !== 'synced' && q.operationType === 'update_customer_favorites' && Array.isArray(q.payload?.favoriteProductIds));
+      const nextFavorites: string[] = favFromQueue
+        ? favFromQueue.payload.favoriteProductIds.map(String)
+        : Array.isArray(pullData.customerFavorites)
+        ? pullData.customerFavorites.map(String)
+        : Array.isArray(pullData.customerProfile?.favoriteProductIds)
+        ? pullData.customerProfile.favoriteProductIds.map(String)
+        : [];
+      setCustomerFavorites(nextFavorites);
+
+      if (pullData.settings?.extraSettings?.storefrontDraft) {
+        setStorefrontDraft(pullData.settings.extraSettings.storefrontDraft);
+      }
+      if (pullData.settings?.extraSettings?.storefrontPublished) {
+        setStorefrontPublishedAdmin(pullData.settings.extraSettings.storefrontPublished);
+      }
+
       setCustomerStatement(nextStmt);
       setSyncQueue(currentQueue);
       setSyncConflicts(Array.isArray(pullData.syncConflicts) ? pullData.syncConflicts : []);
@@ -1494,6 +1570,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         data: {
           dbState: nextStateBase,
           customerStatement: nextStmt,
+          publishedStorefront: nextStorefront,
+          customerFavorites: nextFavorites,
         },
       });
 
@@ -1532,6 +1610,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         hydratedUserRef.current = null;
         setData(getEmptyClientDatabaseState());
         setCustomerStatement(null);
+        setPublishedStorefront(DEFAULT_STOREFRONT_CONFIG);
+        setStorefrontDraft(null);
+        setStorefrontPublishedAdmin(null);
+        setCustomerFavorites([]);
         setSyncQueue([]);
         setSyncConflicts([]);
         setCachedMediaMap({});
@@ -1548,6 +1630,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Clear previous user's state synchronously before async local cache load so stale records never leak across switches
         setData(getEmptyClientDatabaseState());
         setCustomerStatement(null);
+        setPublishedStorefront(DEFAULT_STOREFRONT_CONFIG);
+        setStorefrontDraft(null);
+        setStorefrontPublishedAdmin(null);
+        setCustomerFavorites([]);
         setCachedMediaMap({});
         setMobileNotifications([]);
         setSyncQueue([]);
@@ -1580,6 +1666,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setData(effective);
           if (snap.data.customerStatement) {
             setCustomerStatement(snap.data.customerStatement);
+          }
+          if (snap.data.publishedStorefront) {
+            setPublishedStorefront(snap.data.publishedStorefront);
+          } else if (snap.data.dbState.settings?.extraSettings?.storefrontPublished) {
+            setPublishedStorefront(snap.data.dbState.settings.extraSettings.storefrontPublished);
+          }
+          if (Array.isArray(snap.data.customerFavorites)) {
+            setCustomerFavorites(snap.data.customerFavorites.map(String));
           }
           setIsUsingOfflineCache(true);
           setLastCacheTimestamp(snap.cachedAt);
@@ -2622,6 +2716,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await Promise.all([loadRoleScopedData(), refreshAuthContext()]);
       return { success: true, customer: res.customer };
     } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const myCustomer = data.customers[0];
+        await queueOfflineOp({
+          operationType: 'update_own_profile',
+          entityType: 'customer',
+          entityId: myCustomer?.id,
+          summaryAr: `تحديث الملف الشخصي والموقع محلياً: ${updates.shopName || updates.name || myCustomer?.name || ''}`,
+          payload: {
+            customerId: myCustomer?.id,
+            ...updates,
+          },
+        });
+        const mergedCustomer = myCustomer ? { ...myCustomer, ...updates, syncStatus: 'pending' as const } : undefined;
+        return { success: true, customer: mergedCustomer, queuedOffline: true };
+      }
       return { success: false, error: err?.message || 'تعذر تحديث بيانات الملف الشخصي والمحل' };
     }
   };
@@ -4614,6 +4723,92 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Storefront CMS & Customer Favorites
+  const refreshStorefrontAdmin = useCallback(async () => {
+    try {
+      const res = await fetchAdminStorefrontApi();
+      setStorefrontDraft(res.draft);
+      setStorefrontPublishedAdmin(res.published);
+      setPublishedStorefront(res.published);
+      return { success: true, draft: res.draft, published: res.published };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر تحميل إعدادات واجهة المتجر' };
+    }
+  }, []);
+
+  const saveStorefrontDraft = async (config: Partial<StorefrontConfig>) => {
+    try {
+      const res = await saveStorefrontDraftApi(config);
+      setStorefrontDraft(res.draft);
+      setStorefrontPublishedAdmin(res.published);
+      return { success: true, draft: res.draft };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر حفظ مسودة المتجر' };
+    }
+  };
+
+  const publishStorefront = async (config?: Partial<StorefrontConfig>) => {
+    try {
+      const res = await publishStorefrontApi(config);
+      setStorefrontDraft(res.draft);
+      setStorefrontPublishedAdmin(res.published);
+      setPublishedStorefront(res.published);
+      await loadRoleScopedData();
+      return { success: true, draft: res.draft, published: res.published };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'تعذر نشر تحديثات المتجر' };
+    }
+  };
+
+  const toggleCustomerFavorite = async (productId: string) => {
+    const cleanId = String(productId || '').trim();
+    if (!cleanId) {
+      return { success: false, favoriteProductIds: customerFavorites, isFavorite: false, error: 'معرف الصنف غير صالح' };
+    }
+    const prevList = customerFavorites;
+    const exists = prevList.includes(cleanId);
+    const optimisticList = exists ? prevList.filter((id) => id !== cleanId) : [...prevList, cleanId];
+    setCustomerFavorites(optimisticList);
+
+    try {
+      const res = await toggleCustomerFavoriteApi(cleanId);
+      setCustomerFavorites(res.favoriteProductIds || []);
+      return {
+        success: true,
+        favoriteProductIds: res.favoriteProductIds || [],
+        isFavorite: Boolean(res.isFavorite),
+      };
+    } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        await queueOfflineOp({
+          operationType: 'update_customer_favorites',
+          entityType: 'customer',
+          entityId: data.customers[0]?.id,
+          summaryAr: `${exists ? 'إزالة من' : 'إضافة إلى'} المفضلة محلياً`,
+          payload: { favoriteProductIds: optimisticList },
+        });
+        return {
+          success: true,
+          favoriteProductIds: optimisticList,
+          isFavorite: !exists,
+          queuedOffline: true,
+        };
+      }
+      setCustomerFavorites(prevList);
+      return {
+        success: false,
+        favoriteProductIds: prevList,
+        isFavorite: exists,
+        error: err?.message || 'تعذر تحديث قائمة المفضلة',
+      };
+    }
+  };
+
+  const resolveActiveOfferForProduct = useCallback(
+    (product: Product, unitName?: string) => resolveActiveStorefrontOffer(product, unitName, publishedStorefront),
+    [publishedStorefront]
+  );
+
   const pendingSyncCount = syncQueue.filter((q) =>
     q.status === 'local' || q.status === 'pending' || q.status === 'syncing' || q.status === 'failed'
   ).length;
@@ -4805,6 +5000,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         approveStockTransferRequest,
         rejectStockTransferRequest,
         executeStockTransferRequest,
+        publishedStorefront,
+        storefrontDraft,
+        storefrontPublishedAdmin,
+        customerFavorites,
+        refreshStorefrontAdmin,
+        saveStorefrontDraft,
+        publishStorefront,
+        toggleCustomerFavorite,
+        resolveActiveOfferForProduct,
       }}
     >
       {children}

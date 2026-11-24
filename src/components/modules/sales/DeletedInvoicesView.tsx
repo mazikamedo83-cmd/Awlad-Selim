@@ -190,7 +190,7 @@ export const DeletedInvoicesView: React.FC = () => {
                   <tr key={inv.id} className="hover:bg-red-50/20">
                     <td className="p-3.5 font-mono font-bold text-red-800">{inv.invoiceNumber}</td>
                     <td className="p-3.5">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${inv.type === 'sales' ? 'bg-blue-100 text-blue-800' : 'bg-indigo-100 text-indigo-800'}`}>
+                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${inv.type === 'sales' ? 'bg-blue-100 text-blue-800' : 'bg-indigo-100 text-indigo-800'}`}>
                         {inv.type === 'sales' ? 'مبيعات' : 'مشتريات'}
                       </span>
                     </td>

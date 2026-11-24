@@ -181,7 +181,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         id: 'purchases',
         title: 'المشتريات والموردون',
         icon: Truck,
-        colorClass: 'bg-purple-50 text-purple-900 border-purple-200',
+        colorClass: 'bg-emerald-50 text-[#0F5A33] border-emerald-200',
         permission: ['canManagePurchases', 'canCreatePurchase'],
         items: [
           { key: 'new-purchase', label: 'فاتورة شراء جديدة (+)' },
@@ -303,6 +303,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
           { key: 'barcode-settings', label: 'إعدادات الباركود', permission: 'canManageSettings' },
           { key: 'printers-settings', label: 'الطابعات المتعددة', permission: 'canManageSettings' },
           { key: 'invoice-settings', label: 'تصميم الفاتورة', permission: 'canManageSettings' },
+          { key: 'storefront-manager', label: 'إدارة واجهة المتجر والعروض', permission: 'canManageSettings' },
           { key: 'mobile-settings', label: 'إعدادات تطبيق العملاء والمناديب', permission: 'canManageSettings' },
           { key: 'online-sync-settings', label: 'المزامنة أونلاين', permission: 'canManageSettings' },
           { key: 'services-settings', label: 'الخدمات والتنبيهات', permission: 'canManageSettings' },
@@ -770,9 +771,9 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
   }, [currentUser, onNavigate]);
 
   return (
-    <div className="min-h-screen bg-[#f5f7fb] text-slate-800 font-['Cairo'] antialiased pb-20">
-      {/* Slim Purple Top App Header Bar (<= 15% aggregate sticky budget) */}
-      <header className="sticky top-0 z-30 bg-[#2d1b69] text-white shadow-sm pt-safe no-print">
+    <div className="min-h-screen bg-[#f5f7f6] dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-['Cairo'] antialiased pb-20">
+      {/* Slim Emerald Top App Header Bar */}
+      <header className="sticky top-0 z-30 bg-[#0F5A33] text-white shadow-sm pt-safe no-print">
         <div className="max-w-3xl mx-auto px-3 h-13 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0 shrink">
             <img
@@ -782,7 +783,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
             />
             <div className="min-w-0">
               <h1 className="text-xs font-black truncate leading-tight">AWLAD SELIM</h1>
-              <p className="text-[10px] text-purple-200 truncate">
+              <p className="text-[10px] text-emerald-100 truncate">
                 {getRoleArabicLabel(currentUser?.role)} · {currentUser?.fullName}
               </p>
             </div>
@@ -849,7 +850,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                 onNavigate('system-settings');
               }}
               className={`min-h-[44px] min-w-[40px] flex items-center justify-center rounded-lg cursor-pointer ${
-                !isMoreViewOpen && currentPage === 'system-settings' ? 'bg-white text-[#2d1b69]' : 'text-white hover:bg-white/15'
+                !isMoreViewOpen && currentPage === 'system-settings' ? 'bg-white text-[#0F5A33]' : 'text-white hover:bg-white/15'
               }`}
               title="الإعدادات"
               aria-label="الإعدادات"
@@ -916,7 +917,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                   value={moreSearchQuery}
                   onChange={(e) => setMoreSearchQuery(e.target.value)}
                   placeholder="ابحث عن قسم أو شاشة..."
-                  className="w-full min-h-[44px] rounded-lg border border-slate-300 pr-9 pl-8 text-xs font-bold bg-slate-50 focus:bg-white focus:outline-hidden focus:border-[#2d1b69]"
+                  className="w-full min-h-[44px] rounded-lg border border-slate-300 pr-9 pl-8 text-xs font-bold bg-slate-50 focus:bg-white focus:outline-hidden focus:border-[#0F5A33]"
                 />
                 <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3.5" />
                 {moreSearchQuery && (
@@ -997,7 +998,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                       className="w-full min-h-[48px] px-3.5 py-2.5 flex items-center justify-between gap-2 text-xs font-black bg-slate-50 border-b border-slate-200 text-slate-900 cursor-pointer"
                     >
                       <div className="flex items-center gap-2 min-w-0">
-                        <SecIcon className="w-4 h-4 text-[#2d1b69] shrink-0" />
+                        <SecIcon className="w-4 h-4 text-[#0F5A33] shrink-0" />
                         <span className="truncate">{sec.title}</span>
                       </div>
                       <ChevronDown
@@ -1020,11 +1021,11 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                                 onNavigate(item.key);
                               }}
                               className={`w-full min-h-[46px] px-4 py-2.5 flex items-center justify-between gap-2 text-right text-xs transition-colors cursor-pointer ${
-                                active ? 'bg-purple-50 text-[#2d1b69] font-black' : 'text-slate-800 hover:bg-slate-50 font-bold'
+                                active ? 'bg-emerald-50 text-[#0F5A33] font-black' : 'text-slate-800 hover:bg-slate-50 font-bold'
                               }`}
                             >
                               <span className="truncate">{item.label}</span>
-                              <ChevronLeft className={`w-4 h-4 shrink-0 ${active ? 'text-[#2d1b69]' : 'text-slate-400'}`} />
+                              <ChevronLeft className={`w-4 h-4 shrink-0 ${active ? 'text-[#0F5A33]' : 'text-slate-400'}`} />
                             </button>
                           );
                         })}
@@ -1042,7 +1043,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                 <button
                   type="button"
                   onClick={() => onNavigate('dashboard')}
-                  className="min-h-[44px] px-3 rounded-lg text-[#2d1b69] hover:bg-purple-50 text-xs font-black flex items-center gap-1.5 cursor-pointer"
+                  className="min-h-[44px] px-3 rounded-lg text-[#0F5A33] hover:bg-emerald-50 text-xs font-black flex items-center gap-1.5 cursor-pointer"
                 >
                   <ArrowRight className="w-4 h-4 shrink-0" />
                   <span>العودة للرئيسية</span>
@@ -1053,11 +1054,11 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
 
             {currentPage === 'dashboard' && (
               <section aria-label="الاختصارات السريعة" className="space-y-3 no-print">
-                {/* Compact Purple Store Banner */}
-                <div className="rounded-xl bg-[#2d1b69] text-white p-3.5 flex items-center justify-between gap-3">
+                {/* Compact Emerald Store Banner */}
+                <div className="rounded-xl bg-[#0F5A33] text-white p-3.5 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-xs font-black truncate">{data.settings.companyName || 'AWLAD SELIM'}</div>
-                    <div className="text-[11px] text-purple-200 truncate mt-0.5">
+                    <div className="text-[11px] text-emerald-100 truncate mt-0.5">
                       {getRoleArabicLabel(currentUser?.role)} · {currentUser?.fullName}
                     </div>
                   </div>
@@ -1065,7 +1066,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                     <button
                       type="button"
                       onClick={() => setIsAddProductModalOpen(true)}
-                      className="min-h-[44px] px-3 rounded-lg bg-white text-[#2d1b69] text-xs font-black flex items-center gap-1 shrink-0 cursor-pointer"
+                      className="min-h-[44px] px-3 rounded-lg bg-white text-[#0F5A33] text-xs font-black flex items-center gap-1 shrink-0 cursor-pointer"
                     >
                       <Plus className="w-4 h-4" />
                       <span>أضف صنف</span>
@@ -1073,7 +1074,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                   )}
                 </div>
 
-                {/* 3-Col Square Quick Shortcuts Grid (WA0007) */}
+                {/* 3-Col Square Quick Shortcuts Grid */}
                 <div>
                   <h2 className="text-xs font-black text-slate-700 mb-2">الاختصارات السريعة</h2>
                   <div className="grid grid-cols-3 gap-2.5">
@@ -1082,7 +1083,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                         key={tile.id}
                         type="button"
                         onClick={tile.onClick}
-                        className="bg-white rounded-xl border border-slate-200 hover:border-[#2d1b69]/40 active:scale-[0.98] p-2.5 min-h-[96px] flex flex-col items-center justify-center gap-1.5 text-center transition-all cursor-pointer"
+                        className="bg-white rounded-xl border border-slate-200 hover:border-[#0F5A33]/40 active:scale-[0.98] p-2.5 min-h-[96px] flex flex-col items-center justify-center gap-1.5 text-center transition-all cursor-pointer"
                       >
                         <div className="flex items-center justify-center">{tile.icon}</div>
                         <span className="text-[11px] font-black text-slate-800 leading-tight">{tile.label}</span>
@@ -1098,7 +1099,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         )}
       </main>
 
-      {/* Fixed 5-Tab Bottom Navigation Bar (WA0007, >=44px hitboxes) */}
+      {/* Fixed 5-Tab Bottom Navigation Bar */}
       <nav
         aria-label="التنقل السفلي"
         className="fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200 pb-safe shadow-[0_-2px_10px_rgba(15,23,42,0.06)] no-print"
@@ -1113,11 +1114,11 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                 onClick={tab.onClick}
                 aria-current={tab.active ? 'page' : undefined}
                 className={`flex-1 min-h-[54px] py-1.5 px-1 flex flex-col items-center justify-center gap-0.5 relative cursor-pointer transition-colors ${
-                  tab.active ? 'text-[#2d1b69] font-black' : 'text-slate-500 hover:text-slate-800 font-bold'
+                  tab.active ? 'text-[#0F5A33] font-black' : 'text-slate-500 hover:text-slate-800 font-bold'
                 }`}
               >
                 {tab.active && (
-                  <span className="absolute top-0 inset-x-4 h-[3px] rounded-b bg-[#2d1b69]" aria-hidden="true" />
+                  <span className="absolute top-0 inset-x-4 h-[3px] rounded-b bg-[#0F5A33]" aria-hidden="true" />
                 )}
                 <TabIcon className="w-5 h-5 shrink-0" />
                 <span className="text-[10px] leading-tight whitespace-nowrap">{tab.label}</span>

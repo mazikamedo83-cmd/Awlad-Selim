@@ -22,6 +22,11 @@ import {
   requirePermission,
   asyncHandler,
 } from '../middleware/auth.js';
+import {
+  getCustomerFavorites,
+  setCustomerFavorites,
+  toggleCustomerFavorite,
+} from '../db/stores/storefrontStore.js';
 import { AppError } from '../utils/errors.js';
 
 const router = Router();
@@ -94,6 +99,48 @@ router.get(
       actor: req.auth.user,
     });
     res.json({ ok: true, ...statement, mobileConfig: settings.mobileConfig });
+  })
+);
+
+router.get(
+  '/me/favorites',
+  asyncHandler(async (req, res) => {
+    if (req.auth.user.role !== 'customer' || !req.auth.customerProfile) {
+      return res.json({ ok: true, favoriteProductIds: [] });
+    }
+    const favoriteProductIds = await getCustomerFavorites(req.auth.customerProfile.id);
+    res.json({ ok: true, favoriteProductIds });
+  })
+);
+
+router.put(
+  '/me/favorites',
+  asyncHandler(async (req, res) => {
+    if (req.auth.user.role !== 'customer') {
+      throw new AppError(403, 'هذه النقطة مخصصة لحسابات العملاء فقط', 'CUSTOMER_ONLY');
+    }
+    if (!req.auth.customerProfile) {
+      throw new AppError(404, req.auth.linkWarning || 'حسابك غير مربوط بملف عميل', 'CUSTOMER_PROFILE_REQUIRED');
+    }
+    const favoriteProductIds = await setCustomerFavorites(
+      req.auth.customerProfile.id,
+      req.body?.favoriteProductIds || req.body?.productIds || []
+    );
+    res.json({ ok: true, favoriteProductIds });
+  })
+);
+
+router.post(
+  '/me/favorites/toggle',
+  asyncHandler(async (req, res) => {
+    if (req.auth.user.role !== 'customer') {
+      throw new AppError(403, 'هذه النقطة مخصصة لحسابات العملاء فقط', 'CUSTOMER_ONLY');
+    }
+    if (!req.auth.customerProfile) {
+      throw new AppError(404, req.auth.linkWarning || 'حسابك غير مربوط بملف عميل', 'CUSTOMER_PROFILE_REQUIRED');
+    }
+    const result = await toggleCustomerFavorite(req.auth.customerProfile.id, req.body?.productId);
+    res.json({ ok: true, ...result });
   })
 );
 

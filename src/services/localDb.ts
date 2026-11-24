@@ -2,6 +2,7 @@ import type {
   Customer,
   MobileConfig,
   Representative,
+  StorefrontConfig,
   SyncConflictRecord,
   SyncQueueItem,
   User,
@@ -22,6 +23,8 @@ export interface LocalDbSnapshot {
   data: {
     dbState: DatabaseState;
     customerStatement: any | null;
+    publishedStorefront?: StorefrontConfig | null;
+    customerFavorites?: string[];
   };
 }
 

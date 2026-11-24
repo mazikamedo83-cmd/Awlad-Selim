@@ -337,3 +337,80 @@ export function sanitizeSyncPayload(
   return result && typeof result === 'object' && !Array.isArray(result) ? result : {};
 }
 
+export function sanitizeGeoCoordinates(raw) {
+  if (raw === undefined || raw === null) return undefined;
+  const trimmed = String(raw).trim();
+  if (!trimmed) return undefined;
+  if (/^(javascript|data|vbscript):/i.test(trimmed) || /[<>]/.test(trimmed)) {
+    throw new AppError(400, 'إحداثيات الموقع الجغرافي غير صالحة', 'INVALID_GEO_COORDINATES');
+  }
+  return trimmed;
+}
+
+export function isZeroZeroCoords(lat, lng) {
+  return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001;
+}
+
+export function resolveCustomerGeoInput(input = {}, fallback = {}) {
+  const hasExplicitLatLng = input.latitude !== undefined || input.longitude !== undefined;
+  const hasGeoStr = input.geoCoordinates !== undefined;
+
+  let lat = input.latitude !== undefined && input.latitude !== null && input.latitude !== ''
+    ? Number(input.latitude)
+    : undefined;
+  let lng = input.longitude !== undefined && input.longitude !== null && input.longitude !== ''
+    ? Number(input.longitude)
+    : undefined;
+  let geoStr = hasGeoStr ? sanitizeGeoCoordinates(input.geoCoordinates) : fallback.geoCoordinates;
+
+  if (hasExplicitLatLng) {
+    if (lat === undefined && lng === undefined) {
+      geoStr = hasGeoStr ? geoStr : undefined;
+    } else if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      throw new AppError(400, 'إحداثيات خط العرض أو خط الطول غير صالحة', 'INVALID_GEO_COORDINATES');
+    } else if (isZeroZeroCoords(lat, lng)) {
+      throw new AppError(400, 'إحداثيات (0, 0) غير صالحة؛ يرجى تحديد موقع حقيقي على الخريطة', 'ZERO_ZERO_COORDINATES');
+    } else {
+      lat = Number(lat.toFixed(6));
+      lng = Number(lng.toFixed(6));
+      geoStr = hasGeoStr && geoStr ? geoStr : `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    }
+  } else if (hasGeoStr && geoStr) {
+    const m = geoStr.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (m) {
+      const parsedLat = Number(m[1]);
+      const parsedLng = Number(m[2]);
+      if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLng) || parsedLat < -90 || parsedLat > 90 || parsedLng < -180 || parsedLng > 180) {
+        throw new AppError(400, 'إحداثيات الموقع الجغرافي غير صالحة', 'INVALID_GEO_COORDINATES');
+      }
+      if (isZeroZeroCoords(parsedLat, parsedLng)) {
+        throw new AppError(400, 'إحداثيات (0, 0) غير صالحة؛ يرجى تحديد موقع حقيقي على الخريطة', 'ZERO_ZERO_COORDINATES');
+      }
+      lat = Number(parsedLat.toFixed(6));
+      lng = Number(parsedLng.toFixed(6));
+    }
+  } else if (!hasExplicitLatLng && !hasGeoStr) {
+    lat = fallback.latitude;
+    lng = fallback.longitude;
+    geoStr = fallback.geoCoordinates;
+  }
+
+  const nextCity =
+    input.city !== undefined
+      ? (String(input.city || '').trim() || undefined)
+      : (fallback.city || undefined);
+  const nextCapturedAt =
+    lat !== undefined && lng !== undefined
+      ? (input.locationCapturedAt ? String(input.locationCapturedAt).trim() : (fallback.locationCapturedAt || nowIso()))
+      : (input.clearLocation ? undefined : fallback.locationCapturedAt);
+
+  return {
+    geoCoordinates: geoStr,
+    latitude: lat,
+    longitude: lng,
+    city: nextCity,
+    locationCapturedAt: nextCapturedAt,
+  };
+}
+
+

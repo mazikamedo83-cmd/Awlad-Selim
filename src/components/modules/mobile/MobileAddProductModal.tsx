@@ -239,8 +239,8 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-[#f5f7fb] flex flex-col overflow-hidden" dir="rtl">
-      {/* Purple Top Bar */}
-      <header className="bg-[#2d1b69] text-white px-3.5 py-3 flex items-center justify-between gap-2 pt-safe shrink-0 shadow-sm">
+      {/* Emerald Top Bar */}
+      <header className="bg-[#0F5A33] text-white px-3.5 py-3 flex items-center justify-between gap-2 pt-safe shrink-0 shadow-sm">
         <button
           type="button"
           onClick={onClose}
@@ -268,7 +268,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                 <img
                   src={image}
                   alt="صورة الصنف"
-                  className="w-20 h-20 rounded-full object-cover border-2 border-[#2d1b69]/30"
+                  className="w-20 h-20 rounded-full object-cover border-2 border-[#0F5A33]/30"
                 />
                 <button
                   type="button"
@@ -280,7 +280,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                 </button>
               </>
             ) : (
-              <label className="w-20 h-20 rounded-full bg-purple-50 border-2 border-dashed border-[#2d1b69]/40 flex flex-col items-center justify-center text-[#2d1b69] cursor-pointer active:scale-95 transition-transform">
+              <label className="w-20 h-20 rounded-full bg-emerald-50 border-2 border-dashed border-[#0F5A33]/40 flex flex-col items-center justify-center text-[#0F5A33] cursor-pointer active:scale-95 transition-transform">
                 <Camera className="w-6 h-6" />
                 <span className="text-[10px] font-bold mt-1">صورة الصنف</span>
                 <input type="file" accept="image/*" onChange={handleImagePick} className="hidden" />
@@ -288,7 +288,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
             )}
           </div>
           {image && (
-            <label className="text-[11px] font-bold text-[#2d1b69] underline cursor-pointer">
+            <label className="text-[11px] font-bold text-[#0F5A33] underline cursor-pointer">
               تغيير الصورة
               <input type="file" accept="image/*" onChange={handleImagePick} className="hidden" />
             </label>
@@ -305,7 +305,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
               placeholder="أدخل اسم المنتج والمواصفات..."
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full min-h-[44px] border border-slate-300 rounded-lg px-3 font-bold bg-white focus:outline-hidden focus:border-[#2d1b69]"
+              className="w-full min-h-[44px] border border-slate-300 rounded-lg px-3 font-bold bg-white focus:outline-hidden focus:border-[#0F5A33]"
             />
           </div>
 
@@ -316,7 +316,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
               placeholder="ملاحظات اختيارية..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full min-h-[44px] border border-slate-300 rounded-lg px-3 bg-white focus:outline-hidden focus:border-[#2d1b69]"
+              className="w-full min-h-[44px] border border-slate-300 rounded-lg px-3 bg-white focus:outline-hidden focus:border-[#0F5A33]"
             />
           </div>
 
@@ -328,7 +328,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
               placeholder="اختر أو اكتب التصنيف..."
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="w-full min-h-[44px] border border-slate-300 rounded-lg px-3 font-bold bg-white focus:outline-hidden focus:border-[#2d1b69]"
+              className="w-full min-h-[44px] border border-slate-300 rounded-lg px-3 font-bold bg-white focus:outline-hidden focus:border-[#0F5A33]"
             />
             <datalist id="mobile-add-prod-categories">
               {categoryOptions.map((c) => (
@@ -349,7 +349,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                 onChange={(e) =>
                   setAvailableQty(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))
                 }
-                className="w-full min-h-[44px] border border-slate-300 rounded-lg px-3 font-mono font-bold text-center tabular-nums bg-white focus:outline-hidden focus:border-[#2d1b69]"
+                className="w-full min-h-[44px] border border-slate-300 rounded-lg px-3 font-mono font-bold text-center tabular-nums bg-white focus:outline-hidden focus:border-[#0F5A33]"
               />
             </div>
 
@@ -369,7 +369,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
 
           <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-[11px]">
             <span className="text-slate-600 font-bold">الكمية بالوحدة الأساسية:</span>
-            <span className="font-mono font-black text-[#2d1b69] tabular-nums">
+            <span className="font-mono font-black text-[#0F5A33] tabular-nums">
               {computedBaseQty.toLocaleString()} {baseUnit.trim() || 'وحدة'}
             </span>
           </div>
@@ -437,7 +437,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                   <button
                     type="button"
                     onClick={() => handlePrintBarcode(barcode1, baseUnit, sellingPrice1)}
-                    className="min-h-[44px] min-w-[44px] rounded-lg border border-slate-300 bg-slate-50 flex items-center justify-center text-[#2d1b69] cursor-pointer"
+                    className="min-h-[44px] min-w-[44px] rounded-lg border border-slate-300 bg-slate-50 flex items-center justify-center text-[#0F5A33] cursor-pointer"
                     title="طباعة باركود"
                   >
                     <Printer className="w-4 h-4" />
@@ -471,7 +471,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     onChange={(e) =>
                       setSellingPrice1(e.target.value === '' ? '' : Number(e.target.value))
                     }
-                    className="w-full min-h-[44px] border border-slate-300 rounded-lg px-3 font-mono font-black text-[#2d1b69] tabular-nums"
+                    className="w-full min-h-[44px] border border-slate-300 rounded-lg px-3 font-mono font-black text-[#0F5A33] tabular-nums"
                   />
                 </div>
               </div>
@@ -560,7 +560,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     onChange={(e) =>
                       setSellingPrice2(e.target.value === '' ? '' : Number(e.target.value))
                     }
-                    className="w-full min-h-[44px] border border-slate-300 rounded-lg px-3 font-mono font-black text-[#2d1b69] tabular-nums"
+                    className="w-full min-h-[44px] border border-slate-300 rounded-lg px-3 font-mono font-black text-[#0F5A33] tabular-nums"
                   />
                 </div>
               </div>
@@ -649,7 +649,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     onChange={(e) =>
                       setSellingPrice3(e.target.value === '' ? '' : Number(e.target.value))
                     }
-                    className="w-full min-h-[44px] border border-slate-300 rounded-lg px-3 font-mono font-black text-[#2d1b69] tabular-nums"
+                    className="w-full min-h-[44px] border border-slate-300 rounded-lg px-3 font-mono font-black text-[#0F5A33] tabular-nums"
                   />
                 </div>
               </div>
@@ -662,7 +662,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
           <button
             type="submit"
             disabled={isSaving}
-            className="w-full min-h-[48px] rounded-xl bg-[#2d1b69] hover:bg-[#231554] text-white font-black text-sm shadow-sm disabled:opacity-50 cursor-pointer"
+            className="w-full min-h-[48px] rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white font-black text-sm shadow-sm disabled:opacity-50 cursor-pointer"
           >
             {isSaving ? 'جاري الحفظ...' : 'حفظ البيانات'}
           </button>

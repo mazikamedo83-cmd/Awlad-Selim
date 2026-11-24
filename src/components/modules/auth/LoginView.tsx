@@ -18,7 +18,10 @@ import { isNativeCapacitor } from '../../../services/native';
 import { QrScannerModal } from '../../common/QrScannerModal';
 import { MobileServerModal } from '../mobile/MobileServerModal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
+import { CustomerLocationPickerModal, PickedCustomerLocation } from '../../common/CustomerLocationPickerModal';
 import { SavedDeviceAccount } from '../../../services/accountVault';
+import { MapPin } from 'lucide-react';
+import { isZeroZeroLocation } from '../../../utils/storefront';
 
 function getRoleBadgeText(role: string): string {
   switch (role) {
@@ -71,6 +74,11 @@ export const LoginView: React.FC = () => {
   const [shopName, setShopName] = useState('');
   const [governorate, setGovernorate] = useState('');
   const [area, setArea] = useState('');
+  const [city, setCity] = useState('');
+  const [latitude, setLatitude] = useState<number | undefined>(undefined);
+  const [longitude, setLongitude] = useState<number | undefined>(undefined);
+  const [locationCapturedAt, setLocationCapturedAt] = useState<string | undefined>(undefined);
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -220,6 +228,15 @@ export const LoginView: React.FC = () => {
         setError('كلمتا المرور غير متطابقتين');
         return;
       }
+      if (
+        authMode === 'register_customer' &&
+        latitude !== undefined &&
+        longitude !== undefined &&
+        isZeroZeroLocation(latitude, longitude)
+      ) {
+        setError('إحداثيات الموقع (0, 0) غير صالحة — يرجى تحديد موقع حقيقي على الخريطة.');
+        return;
+      }
       setIsLoading(true);
       const res = await registerAccount({
         role: authMode === 'register_customer' ? 'customer' : 'representative',
@@ -231,6 +248,10 @@ export const LoginView: React.FC = () => {
         shopName: authMode === 'register_customer' ? shopName.trim() : undefined,
         governorate: authMode === 'register_customer' ? governorate.trim() : undefined,
         area: authMode === 'register_customer' ? area.trim() : undefined,
+        city: authMode === 'register_customer' ? (city.trim() || area.trim() || undefined) : undefined,
+        latitude: authMode === 'register_customer' ? latitude : undefined,
+        longitude: authMode === 'register_customer' ? longitude : undefined,
+        locationCapturedAt: authMode === 'register_customer' ? locationCapturedAt : undefined,
         vehicleNumber: authMode === 'register_rep' ? vehicleNumber.trim() : undefined,
       });
       setIsLoading(false);
@@ -664,15 +685,32 @@ export const LoginView: React.FC = () => {
                       />
                     </div>
                   )}
-                  <div className={authMode === 'register_customer' ? '' : ''}>
+                  <div className={authMode === 'register_customer' ? 'sm:col-span-2' : ''}>
                     <label className="block text-xs font-bold text-slate-700 mb-1">العنوان</label>
-                    <input
-                      type="text"
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      placeholder="العنوان التفصيلي"
-                      className="w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
-                    />
+                    <div className="flex flex-wrap gap-2">
+                      <input
+                        type="text"
+                        value={address}
+                        onChange={(e) => setAddress(e.target.value)}
+                        placeholder="العنوان التفصيلي"
+                        className="flex-1 min-w-[180px] rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-[#0F5A33] outline-hidden text-right"
+                      />
+                      {authMode === 'register_customer' && (
+                        <button
+                          type="button"
+                          onClick={() => setShowLocationPicker(true)}
+                          className="px-3 py-2.5 rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0"
+                        >
+                          <MapPin className="w-4 h-4" />
+                          <span>{latitude !== undefined ? 'تعديل الموقع على الخريطة' : 'تحديد الموقع على الخريطة'}</span>
+                        </button>
+                      )}
+                    </div>
+                    {authMode === 'register_customer' && latitude !== undefined && longitude !== undefined && (
+                      <p className="text-[11px] font-bold text-emerald-700 mt-1" dir="ltr">
+                        تم تحديد الموقع: {latitude.toFixed(5)}, {longitude.toFixed(5)}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -811,6 +849,27 @@ export const LoginView: React.FC = () => {
         isOpen={showQrScanner}
         onClose={() => setShowQrScanner(false)}
         onDetected={handleQrDetected}
+      />
+
+      <CustomerLocationPickerModal
+        isOpen={showLocationPicker}
+        onClose={() => setShowLocationPicker(false)}
+        initialLat={latitude}
+        initialLng={longitude}
+        initialAddress={address}
+        initialCity={city}
+        initialArea={area}
+        initialGovernorate={governorate}
+        title="تحديد موقع المحل على الخريطة"
+        onConfirm={(picked: PickedCustomerLocation) => {
+          setLatitude(picked.latitude);
+          setLongitude(picked.longitude);
+          if (picked.address) setAddress(picked.address);
+          if (picked.city) setCity(picked.city);
+          if (picked.area) setArea(picked.area);
+          if (picked.governorate) setGovernorate(picked.governorate);
+          setLocationCapturedAt(picked.locationCapturedAt);
+        }}
       />
 
       <ConfirmDialog

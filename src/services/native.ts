@@ -123,6 +123,8 @@ export async function hydrateNativePreferences(keys: string[]): Promise<void> {
 export async function getCurrentLocationSafe(): Promise<{
   ok: boolean;
   coords?: string;
+  latitude?: number;
+  longitude?: number;
   error?: string;
 }> {
   if (isNativeCapacitor()) {
@@ -138,8 +140,13 @@ export async function getCurrentLocationSafe(): Promise<{
         enableHighAccuracy: true,
         timeout: 12000,
       });
-      const coords = `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`;
-      return { ok: true, coords };
+      const lat = Number(pos.coords.latitude.toFixed(6));
+      const lng = Number(pos.coords.longitude.toFixed(6));
+      if (Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001) {
+        return { ok: false, error: 'تمت قراءة إحداثيات غير صالحة (0, 0). يرجى المحاولة في مكان مفتوح أو اختيار الموقع على الخريطة.' };
+      }
+      const coords = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+      return { ok: true, coords, latitude: lat, longitude: lng };
     } catch (err: any) {
       return {
         ok: false,
@@ -152,9 +159,20 @@ export async function getCurrentLocationSafe(): Promise<{
     return new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
+          const lat = Number(pos.coords.latitude.toFixed(6));
+          const lng = Number(pos.coords.longitude.toFixed(6));
+          if (Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001) {
+            resolve({
+              ok: false,
+              error: 'تمت قراءة إحداثيات غير صالحة (0, 0). يرجى اختيار الموقع يدوياً على الخريطة.',
+            });
+            return;
+          }
           resolve({
             ok: true,
-            coords: `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`,
+            coords: `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+            latitude: lat,
+            longitude: lng,
           });
         },
         (err) => {
@@ -180,15 +198,28 @@ export function parseLatLngCoords(raw: string): { lat: number; lng: number } | n
   const lng = Number(m[2]);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  if (Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001) return null;
   return { lat, lng };
 }
 
 export async function reverseGeocodeCoords(
   lat: number,
-  lng: number
-): Promise<{ ok: true; address: string; area?: string; governorate?: string } | { ok: false; error: string }> {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-    return { ok: false, error: 'إحداثيات GPS غير صالحة لتحويلها إلى عنوان.' };
+  lng: number,
+  apiBaseUrl = ''
+): Promise<
+  | { ok: true; address: string; area?: string; city?: string; governorate?: string }
+  | { ok: false; quotaExceeded?: boolean; error: string }
+> {
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    lat < -90 ||
+    lat > 90 ||
+    lng < -180 ||
+    lng > 180 ||
+    (Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001)
+  ) {
+    return { ok: false, error: 'إحداثيات الموقع غير صالحة أو تساوي (0, 0). يرجى اختيار موقع حقيقي.' };
   }
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     return {
@@ -197,9 +228,40 @@ export async function reverseGeocodeCoords(
     };
   }
 
+  const cleanBase = String(apiBaseUrl || '').replace(/\/+$/, '');
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 6000);
+  const timer = setTimeout(() => controller.abort(), 7000);
   try {
+    const proxyRes = await fetch(
+      `${cleanBase}/api/maps/reverse-geocode?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}`,
+      {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      }
+    ).catch(() => null);
+
+    if (proxyRes) {
+      const proxyJson: any = await proxyRes.json().catch(() => null);
+      if (proxyRes.ok && proxyJson?.ok && proxyJson.address) {
+        return {
+          ok: true,
+          address: String(proxyJson.address),
+          area: proxyJson.area ? String(proxyJson.area) : undefined,
+          city: proxyJson.city ? String(proxyJson.city) : undefined,
+          governorate: proxyJson.governorate ? String(proxyJson.governorate) : undefined,
+        };
+      }
+      if (proxyJson?.quotaExceeded && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('gmp-quota-exceeded', { detail: { reason: 'reverse-geocode-429' } }));
+        return {
+          ok: false,
+          quotaExceeded: true,
+          error: proxyJson.error || 'تم تجاوز حصة خدمة الخرائط المجانية.',
+        };
+      }
+    }
+
     const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(
       String(lat)
     )}&lon=${encodeURIComponent(String(lng))}&accept-language=ar`;
@@ -221,12 +283,13 @@ export async function reverseGeocodeCoords(
         addrObj.suburb ||
           addrObj.neighbourhood ||
           addrObj.city_district ||
-          addrObj.city ||
           addrObj.town ||
           addrObj.village ||
-          addrObj.state ||
+          addrObj.city ||
           ''
       ).trim() || undefined;
+    const city =
+      String(addrObj.city || addrObj.town || addrObj.county || addrObj.state_district || '').trim() || undefined;
 
     const parts = [
       addrObj.road,
@@ -250,7 +313,7 @@ export async function reverseGeocodeCoords(
     }
     const governorate =
       String(addrObj.state || addrObj.governorate || addrObj.province || addrObj.region || '').trim() || undefined;
-    return { ok: true, address, area, governorate };
+    return { ok: true, address, area, city, governorate };
   } catch {
     return {
       ok: false,

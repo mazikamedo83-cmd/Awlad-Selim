@@ -26,6 +26,10 @@ import {
   getSystemSettingsSafe,
 } from './catalogStore.js';
 import {
+  getPublishedStorefront,
+  resolveActiveStorefrontPromo,
+} from './storefrontStore.js';
+import {
   resolveActorIdentityPgTx,
   resolveActorIdentityJsonTx,
 } from '../identityManager.js';
@@ -499,6 +503,7 @@ export async function createCustomerOrder(payload, authContext) {
         }
       }
 
+      const publishedStorefront = await getPublishedStorefront();
       const resolvedItems = [];
       for (const item of rawItems) {
         const qty = round3(item.quantity);
@@ -512,6 +517,7 @@ export async function createCustomerOrder(payload, authContext) {
         }
         const uRes = await client.query(`SELECT * FROM product_units WHERE product_id = $1`, [prod.id]);
         const prodObj = {
+          id: prod.id,
           baseUnit: prod.base_unit,
           sellingPrice: Number(prod.selling_price || 0),
           units: uRes.rows.map((u) => ({
@@ -522,7 +528,10 @@ export async function createCustomerOrder(payload, authContext) {
         };
         const unitName = String(item.unit || prod.base_unit);
         const unitFactor = getUnitFactor(prodObj, unitName);
-        const referenceUnitPrice = round2(getUnitSellingPrice(prodObj, unitName));
+        const promoInfo = resolveActiveStorefrontPromo(prodObj, unitName, publishedStorefront);
+        const referenceUnitPrice = promoInfo.hasPromo
+          ? round2(promoInfo.effectivePrice)
+          : round2(getUnitSellingPrice(prodObj, unitName));
 
         resolvedItems.push({
           id: generateServerId('OITM'),
@@ -654,6 +663,7 @@ export async function createCustomerOrder(payload, authContext) {
       }
     }
 
+    const publishedStorefront = await getPublishedStorefront();
     const resolvedItems = [];
     for (const item of rawItems) {
       const qty = round3(item.quantity);
@@ -665,6 +675,10 @@ export async function createCustomerOrder(payload, authContext) {
         throw new AppError(404, `الصنف غير متاح أو غير نشط (${item.productName || item.productId})`, 'PRODUCT_UNAVAILABLE');
       }
       const unitName = String(item.unit || prod.baseUnit);
+      const promoInfo = resolveActiveStorefrontPromo(prod, unitName, publishedStorefront);
+      const referenceUnitPrice = promoInfo.hasPromo
+        ? round2(promoInfo.effectivePrice)
+        : round2(getUnitSellingPrice(prod, unitName));
       resolvedItems.push({
         productId: prod.id,
         productCode: prod.code,
@@ -673,7 +687,7 @@ export async function createCustomerOrder(payload, authContext) {
         unit: unitName,
         unitFactor: getUnitFactor(prod, unitName),
         quantity: qty,
-        unitPrice: round2(getUnitSellingPrice(prod, unitName)),
+        unitPrice: referenceUnitPrice,
       });
     }
 
@@ -788,6 +802,7 @@ export async function updateOwnPendingOrder(orderId, payload = {}, authContext) 
       let nextTotalAmount = Number(row.total_amount || 0);
       let resolvedItems = null;
       if (hasItems) {
+        const publishedStorefront = await getPublishedStorefront();
         resolvedItems = [];
         for (const item of rawItems) {
           const qty = round3(item.quantity);
@@ -801,6 +816,7 @@ export async function updateOwnPendingOrder(orderId, payload = {}, authContext) 
           }
           const uRes = await client.query(`SELECT * FROM product_units WHERE product_id = $1`, [prod.id]);
           const prodObj = {
+            id: prod.id,
             baseUnit: prod.base_unit,
             sellingPrice: Number(prod.selling_price || 0),
             units: uRes.rows.map((u) => ({
@@ -811,7 +827,10 @@ export async function updateOwnPendingOrder(orderId, payload = {}, authContext) 
           };
           const unitName = String(item.unit || prod.base_unit);
           const unitFactor = getUnitFactor(prodObj, unitName);
-          const referenceUnitPrice = round2(getUnitSellingPrice(prodObj, unitName));
+          const promoInfo = resolveActiveStorefrontPromo(prodObj, unitName, publishedStorefront);
+          const referenceUnitPrice = promoInfo.hasPromo
+            ? round2(promoInfo.effectivePrice)
+            : round2(getUnitSellingPrice(prodObj, unitName));
           resolvedItems.push({
             id: generateServerId('OITM'),
             productId: prod.id,
@@ -885,6 +904,7 @@ export async function updateOwnPendingOrder(orderId, payload = {}, authContext) 
     assertPendingOrderOwnership(ord, authContext);
 
     if (hasItems) {
+      const publishedStorefront = await getPublishedStorefront();
       const resolvedItems = [];
       for (const item of rawItems) {
         const qty = round3(item.quantity);
@@ -896,6 +916,10 @@ export async function updateOwnPendingOrder(orderId, payload = {}, authContext) 
           throw new AppError(404, `الصنف غير متاح أو غير نشط (${item.productName || item.productId})`, 'PRODUCT_UNAVAILABLE');
         }
         const unitName = String(item.unit || prod.baseUnit);
+        const promoInfo = resolveActiveStorefrontPromo(prod, unitName, publishedStorefront);
+        const referenceUnitPrice = promoInfo.hasPromo
+          ? round2(promoInfo.effectivePrice)
+          : round2(getUnitSellingPrice(prod, unitName));
         resolvedItems.push({
           productId: prod.id,
           productCode: prod.code,
@@ -904,7 +928,7 @@ export async function updateOwnPendingOrder(orderId, payload = {}, authContext) 
           unit: unitName,
           unitFactor: getUnitFactor(prod, unitName),
           quantity: qty,
-          unitPrice: round2(getUnitSellingPrice(prod, unitName)),
+          unitPrice: referenceUnitPrice,
         });
       }
       ord.items = resolvedItems;

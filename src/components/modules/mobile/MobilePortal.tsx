@@ -23,6 +23,9 @@ import {
   Settings,
   Lock,
   ShieldCheck,
+  Heart,
+  Tag,
+  Menu,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
@@ -146,8 +149,18 @@ export const MobilePortal: React.FC = () => {
         requestRepTabChange('home');
       }
     } else {
-      if (item.targetTab === 'account' || item.targetTab === 'orders' || item.targetTab === 'catalog' || item.targetTab === 'cart') {
+      if (
+        item.targetTab === 'account' ||
+        item.targetTab === 'orders' ||
+        item.targetTab === 'categories' ||
+        item.targetTab === 'offers' ||
+        item.targetTab === 'favorites' ||
+        item.targetTab === 'more' ||
+        item.targetTab === 'cart'
+      ) {
         setCustomerTab(item.targetTab);
+      } else if ((item.targetTab as string) === 'catalog') {
+        setCustomerTab('categories');
       } else {
         setCustomerTab('orders');
       }
@@ -212,10 +225,10 @@ export const MobilePortal: React.FC = () => {
       ]
     : [
         { key: 'home', label: 'الرئيسية', icon: Home, active: customerTab === 'home', badge: 0, onSelect: () => setCustomerTab('home') },
-        { key: 'catalog', label: 'الكتالوج', icon: Package, active: customerTab === 'catalog', badge: 0, onSelect: () => setCustomerTab('catalog') },
-        { key: 'cart', label: 'السلة', icon: ShoppingCart, active: customerTab === 'cart', badge: customerCartCount, onSelect: () => setCustomerTab('cart') },
-        { key: 'orders', label: 'طلباتي', icon: ClipboardList, active: customerTab === 'orders', badge: 0, onSelect: () => setCustomerTab('orders') },
-        { key: 'account', label: 'حسابي', icon: Receipt, active: customerTab === 'account', badge: 0, onSelect: () => setCustomerTab('account') },
+        { key: 'categories', label: 'الأقسام', icon: LayoutGrid, active: customerTab === 'categories', badge: 0, onSelect: () => setCustomerTab('categories') },
+        { key: 'offers', label: 'العروض', icon: Tag, active: customerTab === 'offers', badge: 0, onSelect: () => setCustomerTab('offers') },
+        { key: 'favorites', label: 'المفضلة', icon: Heart, active: customerTab === 'favorites', badge: data.customerFavorites?.length || 0, onSelect: () => setCustomerTab('favorites') },
+        { key: 'more', label: 'المزيد', icon: Menu, active: ['more', 'orders', 'account'].includes(customerTab), badge: 0, onSelect: () => setCustomerTab('more') },
       ];
 
   const allPortalDestinations = isRep
@@ -240,16 +253,19 @@ export const MobilePortal: React.FC = () => {
       ]
     : [
         { key: 'home', label: 'الرئيسية', icon: Home, active: customerTab === 'home', onSelect: () => setCustomerTab('home') },
-        { key: 'catalog', label: 'كتالوج المنتجات', icon: Package, active: customerTab === 'catalog', onSelect: () => setCustomerTab('catalog') },
-        { key: 'cart', label: 'سلة الطلبات', icon: ShoppingCart, active: customerTab === 'cart', onSelect: () => setCustomerTab('cart') },
+        { key: 'categories', label: 'الأقسام والمنتجات', icon: Package, active: customerTab === 'categories', onSelect: () => setCustomerTab('categories') },
+        { key: 'offers', label: 'العروض والخصومات', icon: Tag, active: customerTab === 'offers', onSelect: () => setCustomerTab('offers') },
+        { key: 'favorites', label: 'المفضلة', icon: Heart, active: customerTab === 'favorites', onSelect: () => setCustomerTab('favorites') },
+        { key: 'cart', label: `سلة الطلبات (${customerCartCount})`, icon: ShoppingCart, active: customerTab === 'cart', onSelect: () => setCustomerTab('cart') },
         { key: 'orders', label: 'طلباتي الحالية', icon: ClipboardList, active: customerTab === 'orders', onSelect: () => setCustomerTab('orders') },
         { key: 'account', label: 'فواتيري وكشف الحساب', icon: Receipt, active: customerTab === 'account', onSelect: () => setCustomerTab('account') },
+        { key: 'more', label: 'المزيد والإعدادات', icon: Menu, active: customerTab === 'more', onSelect: () => setCustomerTab('more') },
       ];
 
   return (
-    <div className="min-h-screen bg-[#f5f7fb] text-slate-800 font-sans antialiased pb-24 pb-safe">
-      {/* Slim Purple Mobile App Header (#2d1b69) */}
-      <header className="sticky top-0 z-30 bg-[#2d1b69] text-white shadow-sm border-b border-[#3f2987] pt-safe">
+    <div className="min-h-screen bg-[#f5f7f6] dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans antialiased pb-24 pb-safe">
+      {/* Slim Emerald Mobile App Header (#0F5A33) */}
+      <header className="sticky top-0 z-30 bg-[#0F5A33] text-white shadow-sm border-b border-[#0B4426] pt-safe">
         <div className="max-w-5xl mx-auto px-3 sm:px-5">
           <div className="h-13 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
@@ -271,8 +287,8 @@ export const MobilePortal: React.FC = () => {
               />
               <div className="min-w-0">
                 <h1 className="text-sm font-black truncate leading-tight">أولاد سليم</h1>
-                <p className="text-[10px] text-purple-200 truncate">
-                  {isRep ? 'بوابة المندوب' : 'بوابة العميل'} · {currentUser?.fullName}
+                <p className="text-[10px] text-emerald-100 truncate">
+                  {isRep ? 'بوابة المندوب' : 'متجر العملاء'} · {currentUser?.fullName}
                 </p>
               </div>
             </div>
@@ -520,6 +536,13 @@ export const MobilePortal: React.FC = () => {
             activeTab={customerTab}
             onTabChange={setCustomerTab}
             onCartCountChange={setCustomerCartCount}
+            onOpenNotifications={() => {
+              setIsNotificationsOpen(true);
+              data.markNotificationsRead();
+            }}
+            onOpenServerModal={() => setIsServerModalOpen(true)}
+            onOpenSyncCenter={() => setIsSyncCenterOpen(true)}
+            onLogout={logout}
           />
         )}
       </main>
@@ -527,7 +550,7 @@ export const MobilePortal: React.FC = () => {
       {/* Fixed 5-Tab Mobile Bottom Navigation Bar */}
       <nav
         aria-label="شريط التنقل السفلي"
-        className="fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200 pb-safe shadow-sm"
+        className="fixed bottom-0 inset-x-0 z-30 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 pb-safe shadow-sm"
       >
         <div className="max-w-5xl mx-auto grid grid-cols-5 gap-0.5 px-1">
           {bottomNavItems.map((item) => {
@@ -539,16 +562,18 @@ export const MobilePortal: React.FC = () => {
                 onClick={item.onSelect}
                 aria-current={item.active ? 'page' : undefined}
                 className={`relative min-h-[54px] py-1.5 px-1 flex flex-col items-center justify-center gap-0.5 transition-colors cursor-pointer ${
-                  item.active ? 'text-[#2d1b69] font-black' : 'text-slate-500 hover:text-slate-800 font-bold'
+                  item.active
+                    ? 'text-[#0F5A33] dark:text-emerald-400 font-black'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 font-bold'
                 }`}
               >
                 {item.active && (
-                  <span className="absolute top-0 inset-x-3 h-[3px] rounded-b bg-[#2d1b69]" />
+                  <span className="absolute top-0 inset-x-3 h-[3px] rounded-b bg-[#0F5A33] dark:bg-emerald-400" />
                 )}
                 <div className="relative">
                   <Icon className="w-5 h-5 shrink-0" />
                   {item.badge > 0 && (
-                    <span className="absolute -top-1.5 -left-2 min-w-[16px] h-[16px] px-1 rounded bg-[#2d1b69] text-white text-[9px] font-black flex items-center justify-center tabular-nums">
+                    <span className="absolute -top-1.5 -left-2 min-w-[16px] h-[16px] px-1 rounded bg-[#0F5A33] text-white text-[9px] font-black flex items-center justify-center tabular-nums">
                       {item.badge}
                     </span>
                   )}

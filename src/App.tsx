@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider, useData } from './context/DataContext';
+import { PreferencesProvider } from './context/PreferencesContext';
 import { ShortcutsProvider, useShortcuts } from './context/ShortcutsContext';
 import { LoginView } from './components/modules/auth/LoginView';
 import { ChangePasswordModal } from './components/modules/auth/ChangePasswordModal';
@@ -34,6 +35,7 @@ import { EmployeesView } from './components/modules/employees/EmployeesView';
 import { ReportsView } from './components/modules/reports/ReportsView';
 import { UsersManagementView } from './components/modules/users/UsersManagementView';
 import { SettingsView } from './components/modules/settings/SettingsView';
+import { StorefrontManagerView } from './components/modules/settings/StorefrontManagerView';
 import { MobilePortal } from './components/modules/mobile/MobilePortal';
 import { StaffMobileShell } from './components/modules/mobile/StaffMobileShell';
 import {
@@ -108,6 +110,7 @@ const PAGE_PERMISSIONS: Partial<Record<NavItemKey, keyof UserPermissions | Array
   'online-sync-settings': 'canManageSettings',
   'services-settings': 'canManageSettings',
   'diagnostics-settings': 'canManageSettings',
+  'storefront-manager': 'canManageSettings',
 };
 
 const ShortcutGlobalActions: React.FC<{ onOpenCashOp: (mode: CashOperationType) => void }> = ({ onOpenCashOp }) => {
@@ -151,6 +154,21 @@ const MainAppContent: React.FC = () => {
     open: false,
     mode: 'cash_deposit',
   });
+  const [mapsQuotaWarning, setMapsQuotaWarning] = useState<string | null>(() =>
+    typeof window !== 'undefined' && (window as any).__AWLAD_GMP_QUOTA_EXCEEDED__
+      ? String((window as any).__AWLAD_GMP_QUOTA_EXCEEDED__)
+      : null
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onQuotaExceeded = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ reason?: string }>)?.detail;
+      setMapsQuotaWarning(detail?.reason || 'OverQuotaMapError');
+    };
+    window.addEventListener('gmp-quota-exceeded', onQuotaExceeded);
+    return () => window.removeEventListener('gmp-quota-exceeded', onQuotaExceeded);
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -388,9 +406,30 @@ const MainAppContent: React.FC = () => {
       </div>
     ) : null;
 
+  const renderMapsQuotaBanner = () =>
+    mapsQuotaWarning ? (
+      <div className="sticky top-0 z-[75] w-full bg-amber-50 border-b border-amber-300 text-amber-900 px-3 py-2 text-xs font-bold flex items-center justify-between gap-2 shadow-xs">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0 text-amber-700" />
+          <span>
+            تم تجاوز حصة مفتاح الخرائط التجريبي مؤقتاً — يرجى تفعيل مشروع Google Cloud أو المحاولة لاحقاً عند استمرار تحميل الخرائط.
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setMapsQuotaWarning(null)}
+          className="p-1 rounded-lg hover:bg-amber-200/60 shrink-0 cursor-pointer"
+          aria-label="إغلاق تنبيه الخرائط"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    ) : null;
+
   if (currentUser?.role === 'customer' || currentUser?.role === 'representative') {
     return (
       <>
+        {renderMapsQuotaBanner()}
         {renderFloatingPairingBanner()}
         <AccountSwitcherModal />
         <MobilePortal />
@@ -593,6 +632,9 @@ const MainAppContent: React.FC = () => {
       case 'diagnostics-settings':
         return <SettingsView initialTab="diagnostics" />;
 
+      case 'storefront-manager':
+        return <StorefrontManagerView />;
+
       default:
         return <DashboardView onNavigate={(page) => setCurrentPage(page)} />;
     }
@@ -635,6 +677,7 @@ const MainAppContent: React.FC = () => {
         onClose={() => setCashOpModal((prev) => ({ ...prev, open: false }))}
       />
 
+      {renderMapsQuotaBanner()}
       {renderFloatingPairingBanner()}
 
       {isMobileViewport || isMobileAppPlatform() ? (
@@ -688,10 +731,12 @@ const MainAppContent: React.FC = () => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <DataProvider>
-        <MainAppContent />
-      </DataProvider>
-    </AuthProvider>
+    <PreferencesProvider>
+      <AuthProvider>
+        <DataProvider>
+          <MainAppContent />
+        </DataProvider>
+      </AuthProvider>
+    </PreferencesProvider>
   );
 }

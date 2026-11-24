@@ -1160,3 +1160,79 @@ export async function resolveIdentityConflictApi(
   });
 }
 
+export async function fetchPublishedStorefrontApi(): Promise<{
+  ok: boolean;
+  storefront: import('../types').StorefrontConfig;
+}> {
+  return apiRequest('/api/storefront/published');
+}
+
+export async function fetchAdminStorefrontApi(): Promise<{
+  ok: boolean;
+  draft: import('../types').StorefrontConfig;
+  published: import('../types').StorefrontConfig;
+}> {
+  return apiRequest('/api/storefront/admin');
+}
+
+export async function saveStorefrontDraftApi(
+  config: Partial<import('../types').StorefrontConfig>
+): Promise<{
+  ok: boolean;
+  draft: import('../types').StorefrontConfig;
+  published: import('../types').StorefrontConfig;
+}> {
+  return apiRequest('/api/storefront/draft', {
+    method: 'PUT',
+    body: config,
+  });
+}
+
+export async function publishStorefrontApi(
+  config?: Partial<import('../types').StorefrontConfig>
+): Promise<{
+  ok: boolean;
+  draft: import('../types').StorefrontConfig;
+  published: import('../types').StorefrontConfig;
+}> {
+  return apiRequest('/api/storefront/publish', {
+    method: 'POST',
+    body: config || {},
+  });
+}
+
+export async function toggleCustomerFavoriteApi(productId: string): Promise<{
+  ok: boolean;
+  favoriteProductIds: string[];
+  isFavorite: boolean;
+}> {
+  return apiRequest('/api/storefront/favorites/toggle', {
+    method: 'POST',
+    body: { productId },
+  });
+}
+
+export async function fetchMapsClientConfigApi(): Promise<{
+  ok: boolean;
+  configured: boolean;
+  apiKey: string;
+  mapId: string;
+  attributionId: string;
+}> {
+  return apiRequest('/api/maps/config', { skipAuth: true });
+}
+
+export async function geocodeAddressViaServerApi(address: string): Promise<{
+  ok: boolean;
+  latitude: number;
+  longitude: number;
+  coords: string;
+  formattedAddress: string;
+  area?: string;
+  city?: string;
+  governorate?: string;
+}> {
+  return apiRequest(`/api/maps/geocode?address=${encodeURIComponent(address)}`, { skipAuth: true });
+}
+
+

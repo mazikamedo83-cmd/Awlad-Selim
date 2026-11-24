@@ -565,7 +565,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm font-black text-slate-900">طلبات مرتجع المبيعات من المناديب</h3>
                   {pendingSrReqCount > 0 && (
-                    <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-mono font-black text-[11px]">
+                    <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-mono font-black text-[11px]">
                       {pendingSrReqCount} بانتظار الاعتماد
                     </span>
                   )}
