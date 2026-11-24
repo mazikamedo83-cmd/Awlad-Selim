@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
-  Boxes, Plus, Search, ArrowLeftRight,
+  Boxes, Plus, ArrowLeftRight,
   Trash2, Edit, Download, RefreshCw,
   Tag, Ruler, Warehouse as WarehouseIcon, History, Image as ImageIcon, Power, X
 } from 'lucide-react';
@@ -12,6 +12,7 @@ import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
 import { SearchableFilterSelect } from '../../common/SearchableFilterSelect';
+import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 import { exportToExcel } from '../../common/ExcelExporter';
 import { compressImageFileToDataUrl } from '../../../utils/image';
 import { StockCountView } from './StockCountView';
@@ -518,102 +519,169 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {warehouses.map((wh) => {
-            const totalUnits = products.reduce((sum, p) => sum + Number(p.stockPerWarehouse?.[wh.id] || 0), 0);
-            const activeSkuCount = products.filter((p) => Number(p.stockPerWarehouse?.[wh.id] || 0) > 0).length;
-            const totalValue = products.reduce(
-              (sum, p) => sum + Number(p.stockPerWarehouse?.[wh.id] || 0) * Number(p.purchasePrice || 0),
-              0
-            );
-            const isSuspended = wh.status === 'suspended';
-
-            return (
-              <div key={wh.id} className={`bg-white p-5 rounded-2xl border shadow-xs space-y-3 text-xs ${isSuspended ? 'border-slate-200 opacity-75' : 'border-slate-200'}`}>
-                <div className="flex items-start justify-between gap-2 border-b pb-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-black text-sm text-slate-900">{wh.name}</h3>
-                      {wh.isDefault && (
-                        <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-900 text-[10px] font-black">افتراضي</span>
-                      )}
-                    </div>
-                    <span className="text-[11px] font-mono text-slate-500">كود: {wh.code}</span>
-                  </div>
+        <UnifiedDataTable<Warehouse>
+          title="قائمة المستودعات"
+          subtitle="المخازن والفروع المسجلة وإجمالي الوحدات والقيمة الشرائية"
+          data={warehouses}
+          rowKey={(wh) => wh.id}
+          searchPlaceholder="بحث باسم المستودع أو الكود أو الموقع..."
+          searchFilter={(wh, q) =>
+            `${wh.name} ${wh.code} ${wh.location || ''} ${wh.managerName || ''} ${wh.phone || ''}`.toLowerCase().includes(q)
+          }
+          exportFilename="AWLAD_SELIM_Warehouses"
+          pdfTitle="قائمة المستودعات"
+          emptyTitle="لا توجد مستودعات مسجلة"
+          rowClassName={(wh) => wh.status === 'suspended' ? 'opacity-70 bg-slate-50/70' : ''}
+          columns={[
+            {
+              key: 'code',
+              header: 'الكود',
+              sortable: true,
+              sortValue: (wh) => wh.code,
+              exportValue: (wh) => wh.code,
+              render: (wh) => <span className="font-mono font-bold text-blue-950">{wh.code}</span>,
+            },
+            {
+              key: 'name',
+              header: 'المستودع',
+              sortable: true,
+              sortValue: (wh) => wh.name,
+              exportValue: (wh) => wh.name,
+              render: (wh) => (
+                <div className="flex items-center gap-2">
+                  <span className="font-black text-slate-900">{wh.name}</span>
+                  {wh.isDefault && (
+                    <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-900 text-[10px] font-black">افتراضي</span>
+                  )}
+                </div>
+              ),
+            },
+            {
+              key: 'location',
+              header: 'الموقع',
+              exportValue: (wh) => wh.location || '-',
+              render: (wh) => <span className="text-slate-700">{wh.location || '-'}</span>,
+            },
+            {
+              key: 'managerName',
+              header: 'أمين المستودع / الهاتف',
+              exportValue: (wh) => `${wh.managerName || '-'} ${wh.phone || ''}`,
+              render: (wh) => (
+                <div>
+                  <div className="font-bold text-slate-800">{wh.managerName || '-'}</div>
+                  {wh.phone && <div className="font-mono text-[11px] text-slate-500">{wh.phone}</div>}
+                </div>
+              ),
+            },
+            {
+              key: 'activeSkuCount',
+              header: 'أصناف متوفرة',
+              align: 'center',
+              sortable: true,
+              sortValue: (wh) => products.filter((p) => Number(p.stockPerWarehouse?.[wh.id] || 0) > 0).length,
+              exportValue: (wh) => products.filter((p) => Number(p.stockPerWarehouse?.[wh.id] || 0) > 0).length,
+              render: (wh) => (
+                <span className="font-mono font-bold text-slate-900 tabular-nums">
+                  {products.filter((p) => Number(p.stockPerWarehouse?.[wh.id] || 0) > 0).length}
+                </span>
+              ),
+            },
+            {
+              key: 'totalUnits',
+              header: 'إجمالي الوحدات',
+              align: 'center',
+              sortable: true,
+              sortValue: (wh) => products.reduce((sum, p) => sum + Number(p.stockPerWarehouse?.[wh.id] || 0), 0),
+              exportValue: (wh) => products.reduce((sum, p) => sum + Number(p.stockPerWarehouse?.[wh.id] || 0), 0),
+              render: (wh) => (
+                <span className="font-mono font-black text-blue-900 tabular-nums">
+                  {products.reduce((sum, p) => sum + Number(p.stockPerWarehouse?.[wh.id] || 0), 0).toLocaleString()}
+                </span>
+              ),
+            },
+            {
+              key: 'totalValue',
+              header: 'القيمة الشرائية',
+              align: 'center',
+              sortable: true,
+              sortValue: (wh) => products.reduce((sum, p) => sum + Number(p.stockPerWarehouse?.[wh.id] || 0) * Number(p.purchasePrice || 0), 0),
+              exportValue: (wh) => Math.round(products.reduce((sum, p) => sum + Number(p.stockPerWarehouse?.[wh.id] || 0) * Number(p.purchasePrice || 0), 0)),
+              render: (wh) => (
+                <span className="font-mono font-black text-emerald-700 tabular-nums">
+                  {Math.round(products.reduce((sum, p) => sum + Number(p.stockPerWarehouse?.[wh.id] || 0) * Number(p.purchasePrice || 0), 0)).toLocaleString()} {settings.currency}
+                </span>
+              ),
+            },
+            {
+              key: 'status',
+              header: 'الحالة',
+              align: 'center',
+              exportValue: (wh) => (wh.status === 'suspended' ? 'موقوف' : 'نشط'),
+              render: (wh) => {
+                const isSuspended = wh.status === 'suspended';
+                return (
                   <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${isSuspended ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'}`}>
                     {isSuspended ? 'موقوف' : 'نشط'}
                   </span>
-                </div>
-
-                <div className="space-y-1 text-slate-600">
-                  <div>الموقع: <strong className="text-slate-900">{wh.location || '-'}</strong></div>
-                  <div>أمين المستودع: <strong className="text-slate-900">{wh.managerName || '-'}</strong></div>
-                  <div>الهاتف: <strong className="font-mono text-slate-900">{wh.phone || '-'}</strong></div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 pt-2 border-t text-center">
-                  <div className="bg-slate-50 p-2 rounded-xl">
-                    <span className="block text-[10px] text-slate-500">أصناف متوفرة</span>
-                    <strong className="font-mono text-slate-900">{activeSkuCount}</strong>
+                );
+              },
+            },
+            {
+              key: 'actions',
+              header: 'الإجراءات',
+              align: 'center',
+              render: (wh) => {
+                const isSuspended = wh.status === 'suspended';
+                return (
+                  <div className="flex items-center justify-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingWarehouse(wh);
+                        setWhForm({
+                          name: wh.name,
+                          code: wh.code,
+                          location: wh.location || '',
+                          managerName: wh.managerName || '',
+                          phone: wh.phone || '',
+                          isDefault: Boolean(wh.isDefault),
+                        });
+                        setWhModalError(null);
+                        setIsWarehouseModalOpen(true);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold cursor-pointer"
+                    >
+                      تعديل
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConfirmState({
+                          isOpen: true,
+                          title: isSuspended ? 'تفعيل المستودع' : 'إيقاف المستودع',
+                          message: `هل تريد ${isSuspended ? 'تفعيل' : 'إيقاف'} المستودع (${wh.name})؟`,
+                          variant: isSuspended ? 'info' : 'warning',
+                          onConfirm: async () => {
+                            const res = await toggleWarehouseStatus(wh.id);
+                            setConfirmState(null);
+                            if (!res.success) {
+                              setStatusBanner({ type: 'error', text: res.error || 'تعذر تغيير حالة المستودع' });
+                            } else {
+                              setStatusBanner({ type: 'success', text: `تم ${isSuspended ? 'تفعيل' : 'إيقاف'} المستودع بنجاح.` });
+                            }
+                          },
+                        });
+                      }}
+                      className={`px-2.5 py-1 rounded-lg font-bold cursor-pointer ${isSuspended ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-amber-50 text-amber-800 border border-amber-200'}`}
+                    >
+                      {isSuspended ? 'تفعيل' : 'إيقاف'}
+                    </button>
                   </div>
-                  <div className="bg-slate-50 p-2 rounded-xl">
-                    <span className="block text-[10px] text-slate-500">إجمالي الوحدات</span>
-                    <strong className="font-mono text-blue-900">{totalUnits.toLocaleString()}</strong>
-                  </div>
-                  <div className="bg-slate-50 p-2 rounded-xl">
-                    <span className="block text-[10px] text-slate-500">القيمة الشرائية</span>
-                    <strong className="font-mono text-emerald-700">{Math.round(totalValue).toLocaleString()}</strong>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-end gap-2 pt-2 border-t">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingWarehouse(wh);
-                      setWhForm({
-                        name: wh.name,
-                        code: wh.code,
-                        location: wh.location || '',
-                        managerName: wh.managerName || '',
-                        phone: wh.phone || '',
-                        isDefault: Boolean(wh.isDefault),
-                      });
-                      setWhModalError(null);
-                      setIsWarehouseModalOpen(true);
-                    }}
-                    className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold cursor-pointer"
-                  >
-                    تعديل
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setConfirmState({
-                        isOpen: true,
-                        title: isSuspended ? 'تفعيل المستودع' : 'إيقاف المستودع',
-                        message: `هل تريد ${isSuspended ? 'تفعيل' : 'إيقاف'} المستودع (${wh.name})؟`,
-                        variant: isSuspended ? 'info' : 'warning',
-                        onConfirm: async () => {
-                          const res = await toggleWarehouseStatus(wh.id);
-                          setConfirmState(null);
-                          if (!res.success) {
-                            setStatusBanner({ type: 'error', text: res.error || 'تعذر تغيير حالة المستودع' });
-                          } else {
-                            setStatusBanner({ type: 'success', text: `تم ${isSuspended ? 'تفعيل' : 'إيقاف'} المستودع بنجاح.` });
-                          }
-                        },
-                      });
-                    }}
-                    className={`px-3 py-1.5 rounded-lg font-bold cursor-pointer ${isSuspended ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-amber-50 text-amber-800 border border-amber-200'}`}
-                  >
-                    {isSuspended ? 'تفعيل' : 'إيقاف'}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                );
+              },
+            },
+          ]}
+        />
 
         <Modal
           isOpen={isWarehouseModalOpen}
@@ -771,96 +839,120 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           </button>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="بحث بالصنف أو رقم المرجع أو البيان..."
-              value={movementSearch}
-              onChange={(e) => setMovementSearch(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 pr-9 pl-3"
-            />
-            <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
-          </div>
-          <SearchableFilterSelect
-            id="inv-mov-type"
-            value={movementTypeFilter}
-            onChange={setMovementTypeFilter}
-            options={Object.entries(MOVEMENT_LABELS).map(([k, v]) => ({
-              value: k,
-              label: v.label,
-            }))}
-            allOptionLabel="جميع أنواع الحركات"
-            allOptionValue="all"
-            allowClear
-            buttonClassName="rounded-xl min-h-[38px]"
-          />
-          <SearchableFilterSelect
-            id="inv-mov-wh"
-            value={movementWhFilter}
-            onChange={setMovementWhFilter}
-            options={warehouses.map((w) => ({
-              value: w.id,
-              label: w.name,
-              subtitle: w.code,
-            }))}
-            allOptionLabel="جميع المستودعات"
-            allOptionValue="all"
-            allowClear
-            buttonClassName="rounded-xl min-h-[38px]"
-          />
-        </div>
-
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-right text-xs">
-              <thead>
-                <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                  <th className="p-3.5">التاريخ</th>
-                  <th className="p-3.5">نوع الحركة</th>
-                  <th className="p-3.5">الصنف</th>
-                  <th className="p-3.5">المستودع</th>
-                  <th className="p-3.5 text-center">الكمية</th>
-                  <th className="p-3.5">المرجع</th>
-                  <th className="p-3.5">ملاحظات</th>
-                  <th className="p-3.5">بواسطة</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredMovements.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="p-8 text-center text-slate-400">
-                      لا توجد حركات مخزنية مطابقة للبحث.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredMovements.slice(0, 300).map((m) => {
-                    const meta = MOVEMENT_LABELS[m.type] || { label: m.type, cls: 'bg-slate-100 text-slate-700' };
-                    return (
-                      <tr key={m.id} className="hover:bg-slate-50">
-                        <td className="p-3.5 font-mono text-slate-600">{m.date}</td>
-                        <td className="p-3.5">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${meta.cls}`}>{meta.label}</span>
-                        </td>
-                        <td className="p-3.5 font-bold text-slate-900">{m.productName}</td>
-                        <td className="p-3.5">
-                          <span>{m.warehouseName}</span>
-                          {m.targetWarehouseName && (
-                            <span className="text-[10px] text-indigo-700 block">← {m.targetWarehouseName}</span>
-                          )}
-                        </td>
-                        <td className="p-3.5 text-center font-mono font-black">{Number(m.quantity || 0).toLocaleString()}</td>
-                        <td className="p-3.5 font-mono text-blue-900">{m.referenceNumber || '-'}</td>
-                        <td className="p-3.5 text-slate-600">{m.notes || '-'}</td>
-                        <td className="p-3.5">{m.createdBy}</td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <UnifiedDataTable
+          title="حركات المخازن"
+          subtitle="أرصدة الدخول والخروج والتحويل والتسويات"
+          data={filteredMovements}
+          rowKey={(m, idx) => `${m.id || m.referenceNumber}-${idx}`}
+          searchValue={movementSearch}
+          onSearchChange={setMovementSearch}
+          searchPlaceholder="بحث بالصنف أو رقم المرجع أو البيان..."
+          exportFilename="AWLAD_SELIM_StockMovements"
+          pdfTitle="سجل حركات المخازن التفصيلي"
+          emptyTitle="لا توجد حركات مخزنية مطابقة للبحث"
+          toolbarFilters={
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <div className="min-w-[165px]">
+                <SearchableFilterSelect
+                  id="inv-mov-type"
+                  value={movementTypeFilter}
+                  onChange={setMovementTypeFilter}
+                  options={Object.entries(MOVEMENT_LABELS).map(([k, v]) => ({
+                    value: k,
+                    label: v.label,
+                  }))}
+                  allOptionLabel="جميع أنواع الحركات"
+                  allOptionValue="all"
+                  allowClear
+                  buttonClassName="rounded-xl min-h-[36px]"
+                />
+              </div>
+              <div className="min-w-[165px]">
+                <SearchableFilterSelect
+                  id="inv-mov-wh"
+                  value={movementWhFilter}
+                  onChange={setMovementWhFilter}
+                  options={warehouses.map((w) => ({
+                    value: w.id,
+                    label: w.name,
+                    subtitle: w.code,
+                  }))}
+                  allOptionLabel="جميع المستودعات"
+                  allOptionValue="all"
+                  allowClear
+                  buttonClassName="rounded-xl min-h-[36px]"
+                />
+              </div>
+            </div>
+          }
+          columns={[
+            {
+              key: 'date',
+              header: 'التاريخ',
+              sortable: true,
+              sortValue: (m) => m.date,
+              exportValue: (m) => m.date,
+              render: (m) => <span className="font-mono text-slate-600">{m.date}</span>,
+            },
+            {
+              key: 'type',
+              header: 'نوع الحركة',
+              exportValue: (m) => MOVEMENT_LABELS[m.type]?.label || m.type,
+              render: (m) => {
+                const meta = MOVEMENT_LABELS[m.type] || { label: m.type, cls: 'bg-slate-100 text-slate-700' };
+                return <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${meta.cls}`}>{meta.label}</span>;
+              },
+            },
+            {
+              key: 'productName',
+              header: 'الصنف',
+              sortable: true,
+              sortValue: (m) => m.productName || '',
+              exportValue: (m) => m.productName || '-',
+              render: (m) => <span className="font-bold text-slate-900">{m.productName}</span>,
+            },
+            {
+              key: 'warehouseName',
+              header: 'المستودع',
+              exportValue: (m) => m.targetWarehouseName ? `${m.warehouseName} ← ${m.targetWarehouseName}` : m.warehouseName,
+              render: (m) => (
+                <div>
+                  <span>{m.warehouseName}</span>
+                  {m.targetWarehouseName && (
+                    <span className="text-[10px] text-indigo-700 block">← {m.targetWarehouseName}</span>
+                  )}
+                </div>
+              ),
+            },
+            {
+              key: 'quantity',
+              header: 'الكمية',
+              align: 'center',
+              sortable: true,
+              sortValue: (m) => Number(m.quantity || 0),
+              exportValue: (m) => Number(m.quantity || 0),
+              render: (m) => <span className="font-mono font-black tabular-nums">{Number(m.quantity || 0).toLocaleString()}</span>,
+            },
+            {
+              key: 'referenceNumber',
+              header: 'المرجع',
+              exportValue: (m) => m.referenceNumber || '-',
+              render: (m) => <span className="font-mono text-blue-900">{m.referenceNumber || '-'}</span>,
+            },
+            {
+              key: 'notes',
+              header: 'ملاحظات',
+              exportValue: (m) => m.notes || '-',
+              render: (m) => <span className="text-slate-600">{m.notes || '-'}</span>,
+            },
+            {
+              key: 'createdBy',
+              header: 'بواسطة',
+              exportValue: (m) => m.createdBy || '-',
+              render: (m) => <span>{m.createdBy}</span>,
+            },
+          ]}
+        />
       </div>
     );
   }
@@ -985,57 +1077,81 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           </button>
         </form>
 
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden awlad-table-scroll">
-          <table className="w-full text-right text-xs">
-            <thead>
-              <tr className="bg-slate-50 border-b text-slate-700 font-bold">
-                <th className="p-3.5">اسم التصنيف</th>
-                <th className="p-3.5">الوصف</th>
-                <th className="p-3.5 text-center">عدد الأصناف المرتبطة</th>
-                <th className="p-3.5 text-center">الحالة</th>
-                <th className="p-3.5 text-center">الإجراءات</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {categoryList.map(cat => {
-                const linkedCount = products.filter(p => p.category === cat.name).length;
-                return (
-                  <tr key={cat.id} className="hover:bg-slate-50">
-                    <td className="p-3.5 font-black text-slate-900">{cat.name}</td>
-                    <td className="p-3.5 text-slate-600">{cat.description || '-'}</td>
-                    <td className="p-3.5 text-center font-mono font-bold text-blue-900">{linkedCount} صنف</td>
-                    <td className="p-3.5 text-center">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${cat.status !== 'suspended' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
-                        {cat.status !== 'suspended' ? 'نشط' : 'موقوف'}
-                      </span>
-                    </td>
-                    <td className="p-3.5 text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setRenamingCategory({ id: cat.id, currentName: cat.name });
-                            setRenameTargetValue(cat.name);
-                          }}
-                          className="px-3 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-900 font-bold border border-blue-200 cursor-pointer"
-                        >
-                          تغيير الاسم الشامل
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => toggleCategoryStatus(cat.id)}
-                          className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
-                        >
-                          {cat.status !== 'suspended' ? 'إيقاف' : 'تفعيل'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <UnifiedDataTable
+          title="التصنيفات الغذائية"
+          data={categoryList}
+          rowKey={(cat) => cat.id}
+          searchPlaceholder="بحث باسم التصنيف..."
+          searchFilter={(cat, q) => `${cat.name} ${cat.description || ''}`.toLowerCase().includes(q)}
+          exportFilename="AWLAD_SELIM_Categories"
+          pdfTitle="دليل التصنيفات الغذائية"
+          columns={[
+            {
+              key: 'name',
+              header: 'اسم التصنيف',
+              sortable: true,
+              sortValue: (cat) => cat.name,
+              exportValue: (cat) => cat.name,
+              render: (cat) => <span className="font-black text-slate-900">{cat.name}</span>,
+            },
+            {
+              key: 'description',
+              header: 'الوصف',
+              exportValue: (cat) => cat.description || '-',
+              render: (cat) => <span className="text-slate-600">{cat.description || '-'}</span>,
+            },
+            {
+              key: 'linkedCount',
+              header: 'عدد الأصناف المرتبطة',
+              align: 'center',
+              sortable: true,
+              sortValue: (cat) => products.filter(p => p.category === cat.name).length,
+              exportValue: (cat) => products.filter(p => p.category === cat.name).length,
+              render: (cat) => (
+                <span className="font-mono font-bold text-blue-900 tabular-nums">
+                  {products.filter(p => p.category === cat.name).length} صنف
+                </span>
+              ),
+            },
+            {
+              key: 'status',
+              header: 'الحالة',
+              align: 'center',
+              exportValue: (cat) => (cat.status !== 'suspended' ? 'نشط' : 'موقوف'),
+              render: (cat) => (
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${cat.status !== 'suspended' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
+                  {cat.status !== 'suspended' ? 'نشط' : 'موقوف'}
+                </span>
+              ),
+            },
+            {
+              key: 'actions',
+              header: 'الإجراءات',
+              align: 'center',
+              render: (cat) => (
+                <div className="flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRenamingCategory({ id: cat.id, currentName: cat.name });
+                      setRenameTargetValue(cat.name);
+                    }}
+                    className="px-3 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-900 font-bold border border-blue-200 cursor-pointer"
+                  >
+                    تغيير الاسم الشامل
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleCategoryStatus(cat.id)}
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                  >
+                    {cat.status !== 'suspended' ? 'إيقاف' : 'تفعيل'}
+                  </button>
+                </div>
+              ),
+            },
+          ]}
+        />
 
         <Modal
           isOpen={!!renamingCategory}
@@ -1139,53 +1255,76 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           </button>
         </form>
 
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden awlad-table-scroll">
-          <table className="w-full text-right text-xs">
-            <thead>
-              <tr className="bg-slate-50 border-b text-slate-700 font-bold">
-                <th className="p-3.5">اسم الوحدة</th>
-                <th className="p-3.5">الرمز</th>
-                <th className="p-3.5 text-center">معامل التحويل الافتراضي</th>
-                <th className="p-3.5">ملاحظات</th>
-                <th className="p-3.5 text-center">حذف</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {unitsCatalog.map(u => (
-                <tr key={u.id} className="hover:bg-slate-50">
-                  <td className="p-3.5 font-black text-slate-900">{u.name}</td>
-                  <td className="p-3.5 font-mono text-blue-900 font-bold">{u.shortCode || '-'}</td>
-                  <td className="p-3.5 text-center font-mono font-bold">{u.defaultConversionFactor}</td>
-                  <td className="p-3.5 text-slate-600">{u.notes || '-'}</td>
-                  <td className="p-3.5 text-center">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setConfirmState({
-                          isOpen: true,
-                          title: 'حذف وحدة القياس',
-                          message: `هل تريد حذف الوحدة (${u.name}) من الدليل؟`,
-                          variant: 'danger',
-                          onConfirm: async () => {
-                            setConfirmState(null);
-                            await handleSaveUnitsCatalog(
-                              unitsCatalog.filter((x) => x.id !== u.id),
-                              `تم حذف الوحدة (${u.name}).`
-                            );
-                          },
-                        });
-                      }}
-                      className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg cursor-pointer"
-                      title="حذف الوحدة"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <UnifiedDataTable<UnitCatalogItem>
+          title="الوحدات المسجلة"
+          data={unitsCatalog}
+          rowKey={(u) => u.id}
+          compact
+          searchPlaceholder="بحث باسم الوحدة أو الرمز..."
+          searchFilter={(u, q) => `${u.name} ${u.shortCode || ''} ${u.notes || ''}`.toLowerCase().includes(q)}
+          exportFilename="AWLAD_SELIM_Units"
+          pdfTitle="دليل وحدات القياس"
+          columns={[
+            {
+              key: 'name',
+              header: 'اسم الوحدة',
+              sortable: true,
+              sortValue: (u) => u.name,
+              exportValue: (u) => u.name,
+              render: (u) => <span className="font-black text-slate-900">{u.name}</span>,
+            },
+            {
+              key: 'shortCode',
+              header: 'الرمز',
+              exportValue: (u) => u.shortCode || '-',
+              render: (u) => <span className="font-mono text-blue-900 font-bold">{u.shortCode || '-'}</span>,
+            },
+            {
+              key: 'defaultConversionFactor',
+              header: 'معامل التحويل الافتراضي',
+              align: 'center',
+              sortable: true,
+              sortValue: (u) => u.defaultConversionFactor,
+              exportValue: (u) => u.defaultConversionFactor,
+              render: (u) => <span className="font-mono font-bold tabular-nums">{u.defaultConversionFactor}</span>,
+            },
+            {
+              key: 'notes',
+              header: 'ملاحظات',
+              exportValue: (u) => u.notes || '-',
+              render: (u) => <span className="text-slate-600">{u.notes || '-'}</span>,
+            },
+            {
+              key: 'actions',
+              header: 'حذف',
+              align: 'center',
+              render: (u) => (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmState({
+                      isOpen: true,
+                      title: 'حذف وحدة القياس',
+                      message: `هل تريد حذف الوحدة (${u.name}) من الدليل؟`,
+                      variant: 'danger',
+                      onConfirm: async () => {
+                        setConfirmState(null);
+                        await handleSaveUnitsCatalog(
+                          unitsCatalog.filter((x) => x.id !== u.id),
+                          `تم حذف الوحدة (${u.name}).`
+                        );
+                      },
+                    });
+                  }}
+                  className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg cursor-pointer"
+                  title="حذف الوحدة"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              ),
+            },
+          ]}
+        />
 
         {confirmState && (
           <ConfirmDialog
@@ -1251,253 +1390,292 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
         </div>
       )}
 
-      {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="بحث بالاسم أو الباركود أو الكود أو التصنيف..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 pr-9 pl-3 text-xs focus:bg-white focus:border-blue-600 outline-hidden"
-          />
-          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
-        </div>
-
-        <div>
-          <SearchableFilterSelect
-            id="inv-prod-cat"
-            value={categoryFilter}
-            onChange={setCategoryFilter}
-            options={categories
-              .filter((c) => c !== 'all')
-              .map((c) => ({ value: c, label: c }))}
-            allOptionLabel="جميع التصنيفات الغذائية"
-            allOptionValue="all"
-            allowClear
-            buttonClassName="rounded-xl min-h-[38px]"
-          />
-        </div>
-
-        <div>
-          <SearchableFilterSelect
-            id="inv-prod-wh"
-            value={warehouseFilter}
-            onChange={setWarehouseFilter}
-            options={warehouses.map((w) => ({
-              value: w.id,
-              label: w.name,
-              subtitle: w.code,
-            }))}
-            allOptionLabel="جميع المستودعات"
-            allOptionValue="all"
-            allowClear
-            buttonClassName="rounded-xl min-h-[38px]"
-          />
-        </div>
-
-        <div className="flex items-center justify-end text-xs text-slate-600 font-bold">
-          <span>إجمالي الأصناف المعروضة: {filteredProducts.length} صنف</span>
-        </div>
-      </div>
-
       {/* Products Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-right text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                <th className="p-3.5">الصورة / الكود</th>
-                <th className="p-3.5">اسم الصنف الغذائي</th>
-                <th className="p-3.5">التصنيف</th>
-                <th className="p-3.5">الوحدات الإضافية</th>
-                <th className="p-3.5 text-center">سعر الشراء</th>
-                <th className="p-3.5 text-center">سعر البيع</th>
-                <th className="p-3.5 text-center">{warehouseFilter === 'all' ? 'الرصيد الإجمالي' : 'رصيد المستودع'}</th>
-                <th className="p-3.5 text-center">حالة المخزون</th>
-                <th className="p-3.5 text-center">الإجراءات</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredProducts.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="p-8 text-center text-slate-400">
-                    لا توجد أصناف غذائية مطابقة للبحث أو لم تتم إضافة أصناف بعد.
-                  </td>
-                </tr>
+      <UnifiedDataTable<Product>
+        title="قائمة الأصناف وأرصدة المخازن"
+        subtitle={`إجمالي الأصناف المعروضة: ${filteredProducts.length} صنف`}
+        data={filteredProducts}
+        rowKey={(prod) => prod.id}
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchPlaceholder="بحث بالاسم أو الباركود أو الكود أو التصنيف..."
+        exportFilename="AWLAD_SELIM_Products"
+        pdfTitle="قائمة الأصناف وأرصدة المخازن"
+        emptyTitle="لا توجد أصناف غذائية مطابقة للبحث أو لم تتم إضافة أصناف بعد"
+        rowClassName={(prod) => prod.status !== 'active' ? 'opacity-60 bg-slate-50' : ''}
+        toolbarFilters={
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <div className="min-w-[170px]">
+              <SearchableFilterSelect
+                id="inv-prod-cat"
+                value={categoryFilter}
+                onChange={setCategoryFilter}
+                options={categories
+                  .filter((c) => c !== 'all')
+                  .map((c) => ({ value: c, label: c }))}
+                allOptionLabel="جميع التصنيفات الغذائية"
+                allOptionValue="all"
+                allowClear
+                buttonClassName="rounded-xl min-h-[36px]"
+              />
+            </div>
+            <div className="min-w-[165px]">
+              <SearchableFilterSelect
+                id="inv-prod-wh"
+                value={warehouseFilter}
+                onChange={setWarehouseFilter}
+                options={warehouses.map((w) => ({
+                  value: w.id,
+                  label: w.name,
+                  subtitle: w.code,
+                }))}
+                allOptionLabel="جميع المستودعات"
+                allOptionValue="all"
+                allowClear
+                buttonClassName="rounded-xl min-h-[36px]"
+              />
+            </div>
+          </div>
+        }
+        columns={[
+          {
+            key: 'code',
+            header: 'الصورة / الكود',
+            sortable: true,
+            sortValue: (prod) => prod.code,
+            exportValue: (prod) => `${prod.code} ${prod.barcode || ''}`.trim(),
+            render: (prod) => (
+              <div className="flex items-center gap-2.5 font-mono">
+                {prod.image ? (
+                  <img src={prod.image} alt={prod.name} className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0" />
+                ) : (
+                  <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                    <ImageIcon className="w-4 h-4" />
+                  </div>
+                )}
+                <div>
+                  <div className="font-bold text-blue-950">{prod.code}</div>
+                  <div className="text-[10px] text-slate-400">{prod.barcode || '-'}</div>
+                </div>
+              </div>
+            ),
+          },
+          {
+            key: 'name',
+            header: 'اسم الصنف الغذائي',
+            sortable: true,
+            sortValue: (prod) => prod.name,
+            exportValue: (prod) => prod.name,
+            render: (prod) => (
+              <div>
+                <span className="font-bold text-slate-900 block text-xs">
+                  {prod.name}
+                  {prod.status !== 'active' && (
+                    <span className="mr-1.5 px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 text-[9px]">موقوف</span>
+                  )}
+                </span>
+                <span className="text-[10px] text-slate-500">الوحدة الأساسية: {prod.baseUnit}</span>
+              </div>
+            ),
+          },
+          {
+            key: 'category',
+            header: 'التصنيف',
+            sortable: true,
+            sortValue: (prod) => prod.category,
+            exportValue: (prod) => prod.category,
+            render: (prod) => (
+              <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold text-[10px]">
+                {prod.category}
+              </span>
+            ),
+          },
+          {
+            key: 'units',
+            header: 'الوحدات الإضافية',
+            exportValue: (prod) => (prod.units || []).map(u => `${u.name} (${u.sellingPrice})`).join(', ') || 'أساسية فقط',
+            render: (prod) => (
+              prod.units && prod.units.length > 0 ? (
+                <div className="flex flex-wrap gap-1">
+                  {prod.units.map(u => (
+                    <span key={u.id} className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 text-[10px] font-semibold border border-blue-200">
+                      {u.name} ({u.sellingPrice} {settings.currency})
+                    </span>
+                  ))}
+                </div>
               ) : (
-                filteredProducts.map(prod => {
-                  const totalStock = warehouseFilter === 'all'
-                    ? Object.values(prod.stockPerWarehouse || {}).reduce((a, b) => a + b, 0)
-                    : Number(prod.stockPerWarehouse?.[warehouseFilter] || 0);
-                  const isLow = totalStock <= prod.minStockLevel;
-
-                  return (
-                    <tr key={prod.id} className={`hover:bg-slate-50/80 transition-colors ${prod.status !== 'active' ? 'opacity-60 bg-slate-50' : ''}`}>
-                    <td className="p-3.5 font-mono">
-                      <div className="flex items-center gap-2.5">
-                        {prod.image ? (
-                          <img src={prod.image} alt={prod.name} className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0" />
-                        ) : (
-                          <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
-                            <ImageIcon className="w-4 h-4" />
-                          </div>
-                        )}
-                        <div>
-                          <div className="font-bold text-blue-950">{prod.code}</div>
-                          <div className="text-[10px] text-slate-400">{prod.barcode || '-'}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="p-3.5">
-                      <span className="font-bold text-slate-900 block text-xs">
-                        {prod.name}
-                        {prod.status !== 'active' && (
-                          <span className="mr-1.5 px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 text-[9px]">موقوف</span>
-                        )}
-                      </span>
-                      <span className="text-[10px] text-slate-500">الوحدة الأساسية: {prod.baseUnit}</span>
-                    </td>
-                    <td className="p-3.5">
-                      <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold text-[10px]">
-                        {prod.category}
-                      </span>
-                    </td>
-                    <td className="p-3.5">
-                      {prod.units && prod.units.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {prod.units.map(u => (
-                            <span key={u.id} className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 text-[10px] font-semibold border border-blue-200">
-                              {u.name} ({u.sellingPrice} {settings.currency})
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-slate-400 text-[10px]">أساسية فقط</span>
-                      )}
-                    </td>
-                    <td className="p-3.5 text-center font-mono font-bold text-slate-700">
-                      {prod.purchasePrice.toFixed(2)}
-                    </td>
-                    <td className="p-3.5 text-center font-mono font-black text-blue-900">
-                      {prod.sellingPrice.toFixed(2)} {settings.currency}
-                    </td>
-                    <td className="p-3.5 text-center font-mono font-black text-sm">
-                      {totalStock.toLocaleString()} <span className="text-[10px] font-normal text-slate-500">{prod.baseUnit}</span>
-                    </td>
-                    <td className="p-3.5 text-center">
-                      {isLow ? (
-                        <span className="px-2 py-0.5 rounded bg-red-100 text-red-800 font-bold text-[10px] border border-red-300">
-                          نقص مخزون (حد أدنى: {prod.minStockLevel})
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">
-                          متوفر كافي
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-3.5">
-                      <div className="flex items-center justify-center gap-1 flex-wrap">
-                        {onOpenItemMovementReport && (
-                          <button
-                            type="button"
-                            onClick={() => onOpenItemMovementReport(prod.id)}
-                            className="px-2 py-1 rounded-lg bg-blue-50 text-blue-900 hover:bg-blue-100 border border-blue-200 text-[11px] font-bold cursor-pointer"
-                            title="تقرير حركة الصنف المفصل"
-                          >
-                            حركة الصنف
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAdjustProdId(prod.id);
-                            setAdjustNewQty(Number(prod.stockPerWarehouse?.[adjustWhId] || 0));
-                            setAdjustModalError(null);
-                            setIsAdjustModalOpen(true);
-                          }}
-                          className="p-1 rounded-lg text-slate-500 hover:text-blue-900 hover:bg-slate-100 text-[11px] font-bold cursor-pointer"
-                          title="تسوية جردية"
-                        >
-                          تسوية
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDamageProdId(prod.id);
-                            setDamageModalError(null);
-                            setIsDamageModalOpen(true);
-                          }}
-                          className="p-1 rounded-lg text-amber-600 hover:bg-amber-50 text-[11px] font-bold cursor-pointer"
-                          title="إثبات تالف"
-                        >
-                          تالف
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEdit(prod)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-blue-900 hover:bg-slate-100 cursor-pointer"
-                          title="تعديل"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setConfirmState({
-                              isOpen: true,
-                              title: prod.status === 'active' ? 'إيقاف الصنف' : 'تفعيل الصنف',
-                              message: `هل تريد ${prod.status === 'active' ? 'إيقاف' : 'إعادة تفعيل'} الصنف (${prod.name})؟`,
-                              variant: 'warning',
-                              onConfirm: async () => {
-                                setConfirmState(null);
-                                const res = await toggleProductStatus(prod.id);
-                                if (!res.success) {
-                                  setStatusBanner({ type: 'error', text: res.error || 'تعذر تغيير حالة الصنف' });
-                                }
-                              },
-                            });
-                          }}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-amber-700 hover:bg-amber-50 cursor-pointer"
-                          title={prod.status === 'active' ? 'إيقاف مؤقت' : 'تفعيل'}
-                        >
-                          <Power className="w-4 h-4" />
-                        </button>
-                        {hasPermission('canDelete') && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setConfirmState({
-                                isOpen: true,
-                                title: 'حذف الصنف من قاعدة البيانات',
-                                message: `هل أنت متأكد من حذف الصنف (${prod.name}) نهائياً؟ (لن يُسمح بالحذف إذا كان الصنف مرتبطاً بفواتير أو حركات سابقة).`,
-                                variant: 'danger',
-                                onConfirm: async () => {
-                                  setConfirmState(null);
-                                  const res = await deleteProduct(prod.id);
-                                  if (!res.success) {
-                                    setStatusBanner({ type: 'error', text: res.error || 'لا يمكن حذف الصنف لارتباطه بعمليات مسجلة' });
-                                  } else {
-                                    setStatusBanner({ type: 'success', text: `تم حذف الصنف (${prod.name}) بنجاح.` });
-                                  }
-                                },
-                              });
-                            }}
-                            className="p-1.5 rounded-lg text-red-400 hover:text-red-700 hover:bg-red-50 cursor-pointer"
-                            title="حذف الصنف"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              }))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                <span className="text-slate-400 text-[10px]">أساسية فقط</span>
+              )
+            ),
+          },
+          {
+            key: 'purchasePrice',
+            header: 'سعر الشراء',
+            align: 'center',
+            sortable: true,
+            sortValue: (prod) => prod.purchasePrice,
+            exportValue: (prod) => prod.purchasePrice,
+            render: (prod) => <span className="font-mono font-bold text-slate-700 tabular-nums">{prod.purchasePrice.toFixed(2)}</span>,
+          },
+          {
+            key: 'sellingPrice',
+            header: 'سعر البيع',
+            align: 'center',
+            sortable: true,
+            sortValue: (prod) => prod.sellingPrice,
+            exportValue: (prod) => prod.sellingPrice,
+            render: (prod) => <span className="font-mono font-black text-blue-900 tabular-nums">{prod.sellingPrice.toFixed(2)} {settings.currency}</span>,
+          },
+          {
+            key: 'totalStock',
+            header: warehouseFilter === 'all' ? 'الرصيد الإجمالي' : 'رصيد المستودع',
+            align: 'center',
+            sortable: true,
+            sortValue: (prod) => warehouseFilter === 'all'
+              ? Object.values(prod.stockPerWarehouse || {}).reduce((a, b) => a + b, 0)
+              : Number(prod.stockPerWarehouse?.[warehouseFilter] || 0),
+            exportValue: (prod) => warehouseFilter === 'all'
+              ? Object.values(prod.stockPerWarehouse || {}).reduce((a, b) => a + b, 0)
+              : Number(prod.stockPerWarehouse?.[warehouseFilter] || 0),
+            render: (prod) => {
+              const totalStock = warehouseFilter === 'all'
+                ? Object.values(prod.stockPerWarehouse || {}).reduce((a, b) => a + b, 0)
+                : Number(prod.stockPerWarehouse?.[warehouseFilter] || 0);
+              return (
+                <span className="font-mono font-black text-sm tabular-nums">
+                  {totalStock.toLocaleString()} <span className="text-[10px] font-normal text-slate-500">{prod.baseUnit}</span>
+                </span>
+              );
+            },
+          },
+          {
+            key: 'stockHealth',
+            header: 'حالة المخزون',
+            align: 'center',
+            exportValue: (prod) => {
+              const totalStock = warehouseFilter === 'all'
+                ? Object.values(prod.stockPerWarehouse || {}).reduce((a, b) => a + b, 0)
+                : Number(prod.stockPerWarehouse?.[warehouseFilter] || 0);
+              return totalStock <= prod.minStockLevel ? 'نقص مخزون' : 'متوفر كافي';
+            },
+            render: (prod) => {
+              const totalStock = warehouseFilter === 'all'
+                ? Object.values(prod.stockPerWarehouse || {}).reduce((a, b) => a + b, 0)
+                : Number(prod.stockPerWarehouse?.[warehouseFilter] || 0);
+              const isLow = totalStock <= prod.minStockLevel;
+              return isLow ? (
+                <span className="px-2 py-0.5 rounded bg-red-100 text-red-800 font-bold text-[10px] border border-red-300">
+                  نقص مخزون (حد أدنى: {prod.minStockLevel})
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                  متوفر كافي
+                </span>
+              );
+            },
+          },
+          {
+            key: 'actions',
+            header: 'الإجراءات',
+            align: 'center',
+            render: (prod) => (
+              <div className="flex items-center justify-center gap-1 flex-wrap">
+                {onOpenItemMovementReport && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenItemMovementReport(prod.id)}
+                    className="px-2 py-1 rounded-lg bg-blue-50 text-blue-900 hover:bg-blue-100 border border-blue-200 text-[11px] font-bold cursor-pointer"
+                    title="تقرير حركة الصنف المفصل"
+                  >
+                    حركة الصنف
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdjustProdId(prod.id);
+                    setAdjustNewQty(Number(prod.stockPerWarehouse?.[adjustWhId] || 0));
+                    setAdjustModalError(null);
+                    setIsAdjustModalOpen(true);
+                  }}
+                  className="p-1 rounded-lg text-slate-500 hover:text-blue-900 hover:bg-slate-100 text-[11px] font-bold cursor-pointer"
+                  title="تسوية جردية"
+                >
+                  تسوية
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDamageProdId(prod.id);
+                    setDamageModalError(null);
+                    setIsDamageModalOpen(true);
+                  }}
+                  className="p-1 rounded-lg text-amber-600 hover:bg-amber-50 text-[11px] font-bold cursor-pointer"
+                  title="إثبات تالف"
+                >
+                  تالف
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenEdit(prod)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-blue-900 hover:bg-slate-100 cursor-pointer"
+                  title="تعديل"
+                >
+                  <Edit className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmState({
+                      isOpen: true,
+                      title: prod.status === 'active' ? 'إيقاف الصنف' : 'تفعيل الصنف',
+                      message: `هل تريد ${prod.status === 'active' ? 'إيقاف' : 'إعادة تفعيل'} الصنف (${prod.name})؟`,
+                      variant: 'warning',
+                      onConfirm: async () => {
+                        setConfirmState(null);
+                        const res = await toggleProductStatus(prod.id);
+                        if (!res.success) {
+                          setStatusBanner({ type: 'error', text: res.error || 'تعذر تغيير حالة الصنف' });
+                        }
+                      },
+                    });
+                  }}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-amber-700 hover:bg-amber-50 cursor-pointer"
+                  title={prod.status === 'active' ? 'إيقاف مؤقت' : 'تفعيل'}
+                >
+                  <Power className="w-4 h-4" />
+                </button>
+                {hasPermission('canDelete') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConfirmState({
+                        isOpen: true,
+                        title: 'حذف الصنف من قاعدة البيانات',
+                        message: `هل أنت متأكد من حذف الصنف (${prod.name}) نهائياً؟ (لن يُسمح بالحذف إذا كان الصنف مرتبطاً بفواتير أو حركات سابقة).`,
+                        variant: 'danger',
+                        onConfirm: async () => {
+                          setConfirmState(null);
+                          const res = await deleteProduct(prod.id);
+                          if (!res.success) {
+                            setStatusBanner({ type: 'error', text: res.error || 'لا يمكن حذف الصنف لارتباطه بعمليات مسجلة' });
+                          } else {
+                            setStatusBanner({ type: 'success', text: `تم حذف الصنف (${prod.name}) بنجاح.` });
+                          }
+                        },
+                      });
+                    }}
+                    className="p-1.5 rounded-lg text-red-400 hover:text-red-700 hover:bg-red-50 cursor-pointer"
+                    title="حذف الصنف"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ),
+          },
+        ]}
+      />
 
       {/* Add / Edit Product Modal */}
       <Modal

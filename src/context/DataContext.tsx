@@ -35,7 +35,13 @@ import { notifyLocal, subscribeAppForeground, subscribeNetworkStatus } from '../
 import { localDb } from '../services/localDb';
 import { normalizeServerOrigin, refreshCachedUserAuthorization } from '../services/offlineAuth';
 import { getCachedProductImageMap, warmProductMediaCache } from '../services/mediaCache';
-import { enqueueSyncOperation, getSyncRefreshStats, runSyncCycle, SyncRefreshSummary } from '../services/syncEngine';
+import {
+  enqueueSyncOperation,
+  getSyncRefreshStats,
+  runSyncCycle,
+  sendDispatchBatchToServer,
+  SyncRefreshSummary,
+} from '../services/syncEngine';
 import {
   Product,
   Customer,
@@ -92,6 +98,8 @@ import {
   IdentityConflict,
   IdentityEntityType,
   StorefrontConfig,
+  SyncDispatchBatch,
+  DispatchRecipientOption,
 } from '../types';
 import { useAuth } from './AuthContext';
 
@@ -129,6 +137,20 @@ export interface DataContextType extends DatabaseState {
   lastReceiveSummary: SyncRefreshSummary | null;
   syncSendOnly: () => Promise<{ ok: boolean; count: number; failedCount: number; conflictCount: number; error?: string }>;
   syncReceiveOnly: () => Promise<{ ok: boolean; count: number; error?: string }>;
+  syncDispatchBatches: SyncDispatchBatch[];
+  dispatchRecipients: DispatchRecipientOption[];
+  incomingDispatchCount: number;
+  createAndSendDispatchBatch: (params: {
+    selectedOperations: SyncQueueItem[];
+    recipientUserId: string;
+    notes?: string;
+    existingDraftBatch?: SyncDispatchBatch;
+  }) => Promise<{ success: boolean; batch?: SyncDispatchBatch; error?: string }>;
+  retryDispatchBatch: (batch: SyncDispatchBatch) => Promise<{ success: boolean; batch?: SyncDispatchBatch; error?: string }>;
+  confirmDispatchReceipt: (batchId: string, receiptNotes?: string) => Promise<{ success: boolean; batch?: SyncDispatchBatch; error?: string }>;
+  markDispatchReceiving: (batchId: string) => Promise<{ success: boolean; batch?: SyncDispatchBatch; error?: string }>;
+  failDispatchReceipt: (batchId: string, reason: string) => Promise<{ success: boolean; batch?: SyncDispatchBatch; error?: string }>;
+  refreshDispatches: () => Promise<void>;
   resolveSyncConflict: (
     conflictId: string,
     action: 'keep_server' | 'apply_local' | 'dismiss',
@@ -541,6 +563,26 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
               }
             }
           }
+          if (paidAmount > 0 && !financialTransactions.some((t) => t.id === `FIN-${op.operationId}`)) {
+            financialTransactions.unshift({
+              id: `FIN-${op.operationId}`,
+              transactionNumber: `LOC-FIN-${op.operationId.slice(-5)}`,
+              date: p.date || op.createdAt.slice(0, 10),
+              type: 'income',
+              category: 'مبيعات',
+              amount: paidAmount,
+              cashboxId: p.cashboxId || '',
+              cashboxName: cb?.name || 'تحصيل محلي',
+              partyId: p.customerId,
+              partyName: p.customerName || cust?.name || 'عميل',
+              relatedDocId: targetId,
+              relatedDocNumber: `LOC-INV-${op.operationId.slice(-5)}`,
+              relatedDocType: 'sales',
+              description: `تحصيل عند إصدار فاتورة محلية (${p.customerName || cust?.name || 'عميل'})`,
+              createdBy: op.userId,
+              createdAt: op.createdAt,
+            });
+          }
         }
       }
     } else if (op.operationType === 'create_purchase_invoice') {
@@ -796,10 +838,46 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
         }
       }
     } else if (op.operationType === 'record_customer_payment') {
+      const payAmt = Number(p.amount || 0);
       const cust = customers.find((c) => c.id === p.customerId);
-      if (cust) cust.currentBalance = Number(cust.currentBalance || 0) - Number(p.amount || 0);
+      if (cust) cust.currentBalance = Number(cust.currentBalance || 0) - payAmt;
       const cb = cashboxes.find((c) => c.id === p.cashboxId);
-      if (cb) cb.currentBalance = Number(cb.currentBalance || 0) + Number(p.amount || 0);
+      if (cb) cb.currentBalance = Number(cb.currentBalance || 0) + payAmt;
+      const repTarget =
+        (p.representativeId && representatives.find((r) => r.id === p.representativeId)) ||
+        representatives.find((r) => r.userId === op.userId);
+      if (repTarget && payAmt > 0) {
+        repTarget.currentBalance = Number(repTarget.currentBalance || 0) + payAmt;
+      }
+      if (p.invoiceId && payAmt > 0) {
+        const inv = invoices.find((i) => i.id === p.invoiceId || i.localId === p.invoiceId);
+        if (inv) {
+          inv.paidAmount = Number(inv.paidAmount || 0) + payAmt;
+          inv.remainingAmount = Math.max(0, Number(inv.grandTotal || 0) - inv.paidAmount);
+          inv.paymentType = inv.remainingAmount === 0 ? 'cash' : 'partial';
+        }
+      }
+      const finId = `FIN-${op.operationId}`;
+      if (payAmt > 0 && !financialTransactions.some((t) => t.id === finId)) {
+        financialTransactions.unshift({
+          id: finId,
+          transactionNumber: `LOC-PAY-${op.operationId.slice(-5)}`,
+          date: p.date || op.createdAt.slice(0, 10),
+          type: 'customer_payment',
+          category: 'تحصيل عميل',
+          amount: payAmt,
+          cashboxId: p.cashboxId || '',
+          cashboxName: cb?.name || 'تحصيل محلي',
+          partyId: p.customerId,
+          partyName: cust?.name || p.customerName || 'عميل',
+          relatedDocId: p.invoiceId || undefined,
+          relatedDocType: p.invoiceId ? 'sales' : undefined,
+          description: `تحصيل محلي من العميل (${cust?.name || p.customerName || ''})`,
+          notes: p.notes || '',
+          createdBy: op.userId,
+          createdAt: op.createdAt,
+        });
+      }
     } else if (op.operationType === 'record_order_advance') {
       const targetAdvId = op.localId || op.operationId;
       if (!advancePayments.some((a) => a.id === targetAdvId || a.operationId === op.operationId)) {
@@ -958,6 +1036,14 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
           }
         }
         if (p.type === 'sales_return') {
+          const origInv = invoices.find((i) => i.id === p.originalInvoiceId || i.localId === p.originalInvoiceId);
+          if (origInv) {
+            const retMap: Record<string, number> = { ...(origInv.returnedQuantityByItem || {}) };
+            for (const it of p.items || []) {
+              retMap[it.productId] = Number(retMap[it.productId] || 0) + Number(it.quantity || 0);
+            }
+            origInv.returnedQuantityByItem = retMap;
+          }
           if (p.refundType === 'balance' && partyId) {
             const cust = customers.find((c) => c.id === partyId);
             if (cust) cust.currentBalance = Number(cust.currentBalance || 0) - totalAmt;
@@ -1346,6 +1432,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [lastServerSyncAt, setLastServerSyncAt] = useState<string | null>(null);
   const [syncQueue, setSyncQueue] = useState<SyncQueueItem[]>([]);
   const [syncConflicts, setSyncConflicts] = useState<SyncConflictRecord[]>([]);
+  const [syncDispatchBatches, setSyncDispatchBatches] = useState<SyncDispatchBatch[]>([]);
+  const [dispatchRecipients, setDispatchRecipients] = useState<DispatchRecipientOption[]>([]);
   const [cachedMediaMap, setCachedMediaMap] = useState<Record<string, string>>({});
   const [isServerReachable, setIsServerReachable] = useState<boolean>(
     typeof navigator !== 'undefined' ? navigator.onLine !== false : true
@@ -1548,6 +1636,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCustomerStatement(nextStmt);
       setSyncQueue(currentQueue);
       setSyncConflicts(Array.isArray(pullData.syncConflicts) ? pullData.syncConflicts : []);
+      if (Array.isArray(pullData.dispatchRecipients)) {
+        setDispatchRecipients(pullData.dispatchRecipients);
+      }
+      const serverBatches: SyncDispatchBatch[] = Array.isArray(pullData.syncDispatchBatches)
+        ? pullData.syncDispatchBatches
+        : [];
+      const localBatches = await localDb.listDispatchBatches(activeUser.id);
+      const mergedBatches: SyncDispatchBatch[] = [...serverBatches];
+      for (const lb of localBatches) {
+        const matched = mergedBatches.some(
+          (sb) => sb.id === lb.id || (lb.clientBatchUuid && sb.clientBatchUuid === lb.clientBatchUuid)
+        );
+        if (!matched && (lb.isLocalOnly || lb.sendStatus === 'فشل الإرسال' || lb.sendStatus === 'جاري الإرسال')) {
+          mergedBatches.unshift(lb);
+        }
+      }
+      await localDb.saveDispatchBatches(activeUser.id, mergedBatches);
+      setSyncDispatchBatches(mergedBatches);
       setIsUsingOfflineCache(false);
       setLastCacheTimestamp(null);
       const nowServerTime = pullData.serverTime || new Date().toISOString();
@@ -1616,6 +1722,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCustomerFavorites([]);
         setSyncQueue([]);
         setSyncConflicts([]);
+        setSyncDispatchBatches([]);
+        setDispatchRecipients([]);
         setCachedMediaMap({});
         setMobileNotifications([]);
         setLastServerSyncAt(null);
@@ -1638,20 +1746,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setMobileNotifications([]);
         setSyncQueue([]);
         setSyncConflicts([]);
+        setSyncDispatchBatches([]);
+        setDispatchRecipients([]);
         setLastServerSyncAt(null);
         setIsUsingOfflineCache(false);
         setLastCacheTimestamp(null);
 
-        const [snap, queue, conflicts, lastSyncMeta] = await Promise.all([
+        const [snap, queue, conflicts, dispatchBatches, lastSyncMeta] = await Promise.all([
           localDb.getSnapshot(currentUser.id),
           localDb.listSyncQueue(currentUser.id),
           localDb.listConflicts(currentUser.id),
+          localDb.listDispatchBatches(currentUser.id),
           localDb.getMeta<string>(`last_sync_at:${currentUser.id}`),
         ]);
         if (cancelled) return;
 
         setSyncQueue(queue);
         setSyncConflicts(conflicts);
+        setSyncDispatchBatches(dispatchBatches);
         setLastServerSyncAt(lastSyncMeta || null);
 
         const expectedOrigin = normalizeServerOrigin(getConfiguredApiBaseUrl());
@@ -1664,6 +1776,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (snapshotMatchesServer && snap?.data?.dbState) {
           const effective = overlayPendingQueueOnState(snap.data.dbState, queue);
           setData(effective);
+          if (Array.isArray(snap.data.dbState.dispatchRecipients)) {
+            setDispatchRecipients(snap.data.dbState.dispatchRecipients);
+          }
+          if ((!dispatchBatches || dispatchBatches.length === 0) && Array.isArray(snap.data.dbState.syncDispatchBatches)) {
+            setSyncDispatchBatches(snap.data.dbState.syncDispatchBatches);
+          }
           if (snap.data.customerStatement) {
             setCustomerStatement(snap.data.customerStatement);
           }
@@ -2377,6 +2495,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   // Offline Queue Helper
+  const REP_BATCH_HOLD_OPS = new Set<SyncQueueItem['operationType']>([
+    'create_order',
+    'create_sales_invoice',
+    'create_sales_quote',
+    'edit_sales_invoice',
+    'create_purchase_invoice',
+    'send_purchase_invoice',
+    'edit_purchase_invoice',
+    'create_invoice_return',
+    'create_purchase_return_request',
+    'create_sales_return_request',
+    'add_invoice_payment',
+    'record_customer_payment',
+    'record_order_advance',
+    'create_customer',
+    'update_customer',
+    'confirm_custody_receipt',
+    'record_custody_delivery',
+    'record_custody_return',
+  ]);
+
   const queueOfflineOp = useCallback(
     async (params: {
       operationType: SyncQueueItem['operationType'];
@@ -2387,9 +2526,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       payload: Record<string, any>;
     }) => {
       if (!currentUser) throw new Error('المستخدم غير مسجل');
+      const holdForDispatchBatch =
+        currentUser.role === 'representative' && REP_BATCH_HOLD_OPS.has(params.operationType);
       const queued = await enqueueSyncOperation({
         userId: currentUser.id,
         ...params,
+        holdForDispatchBatch,
+        dispatchStage: holdForDispatchBatch ? 'محفوظة محليًا' : undefined,
       });
       const updatedQueue = await localDb.listSyncQueue(currentUser.id);
       setSyncQueue(updatedQueue);
@@ -2418,6 +2561,158 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return queued;
     },
     [currentUser, customerStatement]
+  );
+
+  const refreshDispatches = useCallback(async () => {
+    if (!isAuthenticated || !currentUser || currentUser.role === 'customer') return;
+    try {
+      const [batchesRes, recipRes] = await Promise.all([
+        apiRequest<{ ok: boolean; batches: SyncDispatchBatch[] }>('/api/sync/dispatches'),
+        apiRequest<{ ok: boolean; recipients: DispatchRecipientOption[] }>('/api/sync/dispatches/recipients').catch(() => ({
+          ok: true,
+          recipients: dispatchRecipients,
+        })),
+      ]);
+      const serverBatches = Array.isArray(batchesRes?.batches) ? batchesRes.batches : [];
+      const localBatches = await localDb.listDispatchBatches(currentUser.id);
+      const merged = [...serverBatches];
+      for (const lb of localBatches) {
+        if (
+          !merged.some((sb) => sb.id === lb.id || (lb.clientBatchUuid && sb.clientBatchUuid === lb.clientBatchUuid)) &&
+          (lb.isLocalOnly || lb.sendStatus === 'فشل الإرسال' || lb.sendStatus === 'جاري الإرسال')
+        ) {
+          merged.unshift(lb);
+        }
+      }
+      await localDb.saveDispatchBatches(currentUser.id, merged);
+      setSyncDispatchBatches(merged);
+      if (Array.isArray(recipRes?.recipients)) {
+        setDispatchRecipients(recipRes.recipients);
+      }
+    } catch {
+      // ignore if offline; keep local cached batches
+    }
+  }, [isAuthenticated, currentUser, dispatchRecipients]);
+
+  const createAndSendDispatchBatch = useCallback(
+    async (params: {
+      selectedOperations: SyncQueueItem[];
+      recipientUserId: string;
+      notes?: string;
+      existingDraftBatch?: SyncDispatchBatch;
+    }) => {
+      if (!currentUser) return { success: false, error: 'المستخدم غير مسجل' };
+      const recipient = dispatchRecipients.find((r) => r.id === params.recipientUserId);
+      if (!recipient) {
+        return { success: false, error: 'يرجى اختيار الموظف المستلم من القائمة' };
+      }
+      if (!Array.isArray(params.selectedOperations) || params.selectedOperations.length === 0) {
+        return { success: false, error: 'يرجى تحديد عملية واحدة على الأقل لإرسالها' };
+      }
+      const repProfile = (data.representatives || []).find((r) => r.userId === currentUser.id);
+      setIsSyncing(true);
+      setNetworkStatus('synchronizing');
+      try {
+        const res = await sendDispatchBatchToServer({
+          userId: currentUser.id,
+          senderName: currentUser.fullName || currentUser.username,
+          representativeId: repProfile?.id,
+          representativeName: repProfile?.name,
+          selectedOperations: params.selectedOperations,
+          recipient,
+          notes: params.notes,
+          existingDraftBatch: params.existingDraftBatch,
+        });
+        await refreshQueueAndConflictsFromLocal(currentUser.id);
+        await refreshSyncStatsFromLocal();
+        const updatedBatches = await localDb.listDispatchBatches(currentUser.id);
+        setSyncDispatchBatches(updatedBatches);
+        if (res.authRevoked) {
+          await handleServerAuthRevoked(res.error);
+          return { success: false, batch: res.batch, error: res.error };
+        }
+        if (res.ok) {
+          await loadRoleScopedData();
+          return { success: true, batch: res.batch };
+        }
+        setNetworkStatus('pending');
+        return { success: false, batch: res.batch, error: res.error };
+      } finally {
+        setIsSyncing(false);
+      }
+    },
+    [currentUser, dispatchRecipients, data.representatives, refreshQueueAndConflictsFromLocal, refreshSyncStatsFromLocal, handleServerAuthRevoked, loadRoleScopedData]
+  );
+
+  const retryDispatchBatch = useCallback(
+    async (batch: SyncDispatchBatch) => {
+      const ops = Array.isArray(batch.operationsSnapshot) && batch.operationsSnapshot.length > 0
+        ? batch.operationsSnapshot
+        : syncQueue.filter((q) => batch.operationIds.includes(q.operationId));
+      return createAndSendDispatchBatch({
+        selectedOperations: ops,
+        recipientUserId: batch.recipientUserId,
+        notes: batch.notes,
+        existingDraftBatch: batch,
+      });
+    },
+    [createAndSendDispatchBatch, syncQueue]
+  );
+
+  const markDispatchReceiving = useCallback(
+    async (batchId: string) => {
+      try {
+        const res = await apiRequest<{ ok: boolean; batch: SyncDispatchBatch }>(
+          `/api/sync/dispatches/${batchId}/mark-receiving`,
+          { method: 'POST' }
+        );
+        await refreshDispatches();
+        return { success: true, batch: res.batch };
+      } catch (err: any) {
+        return { success: false, error: err?.message || 'تعذر تحديث حالة قيد الاستلام' };
+      }
+    },
+    [refreshDispatches]
+  );
+
+  const confirmDispatchReceipt = useCallback(
+    async (batchId: string, receiptNotes = '') => {
+      try {
+        const res = await apiRequest<{ ok: boolean; batch: SyncDispatchBatch }>(
+          `/api/sync/dispatches/${batchId}/confirm-receipt`,
+          {
+            method: 'POST',
+            body: { receiptNotes },
+            idempotencyKey: generateId('CONF-DSP'),
+          }
+        );
+        await refreshDispatches();
+        await loadRoleScopedData();
+        return { success: true, batch: res.batch };
+      } catch (err: any) {
+        return { success: false, error: err?.message || 'تعذر تأكيد استلام الدفعة' };
+      }
+    },
+    [refreshDispatches, loadRoleScopedData]
+  );
+
+  const failDispatchReceipt = useCallback(
+    async (batchId: string, reason: string) => {
+      try {
+        const res = await apiRequest<{ ok: boolean; batch: SyncDispatchBatch }>(
+          `/api/sync/dispatches/${batchId}/fail-receipt`,
+          {
+            method: 'POST',
+            body: { reason },
+          }
+        );
+        await refreshDispatches();
+        return { success: true, batch: res.batch };
+      } catch (err: any) {
+        return { success: false, error: err?.message || 'تعذر تسجيل تعذر الاستلام' };
+      }
+    },
+    [refreshDispatches]
   );
 
   const resolveSyncConflict = async (
@@ -4816,6 +5111,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const conflictsCount = syncConflicts.filter((c) => c.status === 'needs_review').length;
   const hasTentativeLocalBalances = pendingSyncCount > 0;
 
+  const incomingDispatchCount = syncDispatchBatches.filter((b) => {
+    if (b.receiptStatus !== 'في انتظار الاستلام' && b.receiptStatus !== 'جاري الاستلام') return false;
+    if (!currentUser || currentUser.role === 'customer' || currentUser.role === 'representative') return false;
+    const p = currentUser.permissions || {};
+    return (
+      currentUser.role === 'admin' ||
+      currentUser.role === 'manager' ||
+      b.recipientUserId === currentUser.id ||
+      Boolean(p.canApprove || p.canReceive || p.canManageReps || p.canManageTransfers)
+    );
+  }).length;
+
   if (!isInitialLoaded && isAuthenticated) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-900 text-white font-sans">
@@ -4835,6 +5142,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         orderAdvancePayments: data.orderAdvancePayments || [],
         syncConflicts,
         syncQueue,
+        syncDispatchBatches,
+        dispatchRecipients,
+        incomingDispatchCount,
         cachedMediaMap,
         isServerReachable,
         isSyncing,
@@ -4865,6 +5175,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         lastReceiveSummary,
         syncSendOnly,
         syncReceiveOnly,
+        createAndSendDispatchBatch,
+        retryDispatchBatch,
+        confirmDispatchReceipt,
+        markDispatchReceiving,
+        failDispatchReceipt,
+        refreshDispatches,
         resolveSyncConflict,
         exportBackup,
         importBackup,

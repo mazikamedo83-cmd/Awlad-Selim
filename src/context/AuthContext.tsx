@@ -440,7 +440,11 @@ export async function executeAuthSessionCheck(params: {
         }
       } else if (isDatabaseUnavailableError(err)) {
         await handleDbUnavailable(err?.message || DEFAULT_DB_UNAVAILABLE_MESSAGE);
-      } else if ((err?.status === 0 || serverUnreachable) && deps.isNativeCapacitor() && Boolean(tokens?.refreshToken)) {
+      } else if (
+        (err?.status === 0 || serverUnreachable) &&
+        (deps.isNativeCapacitor() || deps.isElectronDesktop()) &&
+        Boolean(tokens?.refreshToken)
+      ) {
         actions.setIsDatabaseUnavailable(false);
         actions.setDatabaseUnavailableMessage(null);
         const restored = await deps
@@ -816,7 +820,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           baseUrl,
           installationId || entry.installationId || ''
         ).catch(() => null);
-        if (offlineUserSession && (isNativeCapacitor() || isDatabaseUnavailableError(err))) {
+        if (offlineUserSession && (isNativeCapacitor() || isElectronDesktop() || isDatabaseUnavailableError(err))) {
           saveStoredTokens({
             accessToken: entry.accessToken || 'offline_cached_token',
             refreshToken: entry.refreshToken,

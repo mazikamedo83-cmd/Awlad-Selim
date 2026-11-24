@@ -74,6 +74,7 @@ export type NavItemKey =
   | 'reps'
   | 'rep-transfers'
   | 'rep-item-transfers'
+  | 'refresh-sync'
   | 'employees'
   | 'attendance'
   | 'advances'
@@ -128,7 +129,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenCashOp,
 }) => {
   const { hasPermission, currentUser } = useAuth();
-  const { customerItemOrders = [] } = useData();
+  const { customerItemOrders = [], incomingDispatchCount = 0 } = useData();
   const pendingOrdersCount = customerItemOrders.filter((o) => o.status === 'pending').length;
 
   // Expand all Windows desktop sections by default; users can collapse/expand freely
@@ -263,6 +264,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         iconAccent: 'bg-white border border-cyan-100 shadow-2xs',
         permission: 'canManageReps',
         items: [
+          {
+            key: 'refresh-sync',
+            label: 'REFRESH · إرسال واستلام المندوبين',
+            permission: ['canManageReps', 'canManageTransfers', 'canManageSales', 'canManageAccounts', 'canApprove'],
+            badge: incomingDispatchCount > 0 ? `${incomingDispatchCount}` : undefined,
+          },
           { key: 'reps', label: 'قائمة المناديب' },
           {
             key: 'rep-transfers',
@@ -343,7 +350,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ],
       },
     ],
-    [pendingOrdersCount]
+    [pendingOrdersCount, incomingDispatchCount]
   );
 
   // Auto-open the section owning the current page

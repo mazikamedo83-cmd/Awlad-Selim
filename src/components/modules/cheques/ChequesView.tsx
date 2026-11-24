@@ -7,6 +7,7 @@ import { useData } from '../../../context/DataContext';
 import { Cheque, InstallmentSchedule } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
+import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 
 interface ChequesViewProps {
   initialTab?: 'cheques' | 'installments';
@@ -231,158 +232,204 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
 
       {/* Cheques Tab */}
       {activeTab === 'cheques' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="p-3 border-b">
-            <input
-              type="text"
-              placeholder="بحث برقم الشيك أو البنك أو الطرف..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full max-w-sm bg-slate-50 border rounded-xl px-3 py-2 text-xs outline-hidden"
-            />
-          </div>
-
-          <div className="awlad-table-scroll">
-          <table className="w-full text-right text-xs">
-            <thead>
-              <tr className="bg-slate-50 font-bold border-b text-slate-700">
-                <th className="p-3">رقم الشيك</th>
-                <th className="p-3">النوع</th>
-                <th className="p-3">البنك المسحوب عليه</th>
-                <th className="p-3">الطرف (الساحب / المستفيد)</th>
-                <th className="p-3">تاريخ الاستحقاق</th>
-                <th className="p-3 text-center">المبلغ</th>
-                <th className="p-3">الحالة</th>
-                <th className="p-3 text-center">الإجراء</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredCheques.map(chq => (
-                <tr key={chq.id} className="hover:bg-slate-50">
-                  <td className="p-3 font-mono font-bold text-blue-900">{chq.chequeNumber}</td>
-                  <td className="p-3">
-                    {chq.type === 'incoming' ? (
-                      <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 font-bold text-[10px]">شيك وارد (لنا)</span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 font-bold text-[10px]">شيك صادر (علينا)</span>
-                    )}
-                  </td>
-                  <td className="p-3 font-semibold">{chq.bankName}</td>
-                  <td className="p-3 font-bold text-slate-800">{chq.partyName}</td>
-                  <td className="p-3 font-mono text-slate-600">{chq.dueDate}</td>
-                  <td className="p-3 text-center font-mono font-black text-sm text-blue-950">
-                    {chq.amount.toLocaleString()} {settings.currency}
-                  </td>
-                  <td className="p-3">
-                    {chq.status === 'collected' ? (
-                      <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px]">تم التحصيل</span>
-                    ) : chq.status === 'pending' ? (
-                      <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold text-[10px]">برسم التحصيل</span>
-                    ) : chq.status === 'rejected' ? (
-                      <span className="px-2 py-0.5 rounded-md bg-red-100 text-red-800 font-bold text-[10px]">مرفوض</span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 font-bold text-[10px]">جديد</span>
-                    )}
-                  </td>
-                  <td className="p-3 text-center">
-                    {chq.status !== 'collected' && chq.status !== 'rejected' && (
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button
-                          onClick={() => {
-                            setCollectError(null);
-                            setCollectingCheque(chq);
-                          }}
-                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] cursor-pointer"
-                        >
-                          تحصيل
-                        </button>
-                        <button
-                          onClick={() => setRejectingCheque(chq)}
-                          className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg font-bold text-[11px] cursor-pointer"
-                        >
-                          رفض / ارتداد
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
-        </div>
+        <UnifiedDataTable<Cheque>
+          title="سجل الشيكات البنكية"
+          data={cheques}
+          rowKey={(chq) => chq.id}
+          searchPlaceholder="بحث برقم الشيك أو البنك أو الطرف..."
+          exportFilename="سجل-الشيكات-البنكية"
+          pdfTitle="سجل الشيكات البنكية"
+          columns={[
+            {
+              key: 'chequeNumber',
+              header: 'رقم الشيك',
+              align: 'right',
+              sortValue: (c) => c.chequeNumber,
+              exportValue: (c) => c.chequeNumber,
+              render: (c) => <span className="font-mono font-bold text-blue-900">{c.chequeNumber}</span>,
+            },
+            {
+              key: 'type',
+              header: 'النوع',
+              align: 'center',
+              sortValue: (c) => c.type,
+              exportValue: (c) => (c.type === 'incoming' ? 'شيك وارد (لنا)' : 'شيك صادر (علينا)'),
+              render: (c) =>
+                c.type === 'incoming' ? (
+                  <span className="px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-[10px]">شيك وارد (لنا)</span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-800 font-bold text-[10px]">شيك صادر (علينا)</span>
+                ),
+            },
+            {
+              key: 'bankName',
+              header: 'البنك المسحوب عليه',
+              align: 'right',
+              sortValue: (c) => c.bankName,
+              exportValue: (c) => c.bankName,
+              render: (c) => <span className="font-semibold">{c.bankName}</span>,
+            },
+            {
+              key: 'partyName',
+              header: 'الطرف (الساحب / المستفيد)',
+              align: 'right',
+              sortValue: (c) => c.partyName,
+              exportValue: (c) => c.partyName,
+              render: (c) => <span className="font-bold text-slate-800">{c.partyName}</span>,
+            },
+            {
+              key: 'dueDate',
+              header: 'تاريخ الاستحقاق',
+              align: 'center',
+              sortValue: (c) => c.dueDate,
+              exportValue: (c) => c.dueDate,
+              render: (c) => <span className="font-mono text-slate-600 tabular-nums">{c.dueDate}</span>,
+            },
+            {
+              key: 'amount',
+              header: 'المبلغ',
+              align: 'center',
+              sortValue: (c) => c.amount,
+              exportValue: (c) => c.amount,
+              render: (c) => (
+                <span className="font-mono font-black text-blue-950 tabular-nums">
+                  {c.amount.toLocaleString()} {settings.currency}
+                </span>
+              ),
+            },
+            {
+              key: 'status',
+              header: 'الحالة',
+              align: 'center',
+              sortValue: (c) => c.status,
+              exportValue: (c) =>
+                c.status === 'collected' ? 'تم التحصيل' : c.status === 'pending' ? 'برسم التحصيل' : c.status === 'rejected' ? 'مرفوض' : 'جديد',
+              render: (c) =>
+                c.status === 'collected' ? (
+                  <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">تم التحصيل</span>
+                ) : c.status === 'pending' ? (
+                  <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-bold text-[10px]">برسم التحصيل</span>
+                ) : c.status === 'rejected' ? (
+                  <span className="px-2 py-0.5 rounded bg-red-100 text-red-800 font-bold text-[10px]">مرفوض</span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-bold text-[10px]">جديد</span>
+                ),
+            },
+            {
+              key: 'actions',
+              header: 'الإجراءات',
+              align: 'center',
+              sortable: false,
+              render: (chq) =>
+                chq.status !== 'collected' && chq.status !== 'rejected' ? (
+                  <div className="flex items-center justify-center gap-1.5">
+                    <button
+                      onClick={() => {
+                        setCollectError(null);
+                        setCollectingCheque(chq);
+                      }}
+                      className="px-2.5 py-1 bg-blue-900 hover:bg-blue-950 text-white rounded-lg font-bold text-[11px] cursor-pointer"
+                    >
+                      تحصيل
+                    </button>
+                    <button
+                      onClick={() => setRejectingCheque(chq)}
+                      className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg font-bold text-[11px] cursor-pointer"
+                    >
+                      رفض / ارتداد
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-slate-400">—</span>
+                ),
+            },
+          ]}
+        />
       )}
 
       {/* Installments Tab */}
       {activeTab === 'installments' && (
-        <div className="space-y-4">
-          {installments.map(sch => (
-            <div key={sch.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3 text-xs">
-              <div className="flex flex-wrap items-center justify-between border-b pb-3">
-                <div>
-                  <span className="font-mono font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded">{sch.scheduleNumber}</span>
-                  <h3 className="text-sm font-black text-slate-900 mt-1">العميل: {sch.customerName}</h3>
-                </div>
-                <div className="flex gap-4 font-bold text-slate-700">
-                  <span>إجمالي الأقساط: <strong className="font-mono">{sch.totalAmount} {settings.currency}</strong></span>
-                  <span>المسدد: <strong className="font-mono text-emerald-700">{sch.paidAmount}</strong></span>
-                  <span>المتبقي: <strong className="font-mono text-red-700">{sch.remainingAmount} {settings.currency}</strong></span>
-                </div>
-              </div>
-
-              {/* Installments Table */}
-              <div className="awlad-table-scroll">
-              <table className="w-full text-right text-xs">
-                <thead>
-                  <tr className="bg-slate-50 font-bold border-b">
-                    <th className="p-2">رقم القسط</th>
-                    <th className="p-2">تاريخ الاستحقاق</th>
-                    <th className="p-2 text-center">مبلغ القسط</th>
-                    <th className="p-2 text-center">المدفوع</th>
-                    <th className="p-2">الحالة</th>
-                    <th className="p-2 text-center">سداد</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {sch.items.map(it => {
+        <UnifiedDataTable<InstallmentSchedule & { flatItems?: any }>
+          title="جداول متابعة الأقساط"
+          data={installments}
+          rowKey={(sch) => sch.id}
+          exportFilename="جداول-الأقساط"
+          pdfTitle="جداول متابعة الأقساط"
+          columns={[
+            {
+              key: 'scheduleNumber',
+              header: 'رقم الجدولة',
+              align: 'center',
+              sortValue: (s) => s.scheduleNumber,
+              exportValue: (s) => s.scheduleNumber,
+              render: (s) => <span className="font-mono font-bold text-blue-900">{s.scheduleNumber}</span>,
+            },
+            {
+              key: 'customerName',
+              header: 'العميل',
+              align: 'right',
+              sortValue: (s) => s.customerName,
+              exportValue: (s) => s.customerName,
+              render: (s) => <span className="font-bold text-slate-900">{s.customerName}</span>,
+            },
+            {
+              key: 'totalAmount',
+              header: 'إجمالي الأقساط',
+              align: 'center',
+              sortValue: (s) => s.totalAmount,
+              exportValue: (s) => s.totalAmount,
+              render: (s) => <span className="font-mono font-bold tabular-nums">{s.totalAmount.toLocaleString()} {settings.currency}</span>,
+            },
+            {
+              key: 'paidAmount',
+              header: 'المسدد',
+              align: 'center',
+              sortValue: (s) => s.paidAmount,
+              exportValue: (s) => s.paidAmount,
+              render: (s) => <span className="font-mono font-bold text-emerald-700 tabular-nums">{s.paidAmount.toLocaleString()}</span>,
+            },
+            {
+              key: 'remainingAmount',
+              header: 'المتبقي',
+              align: 'center',
+              sortValue: (s) => s.remainingAmount,
+              exportValue: (s) => s.remainingAmount,
+              render: (s) => <span className="font-mono font-bold text-red-700 tabular-nums">{s.remainingAmount.toLocaleString()} {settings.currency}</span>,
+            },
+            {
+              key: 'nextDue',
+              header: 'الأقساط المستحقة',
+              align: 'right',
+              sortable: false,
+              render: (sch) => (
+                <div className="space-y-1">
+                  {sch.items.map((it) => {
                     const isOverdue = it.status === 'pending' && new Date(it.dueDate) < new Date();
                     return (
-                      <tr key={it.id} className="hover:bg-slate-50">
-                        <td className="p-2 font-bold">القسط {it.installmentNumber}</td>
-                        <td className="p-2 font-mono text-slate-600">{it.dueDate}</td>
-                        <td className="p-2 text-center font-bold">{it.amount.toLocaleString()}</td>
-                        <td className="p-2 text-center font-bold text-emerald-700">{it.paidAmount.toLocaleString()}</td>
-                        <td className="p-2">
-                          {it.status === 'paid' ? (
-                            <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold">مسدد بالكامل</span>
-                          ) : isOverdue ? (
-                            <span className="px-2 py-0.5 rounded-md bg-red-100 text-red-800 text-[10px] font-bold">متأخر عن الموعد</span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-bold">في الانتظار</span>
-                          )}
-                        </td>
-                        <td className="p-2 text-center">
-                          {it.status !== 'paid' && (
-                            <button
-                              onClick={() => {
-                                setInstallmentError(null);
-                                setPayingSchedule({ schedule: sch, itemId: it.id, amount: it.amount - it.paidAmount });
-                              }}
-                              className="px-2 py-1 bg-emerald-600 text-white rounded-lg font-bold cursor-pointer"
-                            >
-                              تسجيل سداد
-                            </button>
-                          )}
-                        </td>
-                      </tr>
+                      <div key={it.id} className="flex items-center justify-between gap-2 text-[11px] py-0.5 border-b border-slate-100 last:border-b-0">
+                        <span className="font-bold">قسط {it.installmentNumber} ({it.dueDate})</span>
+                        <span className="font-mono tabular-nums">{it.amount.toLocaleString()}</span>
+                        {it.status === 'paid' ? (
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold">مسدد</span>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setInstallmentError(null);
+                              setPayingSchedule({ schedule: sch, itemId: it.id, amount: it.amount - it.paidAmount });
+                            }}
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold text-white cursor-pointer ${isOverdue ? 'bg-red-600' : 'bg-blue-900'}`}
+                          >
+                            {isOverdue ? 'متأخر · سداد' : 'تسجيل سداد'}
+                          </button>
+                        )}
+                      </div>
                     );
                   })}
-                </tbody>
-              </table>
-              </div>
-            </div>
-          ))}
-        </div>
+                </div>
+              ),
+            },
+          ]}
+        />
       )}
 
       {/* Add Cheque Modal */}

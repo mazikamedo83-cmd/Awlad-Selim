@@ -928,6 +928,62 @@ export async function initializeSchema(customPool = null) {
       }
     }
 
+    // Ensure v13 sync_dispatch_batches table and sequence exist
+    const v13Statements = [
+      'CREATE SEQUENCE IF NOT EXISTS seq_sync_dispatch_no START 1',
+      `CREATE TABLE IF NOT EXISTS sync_dispatch_batches (
+        id VARCHAR(64) PRIMARY KEY,
+        batch_number VARCHAR(64) UNIQUE NOT NULL,
+        client_batch_uuid VARCHAR(128) UNIQUE NOT NULL,
+        idempotency_key VARCHAR(128) UNIQUE NOT NULL,
+        device_id VARCHAR(64),
+        sender_user_id VARCHAR(64) NOT NULL,
+        sender_name TEXT NOT NULL,
+        representative_id VARCHAR(64),
+        representative_name TEXT DEFAULT '',
+        recipient_user_id VARCHAR(64) NOT NULL,
+        recipient_name TEXT NOT NULL,
+        recipient_role VARCHAR(32) DEFAULT '',
+        send_status VARCHAR(48) NOT NULL DEFAULT 'تم الإرسال',
+        receipt_status VARCHAR(48) NOT NULL DEFAULT 'في انتظار الاستلام',
+        sales_count INT NOT NULL DEFAULT 0,
+        purchases_count INT NOT NULL DEFAULT 0,
+        returns_count INT NOT NULL DEFAULT 0,
+        collections_count INT NOT NULL DEFAULT 0,
+        orders_count INT NOT NULL DEFAULT 0,
+        customers_count INT NOT NULL DEFAULT 0,
+        custody_ops_count INT NOT NULL DEFAULT 0,
+        total_sales_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+        total_cash_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+        operation_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+        operations_snapshot JSONB NOT NULL DEFAULT '[]'::jsonb,
+        doc_summary JSONB NOT NULL DEFAULT '[]'::jsonb,
+        notes TEXT DEFAULT '',
+        receipt_notes TEXT DEFAULT '',
+        error_message TEXT DEFAULT '',
+        sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        received_by_user_id VARCHAR(64),
+        received_by_name TEXT DEFAULT '',
+        received_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`,
+      'CREATE INDEX IF NOT EXISTS idx_sync_dispatch_sender ON sync_dispatch_batches(sender_user_id, created_at DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_sync_dispatch_rep ON sync_dispatch_batches(representative_id, created_at DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_sync_dispatch_recipient ON sync_dispatch_batches(recipient_user_id, receipt_status)',
+      'CREATE INDEX IF NOT EXISTS idx_sync_dispatch_status ON sync_dispatch_batches(receipt_status, created_at DESC)',
+    ];
+    for (const stmt of v13Statements) {
+      try {
+        await currentPool.query(stmt);
+      } catch (err) {
+        if (!isIdempotentDdlError(err, stmt)) {
+          console.error('[postgres] v13 DDL statement failed:', stmt, err);
+          throw err;
+        }
+      }
+    }
+
     return { success: true, message: 'تم تطبيق هيكل الجداول والفهارس والتسلسلات في PostgreSQL بنجاح.' };
   } catch (err) {
     console.error('[postgres] initializeSchema error:', err);

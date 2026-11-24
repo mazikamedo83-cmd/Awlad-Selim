@@ -65,6 +65,17 @@ import {
   recordRepCustodyReturn,
   createSupplier,
 } from '../db/stores/inventoryAdminStore.js';
+import {
+  listDispatchRecipients,
+  listDispatchBatches,
+  getDispatchBatchDetails,
+  createAndSendDispatchBatch,
+  markDispatchBatchReceiving,
+  confirmDispatchBatchReceipt,
+  failDispatchBatchReceipt,
+  resolveChainedLocalIdsInOp,
+  registerCreatedLocalIdMapping,
+} from '../db/stores/syncDispatchStore.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -736,19 +747,20 @@ router.post(
     const operations = Array.isArray(req.body?.operations) ? req.body.operations.slice(0, 200) : [];
     const user = req.auth.user;
     const results = [];
+    const localIdMap = new Map();
 
-    for (const op of operations) {
-      if (!op || typeof op !== 'object' || Array.isArray(op) || !op.operationId || !op.operationType) {
+    for (const rawOp of operations) {
+      if (!rawOp || typeof rawOp !== 'object' || Array.isArray(rawOp) || !rawOp.operationId || !rawOp.operationType) {
         results.push({
-          operationId: op?.operationId || 'unknown',
+          operationId: rawOp?.operationId || 'unknown',
           status: 'failed',
           error: 'بيانات عملية المزامنة غير مكتملة',
         });
         continue;
       }
-      if (op.payload !== undefined && (op.payload === null || typeof op.payload !== 'object' || Array.isArray(op.payload))) {
+      if (rawOp.payload !== undefined && (rawOp.payload === null || typeof rawOp.payload !== 'object' || Array.isArray(rawOp.payload))) {
         results.push({
-          operationId: String(op.operationId),
+          operationId: String(rawOp.operationId),
           status: 'failed',
           code: 'INVALID_SYNC_PAYLOAD',
           error: 'بيانات العملية (payload) غير صالحة',
@@ -756,8 +768,12 @@ router.post(
         continue;
       }
 
+      const op = resolveChainedLocalIdsInOp(rawOp, localIdMap);
+
       const existing = await findSyncOpDeduplication(user.id, op.operationId);
       if (existing && (existing.status === 'synced' || existing.status === 'deduplicated')) {
+        const existingResult = existing.response_json || existing.responseJson || {};
+        registerCreatedLocalIdMapping(op, existingResult, localIdMap);
         results.push({
           operationId: op.operationId,
           status: 'synced',
@@ -768,6 +784,7 @@ router.post(
 
       try {
         const result = await applySingleOperation(op, req.auth);
+        registerCreatedLocalIdMapping(op, result, localIdMap);
         await recordSyncOpLog({
           operationId: op.operationId,
           userId: user.id,
@@ -814,6 +831,74 @@ router.post(
     }
 
     res.json({ ok: true, results });
+  })
+);
+
+router.get(
+  '/dispatches/recipients',
+  asyncHandler(async (req, res) => {
+    const recipients = await listDispatchRecipients(req.auth.user);
+    res.json({ ok: true, recipients });
+  })
+);
+
+router.get(
+  '/dispatches',
+  asyncHandler(async (req, res) => {
+    const batches = await listDispatchBatches(req.auth.user, {
+      receiptStatus: req.query?.receiptStatus ? String(req.query.receiptStatus) : undefined,
+      sendStatus: req.query?.sendStatus ? String(req.query.sendStatus) : undefined,
+      senderUserId: req.query?.senderUserId ? String(req.query.senderUserId) : undefined,
+      recipientUserId: req.query?.recipientUserId ? String(req.query.recipientUserId) : undefined,
+      search: req.query?.search ? String(req.query.search) : undefined,
+    });
+    res.json({ ok: true, batches });
+  })
+);
+
+router.get(
+  '/dispatches/:batchId',
+  asyncHandler(async (req, res) => {
+    const data = await getDispatchBatchDetails(req.params.batchId, req.auth.user);
+    res.json({ ok: true, ...data });
+  })
+);
+
+router.post(
+  '/dispatches',
+  asyncHandler(async (req, res) => {
+    const result = await createAndSendDispatchBatch(req.body || {}, req.auth, {
+      applySingleOperation,
+      findSyncOpDeduplication,
+      recordSyncOpLog,
+      createConflictRecord,
+      isConflictError,
+    });
+    res.status(result.deduplicated ? 200 : 201).json({ ok: true, ...result });
+  })
+);
+
+router.post(
+  '/dispatches/:batchId/mark-receiving',
+  asyncHandler(async (req, res) => {
+    const result = await markDispatchBatchReceiving(req.params.batchId, req.auth.user);
+    res.json({ ok: true, ...result });
+  })
+);
+
+router.post(
+  '/dispatches/:batchId/confirm-receipt',
+  asyncHandler(async (req, res) => {
+    const result = await confirmDispatchBatchReceipt(req.params.batchId, req.body || {}, req.auth.user);
+    res.json({ ok: true, ...result });
+  })
+);
+
+router.post(
+  '/dispatches/:batchId/fail-receipt',
+  asyncHandler(async (req, res) => {
+    const result = await failDispatchBatchReceipt(req.params.batchId, req.body || {}, req.auth.user);
+    res.json({ ok: true, ...result });
   })
 );
 

@@ -11,6 +11,7 @@ import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { SuppliersTruckIcon } from '../../common/AppIcons';
+import { UnifiedDataTable, UnifiedColumn } from '../../common/UnifiedDataTable';
 
 export const SuppliersView: React.FC = () => {
   const {
@@ -420,120 +421,171 @@ export const SuppliersView: React.FC = () => {
         </div>
       )}
 
-      {/* Search */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="بحث باسم المورد أو الكود أو رقم الهاتف..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2.5 pr-10 pl-4 text-xs focus:bg-white focus:border-blue-600 outline-hidden"
-          />
-          <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-3" />
-        </div>
-      </div>
-
-      {/* Grid */}
-      {filteredSuppliers.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-400">
-          <p className="text-sm font-bold text-slate-600">لا يوجد موردون مسجلون حالياً</p>
-          <p className="text-xs text-slate-400 mt-1">انقر على زر "إضافة مورد جديد" لإضافة أول شركة توريد أو مورد للمنظومة.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {filteredSuppliers.map(supp => {
-            const { openInvoices, availableAdvance } = getSupplierAdvanceInfo(supp);
-            return (
-              <div key={supp.id} className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 text-xs space-y-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <span className="font-mono text-[11px] font-bold text-indigo-900 bg-indigo-50 px-2 py-0.5 rounded-md">
-                      {supp.code}
-                    </span>
-                    <h3 className="text-sm font-black text-slate-900 mt-1">{supp.name}</h3>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handleOpenEdit(supp)}
-                      className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded-lg cursor-pointer"
-                      title="تعديل بيانات المورد"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    {(currentUser?.role === 'admin' || hasPermission('canDelete')) && (
-                      <button
-                        onClick={() => setSupplierToDelete(supp)}
-                        className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-lg cursor-pointer"
-                        title="حذف المورد"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
+      {/* Unified Suppliers Table */}
+      <UnifiedDataTable<Supplier>
+        title={`سجل الموردين والمطاحن (${filteredSuppliers.length})`}
+        subtitle="بحث، فرز، كشوف حسابات، وتسوية الدفعات المقدمة"
+        data={filteredSuppliers}
+        rowKey={(s) => s.id}
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchPlaceholder="بحث باسم المورد أو الكود أو رقم الهاتف أو العنوان..."
+        exportFilename="AWLAD_SELIM_Suppliers"
+        pdfTitle="دليل الموردين والمطاحن"
+        emptyTitle="لا يوجد موردون مسجلون حالياً"
+        emptySubtitle={'انقر على زر "إضافة مورد جديد" لإضافة أول شركة توريد أو مورد للمنظومة.'}
+        columns={[
+          {
+            key: 'code',
+            header: 'الكود',
+            sortValue: (s) => s.code,
+            exportValue: (s) => s.code,
+            render: (s) => (
+              <span className="font-mono text-[11px] font-bold text-indigo-900 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 whitespace-nowrap">
+                {s.code}
+              </span>
+            ),
+          },
+          {
+            key: 'name',
+            header: 'اسم المورد / الشركة',
+            sortValue: (s) => s.name,
+            exportValue: (s) => s.name,
+            render: (s) => <span className="font-black text-slate-900">{s.name}</span>,
+          },
+          {
+            key: 'phone',
+            header: 'الهاتف',
+            sortValue: (s) => s.phone,
+            exportValue: (s) => s.phone,
+            render: (s) => (
+              <span className="font-mono tabular-nums text-slate-700" dir="ltr">
+                {s.phone || '—'}
+              </span>
+            ),
+          },
+          {
+            key: 'address',
+            header: 'العنوان',
+            sortValue: (s) => s.address || '',
+            exportValue: (s) => s.address || '',
+            render: (s) => <span className="text-slate-600">{s.address || '—'}</span>,
+          },
+          {
+            key: 'currentBalance',
+            header: 'الرصيد الحالي',
+            align: 'center',
+            sortValue: (s) => Number(s.currentBalance || 0),
+            exportValue: (s) => Number(s.currentBalance || 0),
+            render: (supp) => (
+              <div className="space-y-0.5 text-center">
+                <div
+                  className={`font-mono font-black text-xs tabular-nums ${
+                    supp.currentBalance < 0
+                      ? 'text-emerald-700'
+                      : supp.currentBalance > 0
+                      ? 'text-purple-900'
+                      : 'text-slate-600'
+                  }`}
+                >
+                  {Math.abs(Number(supp.currentBalance || 0)).toLocaleString()} {settings.currency}
                 </div>
-
-                <div className="space-y-1 text-slate-600">
-                  <p className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-400" /> {supp.phone}</p>
-                  <p className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-slate-400" /> {supp.address}</p>
-                </div>
-
-                <div className="p-3 rounded-xl bg-slate-50 border space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-600">
-                      {supp.currentBalance < 0 ? 'دفعة مقدمة للمورد / رصيد لنا:' : 'مستحقات المورد:'}
-                    </span>
-                    <span className={`font-mono font-black text-sm tabular-nums ${supp.currentBalance < 0 ? 'text-emerald-700' : 'text-purple-800'}`}>
-                      {supp.currentBalance < 0
-                        ? `دفعة مقدمة للمورد / رصيد لنا (${Math.abs(supp.currentBalance).toLocaleString()} ${settings.currency})`
-                        : `${supp.currentBalance.toLocaleString()} ${settings.currency}`}
-                    </span>
-                  </div>
-                  {availableAdvance > 0 && openInvoices.length > 0 && (
-                    <div className="flex items-center justify-between text-[11px] text-emerald-700 font-bold pt-1 border-t border-slate-200">
-                      <span>رصيد دفعة مقدمة متاح للتسوية:</span>
-                      <span className="font-mono">{availableAdvance.toLocaleString()} {settings.currency}</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 pt-2 border-t">
+                <span
+                  className={`inline-block px-1.5 py-0.5 rounded border text-[10px] font-bold ${
+                    supp.currentBalance < 0
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : supp.currentBalance > 0
+                      ? 'bg-purple-50 text-purple-800 border-purple-200'
+                      : 'bg-slate-100 text-slate-600 border-slate-200'
+                  }`}
+                >
+                  {supp.currentBalance < 0 ? 'رصيد لنا (مقدم)' : supp.currentBalance > 0 ? 'مستحق للمورد' : 'متوازن'}
+                </span>
+              </div>
+            ),
+          },
+          {
+            key: 'availableAdvance',
+            header: 'مقدم قابل للتسوية',
+            align: 'center',
+            sortValue: (s) => getSupplierAdvanceInfo(s).availableAdvance,
+            exportValue: (s) => getSupplierAdvanceInfo(s).availableAdvance,
+            render: (supp) => {
+              const { openInvoices, availableAdvance } = getSupplierAdvanceInfo(supp);
+              if (availableAdvance <= 0 || openInvoices.length === 0) {
+                return <span className="text-slate-400">—</span>;
+              }
+              return (
+                <span className="font-mono font-bold text-emerald-700 tabular-nums">
+                  {availableAdvance.toLocaleString()} {settings.currency}
+                </span>
+              );
+            },
+          },
+          {
+            key: 'actions',
+            header: 'الإجراءات',
+            align: 'center',
+            sortable: false,
+            render: (supp) => {
+              const { openInvoices, availableAdvance } = getSupplierAdvanceInfo(supp);
+              return (
+                <div className="flex items-center justify-center gap-1 flex-wrap">
                   <button
+                    type="button"
                     onClick={() => {
                       setPaymentError(null);
                       setPaymentNotes('');
                       setPaymentSupplier(supp);
                       setPaymentAmount(supp.currentBalance > 0 ? supp.currentBalance : 0);
                     }}
-                    className="flex items-center justify-center gap-1.5 py-2 px-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-700 hover:bg-purple-800 text-white rounded-lg font-bold text-[11px] whitespace-nowrap cursor-pointer"
                   >
-                    <ArrowUpRight className="w-4 h-4" />
+                    <ArrowUpRight className="w-3.5 h-3.5" />
                     <span>سداد دفعة</span>
                   </button>
                   <button
+                    type="button"
                     onClick={() => setStatementSupplier(supp)}
-                    className="flex items-center justify-center gap-1.5 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg font-bold text-[11px] whitespace-nowrap cursor-pointer"
                   >
-                    <FileText className="w-4 h-4" />
+                    <FileText className="w-3.5 h-3.5" />
                     <span>كشف الحساب</span>
                   </button>
-                </div>
-
-                {availableAdvance > 0 && openInvoices.length > 0 && (currentUser?.role === 'admin' || hasPermission('canManageAccounts')) && (
+                  {availableAdvance > 0 && openInvoices.length > 0 && (currentUser?.role === 'admin' || hasPermission('canManageAccounts')) && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenSettleModal(supp)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg font-bold text-[11px] whitespace-nowrap cursor-pointer"
+                    >
+                      <DollarSign className="w-3.5 h-3.5" />
+                      <span>تسوية مقدم</span>
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => handleOpenSettleModal(supp)}
-                    className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl font-bold cursor-pointer"
+                    onClick={() => handleOpenEdit(supp)}
+                    className="p-1.5 text-slate-500 hover:text-blue-900 hover:bg-slate-100 rounded-lg cursor-pointer"
+                    title="تعديل بيانات المورد"
                   >
-                    <DollarSign className="w-4 h-4" />
-                    <span>تسوية دفعة مقدمة على فاتورة</span>
+                    <Edit className="w-4 h-4" />
                   </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+                  {(currentUser?.role === 'admin' || hasPermission('canDelete')) && (
+                    <button
+                      type="button"
+                      onClick={() => setSupplierToDelete(supp)}
+                      className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-lg cursor-pointer"
+                      title="حذف المورد"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              );
+            },
+          },
+        ] as UnifiedColumn<Supplier>[]}
+      />
 
       {/* Supplier Statement Modal (Section 5: فواتير المشتريات المرتبطة، مرتجعات المشتريات، المدفوعات، كشف الحساب) */}
       {statementSupplier && (
@@ -584,54 +636,106 @@ export const SuppliersView: React.FC = () => {
               </div>
             </div>
 
-            <div className="border border-slate-200 rounded-xl awlad-table-scroll max-h-96 overflow-y-auto">
-              <table className="w-full text-right text-xs">
-                <thead className="bg-slate-100 text-slate-700 font-bold sticky top-0 border-b">
-                  <tr>
-                    <th className="p-2.5">التاريخ</th>
-                    <th className="p-2.5">رقم المستند</th>
-                    <th className="p-2.5">نوع المعاملة</th>
-                    <th className="p-2.5">البيان</th>
-                    <th className="p-2.5 text-center">له / مشتريات (دائن)</th>
-                    <th className="p-2.5 text-center">سداد / مرتجع (مدين)</th>
-                    <th className="p-2.5 text-center">الرصيد التراكمي</th>
-                    <th className="p-2.5 text-center">الاتجاه</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {supplierMovements.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="p-6 text-center text-slate-400">
-                        لا توجد فواتير أو حركات مشتريات مسجلة لهذا المورد بعد. الرصيد الافتتاحي هو: {statementSupplier.openingBalance.toLocaleString()} {settings.currency}
-                      </td>
-                    </tr>
-                  ) : (
-                    supplierMovements.map((mov) => (
-                      <tr key={mov.id} className="hover:bg-slate-50">
-                        <td className="p-2.5 font-mono text-slate-600">{mov.date}</td>
-                        <td className="p-2.5 font-mono font-bold text-blue-900">{mov.docNumber}</td>
-                        <td className="p-2.5">
-                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${mov.badgeClass}`}>
-                            {mov.typeLabel}
-                          </span>
-                        </td>
-                        <td className="p-2.5 text-slate-700">{mov.description}</td>
-                        <td className="p-2.5 text-center font-mono font-bold text-slate-900">{mov.credit > 0 ? mov.credit.toLocaleString() : '-'}</td>
-                        <td className="p-2.5 text-center font-mono font-bold text-emerald-700">{mov.debit > 0 ? mov.debit.toLocaleString() : '-'}</td>
-                        <td className="p-2.5 text-center font-mono font-black text-purple-900 tabular-nums">{Math.abs(mov.runningBalance).toLocaleString()}</td>
-                        <td className="p-2.5 text-center">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-black border ${
-                            mov.runningBalance > 0.005 ? 'bg-purple-50 text-purple-800 border-purple-200' : mov.runningBalance < -0.005 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'
-                          }`}>
-                            {mov.runningBalance > 0.005 ? 'علينا' : mov.runningBalance < -0.005 ? 'لنا (مقدم)' : 'متوازن'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <UnifiedDataTable<(typeof supplierMovements)[number]>
+              compact
+              maxHeightClassName="max-h-96"
+              data={supplierMovements}
+              rowKey={(mov) => mov.id}
+              searchPlaceholder="بحث برقم المستند أو البيان..."
+              exportFilename={`AWLAD_SELIM_Supplier_${statementSupplier.code}`}
+              pdfTitle={`كشف حساب المورد: ${statementSupplier.name}`}
+              emptyTitle="لا توجد فواتير أو حركات مشتريات مسجلة لهذا المورد بعد"
+              emptySubtitle={`الرصيد الافتتاحي هو: ${statementSupplier.openingBalance.toLocaleString()} ${settings.currency}`}
+              columns={[
+                {
+                  key: 'date',
+                  header: 'التاريخ',
+                  sortValue: (m) => m.date,
+                  exportValue: (m) => m.date,
+                  render: (m) => <span className="font-mono tabular-nums text-slate-600">{m.date}</span>,
+                },
+                {
+                  key: 'docNumber',
+                  header: 'رقم المستند',
+                  sortValue: (m) => m.docNumber,
+                  exportValue: (m) => m.docNumber,
+                  render: (m) => <span className="font-mono font-bold text-blue-900">{m.docNumber}</span>,
+                },
+                {
+                  key: 'typeLabel',
+                  header: 'نوع المعاملة',
+                  sortValue: (m) => m.typeLabel,
+                  exportValue: (m) => m.typeLabel,
+                  render: (m) => (
+                    <span className={`px-2 py-0.5 rounded border border-slate-200 text-[10px] font-bold ${m.badgeClass}`}>
+                      {m.typeLabel}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'description',
+                  header: 'البيان',
+                  sortValue: (m) => m.description,
+                  exportValue: (m) => m.description,
+                  render: (m) => <span className="text-slate-700">{m.description}</span>,
+                },
+                {
+                  key: 'credit',
+                  header: 'له / مشتريات (دائن)',
+                  align: 'center',
+                  sortValue: (m) => m.credit,
+                  exportValue: (m) => m.credit,
+                  render: (m) => (
+                    <span className="font-mono tabular-nums font-bold text-slate-900">
+                      {m.credit > 0 ? m.credit.toLocaleString() : '—'}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'debit',
+                  header: 'سداد / مرتجع (مدين)',
+                  align: 'center',
+                  sortValue: (m) => m.debit,
+                  exportValue: (m) => m.debit,
+                  render: (m) => (
+                    <span className="font-mono tabular-nums font-bold text-emerald-700">
+                      {m.debit > 0 ? m.debit.toLocaleString() : '—'}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'runningBalance',
+                  header: 'الرصيد التراكمي',
+                  align: 'center',
+                  sortValue: (m) => m.runningBalance,
+                  exportValue: (m) => m.runningBalance,
+                  render: (m) => (
+                    <span className="font-mono font-black text-purple-900 tabular-nums">
+                      {Math.abs(m.runningBalance).toLocaleString()}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'direction',
+                  header: 'الاتجاه',
+                  align: 'center',
+                  exportValue: (m) => (m.runningBalance > 0.005 ? 'علينا' : m.runningBalance < -0.005 ? 'لنا (مقدم)' : 'متوازن'),
+                  render: (m) => (
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-black border ${
+                        m.runningBalance > 0.005
+                          ? 'bg-purple-50 text-purple-800 border-purple-200'
+                          : m.runningBalance < -0.005
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-slate-100 text-slate-600 border-slate-200'
+                      }`}
+                    >
+                      {m.runningBalance > 0.005 ? 'علينا' : m.runningBalance < -0.005 ? 'لنا (مقدم)' : 'متوازن'}
+                    </span>
+                  ),
+                },
+              ]}
+            />
 
             <div className="flex justify-end pt-2 border-t">
               <button

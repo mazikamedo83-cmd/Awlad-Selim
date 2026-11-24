@@ -1,4 +1,11 @@
-import type { SyncConflictRecord, SyncOperationType, SyncQueueItem } from '../types';
+import type {
+  DispatchRecipientOption,
+  SyncConflictRecord,
+  SyncDispatchBatch,
+  SyncDispatchBatchStatus,
+  SyncOperationType,
+  SyncQueueItem,
+} from '../types';
 import { apiRequest } from './api';
 import { localDb } from './localDb';
 import { getOrCreatePersistentDeviceId } from './native';
@@ -48,6 +55,8 @@ export async function enqueueSyncOperation(params: {
   localId?: string;
   summaryAr: string;
   payload: Record<string, any>;
+  holdForDispatchBatch?: boolean;
+  dispatchStage?: SyncDispatchBatchStatus;
 }): Promise<SyncQueueItem> {
   const nowIso = new Date().toISOString();
   const item: SyncQueueItem = {
@@ -61,6 +70,8 @@ export async function enqueueSyncOperation(params: {
     summaryAr: params.summaryAr,
     payload: params.payload || {},
     status: 'pending',
+    holdForDispatchBatch: Boolean(params.holdForDispatchBatch),
+    dispatchStage: params.dispatchStage || (params.holdForDispatchBatch ? 'محفوظة محليًا' : undefined),
     attempts: 0,
     createdAt: nowIso,
     updatedAt: nowIso,
@@ -112,8 +123,9 @@ async function executeSyncCycle(params: {
   userId: string;
   forceAll?: boolean;
   mode?: SyncCycleMode;
+  includeHeldBatches?: boolean;
 }): Promise<SyncCycleOutcome> {
-  const { userId, forceAll = false, mode = 'full' } = params;
+  const { userId, forceAll = false, mode = 'full', includeHeldBatches = false } = params;
   const nowMs = Date.now();
   const queue = await localDb.listSyncQueue(userId);
 
@@ -121,6 +133,9 @@ async function executeSyncCycle(params: {
     mode === 'receive_only'
       ? []
       : queue.filter((item) => {
+          if (!includeHeldBatches && item.holdForDispatchBatch === true && !item.dispatchBatchId) {
+            return false;
+          }
           if (item.status === 'pending' || item.status === 'local') return true;
           if (item.status === 'syncing') return true;
           if (item.status === 'failed') {
@@ -425,6 +440,7 @@ export function runSyncCycle(params: {
   userId: string;
   forceAll?: boolean;
   mode?: SyncCycleMode;
+  includeHeldBatches?: boolean;
 }): Promise<SyncCycleOutcome> {
   const lockKey = `${params.userId}:${params.mode || 'full'}`;
   const existing = activeLocks.get(lockKey);
@@ -436,3 +452,236 @@ export function runSyncCycle(params: {
   activeLocks.set(lockKey, job);
   return job;
 }
+
+export async function sendDispatchBatchToServer(params: {
+  userId: string;
+  senderName: string;
+  representativeId?: string;
+  representativeName?: string;
+  selectedOperations: SyncQueueItem[];
+  recipient: DispatchRecipientOption;
+  notes?: string;
+  existingDraftBatch?: SyncDispatchBatch;
+}): Promise<{
+  ok: boolean;
+  batch: SyncDispatchBatch;
+  authRevoked?: boolean;
+  error?: string;
+}> {
+  const {
+    userId,
+    senderName,
+    representativeId,
+    representativeName,
+    selectedOperations,
+    recipient,
+    notes = '',
+    existingDraftBatch,
+  } = params;
+  const deviceId = getOrCreatePersistentDeviceId();
+  const now = new Date().toISOString();
+  const randSuffix =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID().slice(0, 8).toUpperCase()
+      : Math.random().toString(36).slice(2, 10).toUpperCase();
+
+  const clientBatchUuid = existingDraftBatch?.clientBatchUuid || `CBU-${Date.now().toString(36).toUpperCase()}-${randSuffix}`;
+  const idempotencyKey = existingDraftBatch?.idempotencyKey || clientBatchUuid;
+  const draftId = existingDraftBatch?.id || `LOC-DSP-${Date.now().toString(36).toUpperCase()}-${randSuffix}`;
+  const orderedOps = [...selectedOperations].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+
+  let salesCount = 0;
+  let purchasesCount = 0;
+  let returnsCount = 0;
+  let collectionsCount = 0;
+  let ordersCount = 0;
+  let customersCount = 0;
+  let custodyOpsCount = 0;
+  let totalSalesAmount = 0;
+  let totalCashAmount = 0;
+
+  for (const op of orderedOps) {
+    const p = op.payload || {};
+    if (op.operationType === 'create_sales_invoice') {
+      salesCount += 1;
+      totalSalesAmount += Number(p.grandTotal || 0);
+      totalCashAmount += Number(p.paidAmount || 0);
+    } else if (op.operationType === 'create_purchase_invoice' || op.operationType === 'send_purchase_invoice') {
+      purchasesCount += 1;
+    } else if (
+      op.operationType === 'record_customer_payment' ||
+      op.operationType === 'add_invoice_payment' ||
+      op.operationType === 'record_order_advance'
+    ) {
+      collectionsCount += 1;
+      totalCashAmount += Number(p.amount || 0);
+    } else if (op.operationType.includes('return')) {
+      returnsCount += 1;
+    } else if (op.operationType === 'create_order') {
+      ordersCount += 1;
+    } else if (op.operationType === 'create_customer' || op.operationType === 'update_customer') {
+      customersCount += 1;
+    } else if (op.operationType.includes('custody')) {
+      custodyOpsCount += 1;
+    }
+  }
+
+  const sendingDraft: SyncDispatchBatch = {
+    id: draftId,
+    batchNumber: existingDraftBatch?.batchNumber || `LOC-${clientBatchUuid.slice(-6)}`,
+    clientBatchUuid,
+    idempotencyKey,
+    deviceId,
+    senderUserId: userId,
+    senderName,
+    representativeId,
+    representativeName,
+    recipientUserId: recipient.id,
+    recipientName: recipient.fullName,
+    recipientRole: recipient.role,
+    sendStatus: 'جاري الإرسال',
+    receiptStatus: 'في انتظار الاستلام',
+    salesCount,
+    purchasesCount,
+    returnsCount,
+    collectionsCount,
+    ordersCount,
+    customersCount,
+    custodyOpsCount,
+    totalSalesAmount: Number(totalSalesAmount.toFixed(2)),
+    totalCashAmount: Number(totalCashAmount.toFixed(2)),
+    operationIds: orderedOps.map((o) => o.operationId),
+    operationsSnapshot: orderedOps,
+    notes,
+    sentAt: existingDraftBatch?.sentAt || now,
+    createdAt: existingDraftBatch?.createdAt || now,
+    updatedAt: now,
+    isLocalOnly: true,
+  };
+
+  // Persist sending draft locally FIRST so disconnects or crashes can resume idempotently
+  await localDb.putDispatchBatch(userId, sendingDraft);
+
+  try {
+    const res = await apiRequest<{
+      ok: boolean;
+      deduplicated?: boolean;
+      batch: SyncDispatchBatch;
+      opResults?: Array<{
+        operationId: string;
+        status: 'synced' | 'failed' | 'needs_review';
+        error?: string;
+        conflictId?: string;
+        conflict?: SyncConflictRecord;
+      }>;
+    }>('/api/sync/dispatches', {
+      method: 'POST',
+      body: {
+        clientBatchUuid,
+        idempotencyKey,
+        deviceId,
+        recipientUserId: recipient.id,
+        notes,
+        operations: orderedOps,
+      },
+      idempotencyKey,
+    });
+
+    const serverBatch: SyncDispatchBatch = { ...res.batch, isLocalOnly: false };
+    const resultMap = new Map((res.opResults || []).map((r) => [r.operationId, r]));
+    const queue = await localDb.listSyncQueue(userId);
+    const updatedQueue = queue.map((q) => {
+      if (!orderedOps.some((o) => o.operationId === q.operationId)) return q;
+      const r = resultMap.get(q.operationId);
+      if (!r || r.status === 'synced') {
+        return {
+          ...q,
+          status: 'synced' as const,
+          holdForDispatchBatch: false,
+          dispatchBatchId: serverBatch.id,
+          dispatchStage: 'تم الإرسال' as SyncDispatchBatchStatus,
+          lastError: undefined,
+          nextRetryAt: undefined,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      if (r.status === 'needs_review') {
+        return {
+          ...q,
+          status: 'needs_review' as const,
+          conflictId: r.conflictId || r.conflict?.id || q.conflictId,
+          lastError: r.error || 'تعارض يحتاج مراجعة',
+          dispatchStage: 'تعذر الاستلام' as SyncDispatchBatchStatus,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      return {
+        ...q,
+        status: 'failed' as const,
+        attempts: (q.attempts || 0) + 1,
+        lastError: r.error || 'تعذر تنفيذ العملية ضمن الدفعة',
+        dispatchStage: 'فشل الإرسال' as SyncDispatchBatchStatus,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+
+    await localDb.saveSyncQueue(userId, updatedQueue);
+
+    // Replace local draft with authoritative server batch (matching by id or clientBatchUuid)
+    const currentBatches = await localDb.listDispatchBatches(userId);
+    const filtered = currentBatches.filter(
+      (b) => b.id !== draftId && b.id !== serverBatch.id && b.clientBatchUuid !== clientBatchUuid
+    );
+    filtered.unshift(serverBatch);
+    await localDb.saveDispatchBatches(userId, filtered);
+
+    await localDb.setMeta<SyncRefreshSummary>(syncMetaKey('last_send_summary', userId), {
+      at: new Date().toISOString(),
+      count: orderedOps.length,
+      failedCount: 0,
+      conflictCount: (res.opResults || []).filter((r) => r.status === 'needs_review').length,
+      ok: true,
+    });
+
+    return { ok: true, batch: serverBatch };
+  } catch (err: any) {
+    const errMsg = err?.message || 'انقطع الاتصال بالسيرفر أثناء الإرسال — العمليات محفوظة محليًا ويمكن إعادة الإرسال دون فقد أو تكرار.';
+    const failedDraft: SyncDispatchBatch = {
+      ...sendingDraft,
+      sendStatus: 'فشل الإرسال',
+      errorMessage: errMsg,
+      updatedAt: new Date().toISOString(),
+      isLocalOnly: true,
+    };
+    await localDb.putDispatchBatch(userId, failedDraft);
+
+    const queue = await localDb.listSyncQueue(userId);
+    const markedQueue = queue.map((q) => {
+      if (!orderedOps.some((o) => o.operationId === q.operationId)) return q;
+      return {
+        ...q,
+        dispatchStage: 'فشل الإرسال' as SyncDispatchBatchStatus,
+        lastError: errMsg,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    await localDb.saveSyncQueue(userId, markedQueue);
+
+    await localDb.setMeta<SyncRefreshSummary>(syncMetaKey('last_send_summary', userId), {
+      at: new Date().toISOString(),
+      count: 0,
+      failedCount: orderedOps.length,
+      conflictCount: 0,
+      ok: false,
+      error: errMsg,
+    });
+
+    return {
+      ok: false,
+      batch: failedDraft,
+      authRevoked: isAuthRevokedError(err),
+      error: errMsg,
+    };
+  }
+}
+

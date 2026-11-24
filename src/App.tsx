@@ -38,6 +38,7 @@ import { SettingsView } from './components/modules/settings/SettingsView';
 import { StorefrontManagerView } from './components/modules/settings/StorefrontManagerView';
 import { MobilePortal } from './components/modules/mobile/MobilePortal';
 import { StaffMobileShell } from './components/modules/mobile/StaffMobileShell';
+import { RefreshSyncScreen } from './components/modules/mobile/RefreshSyncScreen';
 import {
   getLaunchDeepLinkUrl,
   isMobileAppPlatform,
@@ -92,6 +93,7 @@ const PAGE_PERMISSIONS: Partial<Record<NavItemKey, keyof UserPermissions | Array
   'reps': 'canManageReps',
   'rep-transfers': 'canManageTransfers',
   'rep-item-transfers': 'canManageTransfers',
+  'refresh-sync': ['canManageReps', 'canManageTransfers', 'canManageSales', 'canManageAccounts', 'canApprove'],
   'employees': 'canManageEmployees',
   'attendance': 'canManageEmployees',
   'advances': 'canManageSalaries',
@@ -569,6 +571,9 @@ const MainAppContent: React.FC = () => {
 
       case 'rep-item-transfers':
         return <RepTransferView initialTab="item-transfers" />;
+
+      case 'refresh-sync':
+        return <RefreshSyncScreen />;
 
       case 'employees':
         return <EmployeesView initialTab="employees" />;

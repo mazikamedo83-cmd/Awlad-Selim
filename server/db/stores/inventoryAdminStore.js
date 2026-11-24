@@ -85,6 +85,10 @@ import {
   resolveActorIdentityJsonTx,
   listIdentitiesOverview,
 } from '../identityManager.js';
+import {
+  listDispatchBatches,
+  listDispatchRecipients,
+} from './syncDispatchStore.js';
 
 function resolvePurchaseReceiversFromUsers(usersList = []) {
   return (usersList || [])
@@ -732,6 +736,8 @@ export async function getStaffBootstrapData(actor) {
       identities: identityOverview.identities || [],
       identityRoles: identityOverview.identityRoles || [],
       identityConflicts: identityOverview.conflicts || [],
+      syncDispatchBatches: await listDispatchBatches(actor),
+      dispatchRecipients: await listDispatchRecipients(actor),
       publishedStorefront,
       settings,
       auditLogs: audits,
@@ -885,6 +891,8 @@ export async function getStaffBootstrapData(actor) {
     identities: identityOverviewJson.identities || [],
     identityRoles: identityOverviewJson.identityRoles || [],
     identityConflicts: identityOverviewJson.conflicts || [],
+    syncDispatchBatches: await listDispatchBatches(actor),
+    dispatchRecipients: await listDispatchRecipients(actor),
     publishedStorefront: await getPublishedStorefront(),
     settings: {
       ...(db.settings || {}),
@@ -2529,6 +2537,34 @@ export async function getMobileNotifications(authContext) {
         });
       }
     }
+
+    for (const batch of boot.syncDispatchBatches || []) {
+      if (batch.receiptStatus === 'تم الاستلام') {
+        notifications.push({
+          id: `notif-rep-dsp-conf-${batch.id}`,
+          type: 'sync_dispatch_confirmed',
+          severity: 'success',
+          title: `تم استلام وتأكيد دفعتك (${batch.batchNumber})`,
+          body: `المستلم: ${batch.receivedByName || batch.recipientName} — فواتير: ${batch.salesCount} · تحصيلات: ${batch.collectionsCount}`,
+          relatedId: batch.id,
+          referenceNumber: batch.batchNumber,
+          targetTab: 'refresh',
+          createdAt: batch.receivedAt || batch.updatedAt || batch.createdAt,
+        });
+      } else if (batch.receiptStatus === 'تعذر الاستلام') {
+        notifications.push({
+          id: `notif-rep-dsp-fail-${batch.id}-${batch.updatedAt || batch.createdAt}`,
+          type: 'sync_dispatch_failed',
+          severity: 'warning',
+          title: `تعذر استلام الدفعة (${batch.batchNumber})`,
+          body: batch.errorMessage || 'يرجى مراجعة الإدارة وتأكيد التفاصيل.',
+          relatedId: batch.id,
+          referenceNumber: batch.batchNumber,
+          targetTab: 'refresh',
+          createdAt: batch.updatedAt || batch.createdAt,
+        });
+      }
+    }
   } else {
     // Admin & staff mobile/desktop notifications scoped to actual permissions
     const boot = await getStaffBootstrapData(actor);
@@ -2676,6 +2712,25 @@ export async function getMobileNotifications(authContext) {
             createdAt: sc.submittedAt || sc.createdAt,
           });
         }
+      }
+    }
+
+    for (const batch of boot.syncDispatchBatches || []) {
+      if (
+        (batch.receiptStatus === 'في انتظار الاستلام' || batch.receiptStatus === 'جاري الاستلام') &&
+        (isAdmin || actor.role === 'manager' || batch.recipientUserId === actor.id || perms.canApprove || perms.canReceive || perms.canManageReps || perms.canManageTransfers)
+      ) {
+        notifications.push({
+          id: `notif-staff-dsp-in-${batch.id}-${batch.receiptStatus}`,
+          type: 'sync_dispatch_incoming',
+          severity: 'warning',
+          title: `دفعة إرسال مندوب بانتظار الاستلام (${batch.batchNumber})`,
+          body: `المرسل: ${batch.senderName} — فواتير: ${batch.salesCount} · تحصيلات: ${batch.collectionsCount} · الإجمالي النقدي: ${round2(batch.totalCashAmount).toLocaleString()} ${settings.currency || 'ج.م'}`,
+          relatedId: batch.id,
+          referenceNumber: batch.batchNumber,
+          targetTab: 'refresh-sync',
+          createdAt: batch.sentAt || batch.createdAt,
+        });
       }
     }
 

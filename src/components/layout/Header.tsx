@@ -86,6 +86,7 @@ export const Header: React.FC<HeaderProps> = ({
     customerItemOrders = [],
     mobileNotifications = [],
     unreadNotificationCount = 0,
+    incomingDispatchCount = 0,
     markNotificationsRead,
     triggerManualSync,
   } = useData();
@@ -252,6 +253,7 @@ export const Header: React.FC<HeaderProps> = ({
       'sales-invoices',
       'purchase-invoices',
       'cashboxes',
+      'refresh-sync',
     ];
     if (item.targetTab && allowedTargets.includes(item.targetTab as NavItemKey)) {
       onNavigate(item.targetTab as NavItemKey);
@@ -364,6 +366,20 @@ export const Header: React.FC<HeaderProps> = ({
                   <ArrowLeftRight className="w-3.5 h-3.5 shrink-0" />
                   <span className="px-1.5 py-0.5 rounded bg-amber-300 text-amber-950 text-[10px] font-mono tabular-nums">
                     {pendingTransfersCount}
+                  </span>
+                </button>
+              )}
+
+              {incomingDispatchCount > 0 && canPerm(['canManageReps', 'canManageTransfers', 'canManageSales', 'canManageAccounts', 'canApprove']) && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate('refresh-sync')}
+                  title={`يوجد ${incomingDispatchCount} دفعة إرسال من المندوبين بانتظار الاستلام`}
+                  className="hidden sm:flex items-center gap-1 px-2 py-1.5 rounded-lg bg-white/15 text-white border border-white/25 text-[11px] font-bold hover:bg-white/25 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <span>REFRESH</span>
+                  <span className="px-1.5 py-0.5 rounded bg-white text-blue-950 text-[10px] font-mono tabular-nums font-black">
+                    {incomingDispatchCount}
                   </span>
                 </button>
               )}

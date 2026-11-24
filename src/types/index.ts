@@ -1645,7 +1645,10 @@ export interface MobileNotificationItem {
     | 'rep_purchase_sent'
     | 'rep_purchase_received'
     | 'rep_purchase_rejected'
-    | 'rep_purchase_confirmed';
+    | 'rep_purchase_confirmed'
+    | 'sync_dispatch_incoming'
+    | 'sync_dispatch_confirmed'
+    | 'sync_dispatch_failed';
   title: string;
   body: string;
   createdAt: string;
@@ -1786,6 +1789,17 @@ export type SyncOperationType =
   | 'record_custody_delivery'
   | 'record_custody_return';
 
+export type SyncDispatchBatchStatus =
+  | 'محفوظة محليًا'
+  | 'جاهزة للإرسال'
+  | 'جاري الإرسال'
+  | 'تم الإرسال'
+  | 'في انتظار الاستلام'
+  | 'جاري الاستلام'
+  | 'تم الاستلام'
+  | 'فشل الإرسال'
+  | 'تعذر الاستلام';
+
 export interface SyncQueueItem {
   operationId: string;
   userId: string;
@@ -1797,12 +1811,76 @@ export interface SyncQueueItem {
   summaryAr: string;
   payload: Record<string, any>;
   status: SyncQueueStatus;
+  holdForDispatchBatch?: boolean;
+  dispatchBatchId?: string;
+  dispatchStage?: SyncDispatchBatchStatus;
   attempts: number;
   lastError?: string;
   conflictId?: string;
   nextRetryAt?: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface DispatchRecipientOption {
+  id: string;
+  fullName: string;
+  role: string;
+  jobTitle?: string;
+}
+
+export interface SyncDispatchBatchDocSummaryItem {
+  operationId: string;
+  operationType: SyncOperationType | string;
+  entityType: string;
+  entityId?: string;
+  docNumber?: string;
+  customerName?: string;
+  amount?: number;
+  paidAmount?: number;
+  summaryAr: string;
+  deduplicated?: boolean;
+  status?: string;
+  createdAt?: string;
+}
+
+export interface SyncDispatchBatch {
+  id: string;
+  batchNumber: string;
+  clientBatchUuid: string;
+  idempotencyKey: string;
+  deviceId?: string;
+  senderUserId: string;
+  senderName: string;
+  representativeId?: string;
+  representativeName?: string;
+  recipientUserId: string;
+  recipientName: string;
+  recipientRole?: string;
+  sendStatus: SyncDispatchBatchStatus;
+  receiptStatus: SyncDispatchBatchStatus;
+  salesCount: number;
+  purchasesCount: number;
+  returnsCount: number;
+  collectionsCount: number;
+  ordersCount: number;
+  customersCount: number;
+  custodyOpsCount: number;
+  totalSalesAmount: number;
+  totalCashAmount: number;
+  operationIds: string[];
+  operationsSnapshot?: SyncQueueItem[];
+  docSummary?: SyncDispatchBatchDocSummaryItem[];
+  notes?: string;
+  receiptNotes?: string;
+  errorMessage?: string;
+  sentAt?: string;
+  receivedByUserId?: string;
+  receivedByName?: string;
+  receivedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  isLocalOnly?: boolean;
 }
 
 export interface SyncConflictRecord {

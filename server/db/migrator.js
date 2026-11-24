@@ -1276,6 +1276,27 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
           details.auditLogs++;
         }
 
+        for (const sdb of (sourceData.syncDispatchBatches || [])) {
+          await client.query(`
+            INSERT INTO sync_dispatch_batches (id, batch_number, client_batch_uuid, idempotency_key, device_id, sender_user_id, sender_name, representative_id, representative_name, recipient_user_id, recipient_name, recipient_role, send_status, receipt_status, sales_count, purchases_count, returns_count, collections_count, orders_count, customers_count, custody_ops_count, total_sales_amount, total_cash_amount, operation_ids, operations_snapshot, doc_summary, notes, receipt_notes, error_message, sent_at, received_by_user_id, received_by_name, received_at, created_at, updated_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35)
+            ON CONFLICT (id) DO UPDATE SET receipt_status = EXCLUDED.receipt_status, received_by_user_id = EXCLUDED.received_by_user_id, received_by_name = EXCLUDED.received_by_name, received_at = EXCLUDED.received_at, updated_at = EXCLUDED.updated_at;
+          `, [
+            sdb.id, sdb.batchNumber, sdb.clientBatchUuid || sdb.id, sdb.idempotencyKey || sdb.id,
+            sdb.deviceId || null, sdb.senderUserId, sdb.senderName || '', sdb.representativeId || null,
+            sdb.representativeName || '', sdb.recipientUserId, sdb.recipientName || '', sdb.recipientRole || '',
+            sdb.sendStatus || 'تم الإرسال', sdb.receiptStatus || 'في انتظار الاستلام',
+            Number(sdb.salesCount || 0), Number(sdb.purchasesCount || 0), Number(sdb.returnsCount || 0),
+            Number(sdb.collectionsCount || 0), Number(sdb.ordersCount || 0), Number(sdb.customersCount || 0),
+            Number(sdb.custodyOpsCount || 0), Number(sdb.totalSalesAmount || 0), Number(sdb.totalCashAmount || 0),
+            JSON.stringify(sdb.operationIds || []), JSON.stringify(sdb.operationsSnapshot || []), JSON.stringify(sdb.docSummary || []),
+            sdb.notes || '', sdb.receiptNotes || '', sdb.errorMessage || '',
+            sdb.sentAt || sdb.createdAt || new Date().toISOString(),
+            sdb.receivedByUserId || null, sdb.receivedByName || '', sdb.receivedAt || null,
+            sdb.createdAt || new Date().toISOString(), sdb.updatedAt || new Date().toISOString(),
+          ]);
+        }
+
         // Advance sequences past max existing numbers to avoid future collisions
         const maxOrderSeq = extractMaxSuffix(customerItemOrders, 'requestNumber', /^COR-(\d+)$/i);
         const maxSalesSeq = extractMaxSuffix(invoices.filter((i) => i.type === 'sales'), 'invoiceNumber', /-(\d+)$/);
@@ -1289,6 +1310,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
         const maxCashOpSeq = extractMaxSuffix(financialTransactions, 'transactionNumber', /^COP-(\d+)$/i);
         const maxOrderAdvSeq = extractMaxSuffix(orderAdvancePayments, 'paymentNumber', /^ADV-(\d+)$/i);
         const maxRepCustodyOpSeq = extractMaxSuffix(sourceData.repCustodyOperations || [], 'operationNumber', /-(\d+)$/i);
+        const maxDispatchBatchSeq = extractMaxSuffix(sourceData.syncDispatchBatches || [], 'batchNumber', /-(\d+)$/i);
         const seqUpdates = [
           ['seq_customer_order_no', maxOrderSeq],
           ['seq_sales_invoice_no', maxSalesSeq],
@@ -1302,6 +1324,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
           ['seq_cash_op_no', maxCashOpSeq],
           ['seq_order_advance_no', maxOrderAdvSeq],
           ['seq_rep_custody_op_no', maxRepCustodyOpSeq],
+          ['seq_sync_dispatch_no', maxDispatchBatchSeq],
         ];
         for (const [seqName, maxVal] of seqUpdates) {
           if (maxVal > 0) {
@@ -1454,7 +1477,7 @@ export async function rollbackMigration(migrationIdOrBackup, executedBy = 'مد�
     await withTransaction(async (client) => {
       // Truncate/clear operational PostgreSQL tables only if explicitly rolling back to pre-migration JSON snapshot
       const tables = [
-        'sync_operation_logs', 'sync_conflicts', 'idempotency_keys',
+        'sync_dispatch_batches', 'sync_operation_logs', 'sync_conflicts', 'idempotency_keys',
         'pairing_tokens', 'paired_devices',
         'owner_transactions', 'owner_accounts',
         'stock_count_items', 'stock_counts',

@@ -38,6 +38,8 @@ import {
   UnifiedIdentity,
   IdentityRoleLink,
   IdentityConflict,
+  SyncDispatchBatch,
+  DispatchRecipientOption,
 } from '../types';
 
 const OFFLINE_ORDERS_QUEUE_KEY = 'awlad_selim_offline_orders_queue_v3';
@@ -79,6 +81,8 @@ export interface DatabaseState {
   identities?: UnifiedIdentity[];
   identityRoles?: IdentityRoleLink[];
   identityConflicts?: IdentityConflict[];
+  syncDispatchBatches?: SyncDispatchBatch[];
+  dispatchRecipients?: DispatchRecipientOption[];
   settings: SystemSettings;
   serverSettings?: ServerConnectionSettings;
   migrationLogs?: MigrationLogEntry[];
@@ -118,6 +122,8 @@ export function getEmptyClientDatabaseState(): DatabaseState {
     ownerAccounts: [],
     ownerTransactions: [],
     stockCounts: [],
+    syncDispatchBatches: [],
+    dispatchRecipients: [],
     stockTransferRequests: [],
     purchaseReceivers: [],
     purchaseReturnRequests: [],

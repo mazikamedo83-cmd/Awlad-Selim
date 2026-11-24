@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
-  ArrowLeftRight, Plus, Search, CheckCircle2, XCircle, Send, Eye, Play,
+  ArrowLeftRight, Plus, CheckCircle2, XCircle, Send, Eye, Play,
   Trash2, Download, FileDown, Printer, FileText, AlertCircle, Truck, Warehouse as WarehouseIcon
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
@@ -12,6 +12,7 @@ import { ProductSearchSelect } from '../../common/ProductSearchSelect';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
 import { exportTableToPdf } from '../../common/PdfExporter';
+import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 
 const TRANSFER_STATUS_META: Record<StockTransferRequest['status'], { label: string; cls: string }> = {
   draft: { label: 'مسودة', cls: 'bg-slate-100 text-slate-700 border-slate-300' },
@@ -784,22 +785,23 @@ export const StockTransfersView: React.FC = () => {
       </div>
 
       {activeSubTab === 'warehouse_orders' ? (
-        <>
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="بحث برقم التحويل أو اسم المستودع أو المنشئ..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 pr-9 pl-3"
-              />
-              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
-            </div>
+        <UnifiedDataTable<StockTransferRequest>
+          title="تحويلات الأصناف بين المستودعات"
+          subtitle={`إجمالي الأوامر: ${filteredRequests.length}`}
+          data={filteredRequests}
+          rowKey={(tr) => tr.id}
+          searchValue={searchTerm}
+          onSearchChange={setSearchTerm}
+          searchPlaceholder="بحث برقم التحويل أو اسم المستودع أو المنشئ..."
+          exportFilename="AWLAD_SELIM_StockTransfers"
+          pdfTitle="أوامر تحويل الأصناف بين المستودعات"
+          defaultPageSize={25}
+          emptyTitle="لا توجد أوامر تحويل أصناف مسجلة بعد"
+          toolbarFilters={
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
+              className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold"
             >
               <option value="all">كل حالات التحويل</option>
               <option value="draft">مسودة</option>
@@ -808,147 +810,204 @@ export const StockTransfersView: React.FC = () => {
               <option value="executed">منفذ</option>
               <option value="rejected">مرفوض</option>
             </select>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-right text-xs">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                    <th className="p-3.5">رقم الطلب</th>
-                    <th className="p-3.5">التاريخ</th>
-                    <th className="p-3.5">من مستودع</th>
-                    <th className="p-3.5">إلى مستودع</th>
-                    <th className="p-3.5 text-center">الأصناف</th>
-                    <th className="p-3.5">المنشئ</th>
-                    <th className="p-3.5 text-center">الحالة</th>
-                    <th className="p-3.5 text-center">الإجراءات</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredRequests.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="p-8 text-center text-slate-400">
-                        لا توجد أوامر تحويل أصناف مسجلة بعد.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredRequests.map((tr) => {
-                      const badge = TRANSFER_STATUS_META[tr.status] || TRANSFER_STATUS_META.draft;
-                      return (
-                        <tr key={tr.id} className="hover:bg-slate-50">
-                          <td className="p-3.5 font-mono font-bold text-blue-900">{tr.transferNumber}</td>
-                          <td className="p-3.5 font-mono">{tr.date}</td>
-                          <td className="p-3.5 font-bold">{tr.sourceWarehouseName}</td>
-                          <td className="p-3.5 font-bold text-indigo-900">{tr.targetWarehouseName}</td>
-                          <td className="p-3.5 text-center font-mono font-bold">{tr.items.length}</td>
-                          <td className="p-3.5">{tr.createdBy}</td>
-                          <td className="p-3.5 text-center">
-                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${badge.cls}`}>
-                              {badge.label}
-                            </span>
-                          </td>
-                          <td className="p-3.5 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setActiveTransfer(tr);
-                                  setActionError(null);
-                                  setShowRejectBox(false);
-                                }}
-                                className="p-1.5 rounded-lg text-blue-900 hover:bg-blue-50 cursor-pointer"
-                                title="مراجعة وتنفيذ"
-                              >
-                                <Eye className="w-4 h-4" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handlePrintTransfer(tr)}
-                                className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer"
-                                title="طباعة"
-                              >
-                                <Printer className="w-4 h-4" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleExportPdf(tr)}
-                                className="p-1.5 rounded-lg text-blue-700 hover:bg-blue-50 cursor-pointer"
-                                title="تصدير PDF"
-                              >
-                                <FileDown className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
+          }
+          columns={[
+            {
+              key: 'transferNumber',
+              header: 'رقم الطلب',
+              sortable: true,
+              sortValue: (tr) => tr.transferNumber,
+              exportValue: (tr) => tr.transferNumber,
+              render: (tr) => <span className="font-mono font-bold text-blue-900">{tr.transferNumber}</span>,
+            },
+            {
+              key: 'date',
+              header: 'التاريخ',
+              sortable: true,
+              sortValue: (tr) => tr.date,
+              exportValue: (tr) => tr.date,
+              render: (tr) => <span className="font-mono tabular-nums">{tr.date}</span>,
+            },
+            {
+              key: 'sourceWarehouseName',
+              header: 'من مستودع',
+              sortable: true,
+              sortValue: (tr) => tr.sourceWarehouseName,
+              exportValue: (tr) => tr.sourceWarehouseName,
+              render: (tr) => <span className="font-bold">{tr.sourceWarehouseName}</span>,
+            },
+            {
+              key: 'targetWarehouseName',
+              header: 'إلى مستودع',
+              sortable: true,
+              sortValue: (tr) => tr.targetWarehouseName,
+              exportValue: (tr) => tr.targetWarehouseName,
+              render: (tr) => <span className="font-bold text-indigo-900">{tr.targetWarehouseName}</span>,
+            },
+            {
+              key: 'itemsCount',
+              header: 'الأصناف',
+              align: 'center',
+              sortable: true,
+              sortValue: (tr) => tr.items.length,
+              exportValue: (tr) => tr.items.length,
+              render: (tr) => <span className="font-mono font-bold tabular-nums">{tr.items.length}</span>,
+            },
+            {
+              key: 'createdBy',
+              header: 'المنشئ',
+              sortable: true,
+              sortValue: (tr) => tr.createdBy,
+              exportValue: (tr) => tr.createdBy,
+              render: (tr) => <span>{tr.createdBy}</span>,
+            },
+            {
+              key: 'status',
+              header: 'الحالة',
+              align: 'center',
+              sortable: true,
+              sortValue: (tr) => tr.status,
+              exportValue: (tr) => TRANSFER_STATUS_META[tr.status]?.label || tr.status,
+              render: (tr) => {
+                const badge = TRANSFER_STATUS_META[tr.status] || TRANSFER_STATUS_META.draft;
+                return (
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badge.cls}`}>
+                    {badge.label}
+                  </span>
+                );
+              },
+            },
+            {
+              key: 'actions',
+              header: 'الإجراءات',
+              align: 'center',
+              exportValue: () => '',
+              render: (tr) => (
+                <div className="flex items-center justify-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTransfer(tr);
+                      setActionError(null);
+                      setShowRejectBox(false);
+                    }}
+                    className="p-1.5 rounded-lg text-blue-900 hover:bg-blue-50 cursor-pointer"
+                    title="مراجعة وتنفيذ"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handlePrintTransfer(tr)}
+                    className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer"
+                    title="طباعة"
+                  >
+                    <Printer className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleExportPdf(tr)}
+                    className="p-1.5 rounded-lg text-blue-700 hover:bg-blue-50 cursor-pointer"
+                    title="تصدير PDF"
+                  >
+                    <FileDown className="w-4 h-4" />
+                  </button>
+                </div>
+              ),
+            },
+          ]}
+        />
       ) : (
         /* Rep Item Transfers clearly linked to Invoices */
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-right text-xs">
-              <thead>
-                <tr className="bg-amber-50 text-amber-950 font-bold border-b border-amber-200">
-                  <th className="p-3.5">رقم الطلب</th>
-                  <th className="p-3.5">المندوب</th>
-                  <th className="p-3.5">الفاتورة المرتبطة</th>
-                  <th className="p-3.5">من مستودع</th>
-                  <th className="p-3.5">إلى سيارة المندوب</th>
-                  <th className="p-3.5 text-center">الأصناف</th>
-                  <th className="p-3.5 text-center">الحالة</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {repItemTransfers.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="p-8 text-center text-slate-400">
-                      لا توجد طلبات تحويل عهدة مناديب مرتبطة بالفواتير.
-                    </td>
-                  </tr>
+        <UnifiedDataTable
+          title="تحويلات المندوبين المرتبطة بالفواتير"
+          subtitle={`إجمالي التحويلات: ${repItemTransfers.length}`}
+          data={repItemTransfers}
+          rowKey={(r) => r.id}
+          searchPlaceholder="بحث برقم الطلب أو المندوب أو الفاتورة..."
+          exportFilename="AWLAD_SELIM_RepItemTransfers"
+          pdfTitle="تحويلات عهدة المندوبين المرتبطة بالفواتير"
+          defaultPageSize={25}
+          emptyTitle="لا توجد طلبات تحويل عهدة مناديب مرتبطة بالفواتير"
+          columns={[
+            {
+              key: 'requestNumber',
+              header: 'رقم الطلب',
+              sortable: true,
+              sortValue: (r) => r.requestNumber,
+              exportValue: (r) => r.requestNumber,
+              render: (r) => <span className="font-mono font-bold text-amber-900">{r.requestNumber}</span>,
+            },
+            {
+              key: 'representativeName',
+              header: 'المندوب',
+              sortable: true,
+              sortValue: (r) => r.representativeName,
+              exportValue: (r) => r.representativeName,
+              render: (r) => <span className="font-bold">{r.representativeName}</span>,
+            },
+            {
+              key: 'invoiceNumber',
+              header: 'الفاتورة المرتبطة',
+              sortable: true,
+              sortValue: (r) => r.invoiceNumber || '',
+              exportValue: (r) => r.invoiceNumber || 'عهدة عامة',
+              render: (r) => {
+                const linkedInv = invoices.find((inv) => inv.id === r.invoiceId || inv.invoiceNumber === r.invoiceNumber);
+                return r.invoiceNumber ? (
+                  <button
+                    type="button"
+                    onClick={() => linkedInv && setPreviewInvoice(linkedInv)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-900 font-mono font-bold hover:bg-blue-100 cursor-pointer"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>{r.invoiceNumber}</span>
+                  </button>
                 ) : (
-                  repItemTransfers.map((r) => {
-                    const linkedInv = invoices.find((inv) => inv.id === r.invoiceId || inv.invoiceNumber === r.invoiceNumber);
-                    return (
-                      <tr key={r.id} className="hover:bg-slate-50">
-                        <td className="p-3.5 font-mono font-bold text-amber-900">{r.requestNumber}</td>
-                        <td className="p-3.5 font-bold">{r.representativeName}</td>
-                        <td className="p-3.5">
-                          {r.invoiceNumber ? (
-                            <button
-                              type="button"
-                              onClick={() => linkedInv && setPreviewInvoice(linkedInv)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-900 font-mono font-bold hover:bg-blue-100 cursor-pointer"
-                            >
-                              <FileText className="w-3.5 h-3.5" />
-                              <span>{r.invoiceNumber}</span>
-                            </button>
-                          ) : (
-                            <span className="text-slate-400">عهدة عامة</span>
-                          )}
-                        </td>
-                        <td className="p-3.5">{r.sourceWarehouseName}</td>
-                        <td className="p-3.5 font-semibold">{r.targetWarehouseName}</td>
-                        <td className="p-3.5 text-center font-mono font-bold">{r.items.length}</td>
-                        <td className="p-3.5 text-center">
-                          <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 text-[10px] font-bold">
-                            {r.status}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                  <span className="text-slate-400">عهدة عامة</span>
+                );
+              },
+            },
+            {
+              key: 'sourceWarehouseName',
+              header: 'من مستودع',
+              sortable: true,
+              sortValue: (r) => r.sourceWarehouseName,
+              exportValue: (r) => r.sourceWarehouseName,
+              render: (r) => <span>{r.sourceWarehouseName}</span>,
+            },
+            {
+              key: 'targetWarehouseName',
+              header: 'إلى سيارة المندوب',
+              sortable: true,
+              sortValue: (r) => r.targetWarehouseName,
+              exportValue: (r) => r.targetWarehouseName,
+              render: (r) => <span className="font-semibold">{r.targetWarehouseName}</span>,
+            },
+            {
+              key: 'itemsCount',
+              header: 'الأصناف',
+              align: 'center',
+              sortable: true,
+              sortValue: (r) => r.items.length,
+              exportValue: (r) => r.items.length,
+              render: (r) => <span className="font-mono font-bold tabular-nums">{r.items.length}</span>,
+            },
+            {
+              key: 'status',
+              header: 'الحالة',
+              align: 'center',
+              sortable: true,
+              sortValue: (r) => r.status,
+              exportValue: (r) => r.status,
+              render: (r) => (
+                <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 text-[10px] font-bold border border-slate-200">
+                  {r.status}
+                </span>
+              ),
+            },
+          ]}
+        />
       )}
 
       <CreateStockTransferModal
@@ -995,32 +1054,56 @@ export const StockTransfersView: React.FC = () => {
               </div>
             </div>
 
-            <div className="border border-slate-200 rounded-xl awlad-table-scroll max-h-64 overflow-y-auto">
-              <table className="w-full text-right text-[11px]">
-                <thead className="bg-slate-100 text-slate-700 font-bold border-b">
-                  <tr>
-                    <th className="p-2">م</th>
-                    <th className="p-2">الصنف</th>
-                    <th className="p-2 text-center">الوحدة</th>
-                    <th className="p-2 text-center">المتاح عند الإنشاء</th>
-                    <th className="p-2 text-center">الكمية المطلوبة</th>
-                    <th className="p-2">ملاحظة</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {activeTransfer.items.map((it, idx) => (
-                    <tr key={it.id}>
-                      <td className="p-2 font-mono">{idx + 1}</td>
-                      <td className="p-2 font-bold">{it.productName}</td>
-                      <td className="p-2 text-center">{it.unit}</td>
-                      <td className="p-2 text-center font-mono">{it.availableQtySnapshot}</td>
-                      <td className="p-2 text-center font-mono font-black text-blue-900">{it.requestedQty}</td>
-                      <td className="p-2 text-slate-600">{it.notes || '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <UnifiedDataTable
+              compact
+              searchable={false}
+              maxHeightClassName="max-h-64"
+              data={activeTransfer.items}
+              rowKey={(it) => it.id}
+              defaultPageSize={100}
+              columns={[
+                {
+                  key: 'index',
+                  header: 'م',
+                  align: 'center',
+                  exportValue: (_, idx) => (idx ?? 0) + 1,
+                  render: (_, idx) => <span className="font-mono tabular-nums">{idx + 1}</span>,
+                },
+                {
+                  key: 'productName',
+                  header: 'الصنف',
+                  exportValue: (it) => it.productName,
+                  render: (it) => <span className="font-bold">{it.productName}</span>,
+                },
+                {
+                  key: 'unit',
+                  header: 'الوحدة',
+                  align: 'center',
+                  exportValue: (it) => it.unit,
+                  render: (it) => <span>{it.unit}</span>,
+                },
+                {
+                  key: 'availableQtySnapshot',
+                  header: 'المتاح عند الإنشاء',
+                  align: 'center',
+                  exportValue: (it) => it.availableQtySnapshot,
+                  render: (it) => <span className="font-mono tabular-nums">{it.availableQtySnapshot}</span>,
+                },
+                {
+                  key: 'requestedQty',
+                  header: 'الكمية المطلوبة',
+                  align: 'center',
+                  exportValue: (it) => it.requestedQty,
+                  render: (it) => <span className="font-mono font-black text-blue-900 tabular-nums">{it.requestedQty}</span>,
+                },
+                {
+                  key: 'notes',
+                  header: 'ملاحظة',
+                  exportValue: (it) => it.notes || '-',
+                  render: (it) => <span className="text-slate-600">{it.notes || '-'}</span>,
+                },
+              ]}
+            />
 
             {showRejectBox && (
               <div className="p-3 rounded-xl bg-red-50 border border-red-200 space-y-2">
@@ -1142,28 +1225,42 @@ export const StockTransfersView: React.FC = () => {
               <div>المستودع: <strong>{previewInvoice.warehouseName}</strong></div>
               <div>الإجمالي: <strong className="font-mono text-blue-900">{previewInvoice.grandTotal.toLocaleString()} {settings.currency}</strong></div>
             </div>
-            <div className="border border-slate-200 rounded-xl awlad-table-scroll">
-              <table className="w-full text-right text-[11px]">
-                <thead className="bg-slate-100 font-bold border-b">
-                  <tr>
-                    <th className="p-2">الصنف</th>
-                    <th className="p-2 text-center">الوحدة</th>
-                    <th className="p-2 text-center">الكمية</th>
-                    <th className="p-2 text-center">الإجمالي</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {previewInvoice.items.map((it, i) => (
-                    <tr key={i}>
-                      <td className="p-2 font-bold">{it.productName}</td>
-                      <td className="p-2 text-center">{it.unit}</td>
-                      <td className="p-2 text-center font-mono">{it.quantity}</td>
-                      <td className="p-2 text-center font-mono font-bold">{it.total.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <UnifiedDataTable
+              compact
+              searchable={false}
+              data={previewInvoice.items}
+              rowKey={(_, idx) => `${previewInvoice.id}-it-${idx}`}
+              defaultPageSize={100}
+              columns={[
+                {
+                  key: 'productName',
+                  header: 'الصنف',
+                  exportValue: (it) => it.productName,
+                  render: (it) => <span className="font-bold">{it.productName}</span>,
+                },
+                {
+                  key: 'unit',
+                  header: 'الوحدة',
+                  align: 'center',
+                  exportValue: (it) => it.unit,
+                  render: (it) => <span>{it.unit}</span>,
+                },
+                {
+                  key: 'quantity',
+                  header: 'الكمية',
+                  align: 'center',
+                  exportValue: (it) => it.quantity,
+                  render: (it) => <span className="font-mono tabular-nums">{it.quantity}</span>,
+                },
+                {
+                  key: 'total',
+                  header: 'الإجمالي',
+                  align: 'center',
+                  exportValue: (it) => it.total,
+                  render: (it) => <span className="font-mono font-bold tabular-nums">{it.total.toLocaleString()}</span>,
+                },
+              ]}
+            />
           </div>
         </Modal>
       )}

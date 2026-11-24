@@ -5,6 +5,8 @@ import {
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { NavItemKey } from '../../layout/Sidebar';
+import { UnifiedColumn, UnifiedDataTable } from '../../common/UnifiedDataTable';
+import { Cashbox, Invoice } from '../../../types';
 
 interface DashboardViewProps {
   onNavigate: (page: NavItemKey) => void;
@@ -355,134 +357,195 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         </div>
 
         {/* Cashboxes Ledger Table */}
-        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden flex flex-col">
-          <div className="px-3.5 py-2.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-            <h3 className="text-xs font-black text-slate-900">أرصدة الخزائن والبنوك</h3>
+        <UnifiedDataTable<Cashbox>
+          title="أرصدة الخزائن والبنوك"
+          data={cashboxes}
+          rowKey={(cb) => cb.id}
+          searchable={false}
+          compact
+          defaultPageSize={10}
+          pageSizeOptions={[5, 10, 25]}
+          exportFilename="أرصدة-الخزائن-والبنوك"
+          pdfTitle="أرصدة الخزائن والبنوك"
+          headerActions={
             <button
               type="button"
               onClick={() => onNavigate('cashboxes')}
-              className="text-[11px] text-blue-700 font-bold hover:underline cursor-pointer"
+              className="text-[11px] text-blue-900 font-bold hover:underline cursor-pointer whitespace-nowrap"
             >
               إدارة الخزائن
             </button>
-          </div>
-
-          <div className="overflow-x-auto flex-1">
-            <table className="w-full text-right text-xs">
-              <thead>
-                <tr className="bg-slate-50/70 text-slate-600 font-bold border-b border-slate-200">
-                  <th className="px-3 py-2">الحساب / الخزينة</th>
-                  <th className="px-3 py-2 text-left">الرصيد</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {cashboxes.map(cb => (
-                  <tr key={cb.id} className="hover:bg-slate-50">
-                    <td className="px-3 py-2">
-                      <div className="font-bold text-slate-800">{cb.name}</div>
-                      <div className="text-[10px] text-slate-500">
-                        {cb.type === 'bank' ? `بنك: ${cb.accountNumber || 'جاري'}` : 'خزينة نقدية'}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2 text-left font-black text-blue-950 tabular-nums whitespace-nowrap">
-                      {cb.balanceHidden ? 'مخفي' : (cb.currentBalance ?? 0).toLocaleString()}{' '}
-                      <span className="text-[10px] font-normal text-slate-500">{settings.currency}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+          }
+          columns={[
+            {
+              key: 'name',
+              header: 'الحساب / الخزينة',
+              align: 'right',
+              sortValue: (cb) => cb.name,
+              exportValue: (cb) => cb.name,
+              render: (cb) => (
+                <div>
+                  <div className="font-bold text-slate-800">{cb.name}</div>
+                  <div className="text-[10px] text-slate-500">
+                    {cb.type === 'bank' ? `بنك: ${cb.accountNumber || 'جاري'}` : 'خزينة نقدية'}
+                  </div>
+                </div>
+              ),
+            },
+            {
+              key: 'currentBalance',
+              header: 'الرصيد',
+              align: 'left',
+              sortValue: (cb) => (cb.balanceHidden ? 0 : cb.currentBalance ?? 0),
+              exportValue: (cb) => (cb.balanceHidden ? 'مخفي' : cb.currentBalance ?? 0),
+              render: (cb) => (
+                <span className="font-black text-blue-950 font-mono tabular-nums whitespace-nowrap">
+                  {cb.balanceHidden ? 'مخفي' : (cb.currentBalance ?? 0).toLocaleString()}{' '}
+                  <span className="text-[10px] font-normal text-slate-500">{settings.currency}</span>
+                </span>
+              ),
+            },
+          ]}
+        />
       </div>
 
       {/* Recent Invoices Table */}
-      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-          <div>
-            <h3 className="text-xs font-black text-slate-900">أحدث الفواتير المسجلة</h3>
-          </div>
+      <UnifiedDataTable<Invoice>
+        title="أحدث الفواتير المسجلة"
+        data={invoices}
+        rowKey={(inv) => inv.id}
+        compact
+        defaultPageSize={10}
+        pageSizeOptions={[10, 25, 50]}
+        exportFilename="أحدث-الفواتير"
+        pdfTitle="أحدث الفواتير المسجلة"
+        searchPlaceholder="ابحث برقم الفاتورة أو اسم العميل أو المورد..."
+        headerActions={
           <button
             type="button"
             onClick={() => onNavigate('sales-invoices')}
-            className="text-xs text-blue-700 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+            className="text-xs text-blue-900 font-bold hover:underline flex items-center gap-1 cursor-pointer whitespace-nowrap"
           >
             عرض جميع الفواتير <ChevronLeft className="w-3.5 h-3.5" />
           </button>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-right text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
-                <th className="px-3 py-2">رقم الفاتورة</th>
-                <th className="px-3 py-2">النوع</th>
-                <th className="px-3 py-2">العميل / المورد</th>
-                <th className="px-3 py-2">التاريخ</th>
-                <th className="px-3 py-2">المستودع</th>
-                <th className="px-3 py-2">الإجمالي</th>
-                <th className="px-3 py-2">المدفوع</th>
-                <th className="px-3 py-2">المتبقي</th>
-                <th className="px-3 py-2">الحالة</th>
-                <th className="px-3 py-2 text-center">إجراء</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {invoices.slice(0, 8).map(inv => (
-                <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-3 py-2 font-bold text-blue-900 font-mono whitespace-nowrap">{inv.invoiceNumber}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">
-                    {inv.type === 'sales' ? (
-                      <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-bold">مبيعات</span>
-                    ) : (
-                      <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200 text-[10px] font-bold">مشتريات</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 font-semibold text-slate-800">
-                    {inv.customerName || inv.supplierName || 'نقدي / عام'}
-                  </td>
-                  <td className="px-3 py-2 text-slate-500 font-mono whitespace-nowrap">{inv.date}</td>
-                  <td className="px-3 py-2 text-slate-600">{inv.warehouseName}</td>
-                  <td className="px-3 py-2 font-black text-slate-900 tabular-nums whitespace-nowrap">{inv.grandTotal.toLocaleString()} {settings.currency}</td>
-                  <td className="px-3 py-2 font-bold text-emerald-700 tabular-nums whitespace-nowrap">{inv.paidAmount.toLocaleString()}</td>
-                  <td className="px-3 py-2 font-bold text-red-600 tabular-nums whitespace-nowrap">{inv.remainingAmount.toLocaleString()}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">
-                    {inv.status === 'confirmed' ? (
-                      <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
-                        مؤكدة
-                      </span>
-                    ) : inv.status === 'draft' ? (
-                      <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold">
-                        مسودة
-                      </span>
-                    ) : (
-                      <span className="px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold">
-                        ملغاة
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-center">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (inv.type === 'sales') {
-                          onNavigate('sales-invoices');
-                        } else {
-                          onNavigate('purchase-invoices');
-                        }
-                      }}
-                      className="p-1 rounded text-slate-500 hover:text-blue-700 hover:bg-blue-50 transition-colors cursor-pointer"
-                      title="عرض الفاتورة"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+        }
+        columns={[
+          {
+            key: 'invoiceNumber',
+            header: 'رقم الفاتورة',
+            align: 'right',
+            sortValue: (inv) => inv.invoiceNumber,
+            exportValue: (inv) => inv.invoiceNumber,
+            render: (inv) => <span className="font-bold text-blue-900 font-mono whitespace-nowrap">{inv.invoiceNumber}</span>,
+          },
+          {
+            key: 'type',
+            header: 'النوع',
+            align: 'center',
+            sortValue: (inv) => inv.type,
+            exportValue: (inv) => (inv.type === 'sales' ? 'مبيعات' : 'مشتريات'),
+            render: (inv) =>
+              inv.type === 'sales' ? (
+                <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-bold">مبيعات</span>
+              ) : (
+                <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200 text-[10px] font-bold">مشتريات</span>
+              ),
+          },
+          {
+            key: 'party',
+            header: 'العميل / المورد',
+            align: 'right',
+            sortValue: (inv) => inv.customerName || inv.supplierName || 'نقدي / عام',
+            exportValue: (inv) => inv.customerName || inv.supplierName || 'نقدي / عام',
+            render: (inv) => (
+              <span className="font-semibold text-slate-800">{inv.customerName || inv.supplierName || 'نقدي / عام'}</span>
+            ),
+          },
+          {
+            key: 'date',
+            header: 'التاريخ',
+            align: 'center',
+            sortValue: (inv) => inv.date,
+            exportValue: (inv) => inv.date,
+            render: (inv) => <span className="text-slate-500 font-mono tabular-nums whitespace-nowrap">{inv.date}</span>,
+          },
+          {
+            key: 'warehouseName',
+            header: 'المستودع',
+            align: 'right',
+            sortValue: (inv) => inv.warehouseName || '',
+            exportValue: (inv) => inv.warehouseName || '',
+            render: (inv) => <span className="text-slate-600">{inv.warehouseName}</span>,
+          },
+          {
+            key: 'grandTotal',
+            header: 'الإجمالي',
+            align: 'center',
+            sortValue: (inv) => inv.grandTotal,
+            exportValue: (inv) => inv.grandTotal,
+            render: (inv) => (
+              <span className="font-black text-slate-900 font-mono tabular-nums whitespace-nowrap">
+                {inv.grandTotal.toLocaleString()} {settings.currency}
+              </span>
+            ),
+          },
+          {
+            key: 'paidAmount',
+            header: 'المدفوع',
+            align: 'center',
+            sortValue: (inv) => inv.paidAmount,
+            exportValue: (inv) => inv.paidAmount,
+            render: (inv) => (
+              <span className="font-bold text-emerald-700 font-mono tabular-nums whitespace-nowrap">
+                {inv.paidAmount.toLocaleString()}
+              </span>
+            ),
+          },
+          {
+            key: 'remainingAmount',
+            header: 'المتبقي',
+            align: 'center',
+            sortValue: (inv) => inv.remainingAmount,
+            exportValue: (inv) => inv.remainingAmount,
+            render: (inv) => (
+              <span className="font-bold text-red-600 font-mono tabular-nums whitespace-nowrap">
+                {inv.remainingAmount.toLocaleString()}
+              </span>
+            ),
+          },
+          {
+            key: 'status',
+            header: 'الحالة',
+            align: 'center',
+            sortValue: (inv) => inv.status,
+            exportValue: (inv) => (inv.status === 'confirmed' ? 'مؤكدة' : inv.status === 'draft' ? 'مسودة' : 'ملغاة'),
+            render: (inv) =>
+              inv.status === 'confirmed' ? (
+                <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">مؤكدة</span>
+              ) : inv.status === 'draft' ? (
+                <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold">مسودة</span>
+              ) : (
+                <span className="px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold">ملغاة</span>
+              ),
+          },
+          {
+            key: 'actions',
+            header: 'الإجراءات',
+            align: 'center',
+            sortable: false,
+            render: (inv) => (
+              <button
+                type="button"
+                onClick={() => onNavigate(inv.type === 'sales' ? 'sales-invoices' : 'purchase-invoices')}
+                className="p-1.5 rounded text-slate-600 hover:text-blue-900 hover:bg-blue-50 transition-colors cursor-pointer"
+                title="عرض الفاتورة"
+              >
+                <Eye className="w-4 h-4" />
+              </button>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 };

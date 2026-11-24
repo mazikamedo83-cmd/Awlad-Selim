@@ -7,9 +7,9 @@ import {
   Warehouse as WarehouseIcon,
   Calendar,
   ExternalLink,
-  Search,
 } from 'lucide-react';
 import type { ItemLifecyclePayload, ItemPnlSummary } from '../../../types';
+import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 
 interface ItemLifecycleAndPnlPanelProps {
   lifecycle: ItemLifecyclePayload | null;
@@ -202,79 +202,159 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
           </div>
 
           {/* Chronological Timeline Table */}
-          <div className="bg-white border border-slate-300 rounded-xl overflow-hidden shadow-2xs">
-            <div className="bg-[#5f6f52] text-white px-4 py-2 text-xs font-extrabold flex items-center justify-between">
-              <span>السجل التاريخي التسلسلي الكامل للصنف (من لحظة الإضافة حتى آخر حركة)</span>
-              <span>عدد الأحداث: {lifecycle.timeline.length}</span>
-            </div>
-            <div className="overflow-auto max-h-[52vh]">
-              <table className="w-full text-right text-xs border-collapse min-w-[1150px]">
-                <thead className="bg-slate-100 text-slate-800 sticky top-0 z-10 border-b border-slate-300">
-                  <tr>
-                    <th className="p-2 border-l border-slate-200 whitespace-nowrap">اليومية</th>
-                    <th className="p-2 border-l border-slate-200 whitespace-nowrap">التاريخ الفعلى</th>
-                    <th className="p-2 border-l border-slate-200 whitespace-nowrap">نوع الحركة</th>
-                    <th className="p-2 border-l border-slate-200 whitespace-nowrap">رقم المستند</th>
-                    <th className="p-2 border-l border-slate-200 whitespace-nowrap">المخزن / المسار</th>
-                    <th className="p-2 border-l border-slate-200 whitespace-nowrap">الطرف</th>
-                    <th className="p-2 border-l border-slate-200 whitespace-nowrap text-center">الوحدة</th>
-                    <th className="p-2 border-l border-slate-200 whitespace-nowrap text-center">وارد (+)</th>
-                    <th className="p-2 border-l border-slate-200 whitespace-nowrap text-center">صادر (-)</th>
-                    <th className="p-2 border-l border-slate-200 whitespace-nowrap text-center">الرصيد بعد الحركة</th>
-                    <th className="p-2 border-l border-slate-200 whitespace-nowrap text-center">السعر / التكلفة</th>
-                    <th className="p-2 border-l border-slate-200 whitespace-nowrap text-center">الإجمالي</th>
-                    <th className="p-2 border-l border-slate-200 whitespace-nowrap">المستخدم</th>
-                    <th className="p-2 whitespace-nowrap">ملاحظات</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {lifecycle.timeline.map((ev) => {
-                    const isPriceChg = ev.eventType === 'price_change' || ev.eventType === 'product_updated';
-                    const isDamaged = ev.eventType === 'damaged' || ev.eventType === 'custody_damaged';
-                    return (
-                      <tr
-                        key={ev.id}
-                        onClick={() => {
-                          if (ev.docId && ev.docType !== 'product' && ev.docType !== 'audit') {
-                            onInspectDocument(ev.docType, ev.docId);
-                          }
-                        }}
-                        className={`transition-colors ${
-                          ev.docType !== 'product' && ev.docType !== 'audit' ? 'cursor-pointer hover:bg-blue-50/70' : ''
-                        } ${isPriceChg ? 'bg-amber-50/70' : isDamaged ? 'bg-rose-50/70' : 'bg-white'}`}
-                      >
-                        <td className="p-2 border-l border-slate-200 font-mono whitespace-nowrap">{ev.date.replace(/-/g, '/')}</td>
-                        <td className="p-2 border-l border-slate-200 font-mono whitespace-nowrap text-[11px]">{ev.actualDateTime}</td>
-                        <td className="p-2 border-l border-slate-200 font-bold whitespace-nowrap">{ev.eventLabel}</td>
-                        <td className="p-2 border-l border-slate-200 font-mono whitespace-nowrap text-blue-700">
-                          <span className="inline-flex items-center gap-1">
-                            {ev.docNumber}
-                            {ev.docType !== 'product' && ev.docType !== 'audit' && <ExternalLink className="w-3 h-3" />}
-                          </span>
-                        </td>
-                        <td className="p-2 border-l border-slate-200 whitespace-nowrap">{ev.warehouseName}</td>
-                        <td className="p-2 border-l border-slate-200 whitespace-nowrap">{ev.partyName}</td>
-                        <td className="p-2 border-l border-slate-200 text-center whitespace-nowrap">{ev.unit}</td>
-                        <td className="p-2 border-l border-slate-200 text-center font-mono font-bold text-emerald-700">
-                          {ev.qtyIn > 0 ? `+${fmtQty(ev.qtyIn)}` : '-'}
-                        </td>
-                        <td className="p-2 border-l border-slate-200 text-center font-mono font-bold text-rose-700">
-                          {ev.qtyOut > 0 ? `-${fmtQty(ev.qtyOut)}` : '-'}
-                        </td>
-                        <td className="p-2 border-l border-slate-200 text-center font-mono font-black bg-slate-50 text-slate-900">
-                          {fmtQty(ev.runningBalance)}
-                        </td>
-                        <td className="p-2 border-l border-slate-200 text-center font-mono">{fmt(ev.unitPrice)}</td>
-                        <td className="p-2 border-l border-slate-200 text-center font-mono font-bold">{fmt(ev.totalValue)}</td>
-                        <td className="p-2 border-l border-slate-200 whitespace-nowrap">{ev.userName}</td>
-                        <td className="p-2 text-slate-600 whitespace-nowrap">{ev.notes || '-'}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <UnifiedDataTable
+            title="السجل التاريخي التسلسلي الكامل للصنف (من لحظة الإضافة حتى آخر حركة)"
+            subtitle={`عدد الأحداث: ${lifecycle.timeline.length}`}
+            compact
+            maxHeightClassName="max-h-[52vh]"
+            data={lifecycle.timeline}
+            rowKey={(ev) => ev.id}
+            searchPlaceholder="بحث بالمستند أو نوع الحركة أو المخزن أو الطرف..."
+            exportFilename={`AWLAD_SELIM_Lifecycle_${lifecycle.product.code}`}
+            pdfTitle={`السجل التاريخي للصنف: ${lifecycle.product.name}`}
+            defaultPageSize={50}
+            onRowClick={(ev) => {
+              if (ev.docId && ev.docType !== 'product' && ev.docType !== 'audit') {
+                onInspectDocument(ev.docType, ev.docId);
+              }
+            }}
+            rowClassName={(ev) => {
+              const isPriceChg = ev.eventType === 'price_change' || ev.eventType === 'product_updated';
+              const isDamaged = ev.eventType === 'damaged' || ev.eventType === 'custody_damaged';
+              const clickable = ev.docType !== 'product' && ev.docType !== 'audit' ? 'cursor-pointer ' : '';
+              return `${clickable}${isPriceChg ? 'bg-amber-50/70' : isDamaged ? 'bg-rose-50/70' : ''}`;
+            }}
+            columns={[
+              {
+                key: 'date',
+                header: 'اليومية',
+                sortable: true,
+                sortValue: (ev) => ev.date,
+                exportValue: (ev) => ev.date.replace(/-/g, '/'),
+                render: (ev) => <span className="font-mono whitespace-nowrap tabular-nums">{ev.date.replace(/-/g, '/')}</span>,
+              },
+              {
+                key: 'actualDateTime',
+                header: 'التاريخ الفعلي',
+                sortable: true,
+                sortValue: (ev) => ev.actualDateTime,
+                exportValue: (ev) => ev.actualDateTime,
+                render: (ev) => <span className="font-mono whitespace-nowrap text-[11px] tabular-nums">{ev.actualDateTime}</span>,
+              },
+              {
+                key: 'eventLabel',
+                header: 'نوع الحركة',
+                sortable: true,
+                sortValue: (ev) => ev.eventLabel,
+                exportValue: (ev) => ev.eventLabel,
+                render: (ev) => <span className="font-bold whitespace-nowrap">{ev.eventLabel}</span>,
+              },
+              {
+                key: 'docNumber',
+                header: 'رقم المستند',
+                sortable: true,
+                sortValue: (ev) => ev.docNumber,
+                exportValue: (ev) => ev.docNumber,
+                render: (ev) => (
+                  <span className="inline-flex items-center gap-1 font-mono whitespace-nowrap text-blue-700">
+                    {ev.docNumber}
+                    {ev.docType !== 'product' && ev.docType !== 'audit' && <ExternalLink className="w-3 h-3" />}
+                  </span>
+                ),
+              },
+              {
+                key: 'warehouseName',
+                header: 'المخزن / المسار',
+                sortable: true,
+                sortValue: (ev) => ev.warehouseName,
+                exportValue: (ev) => ev.warehouseName,
+                render: (ev) => <span className="whitespace-nowrap">{ev.warehouseName}</span>,
+              },
+              {
+                key: 'partyName',
+                header: 'الطرف',
+                sortable: true,
+                sortValue: (ev) => ev.partyName,
+                exportValue: (ev) => ev.partyName,
+                render: (ev) => <span className="whitespace-nowrap">{ev.partyName}</span>,
+              },
+              {
+                key: 'unit',
+                header: 'الوحدة',
+                align: 'center',
+                exportValue: (ev) => ev.unit,
+                render: (ev) => <span className="whitespace-nowrap">{ev.unit}</span>,
+              },
+              {
+                key: 'qtyIn',
+                header: 'وارد (+)',
+                align: 'center',
+                sortable: true,
+                sortValue: (ev) => ev.qtyIn,
+                exportValue: (ev) => ev.qtyIn,
+                render: (ev) => (
+                  <span className="font-mono font-bold text-emerald-700 tabular-nums">
+                    {ev.qtyIn > 0 ? `+${fmtQty(ev.qtyIn)}` : '-'}
+                  </span>
+                ),
+              },
+              {
+                key: 'qtyOut',
+                header: 'صادر (-)',
+                align: 'center',
+                sortable: true,
+                sortValue: (ev) => ev.qtyOut,
+                exportValue: (ev) => ev.qtyOut,
+                render: (ev) => (
+                  <span className="font-mono font-bold text-rose-700 tabular-nums">
+                    {ev.qtyOut > 0 ? `-${fmtQty(ev.qtyOut)}` : '-'}
+                  </span>
+                ),
+              },
+              {
+                key: 'runningBalance',
+                header: 'الرصيد بعد الحركة',
+                align: 'center',
+                sortable: true,
+                sortValue: (ev) => ev.runningBalance,
+                exportValue: (ev) => ev.runningBalance,
+                cellClassName: 'bg-slate-50 font-mono font-black text-slate-900 tabular-nums',
+                render: (ev) => <span>{fmtQty(ev.runningBalance)}</span>,
+              },
+              {
+                key: 'unitPrice',
+                header: 'السعر / التكلفة',
+                align: 'center',
+                sortable: true,
+                sortValue: (ev) => ev.unitPrice,
+                exportValue: (ev) => ev.unitPrice,
+                render: (ev) => <span className="font-mono tabular-nums">{fmt(ev.unitPrice)}</span>,
+              },
+              {
+                key: 'totalValue',
+                header: 'الإجمالي',
+                align: 'center',
+                sortable: true,
+                sortValue: (ev) => ev.totalValue,
+                exportValue: (ev) => ev.totalValue,
+                render: (ev) => <span className="font-mono font-bold tabular-nums">{fmt(ev.totalValue)}</span>,
+              },
+              {
+                key: 'userName',
+                header: 'المستخدم',
+                sortable: true,
+                sortValue: (ev) => ev.userName,
+                exportValue: (ev) => ev.userName,
+                render: (ev) => <span className="whitespace-nowrap">{ev.userName}</span>,
+              },
+              {
+                key: 'notes',
+                header: 'ملاحظات',
+                exportValue: (ev) => ev.notes || '-',
+                render: (ev) => <span className="text-slate-600 whitespace-nowrap">{ev.notes || '-'}</span>,
+              },
+            ]}
+          />
         </div>
       )}
 
@@ -360,55 +440,96 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
           </div>
 
           {/* Loss-making sales & damaged breakdown */}
-          <div className="bg-white border border-rose-200 rounded-xl overflow-hidden">
-            <div className="bg-rose-700 text-white px-4 py-2 text-xs font-extrabold flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
-                <AlertTriangle className="w-4 h-4" />
-                الحركات الخاسرة والبيع بأقل من التكلفة ({selectedPnl.lossTransactions.length})
-              </span>
-              <span>إجمالي الخسائر: {fmt(selectedPnl.totalLoss)} {currency}</span>
-            </div>
-            {selectedPnl.lossTransactions.length === 0 ? (
-              <div className="p-6 text-center text-xs text-slate-500 font-bold">لا توجد أي عمليات بيع خاسرة أو توالف لهذا الصنف ضمن الفترة المحددة.</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-right text-xs border-collapse">
-                  <thead className="bg-rose-50 text-rose-950 border-b border-rose-200">
-                    <tr>
-                      <th className="p-2">التاريخ الفعلى</th>
-                      <th className="p-2">المستند</th>
-                      <th className="p-2">العميل / المخزن</th>
-                      <th className="p-2 text-center">الكمية</th>
-                      <th className="p-2 text-center">سعر البيع</th>
-                      <th className="p-2 text-center">التكلفة</th>
-                      <th className="p-2 text-center">الخصم</th>
-                      <th className="p-2 text-center">قيمة الخسارة</th>
-                      <th className="p-2">السبب التفصيلي</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-rose-100">
-                    {selectedPnl.lossTransactions.map((lt) => (
-                      <tr
-                        key={lt.id}
-                        onClick={() => onInspectDocument(lt.docType, lt.docId)}
-                        className="hover:bg-rose-50/70 cursor-pointer"
-                      >
-                        <td className="p-2 font-mono text-[11px]">{lt.actualDateTime}</td>
-                        <td className="p-2 font-mono text-blue-700 font-bold">{lt.docNumber}</td>
-                        <td className="p-2">{lt.partyName}</td>
-                        <td className="p-2 text-center font-bold">{lt.quantity} {lt.unit}</td>
-                        <td className="p-2 text-center font-mono">{fmt(lt.sellingPrice)}</td>
-                        <td className="p-2 text-center font-mono">{fmt(lt.costPrice)}</td>
-                        <td className="p-2 text-center font-mono text-amber-700">{fmt(lt.discount)}</td>
-                        <td className="p-2 text-center font-mono font-black text-rose-700">-{fmt(lt.lossAmount)}</td>
-                        <td className="p-2 text-rose-900">{lt.reason}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <UnifiedDataTable
+            title={`الحركات الخاسرة والبيع بأقل من التكلفة (${selectedPnl.lossTransactions.length})`}
+            subtitle={`إجمالي الخسائر: ${fmt(selectedPnl.totalLoss)} ${currency}`}
+            compact
+            searchable={false}
+            data={selectedPnl.lossTransactions}
+            rowKey={(lt) => lt.id}
+            onRowClick={(lt) => onInspectDocument(lt.docType, lt.docId)}
+            rowClassName={() => 'cursor-pointer hover:bg-rose-50/70'}
+            exportFilename={`AWLAD_SELIM_LossTransactions_${selectedPnl.code}`}
+            pdfTitle={`الحركات الخاسرة للصنف: ${selectedPnl.productName}`}
+            emptyTitle="لا توجد أي عمليات بيع خاسرة أو توالف لهذا الصنف ضمن الفترة المحددة"
+            columns={[
+              {
+                key: 'actualDateTime',
+                header: 'التاريخ الفعلي',
+                sortable: true,
+                sortValue: (lt) => lt.actualDateTime,
+                exportValue: (lt) => lt.actualDateTime,
+                render: (lt) => <span className="font-mono text-[11px] tabular-nums">{lt.actualDateTime}</span>,
+              },
+              {
+                key: 'docNumber',
+                header: 'المستند',
+                sortable: true,
+                sortValue: (lt) => lt.docNumber,
+                exportValue: (lt) => lt.docNumber,
+                render: (lt) => <span className="font-mono text-blue-700 font-bold">{lt.docNumber}</span>,
+              },
+              {
+                key: 'partyName',
+                header: 'العميل / المخزن',
+                sortable: true,
+                sortValue: (lt) => lt.partyName,
+                exportValue: (lt) => lt.partyName,
+                render: (lt) => <span>{lt.partyName}</span>,
+              },
+              {
+                key: 'quantity',
+                header: 'الكمية',
+                align: 'center',
+                sortable: true,
+                sortValue: (lt) => lt.quantity,
+                exportValue: (lt) => `${lt.quantity} ${lt.unit}`,
+                render: (lt) => <span className="font-bold tabular-nums">{lt.quantity} {lt.unit}</span>,
+              },
+              {
+                key: 'sellingPrice',
+                header: 'سعر البيع',
+                align: 'center',
+                sortable: true,
+                sortValue: (lt) => lt.sellingPrice,
+                exportValue: (lt) => lt.sellingPrice,
+                render: (lt) => <span className="font-mono tabular-nums">{fmt(lt.sellingPrice)}</span>,
+              },
+              {
+                key: 'costPrice',
+                header: 'التكلفة',
+                align: 'center',
+                sortable: true,
+                sortValue: (lt) => lt.costPrice,
+                exportValue: (lt) => lt.costPrice,
+                render: (lt) => <span className="font-mono tabular-nums">{fmt(lt.costPrice)}</span>,
+              },
+              {
+                key: 'discount',
+                header: 'الخصم',
+                align: 'center',
+                sortable: true,
+                sortValue: (lt) => lt.discount,
+                exportValue: (lt) => lt.discount,
+                render: (lt) => <span className="font-mono text-amber-700 tabular-nums">{fmt(lt.discount)}</span>,
+              },
+              {
+                key: 'lossAmount',
+                header: 'قيمة الخسارة',
+                align: 'center',
+                sortable: true,
+                sortValue: (lt) => lt.lossAmount,
+                exportValue: (lt) => -lt.lossAmount,
+                render: (lt) => <span className="font-mono font-black text-rose-700 tabular-nums">-{fmt(lt.lossAmount)}</span>,
+              },
+              {
+                key: 'reason',
+                header: 'السبب التفصيلي',
+                exportValue: (lt) => lt.reason,
+                render: (lt) => <span className="text-rose-900">{lt.reason}</span>,
+              },
+            ]}
+          />
         </div>
       )}
 
@@ -416,83 +537,172 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
       {(innerTab === 'portfolio' || (!lifecycle && !selectedPnl)) && (
         <div className="space-y-3">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs">
-            <div className="p-3 bg-white border border-slate-200 rounded-xl"><span className="text-slate-500 block">إجمالي المشتريات</span><strong className="text-sm font-black">{fmt(portfolioTotals.totalPurchaseValue)}</strong></div>
-            <div className="p-3 bg-white border border-slate-200 rounded-xl"><span className="text-slate-500 block">صافي المبيعات</span><strong className="text-sm font-black text-blue-800">{fmt(portfolioTotals.netSalesValue)}</strong></div>
-            <div className="p-3 bg-white border border-slate-200 rounded-xl"><span className="text-slate-500 block">تكلفة البضاعة المباعة</span><strong className="text-sm font-black text-amber-800">{fmt(portfolioTotals.cogs)}</strong></div>
-            <div className="p-3 bg-white border border-slate-200 rounded-xl"><span className="text-slate-500 block">صافي الربح</span><strong className={`text-sm font-black ${portfolioTotals.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{fmt(portfolioTotals.netProfit)}</strong></div>
-            <div className="p-3 bg-white border border-slate-200 rounded-xl"><span className="text-slate-500 block">إجمالي الخسائر</span><strong className="text-sm font-black text-rose-700">{fmt(portfolioTotals.totalLoss)}</strong></div>
-            <div className="p-3 bg-white border border-slate-200 rounded-xl"><span className="text-slate-500 block">قيمة المخزون الحالي</span><strong className="text-sm font-black text-slate-900">{fmt(portfolioTotals.stockValuation)}</strong></div>
+            <div className="p-3 bg-white border border-slate-200 rounded-xl"><span className="text-slate-500 block">إجمالي المشتريات</span><strong className="text-sm font-black tabular-nums">{fmt(portfolioTotals.totalPurchaseValue)}</strong></div>
+            <div className="p-3 bg-white border border-slate-200 rounded-xl"><span className="text-slate-500 block">صافي المبيعات</span><strong className="text-sm font-black text-blue-800 tabular-nums">{fmt(portfolioTotals.netSalesValue)}</strong></div>
+            <div className="p-3 bg-white border border-slate-200 rounded-xl"><span className="text-slate-500 block">تكلفة البضاعة المباعة</span><strong className="text-sm font-black text-amber-800 tabular-nums">{fmt(portfolioTotals.cogs)}</strong></div>
+            <div className="p-3 bg-white border border-slate-200 rounded-xl"><span className="text-slate-500 block">صافي الربح</span><strong className={`text-sm font-black tabular-nums ${portfolioTotals.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{fmt(portfolioTotals.netProfit)}</strong></div>
+            <div className="p-3 bg-white border border-slate-200 rounded-xl"><span className="text-slate-500 block">إجمالي الخسائر</span><strong className="text-sm font-black text-rose-700 tabular-nums">{fmt(portfolioTotals.totalLoss)}</strong></div>
+            <div className="p-3 bg-white border border-slate-200 rounded-xl"><span className="text-slate-500 block">قيمة المخزون الحالي</span><strong className="text-sm font-black text-slate-900 tabular-nums">{fmt(portfolioTotals.stockValuation)}</strong></div>
           </div>
 
-          <div className="bg-white border border-slate-300 rounded-xl overflow-hidden shadow-2xs">
-            <div className="bg-slate-800 text-white px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
-              <span className="font-extrabold">تحليل أرباح وخسائر الأصناف (اضغط على أي صنف لفتح تاريخه الكامل من أول يوم)</span>
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" />
-                <input
-                  type="text"
-                  value={portfolioSearch}
-                  onChange={(e) => setPortfolioSearch(e.target.value)}
-                  placeholder="بحث باسم الصنف أو الكود..."
-                  className="bg-slate-700 text-white placeholder-slate-400 pr-8 pl-2.5 py-1 rounded-lg text-xs border border-slate-600 focus:outline-none"
-                />
-              </div>
-            </div>
-            <div className="overflow-auto max-h-[54vh]">
-              <table className="w-full text-right text-xs border-collapse min-w-[1300px]">
-                <thead className="bg-slate-100 text-slate-800 sticky top-0 z-10 border-b border-slate-300">
-                  <tr>
-                    <th className="p-2 border-l border-slate-200">الصنف</th>
-                    <th className="p-2 border-l border-slate-200">المجموعة</th>
-                    <th className="p-2 border-l border-slate-200 text-center">مشتريات</th>
-                    <th className="p-2 border-l border-slate-200 text-center">صافي المبيعات</th>
-                    <th className="p-2 border-l border-slate-200 text-center">تكلفة البضاعة المباعة</th>
-                    <th className="p-2 border-l border-slate-200 text-center">الخصومات</th>
-                    <th className="p-2 border-l border-slate-200 text-center">مرتجعات بيع</th>
-                    <th className="p-2 border-l border-slate-200 text-center">التوالف / المصاريف</th>
-                    <th className="p-2 border-l border-slate-200 text-center">صافي الربح</th>
-                    <th className="p-2 border-l border-slate-200 text-center">نسبة الربح على التكلفة</th>
-                    <th className="p-2 border-l border-slate-200 text-center">هامش المبيعات</th>
-                    <th className="p-2 border-l border-slate-200 text-center">الخسائر</th>
-                    <th className="p-2 border-l border-slate-200 text-center">المخزون الحالي</th>
-                    <th className="p-2 text-center">قيمة المخزون</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {filteredPortfolio.map((item) => (
-                    <tr
-                      key={item.productId}
-                      onClick={() => {
-                        onSelectProduct(item.productId);
-                        setInnerTab('timeline');
-                      }}
-                      className="hover:bg-blue-50/70 cursor-pointer transition-colors"
-                    >
-                      <td className="p-2 border-l border-slate-200 font-bold text-slate-900">
-                        {item.productName}
-                        <span className="block text-[10px] text-slate-500 font-mono">{item.code}</span>
-                      </td>
-                      <td className="p-2 border-l border-slate-200">{item.category}</td>
-                      <td className="p-2 border-l border-slate-200 text-center font-mono">{fmt(item.totalPurchaseValue)}</td>
-                      <td className="p-2 border-l border-slate-200 text-center font-mono font-bold text-blue-800">{fmt(item.netSalesValue)}</td>
-                      <td className="p-2 border-l border-slate-200 text-center font-mono">{fmt(item.cogs)}</td>
-                      <td className="p-2 border-l border-slate-200 text-center font-mono text-amber-700">{fmt(item.totalDiscounts)}</td>
-                      <td className="p-2 border-l border-slate-200 text-center font-mono text-rose-700">{fmt(item.salesReturnsValue)}</td>
-                      <td className="p-2 border-l border-slate-200 text-center font-mono text-rose-700">{fmt(item.allocatedExpenses)}</td>
-                      <td className={`p-2 border-l border-slate-200 text-center font-mono font-black ${item.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                        {fmt(item.netProfit)}
-                      </td>
-                      <td className="p-2 border-l border-slate-200 text-center font-mono">{item.profitPercentOnCost}%</td>
-                      <td className="p-2 border-l border-slate-200 text-center font-mono">{item.profitMarginOnSales}%</td>
-                      <td className="p-2 border-l border-slate-200 text-center font-mono text-rose-700">{item.totalLoss > 0 ? fmt(item.totalLoss) : '-'}</td>
-                      <td className="p-2 border-l border-slate-200 text-center font-mono font-bold">{fmtQty(item.currentStockQty)} {item.baseUnit}</td>
-                      <td className="p-2 text-center font-mono">{fmt(item.currentStockValue)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <UnifiedDataTable<ItemPnlSummary>
+            title="تحليل أرباح وخسائر الأصناف"
+            subtitle="اضغط على أي صنف لفتح تاريخه الكامل من أول يوم"
+            compact
+            maxHeightClassName="max-h-[54vh]"
+            data={filteredPortfolio}
+            rowKey={(item) => item.productId}
+            searchValue={portfolioSearch}
+            onSearchChange={setPortfolioSearch}
+            searchPlaceholder="بحث باسم الصنف أو الكود..."
+            exportFilename="AWLAD_SELIM_ItemsPnL"
+            pdfTitle="تحليل أرباح وخسائر جميع الأصناف"
+            defaultPageSize={50}
+            onRowClick={(item) => {
+              onSelectProduct(item.productId);
+              setInnerTab('timeline');
+            }}
+            rowClassName={() => 'cursor-pointer hover:bg-blue-50/70'}
+            columns={[
+              {
+                key: 'productName',
+                header: 'الصنف',
+                sortable: true,
+                sortValue: (it) => it.productName,
+                exportValue: (it) => `${it.productName} (${it.code})`,
+                render: (it) => (
+                  <div>
+                    <div className="font-bold text-slate-900">{it.productName}</div>
+                    <span className="block text-[10px] text-slate-500 font-mono">{it.code}</span>
+                  </div>
+                ),
+              },
+              {
+                key: 'category',
+                header: 'المجموعة',
+                sortable: true,
+                sortValue: (it) => it.category,
+                exportValue: (it) => it.category,
+                render: (it) => <span>{it.category}</span>,
+              },
+              {
+                key: 'totalPurchaseValue',
+                header: 'مشتريات',
+                align: 'center',
+                sortable: true,
+                sortValue: (it) => it.totalPurchaseValue,
+                exportValue: (it) => it.totalPurchaseValue,
+                render: (it) => <span className="font-mono tabular-nums">{fmt(it.totalPurchaseValue)}</span>,
+              },
+              {
+                key: 'netSalesValue',
+                header: 'صافي المبيعات',
+                align: 'center',
+                sortable: true,
+                sortValue: (it) => it.netSalesValue,
+                exportValue: (it) => it.netSalesValue,
+                render: (it) => <span className="font-mono font-bold text-blue-800 tabular-nums">{fmt(it.netSalesValue)}</span>,
+              },
+              {
+                key: 'cogs',
+                header: 'تكلفة البضاعة المباعة',
+                align: 'center',
+                sortable: true,
+                sortValue: (it) => it.cogs,
+                exportValue: (it) => it.cogs,
+                render: (it) => <span className="font-mono tabular-nums">{fmt(it.cogs)}</span>,
+              },
+              {
+                key: 'totalDiscounts',
+                header: 'الخصومات',
+                align: 'center',
+                sortable: true,
+                sortValue: (it) => it.totalDiscounts,
+                exportValue: (it) => it.totalDiscounts,
+                render: (it) => <span className="font-mono text-amber-700 tabular-nums">{fmt(it.totalDiscounts)}</span>,
+              },
+              {
+                key: 'salesReturnsValue',
+                header: 'مرتجعات بيع',
+                align: 'center',
+                sortable: true,
+                sortValue: (it) => it.salesReturnsValue,
+                exportValue: (it) => it.salesReturnsValue,
+                render: (it) => <span className="font-mono text-rose-700 tabular-nums">{fmt(it.salesReturnsValue)}</span>,
+              },
+              {
+                key: 'allocatedExpenses',
+                header: 'التوالف / المصاريف',
+                align: 'center',
+                sortable: true,
+                sortValue: (it) => it.allocatedExpenses,
+                exportValue: (it) => it.allocatedExpenses,
+                render: (it) => <span className="font-mono text-rose-700 tabular-nums">{fmt(it.allocatedExpenses)}</span>,
+              },
+              {
+                key: 'netProfit',
+                header: 'صافي الربح',
+                align: 'center',
+                sortable: true,
+                sortValue: (it) => it.netProfit,
+                exportValue: (it) => it.netProfit,
+                render: (it) => (
+                  <span className={`font-mono font-black tabular-nums ${it.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                    {fmt(it.netProfit)}
+                  </span>
+                ),
+              },
+              {
+                key: 'profitPercentOnCost',
+                header: 'نسبة الربح على التكلفة',
+                align: 'center',
+                sortable: true,
+                sortValue: (it) => it.profitPercentOnCost,
+                exportValue: (it) => `${it.profitPercentOnCost}%`,
+                render: (it) => <span className="font-mono tabular-nums">{it.profitPercentOnCost}%</span>,
+              },
+              {
+                key: 'profitMarginOnSales',
+                header: 'هامش المبيعات',
+                align: 'center',
+                sortable: true,
+                sortValue: (it) => it.profitMarginOnSales,
+                exportValue: (it) => `${it.profitMarginOnSales}%`,
+                render: (it) => <span className="font-mono tabular-nums">{it.profitMarginOnSales}%</span>,
+              },
+              {
+                key: 'totalLoss',
+                header: 'الخسائر',
+                align: 'center',
+                sortable: true,
+                sortValue: (it) => it.totalLoss,
+                exportValue: (it) => it.totalLoss,
+                render: (it) => (
+                  <span className="font-mono text-rose-700 tabular-nums">
+                    {it.totalLoss > 0 ? fmt(it.totalLoss) : '-'}
+                  </span>
+                ),
+              },
+              {
+                key: 'currentStockQty',
+                header: 'المخزون الحالي',
+                align: 'center',
+                sortable: true,
+                sortValue: (it) => it.currentStockQty,
+                exportValue: (it) => `${it.currentStockQty} ${it.baseUnit}`,
+                render: (it) => <span className="font-mono font-bold tabular-nums">{fmtQty(it.currentStockQty)} {it.baseUnit}</span>,
+              },
+              {
+                key: 'currentStockValue',
+                header: 'قيمة المخزون',
+                align: 'center',
+                sortable: true,
+                sortValue: (it) => it.currentStockValue,
+                exportValue: (it) => it.currentStockValue,
+                render: (it) => <span className="font-mono tabular-nums">{fmt(it.currentStockValue)}</span>,
+              },
+            ]}
+          />
         </div>
       )}
     </div>

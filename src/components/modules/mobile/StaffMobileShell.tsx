@@ -70,6 +70,7 @@ import {
   DamagedStockIcon,
   BranchesBuildingIcon,
   ProductAddIcon,
+  RefreshCloudIcon,
 } from '../../common/AppIcons';
 
 interface StaffMobileShellProps {
@@ -259,9 +260,14 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         title: 'المندوبون والتحويلات',
         icon: Users2,
         colorClass: 'bg-cyan-50 text-cyan-900 border-cyan-200',
-        permission: 'canManageReps',
+        permission: ['canManageReps', 'canManageTransfers', 'canManageSales', 'canManageAccounts', 'canApprove'],
         items: [
-          { key: 'reps', label: 'قائمة المناديب والعهد' },
+          {
+            key: 'refresh-sync',
+            label: 'REFRESH · إرسال واستلام المندوبين',
+            permission: ['canManageReps', 'canManageTransfers', 'canManageSales', 'canManageAccounts', 'canApprove'],
+          },
+          { key: 'reps', label: 'قائمة المناديب والعهد', permission: 'canManageReps' },
           { key: 'rep-transfers', label: 'طلب تحويل بالنصف (المالي)', permission: 'canManageTransfers' },
           { key: 'rep-item-transfers', label: 'تحويل أصناف وعهدة للمناديب', permission: 'canManageTransfers' },
         ],
@@ -370,6 +376,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
       'purchase-invoices',
       'cashboxes',
       'item-movement-report',
+      'refresh-sync',
     ];
     if (item.targetTab && allowedTargets.includes(item.targetTab as NavItemKey)) {
       onNavigate(item.targetTab as NavItemKey);
@@ -693,6 +700,15 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         label: 'الأقساط',
         icon: <InstallmentsIcon className="w-11 h-11" />,
         onClick: () => onNavigate('installments'),
+      });
+    }
+
+    if (checkPerm(['canManageReps', 'canManageTransfers', 'canManageSales', 'canManageAccounts', 'canApprove'])) {
+      tiles.push({
+        id: 'refresh-sync',
+        label: 'استلام المندوبين',
+        icon: <RefreshCloudIcon className="w-11 h-11" />,
+        onClick: () => onNavigate('refresh-sync'),
       });
     }
 

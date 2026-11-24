@@ -24,6 +24,7 @@ import {
 } from '../../../services/diagnostics';
 import { saveAndShareDocument } from '../../../services/native';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
+import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 
 const CATEGORY_LABELS: Record<DiagnosticCategory, string> = {
   app_event: 'أحداث التطبيق',
@@ -259,77 +260,101 @@ export const DiagnosticLogsPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* Entries Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-        {filteredEntries.length === 0 ? (
-          <div className="p-10 text-center text-slate-400 space-y-1.5">
-            <Activity className="w-8 h-8 mx-auto text-slate-300" />
-            <p className="font-bold text-slate-600">لا توجد سجلات تشخيص مطابقة</p>
-            <p className="text-[11px]">
-              تُسجَّل هنا أحداث الشبكة والمزامنة وأحداث النظام الفعلية عند حدوثها على هذا الجهاز.
-            </p>
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {filteredEntries.map((entry) => {
-              const sev = SEVERITY_META[entry.severity];
+      {/* Entries Unified Table */}
+      <UnifiedDataTable<DiagnosticLogEntry>
+        data={filteredEntries}
+        rowKey={(e) => e.id}
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchable={false}
+        compact
+        exportFilename="سجل-التشخيص-والأخطاء"
+        pdfTitle="سجل التشخيص والأخطاء"
+        emptyTitle="لا توجد سجلات تشخيص مطابقة"
+        emptySubtitle="تُسجَّل هنا أحداث الشبكة والمزامنة وأحداث النظام الفعلية عند حدوثها على هذا الجهاز."
+        columns={[
+          {
+            key: 'severity',
+            header: 'المستوى',
+            align: 'center',
+            sortValue: (e) => e.severity,
+            exportValue: (e) => SEVERITY_META[e.severity].label,
+            render: (e) => {
+              const sev = SEVERITY_META[e.severity];
               const SevIcon = sev.icon;
-              const isExpanded = expandedId === entry.id;
               return (
-                <div key={entry.id} className="p-3.5 hover:bg-slate-50/70 transition-colors">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-start gap-2.5 min-w-0">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[11px] font-bold shrink-0 ${sev.badgeCls}`}
-                      >
-                        <SevIcon className="w-3.5 h-3.5" />
-                        <span>{sev.label}</span>
-                      </span>
-
-                      <div className="min-w-0 space-y-0.5">
-                        <p className="font-bold text-slate-900 break-words">{entry.message}</p>
-                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-                          <span className="font-bold text-slate-700">{CATEGORY_LABELS[entry.category]}</span>
-                          <span>•</span>
-                          <span className="font-mono text-slate-600" dir="ltr">{entry.source}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between sm:justify-end gap-2.5 shrink-0">
-                      <span
-                        className="font-mono tabular-nums text-[11px] text-slate-500"
-                        title={entry.timestamp}
-                        dir="ltr"
-                      >
-                        {formatDateTimeAr(entry.timestamp)}
-                      </span>
-                      {entry.details && (
-                        <button
-                          type="button"
-                          onClick={() => setExpandedId(isExpanded ? null : entry.id)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-bold text-[11px] cursor-pointer"
-                        >
-                          <span>التفاصيل</span>
-                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {isExpanded && entry.details && (
-                    <div className="mt-2.5 rounded-xl border border-slate-200 bg-slate-950 text-slate-100 p-3 overflow-x-auto">
-                      <pre className="text-[11px] font-mono leading-relaxed" dir="ltr">
-                        {JSON.stringify(entry.details, null, 2)}
-                      </pre>
-                    </div>
-                  )}
-                </div>
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[11px] font-bold ${sev.badgeCls}`}>
+                  <SevIcon className="w-3.5 h-3.5" />
+                  <span>{sev.label}</span>
+                </span>
               );
-            })}
-          </div>
-        )}
-      </div>
+            },
+          },
+          {
+            key: 'category',
+            header: 'التصنيف',
+            align: 'center',
+            sortValue: (e) => e.category,
+            exportValue: (e) => CATEGORY_LABELS[e.category],
+            render: (e) => <span className="font-bold text-slate-700">{CATEGORY_LABELS[e.category]}</span>,
+          },
+          {
+            key: 'message',
+            header: 'الحدث / الرسالة',
+            align: 'right',
+            sortValue: (e) => e.message,
+            exportValue: (e) => e.message,
+            render: (e) => (
+              <div>
+                <div className="font-bold text-slate-900">{e.message}</div>
+                {expandedId === e.id && e.details && (
+                  <pre className="mt-2 rounded-lg bg-slate-950 text-slate-100 p-2 text-[11px] font-mono overflow-x-auto" dir="ltr">
+                    {JSON.stringify(e.details, null, 2)}
+                  </pre>
+                )}
+              </div>
+            ),
+          },
+          {
+            key: 'source',
+            header: 'المصدر',
+            align: 'left',
+            sortValue: (e) => e.source,
+            exportValue: (e) => e.source,
+            render: (e) => <span className="font-mono text-[11px] text-slate-600" dir="ltr">{e.source}</span>,
+          },
+          {
+            key: 'timestamp',
+            header: 'الوقت',
+            align: 'center',
+            sortValue: (e) => e.timestamp,
+            exportValue: (e) => formatDateTimeAr(e.timestamp),
+            render: (e) => (
+              <span className="font-mono tabular-nums text-[11px] text-slate-600" dir="ltr">
+                {formatDateTimeAr(e.timestamp)}
+              </span>
+            ),
+          },
+          {
+            key: 'actions',
+            header: 'التفاصيل',
+            align: 'center',
+            sortable: false,
+            render: (e) =>
+              e.details ? (
+                <button
+                  type="button"
+                  onClick={() => setExpandedId(expandedId === e.id ? null : e.id)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-bold text-[11px] cursor-pointer"
+                >
+                  <span>{expandedId === e.id ? 'إخفاء' : 'التفاصيل'}</span>
+                </button>
+              ) : (
+                <span className="text-slate-400">—</span>
+              ),
+          },
+        ]}
+      />
 
       <ConfirmDialog
         isOpen={showClearConfirm}

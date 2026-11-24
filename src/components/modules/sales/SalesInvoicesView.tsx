@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { 
-  Plus, Search, Filter, Printer, Download, Eye, XCircle, 
+import {
+  Plus, Filter, Printer, Download, Eye, XCircle,
   CheckCircle, FileText, Calendar, ArrowLeftRight, DollarSign,
   Edit, AlertCircle, Check, History, Clock
 } from 'lucide-react';
@@ -15,6 +15,7 @@ import { exportToExcel } from '../../common/ExcelExporter';
 import { QuantityInput } from '../../common/QuantityInput';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
 import { SearchableFilterSelect } from '../../common/SearchableFilterSelect';
+import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 import { computeLineTotal } from '../../../utils/quantity';
 
 export interface SalesInvoicesViewProps {
@@ -588,395 +589,503 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
         </div>
       )}
 
-      {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 text-xs">
-        {/* Search */}
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="بحث برقم المستند أو العميل أو المندوب..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 pr-9 pl-3 text-xs focus:bg-white focus:border-blue-600 outline-hidden"
-          />
-          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
-        </div>
-
-        {/* Customer Filter */}
-        <div>
-          <SearchableFilterSelect
-            id="sales-filter-customer"
-            value={selectedCustomerFilter}
-            onChange={setSelectedCustomerFilter}
-            options={customers.map((c) => ({
-              value: c.id,
-              label: c.shopName || c.name,
-              subtitle: c.phone || c.name,
-              searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''} ${c.code || ''}`,
-            }))}
-            allOptionLabel="جميع العملاء"
-            allOptionValue=""
-            searchPlaceholder="ابحث باسم العميل أو المحل أو الهاتف..."
-            allowClear
-            buttonClassName="rounded-xl min-h-[38px]"
-          />
-        </div>
-
-        {/* Status Filter */}
-        {activeTab === 'invoices' && (
-          <div>
-            <SearchableFilterSelect
-              id="sales-filter-status"
-              value={statusFilter}
-              onChange={(val) => setStatusFilter((val as any) || 'all')}
-              options={[
-                { value: 'confirmed', label: 'فواتير مؤكدة' },
-                { value: 'draft', label: 'مسودات' },
-                { value: 'cancelled', label: 'فواتير ملغاة / محذوفة' },
-              ]}
-              allOptionLabel="جميع الحالات"
-              allOptionValue="all"
-              allowClear
-              buttonClassName="rounded-xl min-h-[38px]"
-            />
-          </div>
-        )}
-
-        {/* Review Status Filter */}
-        {activeTab === 'invoices' && (
-          <div>
-            <SearchableFilterSelect
-              id="sales-filter-review"
-              value={reviewFilter}
-              onChange={(val) => setReviewFilter((val as any) || 'all')}
-              options={[
-                { value: 'needs_review', label: 'تحتاج مراجعة الإدارة' },
-                { value: 'reviewed', label: 'تمت المراجعة' },
-              ]}
-              allOptionLabel="حالة المراجعة"
-              allOptionValue="all"
-              allowClear
-              buttonClassName="rounded-xl min-h-[38px]"
-            />
-          </div>
-        )}
-
-        {/* Date From */}
-        <div>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
-            placeholder="من تاريخ"
-          />
-        </div>
-
-        {/* Date To */}
-        <div>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
-            placeholder="إلى تاريخ"
-          />
-        </div>
-      </div>
-
       {/* Invoices Table OR Quotes Table */}
       {activeTab === 'invoices' ? (
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-right text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                <th className="p-3.5">رقم الفاتورة</th>
-                <th className="p-3.5">التاريخ</th>
-                <th className="p-3.5">العميل</th>
-                <th className="p-3.5">المندوب</th>
-                <th className="p-3.5">المستودع</th>
-                <th className="p-3.5">الإجمالي</th>
-                <th className="p-3.5">المدفوع</th>
-                <th className="p-3.5">المتبقي</th>
-                <th className="p-3.5">نوع الدفع</th>
-                <th className="p-3.5">الحالة والمراجعة</th>
-                <th className="p-3.5 text-center">الإجراءات</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredInvoices.length === 0 ? (
-                <tr>
-                  <td colSpan={11} className="p-8 text-center text-slate-400">
-                    لا توجد فواتير مبيعات مطابقة لمعايير البحث الحالية
-                  </td>
-                </tr>
-              ) : (
-                filteredInvoices.map(inv => (
-                  <tr key={inv.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="p-3.5 font-bold font-mono text-blue-900">
-                      <div>{inv.invoiceNumber}</div>
-                      {inv.linkedRepTransferNumber && (
-                        <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded text-[9px] font-sans font-bold">
-                          <span>تحويل عهدة: {inv.linkedRepTransferNumber}</span>
-                        </span>
-                      )}
-                      {inv.linkedCustomerOrderId && (
-                        <span className="inline-flex items-center gap-1 mt-0.5 mr-1 px-1.5 py-0.5 bg-blue-50 border border-blue-200 text-blue-800 rounded text-[9px] font-sans font-bold">
-                          <span>طلب عميل</span>
-                        </span>
-                      )}
-                      {inv.convertedFromQuoteNumber && (
-                        <span className="inline-flex items-center gap-1 mt-0.5 mr-1 px-1.5 py-0.5 bg-slate-100 border border-slate-300 text-slate-700 rounded text-[9px] font-sans font-bold">
-                          <span>من عرض سعر: {inv.convertedFromQuoteNumber}</span>
-                        </span>
-                      )}
-                      <div className="text-[10px] font-sans font-normal text-slate-500 mt-0.5">
-                        بواسطة: {inv.createdBy}
-                        {inv.editedBy ? ` · تعديل: ${inv.editedBy}` : ''}
-                        {inv.cancelledBy ? ` · إلغاء: ${inv.cancelledBy}` : ''}
-                      </div>
-                    </td>
-                    <td className="p-3.5 font-mono text-slate-600">{inv.date}</td>
-                    <td className="p-3.5 font-bold text-slate-800">{inv.customerName || 'نقدي عام'}</td>
-                    <td className="p-3.5 text-slate-600">{inv.representativeName || '-'}</td>
-                    <td className="p-3.5 text-slate-600">{inv.warehouseName}</td>
-                    <td className="p-3.5 font-black text-slate-900 tabular-nums">{inv.grandTotal.toLocaleString()} {settings.currency}</td>
-                    <td className="p-3.5 font-bold text-emerald-700 tabular-nums">{inv.paidAmount.toLocaleString()}</td>
-                    <td className="p-3.5 font-bold text-red-600 tabular-nums">{inv.remainingAmount.toLocaleString()}</td>
-                    <td className="p-3.5">
-                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                        inv.paymentType === 'cash' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
-                        inv.paymentType === 'credit' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
-                        'bg-blue-50 text-blue-800 border border-blue-200'
-                      }`}>
-                        {inv.paymentType === 'cash' ? 'نقدي' : inv.paymentType === 'credit' ? 'آجل' : 'جزئي'}
-                      </span>
-                    </td>
-                    <td className="p-3.5">
-                      <div className="flex flex-col items-start gap-1">
-                        {inv.status === 'confirmed' ? (
-                          <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
-                            مؤكدة
-                          </span>
-                        ) : inv.status === 'draft' ? (
-                          <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold">
-                            مسودة (بلا خصم)
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold">
-                            ملغاة
-                          </span>
-                        )}
-                        {inv.reviewStatus === 'needs_review' && (
-                          <span className="px-2 py-0.5 rounded-md bg-orange-50 text-orange-800 border border-orange-200 text-[10px] font-bold">
-                            تحتاج مراجعة الإدارة
-                          </span>
-                        )}
-                        {inv.reviewStatus === 'reviewed' && (
-                          <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-bold">
-                            تمت المراجعة {inv.reviewedBy ? `(${inv.reviewedBy})` : ''}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-3.5">
-                      <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                        {inv.reviewStatus === 'needs_review' && canReviewInvoices && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setReviewTarget(inv);
-                              setReviewNotesInput(inv.reviewNotes || '');
-                            }}
-                            className="px-2 py-1 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer"
-                            title="تأكيد مراجعة فاتورة المندوب بدون تكرار القيد"
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                            <span>تأكيد المراجعة</span>
-                          </button>
-                        )}
-                        {inv.status === 'draft' && (
-                          <button
-                            onClick={() => setConfirmDraftTarget(inv)}
-                            className="p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50 border border-emerald-200 transition-colors cursor-pointer"
-                            title="اعتماد الفاتورة المسودة وخصم المخزون"
-                          >
-                            <CheckCircle className="w-4 h-4" />
-                          </button>
-                        )}
-                        {inv.status === 'confirmed' && inv.remainingAmount > 0 && (
-                          <button
-                            onClick={() => handleOpenPaymentModal(inv)}
-                            className="p-1.5 rounded-lg text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 transition-colors"
-                            title="تسجيل دفعة سداد على نفس الفاتورة"
-                          >
-                            <DollarSign className="w-4 h-4" />
-                          </button>
-                        )}
-                        {inv.status === 'confirmed' && (
-                          <button
-                            onClick={() => handleOpenEditModal(inv)}
-                            className="p-1.5 rounded-lg text-amber-600 hover:text-amber-800 hover:bg-amber-50 transition-colors"
-                            title="تعديل بيانات الفاتورة والأصناف"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handlePrint(inv)}
-                          className="p-1.5 rounded-lg text-slate-600 hover:text-blue-900 hover:bg-blue-50 transition-colors"
-                          title="طباعة (A4 / حراري 80mm / 58mm)"
-                        >
-                          <Printer className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => setActiveInvoice(inv)}
-                          className="p-1.5 rounded-lg text-slate-600 hover:text-blue-900 hover:bg-blue-50 transition-colors"
-                          title="عرض تفاصيل الفاتورة وسجل الدفعات"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        {inv.status !== 'cancelled' && (
-                          <button
-                            onClick={() => setCancelTarget(inv)}
-                            className="p-1.5 rounded-lg text-red-400 hover:text-red-700 hover:bg-red-50 transition-colors"
-                            title="إلغاء الفاتورة"
-                          >
-                            <XCircle className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+        <UnifiedDataTable<Invoice>
+          title="سجل فواتير المبيعات"
+          subtitle="الفواتير المعتمدة والمسودات والمراجعة الإدارية"
+          data={filteredInvoices}
+          rowKey={(inv) => inv.id}
+          searchValue={searchTerm}
+          onSearchChange={setSearchTerm}
+          searchPlaceholder="بحث برقم الفاتورة أو العميل أو المندوب..."
+          exportFilename="AWLAD_SELIM_SalesInvoices"
+          pdfTitle="سجل فواتير المبيعات"
+          emptyTitle="لا توجد فواتير مبيعات مطابقة لمعايير البحث الحالية"
+          toolbarFilters={
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <div className="min-w-[175px]">
+                <SearchableFilterSelect
+                  id="sales-filter-customer"
+                  value={selectedCustomerFilter}
+                  onChange={setSelectedCustomerFilter}
+                  options={customers.map((c) => ({
+                    value: c.id,
+                    label: c.shopName || c.name,
+                    subtitle: c.phone || c.name,
+                    searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''} ${c.code || ''}`,
+                  }))}
+                  allOptionLabel="جميع العملاء"
+                  allOptionValue=""
+                  searchPlaceholder="ابحث باسم العميل أو المحل أو الهاتف..."
+                  allowClear
+                  buttonClassName="rounded-xl min-h-[36px]"
+                />
+              </div>
+              <div className="min-w-[140px]">
+                <SearchableFilterSelect
+                  id="sales-filter-status"
+                  value={statusFilter}
+                  onChange={(val) => setStatusFilter((val as any) || 'all')}
+                  options={[
+                    { value: 'confirmed', label: 'فواتير مؤكدة' },
+                    { value: 'draft', label: 'مسودات' },
+                    { value: 'cancelled', label: 'فواتير ملغاة / محذوفة' },
+                  ]}
+                  allOptionLabel="جميع الحالات"
+                  allOptionValue="all"
+                  allowClear
+                  buttonClassName="rounded-xl min-h-[36px]"
+                />
+              </div>
+              <div className="min-w-[155px]">
+                <SearchableFilterSelect
+                  id="sales-filter-review"
+                  value={reviewFilter}
+                  onChange={(val) => setReviewFilter((val as any) || 'all')}
+                  options={[
+                    { value: 'needs_review', label: 'تحتاج مراجعة الإدارة' },
+                    { value: 'reviewed', label: 'تمت المراجعة' },
+                  ]}
+                  allOptionLabel="حالة المراجعة"
+                  allOptionValue="all"
+                  allowClear
+                  buttonClassName="rounded-xl min-h-[36px]"
+                />
+              </div>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-mono font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
+                title="من تاريخ"
+              />
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-mono font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
+                title="إلى تاريخ"
+              />
+            </div>
+          }
+          columns={[
+            {
+              key: 'invoiceNumber',
+              header: 'رقم الفاتورة',
+              sortable: true,
+              sortValue: (inv) => inv.invoiceNumber,
+              exportValue: (inv) => inv.invoiceNumber,
+              render: (inv) => (
+                <div className="font-mono font-bold text-blue-900">
+                  <div>{inv.invoiceNumber}</div>
+                  {inv.linkedRepTransferNumber && (
+                    <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded text-[9px] font-sans font-bold">
+                      <span>تحويل عهدة: {inv.linkedRepTransferNumber}</span>
+                    </span>
+                  )}
+                  {inv.linkedCustomerOrderId && (
+                    <span className="inline-flex items-center gap-1 mt-0.5 mr-1 px-1.5 py-0.5 bg-blue-50 border border-blue-200 text-blue-800 rounded text-[9px] font-sans font-bold">
+                      <span>طلب عميل</span>
+                    </span>
+                  )}
+                  {inv.convertedFromQuoteNumber && (
+                    <span className="inline-flex items-center gap-1 mt-0.5 mr-1 px-1.5 py-0.5 bg-slate-100 border border-slate-300 text-slate-700 rounded text-[9px] font-sans font-bold">
+                      <span>من عرض سعر: {inv.convertedFromQuoteNumber}</span>
+                    </span>
+                  )}
+                  <div className="text-[10px] font-sans font-normal text-slate-500 mt-0.5">
+                    بواسطة: {inv.createdBy}
+                    {inv.editedBy ? ` · تعديل: ${inv.editedBy}` : ''}
+                    {inv.cancelledBy ? ` · إلغاء: ${inv.cancelledBy}` : ''}
+                  </div>
+                </div>
+              ),
+            },
+            {
+              key: 'date',
+              header: 'التاريخ',
+              sortable: true,
+              sortValue: (inv) => inv.date,
+              exportValue: (inv) => inv.date,
+              render: (inv) => <span className="font-mono text-slate-600">{inv.date}</span>,
+            },
+            {
+              key: 'customerName',
+              header: 'العميل',
+              sortable: true,
+              sortValue: (inv) => inv.customerName || '',
+              exportValue: (inv) => inv.customerName || 'نقدي عام',
+              render: (inv) => <span className="font-bold text-slate-800">{inv.customerName || 'نقدي عام'}</span>,
+            },
+            {
+              key: 'representativeName',
+              header: 'المندوب',
+              sortable: true,
+              sortValue: (inv) => inv.representativeName || '',
+              exportValue: (inv) => inv.representativeName || '-',
+              render: (inv) => <span className="text-slate-600">{inv.representativeName || '-'}</span>,
+            },
+            {
+              key: 'warehouseName',
+              header: 'المستودع',
+              sortable: true,
+              sortValue: (inv) => inv.warehouseName || '',
+              exportValue: (inv) => inv.warehouseName || '-',
+              render: (inv) => <span className="text-slate-600">{inv.warehouseName}</span>,
+            },
+            {
+              key: 'grandTotal',
+              header: 'الإجمالي',
+              align: 'center',
+              sortable: true,
+              sortValue: (inv) => inv.grandTotal,
+              exportValue: (inv) => inv.grandTotal,
+              render: (inv) => (
+                <span className="font-black text-slate-900 tabular-nums font-mono">
+                  {inv.grandTotal.toLocaleString()} {settings.currency}
+                </span>
+              ),
+            },
+            {
+              key: 'paidAmount',
+              header: 'المدفوع',
+              align: 'center',
+              sortable: true,
+              sortValue: (inv) => inv.paidAmount,
+              exportValue: (inv) => inv.paidAmount,
+              render: (inv) => <span className="font-bold text-emerald-700 tabular-nums font-mono">{inv.paidAmount.toLocaleString()}</span>,
+            },
+            {
+              key: 'remainingAmount',
+              header: 'المتبقي',
+              align: 'center',
+              sortable: true,
+              sortValue: (inv) => inv.remainingAmount,
+              exportValue: (inv) => inv.remainingAmount,
+              render: (inv) => <span className="font-bold text-red-600 tabular-nums font-mono">{inv.remainingAmount.toLocaleString()}</span>,
+            },
+            {
+              key: 'paymentType',
+              header: 'نوع الدفع',
+              align: 'center',
+              exportValue: (inv) => (inv.paymentType === 'cash' ? 'نقدي' : inv.paymentType === 'credit' ? 'آجل' : 'جزئي'),
+              render: (inv) => (
+                <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                  inv.paymentType === 'cash' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
+                  inv.paymentType === 'credit' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
+                  'bg-blue-50 text-blue-800 border border-blue-200'
+                }`}>
+                  {inv.paymentType === 'cash' ? 'نقدي' : inv.paymentType === 'credit' ? 'آجل' : 'جزئي'}
+                </span>
+              ),
+            },
+            {
+              key: 'status',
+              header: 'الحالة والمراجعة',
+              exportValue: (inv) => `${inv.status === 'confirmed' ? 'مؤكدة' : inv.status === 'draft' ? 'مسودة' : 'ملغاة'}${inv.reviewStatus === 'needs_review' ? ' - تحتاج مراجعة' : inv.reviewStatus === 'reviewed' ? ' - تمت المراجعة' : ''}`,
+              render: (inv) => (
+                <div className="flex flex-col items-start gap-1">
+                  {inv.status === 'confirmed' ? (
+                    <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                      مؤكدة
+                    </span>
+                  ) : inv.status === 'draft' ? (
+                    <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold">
+                      مسودة (بلا خصم)
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold">
+                      ملغاة
+                    </span>
+                  )}
+                  {inv.reviewStatus === 'needs_review' && (
+                    <span className="px-2 py-0.5 rounded-md bg-orange-50 text-orange-800 border border-orange-200 text-[10px] font-bold">
+                      تحتاج مراجعة الإدارة
+                    </span>
+                  )}
+                  {inv.reviewStatus === 'reviewed' && (
+                    <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-bold">
+                      تمت المراجعة {inv.reviewedBy ? `(${inv.reviewedBy})` : ''}
+                    </span>
+                  )}
+                </div>
+              ),
+            },
+            {
+              key: 'actions',
+              header: 'الإجراءات',
+              align: 'center',
+              render: (inv) => (
+                <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                  {inv.reviewStatus === 'needs_review' && canReviewInvoices && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReviewTarget(inv);
+                        setReviewNotesInput(inv.reviewNotes || '');
+                      }}
+                      className="px-2 py-1 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                      title="تأكيد مراجعة فاتورة المندوب بدون تكرار القيد"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>تأكيد المراجعة</span>
+                    </button>
+                  )}
+                  {inv.status === 'draft' && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDraftTarget(inv)}
+                      className="p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50 border border-emerald-200 transition-colors cursor-pointer"
+                      title="اعتماد الفاتورة المسودة وخصم المخزون"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                    </button>
+                  )}
+                  {inv.status === 'confirmed' && inv.remainingAmount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenPaymentModal(inv)}
+                      className="p-1.5 rounded-lg text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 transition-colors cursor-pointer"
+                      title="تسجيل دفعة سداد على نفس الفاتورة"
+                    >
+                      <DollarSign className="w-4 h-4" />
+                    </button>
+                  )}
+                  {inv.status === 'confirmed' && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditModal(inv)}
+                      className="p-1.5 rounded-lg text-amber-600 hover:text-amber-800 hover:bg-amber-50 transition-colors cursor-pointer"
+                      title="تعديل بيانات الفاتورة والأصناف"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handlePrint(inv)}
+                    className="p-1.5 rounded-lg text-slate-600 hover:text-blue-900 hover:bg-blue-50 transition-colors cursor-pointer"
+                    title="طباعة (A4 / حراري 80mm / 58mm)"
+                  >
+                    <Printer className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveInvoice(inv)}
+                    className="p-1.5 rounded-lg text-slate-600 hover:text-blue-900 hover:bg-blue-50 transition-colors cursor-pointer"
+                    title="عرض تفاصيل الفاتورة وسجل الدفعات"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </button>
+                  {inv.status !== 'cancelled' && (
+                    <button
+                      type="button"
+                      onClick={() => setCancelTarget(inv)}
+                      className="p-1.5 rounded-lg text-red-400 hover:text-red-700 hover:bg-red-50 transition-colors cursor-pointer"
+                      title="إلغاء الفاتورة"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ),
+            },
+          ]}
+        />
       ) : (
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="p-3.5 bg-blue-50/70 border-b border-blue-200 text-xs text-blue-950 font-bold flex items-center justify-between">
-          <span>عروض الأسعار لا تخصم من المخزون ولا تُقيد مالياً حتى يتم تحويلها لفاتورة بيع معتمدة.</span>
-          <button
-            type="button"
-            onClick={() => setIsNewQuoteOpen(true)}
-            className="px-3 py-1.5 rounded-lg bg-blue-900 text-white text-[11px] font-bold cursor-pointer"
-          >
-            + إنشاء عرض سعر
-          </button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-right text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                <th className="p-3.5">رقم عرض السعر</th>
-                <th className="p-3.5">التاريخ</th>
-                <th className="p-3.5">العميل</th>
-                <th className="p-3.5">المستودع</th>
-                <th className="p-3.5 text-center">الأصناف</th>
-                <th className="p-3.5">الإجمالي</th>
-                <th className="p-3.5">الحالة</th>
-                <th className="p-3.5 text-center">الإجراءات</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredQuotes.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="p-8 text-center text-slate-400">
-                    لا توجد عروض أسعار مسجلة بعد.
-                  </td>
-                </tr>
-              ) : (
-                filteredQuotes.map((quote) => {
-                  const isConverted = convertedQuoteIds.has(quote.id);
-                  return (
-                    <tr key={quote.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="p-3.5 font-mono font-bold text-blue-900">
-                        <div>{quote.invoiceNumber}</div>
-                        <div className="text-[10px] font-sans font-normal text-slate-500">
-                          بواسطة: {quote.createdBy}
-                        </div>
-                      </td>
-                      <td className="p-3.5 font-mono text-slate-600">{quote.date}</td>
-                      <td className="p-3.5 font-bold text-slate-800">{quote.customerName || 'عميل نقدي / عرض سعر عام'}</td>
-                      <td className="p-3.5 text-slate-600">{quote.warehouseName}</td>
-                      <td className="p-3.5 text-center font-mono font-bold">{quote.items.length}</td>
-                      <td className="p-3.5 font-black text-slate-900 tabular-nums">
-                        {quote.grandTotal.toLocaleString()} {settings.currency}
-                      </td>
-                      <td className="p-3.5">
-                        {quote.status === 'cancelled' ? (
-                          <span className="px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold">
-                            ملغي
-                          </span>
-                        ) : isConverted ? (
-                          <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
-                            تم التحويل لفاتورة
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-bold">
-                            عرض سعر (بلا خصم مخزني)
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-3.5">
-                        <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                          {quote.status !== 'cancelled' && !isConverted && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setConvertQuoteTarget(quote);
-                                setConvertWarehouseId(quote.warehouseId || warehouses[0]?.id || 'wh-main');
-                                setConvertCashboxId(cashboxes[0]?.id || 'cb-main');
-                                setConvertPaymentType('cash');
-                                setConvertPaidAtInvoice(quote.grandTotal);
-                                setConvertDiscountTotal(quote.discountTotal || 0);
-                                setConvertNotes(quote.notes || '');
-                              }}
-                              className="px-2.5 py-1 rounded-lg bg-blue-900 hover:bg-blue-950 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-                            >
-                              <ArrowLeftRight className="w-3.5 h-3.5" />
-                              <span>تحويل لفاتورة بيع</span>
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => handlePrint(quote)}
-                            className="p-1.5 rounded-lg text-slate-600 hover:text-blue-900 hover:bg-blue-50 transition-colors cursor-pointer"
-                            title="طباعة عرض السعر"
-                          >
-                            <Printer className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setActiveInvoice(quote)}
-                            className="p-1.5 rounded-lg text-slate-600 hover:text-blue-900 hover:bg-blue-50 transition-colors cursor-pointer"
-                            title="عرض التفاصيل"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          {quote.status !== 'cancelled' && !isConverted && (
-                            <button
-                              type="button"
-                              onClick={() => setCancelTarget(quote)}
-                              className="p-1.5 rounded-lg text-red-400 hover:text-red-700 hover:bg-red-50 transition-colors cursor-pointer"
-                              title="إلغاء عرض السعر"
-                            >
-                              <XCircle className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+        <UnifiedDataTable<Invoice>
+          title="سجل عروض الأسعار"
+          subtitle="عروض الأسعار لا تخصم من المخزون ولا تُقيد مالياً حتى يتم تحويلها لفاتورة بيع معتمدة"
+          data={filteredQuotes}
+          rowKey={(q) => q.id}
+          searchValue={searchTerm}
+          onSearchChange={setSearchTerm}
+          searchPlaceholder="بحث برقم العرض أو العميل..."
+          exportFilename="AWLAD_SELIM_Quotes"
+          pdfTitle="سجل عروض الأسعار"
+          emptyTitle="لا توجد عروض أسعار مسجلة بعد"
+          headerActions={
+            <button
+              type="button"
+              onClick={() => setIsNewQuoteOpen(true)}
+              className="px-3 py-1.5 rounded-xl bg-blue-900 text-white text-xs font-bold cursor-pointer"
+            >
+              + إنشاء عرض سعر
+            </button>
+          }
+          toolbarFilters={
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <div className="min-w-[175px]">
+                <SearchableFilterSelect
+                  id="quotes-filter-customer"
+                  value={selectedCustomerFilter}
+                  onChange={setSelectedCustomerFilter}
+                  options={customers.map((c) => ({
+                    value: c.id,
+                    label: c.shopName || c.name,
+                    subtitle: c.phone || c.name,
+                    searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''} ${c.code || ''}`,
+                  }))}
+                  allOptionLabel="جميع العملاء"
+                  allOptionValue=""
+                  allowClear
+                  buttonClassName="rounded-xl min-h-[36px]"
+                />
+              </div>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-mono font-semibold"
+                title="من تاريخ"
+              />
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-mono font-semibold"
+                title="إلى تاريخ"
+              />
+            </div>
+          }
+          columns={[
+            {
+              key: 'invoiceNumber',
+              header: 'رقم عرض السعر',
+              sortable: true,
+              sortValue: (q) => q.invoiceNumber,
+              exportValue: (q) => q.invoiceNumber,
+              render: (q) => (
+                <div className="font-mono font-bold text-blue-900">
+                  <div>{q.invoiceNumber}</div>
+                  <div className="text-[10px] font-sans font-normal text-slate-500">بواسطة: {q.createdBy}</div>
+                </div>
+              ),
+            },
+            {
+              key: 'date',
+              header: 'التاريخ',
+              sortable: true,
+              sortValue: (q) => q.date,
+              exportValue: (q) => q.date,
+              render: (q) => <span className="font-mono text-slate-600">{q.date}</span>,
+            },
+            {
+              key: 'customerName',
+              header: 'العميل',
+              sortable: true,
+              sortValue: (q) => q.customerName || '',
+              exportValue: (q) => q.customerName || 'عميل نقدي / عرض سعر عام',
+              render: (q) => <span className="font-bold text-slate-800">{q.customerName || 'عميل نقدي / عرض سعر عام'}</span>,
+            },
+            {
+              key: 'warehouseName',
+              header: 'المستودع',
+              exportValue: (q) => q.warehouseName || '-',
+              render: (q) => <span className="text-slate-600">{q.warehouseName}</span>,
+            },
+            {
+              key: 'itemsCount',
+              header: 'الأصناف',
+              align: 'center',
+              sortable: true,
+              sortValue: (q) => q.items.length,
+              exportValue: (q) => q.items.length,
+              render: (q) => <span className="font-mono font-bold">{q.items.length}</span>,
+            },
+            {
+              key: 'grandTotal',
+              header: 'الإجمالي',
+              align: 'center',
+              sortable: true,
+              sortValue: (q) => q.grandTotal,
+              exportValue: (q) => q.grandTotal,
+              render: (q) => (
+                <span className="font-black text-slate-900 tabular-nums font-mono">
+                  {q.grandTotal.toLocaleString()} {settings.currency}
+                </span>
+              ),
+            },
+            {
+              key: 'status',
+              header: 'الحالة',
+              exportValue: (q) => (q.status === 'cancelled' ? 'ملغي' : convertedQuoteIds.has(q.id) ? 'تم التحويل لفاتورة' : 'عرض سعر'),
+              render: (q) => {
+                const isConverted = convertedQuoteIds.has(q.id);
+                return q.status === 'cancelled' ? (
+                  <span className="px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold">
+                    ملغي
+                  </span>
+                ) : isConverted ? (
+                  <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                    تم التحويل لفاتورة
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-bold">
+                    عرض سعر (بلا خصم مخزني)
+                  </span>
+                );
+              },
+            },
+            {
+              key: 'actions',
+              header: 'الإجراءات',
+              align: 'center',
+              render: (quote) => {
+                const isConverted = convertedQuoteIds.has(quote.id);
+                return (
+                  <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                    {quote.status !== 'cancelled' && !isConverted && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConvertQuoteTarget(quote);
+                          setConvertWarehouseId(quote.warehouseId || warehouses[0]?.id || 'wh-main');
+                          setConvertCashboxId(cashboxes[0]?.id || 'cb-main');
+                          setConvertPaymentType('cash');
+                          setConvertPaidAtInvoice(quote.grandTotal);
+                          setConvertDiscountTotal(quote.discountTotal || 0);
+                          setConvertNotes(quote.notes || '');
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-blue-900 hover:bg-blue-950 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        <ArrowLeftRight className="w-3.5 h-3.5" />
+                        <span>تحويل لفاتورة بيع</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handlePrint(quote)}
+                      className="p-1.5 rounded-lg text-slate-600 hover:text-blue-900 hover:bg-blue-50 transition-colors cursor-pointer"
+                      title="طباعة عرض السعر"
+                    >
+                      <Printer className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveInvoice(quote)}
+                      className="p-1.5 rounded-lg text-slate-600 hover:text-blue-900 hover:bg-blue-50 transition-colors cursor-pointer"
+                      title="عرض التفاصيل"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                    {quote.status !== 'cancelled' && !isConverted && (
+                      <button
+                        type="button"
+                        onClick={() => setCancelTarget(quote)}
+                        className="p-1.5 rounded-lg text-red-400 hover:text-red-700 hover:bg-red-50 transition-colors cursor-pointer"
+                        title="إلغاء عرض السعر"
+                      >
+                        <XCircle className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                );
+              },
+            },
+          ]}
+        />
       )}
 
       {/* New Invoice Modal */}
@@ -1068,29 +1177,46 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
               </div>
             </div>
 
-            <div className="awlad-table-scroll mb-4">
-            <table className="w-full text-right text-xs">
-              <thead>
-                <tr className="bg-slate-100 font-bold border-b">
-                  <th className="p-2">الصنف</th>
-                  <th className="p-2 text-center">الوحدة</th>
-                  <th className="p-2 text-center">الكمية</th>
-                  <th className="p-2 text-center">السعر</th>
-                  <th className="p-2 text-center">الإجمالي</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {activeInvoice.items.map((it, i) => (
-                  <tr key={i}>
-                    <td className="p-2 font-semibold">{it.productName}</td>
-                    <td className="p-2 text-center">{it.unit}</td>
-                    <td className="p-2 text-center font-bold">{it.quantity}</td>
-                    <td className="p-2 text-center">{it.unitPrice}</td>
-                    <td className="p-2 text-center font-bold text-blue-900">{it.total}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="mb-4">
+              <UnifiedDataTable<InvoiceItem>
+                title="أصناف الفاتورة"
+                data={activeInvoice.items}
+                rowKey={(it, i) => `${it.productId || it.productName}-${i}`}
+                searchable={false}
+                compact
+                defaultPageSize={25}
+                columns={[
+                  {
+                    key: 'productName',
+                    header: 'الصنف',
+                    render: (it) => <span className="font-semibold">{it.productName}</span>,
+                  },
+                  {
+                    key: 'unit',
+                    header: 'الوحدة',
+                    align: 'center',
+                    render: (it) => <span>{it.unit}</span>,
+                  },
+                  {
+                    key: 'quantity',
+                    header: 'الكمية',
+                    align: 'center',
+                    render: (it) => <span className="font-bold font-mono tabular-nums">{it.quantity}</span>,
+                  },
+                  {
+                    key: 'unitPrice',
+                    header: 'السعر',
+                    align: 'center',
+                    render: (it) => <span className="font-mono tabular-nums">{it.unitPrice}</span>,
+                  },
+                  {
+                    key: 'total',
+                    header: 'الإجمالي',
+                    align: 'center',
+                    render: (it) => <span className="font-bold font-mono text-blue-900 tabular-nums">{it.total}</span>,
+                  },
+                ]}
+              />
             </div>
 
             {/* Payments History on this Invoice */}
@@ -1126,32 +1252,46 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   )}
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-[11px] text-right">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-slate-600 font-bold">
-                        <th className="py-1.5 px-2">التاريخ</th>
-                        <th className="py-1.5 px-2">المبلغ</th>
-                        <th className="py-1.5 px-2">طريقة الدفع</th>
-                        <th className="py-1.5 px-2">الخزينة</th>
-                        <th className="py-1.5 px-2">المستخدم</th>
-                        <th className="py-1.5 px-2">ملاحظات</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      {activeInvoice.payments.map((p) => (
-                        <tr key={p.id}>
-                          <td className="py-1.5 px-2 font-mono">{p.date}</td>
-                          <td className="py-1.5 px-2 font-black text-emerald-700">{p.amount.toLocaleString()} {settings.currency}</td>
-                          <td className="py-1.5 px-2">{p.paymentMethod === 'cash' ? 'نقدي' : p.paymentMethod === 'bank' ? 'بنكي' : 'شيك'}</td>
-                          <td className="py-1.5 px-2 text-slate-600">{p.cashboxName}</td>
-                          <td className="py-1.5 px-2 text-slate-500">{p.createdBy}</td>
-                          <td className="py-1.5 px-2 text-slate-500">{p.notes || '-'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <UnifiedDataTable
+                  title="سجل الدفعات"
+                  data={activeInvoice.payments}
+                  rowKey={(p) => p.id}
+                  searchable={false}
+                  compact
+                  defaultPageSize={10}
+                  columns={[
+                    {
+                      key: 'date',
+                      header: 'التاريخ',
+                      render: (p) => <span className="font-mono">{p.date}</span>,
+                    },
+                    {
+                      key: 'amount',
+                      header: 'المبلغ',
+                      render: (p) => <span className="font-black text-emerald-700 font-mono tabular-nums">{p.amount.toLocaleString()} {settings.currency}</span>,
+                    },
+                    {
+                      key: 'method',
+                      header: 'طريقة الدفع',
+                      render: (p) => <span>{p.paymentMethod === 'cash' ? 'نقدي' : p.paymentMethod === 'bank' ? 'بنكي' : 'شيك'}</span>,
+                    },
+                    {
+                      key: 'cashboxName',
+                      header: 'الخزينة',
+                      render: (p) => <span className="text-slate-600">{p.cashboxName}</span>,
+                    },
+                    {
+                      key: 'createdBy',
+                      header: 'المستخدم',
+                      render: (p) => <span className="text-slate-500">{p.createdBy}</span>,
+                    },
+                    {
+                      key: 'notes',
+                      header: 'ملاحظات',
+                      render: (p) => <span className="text-slate-500">{p.notes || '-'}</span>,
+                    },
+                  ]}
+                />
               )}
             </div>
 

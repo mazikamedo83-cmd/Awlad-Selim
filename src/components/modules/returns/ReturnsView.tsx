@@ -10,6 +10,7 @@ import { Modal } from '../../common/Modal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
 import { QuantityInput } from '../../common/QuantityInput';
+import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 
 export interface ReturnsViewProps {
   initialTypeFilter?: 'all' | 'sales_return' | 'purchase_return';
@@ -453,105 +454,141 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
         </button>
       </div>
 
-      {/* Filter and Search */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex-1 min-w-[240px] relative">
-          <input
-            type="text"
-            placeholder="بحث برقم المرتجع، الفاتورة الأصلية، أو الطرف..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 pr-9 pl-3 text-xs focus:bg-white focus:border-blue-600 outline-hidden"
-          />
-          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setReturnTypeFilter('all')}
-            className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
-              returnTypeFilter === 'all' ? 'bg-blue-900 text-white' : 'bg-slate-100 text-slate-700'
-            }`}
-          >
-            الكل
-          </button>
-          <button
-            onClick={() => setReturnTypeFilter('sales_return')}
-            className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
-              returnTypeFilter === 'sales_return' ? 'bg-blue-900 text-white' : 'bg-slate-100 text-slate-700'
-            }`}
-          >
-            مرتجع مبيعات
-          </button>
-          <button
-            onClick={() => setReturnTypeFilter('purchase_return')}
-            className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
-              returnTypeFilter === 'purchase_return' ? 'bg-blue-900 text-white' : 'bg-slate-100 text-slate-700'
-            }`}
-          >
-            مرتجع مشتريات
-          </button>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden awlad-table-scroll">
-        <table className="w-full text-right text-xs">
-          <thead>
-            <tr className="bg-slate-50 font-bold border-b text-slate-700">
-              <th className="p-3.5">رقم المرتجع</th>
-              <th className="p-3.5">النوع</th>
-              <th className="p-3.5">الفاتورة الأصلية</th>
-              <th className="p-3.5">التاريخ</th>
-              <th className="p-3.5">العميل / المورد</th>
-              <th className="p-3.5">المستودع</th>
-              <th className="p-3.5 text-center">القيمة الإجمالية</th>
-              <th className="p-3.5">طريقة التسوية</th>
-              <th className="p-3.5 text-center">طباعة</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filteredReturns.length === 0 ? (
-              <tr>
-                <td colSpan={9} className="p-8 text-center text-slate-400">
-                  لا توجد مرتجعات مسجلة حتى الآن
-                </td>
-              </tr>
-            ) : (
-              filteredReturns.map(ret => (
-                <tr key={ret.id} className="hover:bg-slate-50">
-                  <td className="p-3.5 font-mono font-bold text-blue-900">{ret.returnNumber}</td>
-                  <td className="p-3.5">
-                    {ret.type === 'sales_return' ? (
-                      <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 font-bold text-[10px]">مرتجع مبيعات</span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 font-bold text-[10px]">مرتجع مشتريات</span>
-                    )}
-                  </td>
-                  <td className="p-3.5 font-mono text-slate-700">{ret.originalInvoiceNumber}</td>
-                  <td className="p-3.5 font-mono text-slate-600">{ret.date}</td>
-                  <td className="p-3.5 font-bold text-slate-800">{ret.partyName}</td>
-                  <td className="p-3.5 text-slate-600">{ret.warehouseName}</td>
-                  <td className="p-3.5 text-center font-black text-slate-900">{ret.grandTotal.toLocaleString()} {settings.currency}</td>
-                  <td className="p-3.5">
-                    <span className="text-[11px] font-semibold text-slate-700">
-                      {ret.refundType === 'balance' ? 'خصم من الرصيد' : 'رد نقدي من الخزينة'}
-                    </span>
-                  </td>
-                  <td className="p-3.5 text-center">
-                    <button
-                      onClick={() => handlePrintReturn(ret)}
-                      className="p-1.5 text-slate-500 hover:text-blue-900"
-                    >
-                      <Printer className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      {/* Unified Returns Table */}
+      <UnifiedDataTable<InvoiceReturn>
+        title={`سجل مرتجعات المبيعات والمشتريات (${filteredReturns.length})`}
+        data={filteredReturns}
+        rowKey={(ret) => ret.id}
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchPlaceholder="بحث برقم المرتجع، الفاتورة الأصلية، أو الطرف..."
+        exportFilename="AWLAD_SELIM_Returns"
+        pdfTitle="سجل مرتجعات المبيعات والمشتريات"
+        emptyTitle="لا توجد مرتجعات مسجلة حتى الآن"
+        toolbarFilters={
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setReturnTypeFilter('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                returnTypeFilter === 'all' ? 'bg-blue-900 text-white' : 'bg-white border border-slate-300 text-slate-700'
+              }`}
+            >
+              الكل
+            </button>
+            <button
+              type="button"
+              onClick={() => setReturnTypeFilter('sales_return')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                returnTypeFilter === 'sales_return' ? 'bg-blue-900 text-white' : 'bg-white border border-slate-300 text-slate-700'
+              }`}
+            >
+              مرتجع مبيعات
+            </button>
+            <button
+              type="button"
+              onClick={() => setReturnTypeFilter('purchase_return')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                returnTypeFilter === 'purchase_return' ? 'bg-blue-900 text-white' : 'bg-white border border-slate-300 text-slate-700'
+              }`}
+            >
+              مرتجع مشتريات
+            </button>
+          </div>
+        }
+        columns={[
+          {
+            key: 'returnNumber',
+            header: 'رقم المرتجع',
+            sortValue: (r) => r.returnNumber,
+            exportValue: (r) => r.returnNumber,
+            render: (r) => <span className="font-mono font-bold text-blue-900">{r.returnNumber}</span>,
+          },
+          {
+            key: 'type',
+            header: 'النوع',
+            sortValue: (r) => r.type,
+            exportValue: (r) => (r.type === 'sales_return' ? 'مرتجع مبيعات' : 'مرتجع مشتريات'),
+            render: (r) =>
+              r.type === 'sales_return' ? (
+                <span className="px-2 py-0.5 rounded border border-blue-200 bg-blue-50 text-blue-800 font-bold text-[10px]">
+                  مرتجع مبيعات
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded border border-purple-200 bg-purple-50 text-purple-800 font-bold text-[10px]">
+                  مرتجع مشتريات
+                </span>
+              ),
+          },
+          {
+            key: 'originalInvoiceNumber',
+            header: 'الفاتورة الأصلية',
+            sortValue: (r) => r.originalInvoiceNumber,
+            exportValue: (r) => r.originalInvoiceNumber,
+            render: (r) => <span className="font-mono text-slate-700">{r.originalInvoiceNumber}</span>,
+          },
+          {
+            key: 'date',
+            header: 'التاريخ',
+            sortValue: (r) => r.date,
+            exportValue: (r) => r.date,
+            render: (r) => <span className="font-mono tabular-nums text-slate-600">{r.date}</span>,
+          },
+          {
+            key: 'partyName',
+            header: 'العميل / المورد',
+            sortValue: (r) => r.partyName,
+            exportValue: (r) => r.partyName,
+            render: (r) => <span className="font-bold text-slate-800">{r.partyName}</span>,
+          },
+          {
+            key: 'warehouseName',
+            header: 'المستودع',
+            sortValue: (r) => r.warehouseName,
+            exportValue: (r) => r.warehouseName,
+            render: (r) => <span className="text-slate-600">{r.warehouseName}</span>,
+          },
+          {
+            key: 'grandTotal',
+            header: 'القيمة الإجمالية',
+            align: 'center',
+            sortValue: (r) => r.grandTotal,
+            exportValue: (r) => r.grandTotal,
+            render: (r) => (
+              <span className="font-mono tabular-nums font-black text-slate-900">
+                {r.grandTotal.toLocaleString()} {settings.currency}
+              </span>
+            ),
+          },
+          {
+            key: 'refundType',
+            header: 'طريقة التسوية',
+            sortValue: (r) => r.refundType,
+            exportValue: (r) => (r.refundType === 'balance' ? 'خصم من الرصيد' : 'رد نقدي من الخزينة'),
+            render: (r) => (
+              <span className="text-[11px] font-semibold text-slate-700">
+                {r.refundType === 'balance' ? 'خصم من الرصيد' : 'رد نقدي من الخزينة'}
+              </span>
+            ),
+          },
+          {
+            key: 'actions',
+            header: 'طباعة',
+            align: 'center',
+            sortable: false,
+            render: (r) => (
+              <button
+                type="button"
+                onClick={() => handlePrintReturn(r)}
+                className="p-1.5 text-slate-500 hover:text-blue-900 cursor-pointer"
+                title="طباعة سند المرتجع"
+              >
+                <Printer className="w-4 h-4" />
+              </button>
+            ),
+          },
+        ]}
+      />
 
       {/* Sales Return Requests Approval Queue (for Admin / Sales / Treasury Managers) */}
       {canManageSalesReturnRequests && returnTypeFilter !== 'purchase_return' && (
@@ -599,120 +636,154 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
             </div>
           </div>
 
-          {filteredSrRequests.length === 0 ? (
-            <div className="p-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-slate-200">
-              لا توجد طلبات مرتجع مبيعات في هذا التصنيف.
-            </div>
-          ) : (
-            <div className="awlad-table-scroll border border-slate-200 rounded-xl overflow-hidden">
-              <table className="w-full text-right text-xs">
-                <thead>
-                  <tr className="bg-slate-50 font-bold border-b text-slate-700">
-                    <th className="p-3">رقم الطلب</th>
-                    <th className="p-3">الفاتورة الأصلية</th>
-                    <th className="p-3">المندوب / مقدم الطلب</th>
-                    <th className="p-3">العميل والمستودع</th>
-                    <th className="p-3">الأصناف</th>
-                    <th className="p-3 text-center">الإجمالي</th>
-                    <th className="p-3">الحالة</th>
-                    <th className="p-3 text-center">الإجراء</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredSrRequests.map((req) => (
-                    <tr key={req.id} className="hover:bg-slate-50 align-top">
-                      <td className="p-3 font-mono font-black text-amber-900">
-                        {req.requestNumber}
-                        <span className="block text-[10px] text-slate-500 font-normal">{req.date}</span>
-                      </td>
-                      <td className="p-3 font-mono font-bold text-slate-800">{req.originalInvoiceNumber}</td>
-                      <td className="p-3 font-bold text-slate-800">
-                        {req.representativeName || req.requestedByName}
-                        <span className="block text-[10px] text-slate-500 font-normal">بواسطة: {req.requestedByName}</span>
-                      </td>
-                      <td className="p-3">
-                        <span className="font-bold text-slate-800 block">{req.customerName}</span>
-                        <span className="text-[10px] text-slate-500">{req.warehouseName}</span>
-                      </td>
-                      <td className="p-3">
-                        <div className="space-y-0.5">
-                          {(req.items || []).map((it, i) => (
-                            <div key={i} className="text-[11px] text-slate-700">
-                              <span className="font-bold">{it.productName}</span> ({it.quantity} {it.unit} × {it.unitPrice})
-                            </div>
-                          ))}
+          <UnifiedDataTable<SalesReturnRequest>
+            compact
+            searchable={false}
+            data={filteredSrRequests}
+            rowKey={(req) => req.id}
+            exportFilename="AWLAD_SELIM_SalesReturnRequests"
+            emptyTitle="لا توجد طلبات مرتجع مبيعات في هذا التصنيف"
+            columns={[
+              {
+                key: 'requestNumber',
+                header: 'رقم الطلب',
+                sortValue: (r) => r.requestNumber,
+                exportValue: (r) => r.requestNumber,
+                render: (r) => (
+                  <div>
+                    <span className="font-mono font-black text-amber-900 block">{r.requestNumber}</span>
+                    <span className="text-[10px] font-mono tabular-nums text-slate-500">{r.date}</span>
+                  </div>
+                ),
+              },
+              {
+                key: 'originalInvoiceNumber',
+                header: 'الفاتورة الأصلية',
+                sortValue: (r) => r.originalInvoiceNumber,
+                exportValue: (r) => r.originalInvoiceNumber,
+                render: (r) => <span className="font-mono font-bold text-slate-800">{r.originalInvoiceNumber}</span>,
+              },
+              {
+                key: 'requestedByName',
+                header: 'المندوب / مقدم الطلب',
+                sortValue: (r) => r.representativeName || r.requestedByName,
+                exportValue: (r) => r.representativeName || r.requestedByName,
+                render: (r) => (
+                  <div>
+                    <span className="font-bold text-slate-800 block">{r.representativeName || r.requestedByName}</span>
+                    <span className="text-[10px] text-slate-500">بواسطة: {r.requestedByName}</span>
+                  </div>
+                ),
+              },
+              {
+                key: 'customerName',
+                header: 'العميل والمستودع',
+                sortValue: (r) => r.customerName,
+                exportValue: (r) => `${r.customerName} (${r.warehouseName})`,
+                render: (r) => (
+                  <div>
+                    <span className="font-bold text-slate-800 block">{r.customerName}</span>
+                    <span className="text-[10px] text-slate-500">{r.warehouseName}</span>
+                  </div>
+                ),
+              },
+              {
+                key: 'items',
+                header: 'الأصناف',
+                render: (r) => (
+                  <div>
+                    <div className="space-y-0.5">
+                      {(r.items || []).map((it, i) => (
+                        <div key={i} className="text-[11px] text-slate-700">
+                          <span className="font-bold">{it.productName}</span> ({it.quantity} {it.unit} × {it.unitPrice})
                         </div>
-                        <p className="text-[10px] text-slate-500 mt-1">السبب: {req.reason}</p>
-                      </td>
-                      <td className="p-3 text-center font-mono font-black text-slate-900 whitespace-nowrap">
-                        {Number(req.grandTotal || 0).toLocaleString()} {settings.currency}
-                        <span className="block text-[10px] text-slate-500 font-normal">
-                          {req.refundType === 'cash' ? 'طلب رد نقدي' : 'طلب خصم من الرصيد'}
-                        </span>
-                      </td>
-                      <td className="p-3 whitespace-nowrap">
-                        {req.status === 'pending' && (
-                          <span className="px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-900 font-bold text-[10px]">
-                            قيد الانتظار
-                          </span>
-                        )}
-                        {req.status === 'approved' && (
-                          <div className="space-y-0.5">
-                            <span className="px-2 py-0.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-900 font-bold text-[10px] inline-block">
-                              معتمد
-                            </span>
-                            {req.approvedReturnNumber && (
-                              <span className="block font-mono text-[10px] text-emerald-800">{req.approvedReturnNumber}</span>
-                            )}
-                          </div>
-                        )}
-                        {req.status === 'rejected' && (
-                          <div className="space-y-0.5">
-                            <span className="px-2 py-0.5 rounded border border-red-200 bg-red-50 text-red-900 font-bold text-[10px] inline-block">
-                              مرفوض
-                            </span>
-                            {req.rejectionReason && (
-                              <span className="block text-[10px] text-red-700 max-w-[160px]">{req.rejectionReason}</span>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                      <td className="p-3 text-center whitespace-nowrap">
-                        {req.status === 'pending' ? (
-                          <div className="flex items-center justify-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenApproveSalesReq(req)}
-                              className="px-2.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold inline-flex items-center gap-1 cursor-pointer"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>اعتماد</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setRejectingSalesReq(req);
-                                setRejectSalesReason('');
-                                setRejectSalesError(null);
-                              }}
-                              className="px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 font-bold inline-flex items-center gap-1 cursor-pointer"
-                            >
-                              <XCircle className="w-3.5 h-3.5" />
-                              <span>رفض</span>
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-[11px] text-slate-500 font-semibold">
-                            {req.reviewedByName || 'تمت المراجعة'}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1">السبب: {r.reason}</p>
+                  </div>
+                ),
+              },
+              {
+                key: 'grandTotal',
+                header: 'الإجمالي',
+                align: 'center',
+                sortValue: (r) => Number(r.grandTotal || 0),
+                exportValue: (r) => Number(r.grandTotal || 0),
+                render: (r) => (
+                  <div className="font-mono tabular-nums font-black text-slate-900 whitespace-nowrap">
+                    {Number(r.grandTotal || 0).toLocaleString()} {settings.currency}
+                    <span className="block text-[10px] text-slate-500 font-normal">
+                      {r.refundType === 'cash' ? 'طلب رد نقدي' : 'طلب خصم من الرصيد'}
+                    </span>
+                  </div>
+                ),
+              },
+              {
+                key: 'status',
+                header: 'الحالة',
+                align: 'center',
+                sortValue: (r) => r.status,
+                exportValue: (r) => (r.status === 'pending' ? 'قيد الانتظار' : r.status === 'approved' ? 'معتمد' : 'مرفوض'),
+                render: (r) =>
+                  r.status === 'pending' ? (
+                    <span className="px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-900 font-bold text-[10px]">
+                      قيد الانتظار
+                    </span>
+                  ) : r.status === 'approved' ? (
+                    <div className="space-y-0.5">
+                      <span className="px-2 py-0.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-900 font-bold text-[10px] inline-block">
+                        معتمد
+                      </span>
+                      {r.approvedReturnNumber && (
+                        <span className="block font-mono text-[10px] text-emerald-800">{r.approvedReturnNumber}</span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-0.5">
+                      <span className="px-2 py-0.5 rounded border border-red-200 bg-red-50 text-red-900 font-bold text-[10px] inline-block">
+                        مرفوض
+                      </span>
+                      {r.rejectionReason && (
+                        <span className="block text-[10px] text-red-700 max-w-[160px]">{r.rejectionReason}</span>
+                      )}
+                    </div>
+                  ),
+              },
+              {
+                key: 'actions',
+                header: 'الإجراءات',
+                align: 'center',
+                sortable: false,
+                render: (r) =>
+                  r.status === 'pending' ? (
+                    <div className="flex items-center justify-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenApproveSalesReq(r)}
+                        className="px-2.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>اعتماد</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRejectingSalesReq(r);
+                          setRejectSalesReason('');
+                          setRejectSalesError(null);
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 font-bold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <XCircle className="w-3.5 h-3.5" />
+                        <span>رفض</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-[11px] text-slate-500 font-semibold">{r.reviewedByName || 'تمت المراجعة'}</span>
+                  ),
+              },
+            ]}
+          />
         </div>
       )}
 
@@ -777,120 +848,154 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
             </div>
           )}
 
-          {filteredPrRequests.length === 0 ? (
-            <div className="p-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-slate-200">
-              لا توجد طلبات مرتجع مشتريات في هذا التصنيف.
-            </div>
-          ) : (
-            <div className="awlad-table-scroll border border-slate-200 rounded-xl overflow-hidden">
-              <table className="w-full text-right text-xs">
-                <thead>
-                  <tr className="bg-slate-50 font-bold border-b text-slate-700">
-                    <th className="p-3">رقم الطلب</th>
-                    <th className="p-3">الفاتورة الأصلية</th>
-                    <th className="p-3">المندوب / مقدم الطلب</th>
-                    <th className="p-3">المورد والمستودع</th>
-                    <th className="p-3">الأصناف</th>
-                    <th className="p-3 text-center">الإجمالي</th>
-                    <th className="p-3">الحالة</th>
-                    <th className="p-3 text-center">الإجراء</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredPrRequests.map((req) => (
-                    <tr key={req.id} className="hover:bg-slate-50 align-top">
-                      <td className="p-3 font-mono font-black text-indigo-900">
-                        {req.requestNumber}
-                        <span className="block text-[10px] text-slate-500 font-normal">{req.date}</span>
-                      </td>
-                      <td className="p-3 font-mono font-bold text-slate-800">{req.originalInvoiceNumber}</td>
-                      <td className="p-3 font-bold text-slate-800">
-                        {req.representativeName || req.requestedByName}
-                        <span className="block text-[10px] text-slate-500 font-normal">بواسطة: {req.requestedByName}</span>
-                      </td>
-                      <td className="p-3">
-                        <span className="font-bold text-slate-800 block">{req.supplierName}</span>
-                        <span className="text-[10px] text-slate-500">{req.warehouseName}</span>
-                      </td>
-                      <td className="p-3">
-                        <div className="space-y-0.5">
-                          {(req.items || []).map((it, i) => (
-                            <div key={i} className="text-[11px] text-slate-700">
-                              <span className="font-bold">{it.productName}</span> ({it.quantity} {it.unit} × {it.unitPrice})
-                            </div>
-                          ))}
+          <UnifiedDataTable<PurchaseReturnRequest>
+            compact
+            searchable={false}
+            data={filteredPrRequests}
+            rowKey={(req) => req.id}
+            exportFilename="AWLAD_SELIM_PurchaseReturnRequests"
+            emptyTitle="لا توجد طلبات مرتجع مشتريات في هذا التصنيف"
+            columns={[
+              {
+                key: 'requestNumber',
+                header: 'رقم الطلب',
+                sortValue: (r) => r.requestNumber,
+                exportValue: (r) => r.requestNumber,
+                render: (r) => (
+                  <div>
+                    <span className="font-mono font-black text-indigo-900 block">{r.requestNumber}</span>
+                    <span className="text-[10px] font-mono tabular-nums text-slate-500">{r.date}</span>
+                  </div>
+                ),
+              },
+              {
+                key: 'originalInvoiceNumber',
+                header: 'الفاتورة الأصلية',
+                sortValue: (r) => r.originalInvoiceNumber,
+                exportValue: (r) => r.originalInvoiceNumber,
+                render: (r) => <span className="font-mono font-bold text-slate-800">{r.originalInvoiceNumber}</span>,
+              },
+              {
+                key: 'requestedByName',
+                header: 'المندوب / مقدم الطلب',
+                sortValue: (r) => r.representativeName || r.requestedByName,
+                exportValue: (r) => r.representativeName || r.requestedByName,
+                render: (r) => (
+                  <div>
+                    <span className="font-bold text-slate-800 block">{r.representativeName || r.requestedByName}</span>
+                    <span className="text-[10px] text-slate-500">بواسطة: {r.requestedByName}</span>
+                  </div>
+                ),
+              },
+              {
+                key: 'supplierName',
+                header: 'المورد والمستودع',
+                sortValue: (r) => r.supplierName,
+                exportValue: (r) => `${r.supplierName} (${r.warehouseName})`,
+                render: (r) => (
+                  <div>
+                    <span className="font-bold text-slate-800 block">{r.supplierName}</span>
+                    <span className="text-[10px] text-slate-500">{r.warehouseName}</span>
+                  </div>
+                ),
+              },
+              {
+                key: 'items',
+                header: 'الأصناف',
+                render: (r) => (
+                  <div>
+                    <div className="space-y-0.5">
+                      {(r.items || []).map((it, i) => (
+                        <div key={i} className="text-[11px] text-slate-700">
+                          <span className="font-bold">{it.productName}</span> ({it.quantity} {it.unit} × {it.unitPrice})
                         </div>
-                        <p className="text-[10px] text-slate-500 mt-1">السبب: {req.reason}</p>
-                      </td>
-                      <td className="p-3 text-center font-mono font-black text-slate-900 whitespace-nowrap">
-                        {Number(req.grandTotal || 0).toLocaleString()} {settings.currency}
-                        <span className="block text-[10px] text-slate-500 font-normal">
-                          {req.refundType === 'cash' ? 'مقترح: نقدي' : 'مقترح: خصم رصيد'}
-                        </span>
-                      </td>
-                      <td className="p-3 whitespace-nowrap">
-                        {req.status === 'pending' && (
-                          <span className="px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-900 font-bold text-[10px]">
-                            قيد الانتظار
-                          </span>
-                        )}
-                        {req.status === 'approved' && (
-                          <div className="space-y-0.5">
-                            <span className="px-2 py-0.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-900 font-bold text-[10px] inline-block">
-                              معتمد
-                            </span>
-                            {req.approvedReturnNumber && (
-                              <span className="block font-mono text-[10px] text-emerald-800">{req.approvedReturnNumber}</span>
-                            )}
-                          </div>
-                        )}
-                        {req.status === 'rejected' && (
-                          <div className="space-y-0.5">
-                            <span className="px-2 py-0.5 rounded border border-red-200 bg-red-50 text-red-900 font-bold text-[10px] inline-block">
-                              مرفوض
-                            </span>
-                            {req.rejectionReason && (
-                              <span className="block text-[10px] text-red-700 max-w-[160px]">{req.rejectionReason}</span>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                      <td className="p-3 text-center whitespace-nowrap">
-                        {req.status === 'pending' ? (
-                          <div className="flex items-center justify-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenApproveReq(req)}
-                              className="px-2.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold inline-flex items-center gap-1 cursor-pointer"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>اعتماد</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setRejectingReq(req);
-                                setRejectReason('');
-                                setRejectError(null);
-                              }}
-                              className="px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 font-bold inline-flex items-center gap-1 cursor-pointer"
-                            >
-                              <XCircle className="w-3.5 h-3.5" />
-                              <span>رفض</span>
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-[11px] text-slate-500 font-semibold">
-                            {req.reviewedByName || 'تمت المراجعة'}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1">السبب: {r.reason}</p>
+                  </div>
+                ),
+              },
+              {
+                key: 'grandTotal',
+                header: 'الإجمالي',
+                align: 'center',
+                sortValue: (r) => Number(r.grandTotal || 0),
+                exportValue: (r) => Number(r.grandTotal || 0),
+                render: (r) => (
+                  <div className="font-mono tabular-nums font-black text-slate-900 whitespace-nowrap">
+                    {Number(r.grandTotal || 0).toLocaleString()} {settings.currency}
+                    <span className="block text-[10px] text-slate-500 font-normal">
+                      {r.refundType === 'cash' ? 'مقترح: نقدي' : 'مقترح: خصم رصيد'}
+                    </span>
+                  </div>
+                ),
+              },
+              {
+                key: 'status',
+                header: 'الحالة',
+                align: 'center',
+                sortValue: (r) => r.status,
+                exportValue: (r) => (r.status === 'pending' ? 'قيد الانتظار' : r.status === 'approved' ? 'معتمد' : 'مرفوض'),
+                render: (r) =>
+                  r.status === 'pending' ? (
+                    <span className="px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-900 font-bold text-[10px]">
+                      قيد الانتظار
+                    </span>
+                  ) : r.status === 'approved' ? (
+                    <div className="space-y-0.5">
+                      <span className="px-2 py-0.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-900 font-bold text-[10px] inline-block">
+                        معتمد
+                      </span>
+                      {r.approvedReturnNumber && (
+                        <span className="block font-mono text-[10px] text-emerald-800">{r.approvedReturnNumber}</span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-0.5">
+                      <span className="px-2 py-0.5 rounded border border-red-200 bg-red-50 text-red-900 font-bold text-[10px] inline-block">
+                        مرفوض
+                      </span>
+                      {r.rejectionReason && (
+                        <span className="block text-[10px] text-red-700 max-w-[160px]">{r.rejectionReason}</span>
+                      )}
+                    </div>
+                  ),
+              },
+              {
+                key: 'actions',
+                header: 'الإجراءات',
+                align: 'center',
+                sortable: false,
+                render: (r) =>
+                  r.status === 'pending' ? (
+                    <div className="flex items-center justify-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenApproveReq(r)}
+                        className="px-2.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>اعتماد</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRejectingReq(r);
+                          setRejectReason('');
+                          setRejectError(null);
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 font-bold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <XCircle className="w-3.5 h-3.5" />
+                        <span>رفض</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-[11px] text-slate-500 font-semibold">{r.reviewedByName || 'تمت المراجعة'}</span>
+                  ),
+              },
+            ]}
+          />
         </div>
       )}
 

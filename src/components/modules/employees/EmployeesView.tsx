@@ -6,6 +6,7 @@ import { useData } from '../../../context/DataContext';
 import { Employee } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
+import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 
 export interface EmployeesViewProps {
   initialTab?: 'employees' | 'attendance' | 'advances' | 'payrolls';
@@ -500,123 +501,183 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
 
       {/* Employees Tab */}
       {activeTab === 'employees' && (
-        employees.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-400">
-            <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-            <p className="text-sm font-bold text-slate-600">لا يوجد موظفون مسجلون حالياً</p>
-            <p className="text-xs text-slate-400 mt-1">انقر على زر "+ إضافة موظف" للبدء بتسجيل بيانات الكادر الوظيفي ومسيرات الرواتب.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {employees.map(emp => {
-              const unsettledAdv = advancesDeductions
-                .filter((a) => a.employeeId === emp.id && a.type === 'advance' && !a.isSettled)
-                .reduce((s, a) => s + a.amount, 0);
-              const linkedUsr = users.find((u) => u.id === emp.userId || u.employeeId === emp.id);
-              const linkedRep = representatives.find(
-                (r) =>
-                  (emp.identityId && r.identityId === emp.identityId) ||
-                  (linkedUsr && r.userId === linkedUsr.id)
-              );
-              return (
-                <div key={emp.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-xs space-y-3">
-                  <div className="flex justify-between items-start gap-2">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="font-mono text-[10px] font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded">
-                          {emp.code}
+        <UnifiedDataTable<Employee>
+          title={`سجل الموظفين (${employees.length})`}
+          data={employees}
+          rowKey={(emp) => emp.id}
+          searchPlaceholder="بحث باسم الموظف أو الكود أو المسمى الوظيفي أو الهاتف..."
+          exportFilename="AWLAD_SELIM_Employees"
+          pdfTitle="قائمة الموظفين والكادر الوظيفي"
+          emptyTitle="لا يوجد موظفون مسجلون حالياً"
+          emptySubtitle={'انقر على زر "+ إضافة موظف" للبدء بتسجيل بيانات الكادر الوظيفي ومسيرات الرواتب.'}
+          columns={[
+            {
+              key: 'code',
+              header: 'الكود',
+              sortValue: (e) => e.code,
+              exportValue: (e) => e.code,
+              render: (emp) => (
+                <span className="font-mono text-[11px] font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 whitespace-nowrap">
+                  {emp.code}
+                </span>
+              ),
+            },
+            {
+              key: 'name',
+              header: 'الاسم والربط الوظيفي',
+              sortValue: (e) => e.name,
+              exportValue: (e) => e.name,
+              render: (emp) => {
+                const linkedUsr = users.find((u) => u.id === emp.userId || u.employeeId === emp.id);
+                const linkedRep = representatives.find(
+                  (r) =>
+                    (emp.identityId && r.identityId === emp.identityId) ||
+                    (linkedUsr && r.userId === linkedUsr.id)
+                );
+                return (
+                  <div className="space-y-0.5">
+                    <div className="font-black text-slate-900">{emp.name}</div>
+                    <div className="flex flex-wrap items-center gap-1">
+                      {linkedUsr && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200">
+                          @{linkedUsr.username}
                         </span>
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                            emp.status === 'active'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}
-                        >
-                          {emp.status === 'active' ? 'نشط' : 'موقوف'}
+                      )}
+                      {linkedRep && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-800 border border-cyan-200">
+                          مندوب ميداني
                         </span>
-                        {linkedUsr && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-800">
-                            مستخدم: @{linkedUsr.username}
-                          </span>
-                        )}
-                        {linkedRep && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-cyan-50 text-cyan-800">
-                            مندوب ميداني
-                          </span>
-                        )}
-                      </div>
-                      <h3 className="text-sm font-black text-slate-900 mt-1.5">{emp.name}</h3>
-                      <p className="text-slate-500">{emp.jobTitle} - {emp.department}</p>
-                      {emp.phone && <p className="font-mono text-[11px] text-slate-500 mt-0.5">{emp.phone}</p>}
-                      {emp.identityId && (
-                        <p className="font-mono text-[10px] text-slate-400 mt-0.5">هوية موحدة: {emp.identityId}</p>
                       )}
                     </div>
-
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => openEditEmployeeModal(emp)}
-                        title="تعديل بيانات الموظف"
-                        className="p-1.5 rounded-lg text-slate-500 hover:text-blue-900 hover:bg-blue-50 cursor-pointer"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busyEmpActionId === emp.id}
-                        onClick={() => handleToggleEmployeeStatus(emp)}
-                        title={emp.status === 'active' ? 'إيقاف الموظف' : 'تفعيل الموظف'}
-                        className={`p-1.5 rounded-lg cursor-pointer disabled:opacity-40 ${
-                          emp.status === 'active'
-                            ? 'text-red-500 hover:bg-red-50'
-                            : 'text-emerald-600 hover:bg-emerald-50'
-                        }`}
-                      >
-                        {emp.status === 'active' ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
-                      </button>
-                    </div>
                   </div>
-
-                  <div className="p-3 bg-slate-50 rounded-xl space-y-1">
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-600 font-bold">الراتب الأساسي:</span>
-                      <span className="font-mono font-black text-blue-950 text-sm">
-                        {emp.basicSalary.toLocaleString()} {settings.currency}
-                      </span>
-                    </div>
-                    {unsettledAdv > 0 && (
-                      <div className="flex justify-between items-center text-[11px]">
-                        <span className="text-amber-700 font-bold">سلف قائمة غير مسددة:</span>
-                        <span className="font-mono font-bold text-amber-800">{unsettledAdv.toLocaleString()} {settings.currency}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex gap-2 pt-2 border-t text-[11px]">
-                    <button
-                      type="button"
-                      disabled={emp.status !== 'active' || busyEmpActionId === emp.id}
-                      onClick={() => handleQuickAttendance(emp.id, 'present')}
-                      className="flex-1 py-1.5 bg-emerald-50 text-emerald-800 font-bold rounded-lg hover:bg-emerald-100 disabled:opacity-40 cursor-pointer"
-                    >
-                      ✓ تسجيل حضور
-                    </button>
-                    <button
-                      type="button"
-                      disabled={emp.status !== 'active' || busyEmpActionId === emp.id}
-                      onClick={() => handleQuickAttendance(emp.id, 'absent')}
-                      className="flex-1 py-1.5 bg-red-50 text-red-800 font-bold rounded-lg hover:bg-red-100 disabled:opacity-40 cursor-pointer"
-                    >
-                      ✗ تسجيل غياب
-                    </button>
-                  </div>
+                );
+              },
+            },
+            {
+              key: 'jobTitle',
+              header: 'المسمى والقسم',
+              sortValue: (e) => `${e.jobTitle} ${e.department}`,
+              exportValue: (e) => `${e.jobTitle} - ${e.department}`,
+              render: (emp) => (
+                <div>
+                  <div className="font-bold text-slate-800">{emp.jobTitle || '—'}</div>
+                  <div className="text-[11px] text-slate-500">{emp.department || '—'}</div>
                 </div>
-              );
-            })}
-          </div>
-        )
+              ),
+            },
+            {
+              key: 'phone',
+              header: 'الهاتف',
+              sortValue: (e) => e.phone || '',
+              exportValue: (e) => e.phone || '',
+              render: (emp) => (
+                <span className="font-mono tabular-nums text-slate-600" dir="ltr">
+                  {emp.phone || '—'}
+                </span>
+              ),
+            },
+            {
+              key: 'basicSalary',
+              header: 'الراتب الأساسي',
+              align: 'center',
+              sortValue: (e) => e.basicSalary,
+              exportValue: (e) => e.basicSalary,
+              render: (emp) => (
+                <span className="font-mono tabular-nums font-black text-blue-950">
+                  {emp.basicSalary.toLocaleString()} {settings.currency}
+                </span>
+              ),
+            },
+            {
+              key: 'unsettledAdv',
+              header: 'سلف قائمة',
+              align: 'center',
+              sortValue: (emp) =>
+                advancesDeductions
+                  .filter((a) => a.employeeId === emp.id && a.type === 'advance' && !a.isSettled)
+                  .reduce((s, a) => s + a.amount, 0),
+              exportValue: (emp) =>
+                advancesDeductions
+                  .filter((a) => a.employeeId === emp.id && a.type === 'advance' && !a.isSettled)
+                  .reduce((s, a) => s + a.amount, 0),
+              render: (emp) => {
+                const unsettledAdv = advancesDeductions
+                  .filter((a) => a.employeeId === emp.id && a.type === 'advance' && !a.isSettled)
+                  .reduce((s, a) => s + a.amount, 0);
+                return unsettledAdv > 0 ? (
+                  <span className="font-mono tabular-nums font-bold text-amber-800">
+                    {unsettledAdv.toLocaleString()} {settings.currency}
+                  </span>
+                ) : (
+                  <span className="text-slate-400">—</span>
+                );
+              },
+            },
+            {
+              key: 'status',
+              header: 'الحالة',
+              align: 'center',
+              sortValue: (e) => e.status,
+              exportValue: (e) => (e.status === 'active' ? 'نشط' : 'موقوف'),
+              render: (emp) => (
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                    emp.status === 'active'
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : 'bg-red-50 text-red-800 border-red-200'
+                  }`}
+                >
+                  {emp.status === 'active' ? 'نشط' : 'موقوف'}
+                </span>
+              ),
+            },
+            {
+              key: 'actions',
+              header: 'الإجراءات',
+              align: 'center',
+              sortable: false,
+              render: (emp) => (
+                <div className="flex items-center justify-center gap-1 flex-wrap">
+                  <button
+                    type="button"
+                    disabled={emp.status !== 'active' || busyEmpActionId === emp.id}
+                    onClick={() => handleQuickAttendance(emp.id, 'present')}
+                    className="px-2 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold rounded-lg hover:bg-emerald-100 disabled:opacity-40 text-[11px] whitespace-nowrap cursor-pointer"
+                  >
+                    ✓ حضور
+                  </button>
+                  <button
+                    type="button"
+                    disabled={emp.status !== 'active' || busyEmpActionId === emp.id}
+                    onClick={() => handleQuickAttendance(emp.id, 'absent')}
+                    className="px-2 py-1 bg-red-50 text-red-800 border border-red-200 font-bold rounded-lg hover:bg-red-100 disabled:opacity-40 text-[11px] whitespace-nowrap cursor-pointer"
+                  >
+                    ✗ غياب
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openEditEmployeeModal(emp)}
+                    title="تعديل بيانات الموظف"
+                    className="p-1.5 rounded-lg text-slate-500 hover:text-blue-900 hover:bg-blue-50 cursor-pointer"
+                  >
+                    <Edit className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busyEmpActionId === emp.id}
+                    onClick={() => handleToggleEmployeeStatus(emp)}
+                    title={emp.status === 'active' ? 'إيقاف الموظف' : 'تفعيل الموظف'}
+                    className={`p-1.5 rounded-lg cursor-pointer disabled:opacity-40 ${
+                      emp.status === 'active' ? 'text-red-500 hover:bg-red-50' : 'text-emerald-600 hover:bg-emerald-50'
+                    }`}
+                  >
+                    {emp.status === 'active' ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+                  </button>
+                </div>
+              ),
+            },
+          ]}
+        />
       )}
 
       {/* Attendance Tab */}
@@ -712,167 +773,263 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
             </div>
           </form>
 
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden awlad-table-scroll">
-            <table className="w-full text-right text-xs">
-              <thead>
-                <tr className="bg-slate-50 font-bold border-b text-slate-700">
-                  <th className="p-3">التاريخ</th>
-                  <th className="p-3">اسم الموظف</th>
-                  <th className="p-3">الحالة</th>
-                  <th className="p-3">الحضور</th>
-                  <th className="p-3">الانصراف</th>
-                  <th className="p-3">ملاحظات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {attendance.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="p-6 text-center text-slate-400">
-                      لا توجد سجلات حضور وغياب مسجلة بعد
-                    </td>
-                  </tr>
-                ) : (
-                  attendance.map((rec) => (
-                    <tr key={rec.id} className="hover:bg-slate-50">
-                      <td className="p-3 font-mono text-slate-600">{rec.date}</td>
-                      <td className="p-3 font-bold text-slate-900">{rec.employeeName}</td>
-                      <td className="p-3">
-                        <span
-                          className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
-                            rec.status === 'present'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : rec.status === 'late'
-                              ? 'bg-amber-100 text-amber-800'
-                              : rec.status === 'leave'
-                              ? 'bg-blue-100 text-blue-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}
-                        >
-                          {rec.status === 'present'
-                            ? 'حاضر'
-                            : rec.status === 'late'
-                            ? 'متأخر'
-                            : rec.status === 'leave'
-                            ? 'إجازة'
-                            : 'غائب'}
-                        </span>
-                      </td>
-                      <td className="p-3 font-mono">{rec.checkIn || '-'}</td>
-                      <td className="p-3 font-mono">{rec.checkOut || '-'}</td>
-                      <td className="p-3 text-slate-600">{rec.notes || '-'}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <UnifiedDataTable<(typeof attendance)[number]>
+            compact
+            title={`سجل الحضور والانصراف (${attendance.length})`}
+            data={attendance}
+            rowKey={(rec) => rec.id}
+            searchPlaceholder="بحث باسم الموظف أو التاريخ أو الملاحظات..."
+            exportFilename="AWLAD_SELIM_Attendance"
+            pdfTitle="سجل الحضور والانصراف"
+            emptyTitle="لا توجد سجلات حضور وغياب مسجلة بعد"
+            columns={[
+              {
+                key: 'date',
+                header: 'التاريخ',
+                sortValue: (r) => r.date,
+                exportValue: (r) => r.date,
+                render: (r) => <span className="font-mono tabular-nums text-slate-600">{r.date}</span>,
+              },
+              {
+                key: 'employeeName',
+                header: 'اسم الموظف',
+                sortValue: (r) => r.employeeName,
+                exportValue: (r) => r.employeeName,
+                render: (r) => <span className="font-bold text-slate-900">{r.employeeName}</span>,
+              },
+              {
+                key: 'status',
+                header: 'الحالة',
+                align: 'center',
+                sortValue: (r) => r.status,
+                exportValue: (r) =>
+                  r.status === 'present' ? 'حاضر' : r.status === 'late' ? 'متأخر' : r.status === 'leave' ? 'إجازة' : 'غائب',
+                render: (r) => (
+                  <span
+                    className={`px-2 py-0.5 rounded border font-bold text-[10px] ${
+                      r.status === 'present'
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : r.status === 'late'
+                        ? 'bg-amber-50 text-amber-800 border-amber-200'
+                        : r.status === 'leave'
+                        ? 'bg-blue-50 text-blue-800 border-blue-200'
+                        : 'bg-red-50 text-red-800 border-red-200'
+                    }`}
+                  >
+                    {r.status === 'present' ? 'حاضر' : r.status === 'late' ? 'متأخر' : r.status === 'leave' ? 'إجازة' : 'غائب'}
+                  </span>
+                ),
+              },
+              {
+                key: 'checkIn',
+                header: 'الحضور',
+                align: 'center',
+                render: (r) => <span className="font-mono tabular-nums">{r.checkIn || '—'}</span>,
+              },
+              {
+                key: 'checkOut',
+                header: 'الانصراف',
+                align: 'center',
+                render: (r) => <span className="font-mono tabular-nums">{r.checkOut || '—'}</span>,
+              },
+              {
+                key: 'notes',
+                header: 'ملاحظات',
+                render: (r) => <span className="text-slate-600">{r.notes || '—'}</span>,
+              },
+            ]}
+          />
         </div>
       )}
 
       {/* Advances & Deductions Tab */}
       {activeTab === 'advances' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden awlad-table-scroll">
-          <table className="w-full text-right text-xs">
-            <thead>
-              <tr className="bg-slate-50 font-bold border-b text-slate-700">
-                <th className="p-3">التاريخ</th>
-                <th className="p-3">اسم الموظف</th>
-                <th className="p-3">النوع</th>
-                <th className="p-3 text-center">المبلغ</th>
-                <th className="p-3">التسوية بالراتب</th>
-                <th className="p-3">السبب / البيان</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {advancesDeductions.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="p-6 text-center text-slate-400">
-                    لا توجد سلف أو خصومات مسجلة حالياً
-                  </td>
-                </tr>
-              ) : (
-                advancesDeductions.map(a => (
-                  <tr key={a.id} className="hover:bg-slate-50">
-                    <td className="p-3 font-mono text-slate-600">{a.date}</td>
-                    <td className="p-3 font-bold text-slate-900">{a.employeeName}</td>
-                    <td className="p-3">
-                      {a.type === 'advance' ? (
-                        <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold text-[10px]">سلفة</span>
-                      ) : a.type === 'deduction' ? (
-                        <span className="px-2 py-0.5 rounded-md bg-red-100 text-red-800 font-bold text-[10px]">خصم جزاء</span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px]">مكافأة</span>
-                      )}
-                    </td>
-                    <td className="p-3 text-center font-mono font-bold">{a.amount.toLocaleString()} {settings.currency}</td>
-                    <td className="p-3">
-                      {a.isSettled ? (
-                        <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px] font-bold">تمت التسوية</span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 text-[10px] font-bold">قائمة للخصم بالمسير</span>
-                      )}
-                    </td>
-                    <td className="p-3 text-slate-600">{a.reason}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        <UnifiedDataTable<(typeof advancesDeductions)[number]>
+          title={`سجل السلف والخصومات والمكافآت (${advancesDeductions.length})`}
+          data={advancesDeductions}
+          rowKey={(a) => a.id}
+          searchPlaceholder="بحث باسم الموظف أو البيان أو التاريخ..."
+          exportFilename="AWLAD_SELIM_Advances"
+          pdfTitle="سجل السلف والخصومات والمكافآت"
+          emptyTitle="لا توجد سلف أو خصومات مسجلة حالياً"
+          columns={[
+            {
+              key: 'date',
+              header: 'التاريخ',
+              sortValue: (a) => a.date,
+              exportValue: (a) => a.date,
+              render: (a) => <span className="font-mono tabular-nums text-slate-600">{a.date}</span>,
+            },
+            {
+              key: 'employeeName',
+              header: 'اسم الموظف',
+              sortValue: (a) => a.employeeName,
+              exportValue: (a) => a.employeeName,
+              render: (a) => <span className="font-bold text-slate-900">{a.employeeName}</span>,
+            },
+            {
+              key: 'type',
+              header: 'النوع',
+              align: 'center',
+              sortValue: (a) => a.type,
+              exportValue: (a) => (a.type === 'advance' ? 'سلفة' : a.type === 'deduction' ? 'خصم جزاء' : 'مكافأة'),
+              render: (a) =>
+                a.type === 'advance' ? (
+                  <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 font-bold text-[10px]">
+                    سلفة
+                  </span>
+                ) : a.type === 'deduction' ? (
+                  <span className="px-2 py-0.5 rounded bg-red-50 text-red-800 border border-red-200 font-bold text-[10px]">
+                    خصم جزاء
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold text-[10px]">
+                    مكافأة
+                  </span>
+                ),
+            },
+            {
+              key: 'amount',
+              header: 'المبلغ',
+              align: 'center',
+              sortValue: (a) => a.amount,
+              exportValue: (a) => a.amount,
+              render: (a) => (
+                <span className="font-mono tabular-nums font-bold">
+                  {a.amount.toLocaleString()} {settings.currency}
+                </span>
+              ),
+            },
+            {
+              key: 'isSettled',
+              header: 'التسوية بالراتب',
+              align: 'center',
+              sortValue: (a) => (a.isSettled ? 1 : 0),
+              exportValue: (a) => (a.isSettled ? 'تمت التسوية' : 'قائمة للخصم بالمسير'),
+              render: (a) =>
+                a.isSettled ? (
+                  <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-bold">
+                    تمت التسوية
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-bold">
+                    قائمة للخصم بالمسير
+                  </span>
+                ),
+            },
+            {
+              key: 'reason',
+              header: 'السبب / البيان',
+              render: (a) => <span className="text-slate-600">{a.reason}</span>,
+            },
+          ]}
+        />
       )}
 
       {/* Payrolls Tab */}
       {activeTab === 'payrolls' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden awlad-table-scroll">
-          <table className="w-full text-right text-xs">
-            <thead>
-              <tr className="bg-slate-50 font-bold border-b text-slate-700">
-                <th className="p-3">رقم المسير</th>
-                <th className="p-3">اسم الموظف</th>
-                <th className="p-3">الشهر / السنة</th>
-                <th className="p-3 text-center">الأساسي</th>
-                <th className="p-3 text-center">السلف والخصم</th>
-                <th className="p-3 text-center">المكافآت</th>
-                <th className="p-3 text-center">الصافي المنصرف</th>
-                <th className="p-3">تاريخ الصرف</th>
-                <th className="p-3 text-center">طباعة</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {payrolls.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="p-6 text-center text-slate-400">
-                    لا توجد مسيرات رواتب مصدرة بعد
-                  </td>
-                </tr>
-              ) : (
-                payrolls.map(p => (
-                  <tr key={p.id} className="hover:bg-slate-50">
-                    <td className="p-3 font-mono font-bold text-blue-900">{p.payrollNumber}</td>
-                    <td className="p-3 font-bold text-slate-900">{p.employeeName}</td>
-                    <td className="p-3 font-mono">{p.month} / {p.year}</td>
-                    <td className="p-3 text-center font-bold">{p.basicSalary.toLocaleString()}</td>
-                    <td className="p-3 text-center text-red-600 font-bold">-{(p.advancesTotal + p.deductionsTotal).toLocaleString()}</td>
-                    <td className="p-3 text-center text-emerald-600 font-bold">+{p.bonusesTotal.toLocaleString()}</td>
-                    <td className="p-3 text-center font-black text-blue-950 font-mono text-sm">{p.netSalary.toLocaleString()} {settings.currency}</td>
-                    <td className="p-3 text-slate-500 font-mono">{p.paidDate}</td>
-                    <td className="p-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handlePrintPayrollReceipt(p)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-blue-50 text-blue-900 rounded-lg font-bold cursor-pointer"
-                        title="طباعة إيصال صرف راتب"
-                      >
-                        <Printer className="w-3.5 h-3.5" />
-                        <span>إيصال</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        <UnifiedDataTable<(typeof payrolls)[number]>
+          title={`مسيرات الرواتب المصروفة (${payrolls.length})`}
+          data={payrolls}
+          rowKey={(p) => p.id}
+          searchPlaceholder="بحث برقم المسير أو اسم الموظف..."
+          exportFilename="AWLAD_SELIM_Payrolls"
+          pdfTitle="مسيرات الرواتب المصروفة"
+          emptyTitle="لا توجد مسيرات رواتب مصدرة بعد"
+          columns={[
+            {
+              key: 'payrollNumber',
+              header: 'رقم المسير',
+              sortValue: (p) => p.payrollNumber,
+              exportValue: (p) => p.payrollNumber,
+              render: (p) => <span className="font-mono font-bold text-blue-900">{p.payrollNumber}</span>,
+            },
+            {
+              key: 'employeeName',
+              header: 'اسم الموظف',
+              sortValue: (p) => p.employeeName,
+              exportValue: (p) => p.employeeName,
+              render: (p) => <span className="font-bold text-slate-900">{p.employeeName}</span>,
+            },
+            {
+              key: 'period',
+              header: 'الشهر / السنة',
+              align: 'center',
+              sortValue: (p) => p.year * 100 + p.month,
+              exportValue: (p) => `${p.month}/${p.year}`,
+              render: (p) => <span className="font-mono tabular-nums">{p.month} / {p.year}</span>,
+            },
+            {
+              key: 'basicSalary',
+              header: 'الأساسي',
+              align: 'center',
+              sortValue: (p) => p.basicSalary,
+              exportValue: (p) => p.basicSalary,
+              render: (p) => <span className="font-mono tabular-nums font-bold">{p.basicSalary.toLocaleString()}</span>,
+            },
+            {
+              key: 'deductions',
+              header: 'السلف والخصم',
+              align: 'center',
+              sortValue: (p) => p.advancesTotal + p.deductionsTotal,
+              exportValue: (p) => p.advancesTotal + p.deductionsTotal,
+              render: (p) => (
+                <span className="font-mono tabular-nums text-red-600 font-bold">
+                  -{(p.advancesTotal + p.deductionsTotal).toLocaleString()}
+                </span>
+              ),
+            },
+            {
+              key: 'bonusesTotal',
+              header: 'المكافآت',
+              align: 'center',
+              sortValue: (p) => p.bonusesTotal,
+              exportValue: (p) => p.bonusesTotal,
+              render: (p) => (
+                <span className="font-mono tabular-nums text-emerald-600 font-bold">
+                  +{p.bonusesTotal.toLocaleString()}
+                </span>
+              ),
+            },
+            {
+              key: 'netSalary',
+              header: 'الصافي المنصرف',
+              align: 'center',
+              sortValue: (p) => p.netSalary,
+              exportValue: (p) => p.netSalary,
+              render: (p) => (
+                <span className="font-mono tabular-nums font-black text-blue-950">
+                  {p.netSalary.toLocaleString()} {settings.currency}
+                </span>
+              ),
+            },
+            {
+              key: 'paidDate',
+              header: 'تاريخ الصرف',
+              align: 'center',
+              sortValue: (p) => p.paidDate || '',
+              exportValue: (p) => p.paidDate || '',
+              render: (p) => <span className="text-slate-500 font-mono tabular-nums">{p.paidDate || '—'}</span>,
+            },
+            {
+              key: 'actions',
+              header: 'الإجراءات',
+              align: 'center',
+              sortable: false,
+              render: (p) => (
+                <button
+                  type="button"
+                  onClick={() => handlePrintPayrollReceipt(p)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-blue-50 text-blue-900 rounded-lg font-bold cursor-pointer"
+                  title="طباعة إيصال صرف راتب"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>إيصال</span>
+                </button>
+              ),
+            },
+          ]}
+        />
       )}
 
       {/* Add / Edit Employee Modal */}

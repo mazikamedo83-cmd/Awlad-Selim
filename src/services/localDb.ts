@@ -4,6 +4,7 @@ import type {
   Representative,
   StorefrontConfig,
   SyncConflictRecord,
+  SyncDispatchBatch,
   SyncQueueItem,
   User,
 } from '../types';
@@ -213,10 +214,12 @@ export async function listSyncQueue(userId: string): Promise<SyncQueueItem[]> {
 
 export async function saveSyncQueue(userId: string, queue: SyncQueueItem[]): Promise<void> {
   if (!userId) return;
-  // Retain non-synced operations plus at most 40 recent synced records for history visibility
-  const nonSynced = queue.filter((q) => q.status !== 'synced');
-  const recentSynced = queue.filter((q) => q.status === 'synced').slice(-40);
-  await setKV('sync_queue', userId, [...nonSynced, ...recentSynced]);
+  // Retain non-synced operations, ops held/linked to a dispatch batch, plus at most 40 recent regular synced records
+  const nonSyncedOrBatched = queue.filter((q) => q.status !== 'synced' || q.holdForDispatchBatch || q.dispatchBatchId);
+  const recentRegularSynced = queue
+    .filter((q) => q.status === 'synced' && !q.holdForDispatchBatch && !q.dispatchBatchId)
+    .slice(-40);
+  await setKV('sync_queue', userId, [...nonSyncedOrBatched, ...recentRegularSynced]);
 }
 
 export async function putSyncOperation(item: SyncQueueItem): Promise<void> {
@@ -249,6 +252,32 @@ export async function listConflicts(userId: string): Promise<SyncConflictRecord[
 export async function saveConflicts(userId: string, conflicts: SyncConflictRecord[]): Promise<void> {
   if (!userId) return;
   await setKV('conflicts', userId, Array.isArray(conflicts) ? conflicts : []);
+}
+
+export async function listDispatchBatches(userId: string): Promise<SyncDispatchBatch[]> {
+  if (!userId) return [];
+  const list = await getKV<SyncDispatchBatch[]>('dispatch_batches', userId);
+  if (!Array.isArray(list)) return [];
+  return [...list].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+}
+
+export async function saveDispatchBatches(userId: string, batches: SyncDispatchBatch[]): Promise<void> {
+  if (!userId) return;
+  await setKV('dispatch_batches', userId, Array.isArray(batches) ? batches : []);
+}
+
+export async function putDispatchBatch(userId: string, batch: SyncDispatchBatch): Promise<void> {
+  if (!userId || !batch?.id) return;
+  const current = await listDispatchBatches(userId);
+  const idx = current.findIndex(
+    (b) => b.id === batch.id || (batch.clientBatchUuid && b.clientBatchUuid === batch.clientBatchUuid)
+  );
+  if (idx >= 0) {
+    current[idx] = batch;
+  } else {
+    current.unshift(batch);
+  }
+  await saveDispatchBatches(userId, current);
 }
 
 export async function writeMedia(mediaKey: string, dataUrl: string): Promise<void> {
@@ -288,6 +317,9 @@ export const localDb = {
   deleteSyncOperation,
   listConflicts,
   saveConflicts,
+  listDispatchBatches,
+  saveDispatchBatches,
+  putDispatchBatch,
   writeMedia,
   readMedia,
 };

@@ -8,6 +8,7 @@ import { IdentityEntityType, User, UserRole, UserPermissions } from '../../../ty
 import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { SearchableFilterSelect } from '../../common/SearchableFilterSelect';
+import { UnifiedDataTable, UnifiedColumn } from '../../common/UnifiedDataTable';
 
 interface UsersManagementViewProps {
   initialTab?: 'users' | 'audit' | 'presets' | 'identities';
@@ -684,143 +685,194 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
 
       {/* Users Tab */}
       {activeTab === 'users' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-right text-xs">
-              <thead>
-                <tr className="bg-slate-50 font-bold border-b text-slate-700">
-                  <th className="p-3">الاسم الكامل والهوية</th>
-                  <th className="p-3">اسم المستخدم</th>
-                  <th className="p-3">الدور / الأدوار المرتبطة</th>
-                  <th className="p-3">الوظيفة والقسم</th>
-                  <th className="p-3">رقم الهاتف</th>
-                  <th className="p-3">الحالة</th>
-                  <th className="p-3">آخر دخول</th>
-                  <th className="p-3 text-center">الإجراءات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {users.map((u) => {
-                  const linkedEmp = employees.find((e) => e.id === u.employeeId || e.userId === u.id);
-                  const linkedRep = representatives.find((r) => r.userId === u.id);
-                  const linkedCust = customers.find((c) => c.userId === u.id);
-                  return (
-                  <tr key={u.id} className="hover:bg-slate-50">
-                    <td className="p-3 font-bold text-slate-900">
-                      <div>{u.fullName}</div>
-                      {u.identityId && (
-                        <div className="text-[10px] font-mono text-slate-500 mt-0.5">هوية: {u.identityId}</div>
-                      )}
-                    </td>
-                    <td className="p-3 font-mono text-blue-900 font-bold">{u.username}</td>
-                    <td className="p-3">
-                      <div className="flex flex-wrap items-center gap-1">
-                        <span className="px-2 py-0.5 rounded border border-blue-200 bg-blue-50 text-blue-800 text-[10px] font-bold">
-                          {u.role === 'admin'
-                            ? 'مالك / مدير عام'
-                            : u.role === 'manager'
-                            ? 'مدير'
-                            : u.role === 'accountant'
-                            ? 'محاسب'
-                            : u.role === 'purchases'
-                            ? 'موظف مشتريات'
-                            : u.role === 'representative'
-                            ? 'مندوب مبيعات'
-                            : u.role === 'customer'
-                            ? 'عميل - تطبيق العملاء'
-                            : u.role === 'warehouse'
-                            ? 'أمين مستودع'
-                            : 'موظف مبيعات'}
-                        </span>
-                        {linkedEmp && (
-                          <span className="px-2 py-0.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-800 text-[10px] font-bold" title={`ملف موظف HR: ${linkedEmp.name}`}>
-                            موظف HR: {linkedEmp.code}
-                          </span>
-                        )}
-                        {linkedRep && (
-                          <span className="px-2 py-0.5 rounded border border-cyan-200 bg-cyan-50 text-cyan-800 text-[10px] font-bold">
-                            ملف مندوب
-                          </span>
-                        )}
-                        {linkedCust && (
-                          <span className="px-2 py-0.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-800 text-[10px] font-bold">
-                            عميل: {linkedCust.code}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-3 text-slate-600">
-                      {u.jobTitle} - {u.department}
-                    </td>
-                    <td className="p-3 font-mono">{u.phone}</td>
-                    <td className="p-3">
-                      <button
-                        disabled={togglingUserId === u.id}
-                        onClick={async () => {
-                          if (togglingUserId) return;
-                          setTogglingUserId(u.id);
-                          try {
-                            const res = await updateUser(u.id, { isActive: !u.isActive });
-                            if (!res.success) {
-                              setStatusMessage({ type: 'error', text: res.error || 'تعذر تغيير حالة الحساب' });
-                            } else {
-                              setStatusMessage({
-                                type: 'success',
-                                text: !u.isActive ? `تم تفعيل حساب (${u.fullName}).` : `تم إيقاف حساب (${u.fullName}).`,
-                              });
-                            }
-                          } finally {
-                            setTogglingUserId(null);
-                          }
-                        }}
-                        className={`px-2 py-0.5 rounded border font-bold text-[10px] cursor-pointer disabled:opacity-50 ${
-                          u.isActive ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'
-                        }`}
-                      >
-                        {togglingUserId === u.id ? '...' : u.isActive ? 'نشط' : 'معطل'}
-                      </button>
-                    </td>
-                    <td className="p-3 text-slate-500 text-[11px]">
-                      {u.lastLogin ? new Date(u.lastLogin).toLocaleDateString('ar-EG') : 'لم يدخل بعد'}
-                    </td>
-                    <td className="p-3">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button
-                          onClick={() => handleOpenEdit(u)}
-                          className="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded font-bold cursor-pointer"
-                          title="تعديل الصلاحيات"
-                        >
-                          الصلاحيات
-                        </button>
-                        <button
-                          onClick={() => {
-                            setResetError(null);
-                            setResetNewPassword('');
-                            setResetModalUser(u);
-                          }}
-                          className="p-1 text-slate-500 hover:text-blue-900 cursor-pointer"
-                          title="إعادة تعيين كلمة المرور"
-                        >
-                          <KeyRound className="w-4 h-4" />
-                        </button>
-                        {currentUser?.id !== u.id && (
-                          <button
-                            onClick={() => handleDeleteUser(u)}
-                            className="p-1 text-slate-400 hover:text-red-700 cursor-pointer"
-                            title="حذف المستخدم"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <UnifiedDataTable<User>
+          title="حسابات المستخدمين والصلاحيات"
+          subtitle={`إجمالي الحسابات: ${users.length}`}
+          data={users}
+          rowKey={(u) => u.id}
+          searchPlaceholder="بحث بالاسم أو اسم الدخول أو الدور أو الهاتف..."
+          exportFilename="AWLAD_SELIM_Users"
+          pdfTitle="دليل المستخدمين والصلاحيات"
+          defaultPageSize={25}
+          emptyTitle="لا توجد حسابات مستخدمين"
+          columns={[
+            {
+              key: 'fullName',
+              header: 'الاسم الكامل والهوية',
+              sortable: true,
+              sortValue: (u) => u.fullName,
+              exportValue: (u) => `${u.fullName}${u.identityId ? ` (${u.identityId})` : ''}`,
+              render: (u) => (
+                <div>
+                  <div className="font-bold text-slate-900">{u.fullName}</div>
+                  {u.identityId && (
+                    <div className="text-[10px] font-mono text-slate-500 mt-0.5">هوية: {u.identityId}</div>
+                  )}
+                </div>
+              ),
+            },
+            {
+              key: 'username',
+              header: 'اسم المستخدم',
+              sortable: true,
+              sortValue: (u) => u.username,
+              exportValue: (u) => u.username,
+              render: (u) => <span className="font-mono text-blue-900 font-bold">{u.username}</span>,
+            },
+            {
+              key: 'role',
+              header: 'الدور / الأدوار المرتبطة',
+              sortable: true,
+              sortValue: (u) => u.role,
+              exportValue: (u) => u.role,
+              render: (u) => {
+                const linkedEmp = employees.find((e) => e.id === u.employeeId || e.userId === u.id);
+                const linkedRep = representatives.find((r) => r.userId === u.id);
+                const linkedCust = customers.find((c) => c.userId === u.id);
+                return (
+                  <div className="flex flex-wrap items-center gap-1">
+                    <span className="px-2 py-0.5 rounded border border-blue-200 bg-blue-50 text-blue-800 text-[10px] font-bold">
+                      {u.role === 'admin'
+                        ? 'مالك / مدير عام'
+                        : u.role === 'manager'
+                        ? 'مدير'
+                        : u.role === 'accountant'
+                        ? 'محاسب'
+                        : u.role === 'purchases'
+                        ? 'موظف مشتريات'
+                        : u.role === 'representative'
+                        ? 'مندوب مبيعات'
+                        : u.role === 'customer'
+                        ? 'عميل - تطبيق العملاء'
+                        : u.role === 'warehouse'
+                        ? 'أمين مستودع'
+                        : 'موظف مبيعات'}
+                    </span>
+                    {linkedEmp && (
+                      <span className="px-2 py-0.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-800 text-[10px] font-bold" title={`ملف موظف HR: ${linkedEmp.name}`}>
+                        موظف HR: {linkedEmp.code}
+                      </span>
+                    )}
+                    {linkedRep && (
+                      <span className="px-2 py-0.5 rounded border border-cyan-200 bg-cyan-50 text-cyan-800 text-[10px] font-bold">
+                        ملف مندوب
+                      </span>
+                    )}
+                    {linkedCust && (
+                      <span className="px-2 py-0.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-800 text-[10px] font-bold">
+                        عميل: {linkedCust.code}
+                      </span>
+                    )}
+                  </div>
+                );
+              },
+            },
+            {
+              key: 'jobTitle',
+              header: 'الوظيفة والقسم',
+              sortable: true,
+              sortValue: (u) => `${u.jobTitle} ${u.department}`,
+              exportValue: (u) => `${u.jobTitle} - ${u.department}`,
+              render: (u) => <span className="text-slate-600">{u.jobTitle} - {u.department}</span>,
+            },
+            {
+              key: 'phone',
+              header: 'رقم الهاتف',
+              sortable: true,
+              sortValue: (u) => u.phone || '',
+              exportValue: (u) => u.phone || '',
+              render: (u) => <span className="font-mono tabular-nums">{u.phone || '-'}</span>,
+            },
+            {
+              key: 'isActive',
+              header: 'الحالة',
+              align: 'center',
+              sortable: true,
+              sortValue: (u) => (u.isActive ? 1 : 0),
+              exportValue: (u) => (u.isActive ? 'نشط' : 'معطل'),
+              render: (u) => (
+                <button
+                  type="button"
+                  disabled={togglingUserId === u.id}
+                  onClick={async () => {
+                    if (togglingUserId) return;
+                    setTogglingUserId(u.id);
+                    try {
+                      const res = await updateUser(u.id, { isActive: !u.isActive });
+                      if (!res.success) {
+                        setStatusMessage({ type: 'error', text: res.error || 'تعذر تغيير حالة الحساب' });
+                      } else {
+                        setStatusMessage({
+                          type: 'success',
+                          text: !u.isActive ? `تم تفعيل حساب (${u.fullName}).` : `تم إيقاف حساب (${u.fullName}).`,
+                        });
+                      }
+                    } finally {
+                      setTogglingUserId(null);
+                    }
+                  }}
+                  className={`px-2 py-0.5 rounded border font-bold text-[10px] cursor-pointer disabled:opacity-50 ${
+                    u.isActive ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'
+                  }`}
+                >
+                  {togglingUserId === u.id ? '...' : u.isActive ? 'نشط' : 'معطل'}
+                </button>
+              ),
+            },
+            {
+              key: 'lastLogin',
+              header: 'آخر دخول',
+              sortable: true,
+              sortValue: (u) => u.lastLogin || '',
+              exportValue: (u) => (u.lastLogin ? new Date(u.lastLogin).toLocaleDateString('ar-EG') : 'لم يدخل بعد'),
+              render: (u) => (
+                <span className="text-slate-500 text-[11px] tabular-nums">
+                  {u.lastLogin ? new Date(u.lastLogin).toLocaleDateString('ar-EG') : 'لم يدخل بعد'}
+                </span>
+              ),
+            },
+            {
+              key: 'actions',
+              header: 'الإجراءات',
+              align: 'center',
+              exportValue: () => '',
+              render: (u) => (
+                <div className="flex items-center justify-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEdit(u)}
+                    className="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded font-bold cursor-pointer"
+                    title="تعديل الصلاحيات"
+                  >
+                    الصلاحيات
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setResetError(null);
+                      setResetNewPassword('');
+                      setResetModalUser(u);
+                    }}
+                    className="p-1 text-slate-500 hover:text-blue-900 cursor-pointer"
+                    title="إعادة تعيين كلمة المرور"
+                  >
+                    <KeyRound className="w-4 h-4" />
+                  </button>
+                  {currentUser?.id !== u.id && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteUser(u)}
+                      className="p-1 text-slate-400 hover:text-red-700 cursor-pointer"
+                      title="حذف المستخدم"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ),
+            },
+          ] as UnifiedColumn<User>[]}
+        />
       )}
 
       {/* Presets Tab */}
@@ -1177,108 +1229,138 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           </div>
 
           {/* Unified Identities Directory */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="p-4 border-b flex flex-wrap items-center justify-between gap-3 bg-slate-50">
-              <div className="font-black text-slate-900">دليل الهويات الموحدة ({filteredIdentities.length})</div>
-              <input
-                type="text"
-                value={identitySearch}
-                onChange={(e) => setIdentitySearch(e.target.value)}
-                placeholder="بحث بالاسم أو الهاتف أو الرقم القومي أو معرف الهوية..."
-                className="h-8 w-full sm:w-72 border border-slate-300 rounded-lg px-3 text-xs bg-white"
-              />
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-right text-xs">
-                <thead>
-                  <tr className="bg-slate-50 font-bold border-b text-slate-700">
-                    <th className="p-3">معرف الهوية</th>
-                    <th className="p-3">الاسم الكامل</th>
-                    <th className="p-3">الهاتف</th>
-                    <th className="p-3">الرقم القومي</th>
-                    <th className="p-3">السجلات والأدوار المرتبطة</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredIdentities.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="p-6 text-center text-slate-400">
-                        لا توجد هويات مطابقة
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredIdentities.map((idn) => {
-                      const roles =
-                        idn.roles && idn.roles.length > 0
-                          ? idn.roles
-                          : identityRoles.filter((r) => r.identityId === idn.id);
-                      return (
-                        <tr key={idn.id} className="hover:bg-slate-50">
-                          <td className="p-3 font-mono font-bold text-blue-900">{idn.id}</td>
-                          <td className="p-3 font-bold text-slate-900">{idn.fullName}</td>
-                          <td className="p-3 font-mono">{idn.phone || '-'}</td>
-                          <td className="p-3 font-mono">{idn.nationalId || '-'}</td>
-                          <td className="p-3">
-                            <div className="flex flex-wrap gap-1">
-                              {roles.map((r) => (
-                                <span
-                                  key={r.id}
-                                  className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-800 text-[10px] font-bold"
-                                >
-                                  {r.linkedRecordType}: {r.linkedRecordId}
-                                </span>
-                              ))}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <UnifiedDataTable
+            title={`دليل الهويات الموحدة (${identities.length})`}
+            data={filteredIdentities}
+            rowKey={(idn) => idn.id}
+            searchValue={identitySearch}
+            onSearchChange={setIdentitySearch}
+            searchPlaceholder="بحث بالاسم أو الهاتف أو الرقم القومي أو معرف الهوية..."
+            exportFilename="AWLAD_SELIM_UnifiedIdentities"
+            pdfTitle="دليل الهويات الموحدة"
+            defaultPageSize={25}
+            compact
+            emptyTitle="لا توجد هويات مطابقة"
+            columns={[
+              {
+                key: 'id',
+                header: 'معرف الهوية',
+                sortable: true,
+                sortValue: (idn) => idn.id,
+                exportValue: (idn) => idn.id,
+                render: (idn) => <span className="font-mono font-bold text-blue-900">{idn.id}</span>,
+              },
+              {
+                key: 'fullName',
+                header: 'الاسم الكامل',
+                sortable: true,
+                sortValue: (idn) => idn.fullName,
+                exportValue: (idn) => idn.fullName,
+                render: (idn) => <span className="font-bold text-slate-900">{idn.fullName}</span>,
+              },
+              {
+                key: 'phone',
+                header: 'الهاتف',
+                sortable: true,
+                sortValue: (idn) => idn.phone || '',
+                exportValue: (idn) => idn.phone || '-',
+                render: (idn) => <span className="font-mono tabular-nums">{idn.phone || '-'}</span>,
+              },
+              {
+                key: 'nationalId',
+                header: 'الرقم القومي',
+                sortable: true,
+                sortValue: (idn) => idn.nationalId || '',
+                exportValue: (idn) => idn.nationalId || '-',
+                render: (idn) => <span className="font-mono tabular-nums">{idn.nationalId || '-'}</span>,
+              },
+              {
+                key: 'roles',
+                header: 'السجلات والأدوار المرتبطة',
+                exportValue: (idn) => {
+                  const roles = idn.roles && idn.roles.length > 0 ? idn.roles : identityRoles.filter((r) => r.identityId === idn.id);
+                  return roles.map((r) => `${r.linkedRecordType}:${r.linkedRecordId}`).join(', ');
+                },
+                render: (idn) => {
+                  const roles = idn.roles && idn.roles.length > 0 ? idn.roles : identityRoles.filter((r) => r.identityId === idn.id);
+                  return (
+                    <div className="flex flex-wrap gap-1">
+                      {roles.map((r) => (
+                        <span
+                          key={r.id}
+                          className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-800 text-[10px] font-bold"
+                        >
+                          {r.linkedRecordType}: {r.linkedRecordId}
+                        </span>
+                      ))}
+                    </div>
+                  );
+                },
+              },
+            ]}
+          />
         </div>
       )}
 
       {/* Audit Log Tab */}
       {activeTab === 'audit' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-right text-xs">
-              <thead>
-                <tr className="bg-slate-50 font-bold border-b text-slate-700">
-                  <th className="p-3">التاريخ والوقت</th>
-                  <th className="p-3">المستخدم</th>
-                  <th className="p-3">الوحدة / القسم</th>
-                  <th className="p-3">الإجراء المنفذ</th>
-                  <th className="p-3">تفاصيل العملية</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {auditLogs.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="p-8 text-center text-slate-400">
-                      لا توجد سجلات بعد
-                    </td>
-                  </tr>
-                ) : (
-                  auditLogs.map((log) => (
-                    <tr key={log.id} className="hover:bg-slate-50">
-                      <td className="p-3 font-mono text-slate-500">
-                        {new Date(log.timestamp).toLocaleString('ar-EG')}
-                      </td>
-                      <td className="p-3 font-bold text-slate-900">{log.userName}</td>
-                      <td className="p-3 font-semibold text-blue-900">{log.module}</td>
-                      <td className="p-3 font-bold">{log.action}</td>
-                      <td className="p-3 text-slate-600">{log.details}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <UnifiedDataTable
+          title="سجل تدقيق العمليات"
+          subtitle={`إجمالي الأحداث المسجلة: ${auditLogs.length}`}
+          data={auditLogs}
+          rowKey={(log) => log.id}
+          searchPlaceholder="بحث بالمستخدم أو الوحدة أو الإجراء أو التفاصيل..."
+          exportFilename="AWLAD_SELIM_AuditLogs"
+          pdfTitle="سجل تدقيق العمليات"
+          defaultPageSize={25}
+          emptyTitle="لا توجد سجلات بعد"
+          columns={[
+            {
+              key: 'timestamp',
+              header: 'التاريخ والوقت',
+              sortable: true,
+              sortValue: (log) => log.timestamp,
+              exportValue: (log) => new Date(log.timestamp).toLocaleString('ar-EG'),
+              render: (log) => (
+                <span className="font-mono text-slate-500 tabular-nums">
+                  {new Date(log.timestamp).toLocaleString('ar-EG')}
+                </span>
+              ),
+            },
+            {
+              key: 'userName',
+              header: 'المستخدم',
+              sortable: true,
+              sortValue: (log) => log.userName,
+              exportValue: (log) => log.userName,
+              render: (log) => <span className="font-bold text-slate-900">{log.userName}</span>,
+            },
+            {
+              key: 'module',
+              header: 'الوحدة / القسم',
+              sortable: true,
+              sortValue: (log) => log.module,
+              exportValue: (log) => log.module,
+              render: (log) => <span className="font-semibold text-blue-900">{log.module}</span>,
+            },
+            {
+              key: 'action',
+              header: 'الإجراء المنفذ',
+              sortable: true,
+              sortValue: (log) => log.action,
+              exportValue: (log) => log.action,
+              render: (log) => <span className="font-bold">{log.action}</span>,
+            },
+            {
+              key: 'details',
+              header: 'تفاصيل العملية',
+              sortable: true,
+              sortValue: (log) => log.details,
+              exportValue: (log) => log.details,
+              render: (log) => <span className="text-slate-600">{log.details}</span>,
+            },
+          ]}
+        />
       )}
 
       {/* Add / Edit User Modal */}

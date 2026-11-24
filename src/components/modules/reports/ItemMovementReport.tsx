@@ -21,6 +21,7 @@ import { exportToExcel } from '../../common/ExcelExporter';
 import { exportTableToPdf } from '../../common/PdfExporter';
 import { Modal } from '../../common/Modal';
 import { SearchableFilterSelect, type SearchableFilterOption } from '../../common/SearchableFilterSelect';
+import { UnifiedDataTable, type UnifiedColumn } from '../../common/UnifiedDataTable';
 
 export interface ItemMovementReportProps {
   initialProductId?: string | null;
@@ -720,9 +721,175 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                 const secTotalVal = rows.reduce((s, r) => s + Number(r.totalValue || 0), 0);
                 const secTotalProfit = rows.reduce((s, r) => s + Number(r.profitValue || 0), 0);
 
+                const secColumns: UnifiedColumn<ItemMovementRow>[] = [
+                  {
+                    key: 'date',
+                    header: 'التاريخ',
+                    sortable: true,
+                    sortValue: (r) => r.date,
+                    exportValue: (r) => r.date,
+                    cellClassName: 'whitespace-nowrap',
+                    render: (r) => <span className="font-mono text-slate-600">{r.date}</span>,
+                  },
+                  {
+                    key: 'docNumber',
+                    header: 'المستند',
+                    sortable: true,
+                    sortValue: (r) => r.docNumber,
+                    exportValue: (r) => `${r.docNumber} (${r.docType})`,
+                    render: (r) => (
+                      <div>
+                        <div className="font-mono font-bold text-blue-900">{r.docNumber}</div>
+                        <div className="text-[10px] text-slate-500">{r.docType}</div>
+                      </div>
+                    ),
+                  },
+                ];
+
+                if (sec.key === 'custody_deliveries' || sec.key === 'adjustments') {
+                  secColumns.push({
+                    key: 'docType',
+                    header: 'نوع الحركة',
+                    exportValue: (r) => r.docType,
+                    render: (r) => <span className="font-bold text-slate-700 whitespace-nowrap">{r.docType}</span>,
+                  });
+                }
+
+                secColumns.push({
+                  key: 'productName',
+                  header: 'الصنف',
+                  sortable: true,
+                  sortValue: (r) => r.productName,
+                  exportValue: (r) => r.productName,
+                  render: (r) => <span className="font-bold text-slate-900">{r.productName}</span>,
+                });
+
+                if (sec.key === 'sales' || sec.key === 'sales_returns') {
+                  secColumns.push(
+                    { key: 'partyName', header: 'العميل', exportValue: (r) => r.partyName || '-', render: (r) => r.partyName || '-' },
+                    { key: 'representativeName', header: 'المندوب', exportValue: (r) => r.representativeName || '-', render: (r) => r.representativeName || '-' },
+                    { key: 'warehouseName', header: 'المستودع', exportValue: (r) => r.warehouseName || '-', render: (r) => r.warehouseName || '-' }
+                  );
+                } else if (sec.key === 'purchases' || sec.key === 'purchase_returns') {
+                  secColumns.push(
+                    { key: 'partyName', header: 'المورد', exportValue: (r) => r.partyName || '-', render: (r) => r.partyName || '-' },
+                    { key: 'warehouseName', header: 'المستودع', exportValue: (r) => r.warehouseName || '-', render: (r) => r.warehouseName || '-' }
+                  );
+                } else if (sec.key === 'transfers') {
+                  secColumns.push({
+                    key: 'path',
+                    header: 'المسار (من ⬅ إلى)',
+                    exportValue: (r) => (r.targetWarehouseName ? `${r.warehouseName || ''} -> ${r.targetWarehouseName}` : r.warehouseName || '-'),
+                    render: (r) => (r.targetWarehouseName ? `${r.warehouseName || ''} ⬅ ${r.targetWarehouseName}` : r.warehouseName || '-'),
+                  });
+                } else if (sec.key === 'custody_sent' || sec.key === 'custody_received') {
+                  secColumns.push(
+                    { key: 'representativeName', header: 'المندوب', exportValue: (r) => r.representativeName || '-', render: (r) => r.representativeName || '-' },
+                    {
+                      key: 'path',
+                      header: 'المسار (من ⬅ إلى)',
+                      exportValue: (r) => (r.targetWarehouseName ? `${r.warehouseName || ''} -> ${r.targetWarehouseName}` : r.warehouseName || '-'),
+                      render: (r) => (r.targetWarehouseName ? `${r.warehouseName || ''} ⬅ ${r.targetWarehouseName}` : r.warehouseName || '-'),
+                    }
+                  );
+                } else if (sec.key === 'custody_deliveries') {
+                  secColumns.push(
+                    { key: 'representativeName', header: 'المندوب', exportValue: (r) => r.representativeName || '-', render: (r) => r.representativeName || '-' },
+                    { key: 'dest', header: 'العميل / المخزن الوجهة', exportValue: (r) => r.partyName || r.targetWarehouseName || r.warehouseName || '-', render: (r) => r.partyName || r.targetWarehouseName || r.warehouseName || '-' }
+                  );
+                } else if (sec.key === 'adjustments') {
+                  secColumns.push({ key: 'warehouseName', header: 'المستودع', exportValue: (r) => r.warehouseName || '-', render: (r) => r.warehouseName || '-' });
+                }
+
+                secColumns.push({
+                  key: 'quantity',
+                  header: 'الكمية والوحدة',
+                  align: 'center',
+                  sortable: true,
+                  sortValue: (r) => r.quantity,
+                  exportValue: (r) => `${r.direction === 'in' ? '+' : r.direction === 'out' ? '-' : ''}${r.quantity} ${r.unit}`,
+                  render: (r) => (
+                    <span className="font-mono font-bold whitespace-nowrap tabular-nums">
+                      <span className={r.direction === 'in' ? 'text-emerald-700' : r.direction === 'out' ? 'text-rose-700' : 'text-indigo-800'}>
+                        {r.direction === 'in' ? '+' : r.direction === 'out' ? '-' : ''}
+                        {r.quantity}
+                      </span>{' '}
+                      <span className="text-[10px] font-sans text-slate-500">{r.unit}</span>
+                    </span>
+                  ),
+                });
+
+                if (sec.key === 'sales' || sec.key === 'sales_returns') {
+                  secColumns.push(
+                    { key: 'unitPrice', header: 'السعر', align: 'center', sortable: true, sortValue: (r) => r.unitPrice, exportValue: (r) => r.unitPrice, render: (r) => <span className="font-mono tabular-nums">{r.unitPrice.toLocaleString()}</span> },
+                    { key: 'costPrice', header: 'التكلفة', align: 'center', exportValue: (r) => r.costPrice, render: (r) => <span className="font-mono text-slate-500 tabular-nums">{r.costPrice.toLocaleString()}</span> }
+                  );
+                } else if (sec.key === 'purchases' || sec.key === 'purchase_returns') {
+                  secColumns.push({ key: 'unitPrice', header: 'تكلفة الوحدة', align: 'center', exportValue: (r) => r.unitPrice, render: (r) => <span className="font-mono text-slate-600 tabular-nums">{r.unitPrice.toLocaleString()}</span> });
+                } else if (sec.key === 'transfers') {
+                  secColumns.push({ key: 'costPrice', header: 'التكلفة', align: 'center', exportValue: (r) => r.costPrice, render: (r) => <span className="font-mono text-slate-500 tabular-nums">{r.costPrice.toLocaleString()}</span> });
+                }
+
+                secColumns.push({
+                  key: 'totalValue',
+                  header: sec.key === 'custody_sent' || sec.key === 'custody_received' || sec.key === 'custody_deliveries' ? 'القيمة بالتكلفة' : 'الإجمالي',
+                  align: 'center',
+                  sortable: true,
+                  sortValue: (r) => r.totalValue,
+                  exportValue: (r) => r.totalValue,
+                  render: (r) => (
+                    <span className="font-mono font-black text-slate-900 whitespace-nowrap tabular-nums">
+                      {r.totalValue.toLocaleString()} {settings.currency}
+                    </span>
+                  ),
+                });
+
+                if (sec.key === 'sales' || sec.key === 'sales_returns') {
+                  secColumns.push({
+                    key: 'profitValue',
+                    header: 'الربح',
+                    align: 'center',
+                    sortable: true,
+                    sortValue: (r) => r.profitValue,
+                    exportValue: (r) => r.profitValue,
+                    render: (r) => (
+                      <span className={`font-mono font-bold whitespace-nowrap tabular-nums ${r.profitValue > 0 ? 'text-emerald-700' : r.profitValue < 0 ? 'text-red-700' : 'text-slate-400'}`}>
+                        {r.profitValue !== 0 ? r.profitValue.toLocaleString() : '-'}
+                      </span>
+                    ),
+                  });
+                }
+
+                if (sec.key === 'transfers' || sec.key === 'custody_sent' || sec.key === 'custody_received') {
+                  secColumns.push({ key: 'createdBy', header: 'المنفذ', exportValue: (r) => r.createdBy || '-', render: (r) => <span className="text-slate-600">{r.createdBy || '-'}</span> });
+                }
+
+                if (sec.key === 'adjustments') {
+                  secColumns.push({ key: 'notes', header: 'السبب / الملاحظات', exportValue: (r) => r.notes || '-', render: (r) => <span className="text-slate-600 max-w-[220px] truncate block">{r.notes || '-'}</span> });
+                }
+
+                secColumns.push({
+                  key: 'actions',
+                  header: 'التفاصيل',
+                  align: 'center',
+                  render: (r) => (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedRow(r);
+                      }}
+                      className="p-1 rounded-lg bg-slate-100 hover:bg-blue-100 text-blue-900 cursor-pointer"
+                      title="عرض تفاصيل المستند"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                    </button>
+                  ),
+                });
+
                 return (
-                  <div key={sec.key} className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-                    <div className={`px-4 py-3 border-b flex flex-wrap items-center justify-between gap-2 ${sec.bannerCls}`}>
+                  <div key={sec.key} className="space-y-1.5">
+                    <div className={`px-4 py-3 rounded-2xl border flex flex-wrap items-center justify-between gap-2 ${sec.bannerCls}`}>
                       <div>
                         <h4 className="font-black text-xs sm:text-sm">{sec.title}</h4>
                         <p className="text-[11px] opacity-85">{sec.subtitle}</p>
@@ -742,201 +909,17 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                       </div>
                     </div>
 
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-right text-xs">
-                        <thead>
-                          <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 whitespace-nowrap">
-                            <th className="p-2.5">التاريخ</th>
-                            <th className="p-2.5">المستند</th>
-                            {(sec.key === 'custody_deliveries' || sec.key === 'adjustments') && (
-                              <th className="p-2.5">نوع الحركة</th>
-                            )}
-                            <th className="p-2.5">الصنف</th>
-                            {(sec.key === 'sales' || sec.key === 'sales_returns') && (
-                              <>
-                                <th className="p-2.5">العميل</th>
-                                <th className="p-2.5">المندوب</th>
-                                <th className="p-2.5">المستودع</th>
-                              </>
-                            )}
-                            {(sec.key === 'purchases' || sec.key === 'purchase_returns') && (
-                              <>
-                                <th className="p-2.5">المورد</th>
-                                <th className="p-2.5">المستودع</th>
-                              </>
-                            )}
-                            {sec.key === 'transfers' && (
-                              <th className="p-2.5">المسار (من ⬅ إلى)</th>
-                            )}
-                            {(sec.key === 'custody_sent' || sec.key === 'custody_received') && (
-                              <>
-                                <th className="p-2.5">المندوب</th>
-                                <th className="p-2.5">المسار (من ⬅ إلى)</th>
-                              </>
-                            )}
-                            {sec.key === 'custody_deliveries' && (
-                              <>
-                                <th className="p-2.5">المندوب</th>
-                                <th className="p-2.5">العميل / المخزن الوجهة</th>
-                              </>
-                            )}
-                            {sec.key === 'adjustments' && (
-                              <th className="p-2.5">المستودع</th>
-                            )}
-                            <th className="p-2.5 text-center">الكمية والوحدة</th>
-                            {(sec.key === 'sales' || sec.key === 'sales_returns') && (
-                              <>
-                                <th className="p-2.5 text-center">السعر</th>
-                                <th className="p-2.5 text-center">التكلفة</th>
-                              </>
-                            )}
-                            {(sec.key === 'purchases' || sec.key === 'purchase_returns') && (
-                              <th className="p-2.5 text-center">تكلفة الوحدة</th>
-                            )}
-                            {sec.key === 'transfers' && (
-                              <th className="p-2.5 text-center">التكلفة</th>
-                            )}
-                            <th className="p-2.5 text-center">
-                              {sec.key === 'custody_sent' || sec.key === 'custody_received' || sec.key === 'custody_deliveries'
-                                ? 'القيمة بالتكلفة'
-                                : 'الإجمالي'}
-                            </th>
-                            {(sec.key === 'sales' || sec.key === 'sales_returns') && (
-                              <th className="p-2.5 text-center">الربح</th>
-                            )}
-                            {(sec.key === 'transfers' || sec.key === 'custody_sent' || sec.key === 'custody_received') && (
-                              <th className="p-2.5">المنفذ</th>
-                            )}
-                            {sec.key === 'adjustments' && (
-                              <th className="p-2.5">السبب / الملاحظات</th>
-                            )}
-                            <th className="p-2.5 text-center">التفاصيل</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 tabular-nums">
-                          {rows.map((r) => (
-                            <tr
-                              key={r.id}
-                              onClick={() => setSelectedRow(r)}
-                              className="hover:bg-blue-50/50 cursor-pointer transition-colors"
-                            >
-                              <td className="p-2.5 font-mono text-slate-600 whitespace-nowrap">{r.date}</td>
-                              <td className="p-2.5">
-                                <div className="font-mono font-bold text-blue-900">{r.docNumber}</div>
-                                <div className="text-[10px] text-slate-500">{r.docType}</div>
-                              </td>
-                              {(sec.key === 'custody_deliveries' || sec.key === 'adjustments') && (
-                                <td className="p-2.5 font-bold text-slate-700 whitespace-nowrap">{r.docType}</td>
-                              )}
-                              <td className="p-2.5 font-bold text-slate-900">{r.productName}</td>
-                              {(sec.key === 'sales' || sec.key === 'sales_returns') && (
-                                <>
-                                  <td className="p-2.5 text-slate-700">{r.partyName || '-'}</td>
-                                  <td className="p-2.5 text-slate-700">{r.representativeName || '-'}</td>
-                                  <td className="p-2.5 text-slate-700">{r.warehouseName || '-'}</td>
-                                </>
-                              )}
-                              {(sec.key === 'purchases' || sec.key === 'purchase_returns') && (
-                                <>
-                                  <td className="p-2.5 text-slate-700">{r.partyName || '-'}</td>
-                                  <td className="p-2.5 text-slate-700">{r.warehouseName || '-'}</td>
-                                </>
-                              )}
-                              {sec.key === 'transfers' && (
-                                <td className="p-2.5 text-slate-700">
-                                  {r.targetWarehouseName
-                                    ? `${r.warehouseName || ''} ⬅ ${r.targetWarehouseName}`
-                                    : r.warehouseName || '-'}
-                                </td>
-                              )}
-                              {(sec.key === 'custody_sent' || sec.key === 'custody_received') && (
-                                <>
-                                  <td className="p-2.5 text-slate-700">{r.representativeName || '-'}</td>
-                                  <td className="p-2.5 text-slate-700">
-                                    {r.targetWarehouseName
-                                      ? `${r.warehouseName || ''} ⬅ ${r.targetWarehouseName}`
-                                      : r.warehouseName || '-'}
-                                  </td>
-                                </>
-                              )}
-                              {sec.key === 'custody_deliveries' && (
-                                <>
-                                  <td className="p-2.5 text-slate-700">{r.representativeName || '-'}</td>
-                                  <td className="p-2.5 text-slate-700">
-                                    {r.partyName || r.targetWarehouseName || r.warehouseName || '-'}
-                                  </td>
-                                </>
-                              )}
-                              {sec.key === 'adjustments' && (
-                                <td className="p-2.5 text-slate-700">{r.warehouseName || '-'}</td>
-                              )}
-                              <td className="p-2.5 text-center font-mono font-bold whitespace-nowrap">
-                                <span
-                                  className={
-                                    r.direction === 'in'
-                                      ? 'text-emerald-700'
-                                      : r.direction === 'out'
-                                      ? 'text-rose-700'
-                                      : 'text-indigo-800'
-                                  }
-                                >
-                                  {r.direction === 'in' ? '+' : r.direction === 'out' ? '-' : ''}
-                                  {r.quantity}
-                                </span>{' '}
-                                <span className="text-[10px] font-sans text-slate-500">{r.unit}</span>
-                              </td>
-                              {(sec.key === 'sales' || sec.key === 'sales_returns') && (
-                                <>
-                                  <td className="p-2.5 text-center font-mono">{r.unitPrice.toLocaleString()}</td>
-                                  <td className="p-2.5 text-center font-mono text-slate-500">{r.costPrice.toLocaleString()}</td>
-                                </>
-                              )}
-                              {(sec.key === 'purchases' || sec.key === 'purchase_returns') && (
-                                <td className="p-2.5 text-center font-mono text-slate-600">{r.unitPrice.toLocaleString()}</td>
-                              )}
-                              {sec.key === 'transfers' && (
-                                <td className="p-2.5 text-center font-mono text-slate-500">{r.costPrice.toLocaleString()}</td>
-                              )}
-                              <td className="p-2.5 text-center font-mono font-black text-slate-900 whitespace-nowrap">
-                                {r.totalValue.toLocaleString()} {settings.currency}
-                              </td>
-                              {(sec.key === 'sales' || sec.key === 'sales_returns') && (
-                                <td
-                                  className={`p-2.5 text-center font-mono font-bold whitespace-nowrap ${
-                                    r.profitValue > 0
-                                      ? 'text-emerald-700'
-                                      : r.profitValue < 0
-                                      ? 'text-red-700'
-                                      : 'text-slate-400'
-                                  }`}
-                                >
-                                  {r.profitValue !== 0 ? `${r.profitValue.toLocaleString()}` : '-'}
-                                </td>
-                              )}
-                              {(sec.key === 'transfers' || sec.key === 'custody_sent' || sec.key === 'custody_received') && (
-                                <td className="p-2.5 text-slate-600">{r.createdBy || '-'}</td>
-                              )}
-                              {sec.key === 'adjustments' && (
-                                <td className="p-2.5 text-slate-600 max-w-[220px] truncate">{r.notes || '-'}</td>
-                              )}
-                              <td className="p-2.5 text-center">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedRow(r);
-                                  }}
-                                  className="p-1 rounded-lg bg-slate-100 hover:bg-blue-100 text-blue-900 cursor-pointer"
-                                  title="عرض تفاصيل المستند"
-                                >
-                                  <Eye className="w-3.5 h-3.5" />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <UnifiedDataTable<ItemMovementRow>
+                      compact
+                      searchable={false}
+                      data={rows}
+                      rowKey={(r) => r.id}
+                      onRowClick={(r) => setSelectedRow(r)}
+                      defaultPageSize={25}
+                      exportFilename={`حركة_الصنف_${sec.key}`}
+                      pdfTitle={sec.title}
+                      columns={secColumns}
+                    />
                   </div>
                 );
               })}
@@ -1038,115 +1021,71 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
             )}
 
             {sourceDocDetails?.kind === 'invoice' && (
-              <div className="border border-slate-200 rounded-xl overflow-hidden awlad-table-scroll">
-                <div className="p-2.5 bg-slate-100 font-bold text-slate-800 border-b">
-                  بنود الفاتورة ({sourceDocDetails.data.invoiceNumber}) — الإجمالي: {sourceDocDetails.data.grandTotal.toLocaleString()} {settings.currency}
-                </div>
-                <table className="w-full text-right text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 border-b font-bold">
-                      <th className="p-2">الصنف</th>
-                      <th className="p-2 text-center">الوحدة</th>
-                      <th className="p-2 text-center">الكمية</th>
-                      <th className="p-2 text-center">السعر</th>
-                      <th className="p-2 text-center">الإجمالي</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {sourceDocDetails.data.items.map((it, idx) => (
-                      <tr key={idx}>
-                        <td className="p-2 font-bold">{it.productName}</td>
-                        <td className="p-2 text-center">{it.unit}</td>
-                        <td className="p-2 text-center font-mono">{it.quantity}</td>
-                        <td className="p-2 text-center font-mono">{it.unitPrice.toLocaleString()}</td>
-                        <td className="p-2 text-center font-mono font-bold text-blue-900">{it.total.toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <UnifiedDataTable
+                compact
+                searchable={false}
+                paginated={false}
+                title={`بنود الفاتورة (${sourceDocDetails.data.invoiceNumber}) — الإجمالي: ${sourceDocDetails.data.grandTotal.toLocaleString()} ${settings.currency}`}
+                data={sourceDocDetails.data.items.map((it, idx) => ({ ...it, _idx: idx }))}
+                rowKey={(it) => `${it.productId}-${it._idx}`}
+                columns={[
+                  { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold">{it.productName}</span> },
+                  { key: 'unit', header: 'الوحدة', align: 'center', render: (it) => it.unit },
+                  { key: 'quantity', header: 'الكمية', align: 'center', render: (it) => <span className="font-mono tabular-nums">{it.quantity}</span> },
+                  { key: 'unitPrice', header: 'السعر', align: 'center', render: (it) => <span className="font-mono tabular-nums">{it.unitPrice.toLocaleString()}</span> },
+                  { key: 'total', header: 'الإجمالي', align: 'center', render: (it) => <span className="font-mono font-bold text-blue-900 tabular-nums">{it.total.toLocaleString()}</span> },
+                ]}
+              />
             )}
 
             {sourceDocDetails?.kind === 'return' && (
-              <div className="border border-slate-200 rounded-xl overflow-hidden awlad-table-scroll">
-                <div className="p-2.5 bg-amber-50 font-bold text-amber-950 border-b">
-                  بنود المرتجع ({sourceDocDetails.data.returnNumber}) — الإجمالي: {sourceDocDetails.data.grandTotal.toLocaleString()} {settings.currency}
-                </div>
-                <table className="w-full text-right text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 border-b font-bold">
-                      <th className="p-2">الصنف</th>
-                      <th className="p-2 text-center">الوحدة</th>
-                      <th className="p-2 text-center">الكمية</th>
-                      <th className="p-2 text-center">الإجمالي</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {sourceDocDetails.data.items.map((it, idx) => (
-                      <tr key={idx}>
-                        <td className="p-2 font-bold">{it.productName}</td>
-                        <td className="p-2 text-center">{it.unit}</td>
-                        <td className="p-2 text-center font-mono">{it.quantity}</td>
-                        <td className="p-2 text-center font-mono font-bold">{it.total.toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <UnifiedDataTable
+                compact
+                searchable={false}
+                paginated={false}
+                title={`بنود المرتجع (${sourceDocDetails.data.returnNumber}) — الإجمالي: ${sourceDocDetails.data.grandTotal.toLocaleString()} ${settings.currency}`}
+                data={sourceDocDetails.data.items.map((it, idx) => ({ ...it, _idx: idx }))}
+                rowKey={(it) => `${it.productId}-${it._idx}`}
+                columns={[
+                  { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold">{it.productName}</span> },
+                  { key: 'unit', header: 'الوحدة', align: 'center', render: (it) => it.unit },
+                  { key: 'quantity', header: 'الكمية', align: 'center', render: (it) => <span className="font-mono tabular-nums">{it.quantity}</span> },
+                  { key: 'total', header: 'الإجمالي', align: 'center', render: (it) => <span className="font-mono font-bold tabular-nums">{it.total.toLocaleString()}</span> },
+                ]}
+              />
             )}
 
             {sourceDocDetails?.kind === 'rep_transfer' && (
-              <div className="border border-slate-200 rounded-xl overflow-hidden awlad-table-scroll">
-                <div className="p-2.5 bg-cyan-50 font-bold text-cyan-950 border-b">
-                  أصناف إذن عهدة المندوب ({sourceDocDetails.data.requestNumber}) — الحالة: {sourceDocDetails.data.status}
-                </div>
-                <table className="w-full text-right text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 border-b font-bold">
-                      <th className="p-2">الصنف</th>
-                      <th className="p-2 text-center">الوحدة</th>
-                      <th className="p-2 text-center">الكمية المطلوبة</th>
-                      <th className="p-2 text-center">المصروفة</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {sourceDocDetails.data.items.map((it, idx) => (
-                      <tr key={idx}>
-                        <td className="p-2 font-bold">{it.productName}</td>
-                        <td className="p-2 text-center">{it.unit}</td>
-                        <td className="p-2 text-center font-mono">{it.requestedQty}</td>
-                        <td className="p-2 text-center font-mono font-bold">{it.executedQty ?? it.approvedQty ?? it.requestedQty}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <UnifiedDataTable
+                compact
+                searchable={false}
+                paginated={false}
+                title={`أصناف إذن عهدة المندوب (${sourceDocDetails.data.requestNumber}) — الحالة: ${sourceDocDetails.data.status}`}
+                data={sourceDocDetails.data.items.map((it, idx) => ({ ...it, _idx: idx }))}
+                rowKey={(it) => `${it.productId}-${it._idx}`}
+                columns={[
+                  { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold">{it.productName}</span> },
+                  { key: 'unit', header: 'الوحدة', align: 'center', render: (it) => it.unit },
+                  { key: 'requestedQty', header: 'الكمية المطلوبة', align: 'center', render: (it) => <span className="font-mono tabular-nums">{it.requestedQty}</span> },
+                  { key: 'executedQty', header: 'المصروفة', align: 'center', render: (it) => <span className="font-mono font-bold tabular-nums">{it.executedQty ?? it.approvedQty ?? it.requestedQty}</span> },
+                ]}
+              />
             )}
 
             {sourceDocDetails?.kind === 'stock_transfer' && (
-              <div className="border border-slate-200 rounded-xl overflow-hidden awlad-table-scroll">
-                <div className="p-2.5 bg-indigo-50 font-bold text-indigo-950 border-b">
-                  أصناف التحويل المخزني ({sourceDocDetails.data.transferNumber})
-                </div>
-                <table className="w-full text-right text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 border-b font-bold">
-                      <th className="p-2">الصنف</th>
-                      <th className="p-2 text-center">الوحدة</th>
-                      <th className="p-2 text-center">الكمية</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {sourceDocDetails.data.items.map((it, idx) => (
-                      <tr key={idx}>
-                        <td className="p-2 font-bold">{it.productName}</td>
-                        <td className="p-2 text-center">{it.unit}</td>
-                        <td className="p-2 text-center font-mono font-bold">{it.executedQty ?? it.requestedQty}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <UnifiedDataTable
+                compact
+                searchable={false}
+                paginated={false}
+                title={`أصناف التحويل المخزني (${sourceDocDetails.data.transferNumber})`}
+                data={sourceDocDetails.data.items.map((it, idx) => ({ ...it, _idx: idx }))}
+                rowKey={(it) => `${it.productId}-${it._idx}`}
+                columns={[
+                  { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold">{it.productName}</span> },
+                  { key: 'unit', header: 'الوحدة', align: 'center', render: (it) => it.unit },
+                  { key: 'qty', header: 'الكمية', align: 'center', render: (it) => <span className="font-mono font-bold tabular-nums">{it.executedQty ?? it.requestedQty}</span> },
+                ]}
+              />
             )}
 
             {sourceDocDetails?.kind === 'rep_custody' && (

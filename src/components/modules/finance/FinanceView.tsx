@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   Wallet, Plus, ArrowLeftRight, TrendingDown, TrendingUp,
-  Printer, Download, Search, CheckCircle2, AlertCircle, Landmark,
+  Printer, Download, CheckCircle2, AlertCircle, Landmark,
   FileText, Phone, ArrowDownLeft, ArrowUpRight, Eye, ShieldAlert, DollarSign
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
@@ -9,11 +9,12 @@ import { useAuth } from '../../../context/AuthContext';
 import { useShortcuts } from '../../../context/ShortcutsContext';
 import {
   Customer, Supplier, CustomerStatementResponse, SupplierStatementResponse,
-  CustomerStatementEntry, SupplierStatementEntry, Invoice
+  CustomerStatementEntry, SupplierStatementEntry, Invoice, InvoiceItem
 } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
+import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 import { exportToExcel } from '../../common/ExcelExporter';
 import {
   AccountsLedgerIcon, SafeVaultIcon, CustomersGroupIcon,
@@ -877,166 +878,101 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             </div>
           </div>
 
-          {/* Search & Filters */}
-          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
-            <div className="relative flex-1 min-w-[210px]">
-              <input
-                type="text"
-                placeholder="بحث باسم العميل أو المحل أو الكود أو الموبايل..."
-                value={custSearch}
-                onChange={(e) => setCustSearch(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl pr-9 pl-3 py-2 outline-hidden focus:bg-white focus:border-blue-600"
-              />
-              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={custDirFilter}
-                onChange={(e) => setCustDirFilter(e.target.value as any)}
-                className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold text-slate-700"
-              >
-                <option value="all">جميع الأرصدة ({customers.length})</option>
-                <option value="debt">مدينون لنا فقط ({customerKpis.debtorsCount})</option>
-                <option value="credit">دفعات مقدمة / علينا ({customerKpis.creditorsCount})</option>
-                <option value="settled">حسابات متوازنة (0)</option>
-              </select>
-              <select
-                value={custSort}
-                onChange={(e) => setCustSort(e.target.value as any)}
-                className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold text-slate-700"
-              >
-                <option value="balance_desc">الأعلى مديونية</option>
-                <option value="balance_asc">الأعلى رصيداً مقدماً</option>
-                <option value="name">ترتيب أبجدي</option>
-              </select>
-              <button
-                type="button"
-                onClick={() => {
-                  const headers = ['الكود', 'العميل / المحل', 'الموبايل', 'الرصيد الحالي', 'اتجاه الرصيد'];
-                  const rows = filteredCustomersList.map((c) => [
-                    c.code,
-                    c.shopName ? `${c.shopName} (${c.name})` : c.name,
-                    c.phone,
-                    Math.abs(Number(c.currentBalance || 0)),
-                    c.currentBalance > 0.005 ? 'لنا (مدين)' : c.currentBalance < -0.005 ? 'علينا (دفعة مقدمة)' : 'متوازن',
-                  ]);
-                  exportToExcel(`حسابات_العملاء_${new Date().toISOString().split('T')[0]}`, headers, rows);
-                }}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-emerald-800 rounded-xl font-bold cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5 text-emerald-600" />
-                <span>تصدير Excel</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Customer Accounts — Desktop Table */}
-          <div className="hidden md:block bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="awlad-table-scroll">
-              <table className="w-full text-right text-xs">
-                <thead>
-                  <tr className="bg-slate-50 font-bold border-b text-slate-700">
-                    <th className="p-3">الكود</th>
-                    <th className="p-3">اسم العميل / المحل</th>
-                    <th className="p-3">رقم الهاتف</th>
-                    <th className="p-3 text-center">موقف الحساب (لنا / علينا)</th>
-                    <th className="p-3 text-center">الإجراءات</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredCustomersList.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="p-8 text-center text-slate-400">
-                        لا يوجد عملاء مطابقون لمعايير البحث أو التصفية.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredCustomersList.map((c) => (
-                      <tr key={c.id} className="hover:bg-slate-50">
-                        <td className="p-3 font-mono font-bold text-blue-900">{c.code}</td>
-                        <td className="p-3">
-                          <div className="font-black text-slate-900">{c.shopName || c.name}</div>
-                          {c.shopName && c.shopName !== c.name && (
-                            <div className="text-[11px] text-slate-500">{c.name}</div>
-                          )}
-                        </td>
-                        <td className="p-3 font-mono">
-                          {c.phone ? (
-                            <a href={`tel:${c.phone}`} className="inline-flex items-center gap-1 text-emerald-700 hover:underline font-bold">
-                              <Phone className="w-3 h-3" />
-                              <span>{c.phone}</span>
-                            </a>
-                          ) : '-'}
-                        </td>
-                        <td className="p-3 text-center font-mono tabular-nums">{formatCustomerBalBadge(Number(c.currentBalance || 0))}</td>
-                        <td className="p-3">
-                          <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenCustomerStatement(c)}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 min-h-[36px] bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold cursor-pointer"
-                            >
-                              <FileText className="w-3.5 h-3.5 text-blue-800" />
-                              <span>كشف حساب</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCustPayError(null);
-                                setCustPayNotes('');
-                                setCustPayMethod('cash');
-                                setCustPaymentTarget(c);
-                                setCustPayAmount(c.currentBalance > 0 ? c.currentBalance : 0);
-                              }}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 min-h-[36px] bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold cursor-pointer"
-                            >
-                              <ArrowDownLeft className="w-3.5 h-3.5" />
-                              <span>تحصيل دفعة</span>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Customer Accounts — Mobile Cards */}
-          <div className="md:hidden space-y-2.5 text-xs">
-            {filteredCustomersList.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400">
-                لا يوجد عملاء مطابقون لمعايير البحث أو التصفية.
+          <UnifiedDataTable<Customer>
+            title="حسابات العملاء التفصيلية"
+            subtitle="كشوف الحسابات والتحصيل النقدي والبنكي"
+            data={filteredCustomersList}
+            rowKey={(c) => c.id}
+            compact
+            searchValue={custSearch}
+            onSearchChange={setCustSearch}
+            searchPlaceholder="بحث باسم العميل أو المحل أو الكود أو الموبايل..."
+            exportFilename={`حسابات_العملاء_${new Date().toISOString().split('T')[0]}`}
+            pdfTitle="حسابات العملاء التفصيلية"
+            emptyTitle="لا يوجد عملاء مطابقون لمعايير البحث أو التصفية"
+            toolbarFilters={
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <select
+                  value={custDirFilter}
+                  onChange={(e) => setCustDirFilter(e.target.value as any)}
+                  className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 font-bold text-slate-700"
+                >
+                  <option value="all">جميع الأرصدة ({customers.length})</option>
+                  <option value="debt">مدينون لنا فقط ({customerKpis.debtorsCount})</option>
+                  <option value="credit">دفعات مقدمة / علينا ({customerKpis.creditorsCount})</option>
+                  <option value="settled">حسابات متوازنة (0)</option>
+                </select>
+                <select
+                  value={custSort}
+                  onChange={(e) => setCustSort(e.target.value as any)}
+                  className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 font-bold text-slate-700"
+                >
+                  <option value="balance_desc">الأعلى مديونية</option>
+                  <option value="balance_asc">الأعلى رصيداً مقدماً</option>
+                  <option value="name">ترتيب أبجدي</option>
+                </select>
               </div>
-            ) : (
-              filteredCustomersList.map((c) => (
-                <div key={c.id} className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-2.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <span className="font-mono text-[10px] font-bold text-blue-900">{c.code}</span>
-                      <h4 className="font-black text-sm text-slate-900 truncate">{c.shopName || c.name}</h4>
-                      {c.shopName && c.shopName !== c.name && (
-                        <p className="text-[11px] text-slate-500 truncate">{c.name}</p>
-                      )}
-                      {c.phone && (
-                        <a href={`tel:${c.phone}`} className="inline-flex items-center gap-1 text-emerald-700 font-mono font-bold text-[11px] mt-0.5">
-                          <Phone className="w-3 h-3" />
-                          <span>{c.phone}</span>
-                        </a>
-                      )}
-                    </div>
-                    <div className="shrink-0 font-mono tabular-nums">
-                      {formatCustomerBalBadge(Number(c.currentBalance || 0))}
-                    </div>
+            }
+            columns={[
+              {
+                key: 'code',
+                header: 'الكود',
+                sortable: true,
+                sortValue: (c) => c.code,
+                exportValue: (c) => c.code,
+                render: (c) => <span className="font-mono font-bold text-blue-900">{c.code}</span>,
+              },
+              {
+                key: 'name',
+                header: 'اسم العميل / المحل',
+                sortable: true,
+                sortValue: (c) => c.shopName || c.name,
+                exportValue: (c) => (c.shopName ? `${c.shopName} (${c.name})` : c.name),
+                render: (c) => (
+                  <div>
+                    <div className="font-black text-slate-900">{c.shopName || c.name}</div>
+                    {c.shopName && c.shopName !== c.name && (
+                      <div className="text-[11px] text-slate-500">{c.name}</div>
+                    )}
                   </div>
-                  <div className="grid grid-cols-2 gap-2 pt-1.5 border-t border-slate-100">
+                ),
+              },
+              {
+                key: 'phone',
+                header: 'رقم الهاتف',
+                exportValue: (c) => c.phone || '-',
+                render: (c) => (
+                  <div className="font-mono">
+                    {c.phone ? (
+                      <a href={`tel:${c.phone}`} className="inline-flex items-center gap-1 text-emerald-700 hover:underline font-bold">
+                        <Phone className="w-3 h-3" />
+                        <span>{c.phone}</span>
+                      </a>
+                    ) : '-'}
+                  </div>
+                ),
+              },
+              {
+                key: 'currentBalance',
+                header: 'موقف الحساب (لنا / علينا)',
+                align: 'center',
+                sortable: true,
+                sortValue: (c) => Number(c.currentBalance || 0),
+                exportValue: (c) => Number(c.currentBalance || 0),
+                render: (c) => <span className="font-mono tabular-nums">{formatCustomerBalBadge(Number(c.currentBalance || 0))}</span>,
+              },
+              {
+                key: 'actions',
+                header: 'الإجراءات',
+                align: 'center',
+                render: (c) => (
+                  <div className="flex items-center justify-center gap-1.5 flex-wrap">
                     <button
                       type="button"
                       onClick={() => handleOpenCustomerStatement(c)}
-                      className="min-h-[44px] inline-flex items-center justify-center gap-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold cursor-pointer"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 min-h-[34px] bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold cursor-pointer"
                     >
-                      <FileText className="w-4 h-4 text-blue-800" />
+                      <FileText className="w-3.5 h-3.5 text-blue-800" />
                       <span>كشف حساب</span>
                     </button>
                     <button
@@ -1048,16 +984,16 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                         setCustPaymentTarget(c);
                         setCustPayAmount(c.currentBalance > 0 ? c.currentBalance : 0);
                       }}
-                      className="min-h-[44px] inline-flex items-center justify-center gap-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold cursor-pointer"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 min-h-[34px] bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold cursor-pointer"
                     >
-                      <ArrowDownLeft className="w-4 h-4" />
+                      <ArrowDownLeft className="w-3.5 h-3.5" />
                       <span>تحصيل دفعة</span>
                     </button>
                   </div>
-                </div>
-              ))
-            )}
-          </div>
+                ),
+              },
+            ]}
+          />
         </div>
       )}
 
@@ -1099,183 +1035,101 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             </div>
           </div>
 
-          {/* Search & Filters */}
-          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
-            <div className="relative flex-1 min-w-[210px]">
-              <input
-                type="text"
-                placeholder="بحث باسم المورد أو الكود أو رقم الهاتف..."
-                value={suppSearch}
-                onChange={(e) => setSuppSearch(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl pr-9 pl-3 py-2 outline-hidden focus:bg-white focus:border-blue-600"
-              />
-              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={suppDirFilter}
-                onChange={(e) => setSuppDirFilter(e.target.value as any)}
-                className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold text-slate-700"
-              >
-                <option value="all">جميع الموردين ({suppliers.length})</option>
-                <option value="payable">مستحق للمورد (علينا) ({supplierKpis.payablesCount})</option>
-                <option value="advance">دفعة مقدمة لنا ({supplierKpis.advancesCount})</option>
-                <option value="settled">حسابات متوازنة (0)</option>
-              </select>
-              <select
-                value={suppSort}
-                onChange={(e) => setSuppSort(e.target.value as any)}
-                className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold text-slate-700"
-              >
-                <option value="balance_desc">الأعلى مستحقات علينا</option>
-                <option value="balance_asc">الأعلى دفعات مقدمة لنا</option>
-                <option value="name">ترتيب أبجدي</option>
-              </select>
-              <button
-                type="button"
-                onClick={() => {
-                  const headers = ['الكود', 'اسم المورد', 'الهاتف', 'الرصيد الحالي', 'اتجاه الرصيد'];
-                  const rows = filteredSuppliersList.map((s) => [
-                    s.code,
-                    s.name,
-                    s.phone,
-                    Math.abs(Number(s.currentBalance || 0)),
-                    s.currentBalance > 0.005 ? 'علينا للمورد' : s.currentBalance < -0.005 ? 'لنا (دفعة مقدمة)' : 'متوازن',
-                  ]);
-                  exportToExcel(`حسابات_الموردين_${new Date().toISOString().split('T')[0]}`, headers, rows);
-                }}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-emerald-800 rounded-xl font-bold cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5 text-emerald-600" />
-                <span>تصدير Excel</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Supplier Accounts — Desktop Table */}
-          <div className="hidden md:block bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="awlad-table-scroll">
-              <table className="w-full text-right text-xs">
-                <thead>
-                  <tr className="bg-slate-50 font-bold border-b text-slate-700">
-                    <th className="p-3">الكود</th>
-                    <th className="p-3">اسم المورد / الشركة</th>
-                    <th className="p-3">رقم الهاتف</th>
-                    <th className="p-3 text-center">موقف الحساب (علينا / لنا)</th>
-                    <th className="p-3 text-center">الإجراءات</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredSuppliersList.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="p-8 text-center text-slate-400">
-                        لا يوجد موردون مطابقون لمعايير البحث أو التصفية.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredSuppliersList.map((s) => {
-                      const { openInvoices, availableAdvance } = getSupplierAdvanceInfo(s);
-                      return (
-                        <tr key={s.id} className="hover:bg-slate-50">
-                          <td className="p-3 font-mono font-bold text-indigo-900">{s.code}</td>
-                          <td className="p-3">
-                            <div className="font-black text-slate-900">{s.name}</div>
-                            {s.address && <div className="text-[11px] text-slate-500">{s.address}</div>}
-                          </td>
-                          <td className="p-3 font-mono">
-                            {s.phone ? (
-                              <a href={`tel:${s.phone}`} className="inline-flex items-center gap-1 text-emerald-700 hover:underline font-bold">
-                                <Phone className="w-3 h-3" />
-                                <span>{s.phone}</span>
-                              </a>
-                            ) : '-'}
-                          </td>
-                          <td className="p-3 text-center font-mono tabular-nums">{formatSupplierBalBadge(Number(s.currentBalance || 0))}</td>
-                          <td className="p-3">
-                            <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenSupplierStatement(s)}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 min-h-[36px] bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold cursor-pointer"
-                              >
-                                <FileText className="w-3.5 h-3.5 text-blue-800" />
-                                <span>كشف حساب</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSuppPayError(null);
-                                  setSuppPayNotes('');
-                                  setSuppPaymentTarget(s);
-                                  setSuppPayAmount(s.currentBalance > 0 ? s.currentBalance : 0);
-                                }}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 min-h-[36px] bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold cursor-pointer"
-                              >
-                                <ArrowUpRight className="w-3.5 h-3.5" />
-                                <span>سداد دفعة</span>
-                              </button>
-                              {availableAdvance > 0 && openInvoices.length > 0 && (currentUser?.role === 'admin' || hasPermission('canManageAccounts')) && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const firstInv = openInvoices[0];
-                                    setSettleError(null);
-                                    setSettleNotes('تسوية دفعة مقدمة على فاتورة المشتريات');
-                                    setSettleSupplierTarget(s);
-                                    setSettleInvoiceId(firstInv?.id || '');
-                                    setSettleAmount(firstInv ? Math.min(availableAdvance, Number(firstInv.remainingAmount || 0)) : 0);
-                                  }}
-                                  className="inline-flex items-center gap-1 px-3 py-1.5 min-h-[36px] bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl font-bold cursor-pointer"
-                                >
-                                  <DollarSign className="w-3.5 h-3.5" />
-                                  <span>تسوية مقدم</span>
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Supplier Accounts — Mobile Cards */}
-          <div className="md:hidden space-y-2.5 text-xs">
-            {filteredSuppliersList.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400">
-                لا يوجد موردون مطابقون لمعايير البحث أو التصفية.
+          <UnifiedDataTable<Supplier>
+            title="حسابات الموردين التفصيلية"
+            subtitle="كشوف الحسابات وسداد المستحقات وتسوية الدفعات المقدمة"
+            data={filteredSuppliersList}
+            rowKey={(s) => s.id}
+            compact
+            searchValue={suppSearch}
+            onSearchChange={setSuppSearch}
+            searchPlaceholder="بحث باسم المورد أو الكود أو رقم الهاتف..."
+            exportFilename={`حسابات_الموردين_${new Date().toISOString().split('T')[0]}`}
+            pdfTitle="حسابات الموردين التفصيلية"
+            emptyTitle="لا يوجد موردون مطابقون لمعايير البحث أو التصفية"
+            toolbarFilters={
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <select
+                  value={suppDirFilter}
+                  onChange={(e) => setSuppDirFilter(e.target.value as any)}
+                  className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 font-bold text-slate-700"
+                >
+                  <option value="all">جميع الموردين ({suppliers.length})</option>
+                  <option value="payable">مستحق للمورد (علينا) ({supplierKpis.payablesCount})</option>
+                  <option value="advance">دفعة مقدمة لنا ({supplierKpis.advancesCount})</option>
+                  <option value="settled">حسابات متوازنة (0)</option>
+                </select>
+                <select
+                  value={suppSort}
+                  onChange={(e) => setSuppSort(e.target.value as any)}
+                  className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 font-bold text-slate-700"
+                >
+                  <option value="balance_desc">الأعلى مستحقات علينا</option>
+                  <option value="balance_asc">الأعلى دفعات مقدمة لنا</option>
+                  <option value="name">ترتيب أبجدي</option>
+                </select>
               </div>
-            ) : (
-              filteredSuppliersList.map((s) => {
-                const { openInvoices, availableAdvance } = getSupplierAdvanceInfo(s);
-                return (
-                  <div key={s.id} className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-2.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <span className="font-mono text-[10px] font-bold text-indigo-900">{s.code}</span>
-                        <h4 className="font-black text-sm text-slate-900 truncate">{s.name}</h4>
-                        {s.address && <p className="text-[11px] text-slate-500 truncate">{s.address}</p>}
-                        {s.phone && (
-                          <a href={`tel:${s.phone}`} className="inline-flex items-center gap-1 text-emerald-700 font-mono font-bold text-[11px] mt-0.5">
-                            <Phone className="w-3 h-3" />
-                            <span>{s.phone}</span>
-                          </a>
-                        )}
-                      </div>
-                      <div className="shrink-0 font-mono tabular-nums">
-                        {formatSupplierBalBadge(Number(s.currentBalance || 0))}
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2 pt-1.5 border-t border-slate-100">
+            }
+            columns={[
+              {
+                key: 'code',
+                header: 'الكود',
+                sortable: true,
+                sortValue: (s) => s.code,
+                exportValue: (s) => s.code,
+                render: (s) => <span className="font-mono font-bold text-indigo-900">{s.code}</span>,
+              },
+              {
+                key: 'name',
+                header: 'اسم المورد / الشركة',
+                sortable: true,
+                sortValue: (s) => s.name,
+                exportValue: (s) => s.name,
+                render: (s) => (
+                  <div>
+                    <div className="font-black text-slate-900">{s.name}</div>
+                    {s.address && <div className="text-[11px] text-slate-500">{s.address}</div>}
+                  </div>
+                ),
+              },
+              {
+                key: 'phone',
+                header: 'رقم الهاتف',
+                exportValue: (s) => s.phone || '-',
+                render: (s) => (
+                  <div className="font-mono">
+                    {s.phone ? (
+                      <a href={`tel:${s.phone}`} className="inline-flex items-center gap-1 text-emerald-700 hover:underline font-bold">
+                        <Phone className="w-3 h-3" />
+                        <span>{s.phone}</span>
+                      </a>
+                    ) : '-'}
+                  </div>
+                ),
+              },
+              {
+                key: 'currentBalance',
+                header: 'موقف الحساب (علينا / لنا)',
+                align: 'center',
+                sortable: true,
+                sortValue: (s) => Number(s.currentBalance || 0),
+                exportValue: (s) => Number(s.currentBalance || 0),
+                render: (s) => <span className="font-mono tabular-nums">{formatSupplierBalBadge(Number(s.currentBalance || 0))}</span>,
+              },
+              {
+                key: 'actions',
+                header: 'الإجراءات',
+                align: 'center',
+                render: (s) => {
+                  const { openInvoices, availableAdvance } = getSupplierAdvanceInfo(s);
+                  return (
+                    <div className="flex items-center justify-center gap-1.5 flex-wrap">
                       <button
                         type="button"
                         onClick={() => handleOpenSupplierStatement(s)}
-                        className="flex-1 min-w-[120px] min-h-[44px] inline-flex items-center justify-center gap-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold cursor-pointer"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 min-h-[34px] bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold cursor-pointer"
                       >
-                        <FileText className="w-4 h-4 text-blue-800" />
+                        <FileText className="w-3.5 h-3.5 text-blue-800" />
                         <span>كشف حساب</span>
                       </button>
                       <button
@@ -1286,9 +1140,9 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                           setSuppPaymentTarget(s);
                           setSuppPayAmount(s.currentBalance > 0 ? s.currentBalance : 0);
                         }}
-                        className="flex-1 min-w-[120px] min-h-[44px] inline-flex items-center justify-center gap-1.5 px-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold cursor-pointer"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 min-h-[34px] bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold cursor-pointer"
                       >
-                        <ArrowUpRight className="w-4 h-4" />
+                        <ArrowUpRight className="w-3.5 h-3.5" />
                         <span>سداد دفعة</span>
                       </button>
                       {availableAdvance > 0 && openInvoices.length > 0 && (currentUser?.role === 'admin' || hasPermission('canManageAccounts')) && (
@@ -1302,214 +1156,256 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                             setSettleInvoiceId(firstInv?.id || '');
                             setSettleAmount(firstInv ? Math.min(availableAdvance, Number(firstInv.remainingAmount || 0)) : 0);
                           }}
-                          className="w-full min-h-[44px] inline-flex items-center justify-center gap-1.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl font-bold cursor-pointer"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 min-h-[34px] bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl font-bold cursor-pointer"
                         >
-                          <DollarSign className="w-4 h-4" />
-                          <span>تسوية مقدم ({availableAdvance.toLocaleString()})</span>
+                          <DollarSign className="w-3.5 h-3.5" />
+                          <span>تسوية مقدم</span>
                         </button>
                       )}
                     </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
+                  );
+                },
+              },
+            ]}
+          />
         </div>
       )}
 
       {/* Tab 1: Cashboxes List */}
       {activeTab === 'cashboxes' && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {cashboxes.map((cb) => (
-              <div key={cb.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs text-xs space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-900 flex items-center justify-center font-bold">
-                    {cb.type === 'bank' ? <Landmark className="w-5 h-5" /> : <Wallet className="w-5 h-5" />}
-                  </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
-                    {cb.type === 'bank' ? 'حساب بنكي' : 'خزينة نقدية'}
-                  </span>
-                </div>
-
-                <div>
-                  <h3 className="font-bold text-slate-900 text-sm">{cb.name}</h3>
-                  {cb.accountNumber && (
-                    <p className="font-mono text-[11px] text-slate-500 mt-0.5">رقم الحساب: {cb.accountNumber}</p>
-                  )}
-                </div>
-
-                <div className="pt-2 border-t flex justify-between items-center">
-                  <span className="text-slate-500">الرصيد المتاح:</span>
-                  <span className="font-mono text-base font-black text-blue-950 tabular-nums">
-                    {cb.balanceHidden ? 'محجوب' : `${(cb.currentBalance ?? 0).toLocaleString()} ${settings.currency}`}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex justify-end">
+        <UnifiedDataTable
+          title="الخزائن والحسابات البنكية"
+          subtitle="أرصدة النقدية بالخزائن والحسابات البنكية المسجلة"
+          data={cashboxes}
+          rowKey={(cb) => cb.id}
+          searchPlaceholder="بحث باسم الخزينة أو رقم الحساب..."
+          searchFilter={(cb, q) => `${cb.name} ${cb.accountNumber || ''}`.toLowerCase().includes(q)}
+          exportFilename="AWLAD_SELIM_Cashboxes"
+          pdfTitle="الخزائن والحسابات البنكية"
+          headerActions={
             <button
+              type="button"
               onClick={() => setIsAddCashboxOpen(true)}
-              className="text-xs font-bold text-blue-900 hover:underline flex items-center gap-1 cursor-pointer"
+              className="px-3 py-1.5 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
             >
-              + إضافة خزينة أو حساب بنكي جديد
+              <Plus className="w-3.5 h-3.5" />
+              <span>إضافة خزينة / حساب بنكي</span>
             </button>
-          </div>
-        </div>
+          }
+          columns={[
+            {
+              key: 'name',
+              header: 'الخزينة / الحساب',
+              sortable: true,
+              sortValue: (cb) => cb.name,
+              exportValue: (cb) => cb.name,
+              render: (cb) => (
+                <div className="flex items-center gap-2">
+                  <span className="w-7 h-7 rounded-lg bg-blue-50 text-blue-900 flex items-center justify-center shrink-0">
+                    {cb.type === 'bank' ? <Landmark className="w-4 h-4" /> : <Wallet className="w-4 h-4" />}
+                  </span>
+                  <span className="font-bold text-slate-900">{cb.name}</span>
+                </div>
+              ),
+            },
+            {
+              key: 'type',
+              header: 'النوع',
+              exportValue: (cb) => (cb.type === 'bank' ? 'حساب بنكي' : 'خزينة نقدية'),
+              render: (cb) => (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                  {cb.type === 'bank' ? 'حساب بنكي' : 'خزينة نقدية'}
+                </span>
+              ),
+            },
+            {
+              key: 'accountNumber',
+              header: 'رقم الحساب',
+              exportValue: (cb) => cb.accountNumber || '-',
+              render: (cb) => <span className="font-mono text-slate-600">{cb.accountNumber || '-'}</span>,
+            },
+            {
+              key: 'currentBalance',
+              header: 'الرصيد المتاح',
+              align: 'center',
+              sortable: true,
+              sortValue: (cb) => (cb.balanceHidden ? 0 : Number(cb.currentBalance ?? 0)),
+              exportValue: (cb) => (cb.balanceHidden ? 'محجوب' : Number(cb.currentBalance ?? 0)),
+              render: (cb) => (
+                <span className="font-mono text-sm font-black text-blue-950 tabular-nums">
+                  {cb.balanceHidden ? 'محجوب' : `${(cb.currentBalance ?? 0).toLocaleString()} ${settings.currency}`}
+                </span>
+              ),
+            },
+          ]}
+        />
       )}
 
       {/* Tab 2: Financial Transactions */}
       {activeTab === 'transactions' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="p-3 border-b">
-            <input
-              type="text"
-              placeholder="بحث برقم الحركة، الخزينة، أو البيان..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full max-w-sm bg-slate-50 border rounded-xl px-3 py-2 text-xs outline-hidden"
-            />
-          </div>
-
-          <div className="awlad-table-scroll">
-            <table className="w-full text-right text-xs">
-              <thead>
-                <tr className="bg-slate-50 font-bold border-b text-slate-700">
-                  <th className="p-3">رقم الحركة</th>
-                  <th className="p-3">التاريخ</th>
-                  <th className="p-3">الخزينة</th>
-                  <th className="p-3">نوع الحركة</th>
-                  <th className="p-3">البيان</th>
-                  <th className="p-3 text-center">المبلغ</th>
-                  <th className="p-3">المستخدم المسؤول</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredTransactions.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-slate-50">
-                    <td className="p-3 font-mono font-bold text-blue-900">{tx.transactionNumber}</td>
-                    <td className="p-3 font-mono text-slate-600">{tx.date}</td>
-                    <td className="p-3 font-semibold">{tx.cashboxName}</td>
-                    <td className="p-3 font-bold text-slate-800">{tx.category}</td>
-                    <td className="p-3 text-slate-600">{tx.description}</td>
-                    <td className="p-3 text-center font-mono font-black text-sm text-blue-950 tabular-nums">
-                      {tx.amount.toLocaleString()} {settings.currency}
-                    </td>
-                    <td className="p-3 text-slate-500">{tx.createdBy}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <UnifiedDataTable
+          title="حركة الخزائن والبنوك"
+          data={filteredTransactions}
+          rowKey={(tx) => tx.id}
+          searchValue={searchTerm}
+          onSearchChange={setSearchTerm}
+          searchPlaceholder="بحث برقم الحركة، الخزينة، أو البيان..."
+          exportFilename="AWLAD_SELIM_FinancialTransactions"
+          pdfTitle="سجل حركات الخزائن والبنوك"
+          columns={[
+            {
+              key: 'transactionNumber',
+              header: 'رقم الحركة',
+              sortable: true,
+              sortValue: (tx) => tx.transactionNumber,
+              exportValue: (tx) => tx.transactionNumber,
+              render: (tx) => <span className="font-mono font-bold text-blue-900">{tx.transactionNumber}</span>,
+            },
+            {
+              key: 'date',
+              header: 'التاريخ',
+              sortable: true,
+              sortValue: (tx) => tx.date,
+              exportValue: (tx) => tx.date,
+              render: (tx) => <span className="font-mono text-slate-600">{tx.date}</span>,
+            },
+            {
+              key: 'cashboxName',
+              header: 'الخزينة',
+              exportValue: (tx) => tx.cashboxName,
+              render: (tx) => <span className="font-semibold">{tx.cashboxName}</span>,
+            },
+            {
+              key: 'category',
+              header: 'نوع الحركة',
+              exportValue: (tx) => tx.category,
+              render: (tx) => <span className="font-bold text-slate-800">{tx.category}</span>,
+            },
+            {
+              key: 'description',
+              header: 'البيان',
+              exportValue: (tx) => tx.description,
+              render: (tx) => <span className="text-slate-600">{tx.description}</span>,
+            },
+            {
+              key: 'amount',
+              header: 'المبلغ',
+              align: 'center',
+              sortable: true,
+              sortValue: (tx) => tx.amount,
+              exportValue: (tx) => tx.amount,
+              render: (tx) => (
+                <span className="font-mono font-black text-sm text-blue-950 tabular-nums">
+                  {tx.amount.toLocaleString()} {settings.currency}
+                </span>
+              ),
+            },
+            {
+              key: 'createdBy',
+              header: 'المستخدم المسؤول',
+              exportValue: (tx) => tx.createdBy,
+              render: (tx) => <span className="text-slate-500">{tx.createdBy}</span>,
+            },
+          ]}
+        />
       )}
 
       {/* Tab 3: Expenses & Income */}
       {activeTab === 'expenses' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden space-y-3">
-          <div className="p-3 border-b flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2 flex-1">
-              <div className="relative flex-1 min-w-[200px] max-w-sm">
-                <input
-                  type="text"
-                  placeholder="بحث برقم السند، البند، الخزينة، أو الجهة..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full bg-slate-50 border rounded-xl pr-9 pl-3 py-2 text-xs outline-hidden focus:bg-white focus:border-blue-600"
-                />
-                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
-              </div>
-
-              <select
-                value={expenseTypeFilter}
-                onChange={(e) => setExpenseTypeFilter(e.target.value as any)}
-                className="bg-slate-50 border rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-hidden"
-              >
-                <option value="all">الكل (مصروفات وإيرادات)</option>
-                <option value="expense">المصروفات فقط</option>
-                <option value="income">الإيرادات فقط</option>
-              </select>
-            </div>
-
-            <button
-              onClick={() => {
-                const headers = ['رقم السند', 'التاريخ', 'النوع', 'البند', 'الخزينة', 'الجهة', 'المبلغ', 'ملاحظات'];
-                const rows = filteredExpenses.map((r) => [
-                  r.recordNumber,
-                  r.date,
-                  r.type === 'expense' ? 'مصروف' : 'إيراد',
-                  r.category,
-                  r.cashboxName,
-                  r.recipientOrPayer,
-                  r.amount,
-                  r.notes || '',
-                ]);
-                exportToExcel(`المصروفات_والإيرادات_${new Date().toISOString().split('T')[0]}`, headers, rows);
-              }}
-              className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-emerald-800 rounded-xl text-xs font-bold cursor-pointer"
+        <UnifiedDataTable
+          title="سندات المصروفات والإيرادات"
+          data={filteredExpenses}
+          rowKey={(rec) => rec.id}
+          searchValue={searchTerm}
+          onSearchChange={setSearchTerm}
+          searchPlaceholder="بحث برقم السند، البند، الخزينة، أو الجهة..."
+          exportFilename={`المصروفات_والإيرادات_${new Date().toISOString().split('T')[0]}`}
+          pdfTitle="سندات المصروفات والإيرادات"
+          emptyTitle="لا توجد مصروفات أو إيرادات مسجلة مطابقة للبحث"
+          toolbarFilters={
+            <select
+              value={expenseTypeFilter}
+              onChange={(e) => setExpenseTypeFilter(e.target.value as any)}
+              className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-hidden"
             >
-              <Download className="w-3.5 h-3.5 text-emerald-600" />
-              <span>تصدير Excel</span>
-            </button>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-right text-xs">
-              <thead>
-                <tr className="bg-slate-50 font-bold border-b text-slate-700">
-                  <th className="p-3">رقم السند</th>
-                  <th className="p-3">التاريخ</th>
-                  <th className="p-3">النوع</th>
-                  <th className="p-3">البند / التصنيف</th>
-                  <th className="p-3">الخزينة</th>
-                  <th className="p-3">الجهة المستلمة / الدافعة</th>
-                  <th className="p-3 text-center">المبلغ</th>
-                  <th className="p-3">ملاحظات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredExpenses.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="p-8 text-center text-slate-400">
-                      لا توجد مصروفات أو إيرادات مسجلة مطابقة للبحث.
-                    </td>
-                  </tr>
+              <option value="all">الكل (مصروفات وإيرادات)</option>
+              <option value="expense">المصروفات فقط</option>
+              <option value="income">الإيرادات فقط</option>
+            </select>
+          }
+          columns={[
+            {
+              key: 'recordNumber',
+              header: 'رقم السند',
+              sortable: true,
+              sortValue: (rec) => rec.recordNumber,
+              exportValue: (rec) => rec.recordNumber,
+              render: (rec) => <span className="font-mono font-bold text-blue-900">{rec.recordNumber}</span>,
+            },
+            {
+              key: 'date',
+              header: 'التاريخ',
+              sortable: true,
+              sortValue: (rec) => rec.date,
+              exportValue: (rec) => rec.date,
+              render: (rec) => <span className="font-mono text-slate-600">{rec.date}</span>,
+            },
+            {
+              key: 'type',
+              header: 'النوع',
+              exportValue: (rec) => (rec.type === 'expense' ? 'مصروف' : 'إيراد'),
+              render: (rec) =>
+                rec.type === 'expense' ? (
+                  <span className="px-2 py-0.5 rounded bg-orange-50 text-orange-800 border border-orange-200 font-bold text-[10px]">
+                    سند صرف (مصروف)
+                  </span>
                 ) : (
-                  filteredExpenses.map((rec) => (
-                    <tr key={rec.id} className="hover:bg-slate-50">
-                      <td className="p-3 font-mono font-bold text-blue-900">{rec.recordNumber}</td>
-                      <td className="p-3 font-mono text-slate-600">{rec.date}</td>
-                      <td className="p-3">
-                        {rec.type === 'expense' ? (
-                          <span className="px-2 py-0.5 rounded bg-orange-50 text-orange-800 border border-orange-200 font-bold text-[10px]">
-                            سند صرف (مصروف)
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200 font-bold text-[10px]">
-                            سند قبض (إيراد)
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-3 font-bold text-slate-800">{rec.category}</td>
-                      <td className="p-3 font-semibold text-slate-700">{rec.cashboxName}</td>
-                      <td className="p-3 text-slate-700">{rec.recipientOrPayer}</td>
-                      <td
-                        className={`p-3 text-center font-mono font-black text-sm tabular-nums ${
-                          rec.type === 'expense' ? 'text-orange-700' : 'text-teal-700'
-                        }`}
-                      >
-                        {rec.amount.toLocaleString()} {settings.currency}
-                      </td>
-                      <td className="p-3 text-slate-500">{rec.notes || '-'}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                  <span className="px-2 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200 font-bold text-[10px]">
+                    سند قبض (إيراد)
+                  </span>
+                ),
+            },
+            {
+              key: 'category',
+              header: 'البند / التصنيف',
+              sortable: true,
+              sortValue: (rec) => rec.category,
+              exportValue: (rec) => rec.category,
+              render: (rec) => <span className="font-bold text-slate-800">{rec.category}</span>,
+            },
+            {
+              key: 'cashboxName',
+              header: 'الخزينة',
+              exportValue: (rec) => rec.cashboxName,
+              render: (rec) => <span className="font-semibold text-slate-700">{rec.cashboxName}</span>,
+            },
+            {
+              key: 'recipientOrPayer',
+              header: 'الجهة المستلمة / الدافعة',
+              exportValue: (rec) => rec.recipientOrPayer,
+              render: (rec) => <span className="text-slate-700">{rec.recipientOrPayer}</span>,
+            },
+            {
+              key: 'amount',
+              header: 'المبلغ',
+              align: 'center',
+              sortable: true,
+              sortValue: (rec) => rec.amount,
+              exportValue: (rec) => rec.amount,
+              render: (rec) => (
+                <span className={`font-mono font-black text-sm tabular-nums ${rec.type === 'expense' ? 'text-orange-700' : 'text-teal-700'}`}>
+                  {rec.amount.toLocaleString()} {settings.currency}
+                </span>
+              ),
+            },
+            {
+              key: 'notes',
+              header: 'ملاحظات',
+              exportValue: (rec) => rec.notes || '-',
+              render: (rec) => <span className="text-slate-500">{rec.notes || '-'}</span>,
+            },
+          ]}
+        />
       )}
 
       {/* CUSTOMER ACCOUNT STATEMENT MODAL */}
@@ -1621,73 +1517,95 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 </div>
               </div>
 
-              <div className="border border-slate-200 rounded-xl awlad-table-scroll max-h-96 overflow-y-auto">
-                <table className="w-full text-right text-xs">
-                  <thead className="bg-slate-100 text-slate-700 font-bold sticky top-0 border-b">
-                    <tr>
-                      <th className="p-2.5">التاريخ</th>
-                      <th className="p-2.5">رقم المستند</th>
-                      <th className="p-2.5">نوع الحركة</th>
-                      <th className="p-2.5">البيان</th>
-                      <th className="p-2.5 text-center">مدين (لنا)</th>
-                      <th className="p-2.5 text-center">دائن (سداد)</th>
-                      <th className="p-2.5 text-center">الرصيد التراكمي</th>
-                      <th className="p-2.5 text-center">الحالة</th>
-                      <th className="p-2.5 text-center">عرض</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {custStatementData.entries.length === 0 ? (
-                      <tr>
-                        <td colSpan={9} className="p-6 text-center text-slate-400">
-                          لا توجد حركات مسجلة لهذا العميل حتى الآن.
-                        </td>
-                      </tr>
-                    ) : (
-                      custStatementData.entries.map((entry) => {
-                        const rb = Number(entry.runningBalance || 0);
-                        return (
-                          <tr
-                            key={entry.id}
-                            onClick={() => inspectCustomerEntry(entry)}
-                            className="hover:bg-blue-50/40 cursor-pointer transition-colors"
-                          >
-                            <td className="p-2.5 font-mono text-slate-600">{entry.date}</td>
-                            <td className="p-2.5 font-mono font-bold text-blue-900">{entry.docNumber}</td>
-                            <td className="p-2.5 font-bold">{entry.label}</td>
-                            <td className="p-2.5 text-slate-700">{entry.description}</td>
-                            <td className="p-2.5 text-center font-mono font-bold text-red-700">
-                              {Number(entry.debit || 0) > 0 ? Number(entry.debit).toLocaleString() : '-'}
-                            </td>
-                            <td className="p-2.5 text-center font-mono font-bold text-emerald-700">
-                              {Number(entry.credit || 0) > 0 ? Number(entry.credit).toLocaleString() : '-'}
-                            </td>
-                            <td className="p-2.5 text-center font-mono font-black tabular-nums">
-                              {Math.abs(rb).toLocaleString()}
-                            </td>
-                            <td className="p-2.5 text-center">
-                              <span
-                                className={`px-2 py-0.5 rounded text-[10px] font-black border ${
-                                  rb > 0.005
-                                    ? 'bg-red-50 text-red-700 border-red-200'
-                                    : rb < -0.005
-                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                    : 'bg-slate-100 text-slate-600 border-slate-200'
-                                }`}
-                              >
-                                {rb > 0.005 ? 'لنا' : rb < -0.005 ? 'علينا' : 'متوازن'}
-                              </span>
-                            </td>
-                            <td className="p-2.5 text-center">
-                              <Eye className="w-4 h-4 text-blue-800 inline" />
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              <UnifiedDataTable<CustomerStatementEntry>
+                title="سجل حركات كشف حساب العميل"
+                data={custStatementData.entries}
+                rowKey={(entry) => entry.id}
+                compact
+                searchable={false}
+                defaultPageSize={25}
+                onRowClick={(entry) => inspectCustomerEntry(entry)}
+                emptyTitle="لا توجد حركات مسجلة لهذا العميل حتى الآن"
+                columns={[
+                  {
+                    key: 'date',
+                    header: 'التاريخ',
+                    render: (entry) => <span className="font-mono text-slate-600">{entry.date}</span>,
+                  },
+                  {
+                    key: 'docNumber',
+                    header: 'رقم المستند',
+                    render: (entry) => <span className="font-mono font-bold text-blue-900">{entry.docNumber}</span>,
+                  },
+                  {
+                    key: 'label',
+                    header: 'نوع الحركة',
+                    render: (entry) => <span className="font-bold">{entry.label}</span>,
+                  },
+                  {
+                    key: 'description',
+                    header: 'البيان',
+                    render: (entry) => <span className="text-slate-700">{entry.description}</span>,
+                  },
+                  {
+                    key: 'debit',
+                    header: 'مدين (لنا)',
+                    align: 'center',
+                    render: (entry) => (
+                      <span className="font-mono font-bold text-red-700 tabular-nums">
+                        {Number(entry.debit || 0) > 0 ? Number(entry.debit).toLocaleString() : '-'}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: 'credit',
+                    header: 'دائن (سداد)',
+                    align: 'center',
+                    render: (entry) => (
+                      <span className="font-mono font-bold text-emerald-700 tabular-nums">
+                        {Number(entry.credit || 0) > 0 ? Number(entry.credit).toLocaleString() : '-'}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: 'runningBalance',
+                    header: 'الرصيد التراكمي',
+                    align: 'center',
+                    render: (entry) => (
+                      <span className="font-mono font-black tabular-nums">
+                        {Math.abs(Number(entry.runningBalance || 0)).toLocaleString()}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: 'direction',
+                    header: 'الحالة',
+                    align: 'center',
+                    render: (entry) => {
+                      const rb = Number(entry.runningBalance || 0);
+                      return (
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-black border ${
+                            rb > 0.005
+                              ? 'bg-red-50 text-red-700 border-red-200'
+                              : rb < -0.005
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-slate-100 text-slate-600 border-slate-200'
+                          }`}
+                        >
+                          {rb > 0.005 ? 'لنا' : rb < -0.005 ? 'علينا' : 'متوازن'}
+                        </span>
+                      );
+                    },
+                  },
+                  {
+                    key: 'view',
+                    header: 'عرض',
+                    align: 'center',
+                    render: () => <Eye className="w-4 h-4 text-blue-800 inline" />,
+                  },
+                ]}
+              />
             </div>
           )}
         </Modal>
@@ -1801,73 +1719,95 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 </div>
               </div>
 
-              <div className="border border-slate-200 rounded-xl awlad-table-scroll max-h-96 overflow-y-auto">
-                <table className="w-full text-right text-xs">
-                  <thead className="bg-slate-100 text-slate-700 font-bold sticky top-0 border-b">
-                    <tr>
-                      <th className="p-2.5">التاريخ</th>
-                      <th className="p-2.5">رقم المستند</th>
-                      <th className="p-2.5">نوع الحركة</th>
-                      <th className="p-2.5">البيان</th>
-                      <th className="p-2.5 text-center">له / مشتريات</th>
-                      <th className="p-2.5 text-center">سداد / مرتجع</th>
-                      <th className="p-2.5 text-center">الرصيد التراكمي</th>
-                      <th className="p-2.5 text-center">الحالة</th>
-                      <th className="p-2.5 text-center">عرض</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {suppStatementData.entries.length === 0 ? (
-                      <tr>
-                        <td colSpan={9} className="p-6 text-center text-slate-400">
-                          لا توجد حركات مسجلة لهذا المورد حتى الآن.
-                        </td>
-                      </tr>
-                    ) : (
-                      suppStatementData.entries.map((entry) => {
-                        const rb = Number(entry.runningBalance || 0);
-                        return (
-                          <tr
-                            key={entry.id}
-                            onClick={() => inspectSupplierEntry(entry)}
-                            className="hover:bg-purple-50/40 cursor-pointer transition-colors"
-                          >
-                            <td className="p-2.5 font-mono text-slate-600">{entry.date}</td>
-                            <td className="p-2.5 font-mono font-bold text-indigo-900">{entry.docNumber}</td>
-                            <td className="p-2.5 font-bold">{entry.label}</td>
-                            <td className="p-2.5 text-slate-700">{entry.description}</td>
-                            <td className="p-2.5 text-center font-mono font-bold text-slate-900">
-                              {Number(entry.credit || 0) > 0 ? Number(entry.credit).toLocaleString() : '-'}
-                            </td>
-                            <td className="p-2.5 text-center font-mono font-bold text-emerald-700">
-                              {Number(entry.debit || 0) > 0 ? Number(entry.debit).toLocaleString() : '-'}
-                            </td>
-                            <td className="p-2.5 text-center font-mono font-black tabular-nums">
-                              {Math.abs(rb).toLocaleString()}
-                            </td>
-                            <td className="p-2.5 text-center">
-                              <span
-                                className={`px-2 py-0.5 rounded text-[10px] font-black border ${
-                                  rb > 0.005
-                                    ? 'bg-purple-50 text-purple-800 border-purple-200'
-                                    : rb < -0.005
-                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                    : 'bg-slate-100 text-slate-600 border-slate-200'
-                                }`}
-                              >
-                                {rb > 0.005 ? 'علينا' : rb < -0.005 ? 'لنا (مقدم)' : 'متوازن'}
-                              </span>
-                            </td>
-                            <td className="p-2.5 text-center">
-                              <Eye className="w-4 h-4 text-indigo-800 inline" />
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              <UnifiedDataTable<SupplierStatementEntry>
+                title="سجل حركات كشف حساب المورد"
+                data={suppStatementData.entries}
+                rowKey={(entry) => entry.id}
+                compact
+                searchable={false}
+                defaultPageSize={25}
+                onRowClick={(entry) => inspectSupplierEntry(entry)}
+                emptyTitle="لا توجد حركات مسجلة لهذا المورد حتى الآن"
+                columns={[
+                  {
+                    key: 'date',
+                    header: 'التاريخ',
+                    render: (entry) => <span className="font-mono text-slate-600">{entry.date}</span>,
+                  },
+                  {
+                    key: 'docNumber',
+                    header: 'رقم المستند',
+                    render: (entry) => <span className="font-mono font-bold text-indigo-900">{entry.docNumber}</span>,
+                  },
+                  {
+                    key: 'label',
+                    header: 'نوع الحركة',
+                    render: (entry) => <span className="font-bold">{entry.label}</span>,
+                  },
+                  {
+                    key: 'description',
+                    header: 'البيان',
+                    render: (entry) => <span className="text-slate-700">{entry.description}</span>,
+                  },
+                  {
+                    key: 'credit',
+                    header: 'له / مشتريات',
+                    align: 'center',
+                    render: (entry) => (
+                      <span className="font-mono font-bold text-slate-900 tabular-nums">
+                        {Number(entry.credit || 0) > 0 ? Number(entry.credit).toLocaleString() : '-'}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: 'debit',
+                    header: 'سداد / مرتجع',
+                    align: 'center',
+                    render: (entry) => (
+                      <span className="font-mono font-bold text-emerald-700 tabular-nums">
+                        {Number(entry.debit || 0) > 0 ? Number(entry.debit).toLocaleString() : '-'}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: 'runningBalance',
+                    header: 'الرصيد التراكمي',
+                    align: 'center',
+                    render: (entry) => (
+                      <span className="font-mono font-black tabular-nums">
+                        {Math.abs(Number(entry.runningBalance || 0)).toLocaleString()}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: 'direction',
+                    header: 'الحالة',
+                    align: 'center',
+                    render: (entry) => {
+                      const rb = Number(entry.runningBalance || 0);
+                      return (
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-black border ${
+                            rb > 0.005
+                              ? 'bg-purple-50 text-purple-800 border-purple-200'
+                              : rb < -0.005
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-slate-100 text-slate-600 border-slate-200'
+                          }`}
+                        >
+                          {rb > 0.005 ? 'علينا' : rb < -0.005 ? 'لنا (مقدم)' : 'متوازن'}
+                        </span>
+                      );
+                    },
+                  },
+                  {
+                    key: 'view',
+                    header: 'عرض',
+                    align: 'center',
+                    render: () => <Eye className="w-4 h-4 text-indigo-800 inline" />,
+                  },
+                ]}
+              />
             </div>
           )}
         </Modal>
@@ -1898,30 +1838,44 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                   <div>المتبقي: {Number(previewStatementDoc.invoice.remainingAmount || 0).toLocaleString()} {settings.currency}</div>
                   <div>الإجمالي: {Number(previewStatementDoc.invoice.grandTotal || 0).toLocaleString()} {settings.currency}</div>
                 </div>
-                <div className="border border-slate-200 rounded-xl awlad-table-scroll max-h-64 overflow-y-auto">
-                  <table className="w-full text-right">
-                    <thead className="bg-slate-100 font-bold border-b text-slate-700">
-                      <tr>
-                        <th className="p-2">الصنف</th>
-                        <th className="p-2">الوحدة</th>
-                        <th className="p-2 text-center">الكمية</th>
-                        <th className="p-2 text-center">السعر</th>
-                        <th className="p-2 text-center">الإجمالي</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {(previewStatementDoc.invoice.items || []).map((it, idx) => (
-                        <tr key={idx}>
-                          <td className="p-2 font-bold">{it.productName}</td>
-                          <td className="p-2">{it.unit}</td>
-                          <td className="p-2 text-center font-mono font-bold">{it.quantity}</td>
-                          <td className="p-2 text-center font-mono">{Number(it.unitPrice || 0).toLocaleString()}</td>
-                          <td className="p-2 text-center font-mono font-bold">{Number(it.total || 0).toLocaleString()}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <UnifiedDataTable<InvoiceItem>
+                  title="أصناف المستند"
+                  data={previewStatementDoc.invoice.items || []}
+                  rowKey={(it, idx) => `${it.productId || it.productName}-${idx}`}
+                  compact
+                  searchable={false}
+                  defaultPageSize={25}
+                  columns={[
+                    {
+                      key: 'productName',
+                      header: 'الصنف',
+                      render: (it) => <span className="font-bold">{it.productName}</span>,
+                    },
+                    {
+                      key: 'unit',
+                      header: 'الوحدة',
+                      render: (it) => <span>{it.unit}</span>,
+                    },
+                    {
+                      key: 'quantity',
+                      header: 'الكمية',
+                      align: 'center',
+                      render: (it) => <span className="font-mono font-bold tabular-nums">{it.quantity}</span>,
+                    },
+                    {
+                      key: 'unitPrice',
+                      header: 'السعر',
+                      align: 'center',
+                      render: (it) => <span className="font-mono tabular-nums">{Number(it.unitPrice || 0).toLocaleString()}</span>,
+                    },
+                    {
+                      key: 'total',
+                      header: 'الإجمالي',
+                      align: 'center',
+                      render: (it) => <span className="font-mono font-bold tabular-nums">{Number(it.total || 0).toLocaleString()}</span>,
+                    },
+                  ]}
+                />
               </div>
             ) : (
               previewStatementDoc.extraLines && (

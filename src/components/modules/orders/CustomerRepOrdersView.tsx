@@ -17,6 +17,7 @@ import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { CustomerItemOrderRequest } from '../../../types';
 import { Modal } from '../../common/Modal';
+import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
   pending: { label: 'طلب جديد', cls: 'bg-amber-50 text-amber-800 border-amber-200' },
@@ -214,286 +215,340 @@ export const CustomerRepOrdersView: React.FC = () => {
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center gap-3 text-xs">
-        <div className="relative flex-1 min-w-[220px]">
-          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="بحث برقم الطلب، العميل، المحل، أو المندوب..."
-            className="w-full pr-9 pl-3 py-2 rounded-xl border border-slate-300 outline-hidden focus:border-blue-700"
-          />
-        </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="py-2 px-3 rounded-xl border border-slate-300 font-bold bg-slate-50"
-        >
-          <option value="all">كل الحالات</option>
-          {Object.entries(STATUS_META).map(([key, meta]) => (
-            <option key={key} value={key}>
-              {meta.label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={requesterFilter}
-          onChange={(e) => setRequesterFilter(e.target.value as any)}
-          className="py-2 px-3 rounded-xl border border-slate-300 font-bold bg-slate-50"
-        >
-          <option value="all">كل المصادر</option>
-          <option value="customer">طلبات العملاء</option>
-          <option value="representative">طلبات المناديب</option>
-        </select>
-      </div>
+      {/* Unified Orders Table */}
+      <UnifiedDataTable<CustomerItemOrderRequest>
+        title={`سجل طلبات العملاء والمندوبين (${filteredOrders.length})`}
+        data={filteredOrders}
+        rowKey={(ord) => ord.id}
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="بحث برقم الطلب، العميل، المحل، أو المندوب..."
+        exportFilename="AWLAD_SELIM_Orders"
+        pdfTitle="طلبات العملاء والمندوبين"
+        emptyTitle="لا توجد طلبات مطابقة لخيارات البحث الحالية"
+        emptySubtitle="جرّب تغيير فلاتر الحالة أو المصدر."
+        toolbarFilters={
+          <>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="py-1.5 px-3 rounded-lg border border-slate-300 font-bold bg-white text-xs"
+            >
+              <option value="all">كل الحالات</option>
+              {Object.entries(STATUS_META).map(([key, meta]) => (
+                <option key={key} value={key}>
+                  {meta.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={requesterFilter}
+              onChange={(e) => setRequesterFilter(e.target.value as any)}
+              className="py-1.5 px-3 rounded-lg border border-slate-300 font-bold bg-white text-xs"
+            >
+              <option value="all">كل المصادر</option>
+              <option value="customer">طلبات العملاء</option>
+              <option value="representative">طلبات المناديب</option>
+            </select>
+          </>
+        }
+        columns={[
+          {
+            key: 'requestNumber',
+            header: 'رقم الطلب',
+            sortValue: (o) => o.createdAt,
+            exportValue: (o) => o.requestNumber,
+            render: (ord) => (
+              <div className="font-mono font-bold text-slate-900">
+                <div>{ord.requestNumber}</div>
+                <div className="text-[10px] text-slate-400 tabular-nums">
+                  {new Date(ord.createdAt).toLocaleDateString('ar-EG')}
+                </div>
+              </div>
+            ),
+          },
+          {
+            key: 'customerName',
+            header: 'العميل / المحل',
+            sortValue: (o) => o.customerName,
+            exportValue: (o) => o.customerName,
+            render: (ord) => (
+              <div>
+                <p className="font-bold text-slate-900">{ord.customerName}</p>
+                {(ord.shopName || ord.customerPhone) && (
+                  <p className="text-[11px] text-slate-500">
+                    {[ord.shopName, ord.customerPhone].filter(Boolean).join(' · ')}
+                  </p>
+                )}
+              </div>
+            ),
+          },
+          {
+            key: 'source',
+            header: 'المصدر',
+            sortValue: (o) =>
+              o.requesterType === 'representative' || Boolean(o.representativeId)
+                ? o.representativeName || o.submittedByName || ''
+                : 'تطبيق العميل',
+            exportValue: (o) =>
+              o.requesterType === 'representative' || Boolean(o.representativeId)
+                ? `مندوب: ${o.representativeName || o.submittedByName || ''}`
+                : 'تطبيق العميل',
+            render: (ord) => {
+              const isRepReq = ord.requesterType === 'representative' || Boolean(ord.representativeId);
+              return (
+                <span className="text-[11px] font-bold text-slate-700">
+                  {isRepReq ? `مندوب: ${ord.representativeName || ord.submittedByName || ''}` : 'تطبيق العميل'}
+                </span>
+              );
+            },
+          },
+          {
+            key: 'itemsCount',
+            header: 'الأصناف',
+            align: 'center',
+            sortValue: (o) => o.items?.length || 0,
+            exportValue: (o) => o.items?.length || 0,
+            render: (ord) => <span className="font-mono tabular-nums font-bold">{ord.items?.length || 0}</span>,
+          },
+          {
+            key: 'total',
+            header: 'الإجمالي',
+            align: 'center',
+            sortValue: (o) => o.invoiceTotal ?? getOrderTotal(o),
+            exportValue: (o) => o.invoiceTotal ?? getOrderTotal(o),
+            render: (ord) => {
+              const total = getOrderTotal(ord);
+              return (
+                <div className="font-mono font-black text-blue-950 tabular-nums">
+                  <div>
+                    {(ord.invoiceTotal ?? total).toLocaleString()} {settings.currency}
+                  </div>
+                  {ord.invoiceNumber && (
+                    <div className="text-[10px] font-normal text-blue-700">فاتورة: {ord.invoiceNumber}</div>
+                  )}
+                </div>
+              );
+            },
+          },
+          {
+            key: 'advance',
+            header: 'المدفوع مقدماً',
+            align: 'center',
+            sortValue: (o) => Number(o.invoicePaidAmount ?? o.advancePaidAmount ?? 0),
+            exportValue: (o) => Number(o.invoicePaidAmount ?? o.advancePaidAmount ?? 0),
+            render: (ord) => {
+              const advance = Number(ord.advancePaidAmount || 0);
+              return (
+                <div className="font-mono font-bold text-emerald-700 tabular-nums">
+                  <div>
+                    {(ord.invoicePaidAmount ?? advance) > 0
+                      ? `${(ord.invoicePaidAmount ?? advance).toLocaleString()} ${settings.currency}`
+                      : '—'}
+                  </div>
+                  {typeof ord.invoiceRemainingAmount === 'number' && ord.invoiceRemainingAmount > 0 && (
+                    <div className="text-[10px] text-red-600">
+                      متبقي: {ord.invoiceRemainingAmount.toLocaleString()}
+                    </div>
+                  )}
+                </div>
+              );
+            },
+          },
+          {
+            key: 'status',
+            header: 'الحالة',
+            align: 'center',
+            sortValue: (o) => STATUS_META[o.status]?.label || o.status,
+            exportValue: (o) => STATUS_META[o.status]?.label || o.status,
+            render: (ord) => {
+              const statusInfo = STATUS_META[ord.status] || {
+                label: ord.status,
+                cls: 'bg-slate-100 text-slate-700 border-slate-200',
+              };
+              return (
+                <span className={`inline-block px-2 py-0.5 rounded border text-[11px] font-bold ${statusInfo.cls}`}>
+                  {statusInfo.label}
+                </span>
+              );
+            },
+          },
+          {
+            key: 'actions',
+            header: 'الإجراءات',
+            align: 'center',
+            sortable: false,
+            render: (ord) => (
+              <div className="flex items-center justify-center gap-1 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setSelectedOrderId(ord.id)}
+                  className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+                  title="عرض التفاصيل وسجل التحصيلات"
+                >
+                  <Eye className="w-4 h-4" />
+                </button>
 
-      {/* Orders Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden awlad-table-scroll">
-        <table className="w-full text-right text-xs">
-          <thead>
-            <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold">
-              <th className="p-3">رقم الطلب</th>
-              <th className="p-3">العميل / المحل</th>
-              <th className="p-3">المصدر</th>
-              <th className="p-3 text-center">الأصناف</th>
-              <th className="p-3 text-center">الإجمالي</th>
-              <th className="p-3 text-center">المدفوع مقدماً</th>
-              <th className="p-3 text-center">الحالة</th>
-              <th className="p-3 text-center">الإجراءات</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filteredOrders.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="p-8 text-center text-slate-400">
-                  لا توجد طلبات مطابقة لخيارات البحث الحالية.
-                </td>
-              </tr>
-            ) : (
-              filteredOrders.map((ord) => {
-                const statusInfo = STATUS_META[ord.status] || {
-                  label: ord.status,
-                  cls: 'bg-slate-100 text-slate-700 border-slate-200',
-                };
-                const total = getOrderTotal(ord);
-                const advance = Number(ord.advancePaidAmount || 0);
-                const isRepReq = ord.requesterType === 'representative' || Boolean(ord.representativeId);
+                {canManageSales && ord.status === 'pending' && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => runAction(() => reviewCustomerItemOrder(ord.id), 'تم بدء مراجعة الطلب')}
+                    className="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold cursor-pointer"
+                  >
+                    مراجعة
+                  </button>
+                )}
 
-                return (
-                  <tr key={ord.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="p-3 font-mono font-bold text-slate-900">
-                      <div>{ord.requestNumber}</div>
-                      <div className="text-[10px] text-slate-400">
-                        {new Date(ord.createdAt).toLocaleDateString('ar-EG')}
-                      </div>
-                    </td>
-                    <td className="p-3">
-                      <p className="font-bold text-slate-900">{ord.customerName}</p>
-                      {(ord.shopName || ord.customerPhone) && (
-                        <p className="text-[11px] text-slate-500">
-                          {[ord.shopName, ord.customerPhone].filter(Boolean).join(' · ')}
-                        </p>
-                      )}
-                    </td>
-                    <td className="p-3">
-                      <span className="text-[11px] font-bold text-slate-700">
-                        {isRepReq ? `مندوب: ${ord.representativeName || ord.submittedByName || ''}` : 'تطبيق العميل'}
-                      </span>
-                    </td>
-                    <td className="p-3 text-center font-mono font-bold">{ord.items?.length || 0}</td>
-                    <td className="p-3 text-center font-mono font-black text-blue-950 tabular-nums">
-                      <div>{(ord.invoiceTotal ?? total).toLocaleString()} {settings.currency}</div>
-                      {ord.invoiceNumber && (
-                        <div className="text-[10px] font-normal text-blue-700">فاتورة: {ord.invoiceNumber}</div>
-                      )}
-                    </td>
-                    <td className="p-3 text-center font-mono font-bold text-emerald-700 tabular-nums">
-                      <div>{(ord.invoicePaidAmount ?? advance) > 0 ? `${(ord.invoicePaidAmount ?? advance).toLocaleString()} ${settings.currency}` : '-'}</div>
-                      {typeof ord.invoiceRemainingAmount === 'number' && ord.invoiceRemainingAmount > 0 && (
-                        <div className="text-[10px] text-red-600">متبقي: {ord.invoiceRemainingAmount.toLocaleString()}</div>
-                      )}
-                    </td>
-                    <td className="p-3 text-center">
-                      <span className={`inline-block px-2.5 py-1 rounded-lg border text-[11px] font-bold ${statusInfo.cls}`}>
-                        {statusInfo.label}
-                      </span>
-                    </td>
-                    <td className="p-3">
-                      <div className="flex items-center justify-center gap-1 flex-wrap">
+                {canManageSales && ['pending', 'under_review'].includes(ord.status) && (
+                  <>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => runAction(() => approveCustomerItemOrder(ord.id), 'تم اعتماد الطلب')}
+                      className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer"
+                    >
+                      اعتماد
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setRejectModalOrder(ord);
+                        setRejectReason('');
+                      }}
+                      className="px-2 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 font-bold cursor-pointer"
+                    >
+                      رفض
+                    </button>
+                  </>
+                )}
+
+                {canManageSales &&
+                  ['approved', 'invoiced', 'preparing', 'rep_assigned', 'out_for_delivery', 'delivered', 'collected'].includes(
+                    ord.status
+                  ) && (
+                    <>
+                      {['approved', 'invoiced'].includes(ord.status) && (
                         <button
                           type="button"
-                          onClick={() => setSelectedOrderId(ord.id)}
-                          className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
-                          title="عرض التفاصيل وسجل التحصيلات"
+                          disabled={busy}
+                          onClick={() =>
+                            runAction(() => advanceOrderStage(ord.id, { status: 'preparing' }), 'تم بدء تجهيز الطلب')
+                          }
+                          className="px-2 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white font-bold cursor-pointer"
                         >
-                          <Eye className="w-4 h-4" />
+                          بدء التجهيز
                         </button>
-
-                        {canManageSales && ord.status === 'pending' && (
+                      )}
+                      {['preparing', 'rep_assigned'].includes(ord.status) && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            runAction(
+                              () => advanceOrderStage(ord.id, { status: 'out_for_delivery' }),
+                              'تم إخراج الطلب للتوصيل'
+                            )
+                          }
+                          className="px-2 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold cursor-pointer"
+                        >
+                          خروج للتوصيل
+                        </button>
+                      )}
+                      {ord.status === 'out_for_delivery' && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            runAction(() => advanceOrderStage(ord.id, { status: 'delivered' }), 'تم تسليم الطلب بنجاح')
+                          }
+                          className="px-2 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer"
+                        >
+                          تم التسليم
+                        </button>
+                      )}
+                      {ord.status === 'delivered' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCollectStageOrder(ord);
+                            setCollectAmount(Number(ord.invoiceRemainingAmount ?? ord.remainingAmount ?? 0));
+                            setCollectCashboxId(cashboxes[0]?.id || 'cb-main');
+                            setCollectMethod('cash');
+                            setCollectNotes('');
+                          }}
+                          className="px-2 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
+                        >
+                          تحصيل الدفعة
+                        </button>
+                      )}
+                      {['delivered', 'collected'].includes(ord.status) && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            runAction(() => advanceOrderStage(ord.id, { status: 'closed' }), 'تم إغلاق دورة الطلب بنجاح')
+                          }
+                          className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-black text-white font-bold cursor-pointer"
+                        >
+                          إغلاق الطلب
+                        </button>
+                      )}
+                      {['approved', 'invoiced', 'preparing', 'rep_assigned', 'out_for_delivery'].includes(ord.status) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAssignModalOrder(ord);
+                            setAssignRepId(ord.deliveryRepId || representatives[0]?.id || '');
+                            setAssignNotes('');
+                          }}
+                          className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 cursor-pointer"
+                          title="تعيين مندوب توصيل"
+                        >
+                          <UserCheck className="w-4 h-4" />
+                        </button>
+                      )}
+                      {!ord.invoiceId && (
+                        <>
                           <button
                             type="button"
-                            disabled={busy}
-                            onClick={() =>
-                              runAction(() => reviewCustomerItemOrder(ord.id), 'تم بدء مراجعة الطلب')
-                            }
-                            className="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold cursor-pointer"
+                            onClick={() => {
+                              setAdvanceModalOrder(ord);
+                              setAdvanceAmount(0);
+                              setAdvanceCashboxId(cashboxes[0]?.id || 'cb-main');
+                              setAdvanceNotes('');
+                            }}
+                            className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 cursor-pointer"
+                            title="تسجيل دفعة مقدمة"
                           >
-                            مراجعة
+                            <DollarSign className="w-4 h-4" />
                           </button>
-                        )}
-
-                        {canManageSales && ['pending', 'under_review'].includes(ord.status) && (
-                          <>
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() =>
-                                runAction(() => approveCustomerItemOrder(ord.id), 'تم اعتماد الطلب')
-                              }
-                              className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer"
-                            >
-                              اعتماد
-                            </button>
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() => {
-                                setRejectModalOrder(ord);
-                                setRejectReason('');
-                              }}
-                              className="px-2 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 font-bold cursor-pointer"
-                            >
-                              رفض
-                            </button>
-                          </>
-                        )}
-
-                        {canManageSales &&
-                          ['approved', 'invoiced', 'preparing', 'rep_assigned', 'out_for_delivery', 'delivered', 'collected'].includes(ord.status) && (
-                            <>
-                              {['approved', 'invoiced'].includes(ord.status) && (
-                                <button
-                                  type="button"
-                                  disabled={busy}
-                                  onClick={() =>
-                                    runAction(() => advanceOrderStage(ord.id, { status: 'preparing' }), 'تم بدء تجهيز الطلب')
-                                  }
-                                  className="px-2 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white font-bold cursor-pointer"
-                                >
-                                  بدء التجهيز
-                                </button>
-                              )}
-                              {['preparing', 'rep_assigned'].includes(ord.status) && (
-                                <button
-                                  type="button"
-                                  disabled={busy}
-                                  onClick={() =>
-                                    runAction(() => advanceOrderStage(ord.id, { status: 'out_for_delivery' }), 'تم إخراج الطلب للتوصيل')
-                                  }
-                                  className="px-2 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold cursor-pointer"
-                                >
-                                  خروج للتوصيل
-                                </button>
-                              )}
-                              {ord.status === 'out_for_delivery' && (
-                                <button
-                                  type="button"
-                                  disabled={busy}
-                                  onClick={() =>
-                                    runAction(() => advanceOrderStage(ord.id, { status: 'delivered' }), 'تم تسليم الطلب بنجاح')
-                                  }
-                                  className="px-2 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer"
-                                >
-                                  تم التسليم
-                                </button>
-                              )}
-                              {ord.status === 'delivered' && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setCollectStageOrder(ord);
-                                    setCollectAmount(Number(ord.invoiceRemainingAmount ?? ord.remainingAmount ?? 0));
-                                    setCollectCashboxId(cashboxes[0]?.id || 'cb-main');
-                                    setCollectMethod('cash');
-                                    setCollectNotes('');
-                                  }}
-                                  className="px-2 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
-                                >
-                                  تحصيل الدفعة
-                                </button>
-                              )}
-                              {['delivered', 'collected'].includes(ord.status) && (
-                                <button
-                                  type="button"
-                                  disabled={busy}
-                                  onClick={() =>
-                                    runAction(() => advanceOrderStage(ord.id, { status: 'closed' }), 'تم إغلاق دورة الطلب بنجاح')
-                                  }
-                                  className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-black text-white font-bold cursor-pointer"
-                                >
-                                  إغلاق الطلب
-                                </button>
-                              )}
-                              {['approved', 'invoiced', 'preparing', 'rep_assigned', 'out_for_delivery'].includes(ord.status) && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setAssignModalOrder(ord);
-                                    setAssignRepId(ord.deliveryRepId || representatives[0]?.id || '');
-                                    setAssignNotes('');
-                                  }}
-                                  className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 cursor-pointer"
-                                  title="تعيين مندوب توصيل"
-                                >
-                                  <UserCheck className="w-4 h-4" />
-                                </button>
-                              )}
-                              {!ord.invoiceId && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setAdvanceModalOrder(ord);
-                                      setAdvanceAmount(0);
-                                      setAdvanceCashboxId(cashboxes[0]?.id || 'cb-main');
-                                      setAdvanceNotes('');
-                                    }}
-                                    className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 cursor-pointer"
-                                    title="تسجيل دفعة مقدمة"
-                                  >
-                                    <DollarSign className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setConvertModalOrder(ord);
-                                      setConvertWarehouseId(warehouses[0]?.id || 'wh-main');
-                                      setConvertCashboxId(cashboxes[0]?.id || 'cb-main');
-                                      setConvertPaid(0);
-                                      setConvertDiscount(0);
-                                      setConvertPaymentType('cash');
-                                      setConvertNotes(ord.notes || '');
-                                    }}
-                                    className="px-2 py-1 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-bold flex items-center gap-1 cursor-pointer"
-                                  >
-                                    <FileText className="w-3.5 h-3.5" />
-                                    <span>تحويل لفاتورة</span>
-                                  </button>
-                                </>
-                              )}
-                            </>
-                          )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setConvertModalOrder(ord);
+                              setConvertWarehouseId(warehouses[0]?.id || 'wh-main');
+                              setConvertCashboxId(cashboxes[0]?.id || 'cb-main');
+                              setConvertPaid(0);
+                              setConvertDiscount(0);
+                              setConvertPaymentType('cash');
+                              setConvertNotes(ord.notes || '');
+                            }}
+                            className="px-2 py-1 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-bold flex items-center gap-1 cursor-pointer"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>تحويل لفاتورة</span>
+                          </button>
+                        </>
+                      )}
+                    </>
+                  )}
+              </div>
+            ),
+          },
+        ]}
+      />
 
       {/* Order Detail Modal */}
       <Modal
@@ -531,37 +586,52 @@ export const CustomerRepOrdersView: React.FC = () => {
               </div>
             </div>
 
-            <div className="border border-slate-200 rounded-xl overflow-hidden awlad-table-scroll">
-              <table className="w-full text-right">
-                <thead>
-                  <tr className="bg-slate-100 border-b text-slate-700 font-bold">
-                    <th className="p-2.5">الصنف</th>
-                    <th className="p-2.5 text-center">الوحدة</th>
-                    <th className="p-2.5 text-center">الكمية</th>
-                    <th className="p-2.5 text-center">السعر المرجعي</th>
-                    <th className="p-2.5 text-center">الإجمالي</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {(selectedOrder.items || []).map((it, idx) => {
-                    const price = Number(it.unitPrice ?? 0);
-                    return (
-                      <tr key={idx}>
-                        <td className="p-2.5 font-bold">{it.productName}</td>
-                        <td className="p-2.5 text-center">{it.unit}</td>
-                        <td className="p-2.5 text-center font-mono font-bold">{it.quantity}</td>
-                        <td className="p-2.5 text-center font-mono">
-                          {price.toLocaleString()} {settings.currency}
-                        </td>
-                        <td className="p-2.5 text-center font-mono font-black text-blue-950">
-                          {(price * Number(it.quantity || 0)).toLocaleString()} {settings.currency}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <UnifiedDataTable<(typeof selectedOrder.items)[number]>
+              compact
+              searchable={false}
+              data={selectedOrder.items || []}
+              rowKey={(it, idx) => `${it.productId || it.productName}-${idx}`}
+              maxHeightClassName="max-h-72"
+              columns={[
+                {
+                  key: 'productName',
+                  header: 'الصنف',
+                  render: (it) => <span className="font-bold text-slate-900">{it.productName}</span>,
+                },
+                {
+                  key: 'unit',
+                  header: 'الوحدة',
+                  align: 'center',
+                  render: (it) => <span>{it.unit}</span>,
+                },
+                {
+                  key: 'quantity',
+                  header: 'الكمية',
+                  align: 'center',
+                  render: (it) => <span className="font-mono tabular-nums font-bold">{it.quantity}</span>,
+                },
+                {
+                  key: 'unitPrice',
+                  header: 'السعر المرجعي',
+                  align: 'center',
+                  render: (it) => (
+                    <span className="font-mono tabular-nums">
+                      {Number(it.unitPrice ?? 0).toLocaleString()} {settings.currency}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'total',
+                  header: 'الإجمالي',
+                  align: 'center',
+                  render: (it) => (
+                    <span className="font-mono tabular-nums font-black text-blue-950">
+                      {(Number(it.unitPrice ?? 0) * Number(it.quantity || 0)).toLocaleString()} {settings.currency}
+                    </span>
+                  ),
+                },
+              ]}
+            />
 
             {selectedOrder.notes && (
               <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">
@@ -601,30 +671,45 @@ export const CustomerRepOrdersView: React.FC = () => {
                   </div>
                 </div>
                 {selectedOrder.paymentsHistory && selectedOrder.paymentsHistory.length > 0 && (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-[11px] text-right">
-                      <thead>
-                        <tr className="border-b border-slate-200 text-slate-600 font-bold">
-                          <th className="py-1 px-2">رقم الدفعة</th>
-                          <th className="py-1 px-2">التاريخ</th>
-                          <th className="py-1 px-2">المبلغ</th>
-                          <th className="py-1 px-2">الخزينة / الطريقة</th>
-                          <th className="py-1 px-2">ملاحظات</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {selectedOrder.paymentsHistory.map((ph) => (
-                          <tr key={ph.id}>
-                            <td className="py-1 px-2 font-mono">{ph.paymentNumber}</td>
-                            <td className="py-1 px-2 font-mono">{ph.date}</td>
-                            <td className="py-1 px-2 font-bold text-emerald-700 tabular-nums">{ph.amount.toLocaleString()} {settings.currency}</td>
-                            <td className="py-1 px-2">{ph.cashboxName || ph.paymentMethod}</td>
-                            <td className="py-1 px-2 text-slate-500">{ph.notes || '-'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <UnifiedDataTable<NonNullable<CustomerItemOrderRequest['paymentsHistory']>[number]>
+                    compact
+                    searchable={false}
+                    data={selectedOrder.paymentsHistory}
+                    rowKey={(ph) => ph.id}
+                    maxHeightClassName="max-h-60"
+                    columns={[
+                      {
+                        key: 'paymentNumber',
+                        header: 'رقم الدفعة',
+                        render: (ph) => <span className="font-mono">{ph.paymentNumber}</span>,
+                      },
+                      {
+                        key: 'date',
+                        header: 'التاريخ',
+                        render: (ph) => <span className="font-mono tabular-nums">{ph.date}</span>,
+                      },
+                      {
+                        key: 'amount',
+                        header: 'المبلغ',
+                        align: 'center',
+                        render: (ph) => (
+                          <span className="font-mono font-bold text-emerald-700 tabular-nums">
+                            {ph.amount.toLocaleString()} {settings.currency}
+                          </span>
+                        ),
+                      },
+                      {
+                        key: 'method',
+                        header: 'الخزينة / الطريقة',
+                        render: (ph) => <span>{ph.cashboxName || ph.paymentMethod}</span>,
+                      },
+                      {
+                        key: 'notes',
+                        header: 'ملاحظات',
+                        render: (ph) => <span className="text-slate-500">{ph.notes || '—'}</span>,
+                      },
+                    ]}
+                  />
                 )}
               </div>
             )}

@@ -1528,12 +1528,12 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
           />
         </div>
       ) : (
-        <div className="bg-white border border-t-0 border-slate-400 rounded-b-md overflow-hidden shadow-xs">
-          {/* Reference Green Header Strip: عرض + in-table search (directly under filters) */}
-          <div className="bg-[#22b14c] text-white px-2.5 py-1 flex flex-wrap items-center justify-between gap-2 text-xs font-extrabold">
+        <div className="bg-white border border-t-0 border-slate-300 rounded-b-xl overflow-hidden shadow-xs">
+          {/* Unified Royal Blue Header Strip: عرض + in-table search */}
+          <div className="bg-blue-900 text-white px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs font-extrabold">
             <div className="flex items-center gap-3">
               <span>عرض — {activeReportOption.label}</span>
-              <span className="bg-white/20 px-2 py-0.5 rounded font-mono text-[11px]">
+              <span className="bg-white/15 px-2 py-0.5 rounded font-mono text-[11px] tabular-nums">
                 {processedSections.reduce((s, sec) => s + sec.rows.length, 0)} حركة
               </span>
               {isLoading && <span className="text-[11px] opacity-90">جاري التحديث...</span>}
@@ -1544,7 +1544,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                 value={inlineTableSearch}
                 onChange={(e) => setInlineTableSearch(e.target.value)}
                 placeholder="تصفية سريعة داخل الجدول..."
-                className="h-6 px-2 rounded bg-white text-slate-900 placeholder-slate-400 text-[11px] font-normal w-44 focus:outline-none"
+                className="h-7 px-2.5 rounded-lg bg-white text-slate-900 placeholder-slate-400 text-[11px] font-normal w-48 focus:outline-none"
               />
             </div>
           </div>
@@ -1552,19 +1552,19 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
           {/* Scrollable 19-Column Table Container */}
           <div className="overflow-auto max-h-[54vh] bg-white">
             <table className="w-full border-collapse text-[11.5px] min-w-[1680px]">
-              <thead className="sticky top-0 z-20 bg-[#eef1f4] text-slate-800 border-b-2 border-slate-400">
+              <thead className="sticky top-0 z-20 bg-blue-950 text-white border-b border-blue-900">
                 <tr>
                   {visibleColumns.map((col) => (
                     <th
                       key={col.key}
                       onClick={() => handleSort(col.key)}
-                      className={`px-2 py-2 border-l border-slate-300 font-extrabold whitespace-nowrap cursor-pointer hover:bg-slate-200/70 transition-colors ${
+                      className={`px-2.5 py-2.5 border-l border-blue-900/60 font-extrabold whitespace-nowrap cursor-pointer hover:bg-blue-900/80 transition-colors ${
                         col.align === 'center' ? 'text-center' : 'text-right'
                       }`}
                     >
                       <span className="inline-flex items-center gap-1">
                         <span>{col.label}</span>
-                        <ArrowUpDown className={`w-3 h-3 ${sortCol === col.key ? 'text-emerald-700' : 'text-slate-400'}`} />
+                        <ArrowUpDown className={`w-3 h-3 ${sortCol === col.key ? 'text-sky-300' : 'text-blue-200/70'}`} />
                       </span>
                     </th>
                   ))}

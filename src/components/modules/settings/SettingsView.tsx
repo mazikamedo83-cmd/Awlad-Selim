@@ -25,6 +25,7 @@ import {
 import { isMobileAppPlatform, isNativeCapacitor } from '../../../services/native';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { Modal } from '../../common/Modal';
+import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 import { PairingAndDevicesPanel } from './PairingAndDevicesPanel';
 import { DiagnosticLogsPanel } from './DiagnosticLogsPanel';
 import {
@@ -2045,55 +2046,58 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 </div>
               </div>
 
-              <div className="border border-slate-200 rounded-xl awlad-table-scroll max-h-80 overflow-y-auto">
-                <table className="w-full text-right text-[11px]">
-                  <thead className="bg-slate-100 text-slate-700 sticky top-0 border-b">
-                    <tr>
-                      <th className="p-2">#</th>
-                      <th className="p-2">كود الصنف</th>
-                      <th className="p-2">اسم الصنف الأصلي</th>
-                      <th className="p-2">التصنيف</th>
-                      <th className="p-2">سعر الشراء</th>
-                      <th className="p-2">سعر البيع</th>
-                      <th className="p-2">الرصيد</th>
-                      <th className="p-2 text-center">حالة التدقيق</th>
-                      <th className="p-2 text-center">الإجراءات</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {importCandidates.slice(0, 50).map((cand, idx) => (
-                      <tr key={cand.id} className={cand.isValid ? 'hover:bg-slate-50' : 'bg-red-50/50'}>
-                        <td className="p-2 text-slate-400 font-mono">{idx + 1}</td>
-                        <td className="p-2 font-mono font-bold text-slate-800">{cand.code}</td>
-                        <td className="p-2 font-bold text-slate-900">{cand.name}</td>
-                        <td className="p-2 text-slate-600">{cand.category}</td>
-                        <td className="p-2 text-slate-400 font-mono">0 (فارغ)</td>
-                        <td className="p-2 text-slate-400 font-mono">0 (فارغ)</td>
-                        <td className="p-2 text-slate-400 font-mono">0 (فارغ)</td>
-                        <td className="p-2 text-center">
-                          {cand.isValid ? (
-                            <span className="px-2 py-0.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-800 text-[10px] font-bold">صالح</span>
-                          ) : cand.isDuplicateCode ? (
-                            <span className="px-2 py-0.5 rounded border border-red-200 bg-red-50 text-red-800 text-[10px] font-bold">كود مكرر</span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-800 text-[10px] font-bold">اسم مكرر</span>
-                          )}
-                        </td>
-                        <td className="p-2 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleExcludeCandidate(cand.id)}
-                            className="text-red-600 hover:text-red-800 p-1 text-[10px] font-bold hover:underline"
-                            title="استبعاد هذا السجل من الاستيراد"
-                          >
-                            استبعاد
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <UnifiedDataTable
+                compact
+                title="معاينة الأصناف المفحوصة قبل الاستيراد"
+                data={importCandidates.slice(0, 50).map((cand, idx) => ({ ...cand, _rowNo: idx + 1 }))}
+                rowKey={(cand) => cand.id}
+                searchPlaceholder="بحث بالكود أو اسم الصنف..."
+                searchFilter={(cand, q) =>
+                  cand.code.toLowerCase().includes(q) ||
+                  cand.name.toLowerCase().includes(q) ||
+                  (cand.category || '').toLowerCase().includes(q)
+                }
+                rowClassName={(cand) => (cand.isValid ? '' : 'bg-red-50/50')}
+                paginated={false}
+                maxHeightClassName="max-h-80"
+                columns={[
+                  { key: '_rowNo', header: '#', width: '44px', align: 'center', render: (cand) => <span className="text-slate-400 font-mono">{cand._rowNo}</span> },
+                  { key: 'code', header: 'كود الصنف', render: (cand) => <span className="font-mono font-bold text-slate-800">{cand.code}</span> },
+                  { key: 'name', header: 'اسم الصنف الأصلي', render: (cand) => <span className="font-bold text-slate-900">{cand.name}</span> },
+                  { key: 'category', header: 'التصنيف', render: (cand) => <span className="text-slate-600">{cand.category}</span> },
+                  { key: 'buyPrice', header: 'سعر الشراء', align: 'center', render: () => <span className="text-slate-400 font-mono">0 (فارغ)</span> },
+                  { key: 'sellPrice', header: 'سعر البيع', align: 'center', render: () => <span className="text-slate-400 font-mono">0 (فارغ)</span> },
+                  { key: 'stock', header: 'الرصيد', align: 'center', render: () => <span className="text-slate-400 font-mono">0 (فارغ)</span> },
+                  {
+                    key: 'status',
+                    header: 'حالة التدقيق',
+                    align: 'center',
+                    render: (cand) =>
+                      cand.isValid ? (
+                        <span className="px-2 py-0.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-800 text-[10px] font-bold">صالح</span>
+                      ) : cand.isDuplicateCode ? (
+                        <span className="px-2 py-0.5 rounded border border-red-200 bg-red-50 text-red-800 text-[10px] font-bold">كود مكرر</span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-800 text-[10px] font-bold">اسم مكرر</span>
+                      ),
+                  },
+                  {
+                    key: 'actions',
+                    header: 'الإجراءات',
+                    align: 'center',
+                    render: (cand) => (
+                      <button
+                        type="button"
+                        onClick={() => handleExcludeCandidate(cand.id)}
+                        className="text-red-600 hover:text-red-800 p-1 text-[10px] font-bold hover:underline cursor-pointer"
+                        title="استبعاد هذا السجل من الاستيراد"
+                      >
+                        استبعاد
+                      </button>
+                    ),
+                  },
+                ]}
+              />
               {importCandidates.length > 50 && (
                 <p className="text-[10px] text-slate-400 text-center">يتم عرض أول 50 صنف من أصل {importCandidates.length} صنف تم فحصها</p>
               )}
@@ -2402,73 +2406,45 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           )}
 
           {/* Migration Logs History Table */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-              <div>
-                <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-indigo-600" />
-                  <span>سجل الترحيل التاريخي (Migration Logs)</span>
-                </h4>
-                <p className="text-[11px] text-slate-500">
-                  توثيق عمليات الترحيل السابقة، نسب المطابقة، عدد السجلات، وهوية المنفذ
-                </p>
-              </div>
-              <span className="text-xs font-bold text-slate-600 font-mono">
-                إجمالي العمليات: {(migrationLogs || []).length}
-              </span>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-right text-xs">
-                <thead>
-                  <tr className="bg-slate-100/70 text-slate-700 font-bold border-b border-slate-200">
-                    <th className="p-3">رقم العملية</th>
-                    <th className="p-3">التاريخ والوقت</th>
-                    <th className="p-3">المصدر</th>
-                    <th className="p-3">الوجهة</th>
-                    <th className="p-3 text-center">إجمالي السجلات</th>
-                    <th className="p-3 text-center">المنقول بنجاح</th>
-                    <th className="p-3 text-center">الفاشل / المرفوض</th>
-                    <th className="p-3 text-center">الحالة</th>
-                    <th className="p-3">المنفذ</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {(!migrationLogs || migrationLogs.length === 0) ? (
-                    <tr>
-                      <td colSpan={9} className="p-8 text-center text-slate-400">
-                        لا توجد عمليات ترحيل مسجلة بعد. اضغط على "تشغيل فحص وترحيل البيانات" بالأعلى لإجراء عملية ترحيل وتوثيق أولى.
-                      </td>
-                    </tr>
-                  ) : (
-                    migrationLogs.map(log => (
-                      <tr key={log.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="p-3 font-mono font-bold text-indigo-900">{log.id}</td>
-                        <td className="p-3 font-mono text-slate-600 text-[11px]">
-                          {new Date(log.timestamp).toLocaleString('ar-EG')}
-                        </td>
-                        <td className="p-3 text-slate-600 text-[11px]">{log.source}</td>
-                        <td className="p-3 text-slate-700 font-bold text-[11px]">{log.destination}</td>
-                        <td className="p-3 text-center font-mono font-bold text-slate-800">{log.totalRecords}</td>
-                        <td className="p-3 text-center font-mono font-black text-emerald-600">{log.migratedRecords}</td>
-                        <td className="p-3 text-center font-mono font-bold text-red-600">{log.failedRecords}</td>
-                        <td className="p-3 text-center">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            log.status === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                            log.status === 'pending' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                            'bg-red-50 text-red-700 border border-red-200'
-                          }`}>
-                            {log.status === 'success' ? 'ناجح 100%' : log.status === 'pending' ? 'قيد التنفيذ' : 'تحذير'}
-                          </span>
-                        </td>
-                        <td className="p-3 text-slate-600 font-semibold">{log.executedBy}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <UnifiedDataTable
+            compact
+            title="سجل الترحيل التاريخي (Migration Logs)"
+            subtitle="توثيق عمليات الترحيل السابقة، نسب المطابقة، عدد السجلات، وهوية المنفذ"
+            data={migrationLogs || []}
+            rowKey={(log) => log.id}
+            searchPlaceholder="بحث برقم العملية أو المنفذ..."
+            searchFilter={(log, q) =>
+              log.id.toLowerCase().includes(q) ||
+              (log.executedBy || '').toLowerCase().includes(q) ||
+              (log.destination || '').toLowerCase().includes(q)
+            }
+            emptyTitle="لا توجد عمليات ترحيل مسجلة بعد"
+            emptySubtitle="اضغط على «تشغيل فحص وترحيل البيانات» بالأعلى لإجراء عملية ترحيل وتوثيق أولى"
+            columns={[
+              { key: 'id', header: 'رقم العملية', render: (log) => <span className="font-mono font-bold text-indigo-900">{log.id}</span> },
+              { key: 'timestamp', header: 'التاريخ والوقت', render: (log) => <span className="font-mono text-slate-600 text-[11px]">{new Date(log.timestamp).toLocaleString('ar-EG')}</span> },
+              { key: 'source', header: 'المصدر', render: (log) => <span className="text-slate-600 text-[11px]">{log.source}</span> },
+              { key: 'destination', header: 'الوجهة', render: (log) => <span className="text-slate-700 font-bold text-[11px]">{log.destination}</span> },
+              { key: 'totalRecords', header: 'إجمالي السجلات', align: 'center', render: (log) => <span className="font-mono font-bold text-slate-800 tabular-nums">{log.totalRecords}</span> },
+              { key: 'migratedRecords', header: 'المنقول بنجاح', align: 'center', render: (log) => <span className="font-mono font-black text-emerald-600 tabular-nums">{log.migratedRecords}</span> },
+              { key: 'failedRecords', header: 'الفاشل / المرفوض', align: 'center', render: (log) => <span className="font-mono font-bold text-red-600 tabular-nums">{log.failedRecords}</span> },
+              {
+                key: 'status',
+                header: 'الحالة',
+                align: 'center',
+                render: (log) => (
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    log.status === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                    log.status === 'pending' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                    'bg-red-50 text-red-700 border border-red-200'
+                  }`}>
+                    {log.status === 'success' ? 'ناجح 100%' : log.status === 'pending' ? 'قيد التنفيذ' : 'تحذير'}
+                  </span>
+                ),
+              },
+              { key: 'executedBy', header: 'المنفذ', render: (log) => <span className="text-slate-600 font-semibold">{log.executedBy}</span> },
+            ]}
+          />
         </div>
       )}
       {/* TAB: Branches Management */}
@@ -2526,62 +2502,69 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs awlad-table-scroll">
-            <table className="w-full text-right text-xs">
-              <thead>
-                <tr className="bg-slate-50 border-b font-bold text-slate-700">
-                  <th className="p-3">الكود</th>
-                  <th className="p-3">رقم الفرع</th>
-                  <th className="p-3">اسم الفرع</th>
-                  <th className="p-3">الهاتف والعنوان</th>
-                  <th className="p-3">المستودع / الخزينة</th>
-                  <th className="p-3 text-center">إجراء</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {branches.map((br) => (
-                  <tr key={br.id} className="hover:bg-slate-50">
-                    <td className="p-3 font-mono font-bold text-blue-900">{br.code}</td>
-                    <td className="p-3">
-                      <input
-                        type="text"
-                        value={br.branchNumber || ''}
-                        placeholder="رقم الفرع"
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setBranches((prev) => prev.map((b) => (b.id === br.id ? { ...b, branchNumber: val } : b)));
-                        }}
-                        onBlur={async () => {
-                          await persistExtraSettings({ branches }, `تم تحديث رقم الفرع (${br.name}).`);
-                        }}
-                        className="w-24 border border-slate-200 rounded-lg px-2 py-1 font-mono text-xs bg-white"
-                      />
-                    </td>
-                    <td className="p-3 font-black">{br.name}</td>
-                    <td className="p-3 text-slate-600">{[br.phone, br.address].filter(Boolean).join(' | ') || '-'}</td>
-                    <td className="p-3 text-slate-700">
-                      {warehouses.find((w) => w.id === br.warehouseId)?.name || '-'} / {cashboxes.find((c) => c.id === br.cashboxId)?.name || '-'}
-                    </td>
-                    <td className="p-3 text-center">
-                      {!br.isDefault && (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const next = branches.filter((b) => b.id !== br.id);
-                            setBranches(next);
-                            await persistExtraSettings({ branches: next }, 'تم حذف الفرع وتحديث الإعدادات.');
-                          }}
-                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <UnifiedDataTable<BranchSettingItem>
+            compact
+            searchable={false}
+            paginated={false}
+            title="الفروع ونقاط التوزيع المسجلة"
+            data={branches}
+            rowKey={(br) => br.id}
+            emptyTitle="لا توجد فروع مضافة"
+            columns={[
+              { key: 'code', header: 'الكود', render: (br) => <span className="font-mono font-bold text-blue-900">{br.code}</span> },
+              {
+                key: 'branchNumber',
+                header: 'رقم الفرع',
+                render: (br) => (
+                  <input
+                    type="text"
+                    value={br.branchNumber || ''}
+                    placeholder="رقم الفرع"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setBranches((prev) => prev.map((b) => (b.id === br.id ? { ...b, branchNumber: val } : b)));
+                    }}
+                    onBlur={async () => {
+                      await persistExtraSettings({ branches }, `تم تحديث رقم الفرع (${br.name}).`);
+                    }}
+                    className="w-24 border border-slate-200 rounded-lg px-2 py-1 font-mono text-xs bg-white"
+                  />
+                ),
+              },
+              { key: 'name', header: 'اسم الفرع', render: (br) => <span className="font-black">{br.name}</span> },
+              { key: 'contact', header: 'الهاتف والعنوان', render: (br) => <span className="text-slate-600">{[br.phone, br.address].filter(Boolean).join(' | ') || '-'}</span> },
+              {
+                key: 'links',
+                header: 'المستودع / الخزينة',
+                render: (br) => (
+                  <span className="text-slate-700">
+                    {warehouses.find((w) => w.id === br.warehouseId)?.name || '-'} / {cashboxes.find((c) => c.id === br.cashboxId)?.name || '-'}
+                  </span>
+                ),
+              },
+              {
+                key: 'actions',
+                header: 'إجراء',
+                align: 'center',
+                render: (br) =>
+                  !br.isDefault ? (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const next = branches.filter((b) => b.id !== br.id);
+                        setBranches(next);
+                        await persistExtraSettings({ branches: next }, 'تم حذف الفرع وتحديث الإعدادات.');
+                      }}
+                      className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  ) : (
+                    <span className="text-[10px] text-slate-400">رئيسي</span>
+                  ),
+              },
+            ]}
+          />
         </div>
       )}
 
@@ -2678,42 +2661,39 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs awlad-table-scroll">
-            <table className="w-full text-right text-xs">
-              <thead>
-                <tr className="bg-slate-50 border-b font-bold text-slate-700">
-                  <th className="p-3">اسم الطابعة</th>
-                  <th className="p-3">النوع</th>
-                  <th className="p-3">المنفذ / IP</th>
-                  <th className="p-3 text-center">النسخ</th>
-                  <th className="p-3 text-center">إجراء</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {printers.map((pr) => (
-                  <tr key={pr.id} className="hover:bg-slate-50">
-                    <td className="p-3 font-black">{pr.name}</td>
-                    <td className="p-3 font-mono text-blue-900">{pr.role} ({pr.paperWidthMm}mm)</td>
-                    <td className="p-3 font-mono">{pr.ipOrPort}</td>
-                    <td className="p-3 text-center font-mono font-bold">{pr.copies}</td>
-                    <td className="p-3 text-center">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          const next = printers.filter((x) => x.id !== pr.id);
-                          setPrinters(next);
-                          await persistExtraSettings({ printers: next }, 'تم حذف الطابعة من القائمة.');
-                        }}
-                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <UnifiedDataTable<PrinterSettingItem>
+            compact
+            searchable={false}
+            paginated={false}
+            title="الطابعات المعرّفة"
+            data={printers}
+            rowKey={(pr) => pr.id}
+            emptyTitle="لا توجد طابعات مضافة"
+            columns={[
+              { key: 'name', header: 'اسم الطابعة', render: (pr) => <span className="font-black">{pr.name}</span> },
+              { key: 'role', header: 'النوع', render: (pr) => <span className="font-mono text-blue-900">{pr.role} ({pr.paperWidthMm}mm)</span> },
+              { key: 'ipOrPort', header: 'المنفذ / IP', render: (pr) => <span className="font-mono">{pr.ipOrPort}</span> },
+              { key: 'copies', header: 'النسخ', align: 'center', render: (pr) => <span className="font-mono font-bold tabular-nums">{pr.copies}</span> },
+              {
+                key: 'actions',
+                header: 'إجراء',
+                align: 'center',
+                render: (pr) => (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const next = printers.filter((x) => x.id !== pr.id);
+                      setPrinters(next);
+                      await persistExtraSettings({ printers: next }, 'تم حذف الطابعة من القائمة.');
+                    }}
+                    className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                ),
+              },
+            ]}
+          />
         </div>
       )}
 

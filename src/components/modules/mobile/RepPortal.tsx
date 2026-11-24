@@ -35,6 +35,7 @@ import { QuantityInput } from '../../common/QuantityInput';
 import { computeLineTotal } from '../../../utils/quantity';
 import { compressImageFileToDataUrl } from '../../../utils/image';
 import { RefreshSyncScreen } from './RefreshSyncScreen';
+import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
 import { SearchableFilterSelect, type SearchableFilterOption } from '../../common/SearchableFilterSelect';
@@ -3868,40 +3869,79 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </div>
           </div>
 
-          <div className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-2.5">
-            <h4 className="font-black text-slate-900">حركة التحويلات النقدية للمندوب ({myCashTransfers.length})</h4>
-            {myCashTransfers.length === 0 ? (
-              <p className="text-center text-slate-400 py-5">لا توجد تحويلات نقدية مسجلة حالياً.</p>
-            ) : (
-              myCashTransfers.map((t) => (
-                <div key={t.id} className="rounded-2xl border border-slate-200 p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono font-black text-blue-950">{t.transferNumber}</span>
-                    <strong className="font-mono text-sm text-slate-900 tabular-nums">
-                      {t.amount.toLocaleString()} {data.settings.currency}
-                    </strong>
-                  </div>
-                  <p className="text-[11px] text-slate-600">
-                    {t.direction === 'rep_to_owner' ? 'توريد إلى الفرع' : 'عهدة واردة من الإدارة'} ·{' '}
+          <UnifiedDataTable
+            compact
+            paginated={false}
+            searchable={false}
+            title={`حركة التحويلات النقدية للمندوب (${myCashTransfers.length})`}
+            data={myCashTransfers}
+            rowKey={(t) => t.id}
+            emptyTitle="لا توجد تحويلات نقدية مسجلة حالياً"
+            emptySubtitle="ستظهر هنا التوريدات والعهد النقدية المرتبطة بك"
+            columns={[
+              {
+                key: 'transferNumber',
+                header: 'رقم التحويل',
+                render: (t) => <span className="font-mono font-black text-blue-950">{t.transferNumber}</span>,
+              },
+              {
+                key: 'direction',
+                header: 'النوع',
+                render: (t) => (t.direction === 'rep_to_owner' ? 'توريد إلى الفرع' : 'عهدة واردة من الإدارة'),
+              },
+              {
+                key: 'amount',
+                header: 'المبلغ',
+                align: 'center',
+                sortValue: (t) => Number(t.amount || 0),
+                render: (t) => (
+                  <strong className="font-mono text-slate-900 tabular-nums">
+                    {t.amount.toLocaleString()} {data.settings.currency}
+                  </strong>
+                ),
+              },
+              {
+                key: 'status',
+                header: 'الحالة',
+                align: 'center',
+                render: (t) => (
+                  <span
+                    className={`font-bold ${
+                      t.status === 'received'
+                        ? 'text-emerald-700'
+                        : t.status === 'awaiting_receipt'
+                        ? 'text-amber-700'
+                        : 'text-red-700'
+                    }`}
+                  >
                     {t.status === 'received'
                       ? 'تم الاستلام والتسوية'
                       : t.status === 'awaiting_receipt'
                       ? 'بانتظار تأكيد الاستلام'
                       : 'مرفوض'}
-                  </p>
-                  {t.status === 'awaiting_receipt' && t.direction === 'owner_to_rep' && (
+                  </span>
+                ),
+              },
+              {
+                key: 'actions',
+                header: 'الإجراءات',
+                align: 'center',
+                sortable: false,
+                render: (t) =>
+                  t.status === 'awaiting_receipt' && t.direction === 'owner_to_rep' ? (
                     <button
                       type="button"
                       onClick={() => handleConfirmOwnerCash(t.id)}
-                      className="w-full min-h-[44px] rounded-xl bg-emerald-700 text-white font-black cursor-pointer"
+                      className="min-h-[34px] px-3 rounded-lg bg-emerald-700 text-white font-black cursor-pointer whitespace-nowrap"
                     >
                       تأكيد استلام العهدة النقدية
                     </button>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
+                  ) : (
+                    <span className="text-slate-400">—</span>
+                  ),
+              },
+            ]}
+          />
         </div>
       )}
 
@@ -4145,98 +4185,86 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </div>
           </div>
 
-          {filteredCustomers.length === 0 ? (
-            <div className="bg-white rounded-3xl border border-slate-200 p-10 text-center text-xs text-slate-500">
-              لا يوجد عملاء مطابقون لمعايير البحث أو التصفية الحالية.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {filteredCustomers.map((c) => {
-                const cleanedPhone = String(c.phone || '').replace(/[^\d+]/g, '');
-                const hasValidPhone = cleanedPhone.replace(/\D/g, '').length >= 7;
-                const mapRaw = (c.geoCoordinates || c.address || '').trim();
-                const hasValidMap = Boolean(mapRaw && mapRaw !== '-');
-                const mapsHref =
-                  mapRaw.startsWith('http://') || mapRaw.startsWith('https://')
-                    ? mapRaw
-                    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapRaw)}`;
-                return (
-                  <div
-                    key={c.id}
-                    className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3 text-xs"
-                  >
-                    <div
+          <UnifiedDataTable<Customer>
+            compact
+            searchable={false}
+            defaultPageSize={25}
+            title={`جدول العملاء والمحلات (${filteredCustomers.length})`}
+            data={filteredCustomers}
+            rowKey={(c) => c.id}
+            emptyTitle="لا يوجد عملاء مطابقون لمعايير البحث أو التصفية الحالية"
+            emptySubtitle="جرّب تغيير البحث أو نوع التصفية من الأعلى"
+            columns={[
+              {
+                key: 'shopName',
+                header: 'المحل / العميل',
+                sortValue: (c) => c.shopName || c.name,
+                render: (c) => (
+                  <div className="flex items-center gap-2 min-w-[160px]">
+                    {(c.shopPhoto || c.photo) ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPreviewShopPhoto(c.shopPhoto || c.photo || null);
+                        }}
+                        className="shrink-0 cursor-pointer"
+                        title="عرض صورة المحل"
+                      >
+                        <img
+                          src={c.shopPhoto || c.photo}
+                          alt={c.shopName || c.name}
+                          className="w-9 h-9 rounded-lg object-cover border border-slate-200 bg-slate-50"
+                        />
+                      </button>
+                    ) : (
+                      <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-800 shrink-0">
+                        <Store className="w-4 h-4" />
+                      </div>
+                    )}
+                    <button
+                      type="button"
                       onClick={() => setSelectedCustomerDetail(c)}
-                      className="flex items-start justify-between gap-2.5 cursor-pointer"
+                      className="text-right min-w-0 cursor-pointer"
                     >
-                      <div className="flex items-start gap-2.5 min-w-0">
-                        {(c.shopPhoto || c.photo) ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setPreviewShopPhoto(c.shopPhoto || c.photo || null);
-                            }}
-                            className="shrink-0 cursor-pointer"
-                            title="عرض صورة المحل"
-                          >
-                            <img
-                              src={c.shopPhoto || c.photo}
-                              alt={c.shopName || c.name}
-                              className="w-12 h-12 rounded-xl object-cover border border-slate-200 bg-slate-50"
-                            />
-                          </button>
-                        ) : (
-                          <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-800 shrink-0">
-                            <Store className="w-5 h-5" />
-                          </div>
-                        )}
-                        <div className="min-w-0">
-                          <h3 className="font-black text-sm text-slate-900 flex items-center gap-1.5 truncate">
-                            <span className="truncate">{c.shopName || c.name}</span>
-                            <Eye className="w-3.5 h-3.5 text-blue-700 shrink-0" />
-                          </h3>
-                          <p className="text-[11px] text-slate-500 truncate">
-                            {c.name} · {c.code}
-                            {c.governorate ? ` · ${c.governorate}` : ''}
-                            {c.area ? ` · ${c.area}` : ''}
-                          </p>
-                          {Array.isArray(c.phones) && c.phones.length > 1 && (
-                            <span className="inline-block mt-0.5 text-[10px] font-bold text-teal-800 bg-teal-50 border border-teal-200 rounded-md px-1.5 py-0.5">
-                              {c.phones.length} أرقام مسجلة
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="text-left shrink-0">
-                        <span className="block text-[10px] text-slate-500">
-                          {c.currentBalance < -0.009
-                            ? 'رصيد دائن للعميل (علينا)'
-                            : c.currentBalance > 0.009
-                            ? 'مستحق على العميل (لنا)'
-                            : 'الحساب متوازن'}
-                        </span>
-                        <strong
-                          className={`font-mono text-sm tabular-nums ${
-                            c.currentBalance > 0.009
-                              ? 'text-red-700'
-                              : c.currentBalance < -0.009
-                              ? 'text-emerald-700'
-                              : 'text-slate-700'
-                          }`}
-                        >
-                          {Math.abs(c.currentBalance).toLocaleString()} {data.settings.currency}
-                        </strong>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-1.5">
+                      <span className="font-black text-slate-900 flex items-center gap-1">
+                        <span className="truncate max-w-[160px]">{c.shopName || c.name}</span>
+                        <Eye className="w-3 h-3 text-blue-700 shrink-0" />
+                      </span>
+                      <span className="block text-[10px] text-slate-500">
+                        {c.name} · <span className="font-mono">{c.code}</span>
+                      </span>
+                    </button>
+                  </div>
+                ),
+              },
+              {
+                key: 'area',
+                header: 'المنطقة',
+                sortValue: (c) => `${c.governorate || ''} ${c.area || ''}`,
+                render: (c) => (
+                  <span className="text-[11px] text-slate-600">
+                    {[c.governorate, c.area].filter(Boolean).join(' · ') || c.address || '—'}
+                  </span>
+                ),
+              },
+              {
+                key: 'phone',
+                header: 'الهاتف والموقع',
+                render: (c) => {
+                  const cleanedPhone = String(c.phone || '').replace(/[^\d+]/g, '');
+                  const hasValidPhone = cleanedPhone.replace(/\D/g, '').length >= 7;
+                  const mapRaw = (c.geoCoordinates || c.address || '').trim();
+                  const hasValidMap = Boolean(mapRaw && mapRaw !== '-');
+                  return (
+                    <div className="flex flex-wrap items-center gap-1">
                       {hasValidPhone ? (
                         <a
                           href={`tel:${cleanedPhone}`}
-                          className="min-h-[40px] px-2.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono font-bold inline-flex items-center gap-1"
+                          onClick={(e) => e.stopPropagation()}
+                          className="min-h-[30px] px-2 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono font-bold inline-flex items-center gap-1 text-[11px]"
                         >
-                          <Phone className="w-3.5 h-3.5" />
+                          <Phone className="w-3 h-3" />
                           <span>{c.phone}</span>
                         </a>
                       ) : (
@@ -4245,9 +4273,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           onClick={() =>
                             setFeedback({ type: 'warning', text: `رقم هاتف العميل (${c.name}) غير مكتمل أو غير صالح للاتصال.` })
                           }
-                          className="min-h-[40px] px-2.5 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 font-bold inline-flex items-center gap-1 cursor-pointer"
+                          className="min-h-[30px] px-2 rounded-lg bg-slate-100 text-slate-500 border border-slate-200 font-bold inline-flex items-center gap-1 text-[11px] cursor-pointer"
                         >
-                          <Phone className="w-3.5 h-3.5" />
+                          <Phone className="w-3 h-3" />
                           <span>{c.phone || 'بدون هاتف'}</span>
                         </button>
                       )}
@@ -4267,73 +4295,107 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                               longitude: c.longitude,
                             })
                           }
-                          className="min-h-[40px] px-2.5 rounded-xl bg-emerald-50 text-[#0F5A33] border border-emerald-200 font-bold inline-flex items-center gap-1 cursor-pointer"
+                          className="min-h-[30px] px-2 rounded-lg bg-emerald-50 text-[#0F5A33] border border-emerald-200 font-bold inline-flex items-center gap-1 text-[11px] cursor-pointer"
                         >
-                          <MapPin className="w-3.5 h-3.5 text-[#0F5A33]" />
+                          <MapPin className="w-3 h-3 text-[#0F5A33]" />
                           <span>الموقع</span>
                         </button>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedCustomerDetail(c);
-                          setCustomerDetailSubTab('statement');
-                        }}
-                        className="min-h-[40px] px-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-bold inline-flex items-center gap-1 cursor-pointer"
-                      >
-                        <FileText className="w-3.5 h-3.5" />
-                        <span>كشف حساب</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDepMode('customer_collection');
-                          setDepCustomerId(c.id);
-                          setDepInvoiceId('');
-                          setDepAmount('');
-                          onTabChange('cash-deposit');
-                        }}
-                        className="min-h-[40px] px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold inline-flex items-center gap-1 cursor-pointer"
-                      >
-                        <Wallet className="w-3.5 h-3.5" />
-                        <span>تحصيل</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setInvCustomerId(c.id);
-                          onTabChange('new-invoice');
-                        }}
-                        className="min-h-[40px] flex-1 px-3 rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white font-bold cursor-pointer"
-                      >
-                        فاتورة
-                      </button>
-                      {canEditCustomer && (
-                        <button
-                          type="button"
-                          onClick={() => openEditCustomerSheet(c)}
-                          className="min-h-[40px] px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 font-bold cursor-pointer"
-                          title="تعديل بيانات العميل"
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                      {canDeleteCustomer && (
-                        <button
-                          type="button"
-                          onClick={() => setDeleteCustomerTarget(c)}
-                          className="min-h-[40px] px-2.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold cursor-pointer"
-                          title="حذف العميل"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
                     </div>
+                  );
+                },
+              },
+              {
+                key: 'currentBalance',
+                header: 'الرصيد الحالي',
+                align: 'center',
+                sortValue: (c) => Number(c.currentBalance || 0),
+                render: (c) => (
+                  <div className="whitespace-nowrap">
+                    <strong
+                      className={`font-mono text-xs tabular-nums block ${
+                        c.currentBalance > 0.009
+                          ? 'text-red-700'
+                          : c.currentBalance < -0.009
+                          ? 'text-emerald-700'
+                          : 'text-slate-700'
+                      }`}
+                    >
+                      {Math.abs(c.currentBalance).toLocaleString()} {data.settings.currency}
+                    </strong>
+                    <span className="text-[10px] text-slate-500">
+                      {c.currentBalance > 0.009 ? 'لنا' : c.currentBalance < -0.009 ? 'علينا' : 'متوازن'}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                ),
+              },
+              {
+                key: 'actions',
+                header: 'الإجراءات',
+                align: 'center',
+                sortable: false,
+                render: (c) => (
+                  <div className="flex flex-wrap items-center justify-center gap-1 whitespace-nowrap">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCustomerDetail(c);
+                        setCustomerDetailSubTab('statement');
+                      }}
+                      className="min-h-[32px] px-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-bold inline-flex items-center gap-1 text-[11px] cursor-pointer"
+                    >
+                      <FileText className="w-3 h-3" />
+                      <span>كشف</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDepMode('customer_collection');
+                        setDepCustomerId(c.id);
+                        setDepInvoiceId('');
+                        setDepAmount('');
+                        onTabChange('cash-deposit');
+                      }}
+                      className="min-h-[32px] px-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold inline-flex items-center gap-1 text-[11px] cursor-pointer"
+                    >
+                      <Wallet className="w-3 h-3" />
+                      <span>تحصيل</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInvCustomerId(c.id);
+                        onTabChange('new-invoice');
+                      }}
+                      className="min-h-[32px] px-2 rounded-lg bg-[#0F5A33] hover:bg-[#0B4426] text-white font-bold text-[11px] cursor-pointer"
+                    >
+                      فاتورة
+                    </button>
+                    {canEditCustomer && (
+                      <button
+                        type="button"
+                        onClick={() => openEditCustomerSheet(c)}
+                        className="min-h-[32px] px-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 font-bold cursor-pointer"
+                        title="تعديل بيانات العميل"
+                      >
+                        <Edit className="w-3 h-3" />
+                      </button>
+                    )}
+                    {canDeleteCustomer && (
+                      <button
+                        type="button"
+                        onClick={() => setDeleteCustomerTarget(c)}
+                        className="min-h-[32px] px-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold cursor-pointer"
+                        title="حذف العميل"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                ),
+              },
+            ]}
+          />
         </div>
       )}
 
@@ -4528,38 +4590,73 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </div>
 
             {invItems.length > 0 && (
-              <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl px-3">
-                {invItems.map((it, idx) => (
-                  <div key={idx} className="py-2.5 flex flex-wrap items-center justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-bold text-slate-900 truncate">{it.productName}</p>
-                      <p className="text-[11px] text-slate-500 font-mono">
-                        {it.unit} × {it.unitPrice.toLocaleString()}
-                        {it.discount > 0 ? ` (خصم ${it.discount.toLocaleString()})` : ''} ={' '}
-                        <strong className="text-blue-950">{it.total.toLocaleString()}</strong> {data.settings.currency}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <QuantityInput
-                        showSteppers
-                        allowDecimals
-                        min={0.001}
-                        value={it.quantity}
-                        onChange={(q) => handleUpdateInvItemQty(idx, q)}
-                        onRemoveWhenZero={() => setInvItems((prev) => prev.filter((_, i) => i !== idx))}
-                        ariaLabel={`كمية ${it.productName}`}
-                      />
+              <UnifiedDataTable
+                compact
+                paginated={false}
+                searchable={false}
+                title={`أصناف الفاتورة (${invItems.length})`}
+                data={invItems}
+                rowKey={(it, idx) => `${it.productId}-${it.unit}-${idx}`}
+                columns={[
+                  {
+                    key: 'productName',
+                    header: 'الصنف',
+                    render: (it) => (
+                      <div>
+                        <span className="font-bold text-slate-900 block">{it.productName}</span>
+                        <span className="text-[10px] text-slate-500">
+                          {it.unit} · سعر {it.unitPrice.toLocaleString()}
+                          {it.discount > 0 ? ` · خصم ${it.discount.toLocaleString()}` : ''}
+                        </span>
+                      </div>
+                    ),
+                  },
+                  {
+                    key: 'quantity',
+                    header: 'الكمية',
+                    align: 'center',
+                    render: (it, idx) => (
+                      <div className="inline-flex justify-center">
+                        <QuantityInput
+                          showSteppers
+                          allowDecimals
+                          min={0.001}
+                          value={it.quantity}
+                          onChange={(q) => handleUpdateInvItemQty(idx, q)}
+                          onRemoveWhenZero={() => setInvItems((prev) => prev.filter((_, i) => i !== idx))}
+                          ariaLabel={`كمية ${it.productName}`}
+                        />
+                      </div>
+                    ),
+                  },
+                  {
+                    key: 'total',
+                    header: 'الإجمالي',
+                    align: 'center',
+                    render: (it) => (
+                      <strong className="font-mono text-blue-950 tabular-nums">
+                        {it.total.toLocaleString()} {data.settings.currency}
+                      </strong>
+                    ),
+                  },
+                  {
+                    key: 'actions',
+                    header: 'حذف',
+                    align: 'center',
+                    sortable: false,
+                    render: (_it, idx) => (
                       <button
                         type="button"
                         onClick={() => setInvItems((prev) => prev.filter((_, i) => i !== idx))}
-                        className="min-h-[40px] min-w-[40px] flex items-center justify-center text-red-600 cursor-pointer"
+                        className="min-h-[34px] min-w-[34px] inline-flex items-center justify-center text-red-600 cursor-pointer"
+                        aria-label="حذف الصنف"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                    ),
+                  },
+                ]}
+              />
             )}
 
             {shortageItems.length > 0 && (
@@ -5037,23 +5134,56 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           </div>
 
           {purItems.length > 0 && (
-            <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl px-3">
-              {purItems.map((it, idx) => (
-                <div key={idx} className="py-2 flex items-center justify-between gap-2">
-                  <div className="min-w-0">
+            <UnifiedDataTable
+              compact
+              paginated={false}
+              searchable={false}
+              title={`أصناف فاتورة الشراء (${purItems.length})`}
+              data={purItems}
+              rowKey={(it, idx) => `${it.productId}-${it.unit}-${idx}`}
+              columns={[
+                {
+                  key: 'productName',
+                  header: 'الصنف',
+                  render: (it) => (
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-bold text-slate-900">
-                        {it.productName} ({it.quantity} {it.unit} × {it.unitPrice})
-                      </span>
+                      <span className="font-bold text-slate-900">{it.productName}</span>
                       {it.newProduct && (
                         <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold">
                           صنف جديد
                         </span>
                       )}
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <strong className="font-mono text-indigo-950">{it.total.toLocaleString()}</strong>
+                  ),
+                },
+                {
+                  key: 'quantity',
+                  header: 'الكمية',
+                  align: 'center',
+                  render: (it) => (
+                    <span className="font-mono font-bold">
+                      {it.quantity} {it.unit}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'unitPrice',
+                  header: 'السعر',
+                  align: 'center',
+                  render: (it) => <span className="font-mono">{it.unitPrice.toLocaleString()}</span>,
+                },
+                {
+                  key: 'total',
+                  header: 'الإجمالي',
+                  align: 'center',
+                  render: (it) => <strong className="font-mono text-indigo-950">{it.total.toLocaleString()}</strong>,
+                },
+                {
+                  key: 'actions',
+                  header: 'حذف',
+                  align: 'center',
+                  sortable: false,
+                  render: (_it, idx) => (
                     <button
                       type="button"
                       onClick={() => setPurItems((prev) => prev.filter((_, i) => i !== idx))}
@@ -5061,10 +5191,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  ),
+                },
+              ]}
+            />
           )}
 
           <div className="grid grid-cols-3 gap-2">
@@ -5260,12 +5390,39 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           </div>
 
           {sRetItems.length > 0 && (
-            <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl px-3">
-              {sRetItems.map((it, idx) => (
-                <div key={idx} className="py-2 flex items-center justify-between">
-                  <span className="font-bold">{it.productName} ({it.quantity} × {it.unitPrice})</span>
-                  <div className="flex items-center gap-2">
-                    <strong className="font-mono text-rose-800">{it.total.toLocaleString()}</strong>
+            <UnifiedDataTable
+              compact
+              paginated={false}
+              searchable={false}
+              title={`أصناف مرتجع المبيعات (${sRetItems.length})`}
+              data={sRetItems}
+              rowKey={(it, idx) => `${it.productId}-${idx}`}
+              columns={[
+                { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold">{it.productName}</span> },
+                {
+                  key: 'quantity',
+                  header: 'الكمية',
+                  align: 'center',
+                  render: (it) => <span className="font-mono">{it.quantity} {it.unit}</span>,
+                },
+                {
+                  key: 'unitPrice',
+                  header: 'السعر',
+                  align: 'center',
+                  render: (it) => <span className="font-mono">{it.unitPrice.toLocaleString()}</span>,
+                },
+                {
+                  key: 'total',
+                  header: 'الإجمالي',
+                  align: 'center',
+                  render: (it) => <strong className="font-mono text-rose-800">{it.total.toLocaleString()}</strong>,
+                },
+                {
+                  key: 'actions',
+                  header: 'حذف',
+                  align: 'center',
+                  sortable: false,
+                  render: (_it, idx) => (
                     <button
                       type="button"
                       onClick={() => setSRetItems((prev) => prev.filter((_, i) => i !== idx))}
@@ -5273,10 +5430,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  ),
+                },
+              ]}
+            />
           )}
 
           <div className="grid grid-cols-2 gap-2">
@@ -5591,12 +5748,39 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           </div>
 
           {pRetItems.length > 0 && (
-            <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl px-3">
-              {pRetItems.map((it, idx) => (
-                <div key={idx} className="py-2 flex items-center justify-between">
-                  <span className="font-bold">{it.productName} ({it.quantity} × {it.unitPrice})</span>
-                  <div className="flex items-center gap-2">
-                    <strong className="font-mono text-orange-800">{it.total.toLocaleString()}</strong>
+            <UnifiedDataTable
+              compact
+              paginated={false}
+              searchable={false}
+              title={`أصناف مرتجع المشتريات (${pRetItems.length})`}
+              data={pRetItems}
+              rowKey={(it, idx) => `${it.productId}-${idx}`}
+              columns={[
+                { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold">{it.productName}</span> },
+                {
+                  key: 'quantity',
+                  header: 'الكمية',
+                  align: 'center',
+                  render: (it) => <span className="font-mono">{it.quantity} {it.unit}</span>,
+                },
+                {
+                  key: 'unitPrice',
+                  header: 'السعر',
+                  align: 'center',
+                  render: (it) => <span className="font-mono">{it.unitPrice.toLocaleString()}</span>,
+                },
+                {
+                  key: 'total',
+                  header: 'الإجمالي',
+                  align: 'center',
+                  render: (it) => <strong className="font-mono text-orange-800">{it.total.toLocaleString()}</strong>,
+                },
+                {
+                  key: 'actions',
+                  header: 'حذف',
+                  align: 'center',
+                  sortable: false,
+                  render: (_it, idx) => (
                     <button
                       type="button"
                       onClick={() => setPRetItems((prev) => prev.filter((_, i) => i !== idx))}
@@ -5604,10 +5788,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  ),
+                },
+              ]}
+            />
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -6495,65 +6679,97 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 </button>
               </form>
 
-              {data.cheques.map((chq) => (
-                <div key={chq.id} className="bg-white rounded-2xl border border-slate-200 p-3.5 flex items-center justify-between gap-2">
-                  <div>
-                    <span className="font-mono font-black text-blue-950">{chq.chequeNumber}</span>
-                    <p className="text-[11px] text-slate-600">{chq.partyName} · {chq.bankName} · استحقاق {chq.dueDate}</p>
-                  </div>
-                  <div className="text-left">
-                    <strong className="font-mono font-black text-slate-900">{chq.amount.toLocaleString()} {data.settings.currency}</strong>
-                    <span className="block text-[10px] font-bold text-slate-500">
-                      {chq.status === 'collected' ? 'محصل' : chq.status === 'rejected' || chq.status === 'returned' ? 'مرتد / مرفوض' : 'قيد الانتظار'}
-                    </span>
-                  </div>
-                </div>
-              ))}
+              <UnifiedDataTable
+                compact
+                title={`الشيكات المسجلة (${data.cheques.length})`}
+                data={data.cheques}
+                rowKey={(chq) => chq.id}
+                emptyTitle="لا توجد شيكات مسجلة"
+                columns={[
+                  { key: 'chequeNumber', header: 'رقم الشيك', render: (chq) => <span className="font-mono font-black text-blue-950">{chq.chequeNumber}</span> },
+                  { key: 'partyName', header: 'الطرف / البنك', render: (chq) => `${chq.partyName} · ${chq.bankName}` },
+                  { key: 'dueDate', header: 'الاستحقاق', align: 'center', render: (chq) => <span className="font-mono">{chq.dueDate}</span> },
+                  {
+                    key: 'amount',
+                    header: 'المبلغ',
+                    align: 'center',
+                    render: (chq) => (
+                      <strong className="font-mono font-black text-slate-900">
+                        {chq.amount.toLocaleString()} {data.settings.currency}
+                      </strong>
+                    ),
+                  },
+                  {
+                    key: 'status',
+                    header: 'الحالة',
+                    align: 'center',
+                    render: (chq) => (
+                      <span className="font-bold text-slate-700">
+                        {chq.status === 'collected' ? 'محصل' : chq.status === 'rejected' || chq.status === 'returned' ? 'مرتد / مرفوض' : 'قيد الانتظار'}
+                      </span>
+                    ),
+                  },
+                ]}
+              />
             </div>
           )}
 
           {chqTab === 'installments' && (
             <div className="space-y-3">
-              {data.installments.length === 0 ? (
-                <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center text-slate-400">
-                  لا توجد جداول أقساط نشطة حالياً.
-                </div>
-              ) : (
-                data.installments.map((sched) => (
-                  <div key={sched.id} className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="font-mono font-black text-blue-950">{sched.scheduleNumber}</span>
-                        <p className="text-[11px] text-slate-600">{sched.customerName}</p>
-                      </div>
-                      <strong className="font-mono text-red-700">متبقي: {sched.remainingAmount.toLocaleString()}</strong>
-                    </div>
-                    <div className="divide-y divide-slate-100">
-                      {(sched.items || []).filter((it) => it.status !== 'paid').slice(0, 3).map((it) => {
-                        const key = `${sched.id}:${it.id}`;
-                        return (
-                          <div key={it.id} className="py-2 flex items-center justify-between gap-2">
-                            <span className="font-mono">{it.dueDate} · {(it.amount - it.paidAmount).toLocaleString()} {data.settings.currency}</span>
-                            <button
-                              type="button"
-                              disabled={payingInstKey === key}
-                              onClick={async () => {
-                                setPayingInstKey(key);
-                                await data.payInstallment(sched.id, it.id, it.amount - it.paidAmount, data.cashboxes[0]?.id || 'CASH-01', 'تحصيل قسط عبر تطبيق المندوب');
-                                setPayingInstKey(null);
-                                setFeedback({ type: 'success', text: 'تم تحصيل القسط وتحديث الجدول.' });
-                              }}
-                              className="min-h-[38px] px-3 rounded-xl bg-emerald-700 text-white font-bold cursor-pointer"
-                            >
-                              {payingInstKey === key ? 'جاري التحصيل...' : 'تحصيل القسط'}
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))
-              )}
+              <UnifiedDataTable
+                compact
+                title={`جداول الأقساط (${data.installments.length})`}
+                data={data.installments}
+                rowKey={(sched) => sched.id}
+                emptyTitle="لا توجد جداول أقساط نشطة حالياً"
+                columns={[
+                  { key: 'scheduleNumber', header: 'رقم الجدول', render: (sched) => <span className="font-mono font-black text-blue-950">{sched.scheduleNumber}</span> },
+                  { key: 'customerName', header: 'العميل', render: (sched) => <span className="font-bold">{sched.customerName}</span> },
+                  {
+                    key: 'remainingAmount',
+                    header: 'المتبقي',
+                    align: 'center',
+                    render: (sched) => (
+                      <strong className="font-mono text-red-700">
+                        {sched.remainingAmount.toLocaleString()} {data.settings.currency}
+                      </strong>
+                    ),
+                  },
+                  {
+                    key: 'actions',
+                    header: 'تحصيل القسط المستحق',
+                    render: (sched) => {
+                      const nextDue = (sched.items || []).filter((it) => it.status !== 'paid').slice(0, 2);
+                      if (nextDue.length === 0) return <span className="text-emerald-700 font-bold">مسدد بالكامل</span>;
+                      return (
+                        <div className="flex flex-wrap gap-1.5">
+                          {nextDue.map((it) => {
+                            const key = `${sched.id}:${it.id}`;
+                            return (
+                              <button
+                                key={it.id}
+                                type="button"
+                                disabled={payingInstKey === key}
+                                onClick={async () => {
+                                  setPayingInstKey(key);
+                                  await data.payInstallment(sched.id, it.id, it.amount - it.paidAmount, data.cashboxes[0]?.id || 'CASH-01', 'تحصيل قسط عبر تطبيق المندوب');
+                                  setPayingInstKey(null);
+                                  setFeedback({ type: 'success', text: 'تم تحصيل القسط وتحديث الجدول.' });
+                                }}
+                                className="min-h-[32px] px-2.5 rounded-lg bg-emerald-700 text-white font-bold cursor-pointer whitespace-nowrap"
+                              >
+                                {payingInstKey === key
+                                  ? 'جاري التحصيل...'
+                                  : `تحصيل (${(it.amount - it.paidAmount).toLocaleString()} · ${it.dueDate})`}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                    },
+                  },
+                ]}
+              />
             </div>
           )}
         </div>
@@ -6622,14 +6838,20 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </div>
 
             {quoteItems.length > 0 && (
-              <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl px-3">
-                {quoteItems.map((it, idx) => (
-                  <div key={idx} className="py-2 flex items-center justify-between">
-                    <span className="font-bold">{it.productName} ({it.quantity} × {it.unitPrice})</span>
-                    <strong className="font-mono text-blue-950">{it.total.toLocaleString()}</strong>
-                  </div>
-                ))}
-              </div>
+              <UnifiedDataTable
+                compact
+                paginated={false}
+                searchable={false}
+                title={`أصناف عرض السعر (${quoteItems.length})`}
+                data={quoteItems}
+                rowKey={(it, idx) => `${it.productId}-${idx}`}
+                columns={[
+                  { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold">{it.productName}</span> },
+                  { key: 'quantity', header: 'الكمية', align: 'center', render: (it) => <span className="font-mono">{it.quantity}</span> },
+                  { key: 'unitPrice', header: 'السعر', align: 'center', render: (it) => <span className="font-mono">{it.unitPrice.toLocaleString()}</span> },
+                  { key: 'total', header: 'الإجمالي', align: 'center', render: (it) => <strong className="font-mono text-blue-950">{it.total.toLocaleString()}</strong> },
+                ]}
+              />
             )}
 
             <input
@@ -6650,119 +6872,147 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           </form>
 
           {myQuotes.length > 0 && (
-            <div className="space-y-2.5">
-              <h4 className="font-black text-slate-900 px-1">عروض الأسعار المسجلة ({myQuotes.length})</h4>
-              {myQuotes.map((q) => {
-                const isConverted = myInvoices.some((inv) => inv.convertedFromQuoteId === q.id);
-                return (
-                  <div key={q.id} className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="font-mono font-black text-blue-950">{q.invoiceNumber}</span>
-                        <p className="text-[11px] text-slate-500">{q.customerName} · {q.date}</p>
+            <UnifiedDataTable
+              compact
+              title={`عروض الأسعار المسجلة (${myQuotes.length})`}
+              data={myQuotes}
+              rowKey={(q) => q.id}
+              columns={[
+                { key: 'invoiceNumber', header: 'رقم العرض', render: (q) => <span className="font-mono font-black text-blue-950">{q.invoiceNumber}</span> },
+                { key: 'customerName', header: 'العميل', render: (q) => q.customerName || 'عميل عام' },
+                { key: 'date', header: 'التاريخ', align: 'center', render: (q) => <span className="font-mono">{q.date}</span> },
+                {
+                  key: 'grandTotal',
+                  header: 'الإجمالي',
+                  align: 'center',
+                  render: (q) => (
+                    <strong className="font-mono font-black text-slate-900">
+                      {q.grandTotal.toLocaleString()} {data.settings.currency}
+                    </strong>
+                  ),
+                },
+                {
+                  key: 'actions',
+                  header: 'الإجراءات',
+                  align: 'center',
+                  sortable: false,
+                  render: (q) => {
+                    const isConverted = myInvoices.some((inv) => inv.convertedFromQuoteId === q.id);
+                    return (
+                      <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
+                        <button
+                          type="button"
+                          disabled={isConverted || convertingQuoteId === q.id}
+                          onClick={() => handleConvertQuote(q.id)}
+                          className="min-h-[34px] px-2.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-black disabled:opacity-50 cursor-pointer"
+                        >
+                          {isConverted ? 'تم التحويل لفاتورة' : convertingQuoteId === q.id ? 'جاري التحويل...' : 'تحويل لفاتورة بيع'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => exportInvoiceDocument(q)}
+                          className="min-h-[34px] px-2.5 rounded-lg bg-blue-900 text-white font-bold inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <FileDown className="w-3.5 h-3.5" />
+                          <span>PDF</span>
+                        </button>
                       </div>
-                      <strong className="font-mono font-black text-slate-900">{q.grandTotal.toLocaleString()} {data.settings.currency}</strong>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        disabled={isConverted || convertingQuoteId === q.id}
-                        onClick={() => handleConvertQuote(q.id)}
-                        className="flex-1 min-h-[42px] rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black disabled:opacity-50 cursor-pointer"
-                      >
-                        {isConverted
-                          ? 'تم التحويل لفاتورة'
-                          : convertingQuoteId === q.id
-                          ? 'جاري التحويل...'
-                          : 'تحويل لفاتورة بيع'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => exportInvoiceDocument(q)}
-                        className="min-h-[42px] px-3.5 rounded-xl bg-blue-900 text-white font-bold flex items-center gap-1 cursor-pointer"
-                      >
-                        <FileDown className="w-4 h-4" />
-                        <span>PDF</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                    );
+                  },
+                },
+              ]}
+            />
           )}
         </div>
       )}
 
       {/* ==================== SALES INVOICES LIST (with needs_review badge) ==================== */}
       {activeTab === 'invoices' && (
-        <div className="space-y-3">
-          {myInvoices.length === 0 ? (
-            <div className="bg-white rounded-3xl border border-slate-200 p-10 text-center text-xs text-slate-500">
-              لا توجد فواتير مبيعات مسجلة حتى الآن.
-            </div>
-          ) : (
-            myInvoices.map((inv) => {
-              const confirmCheck = inv.status === 'draft' ? canConfirmDraft(inv) : { ready: false };
-              return (
-                <div
-                  key={inv.id}
-                  className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-2.5 text-xs"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <span className="font-mono font-black text-sm text-blue-950">
-                        {inv.invoiceNumber}
-                      </span>
-                      <p className="text-[11px] text-slate-500">
-                        {inv.customerName} · {inv.date}
-                      </p>
-                    </div>
-                    <div className="text-left">
-                      <strong className="font-mono text-sm text-slate-900 tabular-nums block">
-                        {inv.grandTotal.toLocaleString()} {data.settings.currency}
-                      </strong>
-                      <div className="flex items-center justify-end gap-1.5 mt-0.5 text-[11px]">
-                        <span
-                          className={`font-bold ${
-                            inv.status === 'confirmed'
-                              ? 'text-emerald-700'
-                              : inv.status === 'draft'
-                              ? 'text-amber-700'
-                              : 'text-red-700'
-                          }`}
-                        >
-                          {inv.status === 'confirmed' ? 'معتمدة' : inv.status === 'draft' ? 'مسودة' : 'ملغاة'}
-                        </span>
-                        {inv.reviewStatus === 'needs_review' && (
-                          <span className="text-amber-700 font-bold">· بانتظار مراجعة الإدارة</span>
-                        )}
-                        {inv.reviewStatus === 'reviewed' && (
-                          <span className="text-blue-800 font-bold">· تمت المراجعة</span>
-                        )}
-                        {inv.syncStatus && inv.syncStatus !== 'synced' && (
-                          <span className="inline-flex items-center gap-0.5 text-amber-800 font-bold">
-                            <CloudOff className="w-3 h-3" />
-                            <span>محلي</span>
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {inv.status === 'draft' && inv.linkedRepTransferNumber && (
-                    <p className="text-[11px] text-blue-900 font-bold">
-                      مرتبطة بطلب تحويل: {inv.linkedRepTransferNumber}
-                      {!confirmCheck.ready && confirmCheck.reason ? ` — ${confirmCheck.reason}` : ''}
-                    </p>
+        <UnifiedDataTable
+          compact
+          title={`فواتير المبيعات (${myInvoices.length})`}
+          data={myInvoices}
+          rowKey={(inv) => inv.id}
+          emptyTitle="لا توجد فواتير مبيعات مسجلة حتى الآن"
+          columns={[
+            {
+              key: 'invoiceNumber',
+              header: 'رقم الفاتورة',
+              render: (inv) => (
+                <div>
+                  <span className="font-mono font-black text-blue-950 block">{inv.invoiceNumber}</span>
+                  {inv.syncStatus && inv.syncStatus !== 'synced' && (
+                    <span className="inline-flex items-center gap-0.5 text-amber-800 font-bold text-[10px]">
+                      <CloudOff className="w-3 h-3" />
+                      <span>محلي</span>
+                    </span>
                   )}
-
-                  <div className="flex items-center gap-2 pt-1">
+                </div>
+              ),
+            },
+            { key: 'customerName', header: 'العميل', render: (inv) => <span className="font-bold">{inv.customerName || 'عميل'}</span> },
+            { key: 'date', header: 'التاريخ', align: 'center', render: (inv) => <span className="font-mono">{inv.date}</span> },
+            {
+              key: 'grandTotal',
+              header: 'الإجمالي',
+              align: 'center',
+              sortValue: (inv) => Number(inv.grandTotal || 0),
+              render: (inv) => (
+                <strong className="font-mono text-slate-900 tabular-nums">
+                  {inv.grandTotal.toLocaleString()} {data.settings.currency}
+                </strong>
+              ),
+            },
+            {
+              key: 'status',
+              header: 'الحالة',
+              align: 'center',
+              render: (inv) => {
+                const confirmCheck = inv.status === 'draft' ? canConfirmDraft(inv) : { ready: false };
+                return (
+                  <div className="space-y-0.5">
+                    <span
+                      className={`font-bold block ${
+                        inv.status === 'confirmed'
+                          ? 'text-emerald-700'
+                          : inv.status === 'draft'
+                          ? 'text-amber-700'
+                          : 'text-red-700'
+                      }`}
+                    >
+                      {inv.status === 'confirmed' ? 'معتمدة' : inv.status === 'draft' ? 'مسودة' : 'ملغاة'}
+                    </span>
+                    {inv.reviewStatus === 'needs_review' && (
+                      <span className="text-amber-700 font-bold text-[10px] block">بانتظار مراجعة الإدارة</span>
+                    )}
+                    {inv.reviewStatus === 'reviewed' && (
+                      <span className="text-blue-800 font-bold text-[10px] block">تمت المراجعة</span>
+                    )}
+                    {inv.status === 'draft' && inv.linkedRepTransferNumber && (
+                      <span className="text-[10px] text-blue-900 font-bold block">
+                        تحويل: {inv.linkedRepTransferNumber}
+                        {!confirmCheck.ready && confirmCheck.reason ? ` (${confirmCheck.reason})` : ''}
+                      </span>
+                    )}
+                  </div>
+                );
+              },
+            },
+            {
+              key: 'actions',
+              header: 'الإجراءات',
+              align: 'center',
+              sortable: false,
+              render: (inv) => {
+                const confirmCheck = inv.status === 'draft' ? canConfirmDraft(inv) : { ready: false };
+                return (
+                  <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
                     {inv.status === 'draft' && (
                       <button
                         type="button"
                         disabled={!confirmCheck.ready}
                         onClick={() => handleConfirmDraft(inv)}
-                        className="flex-1 min-h-[44px] rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black disabled:opacity-45 cursor-pointer"
+                        className="min-h-[34px] px-2.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-black disabled:opacity-45 cursor-pointer"
                       >
                         اعتماد نهائي
                       </button>
@@ -6770,24 +7020,24 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     <button
                       type="button"
                       onClick={() => setSelectedInvoice(inv)}
-                      className="min-h-[44px] px-3.5 rounded-xl bg-slate-100 text-slate-800 font-bold cursor-pointer"
+                      className="min-h-[34px] px-2.5 rounded-lg bg-slate-100 text-slate-800 font-bold cursor-pointer"
                     >
                       التفاصيل
                     </button>
                     <button
                       type="button"
                       onClick={() => exportInvoiceDocument(inv)}
-                      className="min-h-[44px] px-3.5 rounded-xl bg-blue-900 text-white font-bold flex items-center gap-1.5 cursor-pointer"
+                      className="min-h-[34px] px-2.5 rounded-lg bg-blue-900 text-white font-bold inline-flex items-center gap-1 cursor-pointer"
                     >
-                      {isNative ? <Share2 className="w-4 h-4" /> : <FileDown className="w-4 h-4" />}
+                      {isNative ? <Share2 className="w-3.5 h-3.5" /> : <FileDown className="w-3.5 h-3.5" />}
                       <span>{isNative ? 'مشاركة' : 'PDF'}</span>
                     </button>
                   </div>
-                </div>
-              );
-            })
-          )}
-        </div>
+                );
+              },
+            },
+          ]}
+        />
       )}
 
       {/* ==================== PURCHASES LIST & DISPATCH TRACKING (FROM "المزيد") ==================== */}
@@ -6836,135 +7086,160 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             ))}
           </div>
 
-          {filteredPurchases.length === 0 ? (
-            <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center text-slate-400">
-              لا توجد فواتير مشتريات في هذا التصنيف.
-            </div>
-          ) : (
-            filteredPurchases.map((inv) => {
-              const meta = getPurchaseDispatchMeta(inv);
-              const canSendOrEdit = inv.status === 'draft' && (meta.key === 'draft' || meta.key === 'rejected');
-              const remainingVal = Math.max(0, Number(inv.remainingAmount || 0));
-              const canRecordPurchasePayment =
-                canCreatePurchase &&
-                inv.status === 'confirmed' &&
-                remainingVal > 0.009 &&
-                (!isRepRoleAccount ||
-                  (rep?.id && inv.representativeId === rep.id) ||
-                  (currentUser?.id && inv.createdByUserId === currentUser.id) ||
-                  (currentUser?.id && inv.sentByUserId === currentUser.id) ||
-                  (!inv.createdByUserId &&
-                    !inv.representativeId &&
-                    !inv.sentByUserId &&
-                    currentUser?.id &&
-                    inv.createdBy === currentUser.id));
-              return (
-              <div key={inv.id} className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2.5">
-                <div className="flex items-start justify-between gap-2">
+          <UnifiedDataTable
+            compact
+            title={`جدول فواتير الشراء (${filteredPurchases.length})`}
+            data={filteredPurchases}
+            rowKey={(inv) => inv.id}
+            emptyTitle="لا توجد فواتير مشتريات في هذا التصنيف"
+            columns={[
+              {
+                key: 'invoiceNumber',
+                header: 'رقم الفاتورة',
+                render: (inv) => <span className="font-mono font-black text-indigo-950">{inv.invoiceNumber}</span>,
+              },
+              {
+                key: 'supplierName',
+                header: 'المورد / المخزن',
+                render: (inv) => (
                   <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono font-black text-indigo-950">{inv.invoiceNumber}</span>
-                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${meta.badgeClass}`}>
+                    <span className="font-bold text-slate-900 block">{inv.supplierName}</span>
+                    <span className="text-[10px] text-slate-500">{inv.warehouseName} · {inv.date}</span>
+                  </div>
+                ),
+              },
+              {
+                key: 'grandTotal',
+                header: 'الإجمالي',
+                align: 'center',
+                sortValue: (inv) => Number(inv.grandTotal || 0),
+                render: (inv) => {
+                  const remainingVal = Math.max(0, Number(inv.remainingAmount || 0));
+                  return (
+                    <div className="whitespace-nowrap">
+                      <strong className="font-mono text-slate-900 block">
+                        {inv.grandTotal.toLocaleString()} {data.settings.currency}
+                      </strong>
+                      {inv.status === 'confirmed' && (
+                        <span className={`text-[10px] font-bold block ${remainingVal > 0.009 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                          {remainingVal > 0.009 ? `متبقي: ${remainingVal.toLocaleString()}` : 'مسددة بالكامل'}
+                        </span>
+                      )}
+                    </div>
+                  );
+                },
+              },
+              {
+                key: 'dispatchStatus',
+                header: 'الحالة والاستلام',
+                render: (inv) => {
+                  const meta = getPurchaseDispatchMeta(inv);
+                  return (
+                    <div className="space-y-0.5 text-[11px]">
+                      <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${meta.badgeClass}`}>
                         {meta.label}
                       </span>
+                      {inv.recipientName && (
+                        <span className="block text-slate-600">موجهة إلى: {inv.recipientName}</span>
+                      )}
+                      {inv.receivedBy && (
+                        <span className="block text-sky-800 font-bold">
+                          المستلم: {inv.receivedBy}
+                        </span>
+                      )}
+                      {inv.dispatchStatus === 'rejected' && inv.rejectionReason && (
+                        <span className="block text-rose-800 font-bold">سبب الرفض: {inv.rejectionReason}</span>
+                      )}
                     </div>
-                    <p className="text-[11px] text-slate-600 mt-0.5">
-                      {inv.supplierName} · {inv.date} · {inv.warehouseName}
-                    </p>
-                  </div>
-                  <div className="text-left shrink-0">
-                    <strong className="font-mono text-sm text-slate-900 block">
-                      {inv.grandTotal.toLocaleString()} {data.settings.currency}
-                    </strong>
-                    {inv.status === 'confirmed' && (
-                      <span className={`text-[10px] font-bold block ${remainingVal > 0.009 ? 'text-amber-700' : 'text-emerald-700'}`}>
-                        {remainingVal > 0.009
-                          ? `متبقي: ${remainingVal.toLocaleString()} ${data.settings.currency}`
-                          : 'مسددة بالكامل'}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {inv.recipientName && (
-                  <p className="text-[11px] text-slate-600">
-                    المستلم الموجه إليه: <strong className="text-slate-800">{inv.recipientName}</strong>
-                  </p>
-                )}
-                {inv.receivedBy && (
-                  <p className="text-[11px] text-sky-800 font-bold">
-                    تم الاستلام بواسطة: {inv.receivedBy}
-                    {inv.receivedAt ? ` (${new Date(inv.receivedAt).toLocaleString('ar-EG')})` : ''}
-                  </p>
-                )}
-                {inv.dispatchStatus === 'rejected' && inv.rejectionReason && (
-                  <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-[11px]">
-                    <strong>سبب الرفض ({inv.rejectedBy || 'الإدارة'}):</strong> {inv.rejectionReason}
-                  </div>
-                )}
-
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPurchaseDetail(inv)}
-                    className="min-h-[38px] px-3 rounded-xl bg-blue-50 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>تفاصيل الفاتورة</span>
-                  </button>
-                  {canRecordPurchasePayment && (
-                    <button
-                      type="button"
-                      onClick={() => openPurchasePaymentModal(inv)}
-                      className="min-h-[38px] px-3 rounded-xl bg-emerald-700 text-white font-bold inline-flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <CreditCard className="w-3.5 h-3.5" />
-                      <span>تسجيل دفعة سداد</span>
-                    </button>
-                  )}
-                  {canSendOrEdit && (
-                    <>
+                  );
+                },
+              },
+              {
+                key: 'actions',
+                header: 'الإجراءات',
+                align: 'center',
+                sortable: false,
+                render: (inv) => {
+                  const meta = getPurchaseDispatchMeta(inv);
+                  const canSendOrEdit = inv.status === 'draft' && (meta.key === 'draft' || meta.key === 'rejected');
+                  const remainingVal = Math.max(0, Number(inv.remainingAmount || 0));
+                  const canRecordPurchasePayment =
+                    canCreatePurchase &&
+                    inv.status === 'confirmed' &&
+                    remainingVal > 0.009 &&
+                    (!isRepRoleAccount ||
+                      (rep?.id && inv.representativeId === rep.id) ||
+                      (currentUser?.id && inv.createdByUserId === currentUser.id) ||
+                      (currentUser?.id && inv.sentByUserId === currentUser.id) ||
+                      (!inv.createdByUserId &&
+                        !inv.representativeId &&
+                        !inv.sentByUserId &&
+                        currentUser?.id &&
+                        inv.createdBy === currentUser.id));
+                  return (
+                    <div className="flex flex-wrap items-center justify-center gap-1 whitespace-nowrap">
                       <button
                         type="button"
-                        onClick={() => {
-                          setSendingPurchaseTarget(inv);
-                          setSendingRecipientUserId(inv.recipientUserId || '');
-                        }}
-                        className="min-h-[38px] px-3 rounded-xl bg-indigo-900 text-white font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                        onClick={() => setSelectedPurchaseDetail(inv)}
+                        className="min-h-[32px] px-2.5 rounded-lg bg-blue-50 text-blue-900 border border-blue-200 font-bold inline-flex items-center gap-1 cursor-pointer"
                       >
-                        <Send className="w-3.5 h-3.5" />
-                        <span>إرسال للإدارة</span>
+                        <Eye className="w-3 h-3" />
+                        <span>التفاصيل</span>
+                      </button>
+                      {canRecordPurchasePayment && (
+                        <button
+                          type="button"
+                          onClick={() => openPurchasePaymentModal(inv)}
+                          className="min-h-[32px] px-2.5 rounded-lg bg-emerald-700 text-white font-bold inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <CreditCard className="w-3 h-3" />
+                          <span>سداد</span>
+                        </button>
+                      )}
+                      {canSendOrEdit && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSendingPurchaseTarget(inv);
+                              setSendingRecipientUserId(inv.recipientUserId || '');
+                            }}
+                            className="min-h-[32px] px-2.5 rounded-lg bg-indigo-900 text-white font-bold inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            <Send className="w-3 h-3" />
+                            <span>إرسال</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditPurchase(inv)}
+                            className="min-h-[32px] px-2.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 font-bold inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            <Edit className="w-3 h-3" />
+                            <span>تعديل</span>
+                          </button>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setHistoryPurchaseTarget(inv)}
+                        className="min-h-[32px] px-2.5 rounded-lg bg-slate-100 text-slate-800 font-bold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <History className="w-3 h-3" />
+                        <span>السجل</span>
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleStartEditPurchase(inv)}
-                        className="min-h-[38px] px-3 rounded-xl bg-amber-50 text-amber-900 border border-amber-200 font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                        onClick={() => exportInvoiceDocument(inv)}
+                        className="min-h-[32px] px-2.5 rounded-lg bg-slate-100 text-slate-800 font-bold cursor-pointer"
                       >
-                        <Edit className="w-3.5 h-3.5" />
-                        <span>تعديل</span>
+                        PDF
                       </button>
-                    </>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setHistoryPurchaseTarget(inv)}
-                    className="min-h-[38px] px-3 rounded-xl bg-slate-100 text-slate-800 font-bold inline-flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <History className="w-3.5 h-3.5" />
-                    <span>سجل الحالات</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => exportInvoiceDocument(inv)}
-                    className="min-h-[38px] px-3 rounded-xl bg-slate-100 text-slate-800 font-bold cursor-pointer"
-                  >
-                    PDF
-                  </button>
-                </div>
-              </div>
-              );
-            })
-          )}
+                    </div>
+                  );
+                },
+              },
+            ]}
+          />
         </div>
         );
       })()}
@@ -6990,77 +7265,96 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           </div>
 
           {mySalesReturnRequests.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="font-black text-slate-800">طلبات مرتجع المبيعات النقدي ({mySalesReturnRequests.length})</h4>
-              {mySalesReturnRequests.map((req: SalesReturnRequest) => (
-                <div key={req.id} className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2">
-                  <div className="flex items-start justify-between gap-2">
+            <UnifiedDataTable<SalesReturnRequest>
+              compact
+              title={`طلبات مرتجع المبيعات النقدي (${mySalesReturnRequests.length})`}
+              data={mySalesReturnRequests}
+              rowKey={(req) => req.id}
+              columns={[
+                {
+                  key: 'requestNumber',
+                  header: 'رقم الطلب',
+                  render: (req) => (
                     <div>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-mono font-black text-rose-900">{req.requestNumber}</span>
-                        <span
-                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                            req.status === 'approved'
-                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                              : req.status === 'rejected'
-                              ? 'bg-rose-50 text-rose-800 border border-rose-200'
-                              : 'bg-amber-50 text-amber-800 border border-amber-200'
-                          }`}
-                        >
-                          {req.status === 'approved'
-                            ? 'تم الاعتماد والتنفيذ'
-                            : req.status === 'rejected'
-                            ? 'مرفوض'
-                            : 'قيد مراجعة الخزينة/الإدارة'}
-                        </span>
-                        {req.syncStatus === 'pending' && (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700">
-                            بانتظار المزامنة
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-slate-600 mt-0.5">
-                        {req.customerName} · فاتورة {req.originalInvoiceNumber} · {req.date}
-                      </p>
-                      <p className="text-[11px] text-slate-500 mt-0.5">السبب: {req.reason}</p>
+                      <span className="font-mono font-black text-rose-900 block">{req.requestNumber}</span>
+                      {req.syncStatus === 'pending' && (
+                        <span className="text-[10px] font-bold text-slate-600">بانتظار المزامنة</span>
+                      )}
                     </div>
-                    <strong className="font-mono text-rose-800 shrink-0">
+                  ),
+                },
+                {
+                  key: 'customerName',
+                  header: 'العميل / الفاتورة',
+                  render: (req) => (
+                    <div>
+                      <span className="font-bold text-slate-900 block">{req.customerName}</span>
+                      <span className="text-[10px] text-slate-500">فاتورة {req.originalInvoiceNumber} · {req.date}</span>
+                    </div>
+                  ),
+                },
+                {
+                  key: 'grandTotal',
+                  header: 'الإجمالي',
+                  align: 'center',
+                  render: (req) => (
+                    <strong className="font-mono text-rose-800">
                       {Number(req.grandTotal || 0).toLocaleString()} {data.settings.currency}
                     </strong>
-                  </div>
-                  {req.status === 'approved' && req.approvedReturnNumber && (
-                    <p className="text-[11px] font-bold text-emerald-800 bg-emerald-50 rounded-xl px-2.5 py-1.5">
-                      تم تحويله إلى مرتجع معتمد برقم: <span className="font-mono">{req.approvedReturnNumber}</span>
-                    </p>
-                  )}
-                  {req.status === 'rejected' && req.rejectionReason && (
-                    <p className="text-[11px] font-bold text-rose-800 bg-rose-50 rounded-xl px-2.5 py-1.5">
-                      سبب رفض الإدارة: {req.rejectionReason}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
+                  ),
+                },
+                {
+                  key: 'status',
+                  header: 'الحالة',
+                  render: (req) => (
+                    <div className="space-y-0.5 text-[11px]">
+                      <span
+                        className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                          req.status === 'approved'
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            : req.status === 'rejected'
+                            ? 'bg-rose-50 text-rose-800 border border-rose-200'
+                            : 'bg-amber-50 text-amber-800 border border-amber-200'
+                        }`}
+                      >
+                        {req.status === 'approved' ? 'تم الاعتماد والتنفيذ' : req.status === 'rejected' ? 'مرفوض' : 'قيد مراجعة الخزينة/الإدارة'}
+                      </span>
+                      {req.reason && <span className="block text-slate-500">{req.reason}</span>}
+                      {req.status === 'approved' && req.approvedReturnNumber && (
+                        <span className="block font-bold text-emerald-800">مرتجع رقم: {req.approvedReturnNumber}</span>
+                      )}
+                      {req.status === 'rejected' && req.rejectionReason && (
+                        <span className="block font-bold text-rose-800">الرفض: {req.rejectionReason}</span>
+                      )}
+                    </div>
+                  ),
+                },
+              ]}
+            />
           )}
 
-          <div className="space-y-2">
-            <h4 className="font-black text-slate-800">مرتجعات المبيعات المعتمدة ({mySalesReturns.length})</h4>
-            {mySalesReturns.length === 0 ? (
-              <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center text-slate-400">
-                لا توجد مرتجعات مبيعات معتمدة.
-              </div>
-            ) : (
-              mySalesReturns.map((r: InvoiceReturn) => (
-                <div key={r.id} className="bg-white rounded-2xl border border-slate-200 p-4 flex items-center justify-between">
-                  <div>
-                    <span className="font-mono font-black text-rose-900">{r.returnNumber}</span>
-                    <p className="text-[11px] text-slate-500">{r.partyName} · {r.date}</p>
-                  </div>
-                  <strong className="font-mono text-rose-800">{r.grandTotal.toLocaleString()} {data.settings.currency}</strong>
-                </div>
-              ))
-            )}
-          </div>
+          <UnifiedDataTable<InvoiceReturn>
+            compact
+            title={`مرتجعات المبيعات المعتمدة (${mySalesReturns.length})`}
+            data={mySalesReturns}
+            rowKey={(r) => r.id}
+            emptyTitle="لا توجد مرتجعات مبيعات معتمدة"
+            columns={[
+              { key: 'returnNumber', header: 'رقم المرتجع', render: (r) => <span className="font-mono font-black text-rose-900">{r.returnNumber}</span> },
+              { key: 'partyName', header: 'العميل', render: (r) => r.partyName },
+              { key: 'date', header: 'التاريخ', align: 'center', render: (r) => <span className="font-mono">{r.date}</span> },
+              {
+                key: 'grandTotal',
+                header: 'الإجمالي',
+                align: 'center',
+                render: (r) => (
+                  <strong className="font-mono text-rose-800">
+                    {r.grandTotal.toLocaleString()} {data.settings.currency}
+                  </strong>
+                ),
+              },
+            ]}
+          />
         </div>
       )}
 
@@ -7086,85 +7380,105 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             )}
           </div>
 
-          <div className="space-y-2">
-            <h4 className="font-black text-slate-800">طلبات مرتجع المشتريات ({myPurchaseReturnRequests.length})</h4>
-            {myPurchaseReturnRequests.length === 0 ? (
-              <div className="bg-white rounded-3xl border border-slate-200 p-6 text-center text-slate-400">
-                لا توجد طلبات مرتجع مشتريات مرسلة حالياً.
-              </div>
-            ) : (
-              myPurchaseReturnRequests.map((req: PurchaseReturnRequest) => (
-                <div key={req.id} className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-mono font-black text-orange-900">{req.requestNumber}</span>
-                        <span
-                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                            req.status === 'approved'
-                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                              : req.status === 'rejected'
-                              ? 'bg-rose-50 text-rose-800 border border-rose-200'
-                              : 'bg-amber-50 text-amber-800 border border-amber-200'
-                          }`}
-                        >
-                          {req.status === 'approved'
-                            ? 'تم الاعتماد والتنفيذ'
-                            : req.status === 'rejected'
-                            ? 'مرفوض'
-                            : 'قيد مراجعة الإدارة'}
-                        </span>
-                        {req.syncStatus === 'pending' && (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700">
-                            بانتظار المزامنة
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-slate-600 mt-0.5">
-                        {req.supplierName} · فاتورة {req.originalInvoiceNumber} · {req.date}
-                      </p>
-                      <p className="text-[11px] text-slate-500 mt-0.5">السبب: {req.reason}</p>
-                    </div>
-                    <strong className="font-mono text-orange-800 shrink-0">
-                      {Number(req.grandTotal || 0).toLocaleString()} {data.settings.currency}
-                    </strong>
-                  </div>
-                  {req.status === 'approved' && req.approvedReturnNumber && (
-                    <p className="text-[11px] font-bold text-emerald-800 bg-emerald-50 rounded-xl px-2.5 py-1.5">
-                      تم تحويله إلى مرتجع معتمد برقم: <span className="font-mono">{req.approvedReturnNumber}</span>
-                    </p>
-                  )}
-                  {req.status === 'rejected' && req.rejectionReason && (
-                    <p className="text-[11px] font-bold text-rose-800 bg-rose-50 rounded-xl px-2.5 py-1.5">
-                      سبب رفض الإدارة: {req.rejectionReason}
-                    </p>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <h4 className="font-black text-slate-800">مرتجعات المشتريات المعتمدة ({myPurchaseReturns.length})</h4>
-            {myPurchaseReturns.length === 0 ? (
-              <div className="bg-white rounded-3xl border border-slate-200 p-6 text-center text-slate-400">
-                لا توجد مرتجعات مشتريات معتمدة.
-              </div>
-            ) : (
-              myPurchaseReturns.map((r: InvoiceReturn) => (
-                <div key={r.id} className="bg-white rounded-2xl border border-slate-200 p-4 flex items-center justify-between">
+          <UnifiedDataTable<PurchaseReturnRequest>
+            compact
+            title={`طلبات مرتجع المشتريات (${myPurchaseReturnRequests.length})`}
+            data={myPurchaseReturnRequests}
+            rowKey={(req) => req.id}
+            emptyTitle="لا توجد طلبات مرتجع مشتريات مرسلة حالياً"
+            columns={[
+              {
+                key: 'requestNumber',
+                header: 'رقم الطلب',
+                render: (req) => (
                   <div>
-                    <span className="font-mono font-black text-orange-900">{r.returnNumber}</span>
-                    <p className="text-[11px] text-slate-500">
-                      {r.partyName} · {r.date}
-                      {r.originalInvoiceNumber ? ` · فاتورة ${r.originalInvoiceNumber}` : ''}
-                    </p>
+                    <span className="font-mono font-black text-orange-900 block">{req.requestNumber}</span>
+                    {req.syncStatus === 'pending' && (
+                      <span className="text-[10px] font-bold text-slate-600">بانتظار المزامنة</span>
+                    )}
                   </div>
-                  <strong className="font-mono text-orange-800">{r.grandTotal.toLocaleString()} {data.settings.currency}</strong>
-                </div>
-              ))
-            )}
-          </div>
+                ),
+              },
+              {
+                key: 'supplierName',
+                header: 'المورد / الفاتورة',
+                render: (req) => (
+                  <div>
+                    <span className="font-bold text-slate-900 block">{req.supplierName}</span>
+                    <span className="text-[10px] text-slate-500">فاتورة {req.originalInvoiceNumber} · {req.date}</span>
+                  </div>
+                ),
+              },
+              {
+                key: 'grandTotal',
+                header: 'الإجمالي',
+                align: 'center',
+                render: (req) => (
+                  <strong className="font-mono text-orange-800">
+                    {Number(req.grandTotal || 0).toLocaleString()} {data.settings.currency}
+                  </strong>
+                ),
+              },
+              {
+                key: 'status',
+                header: 'الحالة',
+                render: (req) => (
+                  <div className="space-y-0.5 text-[11px]">
+                    <span
+                      className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                        req.status === 'approved'
+                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                          : req.status === 'rejected'
+                          ? 'bg-rose-50 text-rose-800 border border-rose-200'
+                          : 'bg-amber-50 text-amber-800 border border-amber-200'
+                      }`}
+                    >
+                      {req.status === 'approved' ? 'تم الاعتماد والتنفيذ' : req.status === 'rejected' ? 'مرفوض' : 'قيد مراجعة الإدارة'}
+                    </span>
+                    {req.reason && <span className="block text-slate-500">{req.reason}</span>}
+                    {req.status === 'approved' && req.approvedReturnNumber && (
+                      <span className="block font-bold text-emerald-800">مرتجع رقم: {req.approvedReturnNumber}</span>
+                    )}
+                    {req.status === 'rejected' && req.rejectionReason && (
+                      <span className="block font-bold text-rose-800">الرفض: {req.rejectionReason}</span>
+                    )}
+                  </div>
+                ),
+              },
+            ]}
+          />
+
+          <UnifiedDataTable<InvoiceReturn>
+            compact
+            title={`مرتجعات المشتريات المعتمدة (${myPurchaseReturns.length})`}
+            data={myPurchaseReturns}
+            rowKey={(r) => r.id}
+            emptyTitle="لا توجد مرتجعات مشتريات معتمدة"
+            columns={[
+              { key: 'returnNumber', header: 'رقم المرتجع', render: (r) => <span className="font-mono font-black text-orange-900">{r.returnNumber}</span> },
+              {
+                key: 'partyName',
+                header: 'المورد',
+                render: (r) => (
+                  <span>
+                    {r.partyName}
+                    {r.originalInvoiceNumber ? ` · فاتورة ${r.originalInvoiceNumber}` : ''}
+                  </span>
+                ),
+              },
+              { key: 'date', header: 'التاريخ', align: 'center', render: (r) => <span className="font-mono">{r.date}</span> },
+              {
+                key: 'grandTotal',
+                header: 'الإجمالي',
+                align: 'center',
+                render: (r) => (
+                  <strong className="font-mono text-orange-800">
+                    {r.grandTotal.toLocaleString()} {data.settings.currency}
+                  </strong>
+                ),
+              },
+            ]}
+          />
         </div>
       )}
 
@@ -7233,58 +7547,60 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     </div>
                   </div>
                   {custodyStatement.itemsSummary.length > 0 && (
-                    <div className="bg-white/5 rounded-xl p-2.5 space-y-1.5">
-                      <span className="text-[10px] text-slate-300 font-bold block">تفاصيل حركة العهدة لكل صنف:</span>
-                      {custodyStatement.itemsSummary.map((item) => (
-                        <div key={item.productId} className="flex items-center justify-between gap-2 text-[11px] border-b border-white/10 pb-1 last:border-0 last:pb-0">
-                          <span className="font-bold truncate">{item.productName}</span>
-                          <span className="font-mono text-slate-200 shrink-0">
-                            مستلم {item.receivedQty} | مباع {item.deliveredToCustomersQty} | مرتجع {item.returnedToWarehouseQty} | متبقي{' '}
-                            <strong className="text-emerald-300">{item.remainingCustodyQty}</strong>
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                    <UnifiedDataTable
+                      compact
+                      paginated={false}
+                      searchable={false}
+                      title="تفاصيل حركة العهدة لكل صنف"
+                      data={custodyStatement.itemsSummary}
+                      rowKey={(item) => item.productId}
+                      columns={[
+                        { key: 'productName', header: 'الصنف', render: (item) => <span className="font-bold">{item.productName}</span> },
+                        { key: 'receivedQty', header: 'مستلم', align: 'center', render: (item) => <span className="font-mono">{item.receivedQty}</span> },
+                        { key: 'deliveredToCustomersQty', header: 'مباع', align: 'center', render: (item) => <span className="font-mono text-sky-700">{item.deliveredToCustomersQty}</span> },
+                        { key: 'returnedToWarehouseQty', header: 'مرتجع', align: 'center', render: (item) => <span className="font-mono text-amber-700">{item.returnedToWarehouseQty}</span> },
+                        { key: 'remainingCustodyQty', header: 'متبقي', align: 'center', render: (item) => <strong className="font-mono text-emerald-700">{item.remainingCustodyQty}</strong> },
+                      ]}
+                    />
                   )}
                 </div>
               )}
 
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-black text-slate-900">
-                    أرصدة البضاعة الحالية في: {vanWarehouse?.name || 'سيارة المندوب'}
-                  </h4>
-                  {!custodyStatement && (
+              <UnifiedDataTable
+                compact
+                title={`أرصدة البضاعة الحالية في: ${vanWarehouse?.name || 'سيارة المندوب'}`}
+                headerActions={
+                  !custodyStatement ? (
                     <button
                       type="button"
                       onClick={loadCustodyStatement}
                       disabled={isLoadingCustodyStmt}
-                      className="text-blue-900 font-bold flex items-center gap-1 cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-900 font-bold flex items-center gap-1 cursor-pointer"
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${isLoadingCustodyStmt ? 'animate-spin' : ''}`} />
                       <span>كشف العهدة</span>
                     </button>
-                  )}
-                </div>
-                <div className="divide-y divide-slate-100">
-                  {activeProducts
-                    .filter((p) => (p.stockPerWarehouse?.[effectiveVanId] || 0) > 0)
-                    .map((p) => (
-                      <div key={p.id} className="py-2.5 flex items-center justify-between">
-                        <div>
-                          <p className="font-bold text-slate-900">{p.name}</p>
-                          <p className="text-[11px] text-slate-500">{p.category}</p>
-                        </div>
-                        <strong className="font-mono text-sm text-blue-950 tabular-nums">
-                          {p.stockPerWarehouse?.[effectiveVanId] || 0} {p.baseUnit}
-                        </strong>
-                      </div>
-                    ))}
-                  {activeProducts.every((p) => (p.stockPerWarehouse?.[effectiveVanId] || 0) <= 0) && (
-                    <p className="py-6 text-center text-slate-400">لا توجد بضاعة متوفرة حالياً داخل مستودع السيارة.</p>
-                  )}
-                </div>
-              </div>
+                  ) : undefined
+                }
+                data={activeProducts.filter((p) => (p.stockPerWarehouse?.[effectiveVanId] || 0) > 0)}
+                rowKey={(p) => p.id}
+                emptyTitle="لا توجد بضاعة متوفرة حالياً داخل مستودع السيارة"
+                columns={[
+                  { key: 'name', header: 'الصنف', render: (p) => <span className="font-bold text-slate-900">{p.name}</span> },
+                  { key: 'category', header: 'التصنيف', render: (p) => <span className="text-slate-500">{p.category}</span> },
+                  {
+                    key: 'stock',
+                    header: 'الكمية المتاحة',
+                    align: 'center',
+                    sortValue: (p) => Number(p.stockPerWarehouse?.[effectiveVanId] || 0),
+                    render: (p) => (
+                      <strong className="font-mono text-blue-950 tabular-nums">
+                        {p.stockPerWarehouse?.[effectiveVanId] || 0} {p.baseUnit}
+                      </strong>
+                    ),
+                  },
+                ]}
+              />
             </div>
           )}
 
@@ -7490,20 +7806,38 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 </div>
 
                 {reqItems.length > 0 && (
-                  <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-xl">
-                    {reqItems.map((it, idx) => (
-                      <div key={idx} className="flex items-center justify-between">
-                        <span className="font-bold">{it.productName} ({it.requestedQty} {it.unit})</span>
-                        <button
-                          type="button"
-                          onClick={() => setReqItems((prev) => prev.filter((_, i) => i !== idx))}
-                          className="text-red-600 font-bold px-2 cursor-pointer"
-                        >
-                          حذف
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                  <UnifiedDataTable
+                    compact
+                    paginated={false}
+                    searchable={false}
+                    title={`الأصناف المطلوبة للتحويل (${reqItems.length})`}
+                    data={reqItems}
+                    rowKey={(it, idx) => `${it.productId}-${idx}`}
+                    columns={[
+                      { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold">{it.productName}</span> },
+                      {
+                        key: 'requestedQty',
+                        header: 'الكمية',
+                        align: 'center',
+                        render: (it) => <span className="font-mono">{it.requestedQty} {it.unit}</span>,
+                      },
+                      {
+                        key: 'actions',
+                        header: 'حذف',
+                        align: 'center',
+                        sortable: false,
+                        render: (_it, idx) => (
+                          <button
+                            type="button"
+                            onClick={() => setReqItems((prev) => prev.filter((_, i) => i !== idx))}
+                            className="text-red-600 font-bold px-2 cursor-pointer"
+                          >
+                            حذف
+                          </button>
+                        ),
+                      },
+                    ]}
+                  />
                 )}
 
                 <button
@@ -7515,41 +7849,65 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 </button>
               </form>
 
-              {myItemTransfers.map((tr) => (
-                <div key={tr.id} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono font-black text-blue-950">{tr.requestNumber}</span>
-                    <span className="font-bold text-slate-700">
-                      {tr.status === 'pending'
-                        ? 'قيد مراجعة الإدارة'
-                        : tr.status === 'approved'
-                        ? 'معتمد — بانتظار الصرف'
-                        : tr.status === 'executed'
-                        ? 'تم الصرف — بانتظار تأكيد استلامك'
-                        : tr.status === 'received'
-                        ? 'تم الاستلام الفعلي'
-                        : 'مرفوض'}
-                    </span>
-                  </div>
-                  <div className="space-y-1 text-[11px] text-slate-600">
-                    {tr.items.map((it, i) => (
-                      <div key={i} className="flex justify-between">
-                        <span>{it.productName}</span>
-                        <span className="font-mono">{it.approvedQty ?? it.requestedQty} {it.unit}</span>
+              <UnifiedDataTable
+                compact
+                title={`طلبات تحويل البضاعة (${myItemTransfers.length})`}
+                data={myItemTransfers}
+                rowKey={(tr) => tr.id}
+                emptyTitle="لا توجد طلبات تحويل بضاعة مسجلة"
+                columns={[
+                  { key: 'requestNumber', header: 'رقم الطلب', render: (tr) => <span className="font-mono font-black text-blue-950">{tr.requestNumber}</span> },
+                  {
+                    key: 'items',
+                    header: 'الأصناف',
+                    render: (tr) => (
+                      <div className="space-y-0.5 text-[11px] text-slate-700">
+                        {tr.items.map((it, i) => (
+                          <div key={i}>
+                            {it.productName}: <span className="font-mono font-bold">{it.approvedQty ?? it.requestedQty} {it.unit}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                  {tr.status === 'executed' && (
-                    <button
-                      type="button"
-                      onClick={() => handleConfirmItemReceived(tr.id, tr.requestNumber)}
-                      className="w-full min-h-[44px] rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer"
-                    >
-                      تأكيد استلام الأصناف فعلياً
-                    </button>
-                  )}
-                </div>
-              ))}
+                    ),
+                  },
+                  {
+                    key: 'status',
+                    header: 'الحالة',
+                    align: 'center',
+                    render: (tr) => (
+                      <span className="font-bold text-slate-700">
+                        {tr.status === 'pending'
+                          ? 'قيد مراجعة الإدارة'
+                          : tr.status === 'approved'
+                          ? 'معتمد — بانتظار الصرف'
+                          : tr.status === 'executed'
+                          ? 'تم الصرف — بانتظار تأكيد استلامك'
+                          : tr.status === 'received'
+                          ? 'تم الاستلام الفعلي'
+                          : 'مرفوض'}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: 'actions',
+                    header: 'الإجراءات',
+                    align: 'center',
+                    sortable: false,
+                    render: (tr) =>
+                      tr.status === 'executed' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleConfirmItemReceived(tr.id, tr.requestNumber)}
+                          className="min-h-[34px] px-3 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer whitespace-nowrap"
+                        >
+                          تأكيد استلام الأصناف فعلياً
+                        </button>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      ),
+                  },
+                ]}
+              />
             </div>
           )}
 
@@ -7586,33 +7944,63 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 />
               </form>
 
-              {myCashTransfers.map((t) => (
-                <div key={t.id} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono font-black text-blue-950">{t.transferNumber}</span>
-                    <strong className="font-mono text-sm text-slate-900">
-                      {t.amount.toLocaleString()} {data.settings.currency}
-                    </strong>
-                  </div>
-                  <p className="text-[11px] text-slate-600">
-                    {t.direction === 'rep_to_owner' ? 'توريد إلى الفرع' : 'عهدة واردة لك من الإدارة'} ·{' '}
-                    {t.status === 'received'
-                      ? 'تم الاستلام والتسوية'
-                      : t.status === 'awaiting_receipt'
-                      ? 'بانتظار تأكيد الاستلام'
-                      : 'مرفوض'}
-                  </p>
-                  {t.status === 'awaiting_receipt' && t.direction === 'owner_to_rep' && (
-                    <button
-                      type="button"
-                      onClick={() => handleConfirmOwnerCash(t.id)}
-                      className="w-full min-h-[44px] rounded-xl bg-emerald-700 text-white font-black cursor-pointer"
-                    >
-                      تأكيد استلام العهدة النقدية
-                    </button>
-                  )}
-                </div>
-              ))}
+              <UnifiedDataTable
+                compact
+                title={`التحويلات النقدية (${myCashTransfers.length})`}
+                data={myCashTransfers}
+                rowKey={(t) => t.id}
+                emptyTitle="لا توجد تحويلات نقدية مسجلة"
+                columns={[
+                  { key: 'transferNumber', header: 'رقم التحويل', render: (t) => <span className="font-mono font-black text-blue-950">{t.transferNumber}</span> },
+                  {
+                    key: 'direction',
+                    header: 'النوع',
+                    render: (t) => (t.direction === 'rep_to_owner' ? 'توريد إلى الفرع' : 'عهدة واردة لك من الإدارة'),
+                  },
+                  {
+                    key: 'amount',
+                    header: 'المبلغ',
+                    align: 'center',
+                    render: (t) => (
+                      <strong className="font-mono text-slate-900">
+                        {t.amount.toLocaleString()} {data.settings.currency}
+                      </strong>
+                    ),
+                  },
+                  {
+                    key: 'status',
+                    header: 'الحالة',
+                    align: 'center',
+                    render: (t) => (
+                      <span className="font-bold text-slate-700">
+                        {t.status === 'received'
+                          ? 'تم الاستلام والتسوية'
+                          : t.status === 'awaiting_receipt'
+                          ? 'بانتظار تأكيد الاستلام'
+                          : 'مرفوض'}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: 'actions',
+                    header: 'الإجراءات',
+                    align: 'center',
+                    sortable: false,
+                    render: (t) =>
+                      t.status === 'awaiting_receipt' && t.direction === 'owner_to_rep' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleConfirmOwnerCash(t.id)}
+                          className="min-h-[34px] px-3 rounded-lg bg-emerald-700 text-white font-black cursor-pointer whitespace-nowrap"
+                        >
+                          تأكيد استلام العهدة النقدية
+                        </button>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      ),
+                  },
+                ]}
+              />
             </div>
           )}
         </div>
@@ -7629,94 +8017,115 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               </h3>
             </div>
 
-            {assignedDeliveryOrders.length === 0 ? (
-              <p className="text-slate-500 text-center py-4">لا توجد طلبات توصيل معينة لك حالياً.</p>
-            ) : (
-              <div className="space-y-3">
-                {assignedDeliveryOrders.map((ord) => {
-                  const total = Number(ord.invoiceTotal ?? ord.totalAmount ?? 0);
-                  const adv = Number(ord.invoicePaidAmount ?? ord.advancePaidAmount ?? 0);
-                  const remainingDue = Math.max(0, Number(ord.invoiceRemainingAmount ?? (total - adv)));
-                  const mapQ = encodeURIComponent(ord.geoCoordinates || ord.deliveryAddress || ord.customerName);
-                  return (
-                    <div key={ord.id} className="rounded-2xl border border-slate-200 p-3.5 bg-slate-50/70 space-y-2.5">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <span className="font-mono font-black text-sm text-blue-950">{ord.requestNumber}</span>
-                          <p className="font-bold text-slate-900 mt-0.5">
-                            {ord.shopName ? `${ord.shopName} (${ord.customerName})` : ord.customerName}
-                          </p>
-                          {ord.deliveryAddress && (
-                            <p className="text-[11px] text-slate-600 flex items-center gap-1 mt-0.5">
-                              <MapPin className="w-3 h-3 text-red-600 shrink-0" />
-                              <span>{ord.deliveryAddress}</span>
-                            </p>
-                          )}
-                        </div>
-                        <span className="font-black text-xs text-indigo-900">
-                          {REP_ORDER_STATUS_LABELS[ord.status] || ord.status}
+            <UnifiedDataTable
+              compact
+              data={assignedDeliveryOrders}
+              rowKey={(ord) => ord.id}
+              emptyTitle="لا توجد طلبات توصيل معينة لك حالياً"
+              columns={[
+                {
+                  key: 'requestNumber',
+                  header: 'رقم الطلب',
+                  render: (ord) => <span className="font-mono font-black text-blue-950">{ord.requestNumber}</span>,
+                },
+                {
+                  key: 'customerName',
+                  header: 'العميل والعنوان',
+                  render: (ord) => (
+                    <div>
+                      <span className="font-bold text-slate-900 block">
+                        {ord.shopName ? `${ord.shopName} (${ord.customerName})` : ord.customerName}
+                      </span>
+                      {ord.deliveryAddress && (
+                        <span className="text-[10px] text-slate-600 flex items-center gap-1 mt-0.5">
+                          <MapPin className="w-3 h-3 text-red-600 shrink-0" />
+                          <span>{ord.deliveryAddress}</span>
                         </span>
-                      </div>
-
-                      <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-2.5 rounded-xl border border-slate-200 font-mono text-[11px]">
-                        <span>الإجمالي: <strong>{total.toLocaleString()} {data.settings.currency}</strong></span>
-                        <span className="text-emerald-700 font-bold">مدفوع: {adv.toLocaleString()}</span>
-                        <span className="text-blue-950 font-black">متبقي: {remainingDue.toLocaleString()}</span>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2">
-                        {ord.customerPhone && (
-                          <a
-                            href={`tel:${ord.customerPhone}`}
-                            className="min-h-[42px] px-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono font-bold inline-flex items-center gap-1.5"
-                          >
-                            <Phone className="w-3.5 h-3.5" />
-                            <span>اتصال</span>
-                          </a>
-                        )}
-                        {(ord.deliveryAddress || ord.geoCoordinates) && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setLocationViewerData({
-                                customerName: ord.customerName,
-                                shopName: ord.shopName,
-                                address: ord.deliveryAddress,
-                                geoCoordinates: ord.geoCoordinates,
-                              })
-                            }
-                            className="min-h-[42px] px-3 rounded-xl bg-emerald-50 text-[#0F5A33] border border-emerald-200 font-bold inline-flex items-center gap-1.5 cursor-pointer"
-                          >
-                            <MapPin className="w-3.5 h-3.5 text-[#0F5A33]" />
-                            <span>عرض الموقع</span>
-                          </button>
-                        )}
-                        {(ord.status === 'rep_assigned' || ord.status === 'preparing' || ord.status === 'invoiced') && (
-                          <button
-                            type="button"
-                            disabled={isUpdatingDelivery}
-                            onClick={() => handleStartDelivery(ord)}
-                            className="flex-1 min-h-[42px] px-3 rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white font-black cursor-pointer disabled:opacity-50"
-                          >
-                            بدء التوصيل
-                          </button>
-                        )}
-                        {(ord.status === 'rep_assigned' || ord.status === 'out_for_delivery' || ord.status === 'preparing') && (
-                          <button
-                            type="button"
-                            disabled={isUpdatingDelivery}
-                            onClick={() => handleOpenDeliverModal(ord)}
-                            className="flex-1 min-h-[42px] px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
-                          >
-                            تم التسليم
-                          </button>
-                        )}
-                      </div>
+                      )}
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  ),
+                },
+                {
+                  key: 'total',
+                  header: 'المبالغ',
+                  render: (ord) => {
+                    const total = Number(ord.invoiceTotal ?? ord.totalAmount ?? 0);
+                    const adv = Number(ord.invoicePaidAmount ?? ord.advancePaidAmount ?? 0);
+                    const remainingDue = Math.max(0, Number(ord.invoiceRemainingAmount ?? (total - adv)));
+                    return (
+                      <div className="font-mono text-[11px] whitespace-nowrap">
+                        <div>الإجمالي: <strong>{total.toLocaleString()} {data.settings.currency}</strong></div>
+                        <div className="text-emerald-700">مدفوع: {adv.toLocaleString()} · <span className="text-blue-950 font-black">متبقي: {remainingDue.toLocaleString()}</span></div>
+                      </div>
+                    );
+                  },
+                },
+                {
+                  key: 'status',
+                  header: 'الحالة',
+                  align: 'center',
+                  render: (ord) => (
+                    <span className="font-black text-indigo-900">{REP_ORDER_STATUS_LABELS[ord.status] || ord.status}</span>
+                  ),
+                },
+                {
+                  key: 'actions',
+                  header: 'الإجراءات',
+                  align: 'center',
+                  sortable: false,
+                  render: (ord) => (
+                    <div className="flex flex-wrap items-center justify-center gap-1 whitespace-nowrap">
+                      {ord.customerPhone && (
+                        <a
+                          href={`tel:${ord.customerPhone}`}
+                          className="min-h-[32px] px-2.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold inline-flex items-center gap-1"
+                        >
+                          <Phone className="w-3 h-3" />
+                          <span>اتصال</span>
+                        </a>
+                      )}
+                      {(ord.deliveryAddress || ord.geoCoordinates) && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setLocationViewerData({
+                              customerName: ord.customerName,
+                              shopName: ord.shopName,
+                              address: ord.deliveryAddress,
+                              geoCoordinates: ord.geoCoordinates,
+                            })
+                          }
+                          className="min-h-[32px] px-2.5 rounded-lg bg-emerald-50 text-[#0F5A33] border border-emerald-200 font-bold inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <MapPin className="w-3 h-3 text-[#0F5A33]" />
+                          <span>الموقع</span>
+                        </button>
+                      )}
+                      {(ord.status === 'rep_assigned' || ord.status === 'preparing' || ord.status === 'invoiced') && (
+                        <button
+                          type="button"
+                          disabled={isUpdatingDelivery}
+                          onClick={() => handleStartDelivery(ord)}
+                          className="min-h-[32px] px-2.5 rounded-lg bg-[#0F5A33] hover:bg-[#0B4426] text-white font-black cursor-pointer disabled:opacity-50"
+                        >
+                          بدء التوصيل
+                        </button>
+                      )}
+                      {(ord.status === 'rep_assigned' || ord.status === 'out_for_delivery' || ord.status === 'preparing') && (
+                        <button
+                          type="button"
+                          disabled={isUpdatingDelivery}
+                          onClick={() => handleOpenDeliverModal(ord)}
+                          className="min-h-[32px] px-2.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
+                        >
+                          تم التسليم
+                        </button>
+                      )}
+                    </div>
+                  ),
+                },
+              ]}
+            />
           </div>
 
           <form
@@ -7794,20 +8203,33 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </div>
 
             {ordItems.length > 0 && (
-              <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl px-3">
-                {ordItems.map((it, idx) => (
-                  <div key={`${it.productId}-${it.unit}-${idx}`} className="py-2 flex items-center justify-between gap-2">
-                    <span className="font-bold text-slate-900 truncate">{it.productName} ({it.quantity} {it.unit})</span>
-                    <button
-                      type="button"
-                      onClick={() => setOrdItems((prev) => prev.filter((_, i) => i !== idx))}
-                      className="text-red-600 p-1 cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
+              <UnifiedDataTable
+                compact
+                paginated={false}
+                searchable={false}
+                title={`أصناف الطلب (${ordItems.length})`}
+                data={ordItems}
+                rowKey={(it, idx) => `${it.productId}-${it.unit}-${idx}`}
+                columns={[
+                  { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold text-slate-900">{it.productName}</span> },
+                  { key: 'quantity', header: 'الكمية', align: 'center', render: (it) => <span className="font-mono">{it.quantity} {it.unit}</span> },
+                  {
+                    key: 'actions',
+                    header: 'حذف',
+                    align: 'center',
+                    sortable: false,
+                    render: (_it, idx) => (
+                      <button
+                        type="button"
+                        onClick={() => setOrdItems((prev) => prev.filter((_, i) => i !== idx))}
+                        className="text-red-600 p-1 cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    ),
+                  },
+                ]}
+              />
             )}
 
             <input
@@ -7828,18 +8250,23 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           </form>
 
           {mySubmittedOrders.length > 0 && (
-            <div className="space-y-2.5">
-              <h4 className="font-black text-slate-900 px-1">طلباتي المرسلة ({mySubmittedOrders.length})</h4>
-              {mySubmittedOrders.map((ord) => (
-                <div key={ord.id} className="bg-white rounded-2xl border border-slate-200 p-4 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono font-black text-blue-950">{ord.requestNumber}</span>
-                    <span className="font-bold text-indigo-800">{REP_ORDER_STATUS_LABELS[ord.status] || ord.status}</span>
-                  </div>
-                  <p className="text-[11px] text-slate-600">{ord.customerName} · {ord.items?.length || 0} أصناف</p>
-                </div>
-              ))}
-            </div>
+            <UnifiedDataTable
+              compact
+              title={`طلباتي المرسلة (${mySubmittedOrders.length})`}
+              data={mySubmittedOrders}
+              rowKey={(ord) => ord.id}
+              columns={[
+                { key: 'requestNumber', header: 'رقم الطلب', render: (ord) => <span className="font-mono font-black text-blue-950">{ord.requestNumber}</span> },
+                { key: 'customerName', header: 'العميل', render: (ord) => ord.customerName },
+                { key: 'itemsCount', header: 'الأصناف', align: 'center', render: (ord) => <span className="font-mono">{ord.items?.length || 0} أصناف</span> },
+                {
+                  key: 'status',
+                  header: 'الحالة',
+                  align: 'center',
+                  render: (ord) => <span className="font-bold text-indigo-800">{REP_ORDER_STATUS_LABELS[ord.status] || ord.status}</span>,
+                },
+              ]}
+            />
           )}
         </div>
       )}
@@ -7903,69 +8330,79 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   (s.phone && s.phone.includes(q))
                 );
               });
-              if (filteredSuppliers.length === 0) {
-                return (
-                  <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center text-slate-400">
-                    لا توجد بيانات موردين مطابقة للبحث.
-                  </div>
-                );
-              }
-              return filteredSuppliers.map((sup) => {
-                const bal = Number(sup.currentBalance || 0);
-                const dirLabel =
-                  bal > 0.009
-                    ? 'رصيد مستحق للمورد (علينا)'
-                    : bal < -0.009
-                    ? 'دفعة مقدمة عند المورد (لنا)'
-                    : 'حساب متوازن';
-                const dirClass =
-                  bal > 0.009
-                    ? 'bg-rose-50 text-rose-800 border-rose-200'
-                    : bal < -0.009
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                    : 'bg-slate-50 text-slate-700 border-slate-200';
-                return (
-                  <div key={sup.id} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs space-y-2.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <h4 className="font-black text-sm text-slate-900 truncate">{sup.name}</h4>
-                        <p className="text-[11px] text-slate-500">
-                          {sup.companyName ? `${sup.companyName} · ` : ''}
-                          {sup.code}
-                          {sup.phone ? ` · ${sup.phone}` : ''}
-                        </p>
-                      </div>
-                      <div className={`px-2.5 py-1.5 rounded-xl border text-left shrink-0 ${dirClass}`}>
-                        <span className="text-[10px] block font-bold">{dirLabel}</span>
-                        <strong className="font-mono text-sm tabular-nums">
-                          {Math.abs(bal).toLocaleString()} {data.settings.currency}
-                        </strong>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedSupplierDetail(sup)}
-                        className="min-h-[40px] rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 font-black cursor-pointer"
-                      >
-                        كشف حساب المورد
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPurSupplierId(sup.id);
-                          setPurEditingInvoiceId(null);
-                          onTabChange('new-purchase');
-                        }}
-                        className="min-h-[40px] rounded-xl bg-indigo-900 hover:bg-indigo-950 text-white font-black cursor-pointer"
-                      >
-                        + فاتورة شراء جديدة
-                      </button>
-                    </div>
-                  </div>
-                );
-              });
+              return (
+                <UnifiedDataTable<Supplier>
+                  compact
+                  searchable={false}
+                  title={`جدول الموردين (${filteredSuppliers.length})`}
+                  data={filteredSuppliers}
+                  rowKey={(sup) => sup.id}
+                  emptyTitle="لا توجد بيانات موردين مطابقة للبحث"
+                  columns={[
+                    {
+                      key: 'name',
+                      header: 'المورد / الشركة',
+                      render: (sup) => (
+                        <div>
+                          <span className="font-black text-slate-900 block">{sup.name}</span>
+                          <span className="text-[10px] text-slate-500">
+                            {sup.companyName ? `${sup.companyName} · ` : ''}
+                            <span className="font-mono">{sup.code}</span>
+                            {sup.phone ? ` · ${sup.phone}` : ''}
+                          </span>
+                        </div>
+                      ),
+                    },
+                    {
+                      key: 'currentBalance',
+                      header: 'الرصيد العام',
+                      align: 'center',
+                      sortValue: (sup) => Number(sup.currentBalance || 0),
+                      render: (sup) => {
+                        const bal = Number(sup.currentBalance || 0);
+                        return (
+                          <div className="whitespace-nowrap">
+                            <strong className={`font-mono tabular-nums block ${bal > 0.009 ? 'text-rose-800' : bal < -0.009 ? 'text-emerald-800' : 'text-slate-700'}`}>
+                              {Math.abs(bal).toLocaleString()} {data.settings.currency}
+                            </strong>
+                            <span className="text-[10px] text-slate-500">
+                              {bal > 0.009 ? 'علينا' : bal < -0.009 ? 'لنا' : 'متوازن'}
+                            </span>
+                          </div>
+                        );
+                      },
+                    },
+                    {
+                      key: 'actions',
+                      header: 'الإجراءات',
+                      align: 'center',
+                      sortable: false,
+                      render: (sup) => (
+                        <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedSupplierDetail(sup)}
+                            className="min-h-[34px] px-2.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 font-black cursor-pointer"
+                          >
+                            كشف حساب
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPurSupplierId(sup.id);
+                              setPurEditingInvoiceId(null);
+                              onTabChange('new-purchase');
+                            }}
+                            className="min-h-[34px] px-2.5 rounded-lg bg-indigo-900 hover:bg-indigo-950 text-white font-black cursor-pointer"
+                          >
+                            + فاتورة شراء
+                          </button>
+                        </div>
+                      ),
+                    },
+                  ]}
+                />
+              );
             })()}
           </div>
         )
@@ -8311,339 +8748,413 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               {/* Sub-view 1: Account Summary & Balances */}
               {rptSubView === 'summary' && (
                 <div className="space-y-3">
-                  <div className="bg-white rounded-2xl border border-slate-200 p-3.5 space-y-2">
-                    <h4 className="font-black text-slate-900">ملخص العملاء ({repReportData.customersSummary.length})</h4>
-                    {repReportData.customersSummary.length === 0 ? (
-                      <p className="text-slate-400 py-4 text-center">لا توجد بيانات عملاء مطابقة.</p>
-                    ) : (
-                      <div className="divide-y divide-slate-100">
-                        {repReportData.customersSummary.map((cs) => (
-                          <div key={cs.id} className="py-2.5 flex items-center justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="font-black text-slate-900 truncate">{cs.shopName || cs.name}</p>
-                              <p className="text-[10px] text-slate-500">
-                                مبيعاتك: {cs.repSalesTotal.toLocaleString()} ({cs.repSalesCount}) · تحصيلاتك: {cs.repCollectionsTotal.toLocaleString()}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className={`font-mono font-black ${cs.companyBalance > 0.009 ? 'text-red-700' : cs.companyBalance < -0.009 ? 'text-emerald-700' : 'text-slate-600'}`}>
-                                {Math.abs(cs.companyBalance).toLocaleString()} ({cs.companyBalance > 0.009 ? 'لنا' : cs.companyBalance < -0.009 ? 'علينا' : 'متوازن'})
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const cust = data.customers.find((c) => c.id === cs.id);
-                                  if (cust) {
-                                    setSelectedCustomerDetail(cust);
-                                    setCustomerDetailSubTab('statement');
-                                  }
-                                }}
-                                className="px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-900 border border-blue-200 font-bold cursor-pointer"
-                              >
-                                كشف الحساب
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <UnifiedDataTable
+                    compact
+                    paginated={false}
+                    searchable={false}
+                    title={`ملخص العملاء (${repReportData.customersSummary.length})`}
+                    data={repReportData.customersSummary}
+                    rowKey={(cs) => cs.id}
+                    emptyTitle="لا توجد بيانات عملاء مطابقة"
+                    columns={[
+                      {
+                        key: 'name',
+                        header: 'العميل / المحل',
+                        render: (cs) => <span className="font-black text-slate-900">{cs.shopName || cs.name}</span>,
+                      },
+                      {
+                        key: 'repSalesTotal',
+                        header: 'مبيعاتك',
+                        align: 'center',
+                        render: (cs) => (
+                          <span className="font-mono">
+                            {cs.repSalesTotal.toLocaleString()} ({cs.repSalesCount})
+                          </span>
+                        ),
+                      },
+                      {
+                        key: 'repCollectionsTotal',
+                        header: 'تحصيلاتك',
+                        align: 'center',
+                        render: (cs) => <span className="font-mono text-emerald-700">{cs.repCollectionsTotal.toLocaleString()}</span>,
+                      },
+                      {
+                        key: 'companyBalance',
+                        header: 'الرصيد العام',
+                        align: 'center',
+                        render: (cs) => (
+                          <span className={`font-mono font-black ${cs.companyBalance > 0.009 ? 'text-red-700' : cs.companyBalance < -0.009 ? 'text-emerald-700' : 'text-slate-600'}`}>
+                            {Math.abs(cs.companyBalance).toLocaleString()} ({cs.companyBalance > 0.009 ? 'لنا' : cs.companyBalance < -0.009 ? 'علينا' : 'متوازن'})
+                          </span>
+                        ),
+                      },
+                      {
+                        key: 'actions',
+                        header: 'كشف الحساب',
+                        align: 'center',
+                        sortable: false,
+                        render: (cs) => (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const cust = data.customers.find((c) => c.id === cs.id);
+                              if (cust) {
+                                setSelectedCustomerDetail(cust);
+                                setCustomerDetailSubTab('statement');
+                              }
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-900 border border-blue-200 font-bold cursor-pointer whitespace-nowrap"
+                          >
+                            كشف الحساب
+                          </button>
+                        ),
+                      },
+                    ]}
+                  />
 
                   {canCreatePurchase && (
-                    <div className="bg-white rounded-2xl border border-slate-200 p-3.5 space-y-2">
-                      <h4 className="font-black text-slate-900">ملخص الموردين ({repReportData.suppliersSummary.length})</h4>
-                      {repReportData.suppliersSummary.length === 0 ? (
-                        <p className="text-slate-400 py-4 text-center">لا توجد بيانات موردين مطابقة.</p>
-                      ) : (
-                        <div className="divide-y divide-slate-100">
-                          {repReportData.suppliersSummary.map((ss) => (
-                            <div key={ss.id} className="py-2.5 flex items-center justify-between gap-2">
-                              <div className="min-w-0">
-                                <p className="font-black text-slate-900 truncate">{ss.name}</p>
-                                <p className="text-[10px] text-slate-500">
-                                  مشترياتك: {ss.repPurchasesTotal.toLocaleString()} ({ss.repPurchasesCount}) · مدفوع: {ss.repPaidTotal.toLocaleString()}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className={`font-mono font-black ${ss.companyBalance > 0.009 ? 'text-rose-700' : ss.companyBalance < -0.009 ? 'text-emerald-700' : 'text-slate-600'}`}>
-                                  {Math.abs(ss.companyBalance).toLocaleString()} ({ss.companyBalance > 0.009 ? 'علينا' : ss.companyBalance < -0.009 ? 'لنا' : 'متوازن'})
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const sup = data.suppliers.find((s) => s.id === ss.id);
-                                    if (sup) setSelectedSupplierDetail(sup);
-                                  }}
-                                  className="px-2.5 py-1.5 rounded-lg bg-indigo-50 text-indigo-900 border border-indigo-200 font-bold cursor-pointer"
-                                >
-                                  كشف الحساب
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <UnifiedDataTable
+                      compact
+                      paginated={false}
+                      searchable={false}
+                      title={`ملخص الموردين (${repReportData.suppliersSummary.length})`}
+                      data={repReportData.suppliersSummary}
+                      rowKey={(ss) => ss.id}
+                      emptyTitle="لا توجد بيانات موردين مطابقة"
+                      columns={[
+                        { key: 'name', header: 'المورد', render: (ss) => <span className="font-black text-slate-900">{ss.name}</span> },
+                        {
+                          key: 'repPurchasesTotal',
+                          header: 'مشترياتك',
+                          align: 'center',
+                          render: (ss) => (
+                            <span className="font-mono">
+                              {ss.repPurchasesTotal.toLocaleString()} ({ss.repPurchasesCount})
+                            </span>
+                          ),
+                        },
+                        {
+                          key: 'repPaidTotal',
+                          header: 'المدفوع',
+                          align: 'center',
+                          render: (ss) => <span className="font-mono text-emerald-700">{ss.repPaidTotal.toLocaleString()}</span>,
+                        },
+                        {
+                          key: 'companyBalance',
+                          header: 'الرصيد العام',
+                          align: 'center',
+                          render: (ss) => (
+                            <span className={`font-mono font-black ${ss.companyBalance > 0.009 ? 'text-rose-700' : ss.companyBalance < -0.009 ? 'text-emerald-700' : 'text-slate-600'}`}>
+                              {Math.abs(ss.companyBalance).toLocaleString()} ({ss.companyBalance > 0.009 ? 'علينا' : ss.companyBalance < -0.009 ? 'لنا' : 'متوازن'})
+                            </span>
+                          ),
+                        },
+                        {
+                          key: 'actions',
+                          header: 'كشف الحساب',
+                          align: 'center',
+                          sortable: false,
+                          render: (ss) => (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const sup = data.suppliers.find((s) => s.id === ss.id);
+                                if (sup) setSelectedSupplierDetail(sup);
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg bg-indigo-50 text-indigo-900 border border-indigo-200 font-bold cursor-pointer whitespace-nowrap"
+                            >
+                              كشف الحساب
+                            </button>
+                          ),
+                        },
+                      ]}
+                    />
                   )}
                 </div>
               )}
 
               {/* Sub-view 2: Invoices Table */}
               {rptSubView === 'invoices' && (
-                <div className="space-y-2.5">
-                  {repReportData.invoices.length === 0 ? (
-                    <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400">
-                      لا توجد فواتير مطابقة للفلاتر المحددة.
-                    </div>
-                  ) : (
-                    repReportData.invoices.map((row) => {
-                      const existingInv = (data.invoices || []).find((i) => i.id === row.id);
-                      const fallbackInv: Invoice = existingInv || {
-                        id: row.id,
-                        invoiceNumber: row.invoiceNumber,
-                        date: row.date,
-                        type: row.type,
-                        customerId: row.type === 'sales' ? row.partyId : undefined,
-                        customerName: row.type === 'sales' ? row.partyName : undefined,
-                        supplierId: row.type === 'purchase' ? row.partyId : undefined,
-                        supplierName: row.type === 'purchase' ? row.partyName : undefined,
-                        warehouseId: row.warehouseId || '',
-                        warehouseName: row.warehouseName,
-                        representativeId: row.representativeId,
-                        representativeName: row.representativeName,
-                        items: (row.items || []).map((it) => ({
-                          productId: it.productId,
-                          productName: it.productName,
-                          barcode: it.barcode || '',
-                          unit: it.unit,
-                          unitFactor: it.unitFactor,
-                          quantity: it.quantity,
-                          unitPrice: it.unitPrice,
-                          purchasePriceAtTime: 0,
-                          discount: it.discount,
-                          total: it.total,
-                        })),
-                        subtotal: row.grandTotal,
-                        discountTotal: 0,
-                        taxTotal: 0,
-                        grandTotal: row.grandTotal,
-                        paidAmount: row.paidAmount,
-                        remainingAmount: row.remainingAmount,
-                        paymentType: row.paymentStatus === 'paid' ? 'cash' : row.paymentStatus === 'partial' ? 'partial' : 'credit',
-                        paymentMethod: 'cash',
-                        cashboxId: '',
-                        status: (row.status as any) || 'confirmed',
-                        dispatchStatus: row.dispatchStatus as any,
-                        notes: row.notes,
-                        createdBy: currentUser?.fullName || '',
-                        createdAt: row.date,
-                      };
-                      return (
-                        <div key={row.id} className="bg-white rounded-2xl border border-slate-200 p-3.5 space-y-2">
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="font-mono font-black text-blue-950">{row.invoiceNumber}</span>
-                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                                  row.type === 'purchase'
-                                    ? 'bg-indigo-50 text-indigo-900'
-                                    : row.type === 'quote'
-                                    ? 'bg-slate-100 text-slate-700'
-                                    : 'bg-blue-50 text-blue-900'
-                                }`}>
-                                  {row.type === 'purchase' ? 'فاتورة شراء' : row.type === 'quote' ? 'عرض سعر' : 'فاتورة بيع'}
-                                </span>
-                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                                  row.paymentStatus === 'paid'
-                                    ? 'bg-emerald-50 text-emerald-800'
-                                    : row.paymentStatus === 'partial'
-                                    ? 'bg-amber-50 text-amber-800'
-                                    : 'bg-red-50 text-red-700'
-                                }`}>
-                                  {row.paymentStatus === 'paid' ? 'مدفوعة' : row.paymentStatus === 'partial' ? 'جزئي' : 'آجل'}
-                                </span>
-                              </div>
-                              <p className="text-[11px] text-slate-600 mt-0.5">
-                                {row.partyName} · {row.date} · {row.itemsCount} أصناف
-                              </p>
-                            </div>
-                            <div className="text-left shrink-0 tabular-nums">
-                              <strong className="font-mono text-sm text-slate-900 block">
-                                {row.grandTotal.toLocaleString()} {data.settings.currency}
-                              </strong>
-                              {row.remainingAmount > 0.009 && (
-                                <span className="text-[10px] text-amber-800 font-bold">
-                                  متبقي: {row.remainingAmount.toLocaleString()}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="flex flex-wrap gap-2">
+                <UnifiedDataTable
+                  compact
+                  paginated={false}
+                  searchable={false}
+                  title={`الفواتير (${repReportData.invoices.length})`}
+                  data={repReportData.invoices}
+                  rowKey={(row) => row.id}
+                  emptyTitle="لا توجد فواتير مطابقة للفلاتر المحددة"
+                  columns={[
+                    { key: 'invoiceNumber', header: 'رقم الفاتورة', render: (row) => <span className="font-mono font-black text-blue-950">{row.invoiceNumber}</span> },
+                    {
+                      key: 'type',
+                      header: 'النوع',
+                      align: 'center',
+                      render: (row) => (
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${row.type === 'purchase' ? 'bg-indigo-50 text-indigo-900' : row.type === 'quote' ? 'bg-slate-100 text-slate-700' : 'bg-blue-50 text-blue-900'}`}>
+                          {row.type === 'purchase' ? 'فاتورة شراء' : row.type === 'quote' ? 'عرض سعر' : 'فاتورة بيع'}
+                        </span>
+                      ),
+                    },
+                    {
+                      key: 'partyName',
+                      header: 'الطرف',
+                      render: (row) => (
+                        <div>
+                          <span className="font-bold text-slate-900 block">{row.partyName}</span>
+                          <span className="text-[10px] text-slate-500">{row.date} · {row.itemsCount} أصناف</span>
+                        </div>
+                      ),
+                    },
+                    {
+                      key: 'grandTotal',
+                      header: 'الإجمالي',
+                      align: 'center',
+                      render: (row) => (
+                        <div className="whitespace-nowrap">
+                          <strong className="font-mono text-slate-900 block">{row.grandTotal.toLocaleString()} {data.settings.currency}</strong>
+                          {row.remainingAmount > 0.009 && (
+                            <span className="text-[10px] text-amber-800 font-bold">متبقي: {row.remainingAmount.toLocaleString()}</span>
+                          )}
+                        </div>
+                      ),
+                    },
+                    {
+                      key: 'paymentStatus',
+                      header: 'السداد',
+                      align: 'center',
+                      render: (row) => (
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${row.paymentStatus === 'paid' ? 'bg-emerald-50 text-emerald-800' : row.paymentStatus === 'partial' ? 'bg-amber-50 text-amber-800' : 'bg-red-50 text-red-700'}`}>
+                          {row.paymentStatus === 'paid' ? 'مدفوعة' : row.paymentStatus === 'partial' ? 'جزئي' : 'آجل'}
+                        </span>
+                      ),
+                    },
+                    {
+                      key: 'actions',
+                      header: 'الإجراءات',
+                      align: 'center',
+                      sortable: false,
+                      render: (row) => {
+                        const existingInv = (data.invoices || []).find((i) => i.id === row.id);
+                        const fallbackInv: Invoice = existingInv || {
+                          id: row.id,
+                          invoiceNumber: row.invoiceNumber,
+                          date: row.date,
+                          type: row.type,
+                          customerId: row.type === 'sales' ? row.partyId : undefined,
+                          customerName: row.type === 'sales' ? row.partyName : undefined,
+                          supplierId: row.type === 'purchase' ? row.partyId : undefined,
+                          supplierName: row.type === 'purchase' ? row.partyName : undefined,
+                          warehouseId: row.warehouseId || '',
+                          warehouseName: row.warehouseName,
+                          representativeId: row.representativeId,
+                          representativeName: row.representativeName,
+                          items: (row.items || []).map((it) => ({
+                            productId: it.productId,
+                            productName: it.productName,
+                            barcode: it.barcode || '',
+                            unit: it.unit,
+                            unitFactor: it.unitFactor,
+                            quantity: it.quantity,
+                            unitPrice: it.unitPrice,
+                            purchasePriceAtTime: 0,
+                            discount: it.discount,
+                            total: it.total,
+                          })),
+                          subtotal: row.grandTotal,
+                          discountTotal: 0,
+                          taxTotal: 0,
+                          grandTotal: row.grandTotal,
+                          paidAmount: row.paidAmount,
+                          remainingAmount: row.remainingAmount,
+                          paymentType: row.paymentStatus === 'paid' ? 'cash' : row.paymentStatus === 'partial' ? 'partial' : 'credit',
+                          paymentMethod: 'cash',
+                          cashboxId: '',
+                          status: (row.status as any) || 'confirmed',
+                          dispatchStatus: row.dispatchStatus as any,
+                          notes: row.notes,
+                          createdBy: currentUser?.fullName || '',
+                          createdAt: row.date,
+                        };
+                        return (
+                          <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                             <button
                               type="button"
                               onClick={() => {
-                                if (row.type === 'purchase') {
-                                  setSelectedPurchaseDetail(fallbackInv);
-                                } else {
-                                  setSelectedInvoice(fallbackInv);
-                                }
+                                if (row.type === 'purchase') setSelectedPurchaseDetail(fallbackInv);
+                                else setSelectedInvoice(fallbackInv);
                               }}
-                              className="min-h-[36px] px-3 rounded-xl bg-slate-100 text-slate-800 font-bold inline-flex items-center gap-1 cursor-pointer"
+                              className="min-h-[32px] px-2.5 rounded-lg bg-slate-100 text-slate-800 font-bold inline-flex items-center gap-1 cursor-pointer"
                             >
                               <Eye className="w-3.5 h-3.5" />
-                              <span>تفاصيل الفاتورة</span>
+                              <span>تفاصيل</span>
                             </button>
                             {canCreatePurchase && row.type === 'purchase' && row.status === 'confirmed' && row.remainingAmount > 0.009 && (
                               <button
                                 type="button"
                                 onClick={() => openPurchasePaymentModal(fallbackInv)}
-                                className="min-h-[36px] px-3 rounded-xl bg-emerald-700 text-white font-bold inline-flex items-center gap-1 cursor-pointer"
+                                className="min-h-[32px] px-2.5 rounded-lg bg-emerald-700 text-white font-bold inline-flex items-center gap-1 cursor-pointer"
                               >
                                 <CreditCard className="w-3.5 h-3.5" />
-                                <span>تسجيل دفعة سداد</span>
+                                <span>سداد</span>
                               </button>
                             )}
                           </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
+                        );
+                      },
+                    },
+                  ]}
+                />
               )}
 
               {/* Sub-view 3: Item Movement Rows */}
               {rptSubView === 'items' && (
-                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-                  {repReportData.itemRows.length === 0 ? (
-                    <p className="text-center text-slate-400 py-8">لا توجد حركات أصناف مطابقة.</p>
-                  ) : (
-                    <div className="divide-y divide-slate-100">
-                      {repReportData.itemRows.map((it) => (
-                        <div key={it.rowId} className="p-3 flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="font-black text-slate-900 truncate">
-                              {it.productName}
-                              {(it.categoryName || it.class1) && (
-                                <span className="text-[10px] font-normal text-slate-500 mr-1.5">
-                                  ({[it.categoryName, it.class1].filter(Boolean).join(' · ')})
-                                </span>
-                              )}
-                            </p>
-                            <p className="text-[10px] text-slate-500">
-                              {it.opType === 'sales'
-                                ? 'بيع'
-                                : it.opType === 'purchase'
-                                ? 'شراء'
-                                : it.opType === 'sales_return'
-                                ? 'مرتجع بيع'
-                                : 'مرتجع شراء'}{' '}
-                              · <span className="font-mono">{it.invoiceNumber}</span> · {it.date} · {it.partyName}
-                              {it.createdByName ? ` · بواسطة: ${it.createdByName}` : ''}
-                            </p>
-                            {(typeof it.returnedQty === 'number' && it.returnedQty > 0 && (it.opType === 'sales' || it.opType === 'purchase')) && (
-                              <p className="text-[10px] font-bold text-rose-700 mt-0.5">
-                                مرتجع: {it.returnedQty} {it.unit} · الصافي: {it.netQty ?? it.quantity} {it.unit} ({(it.netValue ?? it.total).toLocaleString()} {data.settings.currency})
-                              </p>
+                <UnifiedDataTable
+                  compact
+                  paginated={false}
+                  searchable={false}
+                  title={`حركة الأصناف (${repReportData.itemRows.length})`}
+                  data={repReportData.itemRows}
+                  rowKey={(it) => it.rowId}
+                  emptyTitle="لا توجد حركات أصناف مطابقة"
+                  columns={[
+                    {
+                      key: 'productName',
+                      header: 'الصنف',
+                      render: (it) => (
+                        <div>
+                          <span className="font-black text-slate-900 block">
+                            {it.productName}
+                            {(it.categoryName || it.class1) && (
+                              <span className="text-[10px] font-normal text-slate-500 mr-1">
+                                ({[it.categoryName, it.class1].filter(Boolean).join(' · ')})
+                              </span>
                             )}
-                          </div>
-                          <div className="text-left shrink-0 font-mono tabular-nums">
-                            <strong className="block text-slate-900">
-                              {it.total.toLocaleString()} {data.settings.currency}
-                            </strong>
-                            <span className="text-[10px] text-slate-500">
-                              {it.quantity} {it.unit} × {it.unitPrice.toLocaleString()}
-                            </span>
-                          </div>
+                          </span>
+                          <span className="text-[10px] text-slate-500">
+                            {it.opType === 'sales' ? 'بيع' : it.opType === 'purchase' ? 'شراء' : it.opType === 'sales_return' ? 'مرتجع بيع' : 'مرتجع شراء'}{' '}
+                            · <span className="font-mono">{it.invoiceNumber}</span> · {it.date} · {it.partyName}
+                          </span>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                      ),
+                    },
+                    {
+                      key: 'quantity',
+                      header: 'الكمية',
+                      align: 'center',
+                      render: (it) => <span className="font-mono">{it.quantity} {it.unit}</span>,
+                    },
+                    {
+                      key: 'unitPrice',
+                      header: 'السعر',
+                      align: 'center',
+                      render: (it) => <span className="font-mono">{it.unitPrice.toLocaleString()}</span>,
+                    },
+                    {
+                      key: 'total',
+                      header: 'الإجمالي',
+                      align: 'center',
+                      render: (it) => (
+                        <div>
+                          <strong className="font-mono text-slate-900 block">
+                            {it.total.toLocaleString()} {data.settings.currency}
+                          </strong>
+                          {(typeof it.returnedQty === 'number' && it.returnedQty > 0 && (it.opType === 'sales' || it.opType === 'purchase')) && (
+                            <span className="text-[10px] font-bold text-rose-700">
+                              مرتجع: {it.returnedQty} · الصافي: {(it.netValue ?? it.total).toLocaleString()}
+                            </span>
+                          )}
+                        </div>
+                      ),
+                    },
+                  ]}
+                />
               )}
 
               {/* Sub-view 4: Collections */}
               {rptSubView === 'collections' && (
-                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-                  {repReportData.collections.length === 0 ? (
-                    <p className="text-center text-slate-400 py-8">لا توجد تحصيلات نقدية في هذه الفترة.</p>
-                  ) : (
-                    <div className="divide-y divide-slate-100">
-                      {repReportData.collections.map((col) => (
-                        <div key={col.id} className="p-3 flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="font-black text-slate-900 truncate">{col.partyName}</p>
-                            <p className="text-[10px] text-slate-500">
-                              {col.transactionNumber ? `${col.transactionNumber} · ` : ''}
-                              {col.date} · {col.paymentMethod === 'bank' ? 'تحويل بنكي' : col.paymentMethod === 'cheque' ? 'شيك' : 'نقدي'}
-                              {col.relatedDocNumber ? ` · فاتورة ${col.relatedDocNumber}` : ''}
-                              {col.createdBy ? ` · ${col.createdBy}` : ''}
-                              {col.notes ? ` · ${col.notes}` : ''}
-                            </p>
-                            {typeof col.remainingAfter === 'number' && col.relatedDocNumber && (
-                              <p className="text-[10px] font-bold text-amber-800 mt-0.5">
-                                المتبقي على الفاتورة بعد السداد: {col.remainingAfter.toLocaleString()} {data.settings.currency}
-                              </p>
-                            )}
-                          </div>
-                          <strong className="font-mono text-sm text-emerald-700 shrink-0 tabular-nums">
+                <UnifiedDataTable
+                  compact
+                  paginated={false}
+                  searchable={false}
+                  title={`التحصيلات النقدية (${repReportData.collections.length})`}
+                  data={repReportData.collections}
+                  rowKey={(col) => col.id}
+                  emptyTitle="لا توجد تحصيلات نقدية في هذه الفترة"
+                  columns={[
+                    {
+                      key: 'partyName',
+                      header: 'العميل',
+                      render: (col) => (
+                        <div>
+                          <span className="font-black text-slate-900 block">{col.partyName}</span>
+                          <span className="text-[10px] text-slate-500">
+                            {col.transactionNumber ? `${col.transactionNumber} · ` : ''}{col.date}
+                            {col.relatedDocNumber ? ` · فاتورة ${col.relatedDocNumber}` : ''}
+                          </span>
+                        </div>
+                      ),
+                    },
+                    {
+                      key: 'paymentMethod',
+                      header: 'الطريقة',
+                      align: 'center',
+                      render: (col) => (col.paymentMethod === 'bank' ? 'تحويل بنكي' : col.paymentMethod === 'cheque' ? 'شيك' : 'نقدي'),
+                    },
+                    {
+                      key: 'amount',
+                      header: 'المبلغ المحصل',
+                      align: 'center',
+                      render: (col) => (
+                        <div>
+                          <strong className="font-mono text-emerald-700 block">
                             {col.amount.toLocaleString()} {data.settings.currency}
                           </strong>
+                          {typeof col.remainingAfter === 'number' && col.relatedDocNumber && (
+                            <span className="text-[10px] font-bold text-amber-800">
+                              متبقي: {col.remainingAfter.toLocaleString()}
+                            </span>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                      ),
+                    },
+                  ]}
+                />
               )}
 
               {(repReportData.salesReturnRequests?.length ?? 0) > 0 && (
-                <div className="bg-white rounded-2xl border border-rose-200 p-3.5 space-y-2">
-                  <h4 className="font-black text-rose-950">
-                    طلبات مرتجع المبيعات ({repReportData.salesReturnRequests?.length ?? 0})
-                  </h4>
-                  <div className="divide-y divide-slate-100">
-                    {(repReportData.salesReturnRequests || []).map((req) => (
-                      <div key={req.id} className="py-2 flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="font-mono font-black text-rose-900">
-                            {req.requestNumber} · <span className="font-sans text-slate-700">{req.customerName}</span>
-                          </p>
-                          <p className="text-[10px] text-slate-500">
-                            فاتورة {req.originalInvoiceNumber} · {req.date} · {req.status === 'approved' ? 'معتمد' : req.status === 'rejected' ? 'مرفوض' : 'قيد الانتظار'}
-                          </p>
-                        </div>
-                        <strong className="font-mono text-rose-800 shrink-0 tabular-nums">
-                          {Number(req.grandTotal || 0).toLocaleString()} {data.settings.currency}
-                        </strong>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <UnifiedDataTable
+                  compact
+                  paginated={false}
+                  searchable={false}
+                  title={`طلبات مرتجع المبيعات (${repReportData.salesReturnRequests?.length ?? 0})`}
+                  data={repReportData.salesReturnRequests || []}
+                  rowKey={(req) => req.id}
+                  columns={[
+                    { key: 'requestNumber', header: 'رقم الطلب', render: (req) => <span className="font-mono font-black text-rose-900">{req.requestNumber}</span> },
+                    { key: 'customerName', header: 'العميل / الفاتورة', render: (req) => `${req.customerName} · فاتورة ${req.originalInvoiceNumber}` },
+                    { key: 'date', header: 'التاريخ', align: 'center', render: (req) => <span className="font-mono">{req.date}</span> },
+                    { key: 'status', header: 'الحالة', align: 'center', render: (req) => (req.status === 'approved' ? 'معتمد' : req.status === 'rejected' ? 'مرفوض' : 'قيد الانتظار') },
+                    { key: 'grandTotal', header: 'الإجمالي', align: 'center', render: (req) => <strong className="font-mono text-rose-800">{Number(req.grandTotal || 0).toLocaleString()} {data.settings.currency}</strong> },
+                  ]}
+                />
               )}
 
               {canCreatePurchase && (repReportData.purchaseReturnRequests?.length ?? 0) > 0 && (
-                <div className="bg-white rounded-2xl border border-orange-200 p-3.5 space-y-2">
-                  <h4 className="font-black text-orange-950">
-                    طلبات مرتجع المشتريات ({repReportData.purchaseReturnRequests?.length ?? 0})
-                  </h4>
-                  <div className="divide-y divide-slate-100">
-                    {(repReportData.purchaseReturnRequests || []).map((req) => (
-                      <div key={req.id} className="py-2 flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="font-mono font-black text-orange-900">
-                            {req.requestNumber} · <span className="font-sans text-slate-700">{req.supplierName}</span>
-                          </p>
-                          <p className="text-[10px] text-slate-500">
-                            فاتورة {req.originalInvoiceNumber} · {req.date} · {req.status === 'approved' ? 'معتمد' : req.status === 'rejected' ? 'مرفوض' : 'قيد الانتظار'}
-                          </p>
-                        </div>
-                        <strong className="font-mono text-orange-800 shrink-0 tabular-nums">
-                          {Number(req.grandTotal || 0).toLocaleString()} {data.settings.currency}
-                        </strong>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <UnifiedDataTable
+                  compact
+                  paginated={false}
+                  searchable={false}
+                  title={`طلبات مرتجع المشتريات (${repReportData.purchaseReturnRequests?.length ?? 0})`}
+                  data={repReportData.purchaseReturnRequests || []}
+                  rowKey={(req) => req.id}
+                  columns={[
+                    { key: 'requestNumber', header: 'رقم الطلب', render: (req) => <span className="font-mono font-black text-orange-900">{req.requestNumber}</span> },
+                    { key: 'supplierName', header: 'المورد / الفاتورة', render: (req) => `${req.supplierName} · فاتورة ${req.originalInvoiceNumber}` },
+                    { key: 'date', header: 'التاريخ', align: 'center', render: (req) => <span className="font-mono">{req.date}</span> },
+                    { key: 'status', header: 'الحالة', align: 'center', render: (req) => (req.status === 'approved' ? 'معتمد' : req.status === 'rejected' ? 'مرفوض' : 'قيد الانتظار') },
+                    { key: 'grandTotal', header: 'الإجمالي', align: 'center', render: (req) => <strong className="font-mono text-orange-800">{Number(req.grandTotal || 0).toLocaleString()} {data.settings.currency}</strong> },
+                  ]}
+                />
               )}
 
               {/* Pagination Controls */}
@@ -9097,42 +9608,47 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       )}
                     </div>
 
-                    <div className="bg-white space-y-1.5 border border-slate-200 rounded-2xl p-3">
-                      <span className="font-black text-slate-800 block mb-1">آخر فواتير العميل ({custInvoices.length})</span>
-                      {custInvoices.length === 0 ? (
-                        <p className="text-slate-400 text-center py-3">لا توجد فواتير مسجلة لهذا العميل.</p>
-                      ) : (
-                        custInvoices.map((inv) => (
-                          <button
-                            key={inv.id}
-                            type="button"
-                            onClick={() =>
-                              setStatementPreviewDoc({
-                                type: 'invoice',
-                                docId: inv.id,
-                                title: inv.invoiceNumber,
-                              })
-                            }
-                            className="w-full flex items-center justify-between py-2 px-2 rounded-xl hover:bg-blue-50/70 border-b border-slate-100 last:border-0 text-right cursor-pointer"
-                          >
-                            <div>
-                              <span className="font-mono font-bold text-blue-950">{inv.invoiceNumber}</span>
-                              <span className="text-[10px] text-slate-500 mr-2">{inv.date}</span>
-                            </div>
-                            <div className="text-left">
-                              <strong className="font-mono text-slate-900 tabular-nums block">
-                                {inv.grandTotal.toLocaleString()} {data.settings.currency}
-                              </strong>
-                              {inv.remainingAmount > 0 && (
-                                <span className="text-[10px] font-bold text-red-700">
-                                  متبقي: {inv.remainingAmount.toLocaleString()}
-                                </span>
-                              )}
-                            </div>
-                          </button>
-                        ))
-                      )}
-                    </div>
+                    <UnifiedDataTable
+                      compact
+                      paginated={false}
+                      searchable={false}
+                      title={`آخر فواتير العميل (${custInvoices.length})`}
+                      data={custInvoices}
+                      rowKey={(inv) => inv.id}
+                      emptyTitle="لا توجد فواتير مسجلة لهذا العميل"
+                      onRowClick={(inv) =>
+                        setStatementPreviewDoc({
+                          type: 'invoice',
+                          docId: inv.id,
+                          title: inv.invoiceNumber,
+                        })
+                      }
+                      columns={[
+                        { key: 'invoiceNumber', header: 'رقم الفاتورة', render: (inv) => <span className="font-mono font-bold text-blue-950">{inv.invoiceNumber}</span> },
+                        { key: 'date', header: 'التاريخ', align: 'center', render: (inv) => <span className="font-mono text-slate-600">{inv.date}</span> },
+                        {
+                          key: 'grandTotal',
+                          header: 'الإجمالي',
+                          align: 'center',
+                          render: (inv) => (
+                            <strong className="font-mono text-slate-900 tabular-nums">
+                              {inv.grandTotal.toLocaleString()} {data.settings.currency}
+                            </strong>
+                          ),
+                        },
+                        {
+                          key: 'remainingAmount',
+                          header: 'المتبقي',
+                          align: 'center',
+                          render: (inv) =>
+                            inv.remainingAmount > 0 ? (
+                              <span className="font-mono font-bold text-red-700">{inv.remainingAmount.toLocaleString()}</span>
+                            ) : (
+                              <span className="text-emerald-700 font-bold">مسددة</span>
+                            ),
+                        },
+                      ]}
+                    />
                   </>
                 )}
 
@@ -9245,65 +9761,77 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     {isLoadingCustomerStatement ? (
                       <p className="text-center py-8 text-slate-500 font-bold">جاري تحميل كشف الحساب التفصيلي...</p>
                     ) : (
-                      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-                        {filteredStmtEntries.length === 0 ? (
-                          <p className="text-center text-slate-400 py-8">لا توجد حركات مسجلة مطابقة للبحث.</p>
-                        ) : (
-                          <div className="overflow-x-auto max-h-[42vh]">
-                            <table className="w-full text-right text-[11px] border-collapse">
-                              <thead className="sticky top-0 bg-slate-100 text-slate-700 font-black border-b border-slate-200">
-                                <tr>
-                                  <th className="py-2.5 px-2 whitespace-nowrap">العملية</th>
-                                  <th className="py-2.5 px-2 whitespace-nowrap text-center">دفع</th>
-                                  <th className="py-2.5 px-2 whitespace-nowrap text-center">تاريخ</th>
-                                  <th className="py-2.5 px-2 whitespace-nowrap text-center">الفاتورة</th>
-                                  <th className="py-2.5 px-2 whitespace-nowrap text-center">باقي</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-100 tabular-nums">
-                                {filteredStmtEntries.map((entry) => {
-                                  const rb = Number(entry.runningBalance ?? 0);
-                                  const clickable = Boolean(entry.docId && (entry.docType === 'sales' || entry.docType === 'customer_payment'));
-                                  return (
-                                    <tr
-                                      key={entry.id}
-                                      onClick={() => {
-                                        if (clickable && entry.docId) {
-                                          setStatementPreviewDoc({
-                                            type: entry.docType === 'customer_payment' ? 'payment' : 'invoice',
-                                            docId: entry.docId,
-                                            title: entry.docNumber || entry.label,
-                                          });
-                                        }
-                                      }}
-                                      className={clickable ? 'hover:bg-emerald-50/70 cursor-pointer' : ''}
-                                    >
-                                      <td className="py-2.5 px-2 font-bold text-slate-900">
-                                        <span className="block truncate max-w-[110px]">{entry.label}</span>
-                                        {entry.docNumber && (
-                                          <span className="font-mono text-[10px] text-slate-400 block">{entry.docNumber}</span>
-                                        )}
-                                      </td>
-                                      <td className="py-2.5 px-2 text-center font-mono font-bold text-emerald-700 whitespace-nowrap">
-                                        {entry.credit ? Number(entry.credit).toLocaleString() : '-'}
-                                      </td>
-                                      <td className="py-2.5 px-2 text-center font-mono text-slate-600 whitespace-nowrap">
-                                        {entry.date}
-                                      </td>
-                                      <td className="py-2.5 px-2 text-center font-mono font-bold text-slate-800 whitespace-nowrap">
-                                        {entry.debit ? Number(entry.debit).toLocaleString() : '-'}
-                                      </td>
-                                      <td className={`py-2.5 px-2 text-center font-mono font-black whitespace-nowrap ${rb > 0.009 ? 'text-red-700' : 'text-emerald-700'}`}>
-                                        {rb.toLocaleString()}
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-                      </div>
+                      <UnifiedDataTable
+                        compact
+                        paginated={false}
+                        searchable={false}
+                        maxHeightClassName="max-h-[42vh]"
+                        data={filteredStmtEntries}
+                        rowKey={(entry) => entry.id}
+                        emptyTitle="لا توجد حركات مسجلة مطابقة للبحث"
+                        onRowClick={(entry) => {
+                          if (entry.docId && (entry.docType === 'sales' || entry.docType === 'customer_payment')) {
+                            setStatementPreviewDoc({
+                              type: entry.docType === 'customer_payment' ? 'payment' : 'invoice',
+                              docId: entry.docId,
+                              title: entry.docNumber || entry.label,
+                            });
+                          }
+                        }}
+                        columns={[
+                          {
+                            key: 'label',
+                            header: 'العملية',
+                            render: (entry) => (
+                              <div>
+                                <span className="font-bold text-slate-900 block truncate max-w-[120px]">{entry.label}</span>
+                                {entry.docNumber && (
+                                  <span className="font-mono text-[10px] text-slate-400 block">{entry.docNumber}</span>
+                                )}
+                              </div>
+                            ),
+                          },
+                          {
+                            key: 'credit',
+                            header: 'دفع',
+                            align: 'center',
+                            render: (entry) => (
+                              <span className="font-mono font-bold text-emerald-700">
+                                {entry.credit ? Number(entry.credit).toLocaleString() : '-'}
+                              </span>
+                            ),
+                          },
+                          {
+                            key: 'date',
+                            header: 'تاريخ',
+                            align: 'center',
+                            render: (entry) => <span className="font-mono text-slate-600">{entry.date}</span>,
+                          },
+                          {
+                            key: 'debit',
+                            header: 'الفاتورة',
+                            align: 'center',
+                            render: (entry) => (
+                              <span className="font-mono font-bold text-slate-800">
+                                {entry.debit ? Number(entry.debit).toLocaleString() : '-'}
+                              </span>
+                            ),
+                          },
+                          {
+                            key: 'runningBalance',
+                            header: 'باقي',
+                            align: 'center',
+                            render: (entry) => {
+                              const rb = Number(entry.runningBalance ?? 0);
+                              return (
+                                <strong className={`font-mono font-black ${rb > 0.009 ? 'text-red-700' : 'text-emerald-700'}`}>
+                                  {rb.toLocaleString()}
+                                </strong>
+                              );
+                            },
+                          },
+                        ]}
+                      />
                     )}
 
                     <div className="grid grid-cols-2 gap-2">
@@ -9488,21 +10016,20 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 إغلاق
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
-              {(selectedInvoice.items || []).map((it, idx) => (
-                <div key={idx} className="py-2.5 flex items-center justify-between gap-2">
-                  <div>
-                    <p className="font-bold text-slate-900">{it.productName}</p>
-                    <p className="text-[11px] text-slate-500 font-mono">
-                      {it.quantity} {it.unit} × {it.unitPrice.toLocaleString()}
-                    </p>
-                  </div>
-                  <strong className="font-mono text-blue-950">
-                    {it.total.toLocaleString()} {data.settings.currency}
-                  </strong>
-                </div>
-              ))}
-            </div>
+            <UnifiedDataTable
+              compact
+              paginated={false}
+              searchable={false}
+              maxHeightClassName="max-h-[45vh]"
+              data={selectedInvoice.items || []}
+              rowKey={(it, idx) => `${it.productId}-${idx}`}
+              columns={[
+                { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold text-slate-900">{it.productName}</span> },
+                { key: 'quantity', header: 'الكمية', align: 'center', render: (it) => <span className="font-mono">{it.quantity} {it.unit}</span> },
+                { key: 'unitPrice', header: 'السعر', align: 'center', render: (it) => <span className="font-mono">{it.unitPrice.toLocaleString()}</span> },
+                { key: 'total', header: 'الإجمالي', align: 'center', render: (it) => <strong className="font-mono text-blue-950">{it.total.toLocaleString()} {data.settings.currency}</strong> },
+              ]}
+            />
             <button
               type="button"
               onClick={() => exportInvoiceDocument(selectedInvoice)}
@@ -9536,21 +10063,33 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <p>عدد الأصناف: <strong>{purItems.length}</strong> · طريقة السداد: <strong>{purPaymentType === 'cash' ? 'نقدي' : purPaymentType === 'credit' ? 'آجل' : 'جزئي'}</strong></p>
             </div>
 
-            <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl px-3">
-              {purItems.map((it, idx) => (
-                <div key={idx} className="py-2 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="font-bold text-slate-800">{it.productName} ({it.quantity} {it.unit} × {it.unitPrice})</span>
-                    {it.newProduct && (
-                      <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold">
-                        صنف جديد
-                      </span>
-                    )}
-                  </div>
-                  <strong className="font-mono text-indigo-950 shrink-0">{it.total.toLocaleString()}</strong>
-                </div>
-              ))}
-            </div>
+            <UnifiedDataTable
+              compact
+              paginated={false}
+              searchable={false}
+              maxHeightClassName="max-h-[35vh]"
+              data={purItems}
+              rowKey={(it, idx) => `${it.productId}-${idx}`}
+              columns={[
+                {
+                  key: 'productName',
+                  header: 'الصنف',
+                  render: (it) => (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-bold text-slate-800">{it.productName}</span>
+                      {it.newProduct && (
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold">
+                          صنف جديد
+                        </span>
+                      )}
+                    </div>
+                  ),
+                },
+                { key: 'quantity', header: 'الكمية', align: 'center', render: (it) => <span className="font-mono">{it.quantity} {it.unit}</span> },
+                { key: 'unitPrice', header: 'السعر', align: 'center', render: (it) => <span className="font-mono">{it.unitPrice.toLocaleString()}</span> },
+                { key: 'total', header: 'الإجمالي', align: 'center', render: (it) => <strong className="font-mono text-indigo-950">{it.total.toLocaleString()}</strong> },
+              ]}
+            />
 
             <div className="p-3 rounded-2xl bg-indigo-50 border border-indigo-200 space-y-1">
               <div className="flex justify-between">
@@ -9794,22 +10333,39 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 {pur.notes && <p className="text-slate-600">ملاحظات: {pur.notes}</p>}
               </div>
 
-              <div className="flex-1 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-2xl px-3">
-                {(pur.items || []).map((it, idx) => (
-                  <div key={idx} className="py-2.5 flex items-center justify-between gap-2">
-                    <div>
-                      <p className="font-bold text-slate-900">{it.productName}</p>
-                      <p className="text-[11px] text-slate-500 font-mono">
-                        {it.quantity} {it.unit} × {it.unitPrice.toLocaleString()}
+              <UnifiedDataTable
+                compact
+                paginated={false}
+                searchable={false}
+                maxHeightClassName="max-h-[35vh]"
+                data={pur.items || []}
+                rowKey={(it, idx) => `${it.productId}-${idx}`}
+                columns={[
+                  { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold text-slate-900">{it.productName}</span> },
+                  { key: 'quantity', header: 'الكمية', align: 'center', render: (it) => <span className="font-mono">{it.quantity} {it.unit}</span> },
+                  {
+                    key: 'unitPrice',
+                    header: 'السعر',
+                    align: 'center',
+                    render: (it) => (
+                      <span className="font-mono">
+                        {it.unitPrice.toLocaleString()}
                         {Number(it.discount || 0) > 0 ? ` (خصم ${it.discount})` : ''}
-                      </p>
-                    </div>
-                    <strong className="font-mono text-indigo-950 tabular-nums">
-                      {it.total.toLocaleString()} {data.settings.currency}
-                    </strong>
-                  </div>
-                ))}
-              </div>
+                      </span>
+                    ),
+                  },
+                  {
+                    key: 'total',
+                    header: 'الإجمالي',
+                    align: 'center',
+                    render: (it) => (
+                      <strong className="font-mono text-indigo-950 tabular-nums">
+                        {it.total.toLocaleString()} {data.settings.currency}
+                      </strong>
+                    ),
+                  },
+                ]}
+              />
 
               <div className="p-3 rounded-2xl bg-indigo-50 border border-indigo-200 space-y-1 text-indigo-950 tabular-nums">
                 <div className="flex items-center justify-between font-black text-sm">
@@ -10258,38 +10814,62 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
             </div>
 
-            <div className="flex-1 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-2xl">
-              {data.customers
-                .filter((c) => {
-                  const q = safeDeleteSearch.trim().toLowerCase();
-                  if (!q) return true;
-                  return (
-                    c.name.toLowerCase().includes(q) ||
-                    (c.shopName && c.shopName.toLowerCase().includes(q)) ||
-                    c.code.toLowerCase().includes(q) ||
-                    c.phone.includes(q)
-                  );
-                })
-                .map((c) => {
-                  const hasBalance = Math.abs(Number(c.currentBalance || 0)) > 0.009;
-                  return (
-                    <div key={c.id} className="p-3 flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-black text-slate-900 truncate">{c.shopName || c.name}</p>
-                        <p className="text-[11px] text-slate-500 truncate">
-                          {c.name} · {c.code} · الرصيد:{' '}
-                          <span className={hasBalance ? 'text-red-700 font-bold' : 'text-emerald-700 font-bold'}>
-                            {Number(c.currentBalance || 0).toLocaleString()} {data.settings.currency}
-                          </span>
-                        </p>
-                      </div>
+            <UnifiedDataTable<Customer>
+              compact
+              paginated={false}
+              searchable={false}
+              maxHeightClassName="max-h-[50vh]"
+              data={data.customers.filter((c) => {
+                const q = safeDeleteSearch.trim().toLowerCase();
+                if (!q) return true;
+                return (
+                  c.name.toLowerCase().includes(q) ||
+                  (c.shopName && c.shopName.toLowerCase().includes(q)) ||
+                  c.code.toLowerCase().includes(q) ||
+                  c.phone.includes(q)
+                );
+              })}
+              rowKey={(c) => c.id}
+              emptyTitle="لا يوجد عملاء مطابقون"
+              columns={[
+                {
+                  key: 'shopName',
+                  header: 'العميل',
+                  render: (c) => (
+                    <div>
+                      <span className="font-black text-slate-900 block">{c.shopName || c.name}</span>
+                      <span className="text-[10px] text-slate-500">{c.name} · <span className="font-mono">{c.code}</span></span>
+                    </div>
+                  ),
+                },
+                {
+                  key: 'currentBalance',
+                  header: 'الرصيد',
+                  align: 'center',
+                  render: (c) => {
+                    const hasBalance = Math.abs(Number(c.currentBalance || 0)) > 0.009;
+                    return (
+                      <span className={`font-mono font-bold ${hasBalance ? 'text-red-700' : 'text-emerald-700'}`}>
+                        {Number(c.currentBalance || 0).toLocaleString()} {data.settings.currency}
+                      </span>
+                    );
+                  },
+                },
+                {
+                  key: 'actions',
+                  header: 'الإجراء',
+                  align: 'center',
+                  sortable: false,
+                  render: (c) => {
+                    const hasBalance = Math.abs(Number(c.currentBalance || 0)) > 0.009;
+                    return (
                       <button
                         type="button"
                         onClick={() => {
                           setSafeDeleteModalOpen(false);
                           setDeleteCustomerTarget(c);
                         }}
-                        className={`min-h-[38px] px-3 rounded-xl font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer ${
+                        className={`min-h-[34px] px-2.5 rounded-lg font-bold inline-flex items-center gap-1 cursor-pointer ${
                           hasBalance
                             ? 'bg-amber-50 text-amber-800 border border-amber-200'
                             : 'bg-red-600 hover:bg-red-700 text-white'
@@ -10298,10 +10878,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         <Trash2 className="w-3.5 h-3.5" />
                         <span>{hasBalance ? 'فحص والحذف' : 'حذف'}</span>
                       </button>
-                    </div>
-                  );
-                })}
-            </div>
+                    );
+                  },
+                },
+              ]}
+            />
           </div>
         </div>
       )}
@@ -10369,39 +10950,46 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     </div>
                   </div>
 
-                  <div className="border border-slate-200 rounded-2xl overflow-hidden">
-                    {(!stmt?.entries || stmt.entries.length === 0) ? (
-                      <p className="text-center text-slate-400 py-6">لا توجد حركات مسجلة لك مع هذا المورد.</p>
-                    ) : (
-                      <div className="divide-y divide-slate-100 max-h-[42vh] overflow-y-auto">
-                        {stmt.entries.map((entry) => (
-                          <div key={entry.id} className="p-3 space-y-1">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-black text-slate-900">{entry.label}</span>
-                              <span className="font-mono text-[11px] text-slate-500">
-                                {entry.docNumber} · {entry.date}
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-slate-600">{entry.description}</p>
-                            {entry.createdBy && (
-                              <p className="text-[10px] text-slate-400">بواسطة: {entry.createdBy}</p>
-                            )}
-                            <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] tabular-nums">
-                              <span className="text-rose-700">
-                                {entry.credit ? `له (علينا): ${entry.credit.toLocaleString()}` : ''}
-                              </span>
-                              <span className="text-emerald-700">
-                                {entry.debit ? `سداد/مرتجع: ${entry.debit.toLocaleString()}` : ''}
-                              </span>
-                              <span className="font-black text-indigo-950">
-                                الرصيد: {Math.abs(Number(entry.runningBalance || 0)).toLocaleString()}
-                              </span>
-                            </div>
+                  <UnifiedDataTable
+                    compact
+                    paginated={false}
+                    searchable={false}
+                    maxHeightClassName="max-h-[42vh]"
+                    data={stmt?.entries || []}
+                    rowKey={(entry) => entry.id}
+                    emptyTitle="لا توجد حركات مسجلة لك مع هذا المورد"
+                    columns={[
+                      {
+                        key: 'label',
+                        header: 'العملية',
+                        render: (entry) => (
+                          <div>
+                            <span className="font-black text-slate-900 block">{entry.label}</span>
+                            <span className="font-mono text-[10px] text-slate-500 block">{entry.docNumber} · {entry.date}</span>
+                            {entry.description && <span className="text-[10px] text-slate-500 block">{entry.description}</span>}
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                        ),
+                      },
+                      {
+                        key: 'credit',
+                        header: 'له (علينا)',
+                        align: 'center',
+                        render: (entry) => <span className="font-mono text-rose-700">{entry.credit ? entry.credit.toLocaleString() : '-'}</span>,
+                      },
+                      {
+                        key: 'debit',
+                        header: 'سداد/مرتجع',
+                        align: 'center',
+                        render: (entry) => <span className="font-mono text-emerald-700">{entry.debit ? entry.debit.toLocaleString() : '-'}</span>,
+                      },
+                      {
+                        key: 'runningBalance',
+                        header: 'الرصيد',
+                        align: 'center',
+                        render: (entry) => <strong className="font-mono text-indigo-950">{Math.abs(Number(entry.runningBalance || 0)).toLocaleString()}</strong>,
+                      },
+                    ]}
+                  />
                 </>
               )}
             </div>

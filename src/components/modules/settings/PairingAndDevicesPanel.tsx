@@ -27,6 +27,7 @@ import {
 import { isNativeCapacitor, saveAndShareDocument } from '../../../services/native';
 import { QrCodeDisplay } from '../../common/QrCodeDisplay';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
+import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 import type {
   ConnectionMode,
   ConnectionProfilesConfig,
@@ -581,86 +582,131 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
 
         {/* Recent Pairing Tokens Table */}
         {tokens.length > 0 && (
-          <div className="space-y-2 pt-2">
-            <h4 className="font-black text-slate-800 text-xs flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-slate-500" />
-              <span>سجل روابط الربط المصدرة ({tokens.length})</span>
-            </h4>
-            <div className="overflow-x-auto border border-slate-200 rounded-xl">
-              <table className="w-full text-right border-collapse">
-                <thead className="bg-slate-50 text-[11px] text-slate-600 font-black border-b border-slate-200">
-                  <tr>
-                    <th className="py-2.5 px-3">الرمز</th>
-                    <th className="py-2.5 px-3">المستخدم / الجهاز المستهدف</th>
-                    <th className="py-2.5 px-3">وضع الاتصال</th>
-                    <th className="py-2.5 px-3">تاريخ الانتهاء</th>
-                    <th className="py-2.5 px-3">الاستخدام</th>
-                    <th className="py-2.5 px-3">الحالة</th>
-                    <th className="py-2.5 px-3">إجراء</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-[11px]">
-                  {tokens.slice(0, 12).map((t) => (
-                    <tr key={t.id} className="hover:bg-slate-50/70">
-                      <td className="py-2.5 px-3 font-mono text-slate-800" dir="ltr">
-                        {t.tokenPreview}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <div className="font-bold text-slate-900">{t.targetUserName || 'أي مستخدم مصرح'}</div>
-                        <div className="text-[10px] text-slate-500">
-                          {t.targetDeviceType === 'any' ? 'كل الأجهزة' : deviceTypeLabel(t.targetDeviceType)}
-                          {t.requireAdminApproval ? ' • بموافقة الإدارة' : ''}
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-700 font-bold">
-                        {getConnectionModeLabel(t.connectionMode)}
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-600" dir="ltr">
-                        {new Date(t.expiresAt).toLocaleString('en-GB')}
-                      </td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-slate-800">
-                        {t.usedCount}{t.singleUse ? ' / 1' : ''}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <span
-                          className={`px-2 py-0.5 rounded-lg font-bold border text-[10px] ${
-                            t.status === 'active'
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                              : t.status === 'used'
-                              ? 'bg-blue-50 text-blue-800 border-blue-200'
-                              : t.status === 'revoked'
-                              ? 'bg-red-50 text-red-700 border-red-200'
-                              : 'bg-slate-100 text-slate-600 border-slate-200'
-                          }`}
-                        >
-                          {t.status === 'active'
-                            ? 'نشط'
-                            : t.status === 'used'
-                            ? 'مُستخدم'
-                            : t.status === 'revoked'
-                            ? 'ملغي'
-                            : 'منتهي'}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        {t.status === 'active' ? (
-                          <button
-                            type="button"
-                            disabled={busyId === t.id}
-                            onClick={() => handleRevokeToken(t.id)}
-                            className="px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 font-bold cursor-pointer disabled:opacity-50"
-                          >
-                            إلغاء
-                          </button>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <div className="pt-2">
+            <UnifiedDataTable<PairingTokenRecord>
+              compact
+              title={`سجل روابط الربط المصدرة (${tokens.length})`}
+              data={tokens}
+              rowKey={(t) => t.id}
+              defaultPageSize={12}
+              searchPlaceholder="بحث بالرمز أو المستخدم أو الوضع..."
+              exportFilename="AWLAD_SELIM_Pairing_Tokens"
+              columns={[
+                {
+                  key: 'tokenPreview',
+                  header: 'الرمز',
+                  sortValue: (t) => t.tokenPreview,
+                  exportValue: (t) => t.tokenPreview,
+                  render: (t) => (
+                    <span className="font-mono text-slate-800" dir="ltr">
+                      {t.tokenPreview}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'targetUserName',
+                  header: 'المستخدم / الجهاز المستهدف',
+                  sortValue: (t) => t.targetUserName || 'أي مستخدم مصرح',
+                  exportValue: (t) => t.targetUserName || 'أي مستخدم مصرح',
+                  render: (t) => (
+                    <div>
+                      <div className="font-bold text-slate-900">{t.targetUserName || 'أي مستخدم مصرح'}</div>
+                      <div className="text-[10px] text-slate-500">
+                        {t.targetDeviceType === 'any' ? 'كل الأجهزة' : deviceTypeLabel(t.targetDeviceType)}
+                        {t.requireAdminApproval ? ' • بموافقة الإدارة' : ''}
+                      </div>
+                    </div>
+                  ),
+                },
+                {
+                  key: 'connectionMode',
+                  header: 'وضع الاتصال',
+                  sortValue: (t) => getConnectionModeLabel(t.connectionMode),
+                  exportValue: (t) => getConnectionModeLabel(t.connectionMode),
+                  render: (t) => (
+                    <span className="text-slate-700 font-bold">{getConnectionModeLabel(t.connectionMode)}</span>
+                  ),
+                },
+                {
+                  key: 'expiresAt',
+                  header: 'تاريخ الانتهاء',
+                  sortValue: (t) => t.expiresAt,
+                  exportValue: (t) => new Date(t.expiresAt).toLocaleString('en-GB'),
+                  render: (t) => (
+                    <span className="font-mono tabular-nums text-slate-600" dir="ltr">
+                      {new Date(t.expiresAt).toLocaleString('en-GB')}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'usedCount',
+                  header: 'الاستخدام',
+                  align: 'center',
+                  sortValue: (t) => t.usedCount,
+                  exportValue: (t) => `${t.usedCount}${t.singleUse ? ' / 1' : ''}`,
+                  render: (t) => (
+                    <span className="font-mono tabular-nums font-bold text-slate-800">
+                      {t.usedCount}
+                      {t.singleUse ? ' / 1' : ''}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'status',
+                  header: 'الحالة',
+                  align: 'center',
+                  sortValue: (t) => t.status,
+                  exportValue: (t) =>
+                    t.status === 'active'
+                      ? 'نشط'
+                      : t.status === 'used'
+                      ? 'مُستخدم'
+                      : t.status === 'revoked'
+                      ? 'ملغي'
+                      : 'منتهي',
+                  render: (t) => (
+                    <span
+                      className={`px-2 py-0.5 rounded font-bold border text-[10px] ${
+                        t.status === 'active'
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          : t.status === 'used'
+                          ? 'bg-blue-50 text-blue-800 border-blue-200'
+                          : t.status === 'revoked'
+                          ? 'bg-red-50 text-red-700 border-red-200'
+                          : 'bg-slate-100 text-slate-600 border-slate-200'
+                      }`}
+                    >
+                      {t.status === 'active'
+                        ? 'نشط'
+                        : t.status === 'used'
+                        ? 'مُستخدم'
+                        : t.status === 'revoked'
+                        ? 'ملغي'
+                        : 'منتهي'}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'actions',
+                  header: 'الإجراءات',
+                  align: 'center',
+                  sortable: false,
+                  render: (t) =>
+                    t.status === 'active' ? (
+                      <button
+                        type="button"
+                        disabled={busyId === t.id}
+                        onClick={() => handleRevokeToken(t.id)}
+                        className="px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 font-bold cursor-pointer disabled:opacity-50"
+                      >
+                        إلغاء
+                      </button>
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    ),
+                },
+              ]}
+            />
           </div>
         )}
       </div>
@@ -703,131 +749,169 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
           </div>
         </div>
 
-        {devices.length === 0 ? (
-          <div className="p-8 rounded-2xl bg-slate-50 border border-dashed border-slate-300 text-center text-slate-500 space-y-1">
-            <p className="font-bold text-slate-700">لا توجد أجهزة مسجلة في السجل بعد</p>
-            <p className="text-[11px]">ستظهر هنا أي أجهزة يتم ربطها عبر رابط الدعوة أو QR أو عند تسجيل الدخول.</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto border border-slate-200 rounded-xl">
-            <table className="w-full text-right border-collapse">
-              <thead className="bg-slate-50 text-[11px] text-slate-600 font-black border-b border-slate-200">
-                <tr>
-                  <th className="py-3 px-3">الجهاز والنوع</th>
-                  <th className="py-3 px-3">المستخدم المرتبط</th>
-                  <th className="py-3 px-3">وضع الاتصال المستخدم</th>
-                  <th className="py-3 px-3">تاريخ الربط</th>
-                  <th className="py-3 px-3">آخر اتصال</th>
-                  <th className="py-3 px-3">الحالة</th>
-                  <th className="py-3 px-3">إجراءات الإدارة</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-[11px]">
-                {devices.map((dev) => (
-                  <tr key={dev.deviceId} className="hover:bg-slate-50/70">
-                    <td className="py-3 px-3">
-                      <div className="flex items-center gap-2">
-                        <span className="p-1.5 rounded-lg bg-slate-100 border border-slate-200">
-                          <DevicePlatformIcon type={dev.deviceType} />
-                        </span>
-                        <div>
-                          <div className="font-black text-slate-900 flex items-center gap-1.5">
-                            <span>{dev.deviceName}</span>
-                            {dev.isRecentlyOnline && (
-                              <span
-                                className="inline-block w-2 h-2 rounded-full bg-emerald-500"
-                                title="متصل حديثاً"
-                              />
-                            )}
-                          </div>
-                          <div className="text-[10px] text-slate-500 font-mono" dir="ltr">
-                            {deviceTypeLabel(dev.deviceType)} • {dev.deviceId.slice(0, 14)}
-                            {dev.ipAddress ? ` • ${dev.ipAddress}` : ''}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-3">
-                      <span className="font-bold text-slate-800">
-                        {dev.linkedUserName || 'بانتظار تسجيل الدخول'}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3">
-                      <div className="font-bold text-slate-800">{getConnectionModeLabel(dev.connectionMode)}</div>
-                      {dev.serverUrlUsed && (
-                        <div className="text-[10px] font-mono text-slate-500 truncate max-w-[180px]" dir="ltr">
-                          {dev.serverUrlUsed}
-                        </div>
+        <UnifiedDataTable<PairedDevice>
+          compact
+          data={devices}
+          rowKey={(dev) => dev.deviceId}
+          searchPlaceholder="بحث باسم الجهاز أو المستخدم أو العنوان..."
+          exportFilename="AWLAD_SELIM_Paired_Devices"
+          pdfTitle="الأجهزة المرتبطة بالسيرفر"
+          emptyTitle="لا توجد أجهزة مسجلة في السجل بعد"
+          emptySubtitle="ستظهر هنا أي أجهزة يتم ربطها عبر رابط الدعوة أو QR أو عند تسجيل الدخول."
+          columns={[
+            {
+              key: 'deviceName',
+              header: 'الجهاز والنوع',
+              sortValue: (dev) => dev.deviceName,
+              exportValue: (dev) => `${dev.deviceName} (${deviceTypeLabel(dev.deviceType)})`,
+              render: (dev) => (
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-lg bg-slate-100 border border-slate-200">
+                    <DevicePlatformIcon type={dev.deviceType} />
+                  </span>
+                  <div>
+                    <div className="font-black text-slate-900 flex items-center gap-1.5">
+                      <span>{dev.deviceName}</span>
+                      {dev.isRecentlyOnline && (
+                        <span
+                          className="inline-block w-2 h-2 rounded bg-emerald-500"
+                          title="متصل حديثاً"
+                        />
                       )}
-                    </td>
-                    <td className="py-3 px-3 font-mono text-slate-600" dir="ltr">
-                      {new Date(dev.pairedAt).toLocaleString('en-GB')}
-                    </td>
-                    <td className="py-3 px-3 font-mono text-slate-700" dir="ltr">
-                      {new Date(dev.lastSeenAt).toLocaleString('en-GB')}
-                    </td>
-                    <td className="py-3 px-3">
-                      <span
-                        className={`px-2 py-0.5 rounded-lg font-bold border text-[10px] inline-flex items-center gap-1 ${
-                          dev.status === 'active'
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                            : dev.status === 'pending_approval'
-                            ? 'bg-amber-50 text-amber-800 border-amber-200'
-                            : 'bg-red-50 text-red-700 border-red-200'
-                        }`}
-                      >
-                        {dev.status === 'active' && <CheckCircle2 className="w-3 h-3" />}
-                        {dev.status === 'pending_approval' && <ShieldAlert className="w-3 h-3" />}
-                        {dev.status === 'revoked' && <XCircle className="w-3 h-3" />}
-                        <span>
-                          {dev.status === 'active'
-                            ? 'نشط ومعتمد'
-                            : dev.status === 'pending_approval'
-                            ? 'بانتظار الاعتماد'
-                            : 'ملغي / مفصول'}
-                        </span>
-                      </span>
-                    </td>
-                    <td className="py-3 px-3">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {dev.status === 'pending_approval' && (
-                          <button
-                            type="button"
-                            disabled={busyId === dev.deviceId}
-                            onClick={() => handleApproveDevice(dev.deviceId)}
-                            className="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer disabled:opacity-50"
-                          >
-                            اعتماد
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          disabled={busyId === dev.deviceId}
-                          onClick={() => handleResendDeviceLink(dev)}
-                          className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold cursor-pointer disabled:opacity-50"
-                          title="توليد رابط و QR جديد لهذا الجهاز"
-                        >
-                          إعادة إرسال رابط
-                        </button>
-                        {dev.status !== 'revoked' && (
-                          <button
-                            type="button"
-                            disabled={busyId === dev.deviceId}
-                            onClick={() => setDeviceToRevoke(dev)}
-                            className="px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                            <span>فصل</span>
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                    </div>
+                    <div className="text-[10px] text-slate-500 font-mono" dir="ltr">
+                      {deviceTypeLabel(dev.deviceType)} • {dev.deviceId.slice(0, 14)}
+                      {dev.ipAddress ? ` • ${dev.ipAddress}` : ''}
+                    </div>
+                  </div>
+                </div>
+              ),
+            },
+            {
+              key: 'linkedUserName',
+              header: 'المستخدم المرتبط',
+              sortValue: (dev) => dev.linkedUserName || '',
+              exportValue: (dev) => dev.linkedUserName || 'بانتظار تسجيل الدخول',
+              render: (dev) => (
+                <span className="font-bold text-slate-800">
+                  {dev.linkedUserName || 'بانتظار تسجيل الدخول'}
+                </span>
+              ),
+            },
+            {
+              key: 'connectionMode',
+              header: 'وضع الاتصال المستخدم',
+              sortValue: (dev) => getConnectionModeLabel(dev.connectionMode),
+              exportValue: (dev) => getConnectionModeLabel(dev.connectionMode),
+              render: (dev) => (
+                <div>
+                  <div className="font-bold text-slate-800">{getConnectionModeLabel(dev.connectionMode)}</div>
+                  {dev.serverUrlUsed && (
+                    <div className="text-[10px] font-mono text-slate-500 truncate max-w-[180px]" dir="ltr">
+                      {dev.serverUrlUsed}
+                    </div>
+                  )}
+                </div>
+              ),
+            },
+            {
+              key: 'pairedAt',
+              header: 'تاريخ الربط',
+              sortValue: (dev) => dev.pairedAt,
+              exportValue: (dev) => new Date(dev.pairedAt).toLocaleString('en-GB'),
+              render: (dev) => (
+                <span className="font-mono tabular-nums text-slate-600" dir="ltr">
+                  {new Date(dev.pairedAt).toLocaleString('en-GB')}
+                </span>
+              ),
+            },
+            {
+              key: 'lastSeenAt',
+              header: 'آخر اتصال',
+              sortValue: (dev) => dev.lastSeenAt,
+              exportValue: (dev) => new Date(dev.lastSeenAt).toLocaleString('en-GB'),
+              render: (dev) => (
+                <span className="font-mono tabular-nums text-slate-700" dir="ltr">
+                  {new Date(dev.lastSeenAt).toLocaleString('en-GB')}
+                </span>
+              ),
+            },
+            {
+              key: 'status',
+              header: 'الحالة',
+              align: 'center',
+              sortValue: (dev) => dev.status,
+              exportValue: (dev) =>
+                dev.status === 'active'
+                  ? 'نشط ومعتمد'
+                  : dev.status === 'pending_approval'
+                  ? 'بانتظار الاعتماد'
+                  : 'ملغي / مفصول',
+              render: (dev) => (
+                <span
+                  className={`px-2 py-0.5 rounded font-bold border text-[10px] inline-flex items-center gap-1 ${
+                    dev.status === 'active'
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : dev.status === 'pending_approval'
+                      ? 'bg-amber-50 text-amber-800 border-amber-200'
+                      : 'bg-red-50 text-red-700 border-red-200'
+                  }`}
+                >
+                  {dev.status === 'active' && <CheckCircle2 className="w-3 h-3" />}
+                  {dev.status === 'pending_approval' && <ShieldAlert className="w-3 h-3" />}
+                  {dev.status === 'revoked' && <XCircle className="w-3 h-3" />}
+                  <span>
+                    {dev.status === 'active'
+                      ? 'نشط ومعتمد'
+                      : dev.status === 'pending_approval'
+                      ? 'بانتظار الاعتماد'
+                      : 'ملغي / مفصول'}
+                  </span>
+                </span>
+              ),
+            },
+            {
+              key: 'actions',
+              header: 'إجراءات الإدارة',
+              align: 'center',
+              sortable: false,
+              render: (dev) => (
+                <div className="flex flex-wrap items-center justify-center gap-1.5">
+                  {dev.status === 'pending_approval' && (
+                    <button
+                      type="button"
+                      disabled={busyId === dev.deviceId}
+                      onClick={() => handleApproveDevice(dev.deviceId)}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer disabled:opacity-50"
+                    >
+                      اعتماد
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={busyId === dev.deviceId}
+                    onClick={() => handleResendDeviceLink(dev)}
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold cursor-pointer disabled:opacity-50"
+                    title="توليد رابط و QR جديد لهذا الجهاز"
+                  >
+                    إعادة إرسال رابط
+                  </button>
+                  {dev.status !== 'revoked' && (
+                    <button
+                      type="button"
+                      disabled={busyId === dev.deviceId}
+                      onClick={() => setDeviceToRevoke(dev)}
+                      className="px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>فصل</span>
+                    </button>
+                  )}
+                </div>
+              ),
+            },
+          ]}
+        />
       </div>
 
       <ConfirmDialog

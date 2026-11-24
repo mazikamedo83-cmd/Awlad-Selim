@@ -39,6 +39,7 @@ import {
   resolveUnitRegularPrice,
 } from '../../../utils/storefront';
 import { CustomerStorefrontHome } from '../mobile/CustomerStorefrontHome';
+import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 
 type CmsTabKey = 'banners' | 'offers' | 'shortcuts' | 'categories' | 'products_sections';
 
@@ -477,19 +478,6 @@ export const StorefrontManagerView: React.FC = () => {
       .slice(0, 50);
   }, [activeProducts, dispProductSearch]);
 
-  const filteredManagementProducts = useMemo(() => {
-    const q = prodFilterSearch.trim().toLowerCase();
-    if (!q) return activeProducts.slice(0, 80);
-    return activeProducts
-      .filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          (p.code || '').toLowerCase().includes(q) ||
-          (p.category || '').toLowerCase().includes(q)
-      )
-      .slice(0, 80);
-  }, [activeProducts, prodFilterSearch]);
-
   const publishedSource = storefrontPublishedAdmin || publishedStorefront;
   const activeOfferCount = draft.offers.filter((o) => isStorefrontWindowActive(o)).length;
   const activeBannerCount = draft.banners.filter((b) => isStorefrontWindowActive(b)).length;
@@ -799,71 +787,71 @@ export const StorefrontManagerView: React.FC = () => {
                 </button>
               </form>
 
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2.5 shadow-xs">
-                <h3 className="text-xs font-black text-slate-800">
-                  البانرات الحالية ({draft.banners.length}) — لا تظهر أي بانرات وهمية للعميل عند فراغ القائمة
-                </h3>
-                {draft.banners.length === 0 ? (
-                  <p className="text-xs text-slate-400 py-6 text-center">لم يتم إضافة بانرات بعد.</p>
-                ) : (
-                  <div className="space-y-2.5">
-                    {draft.banners.map((bnr, idx) => (
-                      <div
-                        key={bnr.id}
-                        className="p-3 rounded-xl border border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-24 h-14 rounded-lg bg-slate-200 overflow-hidden flex items-center justify-center shrink-0">
-                            {bnr.imageUrl ? (
-                              <img src={bnr.imageUrl} alt={bnr.title} className="w-full h-full object-cover" />
-                            ) : (
-                              <ImageIcon className="w-5 h-5 text-slate-400" />
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs font-black text-slate-900 truncate">{bnr.title || 'بانر بدون عنوان'}</p>
-                            {bnr.subtitle && <p className="text-[11px] text-slate-500 truncate">{bnr.subtitle}</p>}
-                            <p className="text-[10px] text-slate-400 mt-0.5">
-                              ترتيب: {idx + 1} · التوجيه: {bnr.targetType}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={bnr.isActive}
-                              onChange={(e) =>
-                                updateDraft((prev) => ({
-                                  ...prev,
-                                  banners: prev.banners.map((b) =>
-                                    b.id === bnr.id ? { ...b, isActive: e.target.checked } : b
-                                  ),
-                                }))
-                              }
-                            />
-                            <span>نشط</span>
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateDraft((prev) => ({
-                                ...prev,
-                                banners: prev.banners.filter((b) => b.id !== bnr.id),
-                              }))
-                            }
-                            className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 cursor-pointer"
-                            aria-label="حذف البانر"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+              <UnifiedDataTable<StorefrontBanner>
+                compact
+                searchable={false}
+                paginated={false}
+                title={`البانرات الحالية (${draft.banners.length})`}
+                subtitle="لا تظهر أي بانرات وهمية للعميل عند فراغ القائمة"
+                data={draft.banners}
+                rowKey={(bnr) => bnr.id}
+                emptyTitle="لم يتم إضافة بانرات بعد"
+                columns={[
+                  {
+                    key: 'image',
+                    header: 'الصورة',
+                    width: '80px',
+                    render: (bnr) => (
+                      <div className="w-20 h-12 rounded-lg bg-slate-200 overflow-hidden flex items-center justify-center">
+                        {bnr.imageUrl ? <img src={bnr.imageUrl} alt={bnr.title} className="w-full h-full object-cover" /> : <ImageIcon className="w-4 h-4 text-slate-400" />}
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                    ),
+                  },
+                  {
+                    key: 'title',
+                    header: 'العنوان والوصف',
+                    render: (bnr) => (
+                      <div>
+                        <p className="font-black text-slate-900">{bnr.title || 'بانر بدون عنوان'}</p>
+                        {bnr.subtitle && <p className="text-[11px] text-slate-500">{bnr.subtitle}</p>}
+                      </div>
+                    ),
+                  },
+                  { key: 'targetType', header: 'التوجيه', render: (bnr) => <span className="font-mono text-slate-600">{bnr.targetType}</span> },
+                  {
+                    key: 'isActive',
+                    header: 'نشط',
+                    align: 'center',
+                    render: (bnr) => (
+                      <input
+                        type="checkbox"
+                        checked={bnr.isActive}
+                        onChange={(e) =>
+                          updateDraft((prev) => ({
+                            ...prev,
+                            banners: prev.banners.map((b) => (b.id === bnr.id ? { ...b, isActive: e.target.checked } : b)),
+                          }))
+                        }
+                      />
+                    ),
+                  },
+                  {
+                    key: 'actions',
+                    header: 'حذف',
+                    align: 'center',
+                    render: (bnr) => (
+                      <button
+                        type="button"
+                        onClick={() => updateDraft((prev) => ({ ...prev, banners: prev.banners.filter((b) => b.id !== bnr.id) }))}
+                        className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 cursor-pointer"
+                        aria-label="حذف البانر"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    ),
+                  },
+                ]}
+              />
             </div>
           )}
 
@@ -999,80 +987,103 @@ export const StorefrontManagerView: React.FC = () => {
                 </button>
               </form>
 
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2.5 shadow-xs">
-                <h3 className="text-xs font-black text-slate-800">العروض المسجلة ({draft.offers.length})</h3>
-                {draft.offers.length === 0 ? (
-                  <p className="text-xs text-slate-400 py-6 text-center">لا توجد عروض مسجلة حالياً.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {draft.offers.map((off) => {
+              <UnifiedDataTable<StorefrontOffer>
+                compact
+                paginated={false}
+                title={`العروض المسجلة (${draft.offers.length})`}
+                data={draft.offers}
+                rowKey={(off) => off.id}
+                searchPlaceholder="بحث باسم الصنف أو عنوان العرض..."
+                searchFilter={(off, q) => {
+                  const prod = products.find((p) => p.id === off.productId);
+                  return (prod?.name || off.title || '').toLowerCase().includes(q) || (off.badgeText || '').toLowerCase().includes(q);
+                }}
+                emptyTitle="لا توجد عروض مسجلة حالياً"
+                columns={[
+                  {
+                    key: 'title',
+                    header: 'الصنف والشارة',
+                    render: (off) => {
+                      const prod = products.find((p) => p.id === off.productId);
+                      return (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="bg-[#C81E1E] text-white text-[10px] font-black px-2 py-0.5 rounded-md">
+                            {off.badgeText || 'عرض عشانك'}
+                          </span>
+                          <span className="font-black text-slate-900">{prod?.name || off.title}</span>
+                        </div>
+                      );
+                    },
+                  },
+                  {
+                    key: 'unit',
+                    header: 'الوحدة',
+                    align: 'center',
+                    render: (off) => {
+                      const prod = products.find((p) => p.id === off.productId);
+                      return off.unit || prod?.baseUnit || '-';
+                    },
+                  },
+                  {
+                    key: 'promoPrice',
+                    header: 'سعر العرض',
+                    align: 'center',
+                    render: (off) => {
                       const prod = products.find((p) => p.id === off.productId);
                       const regular = prod ? resolveUnitRegularPrice(prod, off.unit || prod.baseUnit) : 0;
                       const validPrice = regular > 0 && off.promoPrice < regular;
                       return (
-                        <div
-                          key={off.id}
-                          className="p-3 rounded-xl border border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
-                        >
-                          <div className="space-y-0.5">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="bg-[#C81E1E] text-white text-[10px] font-black px-2 py-0.5 rounded-md">
-                                {off.badgeText || 'عرض عشانك'}
-                              </span>
-                              <p className="text-xs font-black text-slate-900">{prod?.name || off.title}</p>
-                            </div>
-                            <p className="text-[11px] font-bold text-slate-600 awlad-tabular">
-                              الوحدة: {off.unit || prod?.baseUnit} · سعر العرض:{' '}
-                              <span className="text-[#0F5A33] font-black">
-                                {off.promoPrice.toLocaleString()} {settings.currency}
-                              </span>{' '}
-                              {regular > 0 && (
-                                <span className="line-through text-slate-400 mr-1">
-                                  {regular.toLocaleString()} {settings.currency}
-                                </span>
-                              )}
-                              {!validPrice && regular > 0 && (
-                                <span className="text-red-600 mr-2">(تنبيه: السعر ليس أقل من الأصلي!)</span>
-                              )}
-                            </p>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={off.isActive}
-                                onChange={(e) =>
-                                  updateDraft((prev) => ({
-                                    ...prev,
-                                    offers: prev.offers.map((o) =>
-                                      o.id === off.id ? { ...o, isActive: e.target.checked } : o
-                                    ),
-                                  }))
-                                }
-                              />
-                              <span>نشط</span>
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                updateDraft((prev) => ({
-                                  ...prev,
-                                  offers: prev.offers.filter((o) => o.id !== off.id),
-                                }))
-                              }
-                              className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 cursor-pointer"
-                              aria-label="حذف العرض"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
+                        <div className="font-mono tabular-nums">
+                          <span className="text-[#0F5A33] font-black">{off.promoPrice.toLocaleString()} {settings.currency}</span>
+                          {!validPrice && regular > 0 && <span className="block text-[10px] text-red-600 font-sans">ليس أقل من الأصلي!</span>}
                         </div>
                       );
-                    })}
-                  </div>
-                )}
-              </div>
+                    },
+                  },
+                  {
+                    key: 'regularPrice',
+                    header: 'السعر الأصلي',
+                    align: 'center',
+                    render: (off) => {
+                      const prod = products.find((p) => p.id === off.productId);
+                      const regular = prod ? resolveUnitRegularPrice(prod, off.unit || prod.baseUnit) : 0;
+                      return regular > 0 ? <span className="line-through text-slate-400 font-mono tabular-nums">{regular.toLocaleString()} {settings.currency}</span> : '-';
+                    },
+                  },
+                  {
+                    key: 'isActive',
+                    header: 'نشط',
+                    align: 'center',
+                    render: (off) => (
+                      <input
+                        type="checkbox"
+                        checked={off.isActive}
+                        onChange={(e) =>
+                          updateDraft((prev) => ({
+                            ...prev,
+                            offers: prev.offers.map((o) => (o.id === off.id ? { ...o, isActive: e.target.checked } : o)),
+                          }))
+                        }
+                      />
+                    ),
+                  },
+                  {
+                    key: 'actions',
+                    header: 'حذف',
+                    align: 'center',
+                    render: (off) => (
+                      <button
+                        type="button"
+                        onClick={() => updateDraft((prev) => ({ ...prev, offers: prev.offers.filter((o) => o.id !== off.id) }))}
+                        className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 cursor-pointer"
+                        aria-label="حذف العرض"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    ),
+                  },
+                ]}
+              />
             </div>
           )}
 
@@ -1137,54 +1148,52 @@ export const StorefrontManagerView: React.FC = () => {
                 </button>
               </form>
 
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2.5 shadow-xs">
-                <h3 className="text-xs font-black text-slate-800">الاختصارات الحالية ({draft.shortcuts.length})</h3>
-                <div className="space-y-2">
-                  {draft.shortcuts.map((sc) => (
-                    <div
-                      key={sc.id}
-                      className="p-3 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between gap-2"
-                    >
-                      <div>
-                        <p className="text-xs font-black text-slate-900">{sc.label}</p>
-                        <p className="text-[11px] text-slate-500">
-                          الأيقونة: {sc.iconKey} · التوجيه: {sc.targetType} {sc.targetId ? `(${sc.targetId})` : ''}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <label className="flex items-center gap-1 text-xs font-bold cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={sc.isActive}
-                            onChange={(e) =>
-                              updateDraft((prev) => ({
-                                ...prev,
-                                shortcuts: prev.shortcuts.map((item) =>
-                                  item.id === sc.id ? { ...item, isActive: e.target.checked } : item
-                                ),
-                              }))
-                            }
-                          />
-                          <span>مفعل</span>
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateDraft((prev) => ({
-                              ...prev,
-                              shortcuts: prev.shortcuts.filter((item) => item.id !== sc.id),
-                            }))
-                          }
-                          className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 cursor-pointer"
-                          aria-label="حذف الاختصار"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <UnifiedDataTable<StorefrontShortcut>
+                compact
+                searchable={false}
+                paginated={false}
+                title={`الاختصارات الحالية (${draft.shortcuts.length})`}
+                data={draft.shortcuts}
+                rowKey={(sc) => sc.id}
+                emptyTitle="لا توجد اختصارات"
+                columns={[
+                  { key: 'label', header: 'الاختصار', render: (sc) => <span className="font-black text-slate-900">{sc.label}</span> },
+                  { key: 'iconKey', header: 'الأيقونة', render: (sc) => <span className="font-mono text-slate-600">{sc.iconKey}</span> },
+                  { key: 'target', header: 'التوجيه', render: (sc) => <span className="text-slate-600">{sc.targetType} {sc.targetId ? `(${sc.targetId})` : ''}</span> },
+                  {
+                    key: 'isActive',
+                    header: 'مفعل',
+                    align: 'center',
+                    render: (sc) => (
+                      <input
+                        type="checkbox"
+                        checked={sc.isActive}
+                        onChange={(e) =>
+                          updateDraft((prev) => ({
+                            ...prev,
+                            shortcuts: prev.shortcuts.map((item) => (item.id === sc.id ? { ...item, isActive: e.target.checked } : item)),
+                          }))
+                        }
+                      />
+                    ),
+                  },
+                  {
+                    key: 'actions',
+                    header: 'حذف',
+                    align: 'center',
+                    render: (sc) => (
+                      <button
+                        type="button"
+                        onClick={() => updateDraft((prev) => ({ ...prev, shortcuts: prev.shortcuts.filter((item) => item.id !== sc.id) }))}
+                        className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 cursor-pointer"
+                        aria-label="حذف الاختصار"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    ),
+                  },
+                ]}
+              />
             </div>
           )}
 
@@ -1202,93 +1211,96 @@ export const StorefrontManagerView: React.FC = () => {
                 />
               </div>
 
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-xs">
-                <div>
-                  <h2 className="text-sm font-black text-slate-900">تخصيص صور وأسماء أقسام الأصناف (بدون تعديل بيانات المحاسبة)</h2>
-                  <p className="text-[11px] text-slate-500">
-                    ارفع صورة لكل قسم أو عدل اسم العرض أو أخفه من واجهة المتجر فقط دون المساس بأقسام المخزون في ERP.
-                  </p>
-                </div>
-
-                <div className="space-y-2.5">
-                  {categories.map((cat, idx) => {
-                    const ov = draft.imageCategorySettings.find((c) => c.categoryId === cat.id);
-                    const isVisible = ov ? ov.isVisible !== false : true;
-                    return (
-                      <div
-                        key={cat.id}
-                        className="p-3 rounded-xl border border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center gap-3"
-                      >
-                        <div className="w-14 h-14 rounded-xl bg-white border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
-                          {ov?.imageUrl ? (
-                            <img src={ov.imageUrl} alt={cat.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <LayoutGrid className="w-6 h-6 text-[#0F5A33]/60" />
-                          )}
+              <UnifiedDataTable
+                compact
+                paginated={false}
+                title="تخصيص صور وأسماء أقسام الأصناف"
+                subtitle="ارفع صورة لكل قسم أو عدل اسم العرض أو أخفه من واجهة المتجر فقط دون المساس بأقسام المخزون في ERP"
+                data={categories.map((cat, idx) => ({ ...cat, _idx: idx }))}
+                rowKey={(cat) => cat.id}
+                searchPlaceholder="بحث باسم القسم..."
+                searchFilter={(cat, q) => cat.name.toLowerCase().includes(q)}
+                columns={[
+                  {
+                    key: 'image',
+                    header: 'الصورة',
+                    width: '60px',
+                    render: (cat) => {
+                      const ov = draft.imageCategorySettings.find((c) => c.categoryId === cat.id);
+                      return (
+                        <div className="w-11 h-11 rounded-lg bg-white border border-slate-200 overflow-hidden flex items-center justify-center">
+                          {ov?.imageUrl ? <img src={ov.imageUrl} alt={cat.name} className="w-full h-full object-cover" /> : <LayoutGrid className="w-5 h-5 text-[#0F5A33]/60" />}
                         </div>
-                        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <div>
-                            <span className="text-[10px] font-bold text-slate-500">القسم الأساسي: {cat.name}</span>
-                            <input
-                              type="text"
-                              value={ov?.displayName ?? ''}
-                              onChange={(e) =>
-                                upsertImageCategorySetting(cat.id, { displayName: e.target.value, sortOrder: ov?.sortOrder ?? idx + 1 })
-                              }
-                              placeholder={`اسم العرض (افتراضي: ${cat.name})`}
-                              className="w-full min-h-[36px] px-2.5 rounded-lg border border-slate-300 bg-white text-xs font-bold mt-0.5"
-                            />
-                          </div>
-                          <div>
-                            <span className="text-[10px] font-bold text-slate-500">صورة القسم</span>
-                            <div className="flex gap-1.5 mt-0.5">
-                              <input
-                                type="text"
-                                value={ov?.imageUrl ?? ''}
-                                onChange={(e) =>
-                                  upsertImageCategorySetting(cat.id, { imageUrl: e.target.value, sortOrder: ov?.sortOrder ?? idx + 1 })
-                                }
-                                placeholder="رابط الصورة أو ارفع..."
-                                className="flex-1 min-h-[36px] px-2.5 rounded-lg border border-slate-300 bg-white text-xs"
-                              />
-                              <label className="min-h-[36px] px-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[#0F5A33] text-xs font-black flex items-center cursor-pointer">
-                                <Upload className="w-3.5 h-3.5" />
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  className="hidden"
-                                  onChange={async (e) => {
-                                    const f = e.target.files?.[0];
-                                    if (!f) return;
-                                    const url = await readImageFileAsCompressedDataUrl(f, 720);
-                                    upsertImageCategorySetting(cat.id, {
-                                      imageUrl: url,
-                                      sortOrder: ov?.sortOrder ?? idx + 1,
-                                    });
-                                  }}
-                                />
-                              </label>
-                            </div>
-                          </div>
-                        </div>
-                        <label className="flex items-center gap-1.5 text-xs font-bold shrink-0 cursor-pointer">
+                      );
+                    },
+                  },
+                  { key: 'name', header: 'القسم الأساسي', render: (cat) => <span className="font-bold text-slate-800">{cat.name}</span> },
+                  {
+                    key: 'displayName',
+                    header: 'اسم العرض بالتطبيق',
+                    render: (cat) => {
+                      const ov = draft.imageCategorySettings.find((c) => c.categoryId === cat.id);
+                      return (
+                        <input
+                          type="text"
+                          value={ov?.displayName ?? ''}
+                          onChange={(e) => upsertImageCategorySetting(cat.id, { displayName: e.target.value, sortOrder: ov?.sortOrder ?? cat._idx + 1 })}
+                          placeholder={`افتراضي: ${cat.name}`}
+                          className="w-full min-h-[34px] px-2 rounded-lg border border-slate-300 bg-white text-xs font-bold"
+                        />
+                      );
+                    },
+                  },
+                  {
+                    key: 'imageUrl',
+                    header: 'صورة القسم',
+                    render: (cat) => {
+                      const ov = draft.imageCategorySettings.find((c) => c.categoryId === cat.id);
+                      return (
+                        <div className="flex gap-1.5">
                           <input
-                            type="checkbox"
-                            checked={isVisible}
-                            onChange={(e) =>
-                              upsertImageCategorySetting(cat.id, {
-                                isVisible: e.target.checked,
-                                sortOrder: ov?.sortOrder ?? idx + 1,
-                              })
-                            }
+                            type="text"
+                            value={ov?.imageUrl ?? ''}
+                            onChange={(e) => upsertImageCategorySetting(cat.id, { imageUrl: e.target.value, sortOrder: ov?.sortOrder ?? cat._idx + 1 })}
+                            placeholder="رابط الصورة أو ارفع..."
+                            className="flex-1 min-w-[130px] min-h-[34px] px-2 rounded-lg border border-slate-300 bg-white text-xs"
                           />
-                          <span>ظاهر بالتطبيق</span>
-                        </label>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+                          <label className="min-h-[34px] px-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[#0F5A33] text-xs font-black flex items-center cursor-pointer">
+                            <Upload className="w-3.5 h-3.5" />
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const f = e.target.files?.[0];
+                                if (!f) return;
+                                const url = await readImageFileAsCompressedDataUrl(f, 720);
+                                upsertImageCategorySetting(cat.id, { imageUrl: url, sortOrder: ov?.sortOrder ?? cat._idx + 1 });
+                              }}
+                            />
+                          </label>
+                        </div>
+                      );
+                    },
+                  },
+                  {
+                    key: 'isVisible',
+                    header: 'ظاهر',
+                    align: 'center',
+                    render: (cat) => {
+                      const ov = draft.imageCategorySettings.find((c) => c.categoryId === cat.id);
+                      const isVisible = ov ? ov.isVisible !== false : true;
+                      return (
+                        <input
+                          type="checkbox"
+                          checked={isVisible}
+                          onChange={(e) => upsertImageCategorySetting(cat.id, { isVisible: e.target.checked, sortOrder: ov?.sortOrder ?? cat._idx + 1 })}
+                        />
+                      );
+                    },
+                  },
+                ]}
+              />
 
               {/* App-only Display Categories */}
               <form onSubmit={handleAddDisplayCategory} className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-xs">
@@ -1379,39 +1391,42 @@ export const StorefrontManagerView: React.FC = () => {
                 </button>
 
                 {draft.displayCategories.length > 0 && (
-                  <div className="pt-2 space-y-2">
-                    {draft.displayCategories.map((dc) => (
-                      <div
-                        key={dc.id}
-                        className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between gap-2"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-10 h-10 rounded-lg bg-white border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
-                            {dc.imageUrl ? (
-                              <img src={dc.imageUrl} alt={dc.name} className="w-full h-full object-cover" />
-                            ) : (
-                              <LayoutGrid className="w-4 h-4 text-[#0F5A33]" />
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-xs font-black text-slate-900">{dc.name}</p>
-                            <p className="text-[11px] text-slate-500">{dc.productIds.length} صنف</p>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateDraft((prev) => ({
-                              ...prev,
-                              displayCategories: prev.displayCategories.filter((item) => item.id !== dc.id),
-                            }))
-                          }
-                          className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
+                  <div className="pt-2">
+                    <UnifiedDataTable<StorefrontDisplayCategory>
+                      compact
+                      searchable={false}
+                      paginated={false}
+                      data={draft.displayCategories}
+                      rowKey={(dc) => dc.id}
+                      columns={[
+                        {
+                          key: 'image',
+                          header: 'الصورة',
+                          width: '56px',
+                          render: (dc) => (
+                            <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 overflow-hidden flex items-center justify-center">
+                              {dc.imageUrl ? <img src={dc.imageUrl} alt={dc.name} className="w-full h-full object-cover" /> : <LayoutGrid className="w-4 h-4 text-[#0F5A33]" />}
+                            </div>
+                          ),
+                        },
+                        { key: 'name', header: 'اسم التصنيف', render: (dc) => <span className="font-black text-slate-900">{dc.name}</span> },
+                        { key: 'count', header: 'عدد الأصناف', align: 'center', render: (dc) => <span className="font-mono tabular-nums">{dc.productIds.length} صنف</span> },
+                        {
+                          key: 'actions',
+                          header: 'حذف',
+                          align: 'center',
+                          render: (dc) => (
+                            <button
+                              type="button"
+                              onClick={() => updateDraft((prev) => ({ ...prev, displayCategories: prev.displayCategories.filter((item) => item.id !== dc.id) }))}
+                              className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          ),
+                        },
+                      ]}
+                    />
                   </div>
                 )}
               </form>
@@ -1421,164 +1436,154 @@ export const StorefrontManagerView: React.FC = () => {
           {/* TAB 5: FEATURED / HIDDEN PRODUCTS & HOMEPAGE SECTIONS */}
           {activeTab === 'products_sections' && (
             <div className="space-y-4">
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-xs">
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-sm font-black text-slate-900">ترتيب وظهور أقسام الصفحة الرئيسية</h2>
+              <UnifiedDataTable
+                compact
+                searchable={false}
+                paginated={false}
+                title="ترتيب وظهور أقسام الصفحة الرئيسية"
+                headerActions={
                   <input
                     type="text"
                     value={draft.featuredSectionTitle || ''}
                     onChange={(e) => updateDraft((prev) => ({ ...prev, featuredSectionTitle: e.target.value }))}
                     placeholder="عنوان الأصناف المقترحة"
-                    className="min-h-[36px] px-3 rounded-xl border border-slate-300 text-xs font-bold"
+                    className="min-h-[34px] px-3 rounded-xl border border-slate-300 text-xs font-bold bg-white text-slate-900"
                   />
-                </div>
-
-                <div className="space-y-2">
-                  {[...draft.sections]
-                    .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
-                    .map((sec, idx, arr) => (
-                      <div
-                        key={sec.key}
-                        className="p-3 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between gap-2"
-                      >
-                        <div className="flex items-center gap-2 flex-1">
-                          <span className="w-6 h-6 rounded-lg bg-[#0F5A33] text-white text-xs font-black flex items-center justify-center shrink-0">
-                            {idx + 1}
-                          </span>
-                          <input
-                            type="text"
-                            value={sec.title}
-                            onChange={(e) =>
-                              updateDraft((prev) => ({
-                                ...prev,
-                                sections: prev.sections.map((s) =>
-                                  s.key === sec.key ? { ...s, title: e.target.value } : s
-                                ),
-                              }))
-                            }
-                            className="flex-1 min-h-[36px] px-2.5 rounded-lg border border-slate-300 bg-white text-xs font-bold"
-                          />
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            disabled={idx === 0}
-                            onClick={() => moveSection(sec.key, -1)}
-                            className="p-1.5 rounded-lg bg-white border border-slate-200 disabled:opacity-40 cursor-pointer"
-                            aria-label="أعلى"
-                          >
-                            <ArrowUp className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            disabled={idx === arr.length - 1}
-                            onClick={() => moveSection(sec.key, 1)}
-                            className="p-1.5 rounded-lg bg-white border border-slate-200 disabled:opacity-40 cursor-pointer"
-                            aria-label="أسفل"
-                          >
-                            <ArrowDown className="w-3.5 h-3.5" />
-                          </button>
-                          <label className="flex items-center gap-1 text-xs font-bold mr-1 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={sec.isVisible !== false}
-                              onChange={(e) =>
-                                updateDraft((prev) => ({
-                                  ...prev,
-                                  sections: prev.sections.map((s) =>
-                                    s.key === sec.key ? { ...s, isVisible: e.target.checked } : s
-                                  ),
-                                }))
-                              }
-                            />
-                            <span>إظهار</span>
-                          </label>
-                        </div>
+                }
+                data={[...draft.sections].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)).map((sec, idx, arr) => ({ ...sec, _idx: idx, _total: arr.length }))}
+                rowKey={(sec) => sec.key}
+                columns={[
+                  { key: '_idx', header: '#', width: '48px', align: 'center', render: (sec) => <span className="font-mono font-black text-blue-900">{sec._idx + 1}</span> },
+                  {
+                    key: 'title',
+                    header: 'عنوان القسم بالتطبيق',
+                    render: (sec) => (
+                      <input
+                        type="text"
+                        value={sec.title}
+                        onChange={(e) =>
+                          updateDraft((prev) => ({
+                            ...prev,
+                            sections: prev.sections.map((s) => (s.key === sec.key ? { ...s, title: e.target.value } : s)),
+                          }))
+                        }
+                        className="w-full min-h-[34px] px-2.5 rounded-lg border border-slate-300 bg-white text-xs font-bold"
+                      />
+                    ),
+                  },
+                  {
+                    key: 'order',
+                    header: 'الترتيب',
+                    align: 'center',
+                    render: (sec) => (
+                      <div className="flex items-center justify-center gap-1">
+                        <button type="button" disabled={sec._idx === 0} onClick={() => moveSection(sec.key, -1)} className="p-1.5 rounded-lg bg-slate-100 border border-slate-200 disabled:opacity-40 cursor-pointer" aria-label="أعلى">
+                          <ArrowUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button type="button" disabled={sec._idx === sec._total - 1} onClick={() => moveSection(sec.key, 1)} className="p-1.5 rounded-lg bg-slate-100 border border-slate-200 disabled:opacity-40 cursor-pointer" aria-label="أسفل">
+                          <ArrowDown className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                    ))}
-                </div>
-              </div>
+                    ),
+                  },
+                  {
+                    key: 'isVisible',
+                    header: 'إظهار',
+                    align: 'center',
+                    render: (sec) => (
+                      <input
+                        type="checkbox"
+                        checked={sec.isVisible !== false}
+                        onChange={(e) =>
+                          updateDraft((prev) => ({
+                            ...prev,
+                            sections: prev.sections.map((s) => (s.key === sec.key ? { ...s, isVisible: e.target.checked } : s)),
+                          }))
+                        }
+                      />
+                    ),
+                  },
+                ]}
+              />
 
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-xs">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <h2 className="text-sm font-black text-slate-900">الأصناف المميزة والمخفية في التطبيق</h2>
-                    <p className="text-[11px] text-slate-500">
-                      مميزة: {draft.featuredProductIds.length} · مخفية عن العميل: {draft.hiddenProductIds.length}
-                    </p>
-                  </div>
-                  <div className="relative sm:w-64">
-                    <Search className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-3" />
-                    <input
-                      type="text"
-                      value={prodFilterSearch}
-                      onChange={(e) => setProdFilterSearch(e.target.value)}
-                      placeholder="بحث بالاسم أو القسم..."
-                      className="w-full min-h-[38px] pr-8 pl-3 rounded-xl border border-slate-300 text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div className="max-h-96 overflow-y-auto space-y-1.5 border border-slate-200 rounded-xl p-2">
-                  {filteredManagementProducts.map((p: Product) => {
-                    const isFeatured = draft.featuredProductIds.includes(p.id);
-                    const isHidden = draft.hiddenProductIds.includes(p.id);
-                    return (
-                      <div
-                        key={p.id}
-                        className="p-2 rounded-lg border border-slate-100 bg-slate-50 flex items-center justify-between gap-2"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
-                            {cachedMediaMap?.[p.id] || p.image ? (
-                              <img src={cachedMediaMap?.[p.id] || p.image} alt={p.name} className="w-full h-full object-contain p-0.5" />
-                            ) : (
-                              <Package className="w-4 h-4 text-slate-300" />
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs font-black text-slate-900 truncate">{p.name}</p>
-                            <p className="text-[10px] text-slate-500 truncate">{p.category} · {p.sellingPrice.toLocaleString()} {settings.currency}</p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0 text-[11px] font-bold">
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={isFeatured}
-                              onChange={(e) =>
-                                updateDraft((prev) => ({
-                                  ...prev,
-                                  featuredProductIds: e.target.checked
-                                    ? [...prev.featuredProductIds, p.id]
-                                    : prev.featuredProductIds.filter((id) => id !== p.id),
-                                }))
-                              }
-                            />
-                            <span className="text-[#0F5A33]">مميز</span>
-                          </label>
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={isHidden}
-                              onChange={(e) =>
-                                updateDraft((prev) => ({
-                                  ...prev,
-                                  hiddenProductIds: e.target.checked
-                                    ? [...prev.hiddenProductIds, p.id]
-                                    : prev.hiddenProductIds.filter((id) => id !== p.id),
-                                }))
-                              }
-                            />
-                            <span className="text-red-600">إخفاء</span>
-                          </label>
-                        </div>
+              <UnifiedDataTable<Product>
+                compact
+                title="الأصناف المميزة والمخفية في التطبيق"
+                subtitle={`مميزة: ${draft.featuredProductIds.length} · مخفية عن العميل: ${draft.hiddenProductIds.length}`}
+                data={activeProducts}
+                rowKey={(p) => p.id}
+                searchValue={prodFilterSearch}
+                onSearchChange={setProdFilterSearch}
+                searchPlaceholder="بحث بالاسم أو القسم أو الكود..."
+                searchFilter={(p, q) =>
+                  p.name.toLowerCase().includes(q) ||
+                  (p.category || '').toLowerCase().includes(q) ||
+                  (p.code || '').toLowerCase().includes(q)
+                }
+                defaultPageSize={15}
+                columns={[
+                  {
+                    key: 'image',
+                    header: 'الصورة',
+                    width: '50px',
+                    render: (p) => (
+                      <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 overflow-hidden flex items-center justify-center">
+                        {cachedMediaMap?.[p.id] || p.image ? (
+                          <img src={cachedMediaMap?.[p.id] || p.image} alt={p.name} className="w-full h-full object-contain p-0.5" />
+                        ) : (
+                          <Package className="w-4 h-4 text-slate-300" />
+                        )}
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
+                    ),
+                  },
+                  { key: 'name', header: 'اسم الصنف', render: (p) => <span className="font-black text-slate-900">{p.name}</span> },
+                  { key: 'category', header: 'القسم', render: (p) => <span className="text-slate-600">{p.category}</span> },
+                  {
+                    key: 'sellingPrice',
+                    header: 'السعر',
+                    align: 'center',
+                    render: (p) => <span className="font-mono font-bold tabular-nums">{p.sellingPrice.toLocaleString()} {settings.currency}</span>,
+                  },
+                  {
+                    key: 'featured',
+                    header: 'مميز',
+                    align: 'center',
+                    render: (p) => (
+                      <input
+                        type="checkbox"
+                        checked={draft.featuredProductIds.includes(p.id)}
+                        onChange={(e) =>
+                          updateDraft((prev) => ({
+                            ...prev,
+                            featuredProductIds: e.target.checked
+                              ? [...prev.featuredProductIds, p.id]
+                              : prev.featuredProductIds.filter((id) => id !== p.id),
+                          }))
+                        }
+                      />
+                    ),
+                  },
+                  {
+                    key: 'hidden',
+                    header: 'إخفاء',
+                    align: 'center',
+                    render: (p) => (
+                      <input
+                        type="checkbox"
+                        checked={draft.hiddenProductIds.includes(p.id)}
+                        onChange={(e) =>
+                          updateDraft((prev) => ({
+                            ...prev,
+                            hiddenProductIds: e.target.checked
+                              ? [...prev.hiddenProductIds, p.id]
+                              : prev.hiddenProductIds.filter((id) => id !== p.id),
+                          }))
+                        }
+                      />
+                    ),
+                  },
+                ]}
+              />
             </div>
           )}
         </div>

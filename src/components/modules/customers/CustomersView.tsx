@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
-  Users, Plus, Search, Phone, MapPin, DollarSign, FileText, 
+  Plus, Phone, MapPin, FileText, 
   ArrowDownLeft, Printer, Download, Eye, Edit, Trash2, CheckCircle2, 
-  Store, Camera, Upload, X, ExternalLink, ArrowRight, ArrowLeft, 
-  Wifi, WifiOff, RefreshCw, Calendar, ShoppingCart, RotateCcw, 
-  Receipt, AlertCircle, Building2, ShieldAlert, Sparkles, Filter, Link2, Check, History, Wallet, CloudOff
+  Store, Camera, Upload, X, ArrowRight, 
+  Wifi, WifiOff, RefreshCw, ShoppingCart, RotateCcw, 
+  Receipt, AlertCircle, ShieldAlert, Sparkles, Link2, Wallet, CloudOff
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -20,8 +20,20 @@ import { compressImageFileToDataUrl } from '../../../utils/image';
 import { CustomersGroupIcon } from '../../common/AppIcons';
 import { CustomerLocationPickerModal, PickedCustomerLocation } from '../../common/CustomerLocationPickerModal';
 import { CustomerLocationViewerModal } from '../../common/CustomerLocationViewerModal';
+import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 import { isZeroZeroLocation } from '../../../utils/storefront';
 import type { NavItemKey } from '../../layout/Sidebar';
+
+interface StatementRow {
+  id: string;
+  date: string;
+  docNumber: string;
+  type: 'رصيد أول المدة' | 'دفعة مقدمة على طلب' | 'فاتورة مبيعات' | 'سند قبض نقدية' | 'مرتجع مبيعات';
+  description: string;
+  debit: number;
+  credit: number;
+  runningBalance: number;
+}
 
 interface CustomersViewProps {
   onNavigate?: (page: NavItemKey) => void;
@@ -29,7 +41,7 @@ interface CustomersViewProps {
 
 export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
   const {
-    customers, users, representatives, invoices, invoiceReturns, financialTransactions,
+    customers, users, representatives, products = [], invoices, invoiceReturns, financialTransactions,
     cashboxes, settings, networkStatus, customerItemOrders = [], orderAdvancePayments = [], syncQueue = [],
     linkCustomerUser, repairUnlinkedCustomerUsers, toggleCustomerUserStatus,
     addCustomer, updateCustomer, deleteCustomer, recordCustomerPayment,
@@ -49,7 +61,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'blocked'>('all');
   const [classificationFilter, setClassificationFilter] = useState<'all' | 'app_and_direct' | 'app_only' | 'regular'>('all');
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('table');
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -311,17 +322,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
   }, [selectedCustomer, invoiceReturns]);
 
   // Comprehensive chronological statement calculations
-  interface StatementRow {
-    id: string;
-    date: string;
-    docNumber: string;
-    type: 'رصيد أول المدة' | 'دفعة مقدمة على طلب' | 'فاتورة مبيعات' | 'سند قبض نقدية' | 'مرتجع مبيعات';
-    description: string;
-    debit: number;   // مدين (يزيد مديونية العميل)
-    credit: number;  // دائن (يقلل مديونية العميل)
-    runningBalance: number;
-  }
-
   const chronologicalStatement = useMemo(() => {
     if (!selectedCustomer) return [];
 
@@ -1447,489 +1447,744 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
 
         {/* Tab 1: Comprehensive Account Statement */}
         {detailTab === 'statement' && (
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden text-xs">
-            <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h3 className="font-black text-slate-900 text-sm">دفتر أستاذ كشف الحساب التراكمي (Ledger)</h3>
-                <p className="text-[11px] text-slate-500">
-                  كافة قيود الفواتير والتحصيلات والمرتجعات مرتبة زمنياً لحساب الرصيد المستحق بدقة
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
+          <UnifiedDataTable<StatementRow>
+            title="دفتر أستاذ كشف الحساب التراكمي (Ledger)"
+            subtitle="كافة قيود الفواتير والتحصيلات والمرتجعات مرتبة زمنياً لحساب الرصيد المستحق بدقة"
+            data={chronologicalStatement}
+            rowKey={(r) => r.id}
+            compact
+            searchPlaceholder="بحث في كشف الحساب برقم المستند أو البيان..."
+            searchFilter={(r, q) =>
+              r.docNumber.toLowerCase().includes(q) ||
+              r.type.toLowerCase().includes(q) ||
+              r.description.toLowerCase().includes(q) ||
+              r.date.includes(q)
+            }
+            headerActions={
+              <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   type="button"
                   onClick={handleExportStatementExcel}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-300 font-bold hover:bg-slate-50 text-emerald-800 cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-xs font-bold hover:bg-slate-50 text-emerald-800 cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>تصدير Excel</span>
+                  <span>Excel</span>
                 </button>
                 <button
                   type="button"
                   onClick={handleExportStatementPdf}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-blue-200 font-bold hover:bg-blue-50 text-blue-900 cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-blue-200 text-xs font-bold hover:bg-blue-50 text-blue-900 cursor-pointer"
                 >
                   <FileText className="w-3.5 h-3.5 text-blue-700" />
-                  <span>تصدير PDF</span>
+                  <span>PDF</span>
                 </button>
                 <button
                   type="button"
                   onClick={handlePrintStatement}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-900 text-white font-bold hover:bg-blue-950 shadow-xs cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-900 text-white text-xs font-bold hover:bg-blue-950 cursor-pointer"
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span>طباعة كشف الحساب</span>
                 </button>
               </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-right border-collapse">
-                <thead>
-                  <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 text-[11px]">
-                    <th className="p-3">التاريخ</th>
-                    <th className="p-3">رقم المستند</th>
-                    <th className="p-3">نوع الحركة</th>
-                    <th className="p-3">البيان والشرح</th>
-                    <th className="p-3 text-center text-red-700 bg-red-50/50">مدين (+) [دين جديد]</th>
-                    <th className="p-3 text-center text-emerald-700 bg-emerald-50/50">دائن (-) [سداد]</th>
-                    <th className="p-3 text-center font-black">الرصيد التراكمي</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {chronologicalStatement.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="p-12 text-center text-slate-400">
-                        لا توجد حركات مالية أو فواتير مسجلة لهذا العميل حتى الآن.
-                      </td>
-                    </tr>
-                  ) : (
-                    chronologicalStatement.map(row => (
-                      <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="p-3 font-mono text-slate-600">{row.date}</td>
-                        <td className="p-3 font-mono font-bold text-blue-900">{row.docNumber}</td>
-                        <td className="p-3">
-                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                            row.type === 'فاتورة مبيعات' ? 'bg-blue-50 text-blue-800 border border-blue-200' :
-                            row.type === 'سند قبض نقدية' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
-                            row.type === 'دفعة مقدمة على طلب' ? 'bg-teal-50 text-teal-800 border border-teal-200' :
-                            row.type === 'مرتجع مبيعات' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
-                            'bg-slate-100 text-slate-800'
-                          }`}>
-                            {row.type}
-                          </span>
-                        </td>
-                        <td className="p-3 text-slate-700 max-w-xs">{row.description}</td>
-                        <td className="p-3 text-center font-mono font-bold text-red-700 bg-red-50/20">
-                          {row.debit > 0 ? row.debit.toLocaleString() : '-'}
-                        </td>
-                        <td className="p-3 text-center font-mono font-bold text-emerald-700 bg-emerald-50/20">
-                          {row.credit > 0 ? row.credit.toLocaleString() : '-'}
-                        </td>
-                        <td className="p-3 text-center font-mono font-black text-slate-900">
-                          <span className={row.runningBalance > 0 ? 'text-red-700' : row.runningBalance < 0 ? 'text-emerald-700' : 'text-slate-800'}>
-                            {row.runningBalance.toLocaleString()} {settings.currency}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+            }
+            columns={[
+              {
+                key: 'date',
+                header: 'التاريخ',
+                sortable: true,
+                sortValue: (r) => r.date,
+                exportValue: (r) => r.date,
+                cellClassName: 'font-mono text-slate-600 whitespace-nowrap',
+                render: (r) => r.date,
+              },
+              {
+                key: 'docNumber',
+                header: 'رقم المستند',
+                sortable: true,
+                sortValue: (r) => r.docNumber,
+                exportValue: (r) => r.docNumber,
+                cellClassName: 'font-mono font-bold text-blue-900 whitespace-nowrap',
+                render: (r) => r.docNumber,
+              },
+              {
+                key: 'type',
+                header: 'نوع الحركة',
+                sortable: true,
+                sortValue: (r) => r.type,
+                exportValue: (r) => r.type,
+                render: (r) => (
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      r.type === 'فاتورة مبيعات'
+                        ? 'bg-blue-50 text-blue-800 border border-blue-200'
+                        : r.type === 'سند قبض نقدية'
+                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                        : r.type === 'دفعة مقدمة على طلب'
+                        ? 'bg-teal-50 text-teal-800 border border-teal-200'
+                        : r.type === 'مرتجع مبيعات'
+                        ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                        : 'bg-slate-100 text-slate-800'
+                    }`}
+                  >
+                    {r.type}
+                  </span>
+                ),
+              },
+              {
+                key: 'description',
+                header: 'البيان والشرح',
+                exportValue: (r) => r.description,
+                cellClassName: 'text-slate-700 max-w-xs',
+                render: (r) => r.description,
+              },
+              {
+                key: 'debit',
+                header: 'مدين (+) [دين جديد]',
+                align: 'center',
+                sortable: true,
+                sortValue: (r) => r.debit,
+                exportValue: (r) => r.debit,
+                cellClassName: 'font-mono font-bold text-red-700 tabular-nums',
+                render: (r) => (r.debit > 0 ? r.debit.toLocaleString() : '-'),
+              },
+              {
+                key: 'credit',
+                header: 'دائن (-) [سداد]',
+                align: 'center',
+                sortable: true,
+                sortValue: (r) => r.credit,
+                exportValue: (r) => r.credit,
+                cellClassName: 'font-mono font-bold text-emerald-700 tabular-nums',
+                render: (r) => (r.credit > 0 ? r.credit.toLocaleString() : '-'),
+              },
+              {
+                key: 'runningBalance',
+                header: 'الرصيد التراكمي',
+                align: 'center',
+                sortable: true,
+                sortValue: (r) => r.runningBalance,
+                exportValue: (r) => r.runningBalance,
+                cellClassName: 'font-mono font-black tabular-nums whitespace-nowrap',
+                render: (r) => (
+                  <span className={r.runningBalance > 0 ? 'text-red-700' : r.runningBalance < 0 ? 'text-emerald-700' : 'text-slate-800'}>
+                    {r.runningBalance.toLocaleString()} {settings.currency}
+                  </span>
+                ),
+              },
+            ]}
+            footerTotalsRow={
+              chronologicalStatement.length > 0 ? (
+                <tr className="bg-blue-950/5 font-black text-slate-900 border-t-2 border-blue-900/20">
+                  <td colSpan={4} className="p-2.5 text-right">الإجمالي التراكمي لكشف الحساب ({chronologicalStatement.length} حركة):</td>
+                  <td className="p-2.5 text-center font-mono text-red-700 tabular-nums">
+                    {chronologicalStatement.reduce((s, r) => s + r.debit, 0).toLocaleString()}
+                  </td>
+                  <td className="p-2.5 text-center font-mono text-emerald-700 tabular-nums">
+                    {chronologicalStatement.reduce((s, r) => s + r.credit, 0).toLocaleString()}
+                  </td>
+                  <td className="p-2.5 text-center font-mono tabular-nums text-blue-950">
+                    {selectedCustomer.currentBalance.toLocaleString()} {settings.currency}
+                  </td>
+                </tr>
+              ) : undefined
+            }
+            emptyTitle="لا توجد حركات مالية أو فواتير مسجلة لهذا العميل حتى الآن."
+          />
         )}
 
         {/* Tab 2: Sales Invoices */}
         {detailTab === 'invoices' && (
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden text-xs">
-            <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-              <div>
-                <h3 className="font-black text-slate-900 text-sm">سجل فواتير المبيعات الصادرة للمحل</h3>
-                <p className="text-[11px] text-slate-500">
-                  جميع الفواتير المرتبطة بهذا العميل وإمكانية استعراضها وطباعتها
-                </p>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-right border-collapse">
-                <thead>
-                  <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 text-[11px]">
-                    <th className="p-3">رقم الفاتورة</th>
-                    <th className="p-3">التاريخ</th>
-                    <th className="p-3">المستودع</th>
-                    <th className="p-3">المندوب</th>
-                    <th className="p-3 text-center">إجمالي الفاتورة</th>
-                    <th className="p-3 text-center">المدفوع نقداً</th>
-                    <th className="p-3 text-center">المتبقي (آجل)</th>
-                    <th className="p-3">طريقة السداد</th>
-                    <th className="p-3">الحالة</th>
-                    <th className="p-3 text-center">الإجراءات</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {selectedCustomerInvoices.length === 0 ? (
-                    <tr>
-                      <td colSpan={10} className="p-12 text-center text-slate-400">
-                        لا توجد فواتير مبيعات مسجلة لهذا العميل حتى الآن.
-                      </td>
-                    </tr>
-                  ) : (
-                    selectedCustomerInvoices.map(inv => (
-                      <tr key={inv.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="p-3 font-mono font-bold text-blue-900">{inv.invoiceNumber}</td>
-                        <td className="p-3 font-mono text-slate-600">{inv.date}</td>
-                        <td className="p-3 text-slate-700">{inv.warehouseName}</td>
-                        <td className="p-3 text-slate-600">{inv.representativeName || '-'}</td>
-                        <td className="p-3 text-center font-mono font-bold text-slate-900">
-                          {inv.grandTotal.toLocaleString()} {settings.currency}
-                        </td>
-                        <td className="p-3 text-center font-mono font-bold text-emerald-700">
-                          {inv.paidAmount.toLocaleString()}
-                        </td>
-                        <td className="p-3 text-center font-mono font-bold text-red-600">
-                          {inv.remainingAmount.toLocaleString()}
-                        </td>
-                        <td className="p-3">
-                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                            inv.paymentType === 'cash' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
-                            inv.paymentType === 'credit' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
-                            'bg-blue-50 text-blue-800 border border-blue-200'
-                          }`}>
-                            {inv.paymentType === 'cash' ? 'نقدي' : inv.paymentType === 'credit' ? 'آجل' : 'جزئي'}
-                          </span>
-                        </td>
-                        <td className="p-3">
-                          <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200">
-                            {inv.status === 'confirmed' ? 'مؤكدة' : 'ملغاة'}
-                          </span>
-                        </td>
-                        <td className="p-3 text-center">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <button
-                              onClick={() => setPreviewInvoice(inv)}
-                              className="p-1.5 text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
-                              title="استعراض الفاتورة"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handlePrintSingleInvoice(inv)}
-                              className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                              title="طباعة الفاتورة"
-                            >
-                              <Printer className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <UnifiedDataTable<Invoice>
+            title="سجل فواتير المبيعات الصادرة للمحل"
+            subtitle="جميع الفواتير المرتبطة بهذا العميل وإمكانية استعراضها وطباعتها"
+            data={selectedCustomerInvoices}
+            rowKey={(inv) => inv.id}
+            compact
+            exportFilename={`فواتير_العميل_${selectedCustomer.name}`}
+            pdfTitle={`فواتير مبيعات العميل (${selectedCustomer.name})`}
+            searchPlaceholder="بحث برقم الفاتورة أو المستودع أو المندوب..."
+            searchFilter={(inv, q) =>
+              inv.invoiceNumber.toLowerCase().includes(q) ||
+              (inv.warehouseName || '').toLowerCase().includes(q) ||
+              (inv.representativeName || '').toLowerCase().includes(q) ||
+              inv.date.includes(q)
+            }
+            columns={[
+              {
+                key: 'invoiceNumber',
+                header: 'رقم الفاتورة',
+                sortable: true,
+                sortValue: (i) => i.invoiceNumber,
+                exportValue: (i) => i.invoiceNumber,
+                cellClassName: 'font-mono font-bold text-blue-900 whitespace-nowrap',
+                render: (i) => i.invoiceNumber,
+              },
+              {
+                key: 'date',
+                header: 'التاريخ',
+                sortable: true,
+                sortValue: (i) => i.date,
+                exportValue: (i) => i.date,
+                cellClassName: 'font-mono text-slate-600 whitespace-nowrap',
+                render: (i) => i.date,
+              },
+              {
+                key: 'warehouse',
+                header: 'المستودع',
+                exportValue: (i) => i.warehouseName,
+                cellClassName: 'text-slate-700',
+                render: (i) => i.warehouseName,
+              },
+              {
+                key: 'rep',
+                header: 'المندوب',
+                exportValue: (i) => i.representativeName || '-',
+                cellClassName: 'text-slate-600',
+                render: (i) => i.representativeName || '-',
+              },
+              {
+                key: 'grandTotal',
+                header: 'إجمالي الفاتورة',
+                align: 'center',
+                sortable: true,
+                sortValue: (i) => i.grandTotal,
+                exportValue: (i) => i.grandTotal,
+                cellClassName: 'font-mono font-bold text-slate-900 tabular-nums whitespace-nowrap',
+                render: (i) => `${i.grandTotal.toLocaleString()} ${settings.currency}`,
+              },
+              {
+                key: 'paidAmount',
+                header: 'المدفوع نقداً',
+                align: 'center',
+                sortable: true,
+                sortValue: (i) => i.paidAmount,
+                exportValue: (i) => i.paidAmount,
+                cellClassName: 'font-mono font-bold text-emerald-700 tabular-nums',
+                render: (i) => i.paidAmount.toLocaleString(),
+              },
+              {
+                key: 'remainingAmount',
+                header: 'المتبقي (آجل)',
+                align: 'center',
+                sortable: true,
+                sortValue: (i) => i.remainingAmount,
+                exportValue: (i) => i.remainingAmount,
+                cellClassName: 'font-mono font-bold text-red-600 tabular-nums',
+                render: (i) => i.remainingAmount.toLocaleString(),
+              },
+              {
+                key: 'paymentType',
+                header: 'طريقة السداد',
+                exportValue: (i) => (i.paymentType === 'cash' ? 'نقدي' : i.paymentType === 'credit' ? 'آجل' : 'جزئي'),
+                render: (i) => (
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      i.paymentType === 'cash'
+                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                        : i.paymentType === 'credit'
+                        ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                        : 'bg-blue-50 text-blue-800 border border-blue-200'
+                    }`}
+                  >
+                    {i.paymentType === 'cash' ? 'نقدي' : i.paymentType === 'credit' ? 'آجل' : 'جزئي'}
+                  </span>
+                ),
+              },
+              {
+                key: 'status',
+                header: 'الحالة',
+                exportValue: (i) => (i.status === 'confirmed' ? 'مؤكدة' : 'ملغاة'),
+                render: (i) => (
+                  <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200">
+                    {i.status === 'confirmed' ? 'مؤكدة' : 'ملغاة'}
+                  </span>
+                ),
+              },
+              {
+                key: 'actions',
+                header: 'الإجراءات',
+                align: 'center',
+                render: (inv) => (
+                  <div className="flex items-center justify-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewInvoice(inv)}
+                      className="p-1.5 text-blue-900 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                      title="استعراض الفاتورة"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handlePrintSingleInvoice(inv)}
+                      className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                      title="طباعة الفاتورة"
+                    >
+                      <Printer className="w-4 h-4" />
+                    </button>
+                  </div>
+                ),
+              },
+            ]}
+            emptyTitle="لا توجد فواتير مبيعات مسجلة لهذا العميل حتى الآن."
+          />
         )}
 
         {/* Tab 3: Payments & Receipts */}
         {detailTab === 'payments' && (
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden text-xs">
-            <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-              <div>
-                <h3 className="font-black text-slate-900 text-sm">سجل سندات القبض والتحصيلات النقدية</h3>
-                <p className="text-[11px] text-slate-500">
-                  جميع المبالغ المحصلة نقدياً وتم توريدها إلى الخزينة
-                </p>
-              </div>
+          <UnifiedDataTable
+            title="سجل سندات القبض والتحصيلات النقدية"
+            subtitle="جميع المبالغ المحصلة نقدياً وتم توريدها إلى الخزينة"
+            data={selectedCustomerPayments}
+            rowKey={(pay) => pay.id}
+            compact
+            exportFilename={`تحصيلات_${selectedCustomer.name}`}
+            pdfTitle={`سندات قبض العميل (${selectedCustomer.name})`}
+            searchPlaceholder="بحث برقم السند أو الخزينة أو البيان..."
+            searchFilter={(pay, q) =>
+              pay.transactionNumber.toLowerCase().includes(q) ||
+              (pay.cashboxName || '').toLowerCase().includes(q) ||
+              (pay.notes || pay.description || '').toLowerCase().includes(q)
+            }
+            headerActions={
               <button
+                type="button"
                 onClick={() => {
                   setPaymentCustomer(selectedCustomer);
                   setPaymentAmount(selectedCustomer.currentBalance > 0 ? selectedCustomer.currentBalance : 0);
                 }}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-xs cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>تحصيل نقدية جديد</span>
               </button>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-right border-collapse">
-                <thead>
-                  <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 text-[11px]">
-                    <th className="p-3">رقم السند</th>
-                    <th className="p-3">التاريخ</th>
-                    <th className="p-3">الخزينة المودع بها</th>
-                    <th className="p-3 text-center">المبلغ المحصل</th>
-                    <th className="p-3">البيان والملاحظات</th>
-                    <th className="p-3">المسؤول عن التسجيل</th>
-                    <th className="p-3 text-center">طباعة الإيصال</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {selectedCustomerPayments.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="p-12 text-center text-slate-400">
-                        لا توجد سندات تحصيل نقدية مسجلة لهذا العميل حتى الآن.
-                      </td>
-                    </tr>
-                  ) : (
-                    selectedCustomerPayments.map(pay => (
-                      <tr key={pay.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="p-3 font-mono font-bold text-blue-900">{pay.transactionNumber}</td>
-                        <td className="p-3 font-mono text-slate-600">{pay.date}</td>
-                        <td className="p-3 font-bold text-slate-800">{pay.cashboxName}</td>
-                        <td className="p-3 text-center font-mono font-black text-emerald-700 text-sm">
-                          {pay.amount.toLocaleString()} {settings.currency}
-                        </td>
-                        <td className="p-3 text-slate-600">{pay.notes || pay.description}</td>
-                        <td className="p-3 text-slate-500">{pay.createdBy}</td>
-                        <td className="p-3 text-center">
-                          <button
-                            onClick={() => {
-                              setPrintData({
-                                title: 'سند قبض نقدية من عميل',
-                                docNumber: pay.transactionNumber,
-                                docType: 'سند قبض',
-                                date: pay.date,
-                                partyName: selectedCustomer.name,
-                                partyPhone: selectedCustomer.phone,
-                                partyAddress: selectedCustomer.address,
-                                grandTotal: pay.amount,
-                                paidAmount: pay.amount,
-                                notes: pay.notes || pay.description,
-                              });
-                              setIsPrintModalOpen(true);
-                            }}
-                            className="p-1.5 text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="إعادة طباعة سند القبض"
-                          >
-                            <Printer className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+            }
+            columns={[
+              {
+                key: 'transactionNumber',
+                header: 'رقم السند',
+                sortable: true,
+                sortValue: (p) => p.transactionNumber,
+                exportValue: (p) => p.transactionNumber,
+                cellClassName: 'font-mono font-bold text-blue-900 whitespace-nowrap',
+                render: (p) => p.transactionNumber,
+              },
+              {
+                key: 'date',
+                header: 'التاريخ',
+                sortable: true,
+                sortValue: (p) => p.date,
+                exportValue: (p) => p.date,
+                cellClassName: 'font-mono text-slate-600 whitespace-nowrap',
+                render: (p) => p.date,
+              },
+              {
+                key: 'cashboxName',
+                header: 'الخزينة المودع بها',
+                exportValue: (p) => p.cashboxName,
+                cellClassName: 'font-bold text-slate-800',
+                render: (p) => p.cashboxName,
+              },
+              {
+                key: 'amount',
+                header: 'المبلغ المحصل',
+                align: 'center',
+                sortable: true,
+                sortValue: (p) => p.amount,
+                exportValue: (p) => p.amount,
+                cellClassName: 'font-mono font-black text-emerald-700 tabular-nums whitespace-nowrap',
+                render: (p) => `${p.amount.toLocaleString()} ${settings.currency}`,
+              },
+              {
+                key: 'notes',
+                header: 'البيان والملاحظات',
+                exportValue: (p) => p.notes || p.description || '',
+                cellClassName: 'text-slate-600',
+                render: (p) => p.notes || p.description,
+              },
+              {
+                key: 'createdBy',
+                header: 'المسؤول عن التسجيل',
+                exportValue: (p) => p.createdBy || '',
+                cellClassName: 'text-slate-500',
+                render: (p) => p.createdBy,
+              },
+              {
+                key: 'print',
+                header: 'طباعة الإيصال',
+                align: 'center',
+                render: (pay) => (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPrintData({
+                        title: 'سند قبض نقدية من عميل',
+                        docNumber: pay.transactionNumber,
+                        docType: 'سند قبض',
+                        date: pay.date,
+                        partyName: selectedCustomer.name,
+                        partyPhone: selectedCustomer.phone,
+                        partyAddress: selectedCustomer.address,
+                        grandTotal: pay.amount,
+                        paidAmount: pay.amount,
+                        notes: pay.notes || pay.description,
+                      });
+                      setIsPrintModalOpen(true);
+                    }}
+                    className="p-1.5 text-blue-900 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                    title="إعادة طباعة سند القبض"
+                  >
+                    <Printer className="w-4 h-4" />
+                  </button>
+                ),
+              },
+            ]}
+            emptyTitle="لا توجد سندات تحصيل نقدية مسجلة لهذا العميل حتى الآن."
+          />
         )}
 
         {/* Tab 4: Sales Returns */}
         {detailTab === 'returns' && (
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden text-xs">
-            <div className="p-4 bg-slate-50 border-b border-slate-200">
-              <h3 className="font-black text-slate-900 text-sm">سجل بضائع المرتجعات لهذا العميل</h3>
-              <p className="text-[11px] text-slate-500">
-                حركات إرجاع البضائع التالفة أو المسترجعة والتسويات المالية الناتجة عنها
-              </p>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-right border-collapse">
-                <thead>
-                  <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 text-[11px]">
-                    <th className="p-3">رقم إشعار المرتجع</th>
-                    <th className="p-3">التاريخ</th>
-                    <th className="p-3">الفاتورة الأصلية</th>
-                    <th className="p-3">المستودع المستلم</th>
-                    <th className="p-3 text-center">إجمالي قيمة المرتجع</th>
-                    <th className="p-3">طريقة رد المبلغ</th>
-                    <th className="p-3">سبب الإرجاع</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {selectedCustomerReturns.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="p-12 text-center text-slate-400">
-                        لا توجد مرتجعات مسجلة لهذا العميل.
-                      </td>
-                    </tr>
-                  ) : (
-                    selectedCustomerReturns.map(ret => (
-                      <tr key={ret.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="p-3 font-mono font-bold text-amber-800">{ret.returnNumber}</td>
-                        <td className="p-3 font-mono text-slate-600">{ret.date}</td>
-                        <td className="p-3 font-mono text-blue-900">{ret.originalInvoiceNumber}</td>
-                        <td className="p-3 text-slate-700">{ret.warehouseName}</td>
-                        <td className="p-3 text-center font-mono font-black text-amber-800">
-                          {ret.grandTotal.toLocaleString()} {settings.currency}
-                        </td>
-                        <td className="p-3">
-                          <span className="px-2 py-0.5 rounded-md bg-slate-100 font-bold text-[10px]">
-                            {ret.refundType === 'cash' ? 'رد نقدي فوري' : 'خصم من مديونية الحساب'}
-                          </span>
-                        </td>
-                        <td className="p-3 text-slate-600">{ret.reason}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <UnifiedDataTable
+            title="سجل بضائع المرتجعات لهذا العميل"
+            subtitle="حركات إرجاع البضائع التالفة أو المسترجعة والتسويات المالية الناتجة عنها"
+            data={selectedCustomerReturns}
+            rowKey={(ret) => ret.id}
+            compact
+            exportFilename={`مرتجعات_${selectedCustomer.name}`}
+            pdfTitle={`مرتجعات العميل (${selectedCustomer.name})`}
+            searchPlaceholder="بحث برقم المرتجع أو الفاتورة الأصلية..."
+            searchFilter={(ret, q) =>
+              ret.returnNumber.toLowerCase().includes(q) ||
+              (ret.originalInvoiceNumber || '').toLowerCase().includes(q) ||
+              (ret.reason || '').toLowerCase().includes(q)
+            }
+            columns={[
+              {
+                key: 'returnNumber',
+                header: 'رقم إشعار المرتجع',
+                sortable: true,
+                sortValue: (r) => r.returnNumber,
+                exportValue: (r) => r.returnNumber,
+                cellClassName: 'font-mono font-bold text-amber-800 whitespace-nowrap',
+                render: (r) => r.returnNumber,
+              },
+              {
+                key: 'date',
+                header: 'التاريخ',
+                sortable: true,
+                sortValue: (r) => r.date,
+                exportValue: (r) => r.date,
+                cellClassName: 'font-mono text-slate-600 whitespace-nowrap',
+                render: (r) => r.date,
+              },
+              {
+                key: 'originalInvoiceNumber',
+                header: 'الفاتورة الأصلية',
+                exportValue: (r) => r.originalInvoiceNumber || '',
+                cellClassName: 'font-mono text-blue-900 whitespace-nowrap',
+                render: (r) => r.originalInvoiceNumber,
+              },
+              {
+                key: 'warehouseName',
+                header: 'المستودع المستلم',
+                exportValue: (r) => r.warehouseName,
+                cellClassName: 'text-slate-700',
+                render: (r) => r.warehouseName,
+              },
+              {
+                key: 'grandTotal',
+                header: 'إجمالي قيمة المرتجع',
+                align: 'center',
+                sortable: true,
+                sortValue: (r) => r.grandTotal,
+                exportValue: (r) => r.grandTotal,
+                cellClassName: 'font-mono font-black text-amber-800 tabular-nums whitespace-nowrap',
+                render: (r) => `${r.grandTotal.toLocaleString()} ${settings.currency}`,
+              },
+              {
+                key: 'refundType',
+                header: 'طريقة رد المبلغ',
+                exportValue: (r) => (r.refundType === 'cash' ? 'رد نقدي فوري' : 'خصم من مديونية الحساب'),
+                render: (r) => (
+                  <span className="px-2 py-0.5 rounded bg-slate-100 font-bold text-[10px]">
+                    {r.refundType === 'cash' ? 'رد نقدي فوري' : 'خصم من مديونية الحساب'}
+                  </span>
+                ),
+              },
+              {
+                key: 'reason',
+                header: 'سبب الإرجاع',
+                exportValue: (r) => r.reason || '',
+                cellClassName: 'text-slate-600',
+                render: (r) => r.reason,
+              },
+            ]}
+            emptyTitle="لا توجد مرتجعات مسجلة لهذا العميل."
+          />
         )}
 
         {/* Tab 5: Product Price History */}
-        {detailTab === 'prices' && (
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 text-xs space-y-4">
-            <div>
-              <h3 className="font-black text-slate-900 text-sm">سجل الأسعار التاريخية للمنتجات المشتراة (آخر 3 أسعار)</h3>
-              <p className="text-[11px] text-slate-500">
-                يعرض النظام تلقائياً آخر ثلاثة أسعار فعلية اشترى بها هذا العميل كل صنف للمقارنة عند إصدار الفواتير
-              </p>
-            </div>
-
-            {Object.keys(selectedCustomer.priceHistory || {}).length === 0 ? (
-              <div className="p-12 text-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                لم يتم تسجيل عمليات بيع سابقة لهذا العميل لتكوين سجل الأسعار بعد.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {Object.entries(selectedCustomer.priceHistory).map(([prodId, prices]) => (
-                  <div key={prodId} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-2">
-                    <span className="text-[10px] font-mono font-bold text-blue-900 bg-blue-100 px-2 py-0.5 rounded">
-                      كود الصنف: {prodId}
-                    </span>
-                    <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200">
-                      <span className="text-slate-500">الأسعار السابقة (من الأقدم للأحدث):</span>
+        {detailTab === 'prices' && (() => {
+          const priceRows = Object.entries(selectedCustomer.priceHistory || {}).map(([prodId, prices]) => {
+            const prod = products.find((p) => p.id === prodId || p.code === prodId);
+            const normalized = (Array.isArray(prices) ? prices : []).map((entry) => ({
+              price: typeof entry === 'number' ? entry : Number(entry.price || 0),
+              date: typeof entry === 'number' ? '' : (entry.date || ''),
+              unit: typeof entry === 'number' ? '' : (entry.unit || ''),
+            }));
+            return {
+              id: prodId,
+              code: prod?.code || prodId,
+              name: prod?.name || `صنف (${prodId})`,
+              prices: normalized,
+              latestPrice: normalized.length > 0 ? normalized[normalized.length - 1].price : 0,
+            };
+          });
+          return (
+            <UnifiedDataTable
+              title="سجل الأسعار التاريخية للمنتجات المشتراة (آخر 3 أسعار)"
+              subtitle="يعرض النظام تلقائياً آخر ثلاثة أسعار فعلية اشترى بها هذا العميل كل صنف للمقارنة عند إصدار الفواتير"
+              data={priceRows}
+              rowKey={(r) => r.id}
+              compact
+              exportFilename={`اسعار_العميل_${selectedCustomer.name}`}
+              pdfTitle={`تاريخ أسعار منتجات العميل (${selectedCustomer.name})`}
+              searchPlaceholder="بحث باسم الصنف أو الكود..."
+              searchFilter={(r, q) => r.name.toLowerCase().includes(q) || r.code.toLowerCase().includes(q)}
+              columns={[
+                {
+                  key: 'code',
+                  header: 'كود الصنف',
+                  sortable: true,
+                  sortValue: (r) => r.code,
+                  exportValue: (r) => r.code,
+                  cellClassName: 'font-mono font-bold text-blue-900 whitespace-nowrap',
+                  render: (r) => r.code,
+                },
+                {
+                  key: 'name',
+                  header: 'اسم الصنف',
+                  sortable: true,
+                  sortValue: (r) => r.name,
+                  exportValue: (r) => r.name,
+                  cellClassName: 'font-bold text-slate-900',
+                  render: (r) => r.name,
+                },
+                {
+                  key: 'history',
+                  header: 'آخر 3 أسعار مسجلة (من الأقدم للأحدث)',
+                  exportValue: (r) => r.prices.map((p) => `${p.price}${p.date ? ` (${p.date})` : ''}`).join(' | '),
+                  render: (r) => (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {r.prices.map((entry, idx) => (
+                        <span key={idx} className="font-mono font-bold px-2 py-0.5 rounded bg-slate-50 border border-slate-300 text-slate-800 text-[11px] tabular-nums">
+                          {entry.price.toLocaleString()} {settings.currency}
+                          {entry.unit ? ` / ${entry.unit}` : ''}
+                          {entry.date ? <span className="text-[10px] text-slate-400 mr-1">({entry.date})</span> : null}
+                        </span>
+                      ))}
                     </div>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {prices.map((entry, idx) => {
-                        const val = typeof entry === 'number' ? entry : entry.price;
-                        const dt = typeof entry === 'number' ? '' : entry.date;
-                        return (
-                          <span key={idx} className="font-mono font-bold px-2.5 py-1 rounded-lg bg-white border border-slate-300 text-slate-800 text-xs shadow-2xs">
-                            {val} {settings.currency}
-                            {dt ? <span className="text-[10px] text-slate-400 mr-1">({dt})</span> : null}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+                  ),
+                },
+                {
+                  key: 'latest',
+                  header: 'آخر سعر بيع',
+                  align: 'center',
+                  sortable: true,
+                  sortValue: (r) => r.latestPrice,
+                  exportValue: (r) => r.latestPrice,
+                  cellClassName: 'font-mono font-black text-blue-950 tabular-nums whitespace-nowrap',
+                  render: (r) => `${r.latestPrice.toLocaleString()} ${settings.currency}`,
+                },
+              ]}
+              emptyTitle="لم يتم تسجيل عمليات بيع سابقة لهذا العميل لتكوين سجل الأسعار بعد."
+            />
+          );
+        })()}
 
         {/* Tab: Customer Orders */}
         {detailTab === 'orders' && (
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden text-xs">
-            <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-              <div>
-                <h3 className="font-black text-slate-900 text-sm">طلبات العميل الموحدة</h3>
-                <p className="text-[11px] text-slate-500">
-                  طلبات الشراء الواردة من تطبيق العميل أو عبر المندوبين وحالتها والدفعات المقدمة عليها
-                </p>
-              </div>
-              {onNavigate && (
+          <UnifiedDataTable<CustomerItemOrderRequest>
+            title="طلبات العميل الموحدة"
+            subtitle="طلبات الشراء الواردة من تطبيق العميل أو عبر المندوبين وحالتها والدفعات المقدمة عليها"
+            data={selectedCustomerOrders}
+            rowKey={(ord) => ord.id}
+            compact
+            exportFilename={`طلبات_${selectedCustomer.name}`}
+            pdfTitle={`طلبات العميل (${selectedCustomer.name})`}
+            searchPlaceholder="بحث برقم الطلب أو الفاتورة..."
+            searchFilter={(ord, q) =>
+              ord.requestNumber.toLowerCase().includes(q) ||
+              (ord.invoiceNumber || '').toLowerCase().includes(q)
+            }
+            headerActions={
+              onNavigate ? (
                 <button
                   type="button"
                   onClick={() => onNavigate('customer-orders')}
-                  className="px-3.5 py-2 rounded-xl bg-blue-900 text-white font-bold cursor-pointer"
+                  className="px-3 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white text-xs font-bold cursor-pointer"
                 >
                   فتح قسم الطلبات
                 </button>
-              )}
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-right border-collapse">
-                <thead>
-                  <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 text-[11px]">
-                    <th className="p-3">رقم الطلب</th>
-                    <th className="p-3">التاريخ</th>
-                    <th className="p-3">عدد الأصناف</th>
-                    <th className="p-3 text-center">الإجمالي</th>
-                    <th className="p-3 text-center">الدفعة المقدمة</th>
-                    <th className="p-3">الحالة</th>
-                    <th className="p-3">الفاتورة</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {selectedCustomerOrders.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="p-10 text-center text-slate-400">
-                        لا توجد طلبات مسجلة لهذا العميل.
-                      </td>
-                    </tr>
-                  ) : (
-                    selectedCustomerOrders.map((ord) => (
-                      <tr key={ord.id} className="hover:bg-slate-50/80">
-                        <td className="p-3 font-mono font-bold text-blue-900">{ord.requestNumber}</td>
-                        <td className="p-3 font-mono text-slate-600">{(ord.createdAt || '').slice(0, 10)}</td>
-                        <td className="p-3">{ord.items?.length || 0} أصناف</td>
-                        <td className="p-3 text-center font-mono font-bold">
-                          {Number(ord.totalAmount || 0).toLocaleString()} {settings.currency}
-                        </td>
-                        <td className="p-3 text-center font-mono font-bold text-emerald-700">
-                          {Number(ord.advancePaidAmount || 0) > 0 ? `${Number(ord.advancePaidAmount).toLocaleString()} ${settings.currency}` : '—'}
-                        </td>
-                        <td className="p-3 font-bold">{ord.status}</td>
-                        <td className="p-3 font-mono text-blue-900">{ord.invoiceNumber || '—'}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+              ) : undefined
+            }
+            columns={[
+              {
+                key: 'requestNumber',
+                header: 'رقم الطلب',
+                sortable: true,
+                sortValue: (o) => o.requestNumber,
+                exportValue: (o) => o.requestNumber,
+                cellClassName: 'font-mono font-bold text-blue-900 whitespace-nowrap',
+                render: (o) => o.requestNumber,
+              },
+              {
+                key: 'date',
+                header: 'التاريخ',
+                sortable: true,
+                sortValue: (o) => o.createdAt || '',
+                exportValue: (o) => (o.createdAt || '').slice(0, 10),
+                cellClassName: 'font-mono text-slate-600 whitespace-nowrap',
+                render: (o) => (o.createdAt || '').slice(0, 10),
+              },
+              {
+                key: 'itemsCount',
+                header: 'عدد الأصناف',
+                align: 'center',
+                sortable: true,
+                sortValue: (o) => o.items?.length || 0,
+                exportValue: (o) => o.items?.length || 0,
+                cellClassName: 'tabular-nums',
+                render: (o) => `${o.items?.length || 0} أصناف`,
+              },
+              {
+                key: 'totalAmount',
+                header: 'الإجمالي',
+                align: 'center',
+                sortable: true,
+                sortValue: (o) => Number(o.totalAmount || 0),
+                exportValue: (o) => Number(o.totalAmount || 0),
+                cellClassName: 'font-mono font-bold tabular-nums whitespace-nowrap',
+                render: (o) => `${Number(o.totalAmount || 0).toLocaleString()} ${settings.currency}`,
+              },
+              {
+                key: 'advancePaidAmount',
+                header: 'الدفعة المقدمة',
+                align: 'center',
+                sortable: true,
+                sortValue: (o) => Number(o.advancePaidAmount || 0),
+                exportValue: (o) => Number(o.advancePaidAmount || 0),
+                cellClassName: 'font-mono font-bold text-emerald-700 tabular-nums whitespace-nowrap',
+                render: (o) =>
+                  Number(o.advancePaidAmount || 0) > 0
+                    ? `${Number(o.advancePaidAmount).toLocaleString()} ${settings.currency}`
+                    : '—',
+              },
+              {
+                key: 'status',
+                header: 'الحالة',
+                exportValue: (o) => o.status,
+                cellClassName: 'font-bold',
+                render: (o) => o.status,
+              },
+              {
+                key: 'invoiceNumber',
+                header: 'الفاتورة',
+                exportValue: (o) => o.invoiceNumber || '—',
+                cellClassName: 'font-mono text-blue-900 whitespace-nowrap',
+                render: (o) => o.invoiceNumber || '—',
+              },
+            ]}
+            emptyTitle="لا توجد طلبات مسجلة لهذا العميل."
+          />
         )}
 
         {/* Tab: Customer Advance Payments */}
         {detailTab === 'advances' && (
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden text-xs">
-            <div className="p-4 bg-slate-50 border-b border-slate-200">
-              <h3 className="font-black text-slate-900 text-sm">سجل الدفعات المقدمة على الطلبات</h3>
-              <p className="text-[11px] text-slate-500">
-                تُقيد في حساب العميل الدائن والخزينة عند الاستلام وتُطبق تلقائياً عند تحويل الطلب إلى فاتورة دون تكرار
-              </p>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-right border-collapse">
-                <thead>
-                  <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 text-[11px]">
-                    <th className="p-3">رقم الدفعة</th>
-                    <th className="p-3">التاريخ</th>
-                    <th className="p-3">الخزينة</th>
-                    <th className="p-3">الوسيلة</th>
-                    <th className="p-3 text-center">المبلغ</th>
-                    <th className="p-3">الحالة</th>
-                    <th className="p-3">ملاحظات</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {selectedCustomerAdvances.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="p-10 text-center text-slate-400">
-                        لا توجد دفعات مقدمة مسجلة على طلبات هذا العميل.
-                      </td>
-                    </tr>
-                  ) : (
-                    selectedCustomerAdvances.map((adv) => (
-                      <tr key={adv.id} className="hover:bg-slate-50/80">
-                        <td className="p-3 font-mono font-bold text-blue-900">{adv.paymentNumber}</td>
-                        <td className="p-3 font-mono text-slate-600">{adv.date}</td>
-                        <td className="p-3 font-bold">{adv.cashboxName || adv.cashboxId}</td>
-                        <td className="p-3">{adv.paymentMethod === 'bank' ? 'تحويل بنكي' : adv.paymentMethod === 'cheque' ? 'شيك' : 'نقدي'}</td>
-                        <td className="p-3 text-center font-mono font-black text-emerald-700">
-                          {Number(adv.amount).toLocaleString()} {settings.currency}
-                        </td>
-                        <td className="p-3">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${adv.status === 'applied' ? 'bg-blue-50 text-blue-800 border border-blue-200' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'}`}>
-                            {adv.status === 'applied' ? 'مطبقة على فاتورة' : 'رصيد دائن متاح'}
-                          </span>
-                        </td>
-                        <td className="p-3 text-slate-600">{adv.notes || '—'}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <UnifiedDataTable
+            title="سجل الدفعات المقدمة على الطلبات"
+            subtitle="تُقيد في حساب العميل الدائن والخزينة عند الاستلام وتُطبق تلقائياً عند تحويل الطلب إلى فاتورة دون تكرار"
+            data={selectedCustomerAdvances}
+            rowKey={(adv) => adv.id}
+            compact
+            exportFilename={`دفعات_مقدمة_${selectedCustomer.name}`}
+            pdfTitle={`الدفعات المقدمة للعميل (${selectedCustomer.name})`}
+            searchPlaceholder="بحث برقم الدفعة أو الخزينة أو الملاحظات..."
+            searchFilter={(adv, q) =>
+              adv.paymentNumber.toLowerCase().includes(q) ||
+              (adv.cashboxName || '').toLowerCase().includes(q) ||
+              (adv.notes || '').toLowerCase().includes(q)
+            }
+            columns={[
+              {
+                key: 'paymentNumber',
+                header: 'رقم الدفعة',
+                sortable: true,
+                sortValue: (a) => a.paymentNumber,
+                exportValue: (a) => a.paymentNumber,
+                cellClassName: 'font-mono font-bold text-blue-900 whitespace-nowrap',
+                render: (a) => a.paymentNumber,
+              },
+              {
+                key: 'date',
+                header: 'التاريخ',
+                sortable: true,
+                sortValue: (a) => a.date,
+                exportValue: (a) => a.date,
+                cellClassName: 'font-mono text-slate-600 whitespace-nowrap',
+                render: (a) => a.date,
+              },
+              {
+                key: 'cashboxName',
+                header: 'الخزينة',
+                exportValue: (a) => a.cashboxName || a.cashboxId,
+                cellClassName: 'font-bold',
+                render: (a) => a.cashboxName || a.cashboxId,
+              },
+              {
+                key: 'paymentMethod',
+                header: 'الوسيلة',
+                exportValue: (a) => (a.paymentMethod === 'bank' ? 'تحويل بنكي' : a.paymentMethod === 'cheque' ? 'شيك' : 'نقدي'),
+                render: (a) => (a.paymentMethod === 'bank' ? 'تحويل بنكي' : a.paymentMethod === 'cheque' ? 'شيك' : 'نقدي'),
+              },
+              {
+                key: 'amount',
+                header: 'المبلغ',
+                align: 'center',
+                sortable: true,
+                sortValue: (a) => Number(a.amount),
+                exportValue: (a) => Number(a.amount),
+                cellClassName: 'font-mono font-black text-emerald-700 tabular-nums whitespace-nowrap',
+                render: (a) => `${Number(a.amount).toLocaleString()} ${settings.currency}`,
+              },
+              {
+                key: 'status',
+                header: 'الحالة',
+                exportValue: (a) => (a.status === 'applied' ? 'مطبقة على فاتورة' : 'رصيد دائن متاح'),
+                render: (a) => (
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      a.status === 'applied'
+                        ? 'bg-blue-50 text-blue-800 border border-blue-200'
+                        : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                    }`}
+                  >
+                    {a.status === 'applied' ? 'مطبقة على فاتورة' : 'رصيد دائن متاح'}
+                  </span>
+                ),
+              },
+              {
+                key: 'notes',
+                header: 'ملاحظات',
+                exportValue: (a) => a.notes || '—',
+                cellClassName: 'text-slate-600',
+                render: (a) => a.notes || '—',
+              },
+            ]}
+            emptyTitle="لا توجد دفعات مقدمة مسجلة على طلبات هذا العميل."
+          />
         )}
           </div>
         );
@@ -2077,28 +2332,23 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
         </div>
       </div>
 
-      {/* Search and Filters Bar */}
-      <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4 text-xs">
-        {/* Search Input (ByName & ByPhone & ByCode & ByAddress) */}
-        <div className="relative flex-1 w-full">
-          <input
-            type="text"
-            placeholder="بحث فوري باسم المحل، رقم الموبايل، الكود، أو العنوان..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-300 rounded-2xl py-2.5 pr-10 pl-4 text-xs font-semibold focus:bg-white focus:border-blue-600 outline-hidden transition-all"
-          />
-          <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-3" />
-        </div>
-
-        {/* Filters and Layout Toggle */}
-        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+      <UnifiedDataTable<Customer>
+        title="دليل العملاء والمحلات"
+        subtitle="اضغط على أي صف لعرض الملف الشامل وكشف الحساب أو استخدم أدوات الاتصال والخريطة والتحصيل السريع"
+        data={filteredCustomers}
+        rowKey={(c) => c.id}
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchPlaceholder="بحث فوري باسم المحل، رقم الموبايل، الكود، أو العنوان..."
+        exportFilename="دليل_العملاء"
+        pdfTitle="دليل العملاء والأرصدة"
+        onRowClick={(cust) => setSelectedCustomerId(cust.id)}
+        toolbarFilters={
           <div className="flex flex-wrap items-center gap-2">
-            <Filter className="w-4 h-4 text-slate-400" />
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as any)}
-              className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-hidden focus:border-blue-600"
+              className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-700 outline-hidden focus:border-blue-600"
             >
               <option value="all">جميع الحالات ({customers.length})</option>
               <option value="active">نشط فقط</option>
@@ -2107,7 +2357,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
             <select
               value={classificationFilter}
               onChange={(e) => setClassificationFilter(e.target.value as any)}
-              className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-hidden focus:border-blue-600"
+              className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-700 outline-hidden focus:border-blue-600"
             >
               <option value="all">جميع التصنيفات</option>
               <option value="app_and_direct">عميل تطبيق ومبيعات مباشرة</option>
@@ -2115,343 +2365,210 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
               <option value="regular">عميل عادي</option>
             </select>
           </div>
-
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
-            <button
-              onClick={() => setViewMode('cards')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'cards' ? 'bg-white text-blue-900 shadow-xs' : 'text-slate-600'
-              }`}
-            >
-              بطاقات
-            </button>
-            <button
-              onClick={() => setViewMode('table')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'table' ? 'bg-white text-blue-900 shadow-xs' : 'text-slate-600'
-              }`}
-            >
-              جدول
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Empty State */}
-      {filteredCustomers.length === 0 ? (
-        <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-400 space-y-4">
-          <div className="w-16 h-16 rounded-3xl bg-blue-50 text-blue-900 flex items-center justify-center mx-auto">
-            <Store className="w-8 h-8" />
-          </div>
-          <div>
-            <p className="text-base font-black text-slate-700">لا يوجد عملاء مسجلون حالياً</p>
-            <p className="text-xs text-slate-400 mt-1">
-              انقر على زر "إضافة عميل / محل جديد" للبدء بتسجيل بيانات المحلات، الصور الميدانية، أرقام الموبايل، والعناوين.
-            </p>
-          </div>
-          <button
-            onClick={handleOpenAdd}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-md shadow-blue-900/20 active:scale-95 transition-all cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>إضافة أول عميل</span>
-          </button>
-        </div>
-      ) : viewMode === 'cards' ? (
-        /* CARDS GRID VIEW */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filteredCustomers.map(cust => {
-            const isDebtor = cust.currentBalance > 0;
-            const isCreditor = cust.currentBalance < 0;
-
-            return (
-              <div
-                key={cust.id}
-                onClick={() => setSelectedCustomerId(cust.id)}
-                className="bg-white rounded-3xl border border-slate-200 hover:border-blue-400 shadow-xs hover:shadow-md transition-all p-5 flex flex-col justify-between text-xs space-y-4 cursor-pointer group"
-              >
-                {/* Header: Store Photo & Shop Name */}
-                <div className="flex items-start gap-3.5">
-                  {/* Shop Photo Thumbnail */}
-                  <div className="relative shrink-0">
-                    {(cust.shopPhoto || cust.photo) ? (
-                      <img
-                        src={cust.shopPhoto || cust.photo}
-                        alt={cust.name}
-                        className="w-14 h-14 rounded-2xl object-cover border border-slate-200 bg-slate-50 shadow-2xs group-hover:scale-105 transition-transform"
-                      />
-                    ) : (
-                      <div className="w-14 h-14 rounded-2xl bg-blue-50/70 border border-blue-200 flex items-center justify-center text-blue-900">
-                        <Store className="w-6 h-6 stroke-[1.5]" />
-                      </div>
-                    )}
-                    <span className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-white ${
-                      cust.status === 'active' ? 'bg-emerald-500' : 'bg-red-500'
-                    }`} />
-                  </div>
-
-                  {/* Name, Code & Classification */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono text-[10px] font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
-                        {cust.code}
-                      </span>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                        cust.status === 'active' ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-800'
-                      }`}>
-                        {cust.status === 'active' ? 'نشط' : 'محظور'}
-                      </span>
-                    </div>
-                    <h3 className="text-sm font-black text-slate-900 truncate mt-1 group-hover:text-blue-900 transition-colors">
-                      {cust.shopName || cust.name}
-                    </h3>
-                    {(cust.governorate || cust.area) && (
-                      <p className="text-[10px] text-slate-500 truncate">
-                        {[cust.governorate, cust.area].filter(Boolean).join(' · ')}
-                      </p>
-                    )}
-                    <div className="flex flex-wrap items-center gap-1 mt-1">
-                      {(() => {
-                        const cls = customerClassificationMap.get(cust.id);
-                        return cls ? (
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${cls.badgeClass}`}>
-                            {cls.label}
-                          </span>
-                        ) : null;
-                      })()}
-                      {tentativeCustomerIds.has(cust.id) && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
-                          <CloudOff className="w-2.5 h-2.5" />
-                          <span>رصيد محلي مبدئي لحين المزامنة</span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
+        }
+        emptyTitle="لا يوجد عملاء مسجلون حالياً"
+        emptySubtitle='انقر على زر "إضافة عميل / محل جديد" للبدء بتسجيل بيانات المحلات، الصور الميدانية، أرقام الموبايل، والعناوين.'
+        columns={[
+          {
+            key: 'photo',
+            header: 'صورة المحل',
+            render: (cust) =>
+              cust.shopPhoto || cust.photo ? (
+                <img
+                  src={cust.shopPhoto || cust.photo}
+                  alt={cust.name}
+                  className="w-10 h-10 rounded-lg object-cover border border-slate-200 bg-slate-50"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-900 flex items-center justify-center">
+                  <Store className="w-4 h-4 stroke-[1.5]" />
                 </div>
-
-                {/* Contact: Direct Call & Google Maps Buttons */}
-                <div className="space-y-2 pt-2 border-t border-slate-100 text-xs">
-                  {/* Direct Phone Call Button */}
-                  <div className="flex items-center justify-between">
-                    <a
-                      href={`tel:${cust.phone}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-mono font-bold border border-emerald-200 shadow-2xs transition-all active:scale-95 cursor-pointer"
-                      title="اتصال مباشر بالهاتف"
-                    >
-                      <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      <span>{cust.phone}</span>
-                    </a>
-                    <span className="text-[10px] text-slate-400 font-medium">موبايل</span>
-                  </div>
-
-                  {/* Read-Only Customer Location Viewer Button */}
-                  <div className="flex items-center justify-between">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setLocationViewerCustomer(cust);
-                      }}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#0F5A33] font-bold border border-emerald-200 shadow-2xs transition-all cursor-pointer max-w-[210px] truncate"
-                      title="عرض الموقع المسجل على الخريطة"
-                    >
-                      <MapPin className="w-3.5 h-3.5 text-[#0F5A33] shrink-0" />
-                      <span className="truncate">{cust.address || 'عرض الموقع'}</span>
-                    </button>
-                    <span className="text-[10px] text-slate-400 font-medium">خرائط</span>
-                  </div>
-                </div>
-
-                {/* Current Balance Box */}
-                <div className={`p-3 rounded-2xl border flex items-center justify-between ${
-                  isDebtor ? 'bg-red-50/60 border-red-200' : isCreditor ? 'bg-emerald-50/60 border-emerald-200' : 'bg-slate-50 border-slate-200'
-                }`}>
-                  <span className="font-bold text-slate-600">الرصيد:</span>
-                  <div className="text-left font-mono">
-                    <span className={`text-sm font-black ${
-                      isDebtor ? 'text-red-700' : isCreditor ? 'text-emerald-700' : 'text-slate-800'
-                    }`}>
-                      {cust.currentBalance.toLocaleString()} {settings.currency}
-                    </span>
-                    <span className="block text-[9px] text-slate-500 font-normal">
-                      {isDebtor ? 'مديونية مستحقة' : isCreditor ? 'رصيد دائن' : 'خالص'}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Card Action Buttons */}
-                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPaymentError(null);
-                      setPaymentMethod('cash');
-                      setPaymentNotes('');
-                      setPaymentCustomer(cust);
-                      setPaymentAmount(cust.currentBalance > 0 ? cust.currentBalance : '');
-                    }}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-xs active:scale-95 transition-all cursor-pointer"
-                  >
-                    <ArrowDownLeft className="w-4 h-4" />
-                    <span>تحصيل نقدية</span>
-                  </button>
-
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedCustomerId(cust.id);
-                    }}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-slate-100 hover:bg-blue-50 hover:text-blue-900 text-slate-800 rounded-xl font-bold transition-all cursor-pointer"
-                  >
-                    <Eye className="w-4 h-4" />
-                    <span>الملف الشامل</span>
-                  </button>
-
-                  {hasPermission('canManageUsers') && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setLinkError(null);
-                        setLinkMode('create');
-                        setExistingLinkUserId('');
-                        setNewCustomerUsername('');
-                        setNewCustomerPassword('');
-                        setLinkingCustomer(cust);
-                      }}
-                      title={cust.userId ? 'مرتبط بحساب دخول' : 'إنشاء أو ربط حساب دخول للتطبيق'}
-                      className={`p-2 rounded-xl border font-bold cursor-pointer ${
-                        cust.userId
-                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                          : 'bg-amber-50 text-amber-800 border-amber-200'
-                      }`}
-                    >
-                      <Link2 className="w-4 h-4" />
-                    </button>
+              ),
+          },
+          {
+            key: 'code',
+            header: 'الكود',
+            sortable: true,
+            sortValue: (c) => c.code,
+            exportValue: (c) => c.code,
+            cellClassName: 'font-mono font-bold text-blue-900 whitespace-nowrap',
+            render: (c) => c.code,
+          },
+          {
+            key: 'name',
+            header: 'اسم المحل / العميل',
+            sortable: true,
+            sortValue: (c) => c.shopName || c.name,
+            exportValue: (c) => (c.shopName ? `${c.shopName} (${c.name})` : c.name),
+            render: (cust) => {
+              const cls = customerClassificationMap.get(cust.id);
+              return (
+                <div className="space-y-0.5 max-w-[230px]">
+                  <div className="font-black text-slate-900 truncate">{cust.shopName || cust.name}</div>
+                  {cust.shopName && cust.shopName !== cust.name && (
+                    <div className="text-[10px] text-slate-500 truncate">{cust.name}</div>
                   )}
+                  {(cust.governorate || cust.area) && (
+                    <div className="text-[10px] text-slate-500 truncate">
+                      {[cust.governorate, cust.area].filter(Boolean).join(' · ')}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap items-center gap-1">
+                    {cls && (
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${cls.badgeClass}`}>
+                        {cls.label}
+                      </span>
+                    )}
+                    {tentativeCustomerIds.has(cust.id) && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                        <CloudOff className="w-2.5 h-2.5" />
+                        <span>مبدئي لحين المزامنة</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
+              );
+            },
+          },
+          {
+            key: 'phone',
+            header: 'الاتصال (موبايل)',
+            sortable: true,
+            sortValue: (c) => c.phone,
+            exportValue: (c) => c.phone,
+            render: (cust) => (
+              <a
+                href={`tel:${cust.phone}`}
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-mono font-bold border border-emerald-200 whitespace-nowrap"
+                title="اتصال مباشر"
+              >
+                <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                <span>{cust.phone}</span>
+              </a>
+            ),
+          },
+          {
+            key: 'location',
+            header: 'الموقع على الخريطة',
+            exportValue: (c) => c.address || '',
+            render: (cust) => (
+              <div onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  onClick={() => setLocationViewerCustomer(cust)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#0F5A33] font-bold border border-emerald-200 max-w-[180px] truncate cursor-pointer"
+                  title="عرض الموقع المسجل"
+                >
+                  <MapPin className="w-3 h-3 text-[#0F5A33] shrink-0" />
+                  <span className="truncate">{cust.address || 'عرض الموقع'}</span>
+                </button>
               </div>
-            );
-          })}
-        </div>
-      ) : (
-        /* TABLE VIEW */
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden text-xs">
-          <div className="overflow-x-auto">
-            <table className="w-full text-right border-collapse">
-              <thead>
-                <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 text-[11px]">
-                  <th className="p-3.5">صورة المحل</th>
-                  <th className="p-3.5">الكود</th>
-                  <th className="p-3.5">اسم المحل / العميل</th>
-                  <th className="p-3.5">الاتصال (موبايل)</th>
-                  <th className="p-3.5">الموقع على الخريطة</th>
-                  <th className="p-3.5 text-center">الرصيد الحالي</th>
-                  <th className="p-3.5 text-center">الحالة</th>
-                  <th className="p-3.5 text-center">الإجراءات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredCustomers.map(cust => (
-                  <tr
-                    key={cust.id}
-                    onClick={() => setSelectedCustomerId(cust.id)}
-                    className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+            ),
+          },
+          {
+            key: 'currentBalance',
+            header: 'الرصيد الحالي',
+            align: 'center',
+            sortable: true,
+            sortValue: (c) => c.currentBalance,
+            exportValue: (c) => c.currentBalance,
+            cellClassName: 'font-mono font-black tabular-nums whitespace-nowrap',
+            render: (cust) => (
+              <span className={cust.currentBalance > 0 ? 'text-red-700' : cust.currentBalance < 0 ? 'text-emerald-700' : 'text-slate-800'}>
+                {cust.currentBalance.toLocaleString()} {settings.currency}
+              </span>
+            ),
+          },
+          {
+            key: 'status',
+            header: 'الحالة',
+            align: 'center',
+            sortable: true,
+            sortValue: (c) => c.status,
+            exportValue: (c) => (c.status === 'active' ? 'نشط' : 'محظور'),
+            render: (cust) => (
+              <span
+                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                  cust.status === 'active'
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : 'bg-red-50 text-red-700 border border-red-200'
+                }`}
+              >
+                {cust.status === 'active' ? 'نشط' : 'محظور'}
+              </span>
+            ),
+          },
+          {
+            key: 'actions',
+            header: 'الإجراءات',
+            align: 'center',
+            render: (cust) => (
+              <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaymentError(null);
+                    setPaymentMethod('cash');
+                    setPaymentNotes('');
+                    setPaymentCustomer(cust);
+                    setPaymentAmount(cust.currentBalance > 0 ? cust.currentBalance : 0);
+                  }}
+                  className="p-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg cursor-pointer"
+                  title="تحصيل نقدية"
+                >
+                  <ArrowDownLeft className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCustomerId(cust.id)}
+                  className="p-1.5 bg-blue-50 text-blue-900 hover:bg-blue-100 rounded-lg cursor-pointer"
+                  title="استعراض الملف الشامل"
+                >
+                  <Eye className="w-4 h-4" />
+                </button>
+                {hasPermission('canManageUsers') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLinkError(null);
+                      setLinkMode('create');
+                      setExistingLinkUserId('');
+                      setNewCustomerUsername('');
+                      setNewCustomerPassword('');
+                      setLinkingCustomer(cust);
+                    }}
+                    title={cust.userId ? 'مرتبط بحساب دخول' : 'إنشاء أو ربط حساب دخول للتطبيق'}
+                    className={`p-1.5 rounded-lg border cursor-pointer ${
+                      cust.userId
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : 'bg-amber-50 text-amber-800 border-amber-200'
+                    }`}
                   >
-                    <td className="p-3">
-                      {(cust.shopPhoto || cust.photo) ? (
-                        <img
-                          src={cust.shopPhoto || cust.photo}
-                          alt={cust.name}
-                          className="w-11 h-11 rounded-xl object-cover border border-slate-200 bg-slate-50"
-                        />
-                      ) : (
-                        <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-900 flex items-center justify-center">
-                          <Store className="w-5 h-5 stroke-[1.5]" />
-                        </div>
-                      )}
-                    </td>
-                    <td className="p-3 font-mono font-bold text-blue-900">{cust.code}</td>
-                    <td className="p-3 font-black text-slate-900">{cust.name}</td>
-                    <td className="p-3">
-                      <a
-                        href={`tel:${cust.phone}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-mono font-bold border border-emerald-200"
-                        title="اتصال مباشر"
-                      >
-                        <Phone className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>{cust.phone}</span>
-                      </a>
-                    </td>
-                    <td className="p-3" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        onClick={() => setLocationViewerCustomer(cust)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#0F5A33] font-bold border border-emerald-200 max-w-[180px] truncate cursor-pointer"
-                        title="عرض الموقع المسجل"
-                      >
-                        <MapPin className="w-3 h-3 text-[#0F5A33] shrink-0" />
-                        <span className="truncate">{cust.address || 'عرض الموقع'}</span>
-                      </button>
-                    </td>
-                    <td className="p-3 text-center font-mono font-black">
-                      <span className={cust.currentBalance > 0 ? 'text-red-700' : cust.currentBalance < 0 ? 'text-emerald-700' : 'text-slate-800'}>
-                        {cust.currentBalance.toLocaleString()} {settings.currency}
-                      </span>
-                    </td>
-                    <td className="p-3 text-center">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        cust.status === 'active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
-                      }`}>
-                        {cust.status === 'active' ? 'نشط' : 'محظور'}
-                      </span>
-                    </td>
-                    <td className="p-3 text-center">
-                      <div className="flex items-center justify-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => {
-                            setPaymentError(null);
-                            setPaymentMethod('cash');
-                            setPaymentNotes('');
-                            setPaymentCustomer(cust);
-                            setPaymentAmount(cust.currentBalance > 0 ? cust.currentBalance : 0);
-                          }}
-                          className="p-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg"
-                          title="تحصيل نقدية"
-                        >
-                          <ArrowDownLeft className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => setSelectedCustomerId(cust.id)}
-                          className="p-1.5 bg-blue-50 text-blue-900 hover:bg-blue-100 rounded-lg"
-                          title="استعراض الملف الشامل"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={(e) => handleOpenEdit(cust, e)}
-                          className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded-lg"
-                          title="تعديل بيانات المحل والصورة"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={(e) => handleDeleteCustomerClick(cust, e)}
-                          className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-lg"
-                          title="حذف العميل"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+                    <Link2 className="w-4 h-4" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => handleOpenEdit(cust, e)}
+                  className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded-lg cursor-pointer"
+                  title="تعديل بيانات المحل والصورة"
+                >
+                  <Edit className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => handleDeleteCustomerClick(cust, e)}
+                  className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-lg cursor-pointer"
+                  title="حذف العميل"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ),
+          },
+        ]}
+      />
         </div>
       )}
 
@@ -3258,30 +3375,20 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
               <div>الحالة: <strong className="text-emerald-700 font-sans">مؤكدة</strong></div>
             </div>
 
-            <div className="border border-slate-200 rounded-xl awlad-table-scroll">
-              <table className="w-full text-right">
-                <thead>
-                  <tr className="bg-slate-100 font-bold border-b text-slate-700">
-                    <th className="p-2.5">الصنف</th>
-                    <th className="p-2.5">الوحدة</th>
-                    <th className="p-2.5 text-center">الكمية</th>
-                    <th className="p-2.5 text-center">السعر</th>
-                    <th className="p-2.5 text-center">الإجمالي</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {previewInvoice.items.map((it, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50">
-                      <td className="p-2.5 font-bold">{it.productName}</td>
-                      <td className="p-2.5 text-slate-600">{it.unit}</td>
-                      <td className="p-2.5 text-center font-mono font-bold">{it.quantity}</td>
-                      <td className="p-2.5 text-center font-mono">{it.unitPrice.toLocaleString()}</td>
-                      <td className="p-2.5 text-center font-mono font-bold">{it.total.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <UnifiedDataTable
+              data={previewInvoice.items}
+              rowKey={(it, idx) => `${it.productId || idx}-${idx}`}
+              compact
+              searchable={false}
+              paginated={false}
+              columns={[
+                { key: 'name', header: 'الصنف', cellClassName: 'font-bold', render: (it) => it.productName },
+                { key: 'unit', header: 'الوحدة', cellClassName: 'text-slate-600', render: (it) => it.unit },
+                { key: 'qty', header: 'الكمية', align: 'center', cellClassName: 'font-mono font-bold tabular-nums', render: (it) => it.quantity },
+                { key: 'price', header: 'السعر', align: 'center', cellClassName: 'font-mono tabular-nums', render: (it) => it.unitPrice.toLocaleString() },
+                { key: 'total', header: 'الإجمالي', align: 'center', cellClassName: 'font-mono font-bold tabular-nums', render: (it) => it.total.toLocaleString() },
+              ]}
+            />
 
             <div className="flex justify-between items-center bg-blue-900 text-white p-3.5 rounded-xl font-bold font-mono">
               <span>إجمالي الفاتورة: {previewInvoice.grandTotal.toLocaleString()} {settings.currency}</span>

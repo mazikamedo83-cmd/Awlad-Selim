@@ -10,6 +10,7 @@ import { Modal } from '../../common/Modal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
 import { exportTableToPdf } from '../../common/PdfExporter';
+import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 
 const TX_TYPE_LABELS: Record<OwnerPersonalTransaction['type'], { label: string; color: string }> = {
   opening_balance: { label: 'رصيد افتتاحي', color: 'bg-slate-100 text-slate-700' },
@@ -407,209 +408,271 @@ export const PersonalAccountsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Owner Accounts Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {ownerAccounts.length === 0 ? (
-          <div className="md:col-span-3 bg-white rounded-2xl border border-dashed border-slate-300 p-8 text-center text-xs text-slate-500 space-y-2">
-            <ShieldCheck className="w-8 h-8 text-slate-400 mx-auto" />
-            <p className="font-bold text-slate-700">لا توجد حسابات شخصية مضافة لأصحاب النشاط بعد</p>
-            <p>أنشئ أول حساب مالك لتسجيل الإيداعات والمسحوبات والمصروفات الشخصية بمعزل عن حسابات الشركة.</p>
-          </div>
-        ) : (
-          ownerAccounts.map((acc) => {
-            const isSelected = selectedAccountId === acc.id;
-            return (
-              <div
-                key={acc.id}
-                onClick={() => setSelectedAccountId(isSelected ? 'all' : acc.id)}
-                className={`p-4 rounded-2xl border transition-all cursor-pointer bg-white shadow-xs ${
-                  isSelected ? 'border-blue-700 ring-2 ring-blue-100' : 'border-slate-200 hover:border-blue-300'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <span className="text-[11px] font-bold text-blue-800">{acc.ownerName}</span>
-                    <h4 className="text-sm font-black text-slate-900">{acc.accountName}</h4>
-                    {acc.description && <p className="text-[11px] text-slate-500 mt-0.5">{acc.description}</p>}
-                  </div>
-                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                    <span className={`px-2 py-0.5 rounded border text-[10px] font-bold ${acc.status === 'active' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
-                      {acc.status === 'active' ? 'نشط' : 'موقوف'}
-                    </span>
-                    {canEditTx && (
-                      <button
-                        type="button"
-                        onClick={() => openEditAccountModal(acc)}
-                        className="p-1 text-slate-400 hover:text-blue-900 cursor-pointer"
-                        title="تعديل بيانات الحساب"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">الرصيد الحالي</span>
-                    <strong className={`text-base font-black font-mono ${acc.currentBalance >= 0 ? 'text-blue-950' : 'text-red-700'}`}>
-                      {acc.currentBalance.toLocaleString()} {settings.currency}
-                    </strong>
-                  </div>
-                  {canCreateTx && acc.status === 'active' && (
-                    <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        onClick={() => openNewTxModal(acc.id, 'personal_deposit')}
-                        className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold hover:bg-emerald-100 cursor-pointer"
-                      >
-                        + إيداع
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openNewTxModal(acc.id, 'personal_withdrawal')}
-                        className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 text-[11px] font-bold hover:bg-rose-100 cursor-pointer"
-                      >
-                        - سحب
-                      </button>
-                    </div>
-                  )}
-                </div>
+      {/* Owner Accounts Table */}
+      <UnifiedDataTable<OwnerPersonalAccount>
+        title="دليل حسابات الملاك الشخصية"
+        subtitle="انقر على أي حساب لتصفية كشف حركاته بالأسفل"
+        data={ownerAccounts}
+        rowKey={(acc) => acc.id}
+        searchable={false}
+        compact
+        defaultPageSize={10}
+        onRowClick={(acc) => setSelectedAccountId(selectedAccountId === acc.id ? 'all' : acc.id)}
+        rowClassName={(acc) => (selectedAccountId === acc.id ? 'bg-blue-50/70' : '')}
+        emptyTitle="لا توجد حسابات شخصية مضافة لأصحاب النشاط بعد"
+        emptySubtitle="أنشئ أول حساب مالك لتسجيل الإيداعات والمسحوبات والمصروفات الشخصية بمعزل عن حسابات الشركة."
+        columns={[
+          {
+            key: 'ownerName',
+            header: 'اسم المالك',
+            align: 'right',
+            sortValue: (a) => a.ownerName,
+            exportValue: (a) => a.ownerName,
+            render: (a) => <span className="font-bold text-blue-950">{a.ownerName}</span>,
+          },
+          {
+            key: 'accountName',
+            header: 'اسم الحساب الشخصي',
+            align: 'right',
+            sortValue: (a) => a.accountName,
+            exportValue: (a) => a.accountName,
+            render: (a) => (
+              <div>
+                <div className="font-bold text-slate-900">{a.accountName}</div>
+                {a.description && <div className="text-[10px] text-slate-500">{a.description}</div>}
               </div>
-            );
-          })
-        )}
-      </div>
+            ),
+          },
+          {
+            key: 'status',
+            header: 'الحالة',
+            align: 'center',
+            sortValue: (a) => a.status,
+            exportValue: (a) => (a.status === 'active' ? 'نشط' : 'موقوف'),
+            render: (a) => (
+              <span className={`px-2 py-0.5 rounded border text-[10px] font-bold ${a.status === 'active' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+                {a.status === 'active' ? 'نشط' : 'موقوف'}
+              </span>
+            ),
+          },
+          {
+            key: 'currentBalance',
+            header: 'الرصيد الحالي',
+            align: 'center',
+            sortValue: (a) => a.currentBalance,
+            exportValue: (a) => a.currentBalance,
+            render: (a) => (
+              <span className={`font-mono font-black tabular-nums ${a.currentBalance >= 0 ? 'text-blue-950' : 'text-red-700'}`}>
+                {a.currentBalance.toLocaleString()} {settings.currency}
+              </span>
+            ),
+          },
+          {
+            key: 'actions',
+            header: 'الإجراءات',
+            align: 'center',
+            sortable: false,
+            render: (acc) => (
+              <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+                {canCreateTx && acc.status === 'active' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => openNewTxModal(acc.id, 'personal_deposit')}
+                      className="px-2 py-1 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-bold hover:bg-emerald-100 cursor-pointer"
+                    >
+                      + إيداع
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openNewTxModal(acc.id, 'personal_withdrawal')}
+                      className="px-2 py-1 rounded bg-rose-50 text-rose-800 border border-rose-200 text-[10px] font-bold hover:bg-rose-100 cursor-pointer"
+                    >
+                      - سحب
+                    </button>
+                  </>
+                )}
+                {canEditTx && (
+                  <button
+                    type="button"
+                    onClick={() => openEditAccountModal(acc)}
+                    className="p-1 text-slate-500 hover:text-blue-900 cursor-pointer"
+                    title="تعديل بيانات الحساب"
+                  >
+                    <Edit className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            ),
+          },
+        ]}
+      />
 
-      {/* Filters Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 sm:grid-cols-5 gap-3 text-xs">
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="بحث برقم القيد أو السبب..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 pr-9 pl-3 outline-hidden focus:bg-white"
-          />
-          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
-        </div>
-        <select
-          value={selectedAccountId}
-          onChange={(e) => setSelectedAccountId(e.target.value)}
-          className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
-        >
-          <option value="all">كل حسابات الملاك</option>
-          {ownerAccounts.map((a) => (
-            <option key={a.id} value={a.id}>{a.ownerName} - {a.accountName}</option>
-          ))}
-        </select>
-        <select
-          value={txTypeFilter}
-          onChange={(e) => setTxTypeFilter(e.target.value)}
-          className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
-        >
-          <option value="all">كل أنواع الحركات</option>
-          <option value="personal_deposit">إيداع شخصي</option>
-          <option value="personal_withdrawal">سحب شخصي</option>
-          <option value="personal_expense">مصروف شخصي</option>
-          <option value="adjustment">تسوية</option>
-          <option value="opening_balance">رصيد افتتاحي</option>
-        </select>
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
-          className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-mono"
-        />
-        <input
-          type="date"
-          value={dateTo}
-          onChange={(e) => setDateTo(e.target.value)}
-          className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-mono"
-        />
-      </div>
-
-      {/* Ledger Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-right text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-                <th className="p-3">رقم الحركة</th>
-                <th className="p-3">التاريخ</th>
-                <th className="p-3">المالك / الحساب</th>
-                <th className="p-3">النوع</th>
-                <th className="p-3 text-center">المبلغ</th>
-                <th className="p-3 text-center">الرصيد بعد</th>
-                <th className="p-3">ربط الخزينة</th>
-                <th className="p-3">السبب / الملاحظات</th>
-                <th className="p-3 text-center">إجراءات</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredTransactions.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="p-8 text-center text-slate-400">
-                    لا توجد حركات شخصية مطابقة للبحث.
-                  </td>
-                </tr>
-              ) : (
-                filteredTransactions.map((tx) => {
-                  const meta = TX_TYPE_LABELS[tx.type] || { label: tx.type, color: 'bg-slate-100 text-slate-700' };
-                  return (
-                    <tr key={tx.id} className="hover:bg-slate-50">
-                      <td className="p-3 font-mono font-bold text-blue-900">{tx.txNumber}</td>
-                      <td className="p-3 font-mono text-slate-600">{tx.date}</td>
-                      <td className="p-3">
-                        <span className="font-bold text-slate-900 block">{tx.ownerName}</span>
-                        <span className="text-[10px] text-slate-500">{tx.accountName}</span>
-                      </td>
-                      <td className="p-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${meta.color}`}>{meta.label}</span>
-                      </td>
-                      <td className="p-3 text-center font-mono font-black text-slate-900">
-                        {tx.amount.toLocaleString()} {settings.currency}
-                      </td>
-                      <td className="p-3 text-center font-mono font-bold text-blue-950">
-                        {tx.balanceAfter.toLocaleString()}
-                      </td>
-                      <td className="p-3 text-[11px] text-slate-600">{tx.cashboxName || 'قيد مستقل'}</td>
-                      <td className="p-3 text-[11px] text-slate-600">
-                        <div>{tx.reason || tx.notes || '-'}</div>
-                        {tx.editedBy && (
-                          <span className="text-[10px] text-amber-700 block">تم التعديل بواسطة {tx.editedBy}</span>
-                        )}
-                      </td>
-                      <td className="p-3 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handlePrintVoucher(tx)}
-                            className="p-1.5 text-slate-500 hover:text-blue-900 cursor-pointer"
-                            title="طباعة سند"
-                          >
-                            <Printer className="w-4 h-4" />
-                          </button>
-                          {canEditTx && (
-                            <button
-                              type="button"
-                              onClick={() => openEditTxModal(tx)}
-                              className="p-1.5 text-slate-500 hover:text-amber-700 cursor-pointer"
-                              title="تعديل الحركة مع تسجيل السبب"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {/* Personal Transactions Ledger Table */}
+      <UnifiedDataTable<OwnerPersonalTransaction>
+        title="سجل الحركات الشخصية للملاك"
+        data={filteredTransactions}
+        rowKey={(tx) => tx.id}
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchPlaceholder="بحث برقم القيد أو السبب..."
+        exportFilename="الحسابات-الشخصية-للملاك"
+        pdfTitle="كشف الحسابات الشخصية لأصحاب النشاط"
+        emptyTitle="لا توجد حركات شخصية مطابقة للبحث"
+        toolbarFilters={
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <select
+              value={selectedAccountId}
+              onChange={(e) => setSelectedAccountId(e.target.value)}
+              className="min-h-[36px] bg-white border border-slate-300 rounded-lg px-2.5 py-1 font-bold"
+            >
+              <option value="all">كل حسابات الملاك</option>
+              {ownerAccounts.map((a) => (
+                <option key={a.id} value={a.id}>{a.ownerName} - {a.accountName}</option>
+              ))}
+            </select>
+            <select
+              value={txTypeFilter}
+              onChange={(e) => setTxTypeFilter(e.target.value)}
+              className="min-h-[36px] bg-white border border-slate-300 rounded-lg px-2.5 py-1 font-bold"
+            >
+              <option value="all">كل أنواع الحركات</option>
+              <option value="personal_deposit">إيداع شخصي</option>
+              <option value="personal_withdrawal">سحب شخصي</option>
+              <option value="personal_expense">مصروف شخصي</option>
+              <option value="adjustment">تسوية</option>
+              <option value="opening_balance">رصيد افتتاحي</option>
+            </select>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="min-h-[36px] bg-white border border-slate-300 rounded-lg px-2.5 py-1 font-mono"
+            />
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="min-h-[36px] bg-white border border-slate-300 rounded-lg px-2.5 py-1 font-mono"
+            />
+          </div>
+        }
+        columns={[
+          {
+            key: 'txNumber',
+            header: 'رقم الحركة',
+            align: 'right',
+            sortValue: (t) => t.txNumber,
+            exportValue: (t) => t.txNumber,
+            render: (t) => <span className="font-mono font-bold text-blue-900">{t.txNumber}</span>,
+          },
+          {
+            key: 'date',
+            header: 'التاريخ',
+            align: 'center',
+            sortValue: (t) => t.date,
+            exportValue: (t) => t.date,
+            render: (t) => <span className="font-mono text-slate-600 tabular-nums">{t.date}</span>,
+          },
+          {
+            key: 'ownerName',
+            header: 'المالك / الحساب',
+            align: 'right',
+            sortValue: (t) => `${t.ownerName} ${t.accountName}`,
+            exportValue: (t) => `${t.ownerName} - ${t.accountName}`,
+            render: (t) => (
+              <div>
+                <span className="font-bold text-slate-900 block">{t.ownerName}</span>
+                <span className="text-[10px] text-slate-500">{t.accountName}</span>
+              </div>
+            ),
+          },
+          {
+            key: 'type',
+            header: 'النوع',
+            align: 'center',
+            sortValue: (t) => t.type,
+            exportValue: (t) => TX_TYPE_LABELS[t.type]?.label || t.type,
+            render: (t) => {
+              const meta = TX_TYPE_LABELS[t.type] || { label: t.type, color: 'bg-slate-100 text-slate-700' };
+              return <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${meta.color}`}>{meta.label}</span>;
+            },
+          },
+          {
+            key: 'amount',
+            header: 'المبلغ',
+            align: 'center',
+            sortValue: (t) => t.amount,
+            exportValue: (t) => t.amount,
+            render: (t) => (
+              <span className="font-mono font-black text-slate-900 tabular-nums">
+                {t.amount.toLocaleString()} {settings.currency}
+              </span>
+            ),
+          },
+          {
+            key: 'balanceAfter',
+            header: 'الرصيد بعد',
+            align: 'center',
+            sortValue: (t) => t.balanceAfter,
+            exportValue: (t) => t.balanceAfter,
+            render: (t) => (
+              <span className="font-mono font-bold text-blue-950 tabular-nums">
+                {t.balanceAfter.toLocaleString()}
+              </span>
+            ),
+          },
+          {
+            key: 'cashboxName',
+            header: 'ربط الخزينة',
+            align: 'right',
+            sortValue: (t) => t.cashboxName || 'قيد مستقل',
+            exportValue: (t) => t.cashboxName || 'قيد مستقل',
+            render: (t) => <span className="text-[11px] text-slate-600">{t.cashboxName || 'قيد مستقل'}</span>,
+          },
+          {
+            key: 'reason',
+            header: 'السبب / الملاحظات',
+            align: 'right',
+            sortValue: (t) => t.reason || t.notes || '',
+            exportValue: (t) => t.reason || t.notes || '-',
+            render: (t) => (
+              <div className="text-[11px] text-slate-600">
+                <div>{t.reason || t.notes || '-'}</div>
+                {t.editedBy && <span className="text-[10px] text-amber-700 block">تم التعديل بواسطة {t.editedBy}</span>}
+              </div>
+            ),
+          },
+          {
+            key: 'actions',
+            header: 'الإجراءات',
+            align: 'center',
+            sortable: false,
+            render: (tx) => (
+              <div className="flex items-center justify-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => handlePrintVoucher(tx)}
+                  className="p-1.5 text-slate-500 hover:text-blue-900 cursor-pointer"
+                  title="طباعة سند"
+                >
+                  <Printer className="w-4 h-4" />
+                </button>
+                {canEditTx && (
+                  <button
+                    type="button"
+                    onClick={() => openEditTxModal(tx)}
+                    className="p-1.5 text-slate-500 hover:text-amber-700 cursor-pointer"
+                    title="تعديل الحركة مع تسجيل السبب"
+                  >
+                    <Edit className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ),
+          },
+        ]}
+      />
 
       {/* Create / Edit Account Modal */}
       <Modal

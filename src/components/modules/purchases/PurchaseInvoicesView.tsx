@@ -14,6 +14,7 @@ import { ProductSearchSelect } from '../../common/ProductSearchSelect';
 import { SearchableFilterSelect } from '../../common/SearchableFilterSelect';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { QuantityInput } from '../../common/QuantityInput';
+import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 import { computeLineTotal } from '../../../utils/quantity';
 
 export interface PurchaseInvoicesViewProps {
@@ -797,156 +798,202 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       )}
 
       {/* Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="p-3 border-b grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
-          <input
-            type="text"
-            placeholder="بحث برقم الفاتورة أو المورد أو المندوب..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs focus:border-blue-600 outline-hidden"
-          />
-          <SearchableFilterSelect
-            id="purchase-filter-supplier"
-            value={supplierFilter}
-            onChange={setSupplierFilter}
-            options={suppliers.map((s) => ({
-              value: s.id,
-              label: s.name,
-              subtitle: s.phone || s.companyName,
-              searchText: `${s.name} ${s.phone || ''} ${s.companyName || ''}`,
-            }))}
-            allOptionLabel="جميع الموردين"
-            allOptionValue="all"
-            searchPlaceholder="ابحث باسم المورد أو الهاتف..."
-            allowClear
-            buttonClassName="rounded-xl min-h-[38px]"
-          />
-          <SearchableFilterSelect
-            id="purchase-filter-status"
-            value={statusFilter}
-            onChange={(val) => setStatusFilter((val as any) || 'all')}
-            options={[
-              { value: 'rep_incoming', label: 'فواتير شراء المناديب (الواردة)' },
-              { value: 'confirmed', label: 'فواتير مؤكدة ومعتمدة' },
-              { value: 'draft', label: 'مسودات وبانتظار الاعتماد' },
-              { value: 'cancelled', label: 'ملغاة / محذوفة' },
-            ]}
-            allOptionLabel="جميع الحالات"
-            allOptionValue="all"
-            allowClear
-            buttonClassName="rounded-xl min-h-[38px]"
-          />
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-right text-xs">
-            <thead>
-              <tr className="bg-slate-50 font-bold border-b text-slate-700">
-                <th className="p-3">رقم الفاتورة</th>
-                <th className="p-3">التاريخ</th>
-                <th className="p-3">المورد / المرسل</th>
-                <th className="p-3">المستودع المستلم</th>
-                <th className="p-3 text-center">الإجمالي</th>
-                <th className="p-3 text-center">المدفوع</th>
-                <th className="p-3 text-center">المتبقي للمورد</th>
-                <th className="p-3 text-center">الحالة</th>
-                <th className="p-3 text-center">الإجراءات</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredPurchases.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="p-8 text-center text-slate-400">
-                    لا توجد فواتير مشتريات مسجلة
-                  </td>
-                </tr>
-              ) : (
-                filteredPurchases.map(inv => {
-                  const badge = getPurchaseStatusBadge(inv);
-                  return (
-                  <tr key={inv.id} className="hover:bg-slate-50">
-                    <td className="p-3 font-mono font-bold text-blue-900">{inv.invoiceNumber}</td>
-                    <td className="p-3 font-mono text-slate-600">{inv.date}</td>
-                    <td className="p-3">
-                      <div className="font-bold text-slate-800">{inv.supplierName}</div>
-                      {(inv.representativeName || inv.sentBy) && (
-                        <div className="text-[10px] text-indigo-700 font-bold mt-0.5">
-                          المندوب / المرسل: {inv.representativeName || inv.sentBy}
-                        </div>
-                      )}
-                    </td>
-                    <td className="p-3 text-slate-600">{inv.warehouseName}</td>
-                    <td className="p-3 text-center font-black">{inv.grandTotal.toLocaleString()} {settings.currency}</td>
-                    <td className="p-3 text-center text-emerald-700 font-bold">{inv.paidAmount.toLocaleString()}</td>
-                    <td className="p-3 text-center text-red-700 font-bold">{inv.remainingAmount.toLocaleString()}</td>
-                    <td className="p-3 text-center">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold inline-block ${badge.cls}`}>
-                        {badge.label}
-                      </span>
-                    </td>
-                    <td className="p-3">
-                      <div className="flex items-center justify-center gap-1.5">
-                        {inv.status === 'draft' && (!inv.dispatchStatus || inv.dispatchStatus === 'draft' || inv.dispatchStatus === 'rejected') && canCreatePurchaseDraft && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSendModalInvoice(inv);
-                              setSendModalRecipientId(inv.recipientUserId || '');
-                              setSendModalNotes('');
-                            }}
-                            className="p-1.5 text-indigo-700 hover:text-indigo-900 hover:bg-indigo-50 rounded-lg cursor-pointer"
-                            title={inv.dispatchStatus === 'rejected' ? 'إعادة إرسال الفاتورة للإدارة' : 'إرسال الفاتورة للإدارة'}
-                          >
-                            <Send className="w-4 h-4" />
-                          </button>
-                        )}
-                        {inv.status !== 'cancelled' && canEditPurchase && (
-                          <button
-                            onClick={() => handleOpenEditModal(inv)}
-                            className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded-lg cursor-pointer"
-                            title="تعديل فاتورة الشراء والأصناف"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => {
-                            setIsRejectBoxOpen(false);
-                            setRejectReasonText('');
-                            setActiveInvoice(inv);
-                          }}
-                          className="p-1.5 text-slate-500 hover:text-blue-900 hover:bg-blue-50 rounded-lg cursor-pointer"
-                          title="عرض تفاصيل الفاتورة وسجل الإرسال والتعديلات"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handlePrint(inv)}
-                          className="p-1.5 text-slate-500 hover:text-blue-900 hover:bg-blue-50 rounded-lg cursor-pointer"
-                          title="طباعة الفاتورة"
-                        >
-                          <Printer className="w-4 h-4" />
-                        </button>
-                        {inv.status !== 'cancelled' && (
-                          <button
-                            onClick={() => setCancelTarget(inv)}
-                            className="p-1.5 text-red-400 hover:text-red-700 hover:bg-red-50 rounded-lg cursor-pointer"
-                            title="إلغاء فاتورة الشراء"
-                          >
-                            <XCircle className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <UnifiedDataTable<Invoice>
+        title="سجل فواتير المشتريات"
+        subtitle="فواتير الشراء المعتمدة والمسودات وفواتير المناديب الواردة"
+        data={filteredPurchases}
+        rowKey={(inv) => inv.id}
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchPlaceholder="بحث برقم الفاتورة أو المورد أو المندوب..."
+        exportFilename="AWLAD_SELIM_PurchaseInvoices"
+        pdfTitle="سجل فواتير المشتريات"
+        emptyTitle="لا توجد فواتير مشتريات مسجلة"
+        toolbarFilters={
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <div className="min-w-[180px]">
+              <SearchableFilterSelect
+                id="purchase-filter-supplier"
+                value={supplierFilter}
+                onChange={setSupplierFilter}
+                options={suppliers.map((s) => ({
+                  value: s.id,
+                  label: s.name,
+                  subtitle: s.phone || s.companyName,
+                  searchText: `${s.name} ${s.phone || ''} ${s.companyName || ''}`,
+                }))}
+                allOptionLabel="جميع الموردين"
+                allOptionValue="all"
+                searchPlaceholder="ابحث باسم المورد أو الهاتف..."
+                allowClear
+                buttonClassName="rounded-xl min-h-[36px]"
+              />
+            </div>
+            <div className="min-w-[185px]">
+              <SearchableFilterSelect
+                id="purchase-filter-status"
+                value={statusFilter}
+                onChange={(val) => setStatusFilter((val as any) || 'all')}
+                options={[
+                  { value: 'rep_incoming', label: 'فواتير شراء المناديب (الواردة)' },
+                  { value: 'confirmed', label: 'فواتير مؤكدة ومعتمدة' },
+                  { value: 'draft', label: 'مسودات وبانتظار الاعتماد' },
+                  { value: 'cancelled', label: 'ملغاة / محذوفة' },
+                ]}
+                allOptionLabel="جميع الحالات"
+                allOptionValue="all"
+                allowClear
+                buttonClassName="rounded-xl min-h-[36px]"
+              />
+            </div>
+          </div>
+        }
+        columns={[
+          {
+            key: 'invoiceNumber',
+            header: 'رقم الفاتورة',
+            sortable: true,
+            sortValue: (inv) => inv.invoiceNumber,
+            exportValue: (inv) => inv.invoiceNumber,
+            render: (inv) => <span className="font-mono font-bold text-blue-900">{inv.invoiceNumber}</span>,
+          },
+          {
+            key: 'date',
+            header: 'التاريخ',
+            sortable: true,
+            sortValue: (inv) => inv.date,
+            exportValue: (inv) => inv.date,
+            render: (inv) => <span className="font-mono text-slate-600">{inv.date}</span>,
+          },
+          {
+            key: 'supplierName',
+            header: 'المورد / المرسل',
+            sortable: true,
+            sortValue: (inv) => inv.supplierName || '',
+            exportValue: (inv) => inv.supplierName || '-',
+            render: (inv) => (
+              <div>
+                <div className="font-bold text-slate-800">{inv.supplierName}</div>
+                {(inv.representativeName || inv.sentBy) && (
+                  <div className="text-[10px] text-indigo-700 font-bold mt-0.5">
+                    المندوب / المرسل: {inv.representativeName || inv.sentBy}
+                  </div>
+                )}
+              </div>
+            ),
+          },
+          {
+            key: 'warehouseName',
+            header: 'المستودع المستلم',
+            exportValue: (inv) => inv.warehouseName || '-',
+            render: (inv) => <span className="text-slate-600">{inv.warehouseName}</span>,
+          },
+          {
+            key: 'grandTotal',
+            header: 'الإجمالي',
+            align: 'center',
+            sortable: true,
+            sortValue: (inv) => inv.grandTotal,
+            exportValue: (inv) => inv.grandTotal,
+            render: (inv) => <span className="font-black font-mono tabular-nums">{inv.grandTotal.toLocaleString()} {settings.currency}</span>,
+          },
+          {
+            key: 'paidAmount',
+            header: 'المدفوع',
+            align: 'center',
+            sortable: true,
+            sortValue: (inv) => inv.paidAmount,
+            exportValue: (inv) => inv.paidAmount,
+            render: (inv) => <span className="text-emerald-700 font-bold font-mono tabular-nums">{inv.paidAmount.toLocaleString()}</span>,
+          },
+          {
+            key: 'remainingAmount',
+            header: 'المتبقي للمورد',
+            align: 'center',
+            sortable: true,
+            sortValue: (inv) => inv.remainingAmount,
+            exportValue: (inv) => inv.remainingAmount,
+            render: (inv) => <span className="text-red-700 font-bold font-mono tabular-nums">{inv.remainingAmount.toLocaleString()}</span>,
+          },
+          {
+            key: 'status',
+            header: 'الحالة',
+            align: 'center',
+            exportValue: (inv) => getPurchaseStatusBadge(inv).label,
+            render: (inv) => {
+              const badge = getPurchaseStatusBadge(inv);
+              return (
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold inline-block ${badge.cls}`}>
+                  {badge.label}
+                </span>
+              );
+            },
+          },
+          {
+            key: 'actions',
+            header: 'الإجراءات',
+            align: 'center',
+            render: (inv) => (
+              <div className="flex items-center justify-center gap-1.5">
+                {inv.status === 'draft' && (!inv.dispatchStatus || inv.dispatchStatus === 'draft' || inv.dispatchStatus === 'rejected') && canCreatePurchaseDraft && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSendModalInvoice(inv);
+                      setSendModalRecipientId(inv.recipientUserId || '');
+                      setSendModalNotes('');
+                    }}
+                    className="p-1.5 text-indigo-700 hover:text-indigo-900 hover:bg-indigo-50 rounded-lg cursor-pointer"
+                    title={inv.dispatchStatus === 'rejected' ? 'إعادة إرسال الفاتورة للإدارة' : 'إرسال الفاتورة للإدارة'}
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
+                )}
+                {inv.status !== 'cancelled' && canEditPurchase && (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditModal(inv)}
+                    className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded-lg cursor-pointer"
+                    title="تعديل فاتورة الشراء والأصناف"
+                  >
+                    <Edit className="w-4 h-4" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRejectBoxOpen(false);
+                    setRejectReasonText('');
+                    setActiveInvoice(inv);
+                  }}
+                  className="p-1.5 text-slate-500 hover:text-blue-900 hover:bg-blue-50 rounded-lg cursor-pointer"
+                  title="عرض تفاصيل الفاتورة وسجل الإرسال والتعديلات"
+                >
+                  <Eye className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePrint(inv)}
+                  className="p-1.5 text-slate-500 hover:text-blue-900 hover:bg-blue-50 rounded-lg cursor-pointer"
+                  title="طباعة الفاتورة"
+                >
+                  <Printer className="w-4 h-4" />
+                </button>
+                {inv.status !== 'cancelled' && (
+                  <button
+                    type="button"
+                    onClick={() => setCancelTarget(inv)}
+                    className="p-1.5 text-red-400 hover:text-red-700 hover:bg-red-50 rounded-lg cursor-pointer"
+                    title="إلغاء فاتورة الشراء"
+                  >
+                    <XCircle className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ),
+          },
+        ]}
+      />
 
       {/* New Purchase Invoice Modal */}
       <Modal
@@ -1576,29 +1623,46 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               </div>
             )}
 
-            <div className="awlad-table-scroll mb-4">
-              <table className="w-full text-right text-xs">
-                <thead>
-                  <tr className="bg-slate-100 font-bold border-b">
-                    <th className="p-2">الصنف</th>
-                    <th className="p-2 text-center">الوحدة</th>
-                    <th className="p-2 text-center">الكمية</th>
-                    <th className="p-2 text-center">سعر الشراء</th>
-                    <th className="p-2 text-center">الإجمالي</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {displayedActiveInvoice.items.map((it, i) => (
-                    <tr key={i}>
-                      <td className="p-2 font-semibold">{it.productName}</td>
-                      <td className="p-2 text-center">{it.unit}</td>
-                      <td className="p-2 text-center font-bold">{it.quantity}</td>
-                      <td className="p-2 text-center">{it.unitPrice}</td>
-                      <td className="p-2 text-center font-bold text-blue-900">{it.total.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="mb-4">
+              <UnifiedDataTable<InvoiceItem>
+                title="أصناف فاتورة الشراء"
+                data={displayedActiveInvoice.items}
+                rowKey={(it, i) => `${it.productId || it.productName}-${i}`}
+                searchable={false}
+                compact
+                defaultPageSize={25}
+                columns={[
+                  {
+                    key: 'productName',
+                    header: 'الصنف',
+                    render: (it) => <span className="font-semibold">{it.productName}</span>,
+                  },
+                  {
+                    key: 'unit',
+                    header: 'الوحدة',
+                    align: 'center',
+                    render: (it) => <span>{it.unit}</span>,
+                  },
+                  {
+                    key: 'quantity',
+                    header: 'الكمية',
+                    align: 'center',
+                    render: (it) => <span className="font-bold font-mono tabular-nums">{it.quantity}</span>,
+                  },
+                  {
+                    key: 'unitPrice',
+                    header: 'سعر الشراء',
+                    align: 'center',
+                    render: (it) => <span className="font-mono tabular-nums">{it.unitPrice}</span>,
+                  },
+                  {
+                    key: 'total',
+                    header: 'الإجمالي',
+                    align: 'center',
+                    render: (it) => <span className="font-bold font-mono text-blue-900 tabular-nums">{it.total.toLocaleString()}</span>,
+                  },
+                ]}
+              />
             </div>
 
             <div className="mt-4 mb-4 p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
@@ -1615,28 +1679,36 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     : 'فاتورة آجلة بالكامل للمورد.'}
                 </p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-[11px] text-right">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-slate-600 font-bold">
-                        <th className="py-1.5 px-2">التاريخ</th>
-                        <th className="py-1.5 px-2">المبلغ</th>
-                        <th className="py-1.5 px-2">الخزينة</th>
-                        <th className="py-1.5 px-2">ملاحظات</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      {displayedActiveInvoice.payments.map((p) => (
-                        <tr key={p.id}>
-                          <td className="py-1.5 px-2 font-mono">{p.date}</td>
-                          <td className="py-1.5 px-2 font-black text-emerald-700">{p.amount.toLocaleString()} {settings.currency}</td>
-                          <td className="py-1.5 px-2 text-slate-600">{p.cashboxName}</td>
-                          <td className="py-1.5 px-2 text-slate-500">{p.notes || '-'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <UnifiedDataTable
+                  title="سجل الدفعات المسددة"
+                  data={displayedActiveInvoice.payments}
+                  rowKey={(p) => p.id}
+                  searchable={false}
+                  compact
+                  defaultPageSize={10}
+                  columns={[
+                    {
+                      key: 'date',
+                      header: 'التاريخ',
+                      render: (p) => <span className="font-mono">{p.date}</span>,
+                    },
+                    {
+                      key: 'amount',
+                      header: 'المبلغ',
+                      render: (p) => <span className="font-black text-emerald-700 font-mono tabular-nums">{p.amount.toLocaleString()} {settings.currency}</span>,
+                    },
+                    {
+                      key: 'cashboxName',
+                      header: 'الخزينة',
+                      render: (p) => <span className="text-slate-600">{p.cashboxName}</span>,
+                    },
+                    {
+                      key: 'notes',
+                      header: 'ملاحظات',
+                      render: (p) => <span className="text-slate-500">{p.notes || '-'}</span>,
+                    },
+                  ]}
+                />
               )}
             </div>
 
