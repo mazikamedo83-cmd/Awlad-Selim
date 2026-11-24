@@ -77,74 +77,13 @@ jobs:
           node server/tests/identityAndFiltersTests.mjs
           node server/tests/branchCollectionAndAuditTests.mjs
           node server/tests/storefrontAndLocationTests.mjs
+          node server/tests/offlineRefreshAndDispatchTests.mjs
           npx tsx server/tests/diagnosticsTests.mts
 
-      - name: Verify schema, concurrent bootstrap/register & store roundtrip against real PostgreSQL 16
+      - name: Verify full schema, transactions, dispatches & strict disconnect against real PostgreSQL 16
         env:
           DATABASE_URL: postgres://postgres:ci_postgres_password@localhost:5432/awlad_selim_ci
           AWLAD_REQUIRE_POSTGRES: 'true'
           JWT_SECRET: ci_test_jwt_secret_key_for_postgres_verification_2026
           BOOTSTRAP_ADMIN_SECRET: ci_bootstrap_secret_2026
-        run: |
-          node --input-type=module -e '
-            import assert from "node:assert/strict";
-            import os from "node:os";
-            import fs from "node:fs";
-            import path from "node:path";
-            const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "awlad_pg_ci_"));
-            process.env.AWLAD_DATA_DIR = tmp;
-            try {
-              const { initializeSchema, getPool, isStrictPostgresMode } = await import("./server/db/postgres.js");
-              const { bootstrapAdmin, registerMobileAccount } = await import("./server/db/stores/authStore.js");
-              const { loadFullReportDataset } = await import("./server/db/stores/reportsStore.js");
-              assert.equal(isStrictPostgresMode(), true);
-              const init = await initializeSchema();
-              assert.equal(init.success, true, init.error || "Schema init failed");
-              const pool = getPool();
-              const idx = await pool.query("SELECT indexname FROM pg_indexes WHERE tablename IN (\x27users\x27,\x27customers\x27,\x27representatives\x27,\x27invoices\x27,\x27invoice_returns\x27,\x27financial_transactions\x27,\x27expenses_incomes\x27,\x27stock_movements\x27,\x27rep_custody_operations\x27)");
-              for (const expectedIdx of [
-                "idx_invoices_wh_date",
-                "idx_invoices_date_type",
-                "idx_invoices_cashbox_date",
-                "idx_invoices_number",
-                "idx_invoice_returns_party_date",
-                "idx_fin_tx_cashbox_date",
-                "idx_stock_movements_prod_date",
-                "idx_rep_custody_ops_date_prod",
-                "idx_users_role_norm_phone",
-                "idx_users_role_norm_phone_unique",
-                "idx_customers_norm_phone",
-                "idx_reps_norm_phone"
-              ]) {
-                assert.ok(idx.rows.some((r) => r.indexname === expectedIdx), "Missing expected PG index: " + expectedIdx);
-              }
-
-              // Concurrent bootstrap race across PG connections: exactly one succeeds
-              const [b1, b2] = await Promise.allSettled([
-                bootstrapAdmin({ fullName: "مدير CI 1", username: "ci_admin_1", password: "CiPassword!2026", bootstrapSecret: "ci_bootstrap_secret_2026" }, {}),
-                bootstrapAdmin({ fullName: "مدير CI 2", username: "ci_admin_2", password: "CiPassword!2026", bootstrapSecret: "ci_bootstrap_secret_2026" }, {}),
-              ]);
-              const okBoot = [b1, b2].filter((r) => r.status === "fulfilled");
-              const failBoot = [b1, b2].filter((r) => r.status === "rejected");
-              assert.equal(okBoot.length, 1, "Exactly 1 concurrent bootstrap must win");
-              assert.equal(failBoot.length, 1, "Second concurrent bootstrap must fail cleanly");
-              const adminUser = okBoot[0].value;
-              assert.equal(adminUser.role, "admin");
-              const adminRows = await pool.query("SELECT id FROM users WHERE role = \x27admin\x27");
-              assert.equal(adminRows.rowCount, 1);
-
-              // Concurrent self-registration race: duplicate username/phone rejected cleanly
-              const [reg1, reg2] = await Promise.allSettled([
-                registerMobileAccount({ role: "customer", fullName: "عميل 1", username: "ci_race_cust", phone: "01099988877", password: "CiPassword!2026" }, {}),
-                registerMobileAccount({ role: "customer", fullName: "عميل 2", username: "ci_race_cust", phone: "01099988877", password: "CiPassword!2026" }, {}),
-              ]);
-              assert.equal([reg1, reg2].filter((r) => r.status === "fulfilled").length, 1);
-              assert.equal([reg1, reg2].filter((r) => r.status === "rejected").length, 1);
-
-              const ds = await loadFullReportDataset(adminUser, { dateFrom: "2026-01-01" });
-              assert.ok(Array.isArray(ds.invoices));
-              console.log("Real PostgreSQL 16 schema, composite indexes, concurrent bootstrap/register & SQL pushdown verified.");
-            } finally {
-              fs.rmSync(tmp, { recursive: true, force: true });
-            }
-          '
+        run: node server/tests/postgresRealIntegrationTests.mjs

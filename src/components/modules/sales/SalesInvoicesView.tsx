@@ -1404,8 +1404,9 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   required
                   min={1}
                   max={paymentModalInvoice.remainingAmount}
-                  value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)}
+                  placeholder="0.00"
+                  value={paymentAmount || ''}
+                  onChange={(e) => setPaymentAmount(e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
                   className="w-full p-2.5 rounded-xl border border-slate-300 font-bold text-sm text-emerald-800 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 outline-hidden"
                 />
               </div>
@@ -1527,8 +1528,9 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   <input
                     type="number"
                     min={0}
-                    value={editDiscount}
-                    onChange={(e) => setEditDiscount(parseFloat(e.target.value) || 0)}
+                    placeholder="0"
+                    value={editDiscount || ''}
+                    onChange={(e) => setEditDiscount(e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
                     className="w-full p-2.5 rounded-xl border border-slate-300 font-bold"
                   />
                 </div>

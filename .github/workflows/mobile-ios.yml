@@ -60,6 +60,9 @@ jobs:
           node server/tests/finalSecurityAuditTests.mjs
           node server/tests/productionReadinessAuditTests.mjs
           node server/tests/identityAndFiltersTests.mjs
+          node server/tests/branchCollectionAndAuditTests.mjs
+          node server/tests/storefrontAndLocationTests.mjs
+          node server/tests/offlineRefreshAndDispatchTests.mjs
           npx tsx server/tests/diagnosticsTests.mts
 
       - name: Build production web bundle

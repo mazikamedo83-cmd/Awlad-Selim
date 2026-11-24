@@ -45,12 +45,24 @@ jobs:
 
       - name: Run automated verification tests
         run: |
-          node --experimental-strip-types server/tests/masterRepairVerificationTests.mjs
-          node --experimental-strip-types server/tests/comprehensiveReportsTests.mjs
-          node --experimental-strip-types server/tests/pairingVerificationTests.mts
+          node server/tests/runAllTests.mjs
+          node server/tests/repPurchaseCustomerRbacTests.mjs
+          node server/tests/masterRepairVerificationTests.mjs
+          node server/tests/comprehensiveReportsTests.mjs
+          node server/tests/auditVerificationTests.mjs
+          npx tsx server/tests/pairingVerificationTests.mts
+          node server/tests/strictPostgresModeTests.mjs
+          npx tsx server/tests/strictClientBehaviorTests.mts
+          node server/tests/securityCompletionTests.mjs
+          npx tsx server/tests/clientSecurityCompletionTests.mts
+          node server/tests/fullCompletionSuite.mjs
           node server/tests/finalSecurityAuditTests.mjs
           node server/tests/productionReadinessAuditTests.mjs
           node server/tests/identityAndFiltersTests.mjs
+          node server/tests/branchCollectionAndAuditTests.mjs
+          node server/tests/storefrontAndLocationTests.mjs
+          node server/tests/offlineRefreshAndDispatchTests.mjs
+          npx tsx server/tests/diagnosticsTests.mts
 
       - name: Build web bundle
         run: bun run build

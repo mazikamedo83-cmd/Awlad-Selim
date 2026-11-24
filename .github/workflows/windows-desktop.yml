@@ -33,20 +33,46 @@ jobs:
         shell: pwsh
         run: bun run electron:icons
 
-      - name: Run TypeScript check and backend tests
+      - name: Run TypeScript check and full verification tests
         shell: pwsh
         run: |
           bun run lint
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node server/tests/runAllTests.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/repPurchaseCustomerRbacTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/masterRepairVerificationTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/comprehensiveReportsTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/auditVerificationTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npx tsx server/tests/pairingVerificationTests.mts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/strictPostgresModeTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx tsx server/tests/strictClientBehaviorTests.mts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/securityCompletionTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx tsx server/tests/clientSecurityCompletionTests.mts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/fullCompletionSuite.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node server/tests/finalSecurityAuditTests.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node server/tests/productionReadinessAuditTests.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node server/tests/identityAndFiltersTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/branchCollectionAndAuditTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/storefrontAndLocationTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/offlineRefreshAndDispatchTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx tsx server/tests/diagnosticsTests.mts
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build Windows Desktop Installer (EXE)

@@ -892,8 +892,9 @@ export const PersonalAccountsView: React.FC = () => {
                   type="number"
                   step="0.01"
                   required
-                  value={editAmount}
-                  onChange={(e) => setEditAmount(Number(e.target.value))}
+                  placeholder="0.00"
+                  value={editAmount || ''}
+                  onChange={(e) => setEditAmount(e.target.value === '' ? 0 : Number(e.target.value))}
                   className="w-full border rounded-xl p-2.5 font-mono font-bold"
                 />
               </div>

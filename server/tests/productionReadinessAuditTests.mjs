@@ -13,7 +13,7 @@ const { createApiApp } = await import('../app.js');
 const { setInjectedPool, initializeSchema } = await import('../db/postgres.js');
 const { resetPgModeCache } = await import('../db/stores/mode.js');
 const { REPORT_TYPES_LIST } = await import('../db/stores/reportsStore.js');
-const { readJsonDatabase } = await import('../db/jsonLedger.js');
+const { createEmptyDatabaseState, readJsonDatabase } = await import('../db/jsonLedger.js');
 const { resetAllRateLimitsForTests } = await import('../middleware/auth.js');
 
 const REPO_ROOT = path.resolve(process.cwd());
@@ -125,13 +125,22 @@ await test('1. Exact 23 report titles, order, groups, and role="separator" divid
   assert.ok(src.includes('role="separator"'), 'ReportsView.tsx must render role="separator" group dividers');
 });
 
-await test('2. Product catalog & seeded database contain Egyptian products only (0 imported items, 0 noodle cups)', async () => {
+await test('2. Product catalog & clean empty schema contain Egyptian products only (0 imported items, 0 noodle cups)', async () => {
   const catalogPath = path.join(REPO_ROOT, 'product-import-source/products-catalog.json');
-  const dbPath = path.join(REPO_ROOT, 'server/data/database.json');
+  assert.equal(fs.existsSync(catalogPath), true, 'Tracked catalog source product-import-source/products-catalog.json must exist');
   const catalog = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
-  const dbSeed = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
   const catalogItems = Array.isArray(catalog) ? catalog : (catalog.products || catalog.items || []);
   assert.ok(catalogItems.length > 0, 'Catalog must contain products');
+
+  const cleanInitialState = createEmptyDatabaseState();
+  assert.ok(Array.isArray(cleanInitialState.products), 'Initial schema must include products array');
+  assert.equal(cleanInitialState.products.length, 0, 'Fresh default database schema must start with 0 products');
+  assert.equal(cleanInitialState.users.length, 0, 'Fresh default database schema must start with 0 users');
+
+  const dbPath = path.join(REPO_ROOT, 'server/data/database.json');
+  const optionalLocalDbProducts = fs.existsSync(dbPath)
+    ? (JSON.parse(fs.readFileSync(dbPath, 'utf8')).products || [])
+    : [];
 
   const forbiddenCupRe = /(?:^|\s|\(|-)(?:cup|كاب|كوباية|كوب(?:\s+نودلز|\s+إندومي|\s+اندومي)?|علبة\s+نودلز)(?:\s|$|\)|-)/i;
   const importedRe = /مستورد|imported|\bimport\b|إندونيسي|كوري|تركي|ياباني|صيني|تايلاندي/i;
@@ -142,11 +151,11 @@ await test('2. Product catalog & seeded database contain Egyptian products only 
     assert.equal(importedRe.test(label), false, `Catalog product violates Egyptian-only rule: ${item.name}`);
     assert.equal(Boolean(item.isImported), false, `Catalog product marked imported: ${item.name}`);
   }
-  for (const item of dbSeed.products || []) {
+  for (const item of optionalLocalDbProducts) {
     const label = `${item.name || ''} ${item.category || ''} ${item.notes || ''}`;
-    assert.equal(forbiddenCupRe.test(label), false, `Seed DB product violates no-cups rule: ${item.name}`);
-    assert.equal(importedRe.test(label), false, `Seed DB product violates Egyptian-only rule: ${item.name}`);
-    assert.equal(Boolean(item.isImported), false, `Seed DB product marked imported: ${item.name}`);
+    assert.equal(forbiddenCupRe.test(label), false, `Local DB product violates no-cups rule: ${item.name}`);
+    assert.equal(importedRe.test(label), false, `Local DB product violates Egyptian-only rule: ${item.name}`);
+    assert.equal(Boolean(item.isImported), false, `Local DB product marked imported: ${item.name}`);
   }
 });
 

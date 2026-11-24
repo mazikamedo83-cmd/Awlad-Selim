@@ -831,8 +831,9 @@ export const CustomerRepOrdersView: React.FC = () => {
               min={0}
               step="0.01"
               required
-              value={collectAmount}
-              onChange={(e) => setCollectAmount(Number(e.target.value))}
+              placeholder="0.00"
+              value={collectAmount || ''}
+              onChange={(e) => setCollectAmount(e.target.value === '' ? 0 : Number(e.target.value))}
               className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
             />
           </div>
@@ -1026,8 +1027,9 @@ export const CustomerRepOrdersView: React.FC = () => {
               min={0.01}
               step="0.01"
               required
-              value={advanceAmount}
-              onChange={(e) => setAdvanceAmount(Number(e.target.value))}
+              placeholder="0.00"
+              value={advanceAmount || ''}
+              onChange={(e) => setAdvanceAmount(e.target.value === '' ? 0 : Number(e.target.value))}
               className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
             />
           </div>
@@ -1176,8 +1178,9 @@ export const CustomerRepOrdersView: React.FC = () => {
                     type="number"
                     min={0}
                     step="0.01"
-                    value={convertPaid}
-                    onChange={(e) => setConvertPaid(Number(e.target.value))}
+                    placeholder="0.00"
+                    value={convertPaid || ''}
+                    onChange={(e) => setConvertPaid(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
                   />
                 </div>
@@ -1189,8 +1192,9 @@ export const CustomerRepOrdersView: React.FC = () => {
                 type="number"
                 min={0}
                 step="0.01"
-                value={convertDiscount}
-                onChange={(e) => setConvertDiscount(Number(e.target.value))}
+                placeholder="0.00"
+                value={convertDiscount || ''}
+                onChange={(e) => setConvertDiscount(e.target.value === '' ? 0 : Number(e.target.value))}
                 className="w-full p-2.5 rounded-xl border border-slate-300 font-mono font-bold"
               />
             </div>
